@@ -57,6 +57,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/8637535/"
     },
     {
+      "key": "bohm-2015-tendon",
+      "authors": [
+        "Bohm S",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "Human tendon adaptation in response to mechanical loading: a systematic review and meta-analysis of exercise intervention studies on healthy adults.",
+      "source": "Sports Medicine - Open",
+      "volume": "1",
+      "issue": "1",
+      "pages": "7",
+      "doi": "10.1186/s40798-015-0009-9",
+      "pmid": "27747846",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27747846/"
+    },
+    {
       "key": "bruusgaard-2010-myonuclei",
       "authors": [
         "Bruusgaard JC",
@@ -131,6 +150,44 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35708888/"
+    },
+    {
+      "key": "currier-2023-network-meta",
+      "authors": [
+        "Currier BS",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Resistance training prescription for muscle strength and hypertrophy in healthy adults: a systematic review and Bayesian network meta-analysis.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "57",
+      "issue": "18",
+      "pages": "1211-1220",
+      "doi": "10.1136/bjsports-2023-106807",
+      "pmid": "37414459",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/37414459/"
+    },
+    {
+      "key": "cuthbert-2020-fascicle",
+      "authors": [
+        "Cuthbert M",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "The Effect of Nordic Hamstring Exercise Intervention Volume on Eccentric Strength and Muscle Architecture Adaptations: A Systematic Review and Meta-analyses.",
+      "source": "Sports Medicine",
+      "volume": "50",
+      "issue": "1",
+      "pages": "83-99",
+      "doi": "10.1007/s40279-019-01178-7",
+      "pmid": "31502142",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31502142/"
     },
     {
       "key": "damas-2015-mps-review",
@@ -209,6 +266,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24167222/"
     },
     {
+      "key": "enes-2024-volume-progression",
+      "authors": [
+        "Enes A",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Effects of Different Weekly Set Progressions on Muscular Adaptations in Trained Males: Is There a Dose-Response Effect?",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "56",
+      "issue": "3",
+      "pages": "553-563",
+      "doi": "10.1249/MSS.0000000000003317",
+      "pmid": "37796222",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/37796222/"
+    },
+    {
       "key": "fonseca-2014-exercise-variation",
       "authors": [
         "Fonseca RM",
@@ -244,6 +320,25 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28848690/"
+    },
+    {
+      "key": "grgic-2018-frequency-strength",
+      "authors": [
+        "Grgic J",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Effect of Resistance Training Frequency on Gains in Muscular Strength: A Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "48",
+      "issue": "5",
+      "pages": "1207-1220",
+      "doi": "10.1007/s40279-018-0872-x",
+      "pmid": "29470825",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29470825/"
     },
     {
       "key": "grgic-2022-failure-meta",
@@ -565,6 +660,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26817506/"
     },
     {
+      "key": "lopez-2021-load-meta",
+      "authors": [
+        "Lopez P",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Resistance Training Load Effects on Muscle Hypertrophy and Strength Gain: Systematic Review and Network Meta-analysis.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "53",
+      "issue": "6",
+      "pages": "1206-1216",
+      "doi": "10.1249/MSS.0000000000002585",
+      "pmid": "33433148",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33433148/"
+    },
+    {
       "key": "maeo-2023-triceps-overhead",
       "authors": [
         "Maeo S",
@@ -679,6 +793,44 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20921542/"
     },
     {
+      "key": "nunes-2022-protein-meta",
+      "authors": [
+        "Nunes EA",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Systematic review and meta-analysis of protein intake to support muscle mass and function in healthy adults.",
+      "source": "Journal of Cachexia, Sarcopenia and Muscle",
+      "volume": "13",
+      "issue": "2",
+      "pages": "795-810",
+      "doi": "10.1002/jcsm.12922",
+      "pmid": "35187864",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35187864/"
+    },
+    {
+      "key": "pallares-2021-rom-meta",
+      "authors": [
+        "Pallarés JG",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Effects of range of motion on resistance training adaptations: A systematic review and meta-analysis.",
+      "source": "Scandinavian Journal of Medicine & Science in Sports",
+      "volume": "31",
+      "issue": "10",
+      "pages": "1866-1881",
+      "doi": "10.1111/sms.14006",
+      "pmid": "34170576",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/34170576/"
+    },
+    {
       "key": "parr-2014-alcohol",
       "authors": [
         "Parr EB",
@@ -791,6 +943,25 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23222084/"
+    },
+    {
+      "key": "refalo-2023-failure-meta",
+      "authors": [
+        "Refalo MC",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy: A Systematic Review with Meta-analysis.",
+      "source": "Sports Medicine",
+      "volume": "53",
+      "issue": "3",
+      "pages": "649-665",
+      "doi": "10.1007/s40279-022-01784-y",
+      "pmid": "36334240",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36334240/"
     },
     {
       "key": "refalo-2024-failure-rir-rct",
@@ -1306,6 +1477,25 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26175657/"
+    },
+    {
+      "key": "varovic-2025-muscle-length-regional",
+      "authors": [
+        "Varović D",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Does Muscle Length Influence Regional Hypertrophy? A Systematic Review and Meta-Analysis.",
+      "source": "International Journal of Sports Medicine",
+      "volume": "46",
+      "issue": "14",
+      "pages": "1027-1036",
+      "doi": "10.1055/a-2615-4935",
+      "pmid": "40570881",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40570881/"
     },
     {
       "key": "vispute-2011-abdominal-fat",

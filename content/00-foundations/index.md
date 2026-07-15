@@ -14,6 +14,9 @@ builds on. Read this to understand *why* the recommendations in
 | [Mechanisms: How Muscle Grows](mechanisms.md) | Mechanical tension as primary driver, mechanotransduction, MPS/MPB, metabolic stress and muscle damage as secondary factors | ✅ |
 | [Satellite Cells, Myonuclei & Muscle Memory](satellite-cells-and-muscle-memory.md) | Myonuclear domain, satellite-cell-mediated growth, myonuclear retention, and the biology of comebacks | ✅ |
 | [Stimulus, Fatigue & Adaptation](stimulus-fatigue-adaptation.md) | The SFRA loop, progressive overload, the trainability curve and time course, local vs systemic growth | ✅ |
+| [Regional & Architectural Hypertrophy](regional-and-architectural-hypertrophy.md) | Non-uniform growth, fascicle length and pennation, and how much it can be steered | ✅ |
+| [Connective-Tissue & Tendon Adaptation](connective-tissue-adaptation.md) | How tendons adapt (and why they lag muscle) — the case for ramping load | ✅ |
+| [Reading the Evidence](reading-the-evidence.md) | How to weigh claims, evidence grades, effect sizes, and the field's limitations | ✅ |
 
 ## The one-paragraph model
 

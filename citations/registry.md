@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**77** verified references.
+**87** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -31,6 +31,14 @@ Bhasin S & et al. (1996). The effects of supraphysiologic doses of testosterone 
 
 - Type: RCT · Population: mixed
 - DOI: [10.1056/NEJM199607043350101](https://doi.org/10.1056/NEJM199607043350101) · PMID: [8637535](https://pubmed.ncbi.nlm.nih.gov/8637535/)
+
+### bohm-2015-tendon
+Bohm S & et al. (2015). Human tendon adaptation in response to mechanical loading: a systematic review and meta-analysis of exercise intervention studies on healthy adults.
+
+*Sports Medicine - Open*, 1(1), 7.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1186/s40798-015-0009-9](https://doi.org/10.1186/s40798-015-0009-9) · PMID: [27747846](https://pubmed.ncbi.nlm.nih.gov/27747846/)
 
 ### bruusgaard-2010-myonuclei
 Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.
@@ -64,6 +72,22 @@ Craven J & et al. (2022). Effects of Acute Sleep Loss on Physical Performance: A
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-022-01706-y](https://doi.org/10.1007/s40279-022-01706-y) · PMID: [35708888](https://pubmed.ncbi.nlm.nih.gov/35708888/)
 
+### currier-2023-network-meta
+Currier BS & et al. (2023). Resistance training prescription for muscle strength and hypertrophy in healthy adults: a systematic review and Bayesian network meta-analysis.
+
+*British Journal of Sports Medicine*, 57(18), 1211-1220.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1136/bjsports-2023-106807](https://doi.org/10.1136/bjsports-2023-106807) · PMID: [37414459](https://pubmed.ncbi.nlm.nih.gov/37414459/)
+
+### cuthbert-2020-fascicle
+Cuthbert M & et al. (2020). The Effect of Nordic Hamstring Exercise Intervention Volume on Eccentric Strength and Muscle Architecture Adaptations: A Systematic Review and Meta-analyses.
+
+*Sports Medicine*, 50(1), 83-99.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-019-01178-7](https://doi.org/10.1007/s40279-019-01178-7) · PMID: [31502142](https://pubmed.ncbi.nlm.nih.gov/31502142/)
+
 ### damas-2015-mps-review
 Damas F & et al. (2015). A review of resistance training-induced changes in skeletal muscle protein synthesis and their contribution to hypertrophy.
 
@@ -96,6 +120,14 @@ Egner IM & et al. (2013). A cellular memory mechanism aids overload hypertrophy 
 - Type: mechanistic · Population: animal
 - DOI: [10.1113/jphysiol.2013.264457](https://doi.org/10.1113/jphysiol.2013.264457) · PMID: [24167222](https://pubmed.ncbi.nlm.nih.gov/24167222/)
 
+### enes-2024-volume-progression
+Enes A & et al. (2024). Effects of Different Weekly Set Progressions on Muscular Adaptations in Trained Males: Is There a Dose-Response Effect?.
+
+*Medicine and Science in Sports and Exercise*, 56(3), 553-563.
+
+- Type: RCT · Population: trained
+- DOI: [10.1249/MSS.0000000000003317](https://doi.org/10.1249/MSS.0000000000003317) · PMID: [37796222](https://pubmed.ncbi.nlm.nih.gov/37796222/)
+
 ### fonseca-2014-exercise-variation
 Fonseca RM & et al. (2014). Changes in exercises are more effective than in loading schemes to improve muscle strength.
 
@@ -111,6 +143,14 @@ Grgic J & et al. (2017). Effects of linear and daily undulating periodized resis
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.7717/peerj.3695](https://doi.org/10.7717/peerj.3695) · PMID: [28848690](https://pubmed.ncbi.nlm.nih.gov/28848690/)
+
+### grgic-2018-frequency-strength
+Grgic J & et al. (2018). Effect of Resistance Training Frequency on Gains in Muscular Strength: A Systematic Review and Meta-Analysis.
+
+*Sports Medicine*, 48(5), 1207-1220.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-018-0872-x](https://doi.org/10.1007/s40279-018-0872-x) · PMID: [29470825](https://pubmed.ncbi.nlm.nih.gov/29470825/)
 
 ### grgic-2022-failure-meta
 Grgic J & et al. (2022). Effects of resistance training performed to repetition failure or non-failure on muscular strength and hypertrophy: A systematic review and meta-analysis.
@@ -248,6 +288,14 @@ Longland TM & et al. (2016). Higher compared with lower dietary protein during a
 - Type: RCT · Population: recreationally-active
 - DOI: [10.3945/ajcn.115.119339](https://doi.org/10.3945/ajcn.115.119339) · PMID: [26817506](https://pubmed.ncbi.nlm.nih.gov/26817506/)
 
+### lopez-2021-load-meta
+Lopez P & et al. (2021). Resistance Training Load Effects on Muscle Hypertrophy and Strength Gain: Systematic Review and Network Meta-analysis.
+
+*Medicine and Science in Sports and Exercise*, 53(6), 1206-1216.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1249/MSS.0000000000002585](https://doi.org/10.1249/MSS.0000000000002585) · PMID: [33433148](https://pubmed.ncbi.nlm.nih.gov/33433148/)
+
 ### maeo-2023-triceps-overhead
 Maeo S & et al. (2023). Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.
 
@@ -296,6 +344,22 @@ Nedeltcheva AV & et al. (2010). Insufficient sleep undermines dietary efforts to
 - Type: RCT · Population: mixed
 - DOI: [10.7326/0003-4819-153-7-201010050-00006](https://doi.org/10.7326/0003-4819-153-7-201010050-00006) · PMID: [20921542](https://pubmed.ncbi.nlm.nih.gov/20921542/)
 
+### nunes-2022-protein-meta
+Nunes EA & et al. (2022). Systematic review and meta-analysis of protein intake to support muscle mass and function in healthy adults.
+
+*Journal of Cachexia, Sarcopenia and Muscle*, 13(2), 795-810.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1002/jcsm.12922](https://doi.org/10.1002/jcsm.12922) · PMID: [35187864](https://pubmed.ncbi.nlm.nih.gov/35187864/)
+
+### pallares-2021-rom-meta
+Pallarés JG & et al. (2021). Effects of range of motion on resistance training adaptations: A systematic review and meta-analysis.
+
+*Scandinavian Journal of Medicine & Science in Sports*, 31(10), 1866-1881.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1111/sms.14006](https://doi.org/10.1111/sms.14006) · PMID: [34170576](https://pubmed.ncbi.nlm.nih.gov/34170576/)
+
 ### parr-2014-alcohol
 Parr EB & et al. (2014). Alcohol ingestion impairs maximal post-exercise rates of myofibrillar protein synthesis following a single bout of concurrent training.
 
@@ -343,6 +407,14 @@ Ramírez-Campillo R & et al. (2013). Regional fat changes induced by localized m
 
 - Type: RCT · Population: untrained
 - DOI: [10.1519/JSC.0b013e31827e8681](https://doi.org/10.1519/JSC.0b013e31827e8681) · PMID: [23222084](https://pubmed.ncbi.nlm.nih.gov/23222084/)
+
+### refalo-2023-failure-meta
+Refalo MC & et al. (2023). Influence of Resistance Training Proximity-to-Failure on Skeletal Muscle Hypertrophy: A Systematic Review with Meta-analysis.
+
+*Sports Medicine*, 53(3), 649-665.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-022-01784-y](https://doi.org/10.1007/s40279-022-01784-y) · PMID: [36334240](https://pubmed.ncbi.nlm.nih.gov/36334240/)
 
 ### refalo-2024-failure-rir-rct
 Refalo MC & et al. (2024). Similar muscle hypertrophy following eight weeks of resistance training to momentary muscular failure or with repetitions-in-reserve in resistance-trained individuals.
@@ -559,6 +631,14 @@ Trexler ET & et al. (2015). International society of sports nutrition position s
 
 - Type: position-stand
 - DOI: [10.1186/s12970-015-0090-y](https://doi.org/10.1186/s12970-015-0090-y) · PMID: [26175657](https://pubmed.ncbi.nlm.nih.gov/26175657/)
+
+### varovic-2025-muscle-length-regional
+Varović D & et al. (2025). Does Muscle Length Influence Regional Hypertrophy? A Systematic Review and Meta-Analysis.
+
+*International Journal of Sports Medicine*, 46(14), 1027-1036.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1055/a-2615-4935](https://doi.org/10.1055/a-2615-4935) · PMID: [40570881](https://pubmed.ncbi.nlm.nih.gov/40570881/)
 
 ### vispute-2011-abdominal-fat
 Vispute SS & et al. (2011). The effect of abdominal exercise on abdominal fat.

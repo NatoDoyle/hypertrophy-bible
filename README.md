@@ -57,15 +57,23 @@ npm run build-bib    # regenerate citations/registry.md from registry.json
 
 ## Project status
 
-**All nine pillars complete, audited, and expanded.** The knowledge base spans 67 content pages backed
-by 77 web-verified citations (each confirmed to exist via PubMed, with a sample independently
-cross-checked against Crossref), plus a data layer of 16 muscle files, 59 exercises, 5 program
-templates, 2 progression rules, and 8 supplement entries — all passing schema validation, citation
-integrity, and cross-reference integrity checks.
+**All nine pillars complete, audited, expanded, and depth-reviewed.** The knowledge base spans 70
+content pages backed by 87 web-verified citations (each confirmed to exist via PubMed, with 20
+independently cross-checked against Crossref), plus a data layer of 16 muscle files, 59 exercises, 5
+program templates, 2 progression rules, and 8 supplement entries — all passing schema validation,
+citation integrity, and cross-reference integrity checks.
 
 A full audit corrected one factual error (older-adult training volume), reconciled internal
 inconsistencies, and closed a data-integrity gap by adding a referential-integrity checker
 (`npm run check-refs`) and landmark-ordering validation.
+
+A subsequent evidence-quality pass deliberately diversified the source base (no single research group
+exceeds ~18% of citations, across 60+ distinct lead authors), added recent syntheses (2021–2025), and
+**refined several positions to match current evidence** — the proximity-to-failure and
+lengthened-training debates are now presented as genuinely unsettled, and load, protein, and frequency
+claims are corroborated by multiple independent meta-analyses. New Foundations coverage (regional &
+architectural hypertrophy, connective-tissue adaptation, and a "reading the evidence" methodology page)
+rounds out the physiology.
 
 **Verify it yourself:**
 
