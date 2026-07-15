@@ -15,6 +15,7 @@ generator adjusts on.
 | [Sex Differences & Female Considerations](sex-and-female-considerations.md) | Relative vs absolute gains, the "bulky" myth, menstrual cycle | ✅ |
 | [Genetics & Anthropometry](genetics-and-anthropometry.md) | Responders vs non-responders, muscle shape, proportions and exercise fit | ✅ |
 | [Returning Lifters & Special Populations](returning-lifters-and-special-populations.md) | Muscle memory, comeback ramps, medical considerations | ✅ |
+| [Enhanced vs Natural (and Hormones)](enhanced-vs-natural.md) | PEDs vs natural potential, realistic expectations, hormone myths | ✅ |
 
 ## The one-paragraph model
 

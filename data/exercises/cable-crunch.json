@@ -1,0 +1,38 @@
+{
+  "id": "cable-crunch",
+  "name": "Cable Crunch",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads spinal flexion with progressive resistance — trains the rectus abdominis for growth.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "rom_notes": "Flex the spine to crunch the ribs toward the pelvis; control back to a stretch.",
+  "difficulty": "beginner",
+  "cues": [
+    "Round the spine (crunch), don't hip-hinge",
+    "Fixed hips; move only the trunk",
+    "Control the eccentric"
+  ],
+  "common_errors": [
+    "Turning it into a hip-flexor pull",
+    "Using the arms to pull the weight"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at full flexion"
+  ],
+  "regressions": [
+    "Weighted crunch",
+    "Hanging knee raise"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

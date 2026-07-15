@@ -49,17 +49,23 @@ Model-based numbers (e.g. volume landmarks) are estimates, graded honestly — n
 
 ```bash
 npm install          # one dependency: ajv (JSON Schema validation)
-npm run validate     # every data/ file validates against its schema
-npm run check        # citation referential integrity (no dangling/orphan keys)
+npm run validate     # every data/ file validates against its schema (+ landmark ordering)
+npm run check        # citation integrity + data cross-reference integrity (exercises/muscles/progressions resolve)
+npm run check-refs   # data cross-reference integrity only
 npm run build-bib    # regenerate citations/registry.md from registry.json
 ```
 
 ## Project status
 
-**All nine pillars complete.** The knowledge base spans 57 content pages backed by 63 web-verified
-citations (each confirmed to exist via PubMed, with a sample independently cross-checked against
-Crossref), 15 muscle data files, 10 exercises, 3 program templates, 2 progression rules, and 3
-supplement entries — all passing schema validation and citation-integrity checks.
+**All nine pillars complete, audited, and expanded.** The knowledge base spans 67 content pages backed
+by 77 web-verified citations (each confirmed to exist via PubMed, with a sample independently
+cross-checked against Crossref), plus a data layer of 16 muscle files, 59 exercises, 5 program
+templates, 2 progression rules, and 8 supplement entries — all passing schema validation, citation
+integrity, and cross-reference integrity checks.
+
+A full audit corrected one factual error (older-adult training volume), reconciled internal
+inconsistencies, and closed a data-integrity gap by adding a referential-integrity checker
+(`npm run check-refs`) and landmark-ordering validation.
 
 **Verify it yourself:**
 
@@ -67,5 +73,5 @@ supplement entries — all passing schema validation and citation-integrity chec
 npm install && npm run validate && npm run check
 ```
 
-**Next up:** growing the exercise database toward comprehensive coverage, adding more program
-templates, and (the original goal) building the web app on top of the `data/` layer.
+**Next up:** the original goal — building the web app on top of the `data/` layer, which now covers
+every muscle with multiple exercises and resolves cleanly by id.

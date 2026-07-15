@@ -1,0 +1,30 @@
+{
+  "id": "plank",
+  "name": "Plank",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "other",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "static",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Anti-extension core stability hold; trains bracing more than growth.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Rigid straight line",
+    "Brace the abs and glutes",
+    "Add load/time to progress"
+  ],
+  "common_errors": [
+    "Sagging or piking hips",
+    "Holding the breath"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

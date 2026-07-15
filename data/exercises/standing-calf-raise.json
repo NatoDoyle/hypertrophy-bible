@@ -1,0 +1,38 @@
+{
+  "id": "standing-calf-raise",
+  "name": "Standing Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Hardest in the stretched bottom position; pause there.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "rom_notes": "Drop into a full stretch at the bottom, rise to full plantarflexion.",
+  "difficulty": "beginner",
+  "cues": [
+    "Straight (or nearly straight) knee to bias the gastrocnemius",
+    "Full stretch at the bottom, full contraction at the top",
+    "No bouncing"
+  ],
+  "common_errors": [
+    "Short range / bouncing reps",
+    "Bending the knees (shifts to soleus)"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause in the stretch"
+  ],
+  "regressions": [
+    "Leg-press calf raise",
+    "Bodyweight calf raise"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

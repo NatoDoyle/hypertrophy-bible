@@ -1,0 +1,39 @@
+{
+  "id": "barbell-row",
+  "name": "Barbell Row",
+  "primary_muscles": [
+    "upper-back",
+    "lats"
+  ],
+  "secondary_muscles": [
+    "rear-delts",
+    "biceps"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Heavy horizontal pull; loads mid-back hard but taxes the lower back.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Hinge to a stable torso angle",
+    "Row to the lower ribs",
+    "Keep a neutral spine"
+  ],
+  "common_errors": [
+    "Standing up / using momentum",
+    "Rounding the back"
+  ],
+  "regressions": [
+    "Chest-supported row",
+    "Seated cable row"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

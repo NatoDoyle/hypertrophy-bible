@@ -4,6 +4,8 @@ The dials you turn in a program, and what the evidence says about each. This is 
 pillar** — built first and to full depth, it sets the quality bar (structure, citations, grading) for
 every other pillar in the Bible.
 
+**Status:** ✅ Complete
+
 > **TL;DR** — For hypertrophy, the variables that matter most, roughly in order: do enough **volume**
 > (~10+ hard sets per muscle per week, individualized), train each muscle with **effort** (close to
 > failure, ~0–4 reps in reserve), across a **rep range** that is broad (~5–30 reps grows muscle
@@ -32,6 +34,9 @@ Volume and Proximity-to-failure pages first — they carry the most weight.
 | [Tempo / rep duration](tempo-and-rep-duration.md) | Eccentric emphasis, time-under-tension myths, workable range | ✅ |
 | [Range of motion](range-of-motion.md) | Full vs partial ROM, lengthened-position training and partials | ✅ |
 | [Exercise selection & order](exercise-selection-and-order.md) | Resistance profiles, stability, compound-first ordering, variation | ✅ |
+| [Advanced intensity techniques](advanced-techniques.md) | Drop sets, rest-pause, myo-reps, supersets, cluster sets, partials | ✅ |
+| [Mind-muscle connection](mind-muscle-connection.md) | Attentional focus; when internal vs external focus helps | ✅ |
+| [Blood-flow-restriction (BFR)](blood-flow-restriction.md) | Light-load occlusion training; when it's worth using | ✅ |
 
 Legend: ✅ Complete · 🚧 In progress · 🔲 Outlined
 

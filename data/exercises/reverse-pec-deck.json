@@ -1,0 +1,44 @@
+{
+  "id": "reverse-pec-deck",
+  "name": "Reverse Pec-Deck",
+  "aliases": [
+    "reverse fly machine",
+    "rear-delt machine"
+  ],
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Horizontal abduction against a stable machine path; ideal for hard, safe rear-delt work.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "rom_notes": "Open the arms back through a full horizontal abduction; control the return to a stretch.",
+  "difficulty": "beginner",
+  "cues": [
+    "Lead with the elbows/pinkies",
+    "Keep a soft elbow angle fixed",
+    "Squeeze the rear delts, control back"
+  ],
+  "common_errors": [
+    "Using the traps/lower back",
+    "Short range at the contracted end"
+  ],
+  "progressions": [
+    "Add reps then load"
+  ],
+  "regressions": [
+    "Cable rear-delt fly",
+    "Bent-over dumbbell reverse fly"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

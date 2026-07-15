@@ -20,7 +20,7 @@
 | Adaptive (MAV) | ~12–18 | The productive middle where most growth happens |
 | Near-maximum (MRV) | ~20–22 | Short overreach before a deload; advanced lifters |
 
-These landmarks are **practical estimates, not measured constants** — they vary by muscle, individual, and life stress. Per-muscle values (which differ for, say, side delts vs. quads) live in the [muscle data files](../../data/muscles/) and are graded there.
+These landmarks are **practical estimates, not measured constants** — they vary by muscle, individual, and life stress. The table above is a *general* anchor; some **high-tolerance muscles run higher** — side delts, upper back, and lats can productively reach **~24–26 weekly sets** near their ceiling — while smaller or heavily-fatiguing muscles sit lower. Per-muscle values live in the [muscle data files](../../data/muscles/) and are graded there.
 
 **Distributing it.** Weekly volume is usually best split across **2+ sessions** rather than crammed into one (see [Frequency](frequency.md)) — quality per set falls as a session drags on, so more frequent, fresher sets let you accumulate more *effective* volume.
 

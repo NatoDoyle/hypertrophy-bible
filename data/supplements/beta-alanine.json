@@ -1,0 +1,14 @@
+{
+  "id": "beta-alanine",
+  "name": "Beta-Alanine",
+  "tier": "modest",
+  "summary": "Buffers muscle acidity, modestly improving performance in sustained high-rep/endurance efforts (~1-4 min). An indirect, situational aid — not a direct muscle-builder.",
+  "effect": "Small improvement in muscular endurance for efforts lasting roughly 1-4 minutes (e.g. very high-rep sets); minimal relevance to typical hypertrophy rep ranges.",
+  "dosing": "~3.2-6.4 g/day, split into smaller doses to limit tingling (paresthesia); benefits come from chronic loading over weeks.",
+  "timing": "Irrelevant acutely — chronic daily intake is what matters.",
+  "safety": "Safe; harmless skin tingling (paresthesia) is common at larger single doses.",
+  "evidence_grade": "B",
+  "citations": [
+    "trexler-2015-beta-alanine"
+  ]
+}

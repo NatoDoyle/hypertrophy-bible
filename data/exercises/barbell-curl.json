@@ -1,0 +1,37 @@
+{
+  "id": "barbell-curl",
+  "name": "Barbell Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Heavy bilateral elbow flexion; the classic biceps mass builder.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Elbows pinned to the sides",
+    "Curl without swinging",
+    "Control the eccentric"
+  ],
+  "common_errors": [
+    "Swinging / using the back",
+    "Half range"
+  ],
+  "regressions": [
+    "Dumbbell curl",
+    "Cable curl"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

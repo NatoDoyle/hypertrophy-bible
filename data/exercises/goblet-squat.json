@@ -1,0 +1,33 @@
+{
+  "id": "goblet-squat",
+  "name": "Goblet Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Beginner-friendly squat holding a dumbbell at the chest.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Hold the dumbbell at the chest",
+    "Sit down to depth",
+    "Elbows inside the knees at the bottom"
+  ],
+  "common_errors": [
+    "Heels rising",
+    "Rounding forward"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

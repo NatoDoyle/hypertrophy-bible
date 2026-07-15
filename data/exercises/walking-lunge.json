@@ -1,0 +1,32 @@
+{
+  "id": "walking-lunge",
+  "name": "Walking Lunge",
+  "primary_muscles": [
+    "quadriceps",
+    "glutes"
+  ],
+  "movement_pattern": "lunge",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Dynamic single-leg loading for quads and glutes.",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Long strides",
+    "Drop the back knee toward the floor",
+    "Drive up through the front heel"
+  ],
+  "common_errors": [
+    "Short choppy steps",
+    "Front knee caving"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

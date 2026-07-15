@@ -1,0 +1,42 @@
+{
+  "id": "barbell-overhead-press",
+  "name": "Barbell Overhead Press",
+  "aliases": [
+    "military press",
+    "OHP"
+  ],
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Standing vertical press; heavy front-delt and triceps loader.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Brace hard, glutes tight",
+    "Press the bar and move the head 'through'",
+    "Full lockout overhead"
+  ],
+  "common_errors": [
+    "Excessive lower-back arch",
+    "Pressing around the face"
+  ],
+  "regressions": [
+    "Seated dumbbell shoulder press",
+    "Machine shoulder press"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

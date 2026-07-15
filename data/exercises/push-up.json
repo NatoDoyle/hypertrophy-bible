@@ -1,0 +1,38 @@
+{
+  "id": "push-up",
+  "name": "Push-Up",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Bodyweight horizontal press; add load (vest/plate) or elevate feet to progress.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Rigid plank body",
+    "Lower the chest to just off the floor",
+    "Full lockout"
+  ],
+  "common_errors": [
+    "Sagging hips",
+    "Half range"
+  ],
+  "progressions": [
+    "Add a weight vest",
+    "Feet-elevated"
+  ],
+  "citations": [
+    "schoenfeld-2017-load-meta"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "five-day-hybrid",
+  "name": "5-Day Push/Pull/Legs + Upper/Lower Hybrid",
+  "split": "other",
+  "days_per_week": 5,
+  "experience_level": ["intermediate", "advanced"],
+  "target_population": "Advanced-leaning lifters who can train 5 days and want high weekly volume at ~2x frequency per muscle. Run Push / Pull / Legs / Upper / Lower.",
+  "progression_ref": "double-progression",
+  "sessions": [
+    {
+      "name": "Push",
+      "exercises": [
+        { "exercise": "barbell-bench-press", "sets": 4, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "seated-dumbbell-shoulder-press", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "machine-chest-press", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "cable-lateral-raise", "sets": 4, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "overhead-cable-triceps-extension", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Pull",
+      "exercises": [
+        { "exercise": "lat-pulldown", "sets": 4, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "chest-supported-row", "sets": 4, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "reverse-pec-deck", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "incline-dumbbell-curl", "sets": 3, "rep_range": "8-12", "rir": "0-1" },
+        { "exercise": "hammer-curl", "sets": 2, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Legs",
+      "exercises": [
+        { "exercise": "barbell-back-squat", "sets": 4, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "romanian-deadlift", "sets": 3, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "leg-extension", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "seated-leg-curl", "sets": 3, "rep_range": "8-12", "rir": "0-1" },
+        { "exercise": "standing-calf-raise", "sets": 4, "rep_range": "8-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Upper (hypertrophy)",
+      "exercises": [
+        { "exercise": "incline-dumbbell-press", "sets": 4, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "seated-cable-row", "sets": 4, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "dumbbell-lateral-raise", "sets": 4, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "triceps-pushdown", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "incline-dumbbell-curl", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Lower (hypertrophy)",
+      "exercises": [
+        { "exercise": "leg-press", "sets": 4, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "seated-leg-curl", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "hip-thrust", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "seated-calf-raise", "sets": 4, "rep_range": "10-20", "rir": "0-1" },
+        { "exercise": "cable-crunch", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    }
+  ],
+  "citations": ["schoenfeld-2019-volume-trained-men", "schoenfeld-2019-frequency-meta"]
+}

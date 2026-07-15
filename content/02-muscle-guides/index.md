@@ -17,6 +17,7 @@ can reason about muscle targeting directly.
 | [Arms](arms.md) | Biceps, triceps, forearms | ✅ |
 | [Legs](legs.md) | Quadriceps, hamstrings, glutes, calves | ✅ |
 | [Core](core.md) | Abdominals and obliques | ✅ |
+| [Neck](neck.md) | Neck flexors and extensors (optional/niche) | ✅ |
 
 Each guide covers: anatomy & regions · primary functions (what movements train it) · best exercises by
 region and resistance profile · weekly volume landmarks · common mistakes.

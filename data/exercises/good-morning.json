@@ -1,0 +1,38 @@
+{
+  "id": "good-morning",
+  "name": "Good Morning",
+  "primary_muscles": [
+    "hamstrings",
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "spinal-erectors"
+  ],
+  "movement_pattern": "hinge",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Barbell hip hinge loading the hamstrings in the stretch; technique-demanding.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "advanced",
+  "cues": [
+    "Bar on the back, soft knees",
+    "Hinge back to a strong hamstring stretch",
+    "Neutral spine throughout"
+  ],
+  "common_errors": [
+    "Rounding the back",
+    "Turning it into a squat"
+  ],
+  "regressions": [
+    "Romanian deadlift",
+    "45-degree back extension"
+  ],
+  "citations": [
+    "pedrosa-2022-lengthened-partials"
+  ]
+}

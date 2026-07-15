@@ -1,0 +1,36 @@
+{
+  "id": "neck-extension",
+  "name": "Neck Extension",
+  "aliases": [
+    "neck harness extension"
+  ],
+  "primary_muscles": [
+    "neck"
+  ],
+  "movement_pattern": "other",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads cervical extension; light load, slow tempo, pain-free range.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "rom_notes": "Lower the chin toward the chest, extend to a neutral/slightly-back position.",
+  "difficulty": "intermediate",
+  "cues": [
+    "Very light load, slow tempo",
+    "Controlled, pain-free range",
+    "Brace the trunk"
+  ],
+  "common_errors": [
+    "Excessive load or speed",
+    "Forcing end-range"
+  ],
+  "progressions": [
+    "Add small load slowly"
+  ],
+  "regressions": [
+    "Manual (hand) resistance"
+  ]
+}

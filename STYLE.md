@@ -23,8 +23,11 @@ never reorder.
 How to actually implement it. Prefer tables, ranges, and explicit decision rules over prose.
 
 ## The Evidence
-Mechanisms, study findings, and points of live debate. **Every substantive claim carries a citation
-and, where it drives a recommendation, an evidence grade.** State where consensus is soft.
+Mechanisms, study findings, and points of live debate. **Every substantive claim carries an evidence
+grade, and every empirical claim graded A–C carries a citation.** Grade-D claims are practice-based or
+mechanistic by definition (see §4) and may stand uncited *as long as they are explicitly graded D* — the
+grade itself signals "reasoned/consensus, not directly evidenced." Never present an uncited claim as if
+it were established fact. State where consensus is soft.
 
 ## Key Uncertainties & Nuance
 What we don't know, individual variation, and the ways this topic is commonly misread.

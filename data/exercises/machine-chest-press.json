@@ -1,0 +1,43 @@
+{
+  "id": "machine-chest-press",
+  "name": "Machine Chest Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Fixed path lets you train the chest hard and safely to near failure.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "rom_notes": "Allow a comfortable stretch at the chest, press to a controlled (not slammed) lockout.",
+  "difficulty": "beginner",
+  "cues": [
+    "Shoulder blades set back and down",
+    "Press with the chest, not just the arms",
+    "Controlled stretch at the bottom"
+  ],
+  "common_errors": [
+    "Half reps",
+    "Shrugging / shoulders rolling forward"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at the stretch"
+  ],
+  "regressions": [
+    "Push-up",
+    "Dumbbell press"
+  ],
+  "citations": [
+    "schoenfeld-2017-load-meta"
+  ]
+}

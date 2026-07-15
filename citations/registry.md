@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**63** verified references.
+**77** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -24,6 +24,14 @@ Baz-Valle E & et al. (2022). A Systematic Review of The Effects of Different Res
 - Type: systematic-review · Population: mixed
 - DOI: [10.2478/hukin-2022-0017](https://doi.org/10.2478/hukin-2022-0017) · PMID: [35291645](https://pubmed.ncbi.nlm.nih.gov/35291645/)
 
+### bhasin-1996-testosterone
+Bhasin S & et al. (1996). The effects of supraphysiologic doses of testosterone on muscle size and strength in normal men.
+
+*The New England Journal of Medicine*, 335(1), 1-7.
+
+- Type: RCT · Population: mixed
+- DOI: [10.1056/NEJM199607043350101](https://doi.org/10.1056/NEJM199607043350101) · PMID: [8637535](https://pubmed.ncbi.nlm.nih.gov/8637535/)
+
 ### bruusgaard-2010-myonuclei
 Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.
 
@@ -31,6 +39,14 @@ Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede h
 
 - Type: mechanistic · Population: animal
 - DOI: [10.1073/pnas.0913935107](https://doi.org/10.1073/pnas.0913935107) · PMID: [20713720](https://pubmed.ncbi.nlm.nih.gov/20713720/)
+
+### byrne-2018-matador
+Byrne NM & et al. (2018). Intermittent energy restriction improves weight loss efficiency in obese men: the MATADOR study.
+
+*International Journal of Obesity*, 42(2), 129-138.
+
+- Type: RCT · Population: mixed
+- DOI: [10.1038/ijo.2017.206](https://doi.org/10.1038/ijo.2017.206) · PMID: [28925405](https://pubmed.ncbi.nlm.nih.gov/28925405/)
 
 ### carvalho-2022-volume-matched-loads
 Carvalho L & et al. (2022). Muscle hypertrophy and strength gains after resistance training with different volume-matched loads: a systematic review and meta-analysis.
@@ -168,6 +184,14 @@ Kassiano W & et al. (2023). Which ROMs Lead to Rome? A Systematic Review of the 
 - Type: systematic-review · Population: mixed
 - DOI: [10.1519/JSC.0000000000004415](https://doi.org/10.1519/JSC.0000000000004415) · PMID: [36662126](https://pubmed.ncbi.nlm.nih.gov/36662126/)
 
+### kouri-1995-ffmi
+Kouri EM & et al. (1995). Fat-free mass index in users and nonusers of anabolic-androgenic steroids.
+
+*Clinical Journal of Sport Medicine*, 5(4), 223-228.
+
+- Type: cross-sectional · Population: mixed
+- DOI: [10.1097/00042752-199510000-00003](https://doi.org/10.1097/00042752-199510000-00003) · PMID: [7496846](https://pubmed.ncbi.nlm.nih.gov/7496846/)
+
 ### kreher-2012-overtraining
 Kreher JB & Schwartz JB (2012). Overtraining syndrome: a practical guide.
 
@@ -192,13 +216,29 @@ Krieger JW (2010). Single vs. multiple sets of resistance exercise for muscle hy
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1519/JSC.0b013e3181d4d436](https://doi.org/10.1519/JSC.0b013e3181d4d436) · PMID: [20300012](https://pubmed.ncbi.nlm.nih.gov/20300012/)
 
+### krzysztofik-2019-advanced-techniques
+Krzysztofik M & et al. (2019). Maximizing Muscle Hypertrophy: A Systematic Review of Advanced Resistance Training Techniques and Methods.
+
+*International Journal of Environmental Research and Public Health*, 16(24), 4897.
+
+- Type: systematic-review · Population: mixed
+- DOI: [10.3390/ijerph16244897](https://doi.org/10.3390/ijerph16244897) · PMID: [31817252](https://pubmed.ncbi.nlm.nih.gov/31817252/)
+
 ### lasevicius-2018-intensities-volume-load
 Lasevicius T & et al. (2018). Effects of different intensities of resistance training with equated volume load on muscle strength and hypertrophy.
 
 *European Journal of Sport Science*, 18(6), 772-780.
 
-- Type: RCT · Population: untrained
+- Type: RCT · Population: recreationally-active
 - DOI: [10.1080/17461391.2018.1450898](https://doi.org/10.1080/17461391.2018.1450898) · PMID: [29564973](https://pubmed.ncbi.nlm.nih.gov/29564973/)
+
+### lixandrao-2018-bfr-meta
+Lixandrão ME & et al. (2018). Magnitude of Muscle Strength and Mass Adaptations Between High-Load Resistance Training Versus Low-Load Resistance Training Associated with Blood-Flow Restriction: A Systematic Review and Meta-Analysis.
+
+*Sports Medicine*, 48(2), 361-378.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-017-0795-y](https://doi.org/10.1007/s40279-017-0795-y) · PMID: [29043659](https://pubmed.ncbi.nlm.nih.gov/29043659/)
 
 ### longland-2016-deficit-protein
 Longland TM & et al. (2016). Higher compared with lower dietary protein during an energy deficit combined with intense exercise promotes greater lean mass gain and fat mass loss: a randomized trial.
@@ -272,6 +312,14 @@ Pedrosa GF & et al. (2022). Partial range of motion training elicits favorable i
 - Type: RCT · Population: untrained
 - DOI: [10.1080/17461391.2021.1927199](https://doi.org/10.1080/17461391.2021.1927199) · PMID: [33977835](https://pubmed.ncbi.nlm.nih.gov/33977835/)
 
+### peos-2021-diet-break
+Peos JJ & et al. (2021). A 1-week diet break improves muscle endurance during an intermittent dieting regime in adult athletes.
+
+*PLoS One*, 16(2), e0247292.
+
+- Type: RCT · Population: trained
+- DOI: [10.1371/journal.pone.0247292](https://doi.org/10.1371/journal.pone.0247292) · PMID: [33630880](https://pubmed.ncbi.nlm.nih.gov/33630880/)
+
 ### petrella-2008-satellite-myonuclear
 Petrella JK & et al. (2008). Potent myofiber hypertrophy during resistance training in humans is associated with satellite cell-mediated myonuclear addition: a cluster analysis.
 
@@ -303,6 +351,14 @@ Refalo MC & et al. (2024). Similar muscle hypertrophy following eight weeks of r
 
 - Type: RCT · Population: trained
 - DOI: [10.1080/02640414.2024.2321021](https://doi.org/10.1080/02640414.2024.2321021) · PMID: [38393985](https://pubmed.ncbi.nlm.nih.gov/38393985/)
+
+### rhim-2020-citrulline
+Rhim HC & et al. (2020). Effect of citrulline on post-exercise rating of perceived exertion, muscle soreness, and blood lactate levels: A systematic review and meta-analysis.
+
+*Journal of Sport and Health Science*, 9(6), 553-561.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1016/j.jshs.2020.02.003](https://doi.org/10.1016/j.jshs.2020.02.003) · PMID: [33308806](https://pubmed.ncbi.nlm.nih.gov/33308806/)
 
 ### roberts-2015-cold-water-immersion
 Roberts LA & et al. (2015). Post-exercise cold water immersion attenuates acute anabolic signalling and long-term adaptations in muscle to strength training.
@@ -416,6 +472,14 @@ Schoenfeld BJ et al. (2017). Dose-response relationship between weekly resistanc
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197) · PMID: [27433992](https://pubmed.ncbi.nlm.nih.gov/27433992/)
 
+### schoenfeld-2018-attentional-focus
+Schoenfeld BJ & et al. (2018). Differential effects of attentional focus strategies during long-term resistance training.
+
+*European Journal of Sport Science*, 18(5), 705-712.
+
+- Type: RCT · Population: recreationally-active
+- DOI: [10.1080/17461391.2018.1447020](https://doi.org/10.1080/17461391.2018.1447020) · PMID: [29533715](https://pubmed.ncbi.nlm.nih.gov/29533715/)
+
 ### schoenfeld-2018-protein-per-meal
 Schoenfeld BJ & Aragon AA (2018). How much protein can the body use in a single meal for muscle-building? Implications for daily protein distribution.
 
@@ -456,6 +520,14 @@ Schoenfeld BJ et al. (2021). Loading Recommendations for Muscle Strength, Hypert
 - Type: narrative-review
 - DOI: [10.3390/sports9020032](https://doi.org/10.3390/sports9020032) · PMID: [33671664](https://pubmed.ncbi.nlm.nih.gov/33671664/)
 
+### schumann-2022-concurrent-meta
+Schumann M & et al. (2022). Compatibility of Concurrent Aerobic and Strength Training for Skeletal Muscle Size and Function: An Updated Systematic Review and Meta-Analysis.
+
+*Sports Medicine*, 52(3), 601-612.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-021-01587-7](https://doi.org/10.1007/s40279-021-01587-7) · PMID: [34757594](https://pubmed.ncbi.nlm.nih.gov/34757594/)
+
 ### slater-2019-energy-surplus
 Slater GJ & et al. (2019). Is an Energy Surplus Required to Maximize Skeletal Muscle Hypertrophy Associated with Resistance Training?.
 
@@ -464,6 +536,14 @@ Slater GJ & et al. (2019). Is an Energy Surplus Required to Maximize Skeletal Mu
 - Type: narrative-review
 - DOI: [10.3389/fnut.2019.00131](https://doi.org/10.3389/fnut.2019.00131) · PMID: [31482093](https://pubmed.ncbi.nlm.nih.gov/31482093/)
 
+### spiering-2021-minimal-dose
+Spiering BA & et al. (2021). Maintaining Physical Performance: The Minimal Dose of Exercise Needed to Preserve Endurance and Strength Over Time.
+
+*Journal of Strength and Conditioning Research*, 35(5), 1449-1458.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1519/JSC.0000000000003964](https://doi.org/10.1519/JSC.0000000000003964) · PMID: [33629972](https://pubmed.ncbi.nlm.nih.gov/33629972/)
+
 ### tagawa-2020-protein-dose
 Tagawa R & et al. (2020). Dose-response relationship between protein intake and muscle mass increase: a systematic review and meta-analysis of randomized controlled trials.
 
@@ -471,6 +551,14 @@ Tagawa R & et al. (2020). Dose-response relationship between protein intake and 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1093/nutrit/nuaa104](https://doi.org/10.1093/nutrit/nuaa104) · PMID: [33300582](https://pubmed.ncbi.nlm.nih.gov/33300582/)
+
+### trexler-2015-beta-alanine
+Trexler ET & et al. (2015). International society of sports nutrition position stand: Beta-Alanine.
+
+*Journal of the International Society of Sports Nutrition*, 12, 30.
+
+- Type: position-stand
+- DOI: [10.1186/s12970-015-0090-y](https://doi.org/10.1186/s12970-015-0090-y) · PMID: [26175657](https://pubmed.ncbi.nlm.nih.gov/26175657/)
 
 ### vispute-2011-abdominal-fat
 Vispute SS & et al. (2011). The effect of abdominal exercise on abdominal fat.
@@ -495,6 +583,30 @@ Wiewelhove T & et al. (2019). A Meta-Analysis of the Effects of Foam Rolling on 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.3389/fphys.2019.00376](https://doi.org/10.3389/fphys.2019.00376) · PMID: [31024339](https://pubmed.ncbi.nlm.nih.gov/31024339/)
+
+### wilson-2012-concurrent-meta
+Wilson JM & et al. (2012). Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.
+
+*Journal of Strength and Conditioning Research*, 26(8), 2293-2307.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1519/JSC.0b013e31823a3e2d](https://doi.org/10.1519/JSC.0b013e31823a3e2d) · PMID: [22002517](https://pubmed.ncbi.nlm.nih.gov/22002517/)
+
+### wilson-2013-hmb
+Wilson JM & et al. (2013). International Society of Sports Nutrition Position Stand: beta-hydroxy-beta-methylbutyrate (HMB).
+
+*Journal of the International Society of Sports Nutrition*, 10(1), 6.
+
+- Type: position-stand
+- DOI: [10.1186/1550-2783-10-6](https://doi.org/10.1186/1550-2783-10-6) · PMID: [23374455](https://pubmed.ncbi.nlm.nih.gov/23374455/)
+
+### wolfe-2017-bcaa
+Wolfe RR (2017). Branched-chain amino acids and muscle protein synthesis in humans: myth or reality?.
+
+*Journal of the International Society of Sports Nutrition*, 14, 30.
+
+- Type: narrative-review
+- DOI: [10.1186/s12970-017-0184-9](https://doi.org/10.1186/s12970-017-0184-9) · PMID: [28852372](https://pubmed.ncbi.nlm.nih.gov/28852372/)
 
 ### zourdos-2016-rir-rpe-scale
 Zourdos MC & et al. (2016). Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve.

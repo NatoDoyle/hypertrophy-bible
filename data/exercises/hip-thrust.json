@@ -1,0 +1,42 @@
+{
+  "id": "hip-thrust",
+  "name": "Barbell Hip Thrust",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Peak glute tension in the shortened (top) position; a strong contraction-biased glute builder.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "rom_notes": "Lower under control, drive to full hip extension with a hard glute squeeze.",
+  "difficulty": "beginner",
+  "cues": [
+    "Chin tucked, ribs down",
+    "Drive through the heels to full lockout",
+    "Squeeze the glutes at the top, no lumbar hyperextension"
+  ],
+  "common_errors": [
+    "Overarching the lower back at the top",
+    "Short range / not reaching full extension"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at lockout"
+  ],
+  "regressions": [
+    "Glute bridge",
+    "Machine hip thrust"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

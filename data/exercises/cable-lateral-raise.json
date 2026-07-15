@@ -1,0 +1,41 @@
+{
+  "id": "cable-lateral-raise",
+  "name": "Cable Lateral Raise",
+  "aliases": [
+    "cable side raise"
+  ],
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Cable keeps tension on the side delt through the bottom (lengthened) range, unlike dumbbells.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "rom_notes": "Raise to ~shoulder height from a cross-body stretched start.",
+  "difficulty": "beginner",
+  "cues": [
+    "Cable from the low pulley, across the body",
+    "Lead with the elbow",
+    "Control the lowering into the stretch"
+  ],
+  "common_errors": [
+    "Swinging / using momentum",
+    "Shrugging the traps"
+  ],
+  "progressions": [
+    "Add reps then load",
+    "Lean-away variation"
+  ],
+  "regressions": [
+    "Dumbbell lateral raise",
+    "Machine lateral raise"
+  ],
+  "citations": [
+    "kassiano-2023-rom-review"
+  ]
+}

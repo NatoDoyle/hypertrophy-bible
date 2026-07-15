@@ -1,0 +1,29 @@
+{
+  "id": "barbell-shrug",
+  "name": "Barbell Shrug",
+  "primary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Scapular elevation for the upper traps; full shrug range, no rolling.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Shrug straight up to the ears",
+    "Pause at the top",
+    "Control down to a stretch"
+  ],
+  "common_errors": [
+    "Rolling the shoulders",
+    "Half reps"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

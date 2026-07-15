@@ -1,0 +1,33 @@
+{
+  "id": "lying-leg-curl",
+  "name": "Lying Leg Curl",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Prone knee flexion; complements hip-hinge hamstring work.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Hips down on the pad",
+    "Full curl and controlled return",
+    "No hip lifting"
+  ],
+  "common_errors": [
+    "Jerking the weight",
+    "Hips popping up"
+  ],
+  "regressions": [
+    "Seated leg curl"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

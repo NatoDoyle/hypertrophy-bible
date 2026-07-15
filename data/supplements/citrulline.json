@@ -1,0 +1,14 @@
+{
+  "id": "citrulline",
+  "name": "L-Citrulline / Citrulline Malate",
+  "tier": "insufficient",
+  "summary": "A 'pump' and nitric-oxide supplement. Evidence for hypertrophy is lacking; a meta-analysis found modest reductions in post-exercise perceived exertion and soreness, but no clear performance or muscle-building effect.",
+  "effect": "May slightly reduce perceived exertion and 24-48 h muscle soreness; no established effect on hypertrophy or maximal performance.",
+  "dosing": "~6-8 g citrulline malate pre-workout if used.",
+  "timing": "Pre-workout.",
+  "safety": "Safe; may cause minor GI discomfort at higher doses.",
+  "evidence_grade": "C",
+  "citations": [
+    "rhim-2020-citrulline"
+  ]
+}

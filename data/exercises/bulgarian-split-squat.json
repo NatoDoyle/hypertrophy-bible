@@ -1,0 +1,32 @@
+{
+  "id": "bulgarian-split-squat",
+  "name": "Bulgarian Split Squat",
+  "primary_muscles": [
+    "quadriceps",
+    "glutes"
+  ],
+  "movement_pattern": "lunge",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Rear-foot-elevated single-leg squat with a big glute/quad stretch.",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": true,
+  "difficulty": "intermediate",
+  "cues": [
+    "Rear foot elevated",
+    "Descend into a deep stretch",
+    "Drive through the front heel"
+  ],
+  "common_errors": [
+    "Too short a stance",
+    "Losing balance/cutting range"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

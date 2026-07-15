@@ -1,0 +1,29 @@
+{
+  "id": "straight-arm-pulldown",
+  "name": "Straight-Arm Pulldown",
+  "primary_muscles": [
+    "lats"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Isolates shoulder extension (lats) with a stretch overhead.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Fixed slightly-bent elbows",
+    "Pull the bar to the thighs via the lats",
+    "Stretch overhead"
+  ],
+  "common_errors": [
+    "Bending the elbows (triceps)",
+    "Short range"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

@@ -1,9 +1,9 @@
 # Proximity to Failure (RIR / RPE)
 
-> **TL;DR** — Growth requires **hard sets taken reasonably close to failure**, but you **do not need to hit momentary failure** on most sets to grow well. Leaving **~1–3 reps in reserve (RIR)** on the majority of your work captures nearly all the stimulus while sparing you the extra fatigue, technique breakdown, and recovery cost of constant failure. Push closer to (or to) failure more often on **isolation and machine work**, where failure is safe and low-cost; leave a rep or two on **heavy compounds**. Use the RIR/RPE scale to gauge effort — knowing your estimates get more accurate the closer you are to failure.
+> **TL;DR** — Growth requires **hard sets taken reasonably close to failure**, but you **do not need to hit momentary failure** on most sets to grow well. A good default is **~0–3 reps in reserve (RIR)**: leave **1–3 RIR on heavy compounds** (where failure is fatiguing and technically risky) and take **isolation and machine work to 0–1 RIR** (where failure is safe and cheap). This captures nearly all the stimulus while sparing the extra fatigue, technique breakdown, and recovery cost of constant failure. Use the RIR/RPE scale to gauge effort — your estimates get more accurate the closer you are to failure.
 
 **Quick recommendations**
-- Take most sets to **~1–3 RIR** (hard, but a rep or two short of failure). **[Grade B]**
+- Take working sets to **~0–3 RIR** overall — **1–3 on heavy compounds**, **0–1 on isolation/machines**. **[Grade B]**
 - **Failure is optional, not required** — near-failure training grows muscle about as well with less fatigue. **[Grade A]**
 - Save **actual failure** mostly for **isolation/machine exercises** and the **last set** of an exercise, where it's safe and cheap. **[Grade B]**
 - On **heavy compounds**, keep **1–3 RIR** to protect technique and recovery. **[Grade C]**
@@ -19,7 +19,7 @@
 | Moderate compounds & most machine presses/rows | 0–2 RIR | Can push harder; still watch technique on the last reps |
 | Isolation (curls, extensions, raises, leg curls) | 0–1 RIR | Failure is safe and low-cost; a good place to spend maximal effort |
 
-**The core trade-off.** The reps near failure are the most stimulating, so you must train *close* to it — but the last rep or two before failure add disproportionate fatigue for a small extra stimulus. Stopping around 1–3 RIR sits at the sweet spot: nearly all the growth, much less of the cost. This lets you do **more quality sets** ([Volume](volume.md)) across **more sessions** ([Frequency](frequency.md)).
+**The core trade-off.** The reps near failure are the most stimulating, so you must train *close* to it — but the last rep or two before failure add disproportionate fatigue for a small extra stimulus. Stopping around 0–3 RIR (nearer failure on safe isolation/machine work, a rep or two shy on heavy compounds) sits at the sweet spot: nearly all the growth, much less of the cost. This lets you do **more quality sets** ([Volume](volume.md)) across **more sessions** ([Frequency](frequency.md)).
 
 **Calibrating RIR.** Most people under-estimate how many reps they have left (they stop too early) until they've practiced taking sets to true failure occasionally to learn the feeling. Periodically training an isolation exercise to failure recalibrates your internal RIR gauge.
 

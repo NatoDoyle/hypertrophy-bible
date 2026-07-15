@@ -1,0 +1,38 @@
+{
+  "id": "leg-extension",
+  "name": "Leg Extension",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "movement_pattern": "isolation-knee-extension",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Peak tension near lockout; isolates the quads (rectus femoris best with the hip extended).",
+  "lengthened_bias": false,
+  "stability": "high",
+  "rom_notes": "Full knee extension to a controlled deep flexion.",
+  "difficulty": "beginner",
+  "cues": [
+    "Sit tall; keep hips down",
+    "Extend fully, squeeze the quads",
+    "Control the return"
+  ],
+  "common_errors": [
+    "Using momentum / swinging",
+    "Partial range at the top only"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at lockout"
+  ],
+  "regressions": [
+    "Bodyweight sissy squat"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

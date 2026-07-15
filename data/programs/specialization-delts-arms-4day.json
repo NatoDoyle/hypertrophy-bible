@@ -1,0 +1,51 @@
+{
+  "id": "specialization-delts-arms-4day",
+  "name": "Shoulders & Arms Specialization (Upper/Lower, 4 days/week)",
+  "split": "upper-lower",
+  "days_per_week": 4,
+  "experience_level": ["intermediate", "advanced"],
+  "target_population": "A 4-6 week specialization block to bring up lagging side delts and arms. Extra volume goes to delts/arms while chest, back, and legs are held near maintenance to keep total fatigue recoverable. Not a permanent program.",
+  "progression_ref": "double-progression",
+  "sessions": [
+    {
+      "name": "Upper A (delt/arm emphasis)",
+      "exercises": [
+        { "exercise": "seated-dumbbell-shoulder-press", "sets": 3, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "cable-lateral-raise", "sets": 4, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "chest-supported-row", "sets": 2, "rep_range": "8-12", "rir": "1-2", "notes": "Maintenance volume for back" },
+        { "exercise": "machine-chest-press", "sets": 2, "rep_range": "8-12", "rir": "1-2", "notes": "Maintenance volume for chest" },
+        { "exercise": "overhead-cable-triceps-extension", "sets": 4, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "incline-dumbbell-curl", "sets": 4, "rep_range": "8-12", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Lower A (maintenance)",
+      "exercises": [
+        { "exercise": "barbell-back-squat", "sets": 3, "rep_range": "6-10", "rir": "2" },
+        { "exercise": "romanian-deadlift", "sets": 2, "rep_range": "6-10", "rir": "2" },
+        { "exercise": "seated-leg-curl", "sets": 2, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "standing-calf-raise", "sets": 3, "rep_range": "8-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Upper B (delt/arm emphasis)",
+      "exercises": [
+        { "exercise": "dumbbell-lateral-raise", "sets": 4, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "reverse-pec-deck", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "lat-pulldown", "sets": 2, "rep_range": "8-12", "rir": "1-2", "notes": "Maintenance volume for back" },
+        { "exercise": "incline-dumbbell-press", "sets": 2, "rep_range": "8-12", "rir": "1-2", "notes": "Maintenance volume for chest" },
+        { "exercise": "triceps-pushdown", "sets": 4, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "hammer-curl", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Lower B (maintenance)",
+      "exercises": [
+        { "exercise": "leg-press", "sets": 3, "rep_range": "10-15", "rir": "1-2" },
+        { "exercise": "seated-leg-curl", "sets": 2, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "seated-calf-raise", "sets": 3, "rep_range": "10-20", "rir": "0-1" }
+      ]
+    }
+  ],
+  "citations": ["baz-valle-2022-volume-review", "schoenfeld-2017-volume-dose-response"]
+}

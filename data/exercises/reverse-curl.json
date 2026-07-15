@@ -1,0 +1,33 @@
+{
+  "id": "reverse-curl",
+  "name": "Reverse Curl",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [
+    "biceps"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Pronated-grip curl emphasizing the brachioradialis and forearm extensors.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Overhand grip",
+    "Elbows fixed",
+    "Controlled tempo"
+  ],
+  "common_errors": [
+    "Swinging",
+    "Wrist collapsing"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

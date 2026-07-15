@@ -1,0 +1,37 @@
+{
+  "id": "skullcrusher",
+  "name": "Skullcrusher (Lying Triceps Extension)",
+  "aliases": [
+    "lying triceps extension"
+  ],
+  "primary_muscles": [
+    "triceps"
+  ],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Elbow extension with the arms back, giving the long head some stretch.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lower to the forehead/behind the head",
+    "Keep the upper arms angled back",
+    "Extend without flaring"
+  ],
+  "common_errors": [
+    "Elbows flaring wide",
+    "Turning it into a press"
+  ],
+  "regressions": [
+    "Overhead cable extension",
+    "Triceps pushdown"
+  ],
+  "citations": [
+    "maeo-2023-triceps-overhead"
+  ]
+}

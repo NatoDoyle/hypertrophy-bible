@@ -1,0 +1,37 @@
+{
+  "id": "front-squat",
+  "name": "Front Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Upright torso shifts emphasis to the quads through a deep range.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "advanced",
+  "cues": [
+    "Elbows high, upright torso",
+    "Sit down between the hips",
+    "Deep but controlled"
+  ],
+  "common_errors": [
+    "Elbows dropping",
+    "Cutting depth"
+  ],
+  "regressions": [
+    "Goblet squat",
+    "Hack squat"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "weighted-crunch",
+  "name": "Weighted Crunch",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loaded spinal flexion; hold a plate or dumbbell to progress.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Flex the spine, ribs toward pelvis",
+    "Hold weight on the chest",
+    "Control back"
+  ],
+  "common_errors": [
+    "Hip-flexing instead of crunching",
+    "No added resistance over time"
+  ],
+  "progressions": [
+    "Add load"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

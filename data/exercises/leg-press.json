@@ -1,0 +1,43 @@
+{
+  "id": "leg-press",
+  "name": "Leg Press",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "hamstrings"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads the quads through a deep, stable range without spinal loading.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "rom_notes": "Lower under control to a deep knee bend without the lower back rounding off the pad.",
+  "difficulty": "beginner",
+  "cues": [
+    "Feet mid-platform, knees track over toes",
+    "Deep but controlled range",
+    "Do not lock out aggressively"
+  ],
+  "common_errors": [
+    "Half-range reps",
+    "Lower back lifting off the pad at depth"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause reps deep"
+  ],
+  "regressions": [
+    "Goblet squat",
+    "Hack squat"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

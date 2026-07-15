@@ -1,0 +1,38 @@
+{
+  "id": "pull-up",
+  "name": "Pull-Up",
+  "primary_muscles": [
+    "lats"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "upper-back"
+  ],
+  "movement_pattern": "vertical-pull",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Full overhead stretch at the bottom; strong lat loader.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Start from a full hang/stretch",
+    "Drive elbows down and in",
+    "Chest to the bar"
+  ],
+  "common_errors": [
+    "Half reps",
+    "Excessive kipping"
+  ],
+  "regressions": [
+    "Assisted pull-up",
+    "Lat pulldown"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

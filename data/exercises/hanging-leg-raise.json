@@ -1,0 +1,33 @@
+{
+  "id": "hanging-leg-raise",
+  "name": "Hanging Leg Raise",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads the lower-ab region via posterior pelvic tilt; curl the pelvis, not just the legs.",
+  "lengthened_bias": false,
+  "stability": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Curl the pelvis up (not just hip-flex)",
+    "Control the descent",
+    "Minimize swinging"
+  ],
+  "common_errors": [
+    "Swinging / using momentum",
+    "Only raising the legs (hip flexors)"
+  ],
+  "regressions": [
+    "Hanging knee raise",
+    "Lying leg raise"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

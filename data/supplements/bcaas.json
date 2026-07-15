@@ -1,0 +1,14 @@
+{
+  "id": "bcaas",
+  "name": "BCAAs (Branched-Chain Amino Acids)",
+  "tier": "insufficient",
+  "summary": "Redundant if you eat enough total protein. BCAAs alone cannot maximally stimulate muscle protein synthesis because they lack the other essential amino acids needed to build muscle.",
+  "effect": "No added hypertrophy benefit over adequate dietary protein; taking isolated BCAAs provides a submaximal, incomplete amino-acid stimulus.",
+  "dosing": "Not recommended as a muscle-building supplement; spend the money on total protein instead.",
+  "timing": "N/A.",
+  "safety": "Safe, but essentially wasted money for those meeting protein needs.",
+  "evidence_grade": "B",
+  "citations": [
+    "wolfe-2017-bcaa"
+  ]
+}

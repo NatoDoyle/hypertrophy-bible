@@ -1,0 +1,29 @@
+{
+  "id": "cable-crossover",
+  "name": "Cable Crossover",
+  "primary_muscles": [
+    "chest"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Constant cable tension through adduction; set pulley height to bias upper/lower chest.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Soft fixed elbows",
+    "Bring the hands together, squeeze",
+    "Control back to a stretch"
+  ],
+  "common_errors": [
+    "Turning it into a press",
+    "Using momentum"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "id": "close-grip-bench-press",
+  "name": "Close-Grip Bench Press",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [
+    "chest",
+    "front-delts"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Heavy compound triceps loader; shoulder-width grip.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Grip ~shoulder width",
+    "Tuck the elbows",
+    "Touch the lower chest"
+  ],
+  "common_errors": [
+    "Grip too narrow (wrist strain)",
+    "Elbows flaring"
+  ],
+  "citations": [
+    "schoenfeld-2017-load-meta"
+  ]
+}

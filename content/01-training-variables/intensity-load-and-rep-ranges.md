@@ -1,10 +1,10 @@
 # Intensity / Load & Rep Ranges
 
-> **TL;DR** — For building muscle, the **load you use is remarkably flexible**. Anywhere from roughly **5 to 30 reps per set builds similar hypertrophy — as long as sets are taken close to failure**. What matters is hard effort against meaningful tension, not a magic rep range. Practically, most work sits in **~6–15 reps** because it's time-efficient and technique-friendly; save very heavy low reps for strength and compounds, and very light high reps for isolation and machines. If you want maximal *strength*, that specifically favors heavier loads.
+> **TL;DR** — For building muscle, the **load you use is remarkably flexible**. Anywhere from roughly **5 to 30 reps per set builds similar hypertrophy — as long as sets are taken close to failure**. What matters is hard effort against meaningful tension, not a magic rep range. Practically, most work sits in **~6–12 reps** because it's time-efficient and technique-friendly (with isolation and machine work often going a bit higher, ~12–20); save very heavy low reps for strength and compounds, and very light high reps for small muscles and finishing work. If you want maximal *strength*, that specifically favors heavier loads.
 
 **Quick recommendations**
 - Train across **~5–30 reps** and expect similar muscle growth when sets are hard. **[Grade A]**
-- Anchor most sets in **~6–15 reps** for the best balance of stimulus, fatigue, joint stress, and time. **[Grade B]**
+- Anchor most compound and moderate work in **~6–12 reps** (isolation and machines often **12–20**) for the best balance of stimulus, fatigue, joint stress, and time. **[Grade B]**
 - Go **heavier (~3–6 reps)** on some big compounds if you also care about strength; go **lighter (~15–30)** on isolation and machines where heavy loading is awkward or joint-stressful. **[Grade B]**
 - Keep load **above ~30% of 1RM**; extremely light loads (~20% 1RM) grow muscle worse even to failure. **[Grade B]**
 - Whatever the load, the **last few reps near failure are what count** — see [Proximity to Failure](proximity-to-failure.md). **[Grade B]**

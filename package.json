@@ -6,9 +6,11 @@
   "description": "An evidence-based, fully-cited knowledge base for hypertrophy and muscle-building optimization.",
   "scripts": {
     "validate": "node tools/validate.mjs",
-    "check": "node tools/check-citations.mjs",
+    "check": "node tools/check-citations.mjs && node tools/check-data-refs.mjs",
+    "check-citations": "node tools/check-citations.mjs",
+    "check-refs": "node tools/check-data-refs.mjs",
     "build-bib": "node tools/build-bibliography.mjs",
-    "test": "node tools/validate.mjs && node tools/check-citations.mjs"
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

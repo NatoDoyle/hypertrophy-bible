@@ -1,0 +1,38 @@
+{
+  "id": "neck-curl",
+  "name": "Lying Neck Curl (Flexion)",
+  "aliases": [
+    "neck flexion",
+    "plate neck curl"
+  ],
+  "primary_muscles": [
+    "neck"
+  ],
+  "movement_pattern": "other",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads cervical flexion; use very light load and a slow tempo.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "rom_notes": "Lower the head to a gentle stretch, curl the chin toward the chest.",
+  "difficulty": "intermediate",
+  "cues": [
+    "Very light load, slow controlled tempo",
+    "Full but pain-free range",
+    "Support the head with a towel/plate"
+  ],
+  "common_errors": [
+    "Using heavy load or jerky reps",
+    "Training into any pain"
+  ],
+  "progressions": [
+    "Add small load slowly",
+    "Add reps"
+  ],
+  "regressions": [
+    "Manual (hand) resistance"
+  ]
+}

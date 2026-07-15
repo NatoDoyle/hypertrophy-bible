@@ -22,6 +22,8 @@ almost all the work; timing and supplements are refinements.
 | [Carbohydrates, Fat & Hydration](carbohydrates-fat-and-hydration.md) | Fueling training, hormone support, staying hydrated | ✅ |
 | [Nutrient Timing](nutrient-timing.md) | The "anabolic window" reality; distribution over the day | ✅ |
 | [Building Muscle in a Deficit](building-muscle-in-a-deficit.md) | Recomposition, protecting muscle while cutting | ✅ |
+| [Diet Breaks & Refeeds](diet-breaks-and-refeeds.md) | Planned maintenance breaks and refeeds during a cut | ✅ |
+| [Micronutrients & Food Quality](micronutrients-and-food-quality.md) | Vitamins, minerals, fiber, whole foods, satiety/adherence | ✅ |
 | [Supplements](supplements.md) | Evidence tiers: creatine, caffeine, protein powder, what to skip | ✅ |
 | [Alcohol](alcohol.md) | Effects on recovery, MPS, and body composition | ✅ |
 

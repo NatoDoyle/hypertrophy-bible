@@ -1,0 +1,29 @@
+{
+  "id": "pec-deck",
+  "name": "Pec Deck (Machine Fly)",
+  "primary_muscles": [
+    "chest"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Machine adduction with a stable path; good stretch on the outer chest.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Slight elbow bend, fixed",
+    "Stretch the chest, then adduct",
+    "Control the return"
+  ],
+  "common_errors": [
+    "Bouncing out of the stretch",
+    "Shrugging"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

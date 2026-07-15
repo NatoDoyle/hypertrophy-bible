@@ -1,0 +1,32 @@
+{
+  "id": "machine-lateral-raise",
+  "name": "Machine Lateral Raise",
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Guided abduction; very stable, easy to take to failure safely.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Lead with the elbows into the pads",
+    "Full but controlled range",
+    "No body english"
+  ],
+  "common_errors": [
+    "Using momentum",
+    "Shrugging the traps"
+  ],
+  "regressions": [
+    "Dumbbell lateral raise"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "hack-squat",
+  "name": "Hack Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Machine squat loading the quads deep with a supported back.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Feet placed for a deep knee bend",
+    "Descend to a full stretch",
+    "Don't lock out hard"
+  ],
+  "common_errors": [
+    "Half range",
+    "Heels rising"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

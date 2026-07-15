@@ -1,0 +1,14 @@
+{
+  "id": "hmb",
+  "name": "HMB (beta-hydroxy-beta-methylbutyrate)",
+  "tier": "insufficient",
+  "summary": "A leucine metabolite marketed for muscle gain and anti-catabolism. Early claims were large and have not held up in trained lifters; any benefit is small and mostly limited to untrained or catabolic states.",
+  "effect": "Little to no meaningful benefit for hypertrophy in resistance-trained people eating adequate protein; possible minor role in untrained beginners or muscle-wasting conditions.",
+  "dosing": "~3 g/day if used.",
+  "timing": "Not established as important.",
+  "safety": "Appears safe at typical doses.",
+  "evidence_grade": "C",
+  "citations": [
+    "wilson-2013-hmb"
+  ]
+}

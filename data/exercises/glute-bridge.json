@@ -1,0 +1,37 @@
+{
+  "id": "glute-bridge",
+  "name": "Barbell Glute Bridge",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Floor-based hip extension with peak glute tension at the top.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Drive through the heels",
+    "Full hip extension, squeeze",
+    "Ribs down, no lumbar arch"
+  ],
+  "common_errors": [
+    "Overarching the lower back",
+    "Short range"
+  ],
+  "regressions": [
+    "Bodyweight bridge",
+    "Hip thrust"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "seated-cable-row",
+  "name": "Seated Cable Row",
+  "primary_muscles": [
+    "upper-back",
+    "lats"
+  ],
+  "secondary_muscles": [
+    "rear-delts",
+    "biceps"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "cable",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Even tension with a strong stretch at full reach; stable enough to train hard.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "rom_notes": "Allow the shoulder blades to protract and arms to extend fully forward, then row to the torso.",
+  "difficulty": "beginner",
+  "cues": [
+    "Stretch forward at the front",
+    "Row to the lower ribs, drive the elbows back",
+    "Minimal torso swing"
+  ],
+  "common_errors": [
+    "Heaving with the lower back",
+    "Short contracted-end reps"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at contraction"
+  ],
+  "regressions": [
+    "Chest-supported row",
+    "Single-arm dumbbell row"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

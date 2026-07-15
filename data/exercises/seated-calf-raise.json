@@ -1,0 +1,37 @@
+{
+  "id": "seated-calf-raise",
+  "name": "Seated Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Bent-knee position biases the soleus; loaded through a full stretch.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "rom_notes": "Full stretch to full plantarflexion under the knee pad.",
+  "difficulty": "beginner",
+  "cues": [
+    "Bent knee (~90 deg) targets the soleus",
+    "Deep stretch, controlled contraction",
+    "Pause at the bottom"
+  ],
+  "common_errors": [
+    "Half reps",
+    "Rushing the eccentric"
+  ],
+  "progressions": [
+    "Add load",
+    "Slow eccentric"
+  ],
+  "regressions": [
+    "Standing calf raise"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

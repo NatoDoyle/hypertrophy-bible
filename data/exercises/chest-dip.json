@@ -1,0 +1,38 @@
+{
+  "id": "chest-dip",
+  "name": "Chest Dip",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "triceps",
+    "front-delts"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Deep stretch on the lower chest at the bottom; lean forward to bias the chest.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lean the torso forward",
+    "Descend to a comfortable deep stretch",
+    "Don't flare/over-shrug"
+  ],
+  "common_errors": [
+    "Going too deep for the shoulder",
+    "Staying too upright (shifts to triceps)"
+  ],
+  "regressions": [
+    "Machine chest press",
+    "Push-up"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "single-arm-dumbbell-row",
+  "name": "Single-Arm Dumbbell Row",
+  "aliases": [
+    "one-arm dumbbell row"
+  ],
+  "primary_muscles": [
+    "lats",
+    "upper-back"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "rear-delts"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Supported unilateral row through a long range; easy to train hard.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Support on a bench",
+    "Full stretch forward, row to the hip",
+    "No torso twisting"
+  ],
+  "common_errors": [
+    "Twisting to heave the weight",
+    "Short range"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "wrist-curl",
+  "name": "Wrist Curl",
+  "aliases": [
+    "barbell wrist curl"
+  ],
+  "primary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-wrist",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Isolates the wrist flexors through a full stretch-to-contraction range.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "rom_notes": "Let the bar roll to the fingers at the bottom, curl to full wrist flexion.",
+  "difficulty": "beginner",
+  "cues": [
+    "Forearms supported on a bench/thighs",
+    "Full stretch at the bottom",
+    "Controlled contraction"
+  ],
+  "common_errors": [
+    "Tiny range of motion",
+    "Using the biceps"
+  ],
+  "progressions": [
+    "Add load",
+    "Add reverse wrist curls for extensors"
+  ],
+  "regressions": [
+    "Dumbbell wrist curl"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

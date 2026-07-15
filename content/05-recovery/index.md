@@ -15,6 +15,7 @@ mostly theater.
 | [Deloads & Rest Days](deloads-and-rest-days.md) | Purpose, timing, and how much to pull back | ✅ |
 | [Muscle Soreness (DOMS)](muscle-soreness-doms.md) | What soreness does and doesn't indicate about growth | ✅ |
 | [Recovery Modalities & Injury](recovery-modalities-and-injury.md) | Foam rolling, ice baths, and training around pain | ✅ |
+| [Detraining & Maintenance](detraining-and-maintenance.md) | Rate of muscle loss; the minimal dose to hold your gains | ✅ |
 
 ## The one-paragraph model
 

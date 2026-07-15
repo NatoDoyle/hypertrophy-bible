@@ -1,0 +1,48 @@
+{
+  "id": "seated-dumbbell-shoulder-press",
+  "name": "Seated Dumbbell Shoulder Press",
+  "aliases": [
+    "seated DB press",
+    "overhead press"
+  ],
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "frontal",
+    "sagittal"
+  ],
+  "resistance_profile": "Presses the front delt through a full overhead range; dumbbells allow a deep stretch.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "rom_notes": "Lower to ear level (deep stretch), press to a controlled overhead lockout.",
+  "difficulty": "intermediate",
+  "cues": [
+    "Brace, ribs down",
+    "Lower under control to a full stretch",
+    "Press up and slightly together"
+  ],
+  "common_errors": [
+    "Half-range top reps",
+    "Excessive lower-back arch"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at the bottom"
+  ],
+  "regressions": [
+    "Machine shoulder press",
+    "Seated barbell press"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

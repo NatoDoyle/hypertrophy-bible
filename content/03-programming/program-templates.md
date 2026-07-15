@@ -15,6 +15,8 @@
 | [Beginner Full-Body](../../data/programs/beginner-full-body-3day.json) | 3 | Full-body | Beginner | [Double progression](../../data/progressions/double-progression.json) |
 | [Upper/Lower](../../data/programs/upper-lower-4day.json) | 4 | Upper/lower | Intermediate | [Double progression](../../data/progressions/double-progression.json) |
 | [Push/Pull/Legs](../../data/programs/push-pull-legs-6day.json) | 6 | Push/pull/legs | Advanced | [RIR autoregulation](../../data/progressions/rir-autoregulation.json) |
+| [5-Day Hybrid](../../data/programs/five-day-hybrid.json) | 5 | PPL + upper/lower | Intermediate–Advanced | [Double progression](../../data/progressions/double-progression.json) |
+| [Shoulders & Arms Specialization](../../data/programs/specialization-delts-arms-4day.json) | 4 | Upper/lower (specialization block) | Intermediate–Advanced | [Double progression](../../data/progressions/double-progression.json) |
 
 **How to use a template:**
 1. **Pick by days you can reliably train**, then by experience level.

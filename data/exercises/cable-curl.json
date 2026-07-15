@@ -1,0 +1,30 @@
+{
+  "id": "cable-curl",
+  "name": "Cable Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Constant tension through the whole curl, including the bottom.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Elbows fixed",
+    "Full flexion, controlled return",
+    "Keep tension at the bottom"
+  ],
+  "common_errors": [
+    "Elbows drifting forward",
+    "Momentum"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

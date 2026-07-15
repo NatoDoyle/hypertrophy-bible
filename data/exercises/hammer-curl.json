@@ -1,0 +1,41 @@
+{
+  "id": "hammer-curl",
+  "name": "Hammer Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Neutral grip emphasizes the brachialis and brachioradialis alongside the biceps.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "rom_notes": "Full extension to full flexion, neutral (thumbs-up) grip.",
+  "difficulty": "beginner",
+  "cues": [
+    "Neutral grip throughout",
+    "Keep the elbows still",
+    "Control the eccentric"
+  ],
+  "common_errors": [
+    "Swinging the elbows forward",
+    "Using body english"
+  ],
+  "progressions": [
+    "Add load",
+    "Incline hammer curl for more stretch"
+  ],
+  "regressions": [
+    "Standing dumbbell curl"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

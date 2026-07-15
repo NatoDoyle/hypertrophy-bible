@@ -1,0 +1,35 @@
+{
+  "id": "arnold-press",
+  "name": "Arnold Press",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": [
+    "frontal",
+    "transverse"
+  ],
+  "resistance_profile": "Rotating dumbbell press adding range through the delt.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Start palms-in at the bottom",
+    "Rotate and press overhead",
+    "Control the return"
+  ],
+  "common_errors": [
+    "Rushing the rotation",
+    "Overarching the back"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

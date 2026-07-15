@@ -1,0 +1,29 @@
+{
+  "id": "leg-press-calf-raise",
+  "name": "Leg-Press Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Straight-leg plantarflexion on the leg press; heavy-loadable gastrocnemius work.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Balls of the feet on the platform",
+    "Full stretch to full plantarflexion",
+    "Pause at the bottom"
+  ],
+  "common_errors": [
+    "Bouncing",
+    "Short range"
+  ],
+  "citations": [
+    "schoenfeld-2020-rom-review"
+  ]
+}

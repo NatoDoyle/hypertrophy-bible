@@ -1,0 +1,21 @@
+{
+  "id": "neck",
+  "name": "Neck (Sternocleidomastoid & Cervical Extensors)",
+  "group": "neck",
+  "regions": ["sternocleidomastoid (flexors)", "cervical extensors (splenius, semispinalis)"],
+  "functions": ["cervical flexion", "cervical extension", "lateral flexion", "rotation"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 2, "max": 3 },
+    "mev": { "min": 4, "max": 6 },
+    "mav": { "min": 6, "max": 10 },
+    "mrv": { "min": 12, "max": 12 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response"],
+    "notes": "Direct neck training is niche; use very light loads, slow tempo, and pain-free ranges. Volume needs are low. Estimate only."
+  },
+  "frequency_notes": "Tolerates 2-3x/week of low-load direct work if trained at all.",
+  "recovery_notes": "Cervical spine is sensitive — introduce gradually and never train into pain.",
+  "training_notes": "Train flexion and extension (and optionally lateral flexion) with a harness or plate. Optional for most lifters; relevant for contact-sport athletes.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

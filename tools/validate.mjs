@@ -53,12 +53,37 @@ function validateInstance(data, schemaName, label) {
   else report(label, validate);
 }
 
+// Volume landmarks are model estimates, but must at least be internally sane:
+// each range has min <= max, and landmarks are monotonic (mv <= mev <= mav <= mrv).
+function checkLandmarks(data, label) {
+  const lm = data?.landmarks;
+  if (!lm) return;
+  const order = ["mv", "mev", "mav", "mrv"];
+  for (const k of order) {
+    if (lm[k] && lm[k].min > lm[k].max) {
+      errors++;
+      console.error(`  ✗ ${label}: landmark ${k} has min (${lm[k].min}) > max (${lm[k].max})`);
+    }
+  }
+  const present = order.filter((k) => lm[k]);
+  for (let i = 1; i < present.length; i++) {
+    const lo = lm[present[i - 1]], hi = lm[present[i]];
+    if (lo.min > hi.min || lo.max > hi.max) {
+      errors++;
+      console.error(
+        `  ✗ ${label}: landmarks out of order (${present[i - 1]} ${lo.min}-${lo.max} should not exceed ${present[i]} ${hi.min}-${hi.max})`
+      );
+    }
+  }
+}
+
 for (const [dir, schemaName] of Object.entries(dirToSchema)) {
   const dpath = join(root, "data", dir);
   if (!existsSync(dpath)) continue;
   for (const f of readdirSync(dpath).filter((f) => f.endsWith(".json"))) {
     const data = JSON.parse(readFileSync(join(dpath, f), "utf8"));
     validateInstance(data, schemaName, `data/${dir}/${f}`);
+    if (dir === "muscles") checkLandmarks(data, `data/${dir}/${f}`);
   }
 }
 

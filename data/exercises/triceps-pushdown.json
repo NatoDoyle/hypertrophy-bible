@@ -1,0 +1,41 @@
+{
+  "id": "triceps-pushdown",
+  "name": "Triceps Pushdown",
+  "aliases": [
+    "cable pushdown"
+  ],
+  "primary_muscles": [
+    "triceps"
+  ],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "force": "push",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Loads the triceps in the shortened/mid range; complements overhead (lengthened) work.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "rom_notes": "Full extension to a controlled deep flexion at the top.",
+  "difficulty": "beginner",
+  "cues": [
+    "Pin the upper arms to the sides",
+    "Extend fully, control the return",
+    "Keep the wrists neutral"
+  ],
+  "common_errors": [
+    "Flaring the elbows out",
+    "Leaning in to press with the torso"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at lockout"
+  ],
+  "regressions": [
+    "Band pushdown"
+  ],
+  "citations": [
+    "maeo-2023-triceps-overhead"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "id": "hip-abduction-machine",
+  "name": "Hip Abduction Machine",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "isolation-hip-abduction",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Isolates the gluteus medius/minimus via hip abduction.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Sit tall",
+    "Push the knees out fully",
+    "Control the return"
+  ],
+  "common_errors": [
+    "Using momentum",
+    "Leaning to cheat"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

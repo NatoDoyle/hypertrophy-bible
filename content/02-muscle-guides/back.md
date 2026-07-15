@@ -5,7 +5,7 @@
 **Quick recommendations**
 - Do at least **one vertical and one horizontal pull** every week. **[Grade C]**
 - Emphasize the **stretched position** (full overhead reach on pulldowns; full protraction on rows). **[Grade B]**
-- Lats/upper back tolerate **~10–22+ hard sets/week**; erectors need far less direct work. **[Grade C]**
+- Lats/upper back tolerate high volume (**~10–26 hard sets/week** near the ceiling); erectors need far less direct work. **[Grade C]**
 - Use **chest-supported rows** when you want to train the back hard without lower-back fatigue limiting you. **[Grade C]**
 
 ## Practical Application

@@ -14,6 +14,8 @@ keeps effective, recoverable volume high.
 | [Periodization & Progression](periodization-and-progression.md) | Linear vs undulating vs block; double progression, load progression, RIR autoregulation | ✅ |
 | [Volume Progression & Deloads](volume-progression-and-deloads.md) | Ramping MEV→MRV across a mesocycle, then deloading | ✅ |
 | [Exercise Variation & Specialization](variation-and-specialization.md) | How much novelty helps; bringing up lagging muscles; fatigue management | ✅ |
+| [Warm-Ups](warm-up.md) | General warm-up + ramp-up sets; warming up without pre-fatigue | ✅ |
+| [Cardio & Concurrent Training](cardio-and-concurrent-training.md) | The interference effect, programming cardio, cardio for fat loss | ✅ |
 | [Program Templates](program-templates.md) | Beginner / intermediate / advanced full programs (backed by `data/programs/`) | ✅ |
 
 ## The one-paragraph model

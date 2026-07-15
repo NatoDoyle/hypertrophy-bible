@@ -1,0 +1,46 @@
+{
+  "id": "back-extension",
+  "name": "45-Degree Back Extension",
+  "aliases": [
+    "hyperextension"
+  ],
+  "primary_muscles": [
+    "spinal-erectors"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "hamstrings"
+  ],
+  "movement_pattern": "hinge",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Trains the erectors (and hips) through a loaded hinge; add load held at the chest.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "rom_notes": "Hinge to a full stretch, extend to a neutral (not hyperextended) torso.",
+  "difficulty": "beginner",
+  "cues": [
+    "Hinge from the hips",
+    "Extend to neutral — don't crank into hyperextension",
+    "Control the descent"
+  ],
+  "common_errors": [
+    "Yanking up into lumbar hyperextension",
+    "Bouncing at the bottom"
+  ],
+  "progressions": [
+    "Hold a plate",
+    "Add reps"
+  ],
+  "regressions": [
+    "Bodyweight only",
+    "Bird-dog"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

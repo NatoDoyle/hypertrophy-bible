@@ -1,0 +1,30 @@
+{
+  "id": "face-pull",
+  "name": "Face Pull",
+  "primary_muscles": [
+    "rear-delts",
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "High-cable horizontal abduction/external rotation for rear delts and mid-traps.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Pull to the face, elbows high",
+    "Externally rotate at the end",
+    "Light-to-moderate load"
+  ],
+  "common_errors": [
+    "Going too heavy / using the back",
+    "Low elbows (becomes a row)"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}

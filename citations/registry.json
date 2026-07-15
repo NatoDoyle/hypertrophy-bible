@@ -38,6 +38,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35291645/"
     },
     {
+      "key": "bhasin-1996-testosterone",
+      "authors": [
+        "Bhasin S",
+        "et al."
+      ],
+      "year": 1996,
+      "title": "The effects of supraphysiologic doses of testosterone on muscle size and strength in normal men.",
+      "source": "The New England Journal of Medicine",
+      "volume": "335",
+      "issue": "1",
+      "pages": "1-7",
+      "doi": "10.1056/NEJM199607043350101",
+      "pmid": "8637535",
+      "study_type": "RCT",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/8637535/"
+    },
+    {
       "key": "bruusgaard-2010-myonuclei",
       "authors": [
         "Bruusgaard JC",
@@ -55,6 +74,25 @@
       "population": "animal",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20713720/"
+    },
+    {
+      "key": "byrne-2018-matador",
+      "authors": [
+        "Byrne NM",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Intermittent energy restriction improves weight loss efficiency in obese men: the MATADOR study.",
+      "source": "International Journal of Obesity",
+      "volume": "42",
+      "issue": "2",
+      "pages": "129-138",
+      "doi": "10.1038/ijo.2017.206",
+      "pmid": "28925405",
+      "study_type": "RCT",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28925405/"
     },
     {
       "key": "carvalho-2022-volume-matched-loads",
@@ -377,6 +415,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36662126/"
     },
     {
+      "key": "kouri-1995-ffmi",
+      "authors": [
+        "Kouri EM",
+        "et al."
+      ],
+      "year": 1995,
+      "title": "Fat-free mass index in users and nonusers of anabolic-androgenic steroids.",
+      "source": "Clinical Journal of Sport Medicine",
+      "volume": "5",
+      "issue": "4",
+      "pages": "223-228",
+      "doi": "10.1097/00042752-199510000-00003",
+      "pmid": "7496846",
+      "study_type": "cross-sectional",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/7496846/"
+    },
+    {
       "key": "kreher-2012-overtraining",
       "authors": [
         "Kreher JB",
@@ -432,6 +489,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20300012/"
     },
     {
+      "key": "krzysztofik-2019-advanced-techniques",
+      "authors": [
+        "Krzysztofik M",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Maximizing Muscle Hypertrophy: A Systematic Review of Advanced Resistance Training Techniques and Methods.",
+      "source": "International Journal of Environmental Research and Public Health",
+      "volume": "16",
+      "issue": "24",
+      "pages": "4897",
+      "doi": "10.3390/ijerph16244897",
+      "pmid": "31817252",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31817252/"
+    },
+    {
       "key": "lasevicius-2018-intensities-volume-load",
       "authors": [
         "Lasevicius T",
@@ -446,9 +522,28 @@
       "doi": "10.1080/17461391.2018.1450898",
       "pmid": "29564973",
       "study_type": "RCT",
-      "population": "untrained",
+      "population": "recreationally-active",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29564973/"
+    },
+    {
+      "key": "lixandrao-2018-bfr-meta",
+      "authors": [
+        "Lixandrão ME",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Magnitude of Muscle Strength and Mass Adaptations Between High-Load Resistance Training Versus Low-Load Resistance Training Associated with Blood-Flow Restriction: A Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "48",
+      "issue": "2",
+      "pages": "361-378",
+      "doi": "10.1007/s40279-017-0795-y",
+      "pmid": "29043659",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29043659/"
     },
     {
       "key": "longland-2016-deficit-protein",
@@ -622,6 +717,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33977835/"
     },
     {
+      "key": "peos-2021-diet-break",
+      "authors": [
+        "Peos JJ",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "A 1-week diet break improves muscle endurance during an intermittent dieting regime in adult athletes.",
+      "source": "PLoS One",
+      "volume": "16",
+      "issue": "2",
+      "pages": "e0247292",
+      "doi": "10.1371/journal.pone.0247292",
+      "pmid": "33630880",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33630880/"
+    },
+    {
       "key": "petrella-2008-satellite-myonuclear",
       "authors": [
         "Petrella JK",
@@ -696,6 +810,25 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38393985/"
+    },
+    {
+      "key": "rhim-2020-citrulline",
+      "authors": [
+        "Rhim HC",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "Effect of citrulline on post-exercise rating of perceived exertion, muscle soreness, and blood lactate levels: A systematic review and meta-analysis.",
+      "source": "Journal of Sport and Health Science",
+      "volume": "9",
+      "issue": "6",
+      "pages": "553-561",
+      "doi": "10.1016/j.jshs.2020.02.003",
+      "pmid": "33308806",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33308806/"
     },
     {
       "key": "roberts-2015-cold-water-immersion",
@@ -968,6 +1101,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27433992/"
     },
     {
+      "key": "schoenfeld-2018-attentional-focus",
+      "authors": [
+        "Schoenfeld BJ",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Differential effects of attentional focus strategies during long-term resistance training.",
+      "source": "European Journal of Sport Science",
+      "volume": "18",
+      "issue": "5",
+      "pages": "705-712",
+      "doi": "10.1080/17461391.2018.1447020",
+      "pmid": "29533715",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29533715/"
+    },
+    {
       "key": "schoenfeld-2018-protein-per-meal",
       "authors": [
         "Schoenfeld BJ",
@@ -1063,6 +1215,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33671664/"
     },
     {
+      "key": "schumann-2022-concurrent-meta",
+      "authors": [
+        "Schumann M",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Compatibility of Concurrent Aerobic and Strength Training for Skeletal Muscle Size and Function: An Updated Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "52",
+      "issue": "3",
+      "pages": "601-612",
+      "doi": "10.1007/s40279-021-01587-7",
+      "pmid": "34757594",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/34757594/"
+    },
+    {
       "key": "slater-2019-energy-surplus",
       "authors": [
         "Slater GJ",
@@ -1079,6 +1250,25 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31482093/"
+    },
+    {
+      "key": "spiering-2021-minimal-dose",
+      "authors": [
+        "Spiering BA",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Maintaining Physical Performance: The Minimal Dose of Exercise Needed to Preserve Endurance and Strength Over Time.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "35",
+      "issue": "5",
+      "pages": "1449-1458",
+      "doi": "10.1519/JSC.0000000000003964",
+      "pmid": "33629972",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33629972/"
     },
     {
       "key": "tagawa-2020-protein-dose",
@@ -1098,6 +1288,24 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33300582/"
+    },
+    {
+      "key": "trexler-2015-beta-alanine",
+      "authors": [
+        "Trexler ET",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "International society of sports nutrition position stand: Beta-Alanine.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "12",
+      "pages": "30",
+      "doi": "10.1186/s12970-015-0090-y",
+      "pmid": "26175657",
+      "study_type": "position-stand",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26175657/"
     },
     {
       "key": "vispute-2011-abdominal-fat",
@@ -1154,6 +1362,61 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31024339/"
+    },
+    {
+      "key": "wilson-2012-concurrent-meta",
+      "authors": [
+        "Wilson JM",
+        "et al."
+      ],
+      "year": 2012,
+      "title": "Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "26",
+      "issue": "8",
+      "pages": "2293-2307",
+      "doi": "10.1519/JSC.0b013e31823a3e2d",
+      "pmid": "22002517",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/22002517/"
+    },
+    {
+      "key": "wilson-2013-hmb",
+      "authors": [
+        "Wilson JM",
+        "et al."
+      ],
+      "year": 2013,
+      "title": "International Society of Sports Nutrition Position Stand: beta-hydroxy-beta-methylbutyrate (HMB).",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "10",
+      "issue": "1",
+      "pages": "6",
+      "doi": "10.1186/1550-2783-10-6",
+      "pmid": "23374455",
+      "study_type": "position-stand",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23374455/"
+    },
+    {
+      "key": "wolfe-2017-bcaa",
+      "authors": [
+        "Wolfe RR"
+      ],
+      "year": 2017,
+      "title": "Branched-chain amino acids and muscle protein synthesis in humans: myth or reality?",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "14",
+      "pages": "30",
+      "doi": "10.1186/s12970-017-0184-9",
+      "pmid": "28852372",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28852372/"
     },
     {
       "key": "zourdos-2016-rir-rpe-scale",

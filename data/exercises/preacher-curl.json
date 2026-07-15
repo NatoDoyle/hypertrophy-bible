@@ -1,0 +1,30 @@
+{
+  "id": "preacher-curl",
+  "name": "Preacher Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Arm-forward position loads the short head hard in the stretched bottom.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Upper arms flat on the pad",
+    "Full stretch at the bottom",
+    "Don't fully relax at the bottom under heavy load"
+  ],
+  "common_errors": [
+    "Bouncing out of the stretch",
+    "Lifting the elbows off the pad"
+  ],
+  "citations": [
+    "pedrosa-2022-lengthened-partials"
+  ]
+}
