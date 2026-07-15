@@ -1,0 +1,12 @@
+{
+  "id": "whey-protein",
+  "name": "Protein Powder (e.g. Whey)",
+  "tier": "strong",
+  "summary": "Not magic — a convenient, high-quality protein source. Valuable only insofar as it helps you reach your daily protein target; matched for total protein, powder and whole food are equivalent for muscle.",
+  "effect": "Supports resistance-training gains by making it easy to hit total daily protein; no benefit beyond meeting protein needs. Whey is fast-digesting and leucine-rich.",
+  "dosing": "As needed to reach ~1.6 g/kg/day total protein; a typical scoop is ~20-30 g. Whole-food protein works equally well.",
+  "timing": "Any time that helps you hit daily protein; peri-workout timing is a minor factor.",
+  "safety": "Safe for those without dairy allergy/intolerance; lactose-free and plant blends exist for others.",
+  "evidence_grade": "A",
+  "citations": ["morton-2018-protein-meta"]
+}

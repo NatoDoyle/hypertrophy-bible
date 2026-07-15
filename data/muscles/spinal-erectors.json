@@ -1,0 +1,20 @@
+{
+  "id": "spinal-erectors",
+  "name": "Spinal Erectors (Erector Spinae)",
+  "group": "back",
+  "regions": ["thoracic erectors", "lumbar erectors"],
+  "functions": ["spinal extension", "anti-flexion isometric stabilization", "lateral flexion"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 4 },
+    "mev": { "min": 6, "max": 6 },
+    "mav": { "min": 8, "max": 12 },
+    "mrv": { "min": 14, "max": 14 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response"],
+    "notes": "Receives heavy indirect loading from squats, deadlifts, rows, and carries, so dedicated direct volume is usually low. Estimate only."
+  },
+  "frequency_notes": "Often sufficiently trained by compound lifts; add direct extension work if lagging.",
+  "training_notes": "Deadlift variations and back extensions are the primary direct stimulus. Manage fatigue: the lumbar erectors are involved in many lifts.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

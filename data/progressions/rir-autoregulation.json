@@ -1,0 +1,11 @@
+{
+  "id": "rir-autoregulation",
+  "name": "RIR Autoregulation",
+  "method": "rir-autoregulation",
+  "description": "Prescribe a target reps-in-reserve rather than a fixed load. Adjust load each session so the last set lands at the target RIR, and progress by lowering target RIR across a mesocycle (e.g. 3 RIR early to 0-1 RIR late) and/or adding load as strength rises.",
+  "trigger": "Actual RIR drifts above target (too easy) -> add load; below target (too hard) -> hold or reduce",
+  "increment": "Load adjusted to hit target RIR; target RIR reduced ~1 rep per 1-2 weeks across the block",
+  "applicable_contexts": ["intermediate/advanced lifters", "managing daily readiness", "autoregulated mesocycles"],
+  "experience_level": ["intermediate", "advanced"],
+  "citations": ["helms-2020-regulating-monitoring", "zourdos-2016-rir-rpe-scale"]
+}

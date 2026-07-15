@@ -1,0 +1,11 @@
+{
+  "id": "double-progression",
+  "name": "Double Progression",
+  "method": "double-progression",
+  "description": "Work within a rep range at a fixed load. When you hit the top of the range for all prescribed sets (at the target effort), increase the load and drop back to the bottom of the range. Repeat.",
+  "trigger": "All sets reach the top of the rep range at target RIR",
+  "increment": "Smallest practical load jump (~2.5-5% or the smallest available plates), then reset reps to the bottom of the range",
+  "applicable_contexts": ["most exercises", "hypertrophy blocks", "when load micro-loading is available"],
+  "experience_level": ["beginner", "intermediate", "advanced"],
+  "citations": ["schoenfeld-2021-loading-recommendations"]
+}

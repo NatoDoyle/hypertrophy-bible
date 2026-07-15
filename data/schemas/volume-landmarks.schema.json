@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/volume-landmarks.json",
+  "title": "VolumeLandmarks",
+  "description": "Weekly hard-set landmarks for a muscle. Model-based estimates, graded honestly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["unit", "mev", "mrv", "evidence_grade"],
+  "properties": {
+    "unit": { "const": "weekly_hard_sets" },
+    "mv": { "$ref": "#/$defs/range", "description": "Maintenance Volume" },
+    "mev": { "$ref": "#/$defs/range", "description": "Minimum Effective Volume" },
+    "mav": { "$ref": "#/$defs/range", "description": "Maximum Adaptive Volume" },
+    "mrv": { "$ref": "#/$defs/range", "description": "Maximum Recoverable Volume" },
+    "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+    "citations": { "type": "array", "items": { "type": "string" } },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number", "minimum": 0, "maximum": 60 },
+        "max": { "type": "number", "minimum": 0, "maximum": 60 }
+      }
+    }
+  }
+}

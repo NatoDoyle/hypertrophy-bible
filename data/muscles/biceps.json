@@ -1,0 +1,21 @@
+{
+  "id": "biceps",
+  "name": "Biceps Brachii (& Brachialis)",
+  "group": "arms",
+  "regions": ["long head", "short head", "brachialis"],
+  "functions": ["elbow flexion", "forearm supination", "assist shoulder flexion (long head)"],
+  "antagonists": ["triceps"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 6 },
+    "mev": { "min": 8, "max": 8 },
+    "mav": { "min": 12, "max": 16 },
+    "mrv": { "min": 20, "max": 22 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Receives meaningful indirect work from all pulling; count some pulling volume as fractional biceps volume. Estimate only."
+  },
+  "frequency_notes": "~2x/week direct, on top of back-day involvement.",
+  "training_notes": "Train the long head at length (incline or overhead-elbow curls) and include a supinated curl. Brachialis benefits from hammer/neutral-grip work.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "chest",
+  "name": "Chest (Pectoralis Major)",
+  "group": "chest",
+  "regions": ["clavicular (upper) head", "sternocostal (lower/mid) head"],
+  "functions": [
+    "shoulder horizontal adduction",
+    "shoulder flexion (clavicular head)",
+    "shoulder adduction",
+    "humeral internal rotation"
+  ],
+  "antagonists": ["lats", "upper-back"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 8 },
+    "mev": { "min": 8, "max": 10 },
+    "mav": { "min": 12, "max": 18 },
+    "mrv": { "min": 20, "max": 22 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Model-based estimate of weekly hard sets, not a measured constant. Individualize from your own response. Includes only direct/near-direct chest work; heavy pressing already loads the chest."
+  },
+  "frequency_notes": "Train ~2x/week to distribute volume across incline and flat pressing plus a fly variation.",
+  "training_notes": "Cover both heads: incline work biases the clavicular head, flat/decline the sternal head. Include a lengthened-position movement (deep dumbbell press or fly).",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/citation.json",
+  "title": "Citation",
+  "description": "One entry in the citation registry. May only exist after live web verification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["key", "authors", "year", "title", "study_type", "verified"],
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Stable kebab-case identifier, e.g. schoenfeld-2017-volume-dose-response"
+    },
+    "authors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Author surnames or 'Surname et al.'"
+    },
+    "year": { "type": "integer", "minimum": 1900, "maximum": 2100 },
+    "title": { "type": "string", "minLength": 3 },
+    "source": { "type": "string", "description": "Journal or publisher" },
+    "volume": { "type": "string" },
+    "issue": { "type": "string" },
+    "pages": { "type": "string" },
+    "doi": { "type": "string" },
+    "pmid": { "type": "string" },
+    "url": { "type": "string", "format": "uri" },
+    "study_type": {
+      "enum": [
+        "meta-analysis",
+        "systematic-review",
+        "RCT",
+        "non-RCT-trial",
+        "cohort",
+        "cross-sectional",
+        "mechanistic",
+        "narrative-review",
+        "position-stand",
+        "book"
+      ]
+    },
+    "population": {
+      "enum": ["trained", "untrained", "recreationally-active", "mixed", "animal", "na"]
+    },
+    "verified": {
+      "const": true,
+      "description": "Must be true. A citation may not enter the registry unverified."
+    },
+    "verified_via": { "type": "string", "description": "The URL or DOI actually fetched to verify" },
+    "notes": { "type": "string" }
+  },
+  "anyOf": [
+    { "required": ["doi"] },
+    { "required": ["pmid"] },
+    { "required": ["url"] }
+  ]
+}

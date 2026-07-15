@@ -1,0 +1,42 @@
+{
+  "id": "beginner-full-body-3day",
+  "name": "Beginner Full-Body (3 days/week)",
+  "split": "full-body",
+  "days_per_week": 3,
+  "experience_level": ["beginner"],
+  "target_population": "New lifters (0-1 year) wanting a simple, high-frequency full-body routine. Train on non-consecutive days (e.g. Mon/Wed/Fri).",
+  "progression_ref": "double-progression",
+  "sessions": [
+    {
+      "name": "Day A",
+      "exercises": [
+        { "exercise": "barbell-back-squat", "sets": 3, "rep_range": "6-10", "rir": "2-3" },
+        { "exercise": "barbell-bench-press", "sets": 3, "rep_range": "6-10", "rir": "2-3" },
+        { "exercise": "chest-supported-row", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "dumbbell-lateral-raise", "sets": 2, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "seated-leg-curl", "sets": 2, "rep_range": "8-12", "rir": "1-2" }
+      ]
+    },
+    {
+      "name": "Day B",
+      "exercises": [
+        { "exercise": "romanian-deadlift", "sets": 3, "rep_range": "6-10", "rir": "2-3" },
+        { "exercise": "lat-pulldown", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "incline-dumbbell-press", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "overhead-cable-triceps-extension", "sets": 2, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "incline-dumbbell-curl", "sets": 2, "rep_range": "8-12", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Day C",
+      "exercises": [
+        { "exercise": "barbell-back-squat", "sets": 3, "rep_range": "8-12", "rir": "2-3", "notes": "Slightly lighter/higher-rep than Day A" },
+        { "exercise": "barbell-bench-press", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "chest-supported-row", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "dumbbell-lateral-raise", "sets": 2, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "standing calf raise", "sets": 3, "rep_range": "8-15", "rir": "0-1" }
+      ]
+    }
+  ],
+  "citations": ["schoenfeld-2019-frequency-meta", "schoenfeld-2021-loading-recommendations"]
+}

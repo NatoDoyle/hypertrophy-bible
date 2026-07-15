@@ -1,0 +1,23 @@
+{
+  "id": "seated-leg-curl",
+  "name": "Seated Leg Curl",
+  "aliases": ["seated hamstring curl"],
+  "primary_muscles": ["hamstrings"],
+  "secondary_muscles": ["calves"],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": ["sagittal"],
+  "resistance_profile": "Seated position holds the hip flexed, keeping the hamstrings at longer length under load than lying/standing curls — a lengthened-biased knee-flexion choice.",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "rom_notes": "Allow the knees to extend fully into the stretch between reps; curl to full flexion.",
+  "difficulty": "beginner",
+  "cues": ["Fix the hips against the pad", "Curl fully, then control the return to a stretch", "Avoid using momentum or lifting the hips"],
+  "common_errors": ["Partial range at the contracted end", "Hips lifting off the pad", "Snapping the weight up"],
+  "progressions": ["Add load", "Pause at full flexion", "Slow eccentric emphasis"],
+  "regressions": ["Lying leg curl", "Nordic curl (regressed range)"],
+  "citations": ["pedrosa-2022-lengthened-partials"]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "side-delts",
+  "name": "Lateral Deltoid (Side Delt)",
+  "group": "shoulders",
+  "regions": ["lateral deltoid"],
+  "functions": ["shoulder abduction", "assist shoulder flexion"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 6 },
+    "mev": { "min": 8, "max": 8 },
+    "mav": { "min": 12, "max": 20 },
+    "mrv": { "min": 24, "max": 26 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Receives little effective indirect work, tolerates high direct volume, and is a common priority for width. Estimate only."
+  },
+  "frequency_notes": "Responds well to high frequency (2-4x/week) of lateral raise variations.",
+  "training_notes": "Lateral raises (dumbbell and cable) are the staple. The top of the raise adds little tension; cables/lean-away variations load the lengthened position better.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

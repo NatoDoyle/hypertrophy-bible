@@ -1,0 +1,23 @@
+{
+  "id": "lat-pulldown",
+  "name": "Lat Pulldown",
+  "aliases": ["pulldown"],
+  "primary_muscles": ["lats"],
+  "secondary_muscles": ["upper-back", "biceps", "rear-delts"],
+  "movement_pattern": "vertical-pull",
+  "equipment": "cable",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": ["sagittal"],
+  "resistance_profile": "Challenges the lats through a long range, with a strong stretch at the top (arms overhead).",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "rom_notes": "Allow a full overhead reach and slight scapular upward rotation at the top; pull to the upper chest.",
+  "difficulty": "beginner",
+  "cues": ["Start from a full overhead stretch", "Drive the elbows down and in", "Pull to the collarbone, not behind the neck"],
+  "common_errors": ["Excessive layback / turning it into a row", "Cutting the top stretch short", "Yanking with the arms only"],
+  "progressions": ["Add load via double progression", "Pause at the bottom contraction"],
+  "regressions": ["Assisted pull-up machine", "Band-assisted pulldown"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

@@ -1,0 +1,1197 @@
+{
+  "citations": [
+    {
+      "key": "baz-valle-2021-counting-sets",
+      "authors": [
+        "Baz-Valle E",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Total Number of Sets as a Training Volume Quantification Method for Muscle Hypertrophy: A Systematic Review.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "35",
+      "issue": "3",
+      "pages": "870-878",
+      "doi": "10.1519/JSC.0000000000002776",
+      "pmid": "30063555",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30063555/"
+    },
+    {
+      "key": "baz-valle-2022-volume-review",
+      "authors": [
+        "Baz-Valle E",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "A Systematic Review of The Effects of Different Resistance Training Volumes on Muscle Hypertrophy.",
+      "source": "Journal of Human Kinetics",
+      "volume": "81",
+      "pages": "199-210",
+      "doi": "10.2478/hukin-2022-0017",
+      "pmid": "35291645",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35291645/"
+    },
+    {
+      "key": "bruusgaard-2010-myonuclei",
+      "authors": [
+        "Bruusgaard JC",
+        "et al."
+      ],
+      "year": 2010,
+      "title": "Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.",
+      "source": "Proceedings of the National Academy of Sciences",
+      "volume": "107",
+      "issue": "34",
+      "pages": "15111-15116",
+      "doi": "10.1073/pnas.0913935107",
+      "pmid": "20713720",
+      "study_type": "mechanistic",
+      "population": "animal",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20713720/"
+    },
+    {
+      "key": "carvalho-2022-volume-matched-loads",
+      "authors": [
+        "Carvalho L",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Muscle hypertrophy and strength gains after resistance training with different volume-matched loads: a systematic review and meta-analysis.",
+      "source": "Applied Physiology, Nutrition, and Metabolism",
+      "volume": "47",
+      "issue": "4",
+      "pages": "357-368",
+      "doi": "10.1139/apnm-2021-0515",
+      "pmid": "35015560",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35015560/"
+    },
+    {
+      "key": "craven-2022-sleep-performance",
+      "authors": [
+        "Craven J",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review.",
+      "source": "Sports Medicine",
+      "volume": "52",
+      "issue": "11",
+      "pages": "2669-2690",
+      "doi": "10.1007/s40279-022-01706-y",
+      "pmid": "35708888",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35708888/"
+    },
+    {
+      "key": "damas-2015-mps-review",
+      "authors": [
+        "Damas F",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "A review of resistance training-induced changes in skeletal muscle protein synthesis and their contribution to hypertrophy.",
+      "source": "Sports Medicine",
+      "volume": "45",
+      "issue": "6",
+      "pages": "801-807",
+      "doi": "10.1007/s40279-015-0320-0",
+      "pmid": "25739559",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/25739559/"
+    },
+    {
+      "key": "damas-2016-mps-damage",
+      "authors": [
+        "Damas F",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Resistance training-induced changes in integrated myofibrillar protein synthesis are related to hypertrophy only after attenuation of muscle damage.",
+      "source": "The Journal of Physiology",
+      "volume": "594",
+      "issue": "18",
+      "pages": "5209-5222",
+      "doi": "10.1113/JP272472",
+      "pmid": "27219125",
+      "study_type": "non-RCT-trial",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27219125/"
+    },
+    {
+      "key": "damas-2018-hypertrophy-damage-mps",
+      "authors": [
+        "Damas F",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "The development of skeletal muscle hypertrophy through resistance training: the role of muscle damage and muscle protein synthesis.",
+      "source": "European Journal of Applied Physiology",
+      "volume": "118",
+      "issue": "3",
+      "pages": "485-500",
+      "doi": "10.1007/s00421-017-3792-9",
+      "pmid": "29282529",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29282529/"
+    },
+    {
+      "key": "egner-2013-muscle-memory",
+      "authors": [
+        "Egner IM",
+        "et al."
+      ],
+      "year": 2013,
+      "title": "A cellular memory mechanism aids overload hypertrophy in muscle long after an episodic exposure to anabolic steroids.",
+      "source": "The Journal of Physiology",
+      "volume": "591",
+      "issue": "24",
+      "pages": "6221-6230",
+      "doi": "10.1113/jphysiol.2013.264457",
+      "pmid": "24167222",
+      "study_type": "mechanistic",
+      "population": "animal",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24167222/"
+    },
+    {
+      "key": "fonseca-2014-exercise-variation",
+      "authors": [
+        "Fonseca RM",
+        "et al."
+      ],
+      "year": 2014,
+      "title": "Changes in exercises are more effective than in loading schemes to improve muscle strength.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "28",
+      "issue": "11",
+      "pages": "3085-3092",
+      "doi": "10.1519/JSC.0000000000000539",
+      "pmid": "24832974",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24832974/"
+    },
+    {
+      "key": "grgic-2017-periodization",
+      "authors": [
+        "Grgic J",
+        "et al."
+      ],
+      "year": 2017,
+      "title": "Effects of linear and daily undulating periodized resistance training programs on measures of muscle hypertrophy: a systematic review and meta-analysis.",
+      "source": "PeerJ",
+      "volume": "5",
+      "pages": "e3695",
+      "doi": "10.7717/peerj.3695",
+      "pmid": "28848690",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28848690/"
+    },
+    {
+      "key": "grgic-2022-failure-meta",
+      "authors": [
+        "Grgic J",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Effects of resistance training performed to repetition failure or non-failure on muscular strength and hypertrophy: A systematic review and meta-analysis.",
+      "source": "Journal of Sport and Health Science",
+      "volume": "11",
+      "issue": "2",
+      "pages": "202-211",
+      "doi": "10.1016/j.jshs.2021.01.007",
+      "pmid": "33497853",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33497853/"
+    },
+    {
+      "key": "guest-2021-caffeine",
+      "authors": [
+        "Guest NS",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "International society of sports nutrition position stand: caffeine and exercise performance.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "18",
+      "issue": "1",
+      "pages": "1",
+      "doi": "10.1186/s12970-020-00383-4",
+      "pmid": "33388079",
+      "study_type": "position-stand",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33388079/"
+    },
+    {
+      "key": "haugen-2023-free-weights-machines",
+      "authors": [
+        "Haugen ME",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Effect of free-weight vs. machine-based strength training on maximal strength, hypertrophy and jump performance - a systematic review and meta-analysis.",
+      "source": "BMC Sports Science, Medicine and Rehabilitation",
+      "volume": "15",
+      "issue": "1",
+      "pages": "103",
+      "doi": "10.1186/s13102-023-00713-4",
+      "pmid": "37582807",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/37582807/"
+    },
+    {
+      "key": "haun-2019-measurement",
+      "authors": [
+        "Haun CT",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "A Critical Evaluation of the Biological Construct Skeletal Muscle Hypertrophy: Size Matters but So Does the Measurement.",
+      "source": "Frontiers in Physiology",
+      "volume": "10",
+      "pages": "247",
+      "doi": "10.3389/fphys.2019.00247",
+      "pmid": "30930796",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30930796/"
+    },
+    {
+      "key": "helms-2016-rir-rpe-application",
+      "authors": [
+        "Helms ER",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Application of the Repetitions in Reserve-Based Rating of Perceived Exertion Scale for Resistance Training.",
+      "source": "Strength and Conditioning Journal",
+      "volume": "38",
+      "issue": "4",
+      "pages": "42-49",
+      "doi": "10.1519/SSC.0000000000000218",
+      "pmid": "27531969",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27531969/"
+    },
+    {
+      "key": "helms-2020-regulating-monitoring",
+      "authors": [
+        "Helms ER",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "Methods for Regulating and Monitoring Resistance Training.",
+      "source": "Journal of Human Kinetics",
+      "volume": "74",
+      "pages": "23-42",
+      "doi": "10.2478/hukin-2020-0011",
+      "pmid": "33312273",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33312273/"
+    },
+    {
+      "key": "hermann-2025-failure-rir",
+      "authors": [
+        "Hermann T",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Without Fail: Muscular Adaptations in Single-Set Resistance Training Performed to Failure or with Repetitions-in-Reserve.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "57",
+      "issue": "9",
+      "pages": "2021-2031",
+      "doi": "10.1249/MSS.0000000000003728",
+      "pmid": "40249908",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40249908/"
+    },
+    {
+      "key": "hubal-2005-responders",
+      "authors": [
+        "Hubal MJ",
+        "et al."
+      ],
+      "year": 2005,
+      "title": "Variability in muscle size and strength gain after unilateral resistance training.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "37",
+      "issue": "6",
+      "pages": "964-972",
+      "pmid": "15947721",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/15947721/",
+      "study_type": "cohort",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15947721/"
+    },
+    {
+      "key": "kassiano-2023-rom-review",
+      "authors": [
+        "Kassiano W",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Which ROMs Lead to Rome? A Systematic Review of the Effects of Range of Motion on Muscle Hypertrophy.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "37",
+      "issue": "5",
+      "pages": "1135-1144",
+      "doi": "10.1519/JSC.0000000000004415",
+      "pmid": "36662126",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36662126/"
+    },
+    {
+      "key": "kreher-2012-overtraining",
+      "authors": [
+        "Kreher JB",
+        "Schwartz JB"
+      ],
+      "year": 2012,
+      "title": "Overtraining syndrome: a practical guide.",
+      "source": "Sports Health",
+      "volume": "4",
+      "issue": "2",
+      "pages": "128-138",
+      "doi": "10.1177/1941738111434406",
+      "pmid": "23016079",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23016079/"
+    },
+    {
+      "key": "kreider-2017-creatine",
+      "authors": [
+        "Kreider RB",
+        "et al."
+      ],
+      "year": 2017,
+      "title": "International Society of Sports Nutrition position stand: safety and efficacy of creatine supplementation in exercise, sport, and medicine.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "14",
+      "pages": "18",
+      "doi": "10.1186/s12970-017-0173-z",
+      "pmid": "28615996",
+      "study_type": "position-stand",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+    },
+    {
+      "key": "krieger-2010-single-multiple-sets",
+      "authors": [
+        "Krieger JW"
+      ],
+      "year": 2010,
+      "title": "Single vs. multiple sets of resistance exercise for muscle hypertrophy: a meta-analysis.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "24",
+      "issue": "4",
+      "pages": "1150-1159",
+      "doi": "10.1519/JSC.0b013e3181d4d436",
+      "pmid": "20300012",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20300012/"
+    },
+    {
+      "key": "lasevicius-2018-intensities-volume-load",
+      "authors": [
+        "Lasevicius T",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Effects of different intensities of resistance training with equated volume load on muscle strength and hypertrophy.",
+      "source": "European Journal of Sport Science",
+      "volume": "18",
+      "issue": "6",
+      "pages": "772-780",
+      "doi": "10.1080/17461391.2018.1450898",
+      "pmid": "29564973",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29564973/"
+    },
+    {
+      "key": "longland-2016-deficit-protein",
+      "authors": [
+        "Longland TM",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Higher compared with lower dietary protein during an energy deficit combined with intense exercise promotes greater lean mass gain and fat mass loss: a randomized trial.",
+      "source": "The American Journal of Clinical Nutrition",
+      "volume": "103",
+      "issue": "3",
+      "pages": "738-746",
+      "doi": "10.3945/ajcn.115.119339",
+      "pmid": "26817506",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26817506/"
+    },
+    {
+      "key": "maeo-2023-triceps-overhead",
+      "authors": [
+        "Maeo S",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.",
+      "source": "European Journal of Sport Science",
+      "volume": "23",
+      "issue": "7",
+      "pages": "1240-1250",
+      "doi": "10.1080/17461391.2022.2100279",
+      "pmid": "35819335",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35819335/"
+    },
+    {
+      "key": "mcnulty-2020-menstrual-cycle",
+      "authors": [
+        "McNulty KL",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "The Effects of Menstrual Cycle Phase on Exercise Performance in Eumenorrheic Women: A Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "50",
+      "issue": "10",
+      "pages": "1813-1827",
+      "doi": "10.1007/s40279-020-01319-3",
+      "pmid": "32661839",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32661839/"
+    },
+    {
+      "key": "moesgaard-2022-periodization",
+      "authors": [
+        "Moesgaard L",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Effects of Periodization on Strength and Muscle Hypertrophy in Volume-Equated Resistance Training Programs: A Systematic Review and Meta-analysis.",
+      "source": "Sports Medicine",
+      "volume": "52",
+      "issue": "7",
+      "pages": "1647-1666",
+      "doi": "10.1007/s40279-021-01636-1",
+      "pmid": "35044672",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35044672/"
+    },
+    {
+      "key": "morton-2016-load-hormones",
+      "authors": [
+        "Morton RW",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Neither load nor systemic hormones determine resistance training-mediated hypertrophy or strength gains in resistance-trained young men.",
+      "source": "Journal of Applied Physiology",
+      "volume": "121",
+      "issue": "1",
+      "pages": "129-138",
+      "doi": "10.1152/japplphysiol.00154.2016",
+      "pmid": "27174923",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27174923/"
+    },
+    {
+      "key": "morton-2018-protein-meta",
+      "authors": [
+        "Morton RW",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength in healthy adults.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "6",
+      "pages": "376-384",
+      "doi": "10.1136/bjsports-2017-097608",
+      "pmid": "28698222",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28698222/"
+    },
+    {
+      "key": "nedeltcheva-2010-sleep-adiposity",
+      "authors": [
+        "Nedeltcheva AV",
+        "et al."
+      ],
+      "year": 2010,
+      "title": "Insufficient sleep undermines dietary efforts to reduce adiposity.",
+      "source": "Annals of Internal Medicine",
+      "volume": "153",
+      "issue": "7",
+      "pages": "435-441",
+      "doi": "10.7326/0003-4819-153-7-201010050-00006",
+      "pmid": "20921542",
+      "study_type": "RCT",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20921542/"
+    },
+    {
+      "key": "parr-2014-alcohol",
+      "authors": [
+        "Parr EB",
+        "et al."
+      ],
+      "year": 2014,
+      "title": "Alcohol ingestion impairs maximal post-exercise rates of myofibrillar protein synthesis following a single bout of concurrent training.",
+      "source": "PLoS One",
+      "volume": "9",
+      "issue": "2",
+      "pages": "e88384",
+      "doi": "10.1371/journal.pone.0088384",
+      "pmid": "24533082",
+      "study_type": "non-RCT-trial",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24533082/"
+    },
+    {
+      "key": "pedrosa-2022-lengthened-partials",
+      "authors": [
+        "Pedrosa GF",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Partial range of motion training elicits favorable improvements in muscular adaptations when carried out at long muscle lengths.",
+      "source": "European Journal of Sport Science",
+      "volume": "22",
+      "issue": "8",
+      "pages": "1250-1260",
+      "doi": "10.1080/17461391.2021.1927199",
+      "pmid": "33977835",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33977835/"
+    },
+    {
+      "key": "petrella-2008-satellite-myonuclear",
+      "authors": [
+        "Petrella JK",
+        "et al."
+      ],
+      "year": 2008,
+      "title": "Potent myofiber hypertrophy during resistance training in humans is associated with satellite cell-mediated myonuclear addition: a cluster analysis.",
+      "source": "Journal of Applied Physiology",
+      "volume": "104",
+      "issue": "6",
+      "pages": "1736-1742",
+      "doi": "10.1152/japplphysiol.01215.2007",
+      "pmid": "18436694",
+      "study_type": "cohort",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/18436694/"
+    },
+    {
+      "key": "radaelli-2025-older-adults-volume",
+      "authors": [
+        "Radaelli R",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Effects of Resistance Training Volume on Physical Function, Lean Body Mass and Lower-Body Muscle Hypertrophy and Strength in Older Adults: A Systematic Review and Network Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "55",
+      "issue": "1",
+      "pages": "167-192",
+      "doi": "10.1007/s40279-024-02123-z",
+      "pmid": "39405023",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39405023/"
+    },
+    {
+      "key": "ramirez-campillo-2013-spot-reduction",
+      "authors": [
+        "Ramírez-Campillo R",
+        "et al."
+      ],
+      "year": 2013,
+      "title": "Regional fat changes induced by localized muscle endurance resistance training.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "27",
+      "issue": "8",
+      "pages": "2219-2224",
+      "doi": "10.1519/JSC.0b013e31827e8681",
+      "pmid": "23222084",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23222084/"
+    },
+    {
+      "key": "refalo-2024-failure-rir-rct",
+      "authors": [
+        "Refalo MC",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Similar muscle hypertrophy following eight weeks of resistance training to momentary muscular failure or with repetitions-in-reserve in resistance-trained individuals.",
+      "source": "Journal of Sports Sciences",
+      "volume": "42",
+      "issue": "1",
+      "pages": "85-101",
+      "doi": "10.1080/02640414.2024.2321021",
+      "pmid": "38393985",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38393985/"
+    },
+    {
+      "key": "roberts-2015-cold-water-immersion",
+      "authors": [
+        "Roberts LA",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "Post-exercise cold water immersion attenuates acute anabolic signalling and long-term adaptations in muscle to strength training.",
+      "source": "The Journal of Physiology",
+      "volume": "593",
+      "issue": "18",
+      "pages": "4285-4301",
+      "doi": "10.1113/JP270570",
+      "pmid": "26174323",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26174323/"
+    },
+    {
+      "key": "roberts-2020-sex-differences",
+      "authors": [
+        "Roberts BM",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "Sex Differences in Resistance Training: A Systematic Review and Meta-Analysis.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "34",
+      "issue": "5",
+      "pages": "1448-1460",
+      "doi": "10.1519/JSC.0000000000003521",
+      "pmid": "32218059",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32218059/"
+    },
+    {
+      "key": "roberts-2023-mechanisms-review",
+      "authors": [
+        "Roberts MD",
+        "et al."
+      ],
+      "year": 2023,
+      "title": "Mechanisms of mechanical overload-induced skeletal muscle hypertrophy: current understanding and future directions.",
+      "source": "Physiological Reviews",
+      "volume": "103",
+      "issue": "4",
+      "pages": "2679-2757",
+      "doi": "10.1152/physrev.00039.2022",
+      "pmid": "37382939",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/37382939/"
+    },
+    {
+      "key": "robinson-2024-failure-dose-response",
+      "authors": [
+        "Robinson ZP",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy: A Series of Meta-Regressions.",
+      "source": "Sports Medicine",
+      "volume": "54",
+      "issue": "9",
+      "pages": "2209-2231",
+      "doi": "10.1007/s40279-024-02069-2",
+      "pmid": "38970765",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38970765/"
+    },
+    {
+      "key": "schoenfeld-2010-mechanisms",
+      "authors": [
+        "Schoenfeld BJ"
+      ],
+      "year": 2010,
+      "title": "The mechanisms of muscle hypertrophy and their application to resistance training.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "24",
+      "issue": "10",
+      "pages": "2857-2872",
+      "doi": "10.1519/JSC.0b013e3181e840f3",
+      "pmid": "20847704",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20847704/"
+    },
+    {
+      "key": "schoenfeld-2013-metabolic-stress",
+      "authors": [
+        "Schoenfeld BJ"
+      ],
+      "year": 2013,
+      "title": "Potential mechanisms for a role of metabolic stress in hypertrophic adaptations to resistance training.",
+      "source": "Sports Medicine",
+      "volume": "43",
+      "issue": "3",
+      "pages": "179-194",
+      "doi": "10.1007/s40279-013-0017-1",
+      "pmid": "23338987",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23338987/"
+    },
+    {
+      "key": "schoenfeld-2013-protein-timing-meta",
+      "authors": [
+        "Schoenfeld BJ",
+        "Aragon AA",
+        "Krieger JW"
+      ],
+      "year": 2013,
+      "title": "The effect of protein timing on muscle strength and hypertrophy: a meta-analysis.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "10",
+      "issue": "1",
+      "pages": "53",
+      "doi": "10.1186/1550-2783-10-53",
+      "pmid": "24299050",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24299050/"
+    },
+    {
+      "key": "schoenfeld-2014-loading-strategies",
+      "authors": [
+        "Schoenfeld BJ",
+        "et al."
+      ],
+      "year": 2014,
+      "title": "Effects of different volume-equated resistance training loading strategies on muscular adaptations in well-trained men.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "28",
+      "issue": "10",
+      "pages": "2909-2918",
+      "doi": "10.1519/JSC.0000000000000480",
+      "pmid": "24714538",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24714538/"
+    },
+    {
+      "key": "schoenfeld-2015-frequency-well-trained",
+      "authors": [
+        "Schoenfeld BJ",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "Influence of Resistance Training Frequency on Muscular Adaptations in Well-Trained Men.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "29",
+      "issue": "7",
+      "pages": "1821-1829",
+      "doi": "10.1519/JSC.0000000000000970",
+      "pmid": "25932981",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/25932981/"
+    },
+    {
+      "key": "schoenfeld-2015-rep-duration-meta",
+      "authors": [
+        "Schoenfeld BJ",
+        "Ogborn DI",
+        "Krieger JW"
+      ],
+      "year": 2015,
+      "title": "Effect of repetition duration during resistance training on muscle hypertrophy: a systematic review and meta-analysis.",
+      "source": "Sports Medicine",
+      "volume": "45",
+      "issue": "4",
+      "pages": "577-585",
+      "doi": "10.1007/s40279-015-0304-0",
+      "pmid": "25601394",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/25601394/"
+    },
+    {
+      "key": "schoenfeld-2016-frequency-meta",
+      "authors": [
+        "Schoenfeld BJ",
+        "Ogborn DI",
+        "Krieger JW"
+      ],
+      "year": 2016,
+      "title": "Effects of Resistance Training Frequency on Measures of Muscle Hypertrophy: A Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "46",
+      "issue": "11",
+      "pages": "1689-1697",
+      "doi": "10.1007/s40279-016-0543-8",
+      "pmid": "27102172",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27102172/"
+    },
+    {
+      "key": "schoenfeld-2016-rest-intervals",
+      "authors": [
+        "Schoenfeld BJ",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Longer Interset Rest Periods Enhance Muscle Strength and Hypertrophy in Resistance-Trained Men.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "30",
+      "issue": "7",
+      "pages": "1805-1812",
+      "doi": "10.1519/JSC.0000000000001272",
+      "pmid": "26605807",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26605807/"
+    },
+    {
+      "key": "schoenfeld-2017-load-meta",
+      "authors": [
+        "Schoenfeld BJ",
+        "Grgic J",
+        "Ogborn D",
+        "Krieger JW"
+      ],
+      "year": 2017,
+      "title": "Strength and Hypertrophy Adaptations Between Low- vs. High-Load Resistance Training: A Systematic Review and Meta-analysis.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "31",
+      "issue": "12",
+      "pages": "3508-3523",
+      "doi": "10.1519/JSC.0000000000002200",
+      "pmid": "28834797",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28834797/"
+    },
+    {
+      "key": "schoenfeld-2017-volume-dose-response",
+      "authors": [
+        "Schoenfeld BJ",
+        "Ogborn DI",
+        "Krieger JW"
+      ],
+      "year": 2017,
+      "title": "Dose-response relationship between weekly resistance training volume and increases in muscle mass: A systematic review and meta-analysis.",
+      "source": "Journal of Sports Sciences",
+      "volume": "35",
+      "issue": "11",
+      "pages": "1073-1082",
+      "doi": "10.1080/02640414.2016.1210197",
+      "pmid": "27433992",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27433992/"
+    },
+    {
+      "key": "schoenfeld-2018-protein-per-meal",
+      "authors": [
+        "Schoenfeld BJ",
+        "Aragon AA"
+      ],
+      "year": 2018,
+      "title": "How much protein can the body use in a single meal for muscle-building? Implications for daily protein distribution.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "15",
+      "pages": "10",
+      "doi": "10.1186/s12970-018-0215-1",
+      "pmid": "29497353",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29497353/"
+    },
+    {
+      "key": "schoenfeld-2019-frequency-meta",
+      "authors": [
+        "Schoenfeld BJ",
+        "Grgic J",
+        "Krieger J"
+      ],
+      "year": 2019,
+      "title": "How many times per week should a muscle be trained to maximize muscle hypertrophy? A systematic review and meta-analysis of studies examining the effects of resistance training frequency.",
+      "source": "Journal of Sports Sciences",
+      "volume": "37",
+      "issue": "11",
+      "pages": "1286-1295",
+      "doi": "10.1080/02640414.2018.1555906",
+      "pmid": "30558493",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30558493/"
+    },
+    {
+      "key": "schoenfeld-2019-volume-trained-men",
+      "authors": [
+        "Schoenfeld BJ",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Resistance Training Volume Enhances Muscle Hypertrophy but Not Strength in Trained Men.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "51",
+      "issue": "1",
+      "pages": "94-103",
+      "doi": "10.1249/MSS.0000000000001764",
+      "pmid": "30153194",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30153194/"
+    },
+    {
+      "key": "schoenfeld-2020-rom-review",
+      "authors": [
+        "Schoenfeld BJ",
+        "Grgic J"
+      ],
+      "year": 2020,
+      "title": "Effects of range of motion on muscle development during resistance training interventions: A systematic review.",
+      "source": "SAGE Open Medicine",
+      "volume": "8",
+      "pages": "2050312120901559",
+      "doi": "10.1177/2050312120901559",
+      "pmid": "32030125",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32030125/"
+    },
+    {
+      "key": "schoenfeld-2021-loading-recommendations",
+      "authors": [
+        "Schoenfeld BJ",
+        "Grgic J",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Loading Recommendations for Muscle Strength, Hypertrophy, and Local Endurance: A Re-Examination of the Repetition Continuum.",
+      "source": "Sports (Basel)",
+      "volume": "9",
+      "issue": "2",
+      "pages": "32",
+      "doi": "10.3390/sports9020032",
+      "pmid": "33671664",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33671664/"
+    },
+    {
+      "key": "slater-2019-energy-surplus",
+      "authors": [
+        "Slater GJ",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Is an Energy Surplus Required to Maximize Skeletal Muscle Hypertrophy Associated with Resistance Training?",
+      "source": "Frontiers in Nutrition",
+      "volume": "6",
+      "pages": "131",
+      "doi": "10.3389/fnut.2019.00131",
+      "pmid": "31482093",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31482093/"
+    },
+    {
+      "key": "tagawa-2020-protein-dose",
+      "authors": [
+        "Tagawa R",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "Dose-response relationship between protein intake and muscle mass increase: a systematic review and meta-analysis of randomized controlled trials.",
+      "source": "Nutrition Reviews",
+      "volume": "79",
+      "issue": "1",
+      "pages": "66-75",
+      "doi": "10.1093/nutrit/nuaa104",
+      "pmid": "33300582",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33300582/"
+    },
+    {
+      "key": "vispute-2011-abdominal-fat",
+      "authors": [
+        "Vispute SS",
+        "et al."
+      ],
+      "year": 2011,
+      "title": "The effect of abdominal exercise on abdominal fat.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "25",
+      "issue": "9",
+      "pages": "2559-2564",
+      "doi": "10.1519/JSC.0b013e3181fb4a46",
+      "pmid": "21804427",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/21804427/"
+    },
+    {
+      "key": "wackerhage-2019-stimuli-sensors",
+      "authors": [
+        "Wackerhage H",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Stimuli and sensors that initiate skeletal muscle hypertrophy following resistance exercise.",
+      "source": "Journal of Applied Physiology",
+      "volume": "126",
+      "issue": "1",
+      "pages": "30-43",
+      "doi": "10.1152/japplphysiol.00685.2018",
+      "pmid": "30335577",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30335577/"
+    },
+    {
+      "key": "wiewelhove-2019-foam-rolling",
+      "authors": [
+        "Wiewelhove T",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "A Meta-Analysis of the Effects of Foam Rolling on Performance and Recovery.",
+      "source": "Frontiers in Physiology",
+      "volume": "10",
+      "pages": "376",
+      "doi": "10.3389/fphys.2019.00376",
+      "pmid": "31024339",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31024339/"
+    },
+    {
+      "key": "zourdos-2016-rir-rpe-scale",
+      "authors": [
+        "Zourdos MC",
+        "et al."
+      ],
+      "year": 2016,
+      "title": "Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "30",
+      "issue": "1",
+      "pages": "267-275",
+      "doi": "10.1519/JSC.0000000000001049",
+      "pmid": "26049792",
+      "study_type": "cross-sectional",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26049792/"
+    },
+    {
+      "key": "zourdos-2021-rir-accuracy",
+      "authors": [
+        "Zourdos MC",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Proximity to Failure and Total Repetitions Performed in a Set Influences Accuracy of Intraset Repetitions in Reserve-Based Rating of Perceived Exertion.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "35",
+      "issue": "Suppl 1",
+      "pages": "S158-S165",
+      "doi": "10.1519/JSC.0000000000002995",
+      "pmid": "30747900",
+      "study_type": "cross-sectional",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30747900/"
+    }
+  ]
+}

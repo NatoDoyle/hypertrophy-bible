@@ -1,0 +1,23 @@
+{
+  "id": "incline-dumbbell-press",
+  "name": "Incline Dumbbell Press",
+  "aliases": ["incline DB press"],
+  "primary_muscles": ["chest"],
+  "secondary_muscles": ["front-delts", "triceps"],
+  "movement_pattern": "horizontal-push",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": ["sagittal"],
+  "resistance_profile": "Incline (~30 degrees) biases the clavicular (upper) chest; dumbbells allow a deeper stretch at the bottom than a barbell.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Lower until a comfortable deep stretch across the upper chest; do not let the shoulders roll forward.",
+  "difficulty": "beginner",
+  "cues": ["Set a low incline (~15-30 degrees)", "Lower under control into the stretch", "Press the dumbbells up and slightly together"],
+  "common_errors": ["Incline set too steep (turns into a shoulder press)", "Short range at the top only", "Letting the dumbbells drift"],
+  "progressions": ["Add load", "Add a pause in the stretched position"],
+  "regressions": ["Machine incline press", "Incline barbell press"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

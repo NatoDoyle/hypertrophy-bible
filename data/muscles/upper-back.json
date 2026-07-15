@@ -1,0 +1,25 @@
+{
+  "id": "upper-back",
+  "name": "Upper Back (Trapezius & Rhomboids)",
+  "group": "back",
+  "regions": ["upper trapezius", "middle trapezius", "lower trapezius", "rhomboids"],
+  "functions": [
+    "scapular retraction",
+    "scapular elevation (upper traps)",
+    "scapular depression (lower traps)",
+    "scapular upward rotation"
+  ],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 8 },
+    "mev": { "min": 10, "max": 10 },
+    "mav": { "min": 14, "max": 22 },
+    "mrv": { "min": 24, "max": 26 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Tolerates high volume and frequency; receives substantial indirect work from rows, deadlifts, and carries. Estimate only."
+  },
+  "frequency_notes": "~2-3x/week; overlaps heavily with lat and rear-delt training.",
+  "training_notes": "Rows train the mid-traps/rhomboids; add shrugs or upright variations for upper traps if prioritized.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

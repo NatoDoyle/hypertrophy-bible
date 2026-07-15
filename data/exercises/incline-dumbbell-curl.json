@@ -1,0 +1,23 @@
+{
+  "id": "incline-dumbbell-curl",
+  "name": "Incline Dumbbell Curl",
+  "aliases": ["incline curl"],
+  "primary_muscles": ["biceps"],
+  "secondary_muscles": ["forearms"],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": ["sagittal"],
+  "resistance_profile": "Reclined bench draws the arms behind the torso, stretching the biceps long head under load — a lengthened-biased curl.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Let the arms hang back into a full stretch at the bottom; supinate as you curl.",
+  "difficulty": "beginner",
+  "cues": ["Sit back on a ~45-60 degree incline", "Let the arms hang behind the body at the bottom", "Curl and supinate, keep the elbows still"],
+  "common_errors": ["Swinging the elbows forward", "Cutting the bottom stretch short", "Using momentum"],
+  "progressions": ["Add load via double progression", "Pause in the stretched position"],
+  "regressions": ["Standing dumbbell curl", "Cable curl"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

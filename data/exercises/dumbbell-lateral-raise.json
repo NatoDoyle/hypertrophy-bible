@@ -1,0 +1,22 @@
+{
+  "id": "dumbbell-lateral-raise",
+  "name": "Dumbbell Lateral Raise",
+  "aliases": ["side raise", "lateral raise"],
+  "primary_muscles": ["side-delts"],
+  "secondary_muscles": ["upper-back"],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "plane": ["frontal"],
+  "resistance_profile": "With dumbbells, tension is lowest at the bottom and highest near horizontal; cables load the bottom (lengthened) portion better.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Raise to roughly shoulder height; the very top adds little tension. Control the lowering phase.",
+  "difficulty": "beginner",
+  "cues": ["Lead with the elbows, not the hands", "Slight forward lean loads the side delt more", "Lower slowly under control"],
+  "common_errors": ["Swinging with momentum", "Shrugging the traps to lift", "Going too heavy and shortening the range"],
+  "progressions": ["Add reps then load (double progression)", "Switch to a cable for better lengthened tension"],
+  "regressions": ["Cable lateral raise", "Machine lateral raise"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

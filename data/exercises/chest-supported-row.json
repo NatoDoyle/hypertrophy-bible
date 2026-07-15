@@ -1,0 +1,23 @@
+{
+  "id": "chest-supported-row",
+  "name": "Chest-Supported Row",
+  "aliases": ["seal row", "machine row", "chest-supported dumbbell row"],
+  "primary_muscles": ["upper-back", "lats"],
+  "secondary_muscles": ["rear-delts", "biceps"],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": ["transverse"],
+  "resistance_profile": "Even tension through the row; chest support removes lower-back involvement so you can train the back hard near failure.",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "rom_notes": "Allow the shoulder blades to protract and arms to extend fully at the front, then retract and row to the torso.",
+  "difficulty": "beginner",
+  "cues": ["Let the shoulder blades stretch forward at the front", "Row with the elbows, squeeze the back", "Keep the chest on the pad (no torso english)"],
+  "common_errors": ["Heaving with the torso", "Short range at the contracted end only", "Shrugging instead of retracting"],
+  "progressions": ["Add load", "Pause at full contraction"],
+  "regressions": ["Seated cable row", "Single-arm dumbbell row"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

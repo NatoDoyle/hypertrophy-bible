@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/supplement.json",
+  "title": "Supplement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "tier", "summary"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "tier": {
+      "enum": ["strong", "modest", "insufficient", "avoid"],
+      "description": "Strength of evidence that it aids hypertrophy or supports training"
+    },
+    "summary": { "type": "string" },
+    "effect": { "type": "string", "description": "What it does and rough effect size" },
+    "dosing": { "type": "string" },
+    "timing": { "type": "string" },
+    "safety": { "type": "string" },
+    "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+    "citations": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "creatine-monohydrate",
+  "name": "Creatine Monohydrate",
+  "tier": "strong",
+  "summary": "The most evidence-backed supplement for muscle and strength. Modestly increases training performance and lean mass over time; safe, cheap, and well-studied.",
+  "effect": "Small but reliable increase in strength, power, and lean mass when combined with resistance training; some of the initial weight gain is intracellular water.",
+  "dosing": "3-5 g/day of monohydrate, taken any time of day, consistently. An optional loading phase (~20 g/day split for 5-7 days) speeds saturation but isn't required.",
+  "timing": "Irrelevant — total daily intake and consistency are what matter.",
+  "safety": "Extensively studied and considered safe for healthy individuals at recommended doses; does not harm kidneys in healthy people.",
+  "evidence_grade": "A",
+  "citations": ["kreider-2017-creatine"]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "lats",
+  "name": "Latissimus Dorsi",
+  "group": "back",
+  "regions": ["upper lat", "lower lat"],
+  "functions": [
+    "shoulder extension",
+    "shoulder adduction",
+    "humeral internal rotation",
+    "scapular downward rotation"
+  ],
+  "antagonists": ["chest", "front-delts"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 8 },
+    "mev": { "min": 10, "max": 10 },
+    "mav": { "min": 14, "max": 20 },
+    "mrv": { "min": 22, "max": 25 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Back musculature generally tolerates relatively high weekly volume. Estimate only; individualize."
+  },
+  "frequency_notes": "~2x/week, split across vertical (pulldown/pull-up) and horizontal (row) pulling.",
+  "training_notes": "Use both a vertical and a horizontal pull. Emphasize the stretched position (full reach overhead on pulldowns/pull-ups).",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

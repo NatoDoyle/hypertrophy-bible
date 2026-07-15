@@ -1,0 +1,20 @@
+{
+  "id": "forearms",
+  "name": "Forearms (Wrist Flexors & Extensors)",
+  "group": "arms",
+  "regions": ["wrist flexors", "wrist extensors", "brachioradialis"],
+  "functions": ["wrist flexion", "wrist extension", "grip (finger flexion)", "elbow flexion (brachioradialis)"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 4 },
+    "mev": { "min": 6, "max": 6 },
+    "mav": { "min": 8, "max": 12 },
+    "mrv": { "min": 16, "max": 16 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response"],
+    "notes": "Grip and forearm flexors get heavy indirect work from pulling and carrying. Add direct work if lagging. Estimate only."
+  },
+  "frequency_notes": "Tolerates frequent (2-4x/week) low-fatigue direct work.",
+  "training_notes": "Wrist curls/extensions and loaded carries or heavy holds. Brachioradialis is trained by hammer/reverse curls.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

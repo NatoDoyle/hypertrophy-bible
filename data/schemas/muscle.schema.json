@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/muscle.json",
+  "title": "Muscle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "group", "functions", "landmarks"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "group": {
+      "enum": ["chest", "back", "shoulders", "arms", "legs", "core", "neck"]
+    },
+    "regions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Heads or functional regions worth training distinctly"
+    },
+    "functions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Joint actions the muscle performs; drives exercise selection"
+    },
+    "antagonists": { "type": "array", "items": { "type": "string" } },
+    "landmarks": { "$ref": "https://hypertrophy-bible.dev/schemas/volume-landmarks.json" },
+    "frequency_notes": { "type": "string" },
+    "recovery_notes": { "type": "string" },
+    "training_notes": { "type": "string" },
+    "citations": { "type": "array", "items": { "type": "string" } }
+  }
+}

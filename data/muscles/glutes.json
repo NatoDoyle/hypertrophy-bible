@@ -1,0 +1,20 @@
+{
+  "id": "glutes",
+  "name": "Glutes (Gluteus Maximus, Medius, Minimus)",
+  "group": "legs",
+  "regions": ["gluteus maximus", "gluteus medius", "gluteus minimus"],
+  "functions": ["hip extension", "hip abduction", "hip external rotation", "posterior pelvic tilt"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 4 },
+    "mev": { "min": 4, "max": 6 },
+    "mav": { "min": 8, "max": 16 },
+    "mrv": { "min": 20, "max": 20 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Heavily worked by squats, hinges, and lunges, so direct MEV is low for most people. Estimate only."
+  },
+  "frequency_notes": "~2x/week; largely covered by compound lower-body training.",
+  "training_notes": "Squats and deadlifts load the glutes at long lengths (deep hip flexion); hip thrusts add short-position, high-tension work. Add abduction work for the medius/minimus if targeting shape.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

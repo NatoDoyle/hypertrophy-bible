@@ -1,0 +1,23 @@
+{
+  "id": "barbell-back-squat",
+  "name": "Barbell Back Squat",
+  "aliases": ["back squat", "high-bar squat"],
+  "primary_muscles": ["quadriceps"],
+  "secondary_muscles": ["glutes", "spinal-erectors", "hamstrings"],
+  "movement_pattern": "squat",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": ["sagittal"],
+  "resistance_profile": "Hardest near the bottom (deep knee/hip flexion), loading the quads at long length.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Squat to at least parallel; deeper increases quad and glute stretch if mobility allows.",
+  "difficulty": "intermediate",
+  "cues": ["Brace the core before descending", "Sit between the hips, knees track over toes", "Drive the floor away out of the hole"],
+  "common_errors": ["Cutting depth short", "Heels rising / knees caving", "Losing the brace and rounding under load"],
+  "progressions": ["Add load via double progression", "Pause reps in the bottom"],
+  "regressions": ["Goblet squat", "Leg press", "Hack squat"],
+  "citations": ["schoenfeld-2010-mechanisms"]
+}

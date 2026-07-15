@@ -1,0 +1,21 @@
+{
+  "id": "front-delts",
+  "name": "Anterior Deltoid (Front Delt)",
+  "group": "shoulders",
+  "regions": ["anterior deltoid"],
+  "functions": ["shoulder flexion", "shoulder horizontal adduction", "humeral internal rotation"],
+  "antagonists": ["rear-delts"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 4 },
+    "mev": { "min": 6, "max": 6 },
+    "mav": { "min": 8, "max": 12 },
+    "mrv": { "min": 14, "max": 16 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response"],
+    "notes": "Heavily worked by all horizontal and overhead pressing, so direct volume needs are modest for most people. Estimate only."
+  },
+  "frequency_notes": "Usually covered by pressing frequency; add little dedicated work unless prioritized.",
+  "training_notes": "Overhead and incline pressing provide most of the stimulus. Front raises are rarely needed.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

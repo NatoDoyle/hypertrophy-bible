@@ -1,0 +1,54 @@
+{
+  "id": "upper-lower-4day",
+  "name": "Upper/Lower (4 days/week)",
+  "split": "upper-lower",
+  "days_per_week": 4,
+  "experience_level": ["intermediate"],
+  "target_population": "Intermediate lifters wanting ~2x/week frequency per muscle with more per-muscle volume than full-body allows. Run as Upper/Lower/rest/Upper/Lower.",
+  "progression_ref": "double-progression",
+  "sessions": [
+    {
+      "name": "Upper 1 (strength-biased)",
+      "exercises": [
+        { "exercise": "barbell-bench-press", "sets": 4, "rep_range": "5-8", "rir": "1-2" },
+        { "exercise": "chest-supported-row", "sets": 4, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "incline-dumbbell-press", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "lat-pulldown", "sets": 3, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "dumbbell-lateral-raise", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "overhead-cable-triceps-extension", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Lower 1 (squat-biased)",
+      "exercises": [
+        { "exercise": "barbell-back-squat", "sets": 4, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "romanian-deadlift", "sets": 3, "rep_range": "6-10", "rir": "2" },
+        { "exercise": "seated-leg-curl", "sets": 3, "rep_range": "8-12", "rir": "0-1" },
+        { "exercise": "leg press", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "standing calf raise", "sets": 4, "rep_range": "8-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Upper 2 (hypertrophy-biased)",
+      "exercises": [
+        { "exercise": "incline-dumbbell-press", "sets": 4, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "lat-pulldown", "sets": 4, "rep_range": "8-12", "rir": "1-2" },
+        { "exercise": "seated cable row", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "cable lateral raise", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "incline-dumbbell-curl", "sets": 3, "rep_range": "8-12", "rir": "0-1" },
+        { "exercise": "overhead-cable-triceps-extension", "sets": 3, "rep_range": "10-15", "rir": "0-1" }
+      ]
+    },
+    {
+      "name": "Lower 2 (hinge-biased)",
+      "exercises": [
+        { "exercise": "romanian-deadlift", "sets": 4, "rep_range": "6-10", "rir": "1-2" },
+        { "exercise": "leg press", "sets": 3, "rep_range": "10-15", "rir": "0-1" },
+        { "exercise": "seated-leg-curl", "sets": 3, "rep_range": "8-12", "rir": "0-1" },
+        { "exercise": "leg extension", "sets": 3, "rep_range": "12-20", "rir": "0-1" },
+        { "exercise": "seated calf raise", "sets": 4, "rep_range": "10-20", "rir": "0-1" }
+      ]
+    }
+  ],
+  "citations": ["schoenfeld-2019-frequency-meta", "schoenfeld-2019-volume-trained-men"]
+}

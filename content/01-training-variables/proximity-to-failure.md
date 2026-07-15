@@ -1,0 +1,54 @@
+# Proximity to Failure (RIR / RPE)
+
+> **TL;DR** — Growth requires **hard sets taken reasonably close to failure**, but you **do not need to hit momentary failure** on most sets to grow well. Leaving **~1–3 reps in reserve (RIR)** on the majority of your work captures nearly all the stimulus while sparing you the extra fatigue, technique breakdown, and recovery cost of constant failure. Push closer to (or to) failure more often on **isolation and machine work**, where failure is safe and low-cost; leave a rep or two on **heavy compounds**. Use the RIR/RPE scale to gauge effort — knowing your estimates get more accurate the closer you are to failure.
+
+**Quick recommendations**
+- Take most sets to **~1–3 RIR** (hard, but a rep or two short of failure). **[Grade B]**
+- **Failure is optional, not required** — near-failure training grows muscle about as well with less fatigue. **[Grade A]**
+- Save **actual failure** mostly for **isolation/machine exercises** and the **last set** of an exercise, where it's safe and cheap. **[Grade B]**
+- On **heavy compounds**, keep **1–3 RIR** to protect technique and recovery. **[Grade C]**
+- Learn the **RIR-based RPE scale** to standardize effort across sessions; expect your judgment to be **most accurate within a few reps of failure**. **[Grade B]**
+
+## Practical Application
+
+**What "reps in reserve" means.** RIR is how many more reps you could have done before failing. 0 RIR = failure; 2 RIR = you stopped two reps short. The RIR-based RPE scale maps effort onto a number: RPE 10 = 0 RIR (failure), RPE 9 = 1 RIR, RPE 8 = 2 RIR, and so on.
+
+| Exercise type | Target effort | Why |
+|---------------|---------------|-----|
+| Heavy compounds (squat, deadlift, press, row) | 1–3 RIR | Failure here is fatiguing, technically risky, and slow to recover from |
+| Moderate compounds & most machine presses/rows | 0–2 RIR | Can push harder; still watch technique on the last reps |
+| Isolation (curls, extensions, raises, leg curls) | 0–1 RIR | Failure is safe and low-cost; a good place to spend maximal effort |
+
+**The core trade-off.** The reps near failure are the most stimulating, so you must train *close* to it — but the last rep or two before failure add disproportionate fatigue for a small extra stimulus. Stopping around 1–3 RIR sits at the sweet spot: nearly all the growth, much less of the cost. This lets you do **more quality sets** ([Volume](volume.md)) across **more sessions** ([Frequency](frequency.md)).
+
+**Calibrating RIR.** Most people under-estimate how many reps they have left (they stop too early) until they've practiced taking sets to true failure occasionally to learn the feeling. Periodically training an isolation exercise to failure recalibrates your internal RIR gauge.
+
+## The Evidence
+
+**Failure is not required for hypertrophy.** Grgic and colleagues' 2022 meta-analysis compared training to **repetition failure versus stopping short** and found **similar hypertrophy** whether or not sets reached failure[^grgic-2022-failure-meta]. **[Grade A]** Two subsequent randomized trials in resistance-trained and recreationally active lifters agree: Refalo and colleagues (2024) found **similar muscle growth** training to failure versus leaving reps in reserve[^refalo-2024-failure-rir-rct], and Hermann and colleagues (2025) likewise reported **comparable adaptations** for single sets taken to failure versus stopped with reps in reserve[^hermann-2025-failure-rir]. **[Grade A]**
+
+**But proximity still matters — modestly, for hypertrophy.** Robinson and colleagues' 2024 series of meta-regressions found that getting **closer to failure tends to slightly favor hypertrophy**, while **strength is driven more by load than by how close to failure you train**[^robinson-2024-failure-dose-response]. **[Grade B]** The hypertrophy gradient is real but shallow and uncertain, which is exactly why "close to failure, but not necessarily *at* it" is the defensible prescription — you get the benefit of proximity without paying failure's full fatigue tax.
+
+**Gauging effort: the RIR/RPE tool.** Zourdos and colleagues (2016) introduced and validated a **resistance-training-specific RPE scale based on repetitions in reserve**, giving lifters a standardized way to rate and target set effort[^zourdos-2016-rir-rpe-scale]. **[Grade B]** Helms and colleagues showed how to **apply this scale to autoregulate load and volume**[^helms-2016-rir-rpe-application] and later synthesized broader methods for regulating and monitoring training around it[^helms-2020-regulating-monitoring]. **[Grade C]**
+
+**A caveat on accuracy.** RIR estimation is not perfectly reliable. Zourdos and colleagues (2021) found that **accuracy of intra-set RIR judgments improves the closer you are to failure** and degrades when many reps remain[^zourdos-2021-rir-accuracy]. **[Grade B]** Practically: a called "2 RIR" is trustworthy; a called "6 RIR" is a guess. This favors training close enough that your effort ratings mean something.
+
+## Key Uncertainties & Nuance
+
+- **The size of the proximity effect is genuinely uncertain.** Evidence supports "close to failure," but whether 1 RIR meaningfully beats 3 RIR for growth is not settled. Don't sacrifice volume or technique to chase the last rep.
+- **Failure's cost scales with the exercise.** Failure on a leg press is cheap; failure on a heavy squat or deadlift is expensive and risky. The optimal proximity is exercise-specific, not a single number.
+- **Chronic failure training can backfire.** Always training to failure raises fatigue, can reduce the number of quality sets and sessions you can do, and may lower total effective volume — the thing that actually drives growth.
+- **RIR is a skill.** Beginners are poor at it; it improves with occasional true-failure reference sets and experience.
+
+## Backing Data
+None directly. RIR/RPE targets inform program prescriptions in [`data/programs/`](../../data/programs/) and progression rules in [`data/progressions/`](../../data/progressions/).
+
+## References
+[^grgic-2022-failure-meta]: Grgic J, et al. (2022). *Effects of resistance training performed to repetition failure or non-failure on muscular strength and hypertrophy: A systematic review and meta-analysis.* Journal of Sport and Health Science, 11(2), 202–211. DOI: [10.1016/j.jshs.2021.01.007](https://doi.org/10.1016/j.jshs.2021.01.007). PMID: 33497853.
+[^refalo-2024-failure-rir-rct]: Refalo MC, et al. (2024). *Similar muscle hypertrophy following eight weeks of resistance training to momentary muscular failure or with repetitions-in-reserve in resistance-trained individuals.* Journal of Sports Sciences, 42(1), 85–101. DOI: [10.1080/02640414.2024.2321021](https://doi.org/10.1080/02640414.2024.2321021). PMID: 38393985.
+[^hermann-2025-failure-rir]: Hermann T, et al. (2025). *Without Fail: Muscular Adaptations in Single-Set Resistance Training Performed to Failure or with Repetitions-in-Reserve.* Medicine and Science in Sports and Exercise, 57(9), 2021–2031. DOI: [10.1249/MSS.0000000000003728](https://doi.org/10.1249/MSS.0000000000003728). PMID: 40249908.
+[^robinson-2024-failure-dose-response]: Robinson ZP, et al. (2024). *Exploring the Dose-Response Relationship Between Estimated Resistance Training Proximity to Failure, Strength Gain, and Muscle Hypertrophy: A Series of Meta-Regressions.* Sports Medicine, 54(9), 2209–2231. DOI: [10.1007/s40279-024-02069-2](https://doi.org/10.1007/s40279-024-02069-2). PMID: 38970765.
+[^zourdos-2016-rir-rpe-scale]: Zourdos MC, et al. (2016). *Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve.* Journal of Strength and Conditioning Research, 30(1), 267–275. DOI: [10.1519/JSC.0000000000001049](https://doi.org/10.1519/JSC.0000000000001049). PMID: 26049792.
+[^helms-2016-rir-rpe-application]: Helms ER, et al. (2016). *Application of the Repetitions in Reserve-Based Rating of Perceived Exertion Scale for Resistance Training.* Strength and Conditioning Journal, 38(4), 42–49. DOI: [10.1519/SSC.0000000000000218](https://doi.org/10.1519/SSC.0000000000000218). PMID: 27531969.
+[^helms-2020-regulating-monitoring]: Helms ER, et al. (2020). *Methods for Regulating and Monitoring Resistance Training.* Journal of Human Kinetics, 74, 23–42. DOI: [10.2478/hukin-2020-0011](https://doi.org/10.2478/hukin-2020-0011). PMID: 33312273.
+[^zourdos-2021-rir-accuracy]: Zourdos MC, et al. (2021). *Proximity to Failure and Total Repetitions Performed in a Set Influences Accuracy of Intraset Repetitions in Reserve-Based Rating of Perceived Exertion.* Journal of Strength and Conditioning Research, 35(Suppl 1), S158–S165. DOI: [10.1519/JSC.0000000000002995](https://doi.org/10.1519/JSC.0000000000002995). PMID: 30747900.

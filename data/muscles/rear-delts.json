@@ -1,0 +1,21 @@
+{
+  "id": "rear-delts",
+  "name": "Posterior Deltoid (Rear Delt)",
+  "group": "shoulders",
+  "regions": ["posterior deltoid"],
+  "functions": ["shoulder horizontal abduction", "shoulder extension", "humeral external rotation"],
+  "antagonists": ["front-delts"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 6 },
+    "mev": { "min": 8, "max": 8 },
+    "mav": { "min": 12, "max": 18 },
+    "mrv": { "min": 22, "max": 22 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "Commonly undertrained; gets partial indirect work from horizontal rowing. Tolerates high direct volume. Estimate only."
+  },
+  "frequency_notes": "~2-3x/week; pairs naturally with back and side-delt work.",
+  "training_notes": "Reverse pec-deck, cable rear-delt flyes, and wide-elbow rows. Keep loads light and reps higher; effort near failure matters more than heavy weight.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "caffeine",
+  "name": "Caffeine",
+  "tier": "modest",
+  "summary": "A well-supported performance aid: acutely improves strength, power, and training capacity, which can indirectly support hypertrophy by improving session quality. Not directly anabolic.",
+  "effect": "Small acute improvements in muscular strength, power, and endurance; reduced perceived exertion. Benefits are performance-mediated, not a direct muscle-growth effect.",
+  "dosing": "~3-6 mg/kg bodyweight ~30-60 minutes before training. Habitual users may see smaller effects.",
+  "timing": "Pre-workout (unlike most supplements, timing matters here).",
+  "safety": "Generally safe at recommended doses; can disrupt sleep if taken later in the day and cause jitters/GI upset in sensitive users. Mind total daily intake.",
+  "evidence_grade": "A",
+  "citations": ["guest-2021-caffeine"]
+}

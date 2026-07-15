@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/progression-rule.json",
+  "title": "ProgressionRule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "method", "description"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "method": {
+      "enum": [
+        "double-progression", "load-progression", "rep-progression",
+        "set-progression", "rir-autoregulation", "percentage-based", "other"
+      ]
+    },
+    "description": { "type": "string" },
+    "trigger": { "type": "string", "description": "When to advance, e.g. 'hit top of rep range for all sets'" },
+    "increment": { "type": "string", "description": "How much to add, e.g. '2.5–5% load' or '1 rep/set'" },
+    "applicable_contexts": { "type": "array", "items": { "type": "string" } },
+    "experience_level": {
+      "type": "array",
+      "items": { "enum": ["beginner", "intermediate", "advanced"] }
+    },
+    "citations": { "type": "array", "items": { "type": "string" } }
+  }
+}

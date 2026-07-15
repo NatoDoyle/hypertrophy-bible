@@ -1,0 +1,17 @@
+{
+  "name": "hypertrophy-bible",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An evidence-based, fully-cited knowledge base for hypertrophy and muscle-building optimization.",
+  "scripts": {
+    "validate": "node tools/validate.mjs",
+    "check": "node tools/check-citations.mjs",
+    "build-bib": "node tools/build-bibliography.mjs",
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

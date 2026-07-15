@@ -1,0 +1,21 @@
+{
+  "id": "triceps",
+  "name": "Triceps Brachii",
+  "group": "arms",
+  "regions": ["long head", "lateral head", "medial head"],
+  "functions": ["elbow extension", "shoulder extension / adduction (long head)"],
+  "antagonists": ["biceps"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 5, "max": 6 },
+    "mev": { "min": 6, "max": 8 },
+    "mav": { "min": 10, "max": 14 },
+    "mrv": { "min": 18, "max": 20 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "maeo-2023-triceps-overhead"],
+    "notes": "Receives substantial indirect work from all pressing; the long head especially responds to overhead (lengthened) training. Estimate only."
+  },
+  "frequency_notes": "~2x/week direct, on top of pressing involvement.",
+  "training_notes": "Include an overhead extension to load the long head at length (see maeo-2023-triceps-overhead), plus a pushdown for the lateral/medial heads.",
+  "citations": ["maeo-2023-triceps-overhead"]
+}

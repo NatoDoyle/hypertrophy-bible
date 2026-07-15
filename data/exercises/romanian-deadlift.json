@@ -1,0 +1,23 @@
+{
+  "id": "romanian-deadlift",
+  "name": "Romanian Deadlift",
+  "aliases": ["RDL", "stiff-legged deadlift"],
+  "primary_muscles": ["hamstrings"],
+  "secondary_muscles": ["glutes", "spinal-erectors"],
+  "movement_pattern": "hinge",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "plane": ["sagittal"],
+  "resistance_profile": "Tension peaks at the stretched (bottom) position with hips flexed — strong lengthened loading of the hamstrings.",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Lower until you feel a strong hamstring stretch without lumbar rounding; range is set by hamstring flexibility, not the floor.",
+  "difficulty": "intermediate",
+  "cues": ["Push the hips back, minimal knee bend", "Keep the bar close, dragging up the legs", "Neutral spine throughout"],
+  "common_errors": ["Turning it into a squat", "Rounding the lower back to reach the floor", "Bouncing out of the bottom"],
+  "progressions": ["Add load", "Add a pause in the stretched position", "Deficit RDL for more range"],
+  "regressions": ["Dumbbell RDL", "Seated or lying leg curl", "45-degree back extension"],
+  "citations": ["pedrosa-2022-lengthened-partials"]
+}

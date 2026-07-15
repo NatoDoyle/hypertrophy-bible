@@ -1,0 +1,21 @@
+{
+  "id": "abs",
+  "name": "Abdominals (Rectus Abdominis & Obliques)",
+  "group": "core",
+  "regions": ["rectus abdominis", "external obliques", "internal obliques", "transverse abdominis"],
+  "functions": ["spinal flexion", "lateral flexion (obliques)", "trunk rotation (obliques)", "anti-extension / anti-rotation stabilization"],
+  "antagonists": ["spinal-erectors"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 4 },
+    "mev": { "min": 6, "max": 6 },
+    "mav": { "min": 10, "max": 16 },
+    "mrv": { "min": 20, "max": 20 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response"],
+    "notes": "Abs respond to progressive overload like any muscle; add resistance rather than only doing endless bodyweight reps. Estimate only."
+  },
+  "frequency_notes": "Tolerates 2-4x/week of direct work.",
+  "training_notes": "Load spinal flexion (weighted crunches, cable crunches, hanging raises) and train the obliques with rotation/anti-rotation. Progressive resistance beats high-rep-only work.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

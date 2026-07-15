@@ -1,0 +1,21 @@
+{
+  "id": "hamstrings",
+  "name": "Hamstrings",
+  "group": "legs",
+  "regions": ["biceps femoris (long & short head)", "semitendinosus", "semimembranosus"],
+  "functions": ["knee flexion", "hip extension"],
+  "antagonists": ["quadriceps"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 4, "max": 6 },
+    "mev": { "min": 6, "max": 6 },
+    "mav": { "min": 10, "max": 16 },
+    "mrv": { "min": 18, "max": 20 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "pedrosa-2022-lengthened-partials"],
+    "notes": "Two functions (knee flexion and hip extension) usually need separate exercises. High-eccentric work (RDLs) causes notable damage; individualize volume. Estimate only."
+  },
+  "frequency_notes": "~2x/week; separate a hip-hinge day from a knee-flexion (leg curl) day if volume is high.",
+  "training_notes": "Train BOTH functions: Romanian deadlifts (hip extension, loaded stretch) and leg curls (knee flexion). Seated leg curls load the lengthened position more than lying/standing.",
+  "citations": ["pedrosa-2022-lengthened-partials"]
+}

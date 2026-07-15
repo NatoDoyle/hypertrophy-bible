@@ -1,0 +1,21 @@
+{
+  "id": "quadriceps",
+  "name": "Quadriceps",
+  "group": "legs",
+  "regions": ["rectus femoris", "vastus lateralis", "vastus medialis", "vastus intermedius"],
+  "functions": ["knee extension", "hip flexion (rectus femoris)"],
+  "antagonists": ["hamstrings"],
+  "landmarks": {
+    "unit": "weekly_hard_sets",
+    "mv": { "min": 6, "max": 6 },
+    "mev": { "min": 8, "max": 8 },
+    "mav": { "min": 12, "max": 18 },
+    "mrv": { "min": 20, "max": 20 },
+    "evidence_grade": "C",
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
+    "notes": "High per-set systemic fatigue on squats limits recoverable volume relative to smaller muscles. Estimate only."
+  },
+  "frequency_notes": "~2x/week; balance heavy squats against higher-rep machine work to manage fatigue.",
+  "training_notes": "Squat to depth for loaded stretch; leg extensions isolate and train the rectus femoris best when the hip is extended. Deep-range work is high-yield.",
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

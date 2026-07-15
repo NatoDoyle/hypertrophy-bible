@@ -1,0 +1,23 @@
+{
+  "id": "barbell-bench-press",
+  "name": "Barbell Bench Press",
+  "aliases": ["flat bench press", "bench"],
+  "primary_muscles": ["chest"],
+  "secondary_muscles": ["front-delts", "triceps"],
+  "movement_pattern": "horizontal-push",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "plane": ["sagittal", "transverse"],
+  "resistance_profile": "Hardest off the chest (bottom), easing near lockout; moderate lengthened loading of the chest.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "rom_notes": "Touch the chest with control; a slight arch keeps the shoulders safe without shortening chest ROM excessively.",
+  "difficulty": "intermediate",
+  "cues": ["Retract and depress the shoulder blades", "Lower to the lower chest with control", "Drive the bar back over the shoulders"],
+  "common_errors": ["Bouncing off the chest", "Flaring elbows to 90 degrees", "Half-range lockout-only reps"],
+  "progressions": ["Double progression on load", "Pause reps on the chest"],
+  "regressions": ["Dumbbell bench press", "Machine chest press", "Push-up"],
+  "citations": ["schoenfeld-2017-load-meta"]
+}

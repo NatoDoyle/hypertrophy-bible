@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/exercise.json",
+  "title": "Exercise",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "primary_muscles", "mechanic", "equipment"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "aliases": { "type": "array", "items": { "type": "string" } },
+    "primary_muscles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Muscle ids this exercise trains as a primary target"
+    },
+    "secondary_muscles": { "type": "array", "items": { "type": "string" } },
+    "movement_pattern": {
+      "enum": [
+        "horizontal-push", "vertical-push", "horizontal-pull", "vertical-pull",
+        "squat", "hinge", "lunge", "carry",
+        "isolation-elbow-flexion", "isolation-elbow-extension",
+        "isolation-knee-extension", "isolation-knee-flexion",
+        "isolation-hip-extension", "isolation-hip-abduction",
+        "isolation-shoulder-abduction", "isolation-shoulder-flexion", "isolation-shoulder-extension",
+        "isolation-plantarflexion", "isolation-wrist", "isolation-spinal-flexion", "isolation-other",
+        "other"
+      ]
+    },
+    "equipment": {
+      "enum": ["barbell", "dumbbell", "machine", "cable", "smith-machine", "bodyweight", "band", "kettlebell", "other"]
+    },
+    "mechanic": { "enum": ["compound", "isolation"] },
+    "force": { "enum": ["push", "pull", "static"] },
+    "plane": {
+      "type": "array",
+      "items": { "enum": ["sagittal", "frontal", "transverse"] }
+    },
+    "resistance_profile": {
+      "type": "string",
+      "description": "Where in the ROM the exercise is hardest, e.g. 'hardest in the lengthened position'"
+    },
+    "lengthened_bias": {
+      "type": "boolean",
+      "description": "Loads the stretched/lengthened position heavily"
+    },
+    "stability": { "enum": ["high", "moderate", "low"] },
+    "unilateral": { "type": "boolean" },
+    "rom_notes": { "type": "string" },
+    "difficulty": { "enum": ["beginner", "intermediate", "advanced"] },
+    "cues": { "type": "array", "items": { "type": "string" } },
+    "common_errors": { "type": "array", "items": { "type": "string" } },
+    "progressions": { "type": "array", "items": { "type": "string" } },
+    "regressions": { "type": "array", "items": { "type": "string" } },
+    "citations": { "type": "array", "items": { "type": "string" } }
+  }
+}
