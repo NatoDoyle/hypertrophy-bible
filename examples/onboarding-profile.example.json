@@ -1,0 +1,21 @@
+{
+  "user_id": "demo-user-001",
+  "created_at": "2026-06-01T09:00:00Z",
+  "units": "metric",
+  "sex": "male",
+  "birth_year": 1994,
+  "height_cm": 180,
+  "bodyweight_kg": 82.0,
+  "training_status": "intermediate",
+  "experience_years": 4,
+  "primary_goal": "hypertrophy",
+  "priority_muscles": ["side-delts", "biceps"],
+  "days_per_week": 4,
+  "session_length_min": 75,
+  "available_equipment": ["barbell", "dumbbell", "cable", "machine"],
+  "injuries": [{ "region": "left shoulder", "severity": "mild", "note": "avoid heavy overhead pressing" }],
+  "wearable": "oura",
+  "menstrual_tracking": false,
+  "dietary_pattern": "omnivore",
+  "rir_calibrated": true
+}

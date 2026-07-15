@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/body-metric.json",
+  "title": "BodyMetric",
+  "description": "Low-frequency body-composition snapshot (tape measurements, photos, DEXA). Lagging outcome signals — judged over months, not days.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["user_id", "date"],
+  "properties": {
+    "user_id": { "type": "string" },
+    "date": { "type": "string", "format": "date" },
+    "bodyweight_kg": { "type": "number", "minimum": 25, "maximum": 400 },
+    "measurements_cm": {
+      "type": "object",
+      "description": "measurement site -> circumference in cm (e.g. chest, waist, upper-arm, thigh, calf)",
+      "additionalProperties": { "type": "number", "minimum": 5, "maximum": 250 }
+    },
+    "body_fat_pct": { "type": "number", "minimum": 2, "maximum": 70 },
+    "method": { "enum": ["tape", "dexa", "bodpod", "bioimpedance", "skinfold", "smart-scale", "visual-estimate"] },
+    "photo_refs": { "type": "array", "items": { "type": "string" } },
+    "note": { "type": "string" }
+  }
+}

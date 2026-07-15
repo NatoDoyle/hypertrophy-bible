@@ -49,11 +49,31 @@ Model-based numbers (e.g. volume landmarks) are estimates, graded honestly — n
 
 ```bash
 npm install          # one dependency: ajv (JSON Schema validation)
-npm run validate     # every data/ file validates against its schema (+ landmark ordering)
+npm run validate     # every data/ + examples/ file validates against its schema (+ landmark ordering)
 npm run check        # citation integrity + data cross-reference integrity (exercises/muscles/progressions resolve)
 npm run check-refs   # data cross-reference integrity only
 npm run build-bib    # regenerate citations/registry.md from registry.json
+npm run derive       # demo the derive-metrics engine over examples/
+npm run test-derive  # unit tests for the derive-metrics engine
+npm test             # everything: validate + check + derive tests
 ```
+
+## App data & learning layer
+
+The KB is designed to power a self-learning training app. The data contract and feature-derivation
+layer are built and tested (the app UI/backend is downstream):
+
+- **`data/schemas/{onboarding-profile,workout-session,daily-checkin,body-metric}.schema.json`** — the
+  data contract for what the app collects.
+- **`examples/`** — validating sample data (an onboarding profile, a two-week workout log, daily
+  check-ins, body metrics).
+- **`tools/derive-metrics.mjs`** — the "derive-don't-ask" engine: computes per-muscle weekly volume
+  (vs the KB's own MEV/MRV landmarks), estimated-1RM progression, energy balance *inferred from the
+  bodyweight trend* (no calorie counting), objective proximity-to-failure, and personal-baseline
+  readiness — all from low-burden primitives.
+- **[`docs/data-and-learning-spec.md`](docs/data-and-learning-spec.md)** — the full strategy: signal vs
+  noise per stream, confidence tiers, the accuracy playbook, and the prior→personalize→aggregate→
+  feed-back-into-the-KB self-learning architecture.
 
 ## Project status
 

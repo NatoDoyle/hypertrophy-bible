@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/daily-checkin.json",
+  "title": "DailyCheckin",
+  "description": "Optional daily readiness/recovery snapshot. Every field is optional by design — collect only what a wearable provides passively or the user taps in seconds. Provenance (`source`) drives confidence weighting.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["user_id", "date"],
+  "properties": {
+    "user_id": { "type": "string" },
+    "date": { "type": "string", "format": "date" },
+    "bodyweight_kg": { "type": "number", "minimum": 25, "maximum": 400 },
+    "sleep_hours": { "type": "number", "minimum": 0, "maximum": 16 },
+    "sleep_quality": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "hrv_ms": { "type": "number", "minimum": 0, "maximum": 400 },
+    "resting_hr": { "type": "integer", "minimum": 25, "maximum": 150 },
+    "soreness": {
+      "type": "object",
+      "description": "muscle id -> soreness 0 (none) to 3 (severe)",
+      "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 3 }
+    },
+    "mood": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "stress": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "energy": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "protein_target_hit": { "enum": ["yes", "roughly", "no"] },
+    "menstrual_phase": { "enum": ["menstrual", "follicular", "ovulatory", "luteal", "na"] },
+    "source": {
+      "type": "object",
+      "description": "per-metric provenance for confidence weighting",
+      "additionalProperties": { "enum": ["manual", "wearable", "smart-scale"] }
+    }
+  }
+}

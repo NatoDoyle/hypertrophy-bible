@@ -1,0 +1,83 @@
+[
+  {
+    "session_id": "s-2026-06-01-upper",
+    "user_id": "demo-user-001",
+    "date": "2026-06-01T18:00:00Z",
+    "program_ref": "upper-lower-4day",
+    "session_name": "Upper 1",
+    "bodyweight_kg": 82.0,
+    "sets": [
+      { "exercise": "barbell-bench-press", "set_type": "warmup", "weight_kg": 60, "reps": 8 },
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 100, "reps": 8, "rpe": 8, "completed_at": "2026-06-01T18:06:00Z" },
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 100, "reps": 7, "rpe": 9, "completed_at": "2026-06-01T18:09:00Z" },
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 100, "reps": 6, "rpe": 9.5, "completed_at": "2026-06-01T18:12:00Z" },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 80, "reps": 10, "rpe": 8 },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 80, "reps": 10, "rpe": 8 },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 80, "reps": 9, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 15, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 14, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 13, "rpe": 10 },
+      { "exercise": "incline-dumbbell-curl", "set_type": "work", "weight_kg": 16, "reps": 12, "rpe": 9 },
+      { "exercise": "incline-dumbbell-curl", "set_type": "work", "weight_kg": 16, "reps": 11, "rpe": 9 }
+    ]
+  },
+  {
+    "session_id": "s-2026-06-03-lower",
+    "user_id": "demo-user-001",
+    "date": "2026-06-03T18:00:00Z",
+    "program_ref": "upper-lower-4day",
+    "session_name": "Lower 1",
+    "bodyweight_kg": 81.8,
+    "sets": [
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 140, "reps": 6, "rpe": 8 },
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 140, "reps": 6, "rpe": 8.5 },
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 140, "reps": 5, "rpe": 9 },
+      { "exercise": "romanian-deadlift", "set_type": "work", "weight_kg": 120, "reps": 8, "rpe": 8 },
+      { "exercise": "romanian-deadlift", "set_type": "work", "weight_kg": 120, "reps": 8, "rpe": 8 },
+      { "exercise": "seated-leg-curl", "set_type": "work", "weight_kg": 55, "reps": 12, "rpe": 9 },
+      { "exercise": "seated-leg-curl", "set_type": "work", "weight_kg": 55, "reps": 11, "rpe": 9 },
+      { "exercise": "standing-calf-raise", "set_type": "work", "weight_kg": 90, "reps": 12, "rpe": 9 },
+      { "exercise": "standing-calf-raise", "set_type": "work", "weight_kg": 90, "reps": 12, "rpe": 9 }
+    ]
+  },
+  {
+    "session_id": "s-2026-06-08-upper",
+    "user_id": "demo-user-001",
+    "date": "2026-06-08T18:00:00Z",
+    "program_ref": "upper-lower-4day",
+    "session_name": "Upper 1",
+    "bodyweight_kg": 82.3,
+    "sets": [
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 102.5, "reps": 8, "rpe": 8 },
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 102.5, "reps": 7, "rpe": 9 },
+      { "exercise": "barbell-bench-press", "set_type": "work", "weight_kg": 102.5, "reps": 7, "rpe": 9 },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 82.5, "reps": 10, "rpe": 8 },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 82.5, "reps": 10, "rpe": 8 },
+      { "exercise": "chest-supported-row", "set_type": "work", "weight_kg": 82.5, "reps": 10, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 16, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 15, "rpe": 9 },
+      { "exercise": "dumbbell-lateral-raise", "set_type": "work", "weight_kg": 12, "reps": 14, "rpe": 10 },
+      { "exercise": "incline-dumbbell-curl", "set_type": "work", "weight_kg": 16, "reps": 13, "rpe": 9 },
+      { "exercise": "incline-dumbbell-curl", "set_type": "work", "weight_kg": 16, "reps": 12, "rpe": 9 }
+    ]
+  },
+  {
+    "session_id": "s-2026-06-10-lower",
+    "user_id": "demo-user-001",
+    "date": "2026-06-10T18:00:00Z",
+    "program_ref": "upper-lower-4day",
+    "session_name": "Lower 1",
+    "bodyweight_kg": 82.5,
+    "sets": [
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 142.5, "reps": 6, "rpe": 8 },
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 142.5, "reps": 6, "rpe": 8.5 },
+      { "exercise": "barbell-back-squat", "set_type": "work", "weight_kg": 142.5, "reps": 6, "rpe": 9 },
+      { "exercise": "romanian-deadlift", "set_type": "work", "weight_kg": 122.5, "reps": 8, "rpe": 8 },
+      { "exercise": "romanian-deadlift", "set_type": "work", "weight_kg": 122.5, "reps": 8, "rpe": 8.5 },
+      { "exercise": "seated-leg-curl", "set_type": "work", "weight_kg": 55, "reps": 12, "rpe": 9 },
+      { "exercise": "seated-leg-curl", "set_type": "work", "weight_kg": 55, "reps": 12, "rpe": 9 },
+      { "exercise": "standing-calf-raise", "set_type": "work", "weight_kg": 92.5, "reps": 12, "rpe": 9 },
+      { "exercise": "standing-calf-raise", "set_type": "work", "weight_kg": 92.5, "reps": 12, "rpe": 9 }
+    ]
+  }
+]

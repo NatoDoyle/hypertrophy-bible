@@ -1,0 +1,20 @@
+[
+  {
+    "user_id": "demo-user-001",
+    "date": "2026-06-01",
+    "bodyweight_kg": 82.0,
+    "measurements_cm": { "chest": 104.0, "waist": 82.0, "upper-arm": 39.0, "thigh": 60.0, "calf": 39.0 },
+    "body_fat_pct": 15.0,
+    "method": "tape",
+    "note": "Baseline measurements at start of gaining block."
+  },
+  {
+    "user_id": "demo-user-001",
+    "date": "2026-06-14",
+    "bodyweight_kg": 82.8,
+    "measurements_cm": { "chest": 104.4, "waist": 82.3, "upper-arm": 39.4, "thigh": 60.3, "calf": 39.1 },
+    "body_fat_pct": 15.2,
+    "method": "tape",
+    "note": "Two weeks in; arm and chest up slightly, waist roughly stable."
+  }
+]

@@ -87,6 +87,28 @@ for (const [dir, schemaName] of Object.entries(dirToSchema)) {
   }
 }
 
+// Example app-data fixtures: validate against the data-stream schemas.
+// [file, schemaName, isArray]
+const examples = [
+  ["onboarding-profile.example.json", "onboarding-profile", false],
+  ["workout-log.example.json", "workout-session", true],
+  ["daily-checkins.example.json", "daily-checkin", true],
+  ["body-metrics.example.json", "body-metric", true],
+];
+const examplesDir = join(root, "examples");
+if (existsSync(examplesDir)) {
+  for (const [file, schemaName, isArray] of examples) {
+    const p = join(examplesDir, file);
+    if (!existsSync(p)) continue;
+    const data = JSON.parse(readFileSync(p, "utf8"));
+    if (isArray) {
+      data.forEach((d, i) => validateInstance(d, schemaName, `examples/${file}[${i}]`));
+    } else {
+      validateInstance(data, schemaName, `examples/${file}`);
+    }
+  }
+}
+
 // Citation registry: validate each entry against the citation schema.
 const regPath = join(root, "citations", "registry.json");
 if (existsSync(regPath)) {

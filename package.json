@@ -10,7 +10,9 @@
     "check-citations": "node tools/check-citations.mjs",
     "check-refs": "node tools/check-data-refs.mjs",
     "build-bib": "node tools/build-bibliography.mjs",
-    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs"
+    "derive": "node tools/derive-metrics.mjs",
+    "test-derive": "node tools/test-derive.mjs",
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",
