@@ -26,12 +26,29 @@ const answers = {};
 function renderOnboarding() {
   nav.hidden = true;
   if (onbStep === 0 && !Object.keys(answers).length) {
-    app.innerHTML = `<div class="center" style="padding-top:16vh">
+    app.innerHTML = `<div class="center" style="padding-top:14vh">
       <h1>The Hypertrophy Bible</h1>
       <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
       <button class="btn" id="go">Start</button>
-      <p class="muted">Free · no ads · no account needed</p></div>`;
+      <p class="muted">Free · no ads · no account needed</p>
+      <button class="btn ghost" id="restore">Already have progress saved? Restore it</button>
+      <div id="restorebox" hidden style="margin-top:6px">
+        <input id="remail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"
+          style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
+        <button class="btn secondary" id="sendrestore">Email me a restore link</button>
+        <p class="muted" id="rmsg"></p></div></div>`;
     $("#go").onclick = () => { onbStep = 0; answers._started = true; renderOnboarding(); };
+    $("#restore").onclick = () => { const b = $("#restorebox"); b.hidden = !b.hidden; if (!b.hidden) $("#remail").focus(); };
+    $("#sendrestore").onclick = async () => {
+      const val = $("#remail").value.trim();
+      if (!val) { $("#rmsg").textContent = "Enter your email first."; return; }
+      $("#sendrestore").disabled = true; $("#rmsg").textContent = "Sending…";
+      const r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val }) });
+      if (r.error === "invalid-email") { $("#rmsg").textContent = "That doesn't look like an email."; $("#sendrestore").disabled = false; return; }
+      if (r.sent === false) { $("#rmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendrestore").disabled = false; return; }
+      $("#rmsg").innerHTML = "If that email has a backup, a restore link is on its way — it works once and expires in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+    };
     return;
   }
   const step = STEPS[onbStep];
@@ -150,8 +167,14 @@ async function finish() {
 }
 function renderRecap(recap) {
   const wins = (recap.wins || []).map((w) => `<div class="win">${esc(w)}</div>`).join("");
-  app.innerHTML = `<div class="center"><h1>Session ${recap.day_number || ""} done 💪</h1></div>${wins}
+  const nudge = !localStorage.getItem("hb_email")
+    ? `<div class="card"><b>Back up your progress</b>
+        <p class="muted">Save it to an email so you never lose it — no password, no account wall.</p>
+        <button class="btn secondary" id="backup">Back up now</button></div>`
+    : "";
+  app.innerHTML = `<div class="center"><h1>Session ${recap.day_number || ""} done 💪</h1></div>${wins}${nudge}
     <button class="btn" id="ok">Done</button>`;
+  if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
 }
 
@@ -190,11 +213,40 @@ async function renderProgress() {
 
 // ---------- Me ----------
 function renderMe() {
+  const email = localStorage.getItem("hb_email");
+  const backup = email
+    ? `<div class="card"><p class="muted">Backed up</p><b>${esc(email)}</b>
+        <p class="muted" style="margin-top:8px">On another device, open the app and enter this same email to load your progress there.</p></div>`
+    : `<div class="card"><p class="muted">Back up &amp; sync</p>
+        <p>Save your progress to an email so you never lose it — and to pick up on another phone or computer. No password.</p>
+        <input id="bemail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"
+          style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:8px 0 4px">
+        <button class="btn" id="sendlink">Send me a link</button>
+        <p class="muted" id="bmsg"></p></div>`;
   app.innerHTML = `<h1>Me</h1>
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b></div>
+    ${backup}
     <div class="card"><p>This app is free and open-source. If it helps you, you'll one day be able to chip in to cover costs — never required.</p></div>
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
-  $("#reset").onclick = () => { if (confirm("Erase your data and start over?")) { localStorage.clear(); uid = null; onbStep = 0; for (const k in answers) delete answers[k]; render(); } };
+
+  if (!email) {
+    $("#sendlink").onclick = async () => {
+      const val = $("#bemail").value.trim();
+      if (!val) { $("#bmsg").textContent = "Enter your email first."; return; }
+      $("#sendlink").disabled = true;
+      $("#bmsg").textContent = "Sending…";
+      const r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val, user_id: uid }) });
+      if (r.error === "invalid-email") { $("#bmsg").textContent = "That doesn't look like an email."; $("#sendlink").disabled = false; return; }
+      if (r.sent === false) { $("#bmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendlink").disabled = false; return; }
+      $("#bmsg").innerHTML = "Check your inbox for a link to finish — it works once and expires in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+    };
+  }
+  $("#reset").onclick = () => {
+    if (confirm("Erase this device's link to your data and start over? If you've backed up to an email, that stays safe and you can restore it.")) {
+      localStorage.clear(); uid = null; onbStep = 0; for (const k in answers) delete answers[k]; render();
+    }
+  };
 }
 
 // ---------- Router ----------

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d10" />
+  <title>Confirming… — Hypertrophy Bible</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main id="app">
+    <div class="center" style="padding-top:20vh">
+      <h1 id="msg">Confirming…</h1>
+      <p class="muted" id="sub"></p>
+      <a class="btn" id="go" href="/" hidden>Open the app</a>
+    </div>
+  </main>
+  <script>
+    // The emailed link is a GET that just loads this page; the single-use token is
+    // spent here via an explicit POST, so mail-server link scanners can't burn it.
+    (async () => {
+      const msg = document.getElementById("msg");
+      const sub = document.getElementById("sub");
+      const go = document.getElementById("go");
+      const token = new URLSearchParams(location.search).get("token");
+      if (!token) { msg.textContent = "This link is missing its code."; go.hidden = false; return; }
+      try {
+        const r = await fetch("/api/auth/consume", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const d = await r.json();
+        if (d.user_id) {
+          // Don't silently replace a different account already on this device
+          // (protects against adopting an attacker-minted link, and against
+          // orphaning workouts logged only on this device). Confirm first.
+          const current = localStorage.getItem("hb_user");
+          if (current && current !== d.user_id) {
+            const okToSwitch = confirm(
+              "This device already has workout data. Loading the backup for " + d.email +
+              " will switch this device to that account — anything logged only here won't be carried over. Continue?"
+            );
+            if (!okToSwitch) {
+              msg.textContent = "Kept this device's data.";
+              sub.textContent = "Nothing was changed.";
+              go.hidden = false;
+              return;
+            }
+          }
+          localStorage.setItem("hb_user", d.user_id);
+          localStorage.setItem("hb_email", d.email);
+          if (d.program_name) localStorage.setItem("hb_program", d.program_name);
+          msg.textContent = "You're all set 💪";
+          sub.textContent = "Your progress is backed up to " + d.email + ".";
+          go.hidden = false;
+          setTimeout(() => location.replace("/"), 1200);
+        } else {
+          msg.textContent = d.error === "expired" ? "That link has expired."
+            : d.error === "used" ? "That link was already used."
+            : "That link isn't valid.";
+          sub.textContent = "Head back to the app and request a fresh one.";
+          go.hidden = false;
+        }
+      } catch (e) {
+        msg.textContent = "Something went wrong.";
+        sub.textContent = "Please try the link again.";
+        go.hidden = false;
+      }
+    })();
+  </script>
+</body>
+</html>

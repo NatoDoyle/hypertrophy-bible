@@ -6,10 +6,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./src/app.mjs";
 import { createFileStore } from "./src/store.mjs";
+import { createEmailSender } from "./src/email.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const store = createFileStore(join(dir, ".data", "store.json"));
-const app = createApp(store);
+// No RESEND_API_KEY locally -> the sender logs the magic link instead of mailing.
+const sendEmail = createEmailSender({ apiKey: process.env.RESEND_API_KEY, from: process.env.MAIL_FROM });
+// exposeDevLink: surface the magic link in the API response for local testing only.
+const app = createApp(store, { sendEmail, exposeDevLink: !process.env.RESEND_API_KEY });
 
 // Static frontend (API routes are registered first, so they win).
 app.get("/", serveStatic({ path: "./public/index.html" }));

@@ -4,6 +4,19 @@
 name = "hypertrophy-bible"
 main = "worker.mjs"
 compatibility_date = "2025-01-01"
+workers_dev = true # keep the *.workers.dev URL working alongside the custom domain
+
+# Custom domain (the zone is on the same Cloudflare account, so wrangler
+# provisions DNS + TLS automatically on deploy). The workers.dev URL keeps working too.
+routes = [
+  { pattern = "hypertrophybible.com", custom_domain = true },
+  { pattern = "www.hypertrophybible.com", custom_domain = true },
+]
+
+# From address for magic-link email (non-secret). The API key is a secret:
+#   npx wrangler secret put RESEND_API_KEY
+[vars]
+MAIL_FROM = "The Hypertrophy Bible <hello@hypertrophybible.com>"
 
 # Frontend: everything in ./public is served straight from Cloudflare's edge.
 # The Worker (main) only runs for routes the assets don't match — i.e. /api/*.

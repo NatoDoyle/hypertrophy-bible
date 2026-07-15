@@ -91,7 +91,11 @@ export function todayCard(user, sessions) {
 
 // Derived wins for the post-session recap — the reward, straight from the engine.
 export function sessionRecap(user, allSessions, newSession) {
-  const prior = allSessions.slice(0, -1);
+  // Identify the just-logged session by id, not array position — once sessions
+  // are ordered chronologically a backfilled date can land it mid-array.
+  const prior = newSession.session_id
+    ? allSessions.filter((s) => s.session_id !== newSession.session_id)
+    : allSessions.slice(0, -1);
   const wins = [];
 
   // PRs (estimated 1RM) per exercise in the new session.

@@ -4,9 +4,14 @@ import { Hono } from "hono";
 import { selectProgram, exerciseById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
+import { requestMagicLink, consumeMagicLink } from "./auth.mjs";
 
-export function createApp(store) {
+export function createApp(store, config = {}) {
   const app = new Hono();
+  const sendEmail = config.sendEmail ?? (async () => ({ dev: true }));
+  // Return the magic link in the HTTP response ONLY in local dev. Never in the
+  // deployed Worker — otherwise anyone could pull a valid link for any email.
+  const exposeDevLink = config.exposeDevLink === true;
 
   app.get("/api/health", (c) => c.json({ ok: true, programs: programs.length }));
 
@@ -83,6 +88,42 @@ export function createApp(store) {
     const bw = (await store.listBodyweights(user_id)).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
     const trend = bodyweightTrend(bw);
     return c.json({ count: bw.length, trend, energy_balance: classifyEnergyBalance(trend, user.profile.primary_goal) });
+  });
+
+  // Request a magic link to back up (claim) or restore progress. We always
+  // respond {sent:true} on anything but a malformed email, so the response can't
+  // be used to probe whether an email has an account (enumeration). The dev link
+  // is returned ONLY when no real email was sent (no Resend key configured).
+  app.post("/api/auth/request", async (c) => {
+    const { email, user_id } = await c.req.json().catch(() => ({}));
+    const ip = c.req.header("CF-Connecting-IP") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const result = await requestMagicLink(store, { email, anonUserId: user_id, ip });
+    if (result.error === "invalid-email") return c.json({ error: "invalid-email" }, 400);
+    if (result.error) return c.json({ sent: true }); // rate-limited / no-user: stay generic
+    const origin = new URL(c.req.url).origin;
+    const link = `${origin}/verify.html?token=${encodeURIComponent(result.token)}`;
+    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose });
+    // A real send that failed: tell the client so it can offer a retry, rather
+    // than a false "check your inbox". (Only reachable after a valid request, so
+    // this never reveals whether an unknown email has an account.)
+    if (sent && sent.dev === false && sent.ok === false) return c.json({ sent: false, error: "send-failed" }, 502);
+    return c.json({ sent: true, ...(sent?.dev && exposeDevLink ? { dev_link: link } : {}) });
+  });
+
+  // Consume a magic link -> bind the account and hand back its user_id so the
+  // device can adopt it. Called by /verify.html (a POST, not the emailed GET,
+  // so inbox link-scanners can't burn the single-use token before the user taps).
+  app.post("/api/auth/consume", async (c) => {
+    const { token } = await c.req.json().catch(() => ({}));
+    const result = await consumeMagicLink(store, { token });
+    if (result.error) return c.json({ error: result.error }, 400);
+    const user = await store.getUser(result.user_id);
+    return c.json({
+      user_id: result.user_id,
+      email: result.email,
+      purpose: result.purpose,
+      program_name: user?.program?.name ?? null,
+    });
   });
 
   // Exercise detail (the "how do I do this?" tap).
