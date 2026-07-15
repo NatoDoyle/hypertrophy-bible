@@ -16,4 +16,4 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "hypertrophy-bible"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "37227640-f73e-44e1-a1d3-4899c10c1fab"
