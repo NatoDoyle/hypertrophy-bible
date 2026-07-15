@@ -42,6 +42,16 @@ Footnote definitions (`[^key]: ...`) or a note that they are compiled in `citati
 A page that has no structured data behind it may write `Backing Data — none` explicitly, so the
 absence is a decision, not an oversight.
 
+**Instructional-page variant (the `09-getting-started` pillar).** The Getting Started pillar teaches
+absolute beginners *how to operate in a gym* (equipment, etiquette, safety, first sessions). This
+content is coaching/practice guidance, not empirical science, so those pages use a **lighter,
+fit-for-purpose structure**: a `> **TL;DR**`, a `**Quick recommendations**` block, topic-appropriate
+`##` sections, a `## Common mistakes` or `## Key Uncertainties & Nuance` section, and a `## Related`
+section that **cross-links to the evidence pillars** in place of footnote citations. They still carry
+`[Grade C]`/`[Grade D]` markers on recommendations (most of this is Grade D coaching consensus, which
+§4 permits uncited) — but they do **not** use `[^footnote]` citations or a `## The Evidence`/`##
+References` block. The science pillars (00–08) keep the full template above.
+
 ---
 
 ## 2. Voice & audience

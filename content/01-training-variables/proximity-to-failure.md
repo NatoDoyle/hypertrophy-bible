@@ -8,6 +8,7 @@
 - Save **actual failure** mostly for **isolation/machine exercises** and the **last set** of an exercise, where it's safe and cheap. **[Grade B]**
 - On **heavy compounds**, keep **1–3 RIR** to protect technique and recovery. **[Grade C]**
 - Learn the **RIR-based RPE scale** to standardize effort across sessions; expect your judgment to be **most accurate within a few reps of failure**. **[Grade B]**
+- **New to the gym? Learn how to fail *safely* first** — set a rack's safety pins, use a spotter, or do your closest-to-failure work on machines/cables. See [Spotting, Failing & Bailing Safely](../09-getting-started/spotting-failing-and-bailing-safely.md). **[Grade D]**
 
 ## Practical Application
 

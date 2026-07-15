@@ -11,14 +11,14 @@ point. See [`STYLE.md`](STYLE.md) for the authoring rules and [the design spec](
 
 The knowledge base has two synchronized halves:
 
-- **`content/`** — readable prose, organized into nine pillars. Start here.
+- **`content/`** — readable prose, organized into ten pillars. New to the gym? Start at [Getting Started](content/09-getting-started/index.md).
 - **`data/`** — the same knowledge as machine-readable JSON (validated against schemas in
   `data/schemas/`). This is the contract the future app consumes.
 
 Citations live once in [`citations/registry.json`](citations/registry.json) and are referenced by key
 from both prose and data. A human-readable bibliography is generated at `citations/registry.md`.
 
-## The nine pillars
+## The ten pillars
 
 | # | Pillar | What it covers | Status |
 |---|--------|----------------|--------|
@@ -31,6 +31,7 @@ from both prose and data. A human-readable bibliography is generated at `citatio
 | 06 | [Individualization](content/06-individualization/index.md) | Training status, age, sex, genetics, populations | ✅ Complete |
 | 07 | [Tracking](content/07-tracking/index.md) | Metrics, RPE/RIR, progress assessment | ✅ Complete |
 | 08 | [Myths](content/08-myths/index.md) | Common misconceptions, corrected | ✅ Complete |
+| 09 | [Getting Started](content/09-getting-started/index.md) | Total-beginner on-ramp: gym basics, equipment, safety, first sessions, the full-arc roadmap | ✅ Complete |
 
 Legend: ✅ Complete · 🚧 In progress · 🔲 Outlined (table of contents + stubs only)
 
@@ -77,11 +78,17 @@ layer are built and tested (the app UI/backend is downstream):
 
 ## Project status
 
-**All nine pillars complete, audited, expanded, and depth-reviewed.** The knowledge base spans 70
-content pages backed by 87 web-verified citations (each confirmed to exist via PubMed, with 20
-independently cross-checked against Crossref), plus a data layer of 16 muscle files, 59 exercises, 5
-program templates, 2 progression rules, and 8 supplement entries — all passing schema validation,
-citation integrity, and cross-reference integrity checks.
+**Ten pillars complete, audited, expanded, and depth-reviewed.** The knowledge base spans 99 content
+pages backed by 87 web-verified citations (each confirmed to exist via PubMed, with 20 independently
+cross-checked against Crossref), plus a data layer of 16 muscle files, 59 exercises, 5 program
+templates, 2 progression rules, and 8 supplement entries — all passing schema validation, citation
+integrity, and cross-reference integrity checks.
+
+A dedicated **Getting Started** pillar now provides the total-beginner on-ramp the science pillars
+assumed away — gym basics, equipment operation, a glossary, safety (spotting, failing/bailing, red-flag
+symptoms), first sessions, gym anxiety, and a full-arc roadmap from "never trained" to "approaching your
+genetic ceiling" — plus advanced pages (long-term planning, weak-point specialization, advanced
+plateau-breaking, the genetic-ceiling journey) so the KB honestly spans the entire journey.
 
 A full audit corrected one factual error (older-adult training volume), reconciled internal
 inconsistencies, and closed a data-integrity gap by adding a referential-integrity checker

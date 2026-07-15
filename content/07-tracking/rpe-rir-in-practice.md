@@ -5,7 +5,7 @@
 **Quick recommendations**
 - Rate effort with **RIR/RPE** (RPE 10 = 0 RIR/failure, RPE 8 = 2 RIR) and target ~**0–3 RIR** on working sets. **[Grade B]**
 - **Autoregulate**: adjust load to hit your target RIR each session as readiness fluctuates. **[Grade B]**
-- **Calibrate** by taking occasional isolation sets to true failure — most people underestimate effort. **[Grade B]**
+- **Calibrate** by taking occasional isolation sets to true failure — most people underestimate effort. Do it on machines/cables or with safeties set, so failing is harmless (see [Spotting, Failing & Bailing Safely](../09-getting-started/spotting-failing-and-bailing-safely.md)). **[Grade B]**
 - Trust RIR ratings **more near failure**; a called "1 RIR" is reliable, a "5 RIR" is a guess. **[Grade B]**
 
 ## Practical Application
