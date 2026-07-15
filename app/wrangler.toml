@@ -1,0 +1,19 @@
+# Cloudflare Workers config. Free tier covers this app end-to-end:
+# Workers (100k req/day), D1 (5 GB + 5M rows read/day), static assets (unlimited).
+# No credit card, no non-commercial restriction, donation button allowed.
+name = "hypertrophy-bible"
+main = "worker.mjs"
+compatibility_date = "2025-01-01"
+
+# Frontend: everything in ./public is served straight from Cloudflare's edge.
+# The Worker (main) only runs for routes the assets don't match — i.e. /api/*.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Durable storage. Create the DB once, then paste its id here:
+#   npx wrangler d1 create hypertrophy-bible
+[[d1_databases]]
+binding = "DB"
+database_name = "hypertrophy-bible"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"

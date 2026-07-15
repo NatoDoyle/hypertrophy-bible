@@ -1,0 +1,76 @@
+:root{
+  --bg:#0b0d10; --card:#15191f; --card2:#1c222a; --line:#28303a;
+  --text:#eef2f6; --dim:#9aa7b4; --accent:#3fd07a; --accent2:#3a86ff;
+  --warn:#e0a33e; --bad:#e05a4e; --radius:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#app{max-width:520px;margin:0 auto;padding:20px 18px 96px;min-height:100vh}
+h1{font-size:1.5rem;margin:.2em 0}
+h2{font-size:1.15rem;margin:1.2em 0 .4em}
+p{color:var(--dim)}
+.muted{color:var(--dim);font-size:.9rem}
+.center{text-align:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:14px 0}
+.big{font-size:1.35rem;font-weight:700}
+
+/* Buttons */
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{
+  display:block;width:100%;border:none;border-radius:14px;padding:18px;
+  background:var(--accent);color:#06210f;font-weight:800;font-size:1.1rem;margin:10px 0;
+}
+.btn.secondary{background:var(--card2);color:var(--text);border:1px solid var(--line);font-weight:600}
+.btn.ghost{background:transparent;color:var(--dim);font-weight:600;padding:12px}
+.btn:active{transform:translateY(1px)}
+.choice{
+  display:flex;align-items:center;justify-content:space-between;width:100%;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:18px;margin:10px 0;font-size:1.1rem;font-weight:600;text-align:left;
+}
+.choice.sel{border-color:var(--accent);background:#12251a}
+.chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:4px 6px 0 0;font-size:.85rem}
+
+/* Onboarding progress dots */
+.dots{display:flex;gap:6px;justify-content:center;margin:8px 0 18px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.dots i.on{background:var(--accent)}
+
+/* Session player */
+.exhead{display:flex;justify-content:space-between;align-items:baseline}
+.exhead .num{color:var(--dim);font-size:.85rem}
+.stepper{display:flex;align-items:center;justify-content:space-between;margin:12px 0}
+.stepper label{color:var(--dim);font-size:.9rem;width:70px}
+.stepper .val{font-size:1.6rem;font-weight:800;min-width:90px;text-align:center}
+.stepper button{width:52px;height:52px;border-radius:12px;background:var(--card2);border:1px solid var(--line);font-size:1.6rem;font-weight:700}
+.setdots{display:flex;gap:8px;margin:10px 0}
+.setdots i{flex:1;height:8px;border-radius:6px;background:var(--line)}
+.setdots i.done{background:var(--accent)}
+.timer{font-size:2.4rem;font-weight:800;text-align:center;margin:8px 0}
+.cue{background:var(--card2);border-left:3px solid var(--accent2);padding:10px 12px;border-radius:8px;color:var(--dim);font-size:.92rem;margin:10px 0}
+
+/* Progress */
+.bar{height:12px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:6px}
+.bar > i{display:block;height:100%}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.status{font-size:.8rem;padding:2px 8px;border-radius:999px}
+.s-below{background:#3a2f1a;color:var(--warn)} .s-in{background:#12251a;color:var(--accent)}
+.s-near{background:#2a1f12;color:var(--warn)} .s-over{background:#301a17;color:var(--bad)} .s-none{background:var(--card2);color:var(--dim)}
+.win{background:var(--card2);border-radius:12px;padding:14px;margin:10px 0;font-size:1.05rem}
+
+/* Bottom nav */
+#nav{
+  position:fixed;left:0;right:0;bottom:0;display:flex;background:#0e1216;border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom);max-width:520px;margin:0 auto;
+}
+#nav button{flex:1;background:none;border:none;color:var(--dim);padding:10px 0;font-size:.72rem;display:flex;flex-direction:column;align-items:center;gap:3px}
+#nav button span{font-size:1.3rem}
+#nav button.active{color:var(--accent)}
+#nav[hidden]{display:none}  /* ID specificity beats the UA [hidden] rule, so restate it */
+a{color:var(--accent2)}
