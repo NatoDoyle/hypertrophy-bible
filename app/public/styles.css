@@ -74,3 +74,55 @@ button{font:inherit;color:inherit;cursor:pointer}
 #nav button.active{color:var(--accent)}
 #nav[hidden]{display:none}  /* ID specificity beats the UA [hidden] rule, so restate it */
 a{color:var(--accent2)}
+
+/* Comfortable tap targets (>=44px) for interactive chips — editor, check-in, days */
+.tapchip{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;
+  padding:0 12px;background:var(--card2);border:1px solid var(--line);color:var(--text);
+  border-radius:12px;font-size:1rem;font-weight:600;margin:3px}
+.tapchip.sel{background:var(--accent);color:#06210f;border-color:var(--accent)}
+.tapchip.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+
+/* Check-in: label on its own line, five equal-width rating buttons spread below */
+.ckrow{padding:10px 0;border-bottom:1px solid var(--line)}
+.ckrow:last-child{border-bottom:none}
+.cklabel{display:block;font-weight:600;margin-bottom:6px}
+.ckscale{display:flex;gap:6px}
+.ckscale .tapchip{flex:1;margin:0}
+
+/* Inline "?" jargon helpers and evidence-grade tags */
+.help{display:inline-flex;align-items:center;background:var(--card2);border:1px solid var(--line);
+  color:var(--accent2);border-radius:999px;padding:3px 10px;font-size:.78rem;font-weight:600;
+  vertical-align:middle;margin-left:6px}
+h2 .help{font-weight:600}
+.gradetag{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:6px;
+  padding:0 6px;font-size:.72rem;color:var(--dim);white-space:nowrap}
+.legend{font-size:.82rem;line-height:1.9;margin:8px 2px}
+.legend .status{margin:0 2px}
+
+/* "Why this plan?" expander */
+details.why{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin:14px 0}
+details.why > summary{cursor:pointer;font-weight:700;font-size:1.05rem;list-style:none}
+details.why > summary::-webkit-details-marker{display:none}
+details.why > summary::after{content:"⌄";float:right;color:var(--dim);font-size:1.2rem;line-height:1}
+details.why[open] > summary::after{content:"⌃"}
+details.why h3{font-size:1rem;margin:1.1em 0 .3em}
+
+/* Accent cards: ramp-up / first-lift info, and TL;DR callouts */
+.card.info{border-color:var(--accent);background:#12251a}
+.card.tldr{border-left:3px solid var(--accent2)}
+.card.tldr b{color:var(--text)}
+
+/* Learn pages — readable prose rendered from the getting-started library */
+.learn h2{font-size:1.15rem;margin:1.1em 0 .3em}
+.learn h3{font-size:1.02rem;margin:1em 0 .3em}
+.learn h4{font-size:.95rem;margin:1em 0 .3em;color:var(--dim)}
+.learn p,.learn li{color:var(--text)}
+.learn ul,.learn ol{padding-left:1.2em;margin:.5em 0}
+.learn li{margin:.35em 0}
+.learn blockquote{border-left:3px solid var(--line);margin:.8em 0;padding:.2em 0 .2em 12px;color:var(--dim)}
+.learn code{background:var(--card2);border-radius:6px;padding:1px 5px;font-size:.9em}
+.tablewrap{overflow-x:auto;margin:.8em 0}
+.learn table{border-collapse:collapse;width:100%;font-size:.9rem}
+.learn th,.learn td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+.learn th{background:var(--card2)}
+#nav button{font-size:.68rem}  /* five tabs — trim label size so they fit */

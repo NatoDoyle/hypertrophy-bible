@@ -1,10 +1,29 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
+import { LEARN_INDEX, LEARN_PAGES } from "./learn-data.js";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
 let uid = localStorage.getItem("hb_user");
 let tab = "today";
+let learnSlug = null; // which Learn page is open (null = the Learn index)
+
+// Plain-English muscle names — a beginner expects "shoulders", not "side-delts".
+const MUSCLE_LABEL = {
+  "front-delts": "front of shoulders", "side-delts": "shoulders (side)", "rear-delts": "rear shoulders",
+  "lats": "back (lats)", "upper-back": "upper back", "spinal-erectors": "lower back",
+  "quadriceps": "thighs (quads)", "hamstrings": "hamstrings", "glutes": "glutes", "calves": "calves",
+  "biceps": "biceps", "triceps": "triceps", "forearms": "forearms", "chest": "chest", "abs": "abs", "neck": "neck",
+};
+const friendlyMuscle = (m) => MUSCLE_LABEL[m] || String(m).replace(/-/g, " ");
+const friendlyMuscles = (list) => (list || []).map(friendlyMuscle).join(", ");
+
+// Deep-link into the in-app beginner library (content/09-getting-started).
+function openLearn(slug) { learnSlug = slug || null; tab = "learn"; render(); }
+// Wire any [data-learn="slug"] element on the current screen to open that page.
+function wireLearnLinks() { app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn)); }
+// A small inline "?" that opens a learn page — decodes jargon in place.
+const helpDot = (slug, label = "?") => `<button class="help" data-learn="${slug}" aria-label="Explain">${label}</button>`;
 
 const api = async (path, opts = {}) => {
   const headers = { "content-type": "application/json", ...(uid ? { "X-HB-User": uid } : {}), ...(opts.headers || {}) };
@@ -69,9 +88,12 @@ const STEPS = [
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
-let onbStep = 0;
-let onbStarted = false;
-const answers = {};
+// Onboarding answers persist to localStorage as they're picked, so a reload or a
+// failed submit never makes a nervous first-timer re-answer all eight questions.
+const ONB_KEY = "hb_onboarding";
+let onbStep = 0, onbStarted = false, answers = {};
+try { const s = JSON.parse(localStorage.getItem(ONB_KEY) || "null"); if (s) { answers = s.answers || {}; onbStep = s.onbStep || 0; onbStarted = !!s.onbStarted; } } catch {}
+const saveOnb = () => { try { localStorage.setItem(ONB_KEY, JSON.stringify({ answers, onbStep, onbStarted })); } catch {} };
 
 function renderOnboarding() {
   nav.hidden = true;
@@ -87,7 +109,7 @@ function renderOnboarding() {
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
         <button class="btn secondary" id="sendrestore">Email me a restore link</button>
         <p class="muted" id="rmsg"></p></div></div>`;
-    $("#go").onclick = () => { onbStarted = true; onbStep = 0; renderOnboarding(); };
+    $("#go").onclick = () => { onbStarted = true; onbStep = 0; saveOnb(); renderOnboarding(); };
     $("#restore").onclick = () => { const b = $("#restorebox"); b.hidden = !b.hidden; if (!b.hidden) $("#remail").focus(); };
     $("#sendrestore").onclick = async () => {
       const val = $("#remail").value.trim();
@@ -125,7 +147,7 @@ function renderOnboarding() {
     const st = step.stepper;
     let v = answers[step.key] ?? st.def;
     app.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
-      v = Math.max(st.min, Math.min(st.max, v + (+b.dataset.d) * (st.step || 1))); $("#sv").textContent = v + (st.unit || ""); answers[step.key] = v;
+      v = Math.max(st.min, Math.min(st.max, v + (+b.dataset.d) * (st.step || 1))); $("#sv").textContent = v + (st.unit || ""); answers[step.key] = v; saveOnb();
     });
     answers[step.key] = v;
     $("#next").onclick = advance;
@@ -136,23 +158,26 @@ function renderOnboarding() {
       const cur = answers[step.key].map((x) => JSON.stringify(x));
       const idx = cur.indexOf(k);
       if (idx >= 0) answers[step.key].splice(idx, 1); else answers[step.key].push(val);
-      b.classList.toggle("sel");
+      b.classList.toggle("sel"); saveOnb();
     });
     $("#next").onclick = advance;
   } else {
-    app.querySelectorAll(".choice").forEach((b) => b.onclick = () => { answers[step.key] = step.opts[+b.dataset.i][1]; advance(); });
+    app.querySelectorAll(".choice").forEach((b) => b.onclick = () => { answers[step.key] = step.opts[+b.dataset.i][1]; saveOnb(); advance(); });
   }
   $("#onb-back").onclick = onbBack;
 }
 // A misclick is always recoverable: step back one question (or to the welcome
 // screen from the first), with prior answers preserved and re-highlighted.
 function onbBack() {
-  if (onbStep === 0) { onbStarted = false; return renderOnboarding(); }
-  onbStep--;
+  if (onbStep === 0) { onbStarted = false; saveOnb(); return renderOnboarding(); }
+  onbStep--; saveOnb();
   renderOnboarding();
 }
 async function advance() {
-  if (onbStep < STEPS.length - 1) { onbStep++; return renderOnboarding(); }
+  if (onbStep < STEPS.length - 1) { onbStep++; saveOnb(); return renderOnboarding(); }
+  await submitOnboarding();
+}
+async function submitOnboarding() {
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Building your plan…</h1></div>`;
   const priority = [...new Set((answers.priority_muscles || []).flat())];
   const injuries = (answers.injuries || []).map((region) => ({ region, severity: "moderate" }));
@@ -160,42 +185,90 @@ async function advance() {
     training_status: answers.training_status, primary_goal: answers.primary_goal,
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
     available_equipment: answers.available_equipment, priority_muscles: priority,
-    injuries, sex: answers.sex, units: "metric",
+    injuries, sex: answers.sex, units: answers.units || "metric",
   };
-  const res = await api("/api/onboard", { method: "POST", body: JSON.stringify({ profile }) });
-  if (res.user_id) { uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name); return renderPlanExplain(true); }
-  else app.innerHTML = `<p>Something went wrong. <button class="btn" onclick="location.reload()">Retry</button></p>`;
+  let res;
+  try { res = await api("/api/onboard", { method: "POST", body: JSON.stringify({ profile }) }); }
+  catch { res = {}; }
+  if (res.user_id) {
+    uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name);
+    localStorage.removeItem(ONB_KEY); // answers safely handed off; stop persisting them
+    return renderPlanExplain(true);
+  }
+  // Retry in place — never discard the eight answers the user just gave.
+  app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Hmm — that didn't go through.</h1>
+    <p>Your answers are safe. Let's try again.</p>
+    <button class="btn" id="retryonb">Try again</button>
+    <button class="btn ghost" id="backonb">‹ Back to the last question</button></div>`;
+  $("#retryonb").onclick = submitOnboarding;
+  $("#backonb").onclick = () => { onbStep = STEPS.length - 1; renderOnboarding(); };
 }
 
 // The coach explaining the plan before the first workout: split reasoning,
 // per-muscle weekly volume vs the KB landmarks, and honest heads-ups.
 const titleCase = (id) => String(id).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+const STATUS_LEGEND = `<p class="muted legend"><b>What the tags mean:</b>
+  <span class="status s-below">add volume</span> below the useful range ·
+  <span class="status s-in">on target</span> the sweet spot ·
+  <span class="status s-near">near max</span> plenty ·
+  <span class="status s-over">over max</span> more than you can recover from.<br>
+  <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.</p>`;
 async function renderPlanExplain(firstTime) {
   nav.hidden = !!firstTime;
   app.innerHTML = `<p class="muted">Loading your plan…</p>`;
-  let d; try { d = await api(`/api/plan/explain`); } catch { app.innerHTML = `<p class="muted">Couldn't load your plan.</p>`; return; }
+  let d;
+  try { d = await api(`/api/plan/explain`); if (!d || d.error) throw new Error("no plan"); }
+  catch {
+    app.innerHTML = `<div class="center" style="padding-top:14vh"><h1>Couldn't load your plan</h1>
+      <p>It's saved safely — this is just a connection hiccup.</p>
+      <button class="btn" id="retry-plan">Try again</button></div>`;
+    $("#retry-plan").onclick = () => renderPlanExplain(firstTime);
+    return;
+  }
   const r = d.rationale || {};
   const gradeChip = (g) => g ? `<span class="chip">Grade ${g}</span>` : "";
   const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => v.frequency > 0 && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
-  const volRows = vols.map(([m, v]) => `<div class="row"><div style="flex:1"><b>${esc(titleCase(m))}</b> <span class="muted">${v.projected_sets} sets/wk${v.is_priority ? " · priority" : ""}</span>
+  const volRows = vols.map(([m, v]) => `<div class="row"><div style="flex:1"><b>${esc(cap(friendlyMuscle(m)))}</b> <span class="muted">${v.projected_sets} sets/wk${v.is_priority ? " · priority" : ""}</span>
       <div class="bar"><i style="width:${Math.min(100, (v.projected_sets / 24) * 100)}%;background:var(--accent)"></i></div>
       <span class="muted" style="font-size:.82rem">${esc((v.reasons || []).join(" · "))} ${gradeChip(v.landmark?.evidence_grade)}</span></div>
       <span class="status ${statusClass(v.projected_status)}">${statusLabel(v.projected_status)}</span></div>`).join("");
   const warns = (r.warnings || []).map((w) => `<div class="win">ℹ️ ${esc(w.message)}</div>`).join("");
-  app.innerHTML = `<h1>Your plan</h1>
-    <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div>
-      <p class="muted">${esc(r.split?.reason || "")} ${gradeChip("B")}</p></div>
-    <h2>Weekly volume — tuned to your muscles' landmarks</h2>
+  const sessions = d.program?.sessions || [];
+  const sessionRows = sessions.map((s) => `<div class="row"><div style="flex:1"><b>${esc(s.name)}</b></div>
+    <span class="muted">${s.exercises.length} exercise${s.exercises.length === 1 ? "" : "s"}</span></div>`).join("");
+  const whyBlock = `<details class="why"><summary>Why this plan? <span class="muted">(the science)</span></summary>
+    <p class="muted" style="margin-top:8px">${esc(r.split?.reason || "")} ${gradeChip("B")}</p>
+    <h3>Weekly sets per muscle</h3>
     <div class="card">${volRows || '<p class="muted">—</p>'}</div>
-    ${warns ? `<h2>Heads up</h2><div class="card">${warns}</div>` : ""}
-    ${firstTime ? "" : `<button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>`}
-    <button class="btn" id="explain-go">${firstTime ? "Start training" : "Back"}</button>`;
-  if (!firstTime) $("#edit-plan").onclick = renderPlanEdit;
+    ${STATUS_LEGEND}
+    ${warns ? `<h3>Heads up</h3><div class="card">${warns}</div>` : ""}</details>`;
+
+  if (firstTime) {
+    app.innerHTML = `<div class="center"><h1>Your plan is ready 🎉</h1></div>
+      <div class="card"><p>Here's your week — <b>${sessions.length} short session${sessions.length === 1 ? "" : "s"}</b>. I chose every exercise, weight, and set for you. You just show up and tap <b>Start</b>.</p></div>
+      <div class="card">${sessionRows}</div>
+      <div class="card"><b>🚪 Never trained before?</b>
+        <p class="muted">These 2-minute reads make your first day easy.</p>
+        <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
+        <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
+      ${whyBlock}
+      <button class="btn" id="explain-go">Start training</button>`;
+  } else {
+    app.innerHTML = `<h1>Your plan</h1>
+      <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div></div>
+      <div class="card">${sessionRows}</div>
+      ${whyBlock}
+      <button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>
+      <button class="btn" id="explain-go">Back</button>`;
+    $("#edit-plan").onclick = renderPlanEdit;
+  }
+  wireLearnLinks();
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
 
 // ---------- Custom plan builder + KB critique ----------
-let editState = null, allExercises = [];
+let editState = null, allExercises = [], pendingRm = null;
 const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
 const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
@@ -203,6 +276,7 @@ async function renderPlanEdit() {
   const [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]);
   allExercises = exs;
   editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
+  pendingRm = null;
   // show the current plan's critique straight away
   const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
   drawEdit(crit);
@@ -210,9 +284,10 @@ async function renderPlanEdit() {
 function drawEdit(critique) {
   const sessions = editState.sessions.map((s, si) => `<div class="card"><b>${esc(s.name)}</b>
     ${s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
-      <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets}×${esc(e.rep_range)}</span></div>
-      <button class="chip" data-act="dec">−</button><button class="chip" data-act="inc">+</button>
-      <button class="chip" data-act="swap">swap</button><button class="chip" data-act="rm">✕</button></div>`).join("")}
+      <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets} × ${esc(e.rep_range)} reps</span></div>
+      <button class="tapchip" data-act="dec" aria-label="fewer sets">−</button><button class="tapchip" data-act="inc" aria-label="more sets">+</button>
+      <button class="tapchip" data-act="swap">swap</button>
+      <button class="tapchip ${pendingRm === si + "-" + ei ? "danger" : ""}" data-act="rm">${pendingRm === si + "-" + ei ? "Remove?" : "✕"}</button></div>`).join("")}
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Edit &amp; review</h1>${crit}${sessions}
@@ -221,11 +296,18 @@ function drawEdit(critique) {
   app.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
     const row = b.closest("[data-si]"), si = +row.dataset.si, ei = +row.dataset.ei, ex = editState.sessions[si].exercises[ei];
     const act = b.dataset.act;
-    if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
-    else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
-    else if (act === "rm") editState.sessions[si].exercises.splice(ei, 1);
-    else if (act === "swap") { const pool = poolFor(ex.exercise); if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; } }
-    drawEdit(null);
+    if (act === "rm") {
+      // Two-tap confirm so a fat-finger never deletes an exercise outright.
+      const key = si + "-" + ei;
+      if (pendingRm === key) { editState.sessions[si].exercises.splice(ei, 1); pendingRm = null; }
+      else pendingRm = key;
+    } else {
+      pendingRm = null; // any other action cancels a pending removal
+      if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
+      else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
+      else if (act === "swap") { const pool = poolFor(ex.exercise); if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; } }
+    }
+    drawEdit(critique);
   });
   app.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => renderAddExercise(+b.dataset.add));
   $("#savePlan").onclick = async () => { const r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); if (r.ok) { localStorage.setItem("hb_program", editState.name); drawEdit(r.critique); } };
@@ -291,20 +373,27 @@ async function renderToday() {
       <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
       <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
     ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
-  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} × ${e.rep_range} · ${(e.primary_muscles || []).join(", ")}</span></div></div>`).join("");
+  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   const readinessCard = s.readiness == null
     ? `<div class="card"><b>How are you feeling today?</b>
         <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
         <button class="btn secondary" id="checkin">Quick check-in</button></div>`
     : (s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "");
-  app.innerHTML = `<h1>Today</h1>${header}${readinessCard}
+  // A brand-new lifter's very first session gets a reassuring walkthrough up top.
+  const firstTimer = s.day_number === 1
+    ? `<div class="card"><b>👋 First workout? You've got this.</b>
+        <p class="muted">Here's exactly how a session goes — arrive, warm up, find a comfy weight, do your sets. A 2-minute read makes the whole thing easy.</p>
+        <button class="btn secondary" data-learn="your-first-session">Read: Your first session</button></div>`
+    : "";
+  app.innerHTML = `<h1>Today</h1>${header}${firstTimer}${readinessCard}
     <div class="card"><div class="big">${esc(s.name)}</div>
       <p class="muted">${esc(s.program_name)} · day ${s.day_number} · ${s.exercises.length} exercises</p>
       <button class="btn" id="start">Start workout</button></div>
-    <h2>What you'll do</h2><div class="card">${list}</div>`;
+    <h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`;
   $("#start").onclick = () => startSession(s);
   if (s.readiness == null) $("#checkin").onclick = renderCheckin;
+  wireLearnLinks();
 }
 
 // Optional daily check-in survey — four 1-5 taps; low readiness eases today.
@@ -312,13 +401,13 @@ function renderCheckin() {
   const fields = [["sleep_quality", "Sleep quality"], ["energy", "Energy"], ["stress", "Stress"], ["mood", "Mood"]];
   const vals = { sleep_quality: 3, energy: 3, stress: 3, mood: 3 };
   const draw = () => {
-    const row = ([key, label]) => `<div class="row"><span style="flex:1">${label}</span>${[1, 2, 3, 4, 5].map((n) =>
-      `<button class="chip" data-k="${key}" data-v="${n}" style="min-width:40px;text-align:center${vals[key] === n ? ";background:var(--accent);color:#06210f;border-color:var(--accent)" : ""}">${n}</button>`).join("")}</div>`;
-    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Rate each 1–5 — this just tunes today, it's never a score or a judgment.</p>
+    const row = ([key, label]) => `<div class="ckrow"><span class="cklabel">${label}</span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
+      `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}">${n}</button>`).join("")}</div></div>`;
+    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Tap 1 to 5 for each — <b>1 = low, 5 = great</b>. This just tunes today; it's never a score or a judgment.</p>
       <div class="card">${fields.map(row).join("")}</div>
       <button class="btn" id="submitck">Save</button>
       <button class="btn ghost" id="skipck">Skip today</button>`;
-    app.querySelectorAll(".chip[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
+    app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
     $("#submitck").onclick = async () => { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); tab = "today"; render(); };
     $("#skipck").onclick = () => { tab = "today"; render(); };
   };
@@ -334,7 +423,9 @@ function startSession(templateSession) {
 }
 function startWeightDefault(e) {
   if (e.suggested_kg != null) return e.suggested_kg;
-  return { barbell: 40, dumbbell: 10, machine: 20, cable: 15, bodyweight: 0 }[e.equipment] ?? 20;
+  // Brand-new lift → start at the empty bar / lightest option and ramp UP from
+  // there. Never hand a first-timer a heavy guess (that's how form breaks).
+  return { barbell: 20, dumbbell: 5, machine: 10, cable: 5, bodyweight: 0 }[e.equipment] ?? 10;
 }
 function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
 
@@ -357,19 +448,25 @@ function renderPlayer(resting = 0) {
     return;
   }
 
+  const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1>${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
-    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · ${e.rir} reps in reserve</p>
+    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
     <div class="setdots">${setDots}</div>
+    ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
-    ${e.suggested_kg == null && sess.set === 0 ? `<p class="muted">${esc(e.suggestion_note || "Pick a weight where the last rep is ~2–3 from failure.")}</p>` : ""}
+    ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
+      <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
+      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
-      <div class="stepper"><label>Weight</label><button data-w="-2.5">–</button><div class="val">${w} kg</div><button data-w="2.5">+</button></div>
-      <div class="stepper"><label>Reps</label><button data-r="-1">–</button><div class="val">${reps}</div><button data-r="1">+</button></div>
-      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>` : ""}
+      <div class="stepper"><label>Weight</label><button data-w="-2.5" aria-label="less weight">–</button><div class="val">${w} kg</div><button data-w="2.5" aria-label="more weight">+</button></div>
+      <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
+      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>
+        <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
     <button class="btn ghost" id="quit">End workout early</button>`;
+  wireLearnLinks();
 
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); renderPlayer(); });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); renderPlayer(); });
@@ -398,13 +495,14 @@ function renderExerciseSheet(ex, d) {
   const name = d?.name ?? ex.name;
   const cues = (d?.cues ?? []).map((c) => `<div class="win">✅ ${esc(c)}</div>`).join("") || `<p class="muted">No cues on file for this one.</p>`;
   const errs = (d?.common_errors ?? []).map((c) => `<div class="win">⚠️ ${esc(c)}</div>`).join("");
-  const muscles = [...(d?.primary_muscles ?? []), ...(d?.secondary_muscles ?? [])].join(", ");
+  const muscles = friendlyMuscles([...(d?.primary_muscles ?? []), ...(d?.secondary_muscles ?? [])]);
   const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(name + " proper form")}`;
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
     <h2>How to do it</h2>${cues}
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
-    <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Watch form videos</a>
+    <p class="muted">Want to see it? This opens a YouTube search in a new tab — pick a clear, calm demo (avoid ego-lifting clips).</p>
+    <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Find a form video</a>
     <button class="btn" id="back">Back to workout</button>`;
   $("#back").onclick = () => renderPlayer(0);
 }
@@ -463,8 +561,13 @@ async function renderProgress() {
   const eb = p.energy_balance || {};
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
-    <h2>Weekly volume by muscle</h2><div class="card">${vol}</div>
-    <h2>Strength trend (est. 1RM)</h2><div class="card">${prog}</div>
+    <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
+    <p class="muted">How many hard sets each muscle got this week, and whether that's in the range that builds muscle.</p>
+    <div class="card">${vol}</div>
+    ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
+    <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
+    <p class="muted">The most you could likely lift for one rep, estimated from your sets. Watch the trend, not the exact number.</p>
+    <div class="card">${prog}</div>
     <h2>Bodyweight & energy balance</h2>
     <div class="card">
       ${t ? `<p><b>${t.slope_kg_per_week >= 0 ? "+" : ""}${t.slope_kg_per_week} kg/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
@@ -472,6 +575,7 @@ async function renderProgress() {
       <div class="stepper"><label>Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="kg" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
+  wireLearnLinks();
   $("#logbw").onclick = async () => {
     const kg = parseFloat($("#bw").value); if (!kg) return;
     const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg });
@@ -510,7 +614,8 @@ function renderMe() {
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
     <div class="card"><p class="muted">Effort logging (RIR)</p>
-      <p>Log reps-in-reserve each set so the coach autoregulates your load. Off by default — simple progression works great, especially for beginners.</p>
+      <p><b>RIR = reps in reserve</b> — how many more reps you could have done before failing. Stop a couple short of failure; that's a hard set, not a max effort.</p>
+      <p class="muted">Turn this on to log RIR each set so the coach fine-tunes your weights. Off by default — simple progression works great, especially for beginners.</p>
       <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to turn off" : "Off — tap to turn on"}</button></div>
     ${backup}
     ${funded}
@@ -573,13 +678,38 @@ async function renderCoach() {
     <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
       <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>`;
   const sel = new Set();
-  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="chip" data-day="${i}" style="min-width:46px">${d}</button>`).join(" ");
+  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}">${d}</button>`).join(" ");
   $("#days").querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
     const i = +b.dataset.day;
     if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; } else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; }
   });
   $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
   $("#pause").onclick = async () => { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); };
+}
+
+// ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
+function renderLearn() {
+  learnSlug = null;
+  const cats = LEARN_INDEX.map((c) => `<h2>${esc(c.category)}</h2><div class="card">${
+    c.items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
+  }</div>`).join("");
+  app.innerHTML = `<h1>Learn</h1>
+    <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>${cats}`;
+  wireLearnLinks();
+  window.scrollTo(0, 0);
+}
+function renderLearnPage(slug) {
+  const pg = LEARN_PAGES[slug];
+  if (!pg) { learnSlug = null; return renderLearn(); }
+  app.innerHTML = `<button class="btn ghost" id="learnback">‹ All topics</button>
+    <h1>${esc(pg.title)}</h1>
+    ${pg.tldr ? `<div class="card tldr"><b>In short</b> ${pg.tldr}</div>` : ""}
+    <div class="learn">${pg.html}</div>
+    <button class="btn ghost" id="learnback2">‹ Back to all topics</button>`;
+  $("#learnback").onclick = renderLearn;
+  $("#learnback2").onclick = renderLearn;
+  wireLearnLinks(); // in-page cross-links between pages
+  window.scrollTo(0, 0);
 }
 
 // ---------- Router ----------
@@ -590,9 +720,10 @@ function render() {
   if (tab === "today") renderToday();
   else if (tab === "progress") renderProgress();
   else if (tab === "coach") renderCoach();
+  else if (tab === "learn") { learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
-nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; render(); });
+nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") learnSlug = null; render(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 render();

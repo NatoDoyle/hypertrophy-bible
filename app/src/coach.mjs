@@ -147,7 +147,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       sets: ex.sets,
       rep_range: ex.rep_range,
       rir: ex.rir ?? "1-3",
-      primary_muscles: (e?.primary_muscles ?? []).map((m) => muscleById.get(m)?.name ?? m),
+      primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
       suggested_kg: sug.suggested_kg,
