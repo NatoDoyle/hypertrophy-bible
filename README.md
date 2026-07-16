@@ -1,11 +1,22 @@
 # The Hypertrophy Bible
 
-An evidence-based, fully-cited knowledge base for maximizing muscle growth — built to eventually power
-a web app for personalized training plans and workout tracking.
+An open-source, evidence-based, fully-cited knowledge base for maximizing muscle growth — and a
+free coaching app built on top of it, live at **[hypertrophybible.com](https://hypertrophybible.com)**.
+
+**Two goals:** the knowledge base aims to be the gold standard for hypertrophy *science*; the app aims
+to be the gold standard for *coaching that applies it*. Free, no ads, no premium tier, no selling data.
 
 Every substantive claim here is backed by a **real, web-verified study** (with a DOI or PMID) and
 carries an **A–D evidence grade**. Where the science is uncertain, we say so — that honesty is the
 point. See [`STYLE.md`](STYLE.md) for the authoring rules and [the design spec](docs/superpowers/specs/2026-07-15-hypertrophy-kb-design.md) for the full rationale.
+
+## The app
+
+A mobile-first PWA: anonymous one-tap start → a single "Today" card → one exercise at a time → a
+derived recap → progress inferred from your logs (per-muscle volume vs. the KB's landmarks,
+estimated-1RM trends, energy balance from bodyweight — no calorie counting). Optional passwordless
+email backup syncs across devices. One codebase runs on Node locally and Cloudflare Workers + D1 in
+production. To run it, see **[`app/README.md`](app/README.md)**.
 
 ## How this is organized
 
@@ -108,5 +119,12 @@ rounds out the physiology.
 npm install && npm run validate && npm run check
 ```
 
-**Next up:** the original goal — building the web app on top of the `data/` layer, which now covers
-every muscle with multiple exercises and resolves cleanly by id.
+**The app is built and live** at [hypertrophybible.com](https://hypertrophybible.com) — onboarding,
+KB-derived sessions, one-exercise-at-a-time logging, derived progress, offline support, and passwordless
+email backup, on Cloudflare's free tier. Active work: making the coaching itself gold-standard —
+generating plans directly from the KB's volume landmarks and exercise database, explaining the "why,"
+and capturing effort/readiness. See [`app/README.md`](app/README.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Nathan Doyle. Educational content — not medical advice.
