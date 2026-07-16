@@ -5,7 +5,7 @@
     "abs"
   ],
   "movement_pattern": "isolation-spinal-flexion",
-  "equipment": "other",
+  "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "static",
   "plane": [

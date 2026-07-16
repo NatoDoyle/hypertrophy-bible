@@ -26,7 +26,7 @@
     "available_equipment": {
       "type": "array",
       "minItems": 1,
-      "items": { "enum": ["barbell", "dumbbell", "machine", "cable", "smith-machine", "bodyweight", "band", "kettlebell"] }
+      "items": { "enum": ["barbell", "dumbbell", "machine", "cable", "bodyweight"], "description": "Only equipment the exercise library actually covers — band/kettlebell/smith-machine are omitted until primary exercises exist for them, so a user can't select an equipment set that resolves to an empty pool." }
     },
     "injuries": {
       "type": "array",
