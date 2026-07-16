@@ -1,0 +1,23 @@
+{
+  "id": "concentration-curl",
+  "name": "Concentration Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-elbow-flexion",
+  "difficulty": "beginner",
+  "cues": [
+    "Elbow braced on the inner thigh",
+    "Curl with a hard peak squeeze",
+    "Slow negative"
+  ],
+  "common_errors": [
+    "Swinging",
+    "Lifting the elbow"
+  ],
+  "progressions": [
+    "Add load"
+  ]
+}

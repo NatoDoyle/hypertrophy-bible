@@ -1,0 +1,30 @@
+{
+  "id": "diamond-push-up",
+  "name": "Diamond Push-Up",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "horizontal-push",
+  "secondary_muscles": [
+    "chest",
+    "front-delts"
+  ],
+  "difficulty": "intermediate",
+  "cues": [
+    "Hands together under the chest",
+    "Elbows tucked close",
+    "Full range, chest to hands"
+  ],
+  "common_errors": [
+    "Elbows flaring wide",
+    "Sagging hips"
+  ],
+  "progressions": [
+    "Feet elevated"
+  ],
+  "regressions": [
+    "Incline / on knees"
+  ]
+}

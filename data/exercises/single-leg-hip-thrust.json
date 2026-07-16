@@ -1,0 +1,30 @@
+{
+  "id": "single-leg-hip-thrust",
+  "name": "Single-Leg Hip Thrust",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-hip-extension",
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "unilateral": true,
+  "difficulty": "intermediate",
+  "cues": [
+    "Upper back on a bench, one foot planted",
+    "Drive the hip up, squeeze the glute",
+    "Full lockout, control down"
+  ],
+  "common_errors": [
+    "Arching the lower back",
+    "Short range"
+  ],
+  "progressions": [
+    "Barbell hip thrust"
+  ],
+  "regressions": [
+    "Two-leg glute bridge"
+  ]
+}

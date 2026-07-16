@@ -1,0 +1,31 @@
+{
+  "id": "bench-dip",
+  "name": "Bench Dip",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-elbow-extension",
+  "secondary_muscles": [
+    "chest",
+    "front-delts"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Hands on a bench behind you",
+    "Lower until the elbows reach ~90°",
+    "Press up, keeping elbows tucked"
+  ],
+  "common_errors": [
+    "Shrugging into the shoulders",
+    "Flaring the elbows"
+  ],
+  "progressions": [
+    "Feet elevated",
+    "Chest dip"
+  ],
+  "regressions": [
+    "Bent knees"
+  ]
+}

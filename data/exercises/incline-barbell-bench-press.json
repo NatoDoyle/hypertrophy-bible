@@ -1,0 +1,30 @@
+{
+  "id": "incline-barbell-bench-press",
+  "name": "Incline Barbell Bench Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "mechanic": "compound",
+  "equipment": "barbell",
+  "movement_pattern": "horizontal-push",
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "difficulty": "intermediate",
+  "cues": [
+    "Bench at ~30°",
+    "Bar to the upper chest",
+    "Drive up and slightly back"
+  ],
+  "common_errors": [
+    "Bench too steep (shoulders take over)",
+    "Bouncing off the chest"
+  ],
+  "progressions": [
+    "Add load"
+  ],
+  "regressions": [
+    "Incline dumbbell press"
+  ]
+}

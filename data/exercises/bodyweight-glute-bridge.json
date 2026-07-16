@@ -1,0 +1,26 @@
+{
+  "id": "bodyweight-glute-bridge",
+  "name": "Bodyweight Glute Bridge",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-hip-extension",
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "On your back, feet planted",
+    "Drive the hips up, squeeze hard at the top",
+    "Lower under control"
+  ],
+  "common_errors": [
+    "Overarching the back",
+    "Pushing through the toes"
+  ],
+  "progressions": [
+    "Single-leg hip thrust"
+  ]
+}

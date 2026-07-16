@@ -1,0 +1,23 @@
+{
+  "id": "dumbbell-shrug",
+  "name": "Dumbbell Shrug",
+  "primary_muscles": [
+    "upper-back"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-other",
+  "difficulty": "beginner",
+  "cues": [
+    "Dumbbells at the sides",
+    "Shrug straight up, pause at the top",
+    "Lower fully"
+  ],
+  "common_errors": [
+    "Rolling the shoulders",
+    "Short range"
+  ],
+  "progressions": [
+    "Barbell shrug"
+  ]
+}

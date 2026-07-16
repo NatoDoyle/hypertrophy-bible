@@ -1,0 +1,32 @@
+{
+  "id": "dumbbell-romanian-deadlift",
+  "name": "Dumbbell Romanian Deadlift",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "mechanic": "compound",
+  "equipment": "dumbbell",
+  "movement_pattern": "hinge",
+  "secondary_muscles": [
+    "glutes",
+    "spinal-erectors"
+  ],
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Soft knees, push the hips back",
+    "Dumbbells travel close to the legs",
+    "Feel the hamstring stretch, then drive the hips forward"
+  ],
+  "common_errors": [
+    "Rounding the lower back",
+    "Turning it into a squat"
+  ],
+  "progressions": [
+    "Barbell romanian deadlift"
+  ],
+  "regressions": [
+    "Higher dumbbells / shorter range"
+  ]
+}

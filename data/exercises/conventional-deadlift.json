@@ -1,0 +1,34 @@
+{
+  "id": "conventional-deadlift",
+  "name": "Conventional Deadlift",
+  "primary_muscles": [
+    "spinal-erectors",
+    "glutes"
+  ],
+  "mechanic": "compound",
+  "equipment": "barbell",
+  "movement_pattern": "hinge",
+  "secondary_muscles": [
+    "hamstrings",
+    "upper-back",
+    "quadriceps"
+  ],
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Bar over mid-foot, flat back",
+    "Push the floor away — hips and shoulders rise together",
+    "Lock out tall, then control down"
+  ],
+  "common_errors": [
+    "Rounding the back",
+    "Hips shooting up first"
+  ],
+  "progressions": [
+    "Add load"
+  ],
+  "regressions": [
+    "Romanian deadlift",
+    "Rack pull"
+  ]
+}

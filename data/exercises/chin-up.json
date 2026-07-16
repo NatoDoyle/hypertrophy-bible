@@ -1,0 +1,32 @@
+{
+  "id": "chin-up",
+  "name": "Chin-Up",
+  "primary_muscles": [
+    "biceps",
+    "lats"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "vertical-pull",
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "lengthened_bias": true,
+  "difficulty": "intermediate",
+  "cues": [
+    "Underhand grip, shoulder-width",
+    "Pull the chest to the bar, drive the elbows down",
+    "Full stretch at the bottom"
+  ],
+  "common_errors": [
+    "Kipping / swinging",
+    "Half range"
+  ],
+  "progressions": [
+    "Weighted chin-up"
+  ],
+  "regressions": [
+    "Band-assisted",
+    "Negatives"
+  ]
+}

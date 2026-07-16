@@ -1,0 +1,30 @@
+{
+  "id": "cable-rear-delt-fly",
+  "name": "Cable Rear Delt Fly",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "mechanic": "isolation",
+  "equipment": "cable",
+  "movement_pattern": "isolation-shoulder-extension",
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "lengthened_bias": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Cross-body cables at shoulder height",
+    "Pull out and back, thumbs down",
+    "Constant tension through the range"
+  ],
+  "common_errors": [
+    "Rowing with the arms",
+    "Using the traps"
+  ],
+  "progressions": [
+    "Add load"
+  ],
+  "regressions": [
+    "Single-arm"
+  ]
+}

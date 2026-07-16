@@ -1,0 +1,28 @@
+{
+  "id": "machine-shoulder-press",
+  "name": "Machine Shoulder Press",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "mechanic": "compound",
+  "equipment": "machine",
+  "movement_pattern": "vertical-push",
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "stability": "high",
+  "difficulty": "beginner",
+  "cues": [
+    "Grips at shoulder height",
+    "Press up smoothly, don't lock hard",
+    "Control the negative"
+  ],
+  "common_errors": [
+    "Half reps",
+    "Shrugging"
+  ],
+  "progressions": [
+    "Seated dumbbell shoulder press"
+  ]
+}

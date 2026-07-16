@@ -1,0 +1,26 @@
+{
+  "id": "prone-reverse-fly",
+  "name": "Prone Reverse Fly",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-shoulder-extension",
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Face down on a bench or floor",
+    "Raise the arms out and back, thumbs up",
+    "Squeeze the rear delts"
+  ],
+  "common_errors": [
+    "Shrugging",
+    "Using momentum"
+  ],
+  "progressions": [
+    "Dumbbell rear delt fly"
+  ]
+}

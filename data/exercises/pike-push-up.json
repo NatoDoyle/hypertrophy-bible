@@ -1,0 +1,31 @@
+{
+  "id": "pike-push-up",
+  "name": "Pike Push-Up",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "vertical-push",
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "difficulty": "intermediate",
+  "cues": [
+    "Hips high, body in an inverted V",
+    "Lower the crown of the head toward the floor",
+    "Press back up"
+  ],
+  "common_errors": [
+    "Hips dropping (turns into a push-up)",
+    "Short range"
+  ],
+  "progressions": [
+    "Feet elevated",
+    "Handstand push-up"
+  ],
+  "regressions": [
+    "Feet lower / incline pike"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "dumbbell-pullover",
+  "name": "Dumbbell Pullover",
+  "primary_muscles": [
+    "lats"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-shoulder-extension",
+  "secondary_muscles": [
+    "chest"
+  ],
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lie across a bench, one dumbbell overhead",
+    "Lower back into a deep lat stretch",
+    "Pull the elbows over, driving with the lats"
+  ],
+  "common_errors": [
+    "Bending the elbows to press",
+    "Short range"
+  ],
+  "progressions": [
+    "Cable pullover"
+  ],
+  "regressions": [
+    "Lighter"
+  ]
+}
