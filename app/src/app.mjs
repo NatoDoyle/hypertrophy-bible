@@ -5,6 +5,7 @@ import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
+import { generateUserPlan } from "./planner.mjs";
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -15,7 +16,8 @@ export function createApp(store, config = {}) {
 
   app.get("/api/health", (c) => c.json({ ok: true, programs: programs.length }));
 
-  // Onboarding: minimal profile -> program selection -> user created.
+  // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +
+  // exercise DB + equipment/injuries), with a rationale we can explain.
   app.post("/api/onboard", async (c) => {
     const { profile } = await c.req.json();
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
@@ -23,10 +25,31 @@ export function createApp(store, config = {}) {
     profile.user_id = user_id;
     profile.units ??= "metric";
     profile.days_per_week ??= 3;
-    const program = selectProgram(profile);
-    const user = { profile, program, created_at: new Date().toISOString() };
+    const { program, rationale, meta } = generateUserPlan(profile);
+    const user = { profile, program, plan_rationale: rationale, plan_meta: meta, created_at: new Date().toISOString() };
     await store.saveUser(user_id, user);
     return c.json({ user_id, program: { id: program.id, name: program.name, days_per_week: program.days_per_week, split: program.split } });
+  });
+
+  // The coach explaining the plan: split reasoning, per-muscle volume vs the KB
+  // landmarks, why each exercise, evidence grades, and any honest warnings.
+  app.get("/api/plan/explain", async (c) => {
+    const { user, error } = await requireUser(c);
+    if (error) return error;
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions }, rationale: user.plan_rationale ?? null });
+  });
+
+  // Regenerate the plan from the stored profile (after a profile edit).
+  app.post("/api/plan/regenerate", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const id = body.user_id;
+    const user = id && (await store.getUser(id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (body.profile) user.profile = { ...user.profile, ...body.profile, user_id: id };
+    const { program, rationale, meta } = generateUserPlan(user.profile);
+    user.program = program; user.plan_rationale = rationale; user.plan_meta = meta;
+    await store.saveUser(id, user);
+    return c.json({ program: { id: program.id, name: program.name, split: program.split, days_per_week: program.days_per_week } });
   });
 
   const requireUser = async (c) => {

@@ -1,0 +1,71 @@
+// Unit tests for the generative plan engine (tools/plan-core.mjs), run against
+// the REAL knowledge base so the invariants hold on shipping data.
+import { readdirSync, readFileSync } from "node:fs";
+import { generatePlan, chooseSplit, targetWeeklySets } from "./plan-core.mjs";
+
+const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
+const exercises = load("data/exercises");
+const muscles = load("data/muscles");
+const contraindications = JSON.parse(readFileSync("data/injury-contraindications.json"));
+const registry = new Set(JSON.parse(readFileSync("citations/registry.json")).citations.map((c) => c.key));
+const exIds = new Set(exercises.map((e) => e.id));
+const kb = { exercises, muscles, contraindications };
+const muscleById = new Map(muscles.map((m) => [m.id, m]));
+
+let pass = 0, fail = 0;
+const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
+
+// --- split selection ---
+const s4 = chooseSplit({ days_per_week: 4, training_status: "intermediate" });
+ok("4d intermediate → upper-lower, 4 sessions", s4.split === "upper-lower" && s4.sessions.length === 4);
+ok("6d → push-pull-legs, 6 sessions", chooseSplit({ days_per_week: 6, training_status: "advanced" }).split === "push-pull-legs");
+ok("2d → full-body", chooseSplit({ days_per_week: 2, training_status: "beginner" }).split === "full-body");
+
+// --- volume target math (side-delts: mev8 mav12-20 mrv24-26) ---
+const sd = muscleById.get("side-delts").landmarks;
+ok("beginner → MEV.min (8)", targetWeeklySets(sd, { experience: "beginner", isPriority: false }).target === 8);
+ok("intermediate → mid-MAV (16)", targetWeeklySets(sd, { experience: "intermediate", isPriority: false }).target === 16);
+ok("advanced → MAV.max (20)", targetWeeklySets(sd, { experience: "advanced", isPriority: false }).target === 20);
+ok("intermediate priority → ×1.3 (21)", targetWeeklySets(sd, { experience: "intermediate", isPriority: true }).target === 21);
+const chestLm = muscleById.get("chest").landmarks;
+ok("target never exceeds MRV.max", targetWeeklySets(chestLm, { experience: "advanced", isPriority: true }).target <= chestLm.mrv.max);
+
+// --- full generated plan (intermediate, hypertrophy, 4d, full gym + bodyweight, priority side-delts) ---
+const profile = { user_id: "test-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts"], session_length_min: 60 };
+const p = generatePlan(profile, kb);
+const allEx = p.program.sessions.flatMap((s) => s.exercises);
+ok("program id matches ^[a-z0-9-]+$", /^[a-z0-9-]+$/.test(p.program.id));
+ok("split is a valid enum value", ["full-body", "upper-lower", "push-pull-legs", "body-part", "push-pull", "other"].includes(p.program.split));
+ok("every exercise id resolves to a real exercise", allEx.every((e) => exIds.has(e.exercise)));
+ok("every set count is 1-10", allEx.every((e) => Number.isInteger(e.sets) && e.sets >= 1 && e.sets <= 10));
+ok("every exercise has a rep_range string", allEx.every((e) => typeof e.rep_range === "string" && /\d+-\d+/.test(e.rep_range)));
+ok("no exercise exceeds 5 sets", allEx.every((e) => e.sets <= 5));
+ok("no session exceeds 8 exercises", p.program.sessions.every((s) => s.exercises.length <= 8));
+ok("every citation resolves in the registry", p.program.citations.every((c) => registry.has(c)));
+// priority raises the TARGET (projected volume is separately budget-limited, and
+// compound-driven muscles accumulate more free secondary volume — that's expected).
+const vols = p.rationale.volume_by_muscle;
+const topTarget = Object.entries(vols).sort((a, b) => b[1].target_sets - a[1].target_sets)[0][0];
+ok("priority side-delts has the highest target volume", topTarget === "side-delts");
+ok("priority side-delts lands in a productive range (>= MEV)", vols["side-delts"].projected_sets >= muscleById.get("side-delts").landmarks.mev.min);
+
+// --- INVARIANT: no muscle is programmed over its MRV ---
+const overMrv = Object.entries(vols).filter(([m, r]) => { const lm = muscleById.get(m)?.landmarks; return lm && r.projected_sets > lm.mrv.max; });
+ok("no muscle is programmed over MRV", overMrv.length === 0);
+
+// --- determinism ---
+ok("same profile → byte-identical program", JSON.stringify(generatePlan(profile, kb).program) === JSON.stringify(p.program));
+
+// --- equipment filtering ---
+const bw = generatePlan({ user_id: "test-bw", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] }, kb);
+ok("bodyweight-only plan uses only bodyweight exercises", bw.program.sessions.flatMap((s) => s.exercises).every((e) => exercises.find((x) => x.id === e.exercise).equipment === "bodyweight"));
+ok("bodyweight-only plan still produces sessions (graceful, no crash)", bw.program.sessions.length === 3 && bw.program.sessions.every((s) => s.exercises.length > 0));
+
+// --- injury filtering ---
+const inj = generatePlan({ ...profile, user_id: "test-inj", injuries: [{ region: "shoulder", severity: "moderate" }] }, kb);
+const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map((e) => exercises.find((x) => x.id === e.exercise).movement_pattern));
+ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
+ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
+
+console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
+process.exit(fail ? 1 : 0);

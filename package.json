@@ -12,7 +12,7 @@
     "build-bib": "node tools/build-bibliography.mjs",
     "derive": "node tools/derive-metrics.mjs",
     "test-derive": "node tools/test-derive.mjs",
-    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs"
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs && node tools/test-plan.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",
