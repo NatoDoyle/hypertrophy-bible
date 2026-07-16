@@ -5,6 +5,7 @@
     "quadriceps"
   ],
   "mechanic": "compound",
+  "force": "push",
   "equipment": "bodyweight",
   "movement_pattern": "lunge",
   "secondary_muscles": [

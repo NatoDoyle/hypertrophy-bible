@@ -5,6 +5,7 @@
     "forearms"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "dumbbell",
   "movement_pattern": "isolation-wrist",
   "difficulty": "beginner",

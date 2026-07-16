@@ -6,6 +6,9 @@
     "glutes"
   ],
   "movement_pattern": "lunge",
+  "secondary_muscles": [
+    "hamstrings"
+  ],
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "push",

@@ -5,6 +5,7 @@
     "upper-back"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "dumbbell",
   "movement_pattern": "isolation-other",
   "difficulty": "beginner",

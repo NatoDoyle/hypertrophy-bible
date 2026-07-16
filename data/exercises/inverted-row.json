@@ -5,6 +5,7 @@
     "upper-back"
   ],
   "mechanic": "compound",
+  "force": "pull",
   "equipment": "bodyweight",
   "movement_pattern": "horizontal-pull",
   "secondary_muscles": [

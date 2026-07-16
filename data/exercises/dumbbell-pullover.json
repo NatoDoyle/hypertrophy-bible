@@ -5,6 +5,7 @@
     "lats"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "dumbbell",
   "movement_pattern": "isolation-shoulder-extension",
   "secondary_muscles": [

@@ -5,6 +5,7 @@
     "triceps"
   ],
   "mechanic": "isolation",
+  "force": "push",
   "equipment": "bodyweight",
   "movement_pattern": "isolation-elbow-extension",
   "secondary_muscles": [

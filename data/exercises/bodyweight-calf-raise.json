@@ -5,6 +5,7 @@
     "calves"
   ],
   "mechanic": "isolation",
+  "force": "push",
   "equipment": "bodyweight",
   "movement_pattern": "isolation-plantarflexion",
   "lengthened_bias": true,

@@ -16,8 +16,8 @@
     "mav": { "min": 14, "max": 22 },
     "mrv": { "min": 24, "max": 26 },
     "evidence_grade": "C",
-    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review"],
-    "notes": "Tolerates high volume and frequency; receives substantial indirect work from rows, deadlifts, and carries. Estimate only."
+    "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review", "enes-2024-volume-progression"],
+    "notes": "Tolerates high volume and frequency; receives substantial indirect work from rows, deadlifts, and carries. The 24-26 MRV is extrapolated beyond the volumes actually tested in the cited dose-response work; Enes 2024 suggests hypertrophy gains largely plateau by ~20 sets/wk, so treat this ceiling as an untested upper-bound estimate."
   },
   "frequency_notes": "~2-3x/week; overlaps heavily with lat and rear-delt training.",
   "training_notes": "Rows train the mid-traps/rhomboids; add shrugs or upright variations for upper traps if prioritized.",

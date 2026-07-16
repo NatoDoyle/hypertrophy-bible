@@ -5,6 +5,7 @@
     "front-delts"
   ],
   "mechanic": "compound",
+  "force": "push",
   "equipment": "machine",
   "movement_pattern": "vertical-push",
   "secondary_muscles": [

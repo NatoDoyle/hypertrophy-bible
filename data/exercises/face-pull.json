@@ -8,6 +8,7 @@
   "movement_pattern": "isolation-other",
   "equipment": "cable",
   "mechanic": "isolation",
+  "force": "pull",
   "plane": [
     "transverse"
   ],

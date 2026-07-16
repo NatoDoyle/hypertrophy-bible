@@ -4,7 +4,7 @@
 
 **Quick recommendations**
 - Include an **overhead triceps extension** to load the long head at length. **[Grade B]**
-- Include a **stretch-biased curl** (incline or overhead) for the biceps long head. **[Grade B]**
+- Include a **stretch-biased curl** (incline or overhead) for the biceps long head. **[Grade C]** (extrapolated from the lengthened-position evidence; the direct trials are on other muscles)
 - Direct volume: biceps ~**8–20**, triceps ~**6–18** sets/week, *on top of* pulling/pressing. **[Grade C]**
 - Train forearms with **loaded carries/heavy holds** plus wrist curls if lagging. **[Grade C]**
 
@@ -22,7 +22,7 @@
 
 ## The Evidence
 
-The strongest arm-specific finding is about **exercise position**: Maeo and colleagues (2023) found **substantially greater triceps growth training elbow extensions overhead versus with the arm at the side**, because the overhead position loads the long head at long length[^maeo-2023-triceps-overhead]. **[Grade B]** This generalizes via the broader lengthened-position evidence to the biceps long head (incline/behind-the-body curls)[^pedrosa-2022-lengthened-partials]. **[Grade B]** Beyond position, arm growth follows **volume**[^schoenfeld-2017-volume-dose-response] **[Grade A]** and can use **any load taken close to failure**, so lighter, higher-rep isolation work is perfectly effective[^schoenfeld-2017-load-meta]. **[Grade A]**
+The strongest arm-specific finding is about **exercise position**: Maeo and colleagues (2023) found **substantially greater triceps growth training elbow extensions overhead versus with the arm at the side**, because the overhead position loads the long head at long length[^maeo-2023-triceps-overhead]. **[Grade B]** Extending this to the **biceps long head** (incline/behind-the-body curls) is an **extrapolation** from the broader lengthened-position evidence[^pedrosa-2022-lengthened-partials] — not a direct incline-vs-standing biceps hypertrophy comparison — so it's held to **[Grade C]** rather than the direct triceps finding's B. Beyond position, arm growth follows **volume**[^schoenfeld-2017-volume-dose-response] **[Grade A]** and can use **any load taken close to failure**, so lighter, higher-rep isolation work is perfectly effective[^schoenfeld-2017-load-meta]. **[Grade A]**
 
 ## Key Uncertainties & Nuance
 - **Biceps "peak"** is largely genetic (muscle belly length/insertions); you can grow the muscle but not reshape its fundamental form.

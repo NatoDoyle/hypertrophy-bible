@@ -6,6 +6,7 @@
     "lats"
   ],
   "mechanic": "compound",
+  "force": "pull",
   "equipment": "bodyweight",
   "movement_pattern": "vertical-pull",
   "secondary_muscles": [

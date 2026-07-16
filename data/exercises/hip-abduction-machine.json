@@ -7,6 +7,7 @@
   "movement_pattern": "isolation-hip-abduction",
   "equipment": "machine",
   "mechanic": "isolation",
+  "force": "static",
   "plane": [
     "frontal"
   ],

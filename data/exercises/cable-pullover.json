@@ -5,6 +5,7 @@
     "lats"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "cable",
   "movement_pattern": "isolation-shoulder-extension",
   "lengthened_bias": true,

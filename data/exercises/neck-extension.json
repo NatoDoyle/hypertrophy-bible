@@ -10,6 +10,7 @@
   "movement_pattern": "isolation-neck",
   "equipment": "other",
   "mechanic": "isolation",
+  "force": "static",
   "plane": [
     "sagittal"
   ],

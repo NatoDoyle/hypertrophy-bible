@@ -5,6 +5,7 @@
     "hamstrings"
   ],
   "mechanic": "compound",
+  "force": "pull",
   "equipment": "dumbbell",
   "movement_pattern": "hinge",
   "secondary_muscles": [

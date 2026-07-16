@@ -5,6 +5,7 @@
     "triceps"
   ],
   "mechanic": "compound",
+  "force": "push",
   "equipment": "bodyweight",
   "movement_pattern": "horizontal-push",
   "secondary_muscles": [
