@@ -89,7 +89,7 @@ export function createApp(store, config = {}) {
   // Lean exercise list for the plan builder's swap pickers (includes the user's
   // own custom exercises when ?u= is supplied).
   app.get("/api/exercises", async (c) => {
-    const id = c.req.query("u");
+    const id = c.req.header("X-HB-User") || c.req.query("u");
     const user = id ? await store.getUser(id) : null;
     const all = [...exerciseById.values(), ...(user?.custom_exercises || [])];
     return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, custom: !!e.custom })));
@@ -119,7 +119,9 @@ export function createApp(store, config = {}) {
   });
 
   const requireUser = async (c) => {
-    const id = c.req.query("u") || (await c.req.json().catch(() => ({}))).user_id;
+    // Prefer the X-HB-User header (kept out of URLs/logs); fall back to ?u= for
+    // links like the email verify page, and to the POST body.
+    const id = c.req.header("X-HB-User") || c.req.query("u") || (await c.req.json().catch(() => ({}))).user_id;
     if (!id) return { error: c.json({ error: "no user" }, 400) };
     const user = await store.getUser(id);
     if (!user) return { error: c.json({ error: "unknown user" }, 404) };
@@ -290,7 +292,7 @@ export function createApp(store, config = {}) {
 
   // Exercise detail (the "how do I do this?" tap) — resolves custom exercises too.
   app.get("/api/exercise/:id", async (c) => {
-    const uid = c.req.query("u");
+    const uid = c.req.header("X-HB-User") || c.req.query("u");
     const user = uid ? await store.getUser(uid) : null;
     const e = exerciseById.get(c.req.param("id")) || (user?.custom_exercises || []).find((x) => x.id === c.req.param("id"));
     if (!e) return c.json({ error: "not found" }, 404);

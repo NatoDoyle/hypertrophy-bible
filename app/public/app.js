@@ -7,7 +7,8 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 
 const api = async (path, opts = {}) => {
-  const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
+  const headers = { "content-type": "application/json", ...(uid ? { "X-HB-User": uid } : {}), ...(opts.headers || {}) };
+  const r = await fetch(path, { ...opts, headers });
   return r.json();
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -172,7 +173,7 @@ const titleCase = (id) => String(id).replace(/-/g, " ").replace(/\b\w/g, (c) => 
 async function renderPlanExplain(firstTime) {
   nav.hidden = !!firstTime;
   app.innerHTML = `<p class="muted">Loading your plan…</p>`;
-  let d; try { d = await api(`/api/plan/explain?u=${uid}`); } catch { app.innerHTML = `<p class="muted">Couldn't load your plan.</p>`; return; }
+  let d; try { d = await api(`/api/plan/explain`); } catch { app.innerHTML = `<p class="muted">Couldn't load your plan.</p>`; return; }
   const r = d.rationale || {};
   const gradeChip = (g) => g ? `<span class="chip">Grade ${g}</span>` : "";
   const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => v.frequency > 0 && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
@@ -199,7 +200,7 @@ const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
 const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  const [d, exs] = await Promise.all([api(`/api/plan/explain?u=${uid}`), api(`/api/exercises?u=${uid}`)]);
+  const [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]);
   allExercises = exs;
   editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
   // show the current plan's critique straight away
@@ -261,7 +262,7 @@ function renderCustomExercise(si) {
       if (!st.name.trim()) { $("#cx-msg").textContent = "Give it a name first."; return; }
       const r = await api(`/api/exercise/custom`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: { name: st.name.trim(), primary_muscles: [st.muscle], equipment: st.equipment, mechanic: st.mechanic } }) });
       if (r.error) { $("#cx-msg").textContent = r.error; return; }
-      allExercises = await api(`/api/exercises?u=${uid}`);
+      allExercises = await api(`/api/exercises`);
       editState.sessions[si].exercises.push({ exercise: r.exercise.id, sets: 3, rep_range: "8-12" });
       drawEdit(null);
     };
@@ -274,7 +275,7 @@ function renderCustomExercise(si) {
 async function renderToday() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let data, adh;
-  try { [data, adh] = await Promise.all([api(`/api/today?u=${uid}`), api(`/api/adherence?u=${uid}`)]); }
+  try { [data, adh] = await Promise.all([api(`/api/today`), api(`/api/adherence`)]); }
   catch {
     app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p></div>`;
@@ -375,7 +376,7 @@ function renderPlayer(resting = 0) {
   app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); renderPlayer(); });
   $("#how").onclick = async () => {
     let d = null;
-    try { d = await api(`/api/exercise/${e.exercise}?u=${uid}`); } catch {}
+    try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
     renderExerciseSheet(e, d);
   };
   $("#quit").onclick = finish;
@@ -445,7 +446,7 @@ const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": 
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
-  try { p = await api(`/api/progress?u=${uid}`); }
+  try { p = await api(`/api/progress`); }
   catch {
     app.innerHTML = `<h1>Progress</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p></div>`;
@@ -550,7 +551,7 @@ function downloadTrainingCalendar(days, time) {
 }
 async function renderCoach() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let a; try { a = await api(`/api/adherence?u=${uid}`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 Offline.</p></div>`; return; }
+  let a; try { a = await api(`/api/adherence`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 Offline.</p></div>`; return; }
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
