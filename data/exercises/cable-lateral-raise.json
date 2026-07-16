@@ -10,6 +10,7 @@
   "movement_pattern": "isolation-shoulder-abduction",
   "equipment": "cable",
   "mechanic": "isolation",
+  "force": "push",
   "plane": [
     "frontal"
   ],

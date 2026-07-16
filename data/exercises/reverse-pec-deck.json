@@ -14,6 +14,7 @@
   "movement_pattern": "isolation-other",
   "equipment": "machine",
   "mechanic": "isolation",
+  "force": "pull",
   "plane": [
     "transverse"
   ],

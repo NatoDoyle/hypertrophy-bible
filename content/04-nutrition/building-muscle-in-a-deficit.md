@@ -4,7 +4,7 @@
 
 **Quick recommendations**
 - Keep the deficit **moderate (~10–20%)** — aggressive cuts risk muscle loss. **[Grade B]**
-- Raise protein to **~2.0–2.4 g/kg/day** to protect (and sometimes build) muscle. **[Grade A]**
+- Raise protein to **~2.0–2.4 g/kg/day** to protect (and sometimes build) muscle. **[Grade B]** (That high protein protects lean mass in a deficit is Grade A; the *exact* 2.0–2.4 figure rests largely on one short trial.)
 - **Keep training with intensity and load** — don't switch to "toning" high-rep circuits (see [Myths](../08-myths/index.md)). **[Grade B]**
 - Set expectations by status: **recomp for beginners/returnees/higher body fat**; **muscle retention** for lean advanced lifters. **[Grade B]**
 
@@ -20,7 +20,7 @@
 
 ## The Evidence
 
-**High protein in a deficit builds/retains more muscle.** Longland and colleagues (2016) ran a controlled trial in which men in a substantial energy deficit did intense training; the **higher-protein group (~2.4 g/kg) gained lean mass and lost more fat**, while the lower-protein group did not gain lean mass[^longland-2016-deficit-protein]. **[Grade A]** This is direct evidence that muscle gain during fat loss is possible and that protein is decisive. The broader review of energy balance frames this: a surplus maximizes gain, but **hypertrophy is still achievable in a deficit for the right person with adequate protein and training**[^slater-2019-energy-surplus]. **[Grade B]** General protein needs support the higher intake while cutting[^morton-2018-protein-meta]. **[Grade A]**
+**High protein in a deficit protects — and sometimes builds — muscle.** That high protein protects lean mass while cutting is well established, backed by the broad protein meta-analysis[^morton-2018-protein-meta]. **[Grade A]** The stronger claim — that the right person can actually *gain* lean mass in a deficit — rests mainly on Longland and colleagues (2016): men in a substantial energy deficit doing intense training, where the **higher-protein group (~2.4 g/kg) gained lean mass and lost more fat** while the lower-protein group did not[^longland-2016-deficit-protein]. That is a single short (4-week) proof-of-principle trial with ~20 per group, so the specific **~2.0–2.4 g/kg deficit target is [Grade B]** — not the A-level confidence of the general "keep protein high while cutting" recommendation. The broader energy-balance review frames it: a surplus maximizes gain, but **hypertrophy is still achievable in a deficit for the right person with adequate protein and training**[^slater-2019-energy-surplus]. **[Grade B]**
 
 ## Key Uncertainties & Nuance
 - **Recomp is easiest for beginners/returnees/higher body fat** and hardest for lean advanced lifters — the same diet yields different results by starting point.

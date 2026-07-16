@@ -5,6 +5,8 @@
     "biceps"
   ],
   "mechanic": "isolation",
+  "force": "pull",
+  "unilateral": true,
   "equipment": "dumbbell",
   "movement_pattern": "isolation-elbow-flexion",
   "difficulty": "beginner",

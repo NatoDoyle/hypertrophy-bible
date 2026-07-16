@@ -7,6 +7,7 @@
   "movement_pattern": "isolation-shoulder-abduction",
   "equipment": "dumbbell",
   "mechanic": "isolation",
+  "force": "push",
   "plane": ["frontal"],
   "resistance_profile": "With dumbbells, tension is lowest at the bottom and highest near horizontal; cables load the bottom (lengthened) portion better.",
   "lengthened_bias": false,

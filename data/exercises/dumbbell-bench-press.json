@@ -5,6 +5,7 @@
     "chest"
   ],
   "mechanic": "compound",
+  "force": "push",
   "equipment": "dumbbell",
   "movement_pattern": "horizontal-push",
   "secondary_muscles": [

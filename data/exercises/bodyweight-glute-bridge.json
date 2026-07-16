@@ -5,6 +5,7 @@
     "glutes"
   ],
   "mechanic": "isolation",
+  "force": "push",
   "equipment": "bodyweight",
   "movement_pattern": "isolation-hip-extension",
   "secondary_muscles": [

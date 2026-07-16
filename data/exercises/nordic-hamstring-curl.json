@@ -5,6 +5,7 @@
     "hamstrings"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "bodyweight",
   "movement_pattern": "isolation-knee-flexion",
   "lengthened_bias": true,

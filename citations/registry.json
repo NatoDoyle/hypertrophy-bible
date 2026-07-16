@@ -679,6 +679,26 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33433148/"
     },
     {
+      "key": "maeo-2021-hamstring-length",
+      "authors": [
+        "Maeo S",
+        "Huang M",
+        "et al."
+      ],
+      "year": 2021,
+      "title": "Greater Hamstrings Muscle Hypertrophy but Similar Damage Protection after Training at Long versus Short Muscle Lengths.",
+      "source": "Medicine & Science in Sports & Exercise",
+      "volume": "53",
+      "issue": "4",
+      "pages": "825-837",
+      "doi": "10.1249/MSS.0000000000002523",
+      "pmid": "33009197",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33009197/"
+    },
+    {
       "key": "maeo-2023-triceps-overhead",
       "authors": [
         "Maeo S",

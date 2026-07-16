@@ -5,6 +5,7 @@
     "rear-delts"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "bodyweight",
   "movement_pattern": "isolation-shoulder-extension",
   "secondary_muscles": [

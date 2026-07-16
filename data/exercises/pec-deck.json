@@ -7,6 +7,7 @@
   "movement_pattern": "isolation-other",
   "equipment": "machine",
   "mechanic": "isolation",
+  "force": "push",
   "plane": [
     "transverse"
   ],

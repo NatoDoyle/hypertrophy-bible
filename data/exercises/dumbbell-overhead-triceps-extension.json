@@ -5,6 +5,7 @@
     "triceps"
   ],
   "mechanic": "isolation",
+  "force": "push",
   "equipment": "dumbbell",
   "movement_pattern": "isolation-elbow-extension",
   "lengthened_bias": true,

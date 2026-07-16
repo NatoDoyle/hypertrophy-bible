@@ -5,6 +5,7 @@
     "biceps"
   ],
   "mechanic": "isolation",
+  "force": "pull",
   "equipment": "dumbbell",
   "movement_pattern": "isolation-elbow-flexion",
   "secondary_muscles": [

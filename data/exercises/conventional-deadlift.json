@@ -6,6 +6,7 @@
     "glutes"
   ],
   "mechanic": "compound",
+  "force": "pull",
   "equipment": "barbell",
   "movement_pattern": "hinge",
   "secondary_muscles": [
