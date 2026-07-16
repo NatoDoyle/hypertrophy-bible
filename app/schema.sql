@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS bodyweights (
 );
 CREATE INDEX IF NOT EXISTS idx_bodyweights_user ON bodyweights(user_id);
 
+-- Optional daily check-in (sleep/energy/stress/mood). One row per user per day.
+CREATE TABLE IF NOT EXISTS checkins (
+  user_id TEXT NOT NULL,
+  date    TEXT NOT NULL,
+  data    TEXT NOT NULL,
+  PRIMARY KEY (user_id, date)
+);
+
 -- Passwordless email backup ------------------------------------------------
 -- accounts: an email address bound to the canonical user_id whose data it owns.
 CREATE TABLE IF NOT EXISTS accounts (

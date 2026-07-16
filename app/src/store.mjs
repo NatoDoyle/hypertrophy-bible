@@ -8,9 +8,10 @@ export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
   let db = existsSync(path)
     ? JSON.parse(readFileSync(path, "utf8"))
-    : { users: {}, sessions: {}, bodyweights: {}, accounts: {}, magic_links: {} };
+    : { users: {}, sessions: {}, bodyweights: {}, accounts: {}, magic_links: {}, checkins: {} };
   db.accounts ??= {};        // tolerate stores written before email backup existed
   db.magic_links ??= {};
+  db.checkins ??= {};
   const flush = () => writeFileSync(path, JSON.stringify(db, null, 2));
   // Match the D1 store's "ORDER BY date ASC, rowid ASC": chronological, with
   // insertion order as a stable tiebreak. Keeps coach output identical on both.
@@ -33,6 +34,14 @@ export function createFileStore(path) {
     async listBodyweights(id) { return byDate(db.bodyweights[id]); },
     async addBodyweight(id, entry) {
       (db.bodyweights[id] ??= []).push(entry); flush(); return entry;
+    },
+    async listCheckins(id) { return byDate(db.checkins[id]); },
+    async addCheckin(id, entry) {
+      const arr = (db.checkins[id] ??= []);
+      const i = arr.findIndex((c) => c.date === entry.date); // one per day: replace
+      if (i >= 0) arr[i] = entry; else arr.push(entry);
+      flush();
+      return entry;
     },
 
     // --- passwordless email backup ---

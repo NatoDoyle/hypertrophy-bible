@@ -1,7 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram } from "../src/kb.mjs";
-import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex } from "../src/coach.mjs";
+import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness } from "../src/coach.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -19,6 +19,17 @@ check("buildToday: first-timer gets a session with no pre-filled weight", () => 
   assert.ok(today.exercises.length > 0);
   assert.equal(today.exercises[0].suggested_kg, null); // first time -> user picks
   assert.ok(today.name && today.day_number === 1);
+});
+
+check("dailyReadiness scores a check-in and buildToday eases a low day", () => {
+  assert.equal(dailyReadiness(null), null);
+  assert.equal(dailyReadiness({ sleep_quality: 5, energy: 5, stress: 1, mood: 5 }).level, "high");
+  assert.equal(dailyReadiness({ sleep_quality: 1, energy: 2, stress: 5, mood: 2 }).level, "low");
+  assert.equal(dailyReadiness({ sleep_quality: 3, energy: 3, stress: 3, mood: 3 }).level, "normal");
+  const normalDay = buildToday(user, []);
+  const lowDay = buildToday(user, [], { level: "low" });
+  assert.ok(lowDay.exercises.length < normalDay.exercises.length); // trimmed the last accessory
+  assert.ok(lowDay.coach_note); // and told the user why, kindly
 });
 
 check("nextSessionIndex rotates through the program", () => {

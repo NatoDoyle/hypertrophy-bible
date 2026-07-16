@@ -47,6 +47,18 @@ export function createD1Store(db) {
         .run();
       return entry;
     },
+    async listCheckins(id) {
+      const { results } = await db.prepare("SELECT data FROM checkins WHERE user_id = ? ORDER BY date ASC").bind(id).all();
+      return results.map((r) => JSON.parse(r.data));
+    },
+    async addCheckin(id, entry) {
+      // one per user per day: replace on the (user_id, date) primary key
+      await db
+        .prepare("INSERT INTO checkins (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
+        .bind(id, entry.date, JSON.stringify(entry))
+        .run();
+      return entry;
+    },
 
     // --- passwordless email backup ---
     async getAccountByEmail(email) {
