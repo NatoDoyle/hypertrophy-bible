@@ -5,7 +5,7 @@ import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
-import { generateUserPlan } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
 
 export function createApp(store, config = {}) {
@@ -52,6 +52,42 @@ export function createApp(store, config = {}) {
     await store.saveUser(id, user);
     return c.json({ program: { id: program.id, name: program.name, split: program.split, days_per_week: program.days_per_week } });
   });
+
+  // KB critique of the current (or a supplied) plan: volume vs landmarks, gaps,
+  // balance, ordering — the same analysis for a generated or a user-built plan.
+  app.post("/api/plan/critique", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    return c.json(critiqueUserPlan(b.program || user.program));
+  });
+
+  // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
+  // return its KB critique so the builder shows feedback immediately.
+  app.post("/api/plan/save", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const p = b.program;
+    if (!p?.sessions?.length) return c.json({ error: "bad-program" }, 400);
+    const sessions = p.sessions
+      .map((s) => ({
+        name: String(s.name || "Day"),
+        exercises: (s.exercises || [])
+          .filter((e) => exerciseById.has(e.exercise))
+          .map((e) => ({ exercise: e.exercise, sets: Math.max(1, Math.min(10, Math.round(Number(e.sets) || 3))), rep_range: String(e.rep_range || "8-12"), ...(e.rir ? { rir: String(e.rir) } : {}) })),
+      }))
+      .filter((s) => s.exercises.length);
+    if (!sessions.length) return c.json({ error: "empty-program" }, 400);
+    const program = { ...user.program, name: String(p.name || user.program.name), split: user.program.split || "other", days_per_week: sessions.length, sessions, custom: true };
+    user.program = program;
+    await store.saveUser(b.user_id, user);
+    return c.json({ ok: true, critique: critiqueUserPlan(program) });
+  });
+
+  // Lean exercise list for the plan builder's swap pickers.
+  app.get("/api/exercises", (c) =>
+    c.json([...exerciseById.values()].map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic }))));
 
   const requireUser = async (c) => {
     const id = c.req.query("u") || (await c.req.json().catch(() => ({}))).user_id;

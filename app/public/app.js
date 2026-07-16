@@ -187,8 +187,55 @@ async function renderPlanExplain(firstTime) {
     <h2>Weekly volume — tuned to your muscles' landmarks</h2>
     <div class="card">${volRows || '<p class="muted">—</p>'}</div>
     ${warns ? `<h2>Heads up</h2><div class="card">${warns}</div>` : ""}
+    ${firstTime ? "" : `<button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>`}
     <button class="btn" id="explain-go">${firstTime ? "Start training" : "Back"}</button>`;
+  if (!firstTime) $("#edit-plan").onclick = renderPlanEdit;
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
+}
+
+// ---------- Custom plan builder + KB critique ----------
+let editState = null, allExercises = [];
+const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
+const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
+async function renderPlanEdit() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  const [d, exs] = await Promise.all([api(`/api/plan/explain?u=${uid}`), api(`/api/exercises`)]);
+  allExercises = exs;
+  editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
+  // show the current plan's critique straight away
+  const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
+  drawEdit(crit);
+}
+function drawEdit(critique) {
+  const sessions = editState.sessions.map((s, si) => `<div class="card"><b>${esc(s.name)}</b>
+    ${s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
+      <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets}×${esc(e.rep_range)}</span></div>
+      <button class="chip" data-act="dec">−</button><button class="chip" data-act="inc">+</button>
+      <button class="chip" data-act="swap">swap</button><button class="chip" data-act="rm">✕</button></div>`).join("")}
+    <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
+  const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
+  app.innerHTML = `<h1>Edit &amp; review</h1>${crit}${sessions}
+    <button class="btn" id="savePlan">Save &amp; re-check</button>
+    <button class="btn ghost" id="backPlan">Done</button>`;
+  app.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
+    const row = b.closest("[data-si]"), si = +row.dataset.si, ei = +row.dataset.ei, ex = editState.sessions[si].exercises[ei];
+    const act = b.dataset.act;
+    if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
+    else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
+    else if (act === "rm") editState.sessions[si].exercises.splice(ei, 1);
+    else if (act === "swap") { const pool = poolFor(ex.exercise); if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; } }
+    drawEdit(null);
+  });
+  app.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => renderAddExercise(+b.dataset.add));
+  $("#savePlan").onclick = async () => { const r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); if (r.ok) { localStorage.setItem("hb_program", editState.name); drawEdit(r.critique); } };
+  $("#backPlan").onclick = () => { tab = "today"; render(); };
+}
+function renderAddExercise(si) {
+  const list = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name))
+    .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}</span></button>`).join("");
+  app.innerHTML = `<h1>Add exercise</h1><div class="card" style="max-height:68vh;overflow:auto">${list}</div><button class="btn ghost" id="cancelAdd">Cancel</button>`;
+  app.querySelectorAll("[data-add-id]").forEach((b) => b.onclick = () => { editState.sessions[si].exercises.push({ exercise: b.dataset.addId, sets: 3, rep_range: "8-12" }); drawEdit(null); });
+  $("#cancelAdd").onclick = () => drawEdit(null);
 }
 
 // ---------- Today ----------

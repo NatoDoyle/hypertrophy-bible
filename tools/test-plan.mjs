@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, chooseSplit, targetWeeklySets } from "./plan-core.mjs";
+import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan } from "./plan-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
 const exercises = load("data/exercises");
@@ -66,6 +66,20 @@ const inj = generatePlan({ ...profile, user_id: "test-inj", injuries: [{ region:
 const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map((e) => exercises.find((x) => x.id === e.exercise).movement_pattern));
 ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
 ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
+
+// --- KB critique ---
+const badPlan = { name: "Bad", split: "other", days_per_week: 1, sessions: [{ name: "Day 1", exercises: [
+  { exercise: "barbell-bench-press", sets: 10, rep_range: "6-10" },
+  { exercise: "incline-dumbbell-press", sets: 10, rep_range: "6-10" },
+  { exercise: "triceps-pushdown", sets: 5, rep_range: "10-15" },
+  { exercise: "barbell-bench-press", sets: 5, rep_range: "6-10" },
+] }] };
+const crit = critiquePlan(badPlan, kb);
+ok("critique flags over-MRV on an overloaded muscle", crit.findings.some((f) => /above MRV/.test(f.msg) && f.muscle === "chest"));
+ok("critique flags major muscles with no volume", crit.findings.some((f) => /no direct or indirect volume/.test(f.msg) && f.muscle === "upper-back"));
+ok("critique flags a compound placed after an isolation", crit.findings.some((f) => /comes after an isolation/.test(f.msg)));
+const goodCrit = critiquePlan(p.program, kb);
+ok("critique summarizes a generated plan without over-MRV warnings", !goodCrit.findings.some((f) => /above MRV/.test(f.msg)));
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
