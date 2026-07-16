@@ -194,14 +194,23 @@ async function renderPlanExplain(firstTime) {
 // ---------- Today ----------
 async function renderToday() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let data;
-  try { data = await api(`/api/today?u=${uid}`); }
+  let data, adh;
+  try { [data, adh] = await Promise.all([api(`/api/today?u=${uid}`), api(`/api/adherence?u=${uid}`)]); }
   catch {
     app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p></div>`;
     return;
   }
   const s = data.session;
+  // Streak + level header, and the motivational state (loss-aversion when at risk,
+  // warm welcome on a comeback, calm reassurance when paused).
+  const st = adh.status || {};
+  const icon = { "at-risk": "⚠️", comeback: "👋", paused: "⏸️", new: "🌱" }[st.state] || "";
+  const header = `<div class="card row"><div style="flex:1"><b>🔥 ${adh.streak_weeks} week${adh.streak_weeks === 1 ? "" : "s"} strong</b>
+      <div class="bar" style="margin-top:6px"><i style="width:${adh.level_progress_pct}%;background:var(--accent)"></i></div>
+      <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
+      <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
+    ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
   const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} × ${e.rep_range} · ${(e.primary_muscles || []).join(", ")}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   const readinessCard = s.readiness == null
@@ -209,7 +218,7 @@ async function renderToday() {
         <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
         <button class="btn secondary" id="checkin">Quick check-in</button></div>`
     : (s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "");
-  app.innerHTML = `<h1>Today</h1>${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${header}${readinessCard}
     <div class="card"><div class="big">${esc(s.name)}</div>
       <p class="muted">${esc(s.program_name)} · day ${s.day_number} · ${s.exercises.length} exercises</p>
       <button class="btn" id="start">Start workout</button></div>
@@ -449,6 +458,50 @@ function renderMe() {
   };
 }
 
+// ---------- Coach (adherence & gamification) ----------
+function downloadTrainingCalendar(days, time) {
+  const ICS_DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+  const [hh, mm] = (time || "18:00").split(":");
+  const byday = days.map((d) => ICS_DAYS[d]).join(",");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hypertrophy Bible//EN", "BEGIN:VEVENT",
+    "SUMMARY:🏋️ Training", `DTSTART:20260105T${hh}${mm}00`, "DURATION:PT1H",
+    `RRULE:FREQ=WEEKLY;BYDAY=${byday}`, "DESCRIPTION:Your scheduled training session — showing up is the win.", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  const a = document.createElement("a"); a.href = url; a.download = "hypertrophy-training.ics"; a.click(); URL.revokeObjectURL(url);
+}
+async function renderCoach() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let a; try { a = await api(`/api/adherence?u=${uid}`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 Offline.</p></div>`; return; }
+  const m = a.milestones || {};
+  const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
+  const paused = a.paused;
+  app.innerHTML = `<h1>Coach</h1>
+    <div class="card center">
+      <div class="big">🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong</div>
+      <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
+      <p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
+      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p></div>
+    ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
+    ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
+    <h2>Schedule your sessions</h2>
+    <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
+      <div id="days" style="margin:8px 0"></div>
+      <div class="stepper"><label>Time</label><input id="sched-time" type="time" value="18:00" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem"></div>
+      <button class="btn secondary" id="addcal">Add to my calendar</button>
+      <p class="muted" id="calmsg"></p></div>
+    <h2>Injury or illness?</h2>
+    <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
+      <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>`;
+  const sel = new Set();
+  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="chip" data-day="${i}" style="min-width:46px">${d}</button>`).join(" ");
+  $("#days").querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
+    const i = +b.dataset.day;
+    if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; } else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; }
+  });
+  $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
+  $("#pause").onclick = async () => { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); };
+}
+
 // ---------- Router ----------
 function render() {
   if (!uid) return renderOnboarding();
@@ -456,6 +509,7 @@ function render() {
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "today") renderToday();
   else if (tab === "progress") renderProgress();
+  else if (tab === "coach") renderCoach();
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; render(); });
