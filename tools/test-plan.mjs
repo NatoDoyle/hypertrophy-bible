@@ -67,6 +67,16 @@ const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map
 ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
 ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
 
+// --- recovery ceiling: the engine trims to MRV, so no generated plan prescribes
+//     past what the KB says you can recover from (#13), across demanding profiles ---
+const demanding = [
+  { user_id: "adv-6", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 90 },
+  { user_id: "adv-pri", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90, priority_muscles: ["chest", "side-delts", "lats"] },
+  { user_id: "int-5", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 75 },
+];
+ok("no generated plan emits an over-MRV warning (trimmed to the ceiling)",
+  demanding.every((prof) => !generatePlan(prof, kb).rationale.warnings.some((w) => w.code === "over-mrv")));
+
 // --- KB critique ---
 const badPlan = { name: "Bad", split: "other", days_per_week: 1, sessions: [{ name: "Day 1", exercises: [
   { exercise: "barbell-bench-press", sets: 10, rep_range: "6-10" },

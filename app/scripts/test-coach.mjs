@@ -76,6 +76,37 @@ check("suggestWeight: RIR autoregulation raises load when reps are left in reser
   assert.equal(suggestWeight(failed, "barbell-bench-press", "6-10").suggested_kg, 100);
 });
 
+check("suggestWeight: a layoff eases the load instead of piling on more (comeback safety)", () => {
+  const last = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+  ] }];
+  // 20 days later (>= comeback gap) -> deload ~12%, never heavier than before.
+  const back = suggestWeight(last, "barbell-bench-press", "6-10", undefined, "2026-06-21T18:00:00Z");
+  assert.equal(back.suggested_kg, 88);
+  assert.ok(back.layoff_days >= 12 && /eased/i.test(back.note));
+  // 2 days later (no layoff) -> normal double progression still adds load.
+  assert.equal(suggestWeight(last, "barbell-bench-press", "6-10", undefined, "2026-06-03T18:00:00Z").suggested_kg, 102.5);
+});
+
+check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
+  const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+    { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };
+  const last = [{ date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] }];
+  const card = buildToday(u, last, null, [], "2026-06-25T18:00:00Z"); // 24-day gap
+  assert.ok(/welcome back/i.test(card.coach_note));                 // says it eased
+  assert.ok(card.exercises[0].suggested_kg < 100);                  // and actually did
+});
+
+check("no fake 1RM PR from a light high-rep back-off set (#1 confidence gate)", () => {
+  const heavyTriple = { date: "2026-06-01T18:00:00Z", session_id: "a", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 45, reps: 3 }] };
+  const lightBackoff = { date: "2026-06-08T18:00:00Z", session_id: "b", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 32, reps: 20 }] };
+  const recap = sessionRecap(user, [heavyTriple, lightBackoff], lightBackoff);
+  assert.ok(!recap.wins.some((w) => /1RM/i.test(w))); // 32×20 must not "beat" 45×3
+});
+
 check("sessionRecap returns derived wins (PR detection)", () => {
   const s1 = { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] };
   const s2 = { date: "2026-06-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 105, reps: 8 }] };

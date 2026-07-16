@@ -13,7 +13,7 @@
   "days_per_week": 4,
   "session_length_min": 75,
   "available_equipment": ["barbell", "dumbbell", "cable", "machine"],
-  "injuries": [{ "region": "left shoulder", "severity": "mild", "note": "avoid heavy overhead pressing" }],
+  "injuries": [{ "region": "shoulder", "severity": "mild", "note": "left side — avoid heavy overhead pressing" }],
   "wearable": "oura",
   "menstrual_tracking": false,
   "dietary_pattern": "omnivore",

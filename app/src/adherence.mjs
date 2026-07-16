@@ -7,10 +7,22 @@
 //      grace on the in-progress week) and framed as identity, never shame.
 import { isoWeekKey, isHardSet } from "../../tools/derive-core.mjs";
 
+// Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
+function isoWeekMondayMs(year, week) {
+  const jan4 = Date.UTC(year, 0, 4);                       // Jan 4 is always in ISO week 1
+  const jan4Dow = new Date(jan4).getUTCDay() || 7;         // 1=Mon .. 7=Sun
+  const week1Monday = jan4 - (jan4Dow - 1) * 86400000;
+  return week1Monday + (week - 1) * 7 * 86400000;
+}
+
+// A strictly sequential week index: consecutive calendar weeks always differ by
+// exactly 1. (year*53+week left a phantom slot at ISO-year boundaries that the
+// streak walker mistook for a missed week, silently burning its one forgiveness
+// token.) Normalizing through isoWeekKey keeps raw dates and keys consistent.
 const weekOrdinal = (dateOrKey) => {
   const key = typeof dateOrKey === "string" && /-W\d/.test(dateOrKey) ? dateOrKey : isoWeekKey(dateOrKey);
   const m = key.match(/(\d+)-W(\d+)/);
-  return m ? +m[1] * 53 + +m[2] : 0;
+  return m ? Math.round(isoWeekMondayMs(+m[1], +m[2]) / (7 * 86400000)) : 0;
 };
 
 // Weeks-consistent streak: consecutive trained weeks, forgiving one missed week,

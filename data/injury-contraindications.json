@@ -38,7 +38,7 @@
       "evidence_grade": "D"
     },
     "neck": {
-      "exclude_patterns": ["isolation-other"],
+      "exclude_patterns": ["isolation-neck"],
       "caution_patterns": [],
       "note": "Avoid direct neck loading while symptomatic.",
       "evidence_grade": "D"

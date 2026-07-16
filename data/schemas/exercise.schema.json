@@ -4,7 +4,7 @@
   "title": "Exercise",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "primary_muscles", "mechanic", "equipment"],
+  "required": ["id", "name", "primary_muscles", "mechanic", "equipment", "movement_pattern"],
   "properties": {
     "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
     "name": { "type": "string" },
@@ -24,7 +24,8 @@
         "isolation-knee-extension", "isolation-knee-flexion",
         "isolation-hip-extension", "isolation-hip-abduction",
         "isolation-shoulder-abduction", "isolation-shoulder-flexion", "isolation-shoulder-extension",
-        "isolation-plantarflexion", "isolation-wrist", "isolation-spinal-flexion", "isolation-other",
+        "isolation-plantarflexion", "isolation-wrist", "isolation-spinal-flexion",
+        "isolation-neck", "isolation-other",
         "other"
       ]
     },

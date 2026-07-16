@@ -33,30 +33,51 @@ function resolveEx(customEx) {
 const workingSetsFor = (sessions, exId) =>
   sessions.flatMap((s) => (s.sets ?? []).filter((set) => set.exercise === exId && (set.set_type ?? "work") === "work"));
 
-// Best estimated 1RM for an exercise across the given sessions.
-const bestE1RM = (sessions, exId) =>
-  Math.max(0, ...workingSetsFor(sessions, exId).map((set) => estimate1RM(set.weight_kg, set.reps).e1rm));
+// Above this rep count the Epley 1RM estimate is guesswork (a light 20-rep back-off
+// set would otherwise "beat" a genuinely heavier triple and be celebrated as a PR).
+// We only ever call something a strength PR from sets in a reliable rep range.
+const RELIABLE_1RM_REPS = 12;
 
-// The most recent session that contained this exercise (for progression).
+// Best estimated 1RM for an exercise across the given sessions — reliable sets only.
+const bestE1RM = (sessions, exId) =>
+  Math.max(0, ...workingSetsFor(sessions, exId)
+    .filter((set) => set.reps <= RELIABLE_1RM_REPS)
+    .map((set) => estimate1RM(set.weight_kg, set.reps).e1rm));
+
+// The most recent session that contained this exercise, with its date (for
+// progression + layoff detection). Returns { sets, date } or null.
 function lastSetsForExercise(sessions, exId) {
   for (let i = sessions.length - 1; i >= 0; i--) {
     const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work");
-    if (sets.length) return sets;
+    if (sets.length) return { sets, date: sessions[i].date ?? null };
   }
   return null;
 }
 
+// A gap this long since an exercise was last trained triggers a deload on return —
+// coming back heavier than you left is how people get hurt after a layoff.
+const COMEBACK_GAP_DAYS = 12;
+const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels easy
+
 // Double progression: hit the top of the range on every set last time -> add load;
 // otherwise keep the load and aim to add reps. First time -> no suggestion (user picks).
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById) {
+// `now` (ISO) enables layoff-aware deloading so the "I eased your weights" copy is true.
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null) {
   const last = lastSetsForExercise(sessions, exId);
   const { max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
-  const lastWeight = last[0].weight_kg;
-  const allHitTop = last.every((s) => s.reps >= max);
-  const base = { last_kg: lastWeight, last_reps: last.map((s) => s.reps) };
+  const lastWeight = last.sets[0].weight_kg;
+  const allHitTop = last.sets.every((s) => s.reps >= max);
+  const base = { last_kg: lastWeight, last_reps: last.sets.map((s) => s.reps) };
+  // Layoff deload: if it's been a while, ease the load and suppress the progression
+  // bump — overrides everything below so a comeback never loads heavier than before.
+  const layoffDays = now && last.date ? Math.round((+new Date(now) - +new Date(last.date)) / 86400000) : 0;
+  if (layoffDays >= COMEBACK_GAP_DAYS) {
+    const eased = Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4;
+    return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
+  }
   // RIR autoregulation (only when effort was logged): lots left in the tank -> go up.
-  const rirs = last.map((s) => s.rir).filter((r) => typeof r === "number");
+  const rirs = last.sets.map((s) => s.rir).filter((r) => typeof r === "number");
   if (rirs.length) {
     const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
     if (avgRir >= 3) {
@@ -93,7 +114,7 @@ export function dailyReadiness(checkin) {
 
 // Build today's session card: every exercise pre-filled with a suggested weight.
 // A low-readiness check-in trims the last accessory and adds a caring coach note.
-export function buildToday(user, sessions, readiness = null, customEx = []) {
+export function buildToday(user, sessions, readiness = null, customEx = [], now = null) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
   // Rotate by sessions of THIS program only, so merged sessions from a different
@@ -109,9 +130,17 @@ export function buildToday(user, sessions, readiness = null, customEx = []) {
   } else if (readiness?.level === "high") {
     coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
   }
+  // Layoff → the suggested weights below are actually eased; say so honestly, so the
+  // Coach's "welcome back — I eased your weights" claim matches what's on the card.
+  const lastSessionMs = Math.max(0, ...sessions.filter((s) => s.date).map((s) => +new Date(s.date)));
+  const layoffDays = now && lastSessionMs ? Math.round((+new Date(now) - lastSessionMs) / 86400000) : 0;
+  if (layoffDays >= COMEBACK_GAP_DAYS) {
+    const welcome = `Welcome back — it's been ${layoffDays} days, so I eased today's weights to ramp you in safely. They'll climb again fast.`;
+    coach_note = coach_note ? `${welcome} ${coach_note}` : welcome;
+  }
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
-    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId);
+    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now);
     return {
       exercise: ex.exercise,
       name: name(ex.exercise),
@@ -156,7 +185,8 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
     seen.add(set.exercise);
     const newBest = bestE1RM([newSession], set.exercise);
     const priorBest = bestE1RM(prior, set.exercise);
-    if (newBest > priorBest && priorBest > 0) {
+    // Require a real margin (>0.5 kg) so estimator noise isn't dressed up as a PR.
+    if (priorBest > 0 && newBest - priorBest > 0.5) {
       wins.push(`🏆 ${name(set.exercise)}: new estimated 1RM of ${newBest} kg (+${Math.round((newBest - priorBest) * 10) / 10}).`);
     }
   }
