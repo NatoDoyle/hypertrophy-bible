@@ -254,6 +254,20 @@ export function generatePlan(profile, kb, opts = {}) {
     if (!trimmed) break;
   }
 
+  // 5b) reconcile the rationale with the TRIMMED plan. exerciseChoices was built
+  // while filling sessions, i.e. BEFORE the trim above mutated them — left alone it
+  // reports set counts the plan no longer prescribes (and cites exercises the trim
+  // removed). The explanation must describe the plan the user actually gets.
+  {
+    const kept = new Map();
+    for (const s of outSessions) for (const e of s.exercises) kept.set(`${s.name}|${e.exercise}`, e.sets);
+    const reconciled = exerciseChoices
+      .filter((c) => kept.has(`${c.session}|${c.exercise}`))
+      .map((c) => ({ ...c, sets: kept.get(`${c.session}|${c.exercise}`) }));
+    exerciseChoices.length = 0;
+    exerciseChoices.push(...reconciled);
+  }
+
   // 6) closed-loop self-check on the FINAL (trimmed) plan → rationale + warnings.
   const warnings = [];
   const weekVol = projectWeek();

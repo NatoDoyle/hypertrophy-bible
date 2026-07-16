@@ -15,6 +15,17 @@ export function createApp(store, config = {}) {
   // deployed Worker — otherwise anyone could pull a valid link for any email.
   const exposeDevLink = config.exposeDevLink === true;
 
+  // Every failure answers in JSON the client can actually parse. A "write-conflict"
+  // means updateUser's compare-and-swap lost 5 races (two devices/tabs writing at
+  // once) — that's a retry, not a crash, so it gets a 409 rather than an opaque 500.
+  app.onError((err, c) => {
+    if (err?.message === "write-conflict") {
+      return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+    }
+    console.error("unhandled:", err?.stack || err);
+    return c.json({ error: "server-error" }, 500);
+  });
+
   app.get("/api/health", (c) => c.json({ ok: true, programs: programs.length }));
 
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +

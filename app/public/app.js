@@ -1,6 +1,5 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { LEARN_INDEX, LEARN_PAGES } from "./learn-data.js";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -28,6 +27,16 @@ const wInc = () => unitPref() === "lb" ? 5 : 2.5;                       // stepp
 const dispWeight = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG / 5) * 5 : Math.round(kg * 4) / 4; // to plate
 const dispBw = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : Math.round(kg * 10) / 10; // bodyweight
 const toKg = (v) => unitPref() === "lb" ? Math.round((v / LB_PER_KG) * 100) / 100 : v;
+
+// The beginner library is ~150KB of prose. Load it on demand rather than on every
+// cold start — the first thing a nervous newcomer sees shouldn't wait on 24 pages
+// they haven't asked for. The service worker still precaches it, so opening Learn
+// offline is instant.
+let LEARN = null;
+async function learnData() {
+  if (!LEARN) LEARN = await import("./learn-data.js");
+  return LEARN;
+}
 
 // Deep-link into the in-app beginner library (content/09-getting-started).
 function openLearn(slug) { learnSlug = slug || null; tab = "learn"; render(); }
@@ -367,7 +376,26 @@ function renderCustomExercise(si) {
 }
 
 // ---------- Today ----------
+// An unfinished workout takes over Today until it's resumed or explicitly discarded.
+// Deliberately needs NO network — a gym basement is exactly where you reopen the app
+// mid-session — and it removes the old trap where "Start workout" silently
+// overwrote sets you'd already done.
+function renderResume() {
+  const n = sess.logged.length;
+  app.innerHTML = `<h1>Today</h1>
+    <div class="card info"><b>▶ Workout in progress</b>
+      <p class="muted">${esc(sess.name)} — <b>${n} set${n === 1 ? "" : "s"}</b> logged so far. Nothing is lost.</p>
+      <button class="btn" id="resume">Resume workout</button>
+      <button class="btn ghost" id="discard">${discardPending ? "Tap again to discard these sets" : "Discard this workout"}</button></div>`;
+  $("#resume").onclick = () => { discardPending = false; renderPlayer(0); };
+  $("#discard").onclick = () => {
+    if (discardPending) { discardPending = false; clearSess(); renderToday(); }
+    else { discardPending = true; renderResume(); }
+  };
+}
 async function renderToday() {
+  if (sess) return renderResume();
+  discardPending = false;
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let data, adh;
   try { [data, adh] = await Promise.all([api(`/api/today`), api(`/api/adherence`)]); }
@@ -386,7 +414,7 @@ async function renderToday() {
       <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
       <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
     ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
-  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
+  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   const readinessCard = s.readiness == null
     ? `<div class="card"><b>How are you feeling today?</b>
@@ -428,10 +456,31 @@ function renderCheckin() {
 }
 
 // ---------- Session Player ----------
-let sess = null;
+// A gym phone locks, iOS evicts the tab, or a thumb catches the nav bar — none of
+// that may cost you sets you actually did. The live session is mirrored to
+// localStorage on every change and offered back as "Resume" until it's finished or
+// explicitly discarded. (Before this, an in-progress workout lived only in memory.)
+const SESS_KEY = "hb_session";
+const SESS_MAX_AGE_MS = 12 * 60 * 60 * 1000; // a day-old "in progress" workout isn't resumable
+function saveSess() {
+  try { sess ? localStorage.setItem(SESS_KEY, JSON.stringify(sess)) : localStorage.removeItem(SESS_KEY); } catch {}
+}
+function loadSess() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESS_KEY) || "null");
+    if (!s || !Array.isArray(s.ex) || !s.ex.length) return null;
+    if (!s.startedAt || Date.now() - new Date(s.startedAt).getTime() > SESS_MAX_AGE_MS) { localStorage.removeItem(SESS_KEY); return null; }
+    return s;
+  } catch { return null; }
+}
+function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } catch {} }
+
+let sess = loadSess();      // survives a reload / tab eviction
+let discardPending = false; // two-tap guard on discarding a logged workout
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
-  sess = { name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0, logged: [], weights: {}, reps: {}, rir: {} };
+  sess = { name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0, logged: [], weights: {}, reps: {}, rir: {}, startedAt: new Date().toISOString() };
+  saveSess();
   renderPlayer();
 }
 function startWeightDefault(e) {
@@ -465,6 +514,7 @@ function renderPlayer(resting = 0) {
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1>${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
+    ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     <div class="setdots">${setDots}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
@@ -482,9 +532,9 @@ function renderPlayer(resting = 0) {
     <button class="btn ghost" id="quit">End workout early</button>`;
   wireLearnLinks();
 
-  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); renderPlayer(); });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); renderPlayer(); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); renderPlayer(); });
+  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); renderPlayer(); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -494,13 +544,10 @@ function renderPlayer(resting = 0) {
   $("#done").onclick = () => {
     sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
     sess.set++;
-    if (sess.set >= e.sets) {
-      sess.set = 0; sess.i++;
-      if (sess.i >= total) return finish();
-      renderPlayer(0);
-    } else {
-      renderPlayer(120); // rest timer
-    }
+    if (sess.set >= e.sets) { sess.set = 0; sess.i++; }
+    saveSess(); // the set is banked before anything else can go wrong
+    if (sess.i >= total) return finish();
+    renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
   };
 }
 // The "how do I do this?" sheet: full cues + mistakes from the KB, and a form-
@@ -522,14 +569,17 @@ function renderExerciseSheet(ex, d) {
 }
 
 async function finish() {
-  if (!sess.logged.length) { sess = null; return render(); }
+  if (!sess || !sess.logged.length) { clearSess(); return render(); }
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Saving…</h1></div>`;
   // Client-generated id + real time so a queued replay is idempotent (server
   // ignores a duplicate session_id) and buckets by when the workout happened.
   const session_id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const res = await postOrQueue("/api/session", { session_id, date: new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged });
+  const payload = { session_id, date: new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged };
+  const res = await postOrQueue("/api/session", payload);
+  // postOrQueue only returns after the write is either accepted OR safely queued
+  // offline, so it's now safe to drop the in-progress copy.
+  clearSess();
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
-  sess = null;
 }
 function renderRecap(recap) {
   const wins = (recap.wins || []).map((w) => `<div class="win">${esc(w)}</div>`).join("");
@@ -710,8 +760,12 @@ async function renderCoach() {
 }
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
-function renderLearn() {
+async function renderLearn() {
   learnSlug = null;
+  app.innerHTML = `<h1>Learn</h1><p class="muted">Loading…</p>`;
+  let LEARN_INDEX;
+  try { ({ LEARN_INDEX } = await learnData()); }
+  catch { app.innerHTML = `<h1>Learn</h1><div class="card"><p>📴 Couldn't load the guides.</p><p class="muted">Connect once and they'll be saved on this device for good.</p></div>`; return; }
   const cats = LEARN_INDEX.map((c) => `<h2>${esc(c.category)}</h2><div class="card">${
     c.items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
   }</div>`).join("");
@@ -720,7 +774,11 @@ function renderLearn() {
   wireLearnLinks();
   window.scrollTo(0, 0);
 }
-function renderLearnPage(slug) {
+async function renderLearnPage(slug) {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let LEARN_PAGES;
+  try { ({ LEARN_PAGES } = await learnData()); }
+  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that guide.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
   const pg = LEARN_PAGES[slug];
   if (!pg) { learnSlug = null; return renderLearn(); }
   app.innerHTML = `<button class="btn ghost" id="learnback">‹ All topics</button>

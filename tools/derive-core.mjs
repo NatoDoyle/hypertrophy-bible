@@ -13,6 +13,16 @@ export function estimate1RM(weightKg, reps) {
   return { e1rm: Math.round(e1rm * 100) / 100, confidence };
 }
 
+// Above this rep count the Epley estimate is guesswork: a deliberately light
+// 20-rep back-off set "beats" a genuinely heavier triple. Anything that reports
+// strength (PRs, progression trends) MUST filter through countsForE1RM so the
+// surfaces can never disagree — this constant is the single source of truth.
+export const RELIABLE_1RM_REPS = 12;
+export const countsForE1RM = (set) =>
+  (set.set_type ?? "work") !== "warmup" &&
+  typeof set.reps === "number" && set.reps > 0 && set.reps <= RELIABLE_1RM_REPS &&
+  typeof set.weight_kg === "number" && set.weight_kg > 0;
+
 // ISO week key "YYYY-Www" for grouping weekly volume.
 export function isoWeekKey(dateStr) {
   const d = new Date(dateStr);
@@ -146,7 +156,9 @@ export function progressionByExercise(sessions, exIndex) {
   for (const s of sessions) {
     const wk = isoWeekKey(s.date);
     for (const set of s.sets ?? []) {
-      if ((set.set_type ?? "work") === "warmup") continue;
+      // Reliable rep ranges only — otherwise a light high-rep back-off set shows
+      // up as a strength GAIN, and this screen contradicts the session recap.
+      if (!countsForE1RM(set)) continue;
       const { e1rm } = estimate1RM(set.weight_kg, set.reps);
       byEx[set.exercise] ??= {};
       byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);

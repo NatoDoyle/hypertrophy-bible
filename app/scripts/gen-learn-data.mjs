@@ -12,13 +12,26 @@ const OUT = join(here, "../public/learn-data.js");
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// Inline markdown → HTML on already-escaped text. Internal .md links become plain
-// text (they don't resolve in-app); external http links are kept.
+// Slugs bundled into the app — a link to one of these becomes a real in-app jump.
+// Populated before conversion runs.
+const BUNDLED = new Set();
+
+// Inline markdown → HTML on already-escaped text.
+//   - links to a SIBLING page we bundle  → a tappable in-app deep link (data-learn)
+//   - external http links                → kept, opened in a new tab
+//   - links to other pillars (../…)      → plain text (that content isn't in the app)
+// NOTE: esc() runs FIRST, so any quote/angle bracket in a URL is already an entity
+// by the time it lands in an attribute, and only http(s) targets ever become hrefs
+// (so a `javascript:` URL renders as inert text).
 function inline(text) {
   let t = esc(text);
   t = t.replace(/\[Grade ([A-D])\]/g, '<span class="gradetag">Grade $1</span>');
-  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) =>
-    /^https?:\/\//.test(url) ? `<a href="${url}" target="_blank" rel="noopener">${label}</a>` : label);
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    if (/^https?:\/\//.test(url)) return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+    const m = url.match(/^([a-z0-9-]+)\.md(?:#.*)?$/); // sibling page in this pillar
+    if (m && BUNDLED.has(m[1])) return `<button class="learnlink" data-learn="${m[1]}">${label}</button>`;
+    return label;
+  });
   t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
   t = t.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
@@ -102,6 +115,9 @@ function parseIndex(md) {
 const files = Object.fromEntries(
   readdirSync(SRC).filter((f) => f.endsWith(".md")).map((f) => [f.replace(/\.md$/, ""), readFileSync(join(SRC, f), "utf8")])
 );
+// Every page we ship is a valid deep-link target, so cross-references inside the
+// prose become tappable instead of dead text. Must be filled BEFORE any toHtml().
+for (const slug of Object.keys(files)) if (slug !== "index") BUNDLED.add(slug);
 const index = parseIndex(files["index"] || "");
 const pages = {};
 const seen = new Set();
