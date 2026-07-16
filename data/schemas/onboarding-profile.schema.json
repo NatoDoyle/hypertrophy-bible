@@ -35,7 +35,7 @@
         "additionalProperties": false,
         "required": ["region"],
         "properties": {
-          "region": { "type": "string" },
+          "region": { "enum": ["lower-back", "knee", "shoulder", "elbow", "wrist", "hip", "neck", "ankle"], "description": "Must match a key in data/injury-contraindications.json so the exclusion rule actually resolves." },
           "severity": { "enum": ["mild", "moderate", "severe"] },
           "note": { "type": "string" }
         }

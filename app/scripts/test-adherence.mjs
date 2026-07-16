@@ -12,6 +12,11 @@ ok("grace: not training the current week yet doesn't break the streak", weeksCon
 // one missed week (W03) is forgiven
 ok("streak bridges a single missed week", weeksConsistent([sess("2026-01-05"), sess("2026-01-19")], "2026-01-21") === 2);
 ok("no sessions -> streak 0", weeksConsistent([], "2026-01-21") === 0);
+// #15: streak survives an ISO-year boundary. 4 of 5 weekly sessions (W52 2023 genuinely
+// missed, then bridged) across 2023->2024. The old year*53+week ordinal left a phantom
+// week at the boundary that ate the forgiveness token and capped this at 2.
+const acrossYear = ["2023-12-11", "2023-12-18", "2024-01-01", "2024-01-08"].map((d) => sess(d));
+ok("streak survives the year boundary (no phantom-week token burn)", weeksConsistent(acrossYear, "2024-01-08") === 4);
 
 // XP + level: 3 sessions × (100 + 3 hard sets ×5) = 3×115 = 345 -> level 1
 const xl = xpAndLevel(three);

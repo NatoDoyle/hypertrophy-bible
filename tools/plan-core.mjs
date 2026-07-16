@@ -216,22 +216,62 @@ export function generatePlan(profile, kb, opts = {}) {
     return { name: spec.name, exercises: items };
   });
 
-  // 5) closed-loop self-check: score the generated week with the REAL engine, so
-  // plan-time volume can never disagree with the tracker. Warnings come from here.
-  const warnings = [];
+  // helpers to score the generated week with the REAL tracker engine, so plan-time
+  // volume can never disagree with what the user later sees on Progress.
   const exIndex = new Map(avail.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
-  const pseudo = [{ date: "2026-01-05", sets: outSessions.flatMap((s) => s.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work" })))) }];
-  const week = perMuscleWeeklyVolume(pseudo, exIndex);
-  const wk = Object.keys(week)[0];
-  const vsLm = wk ? volumeVsLandmarks(week[wk], muscleIndex) : {};
+  const projectWeek = () => {
+    const pseudo = [{ date: "2026-01-05", sets: outSessions.flatMap((s) => s.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work" })))) }];
+    const w = perMuscleWeeklyVolume(pseudo, exIndex);
+    return w[Object.keys(w)[0]] ?? {};
+  };
+
+  // 5) enforce recovery ceilings. Secondary credit from compounds can stack a muscle
+  // above MRV even when its direct target was within range — the KB says that's more
+  // than you can recover from. Trim its isolation sets until it's back under the
+  // ceiling, so the plan can never prescribe past what the science allows.
+  for (let guard = 0; guard < 80; guard++) {
+    const proj = projectWeek();
+    let worst = null, worstOver = 0;
+    for (const m of muscles) {
+      const cap = m.landmarks?.mrv?.max;
+      if (cap == null) continue;
+      const over = (proj[m.id] ?? 0) - cap;
+      if (over > 0 && over > worstOver) { worstOver = over; worst = m.id; }
+    }
+    if (!worst) break;
+    // Reduce DIRECT work on the over muscle only (exercises where it's the primary
+    // target). Prefer isolations, then compounds; shave a set before dropping a whole
+    // exercise. If nothing directly loads it, the overshoot is pure secondary spillover
+    // from compounds needed for OTHER muscles — leave it and warn honestly below.
+    const primaryLoads = (it) => (exById.get(it.exercise)?.primary_muscles ?? []).includes(worst);
+    const isIso = (it) => exById.get(it.exercise)?.mechanic === "isolation";
+    let trimmed = false;
+    for (const s of outSessions) { const it = s.exercises.find((x) => primaryLoads(x) && isIso(x) && x.sets > 1); if (it) { it.sets--; trimmed = true; break; } }
+    if (!trimmed) for (const s of outSessions) { const it = s.exercises.find((x) => primaryLoads(x) && x.sets > 1); if (it) { it.sets--; trimmed = true; break; } }
+    if (!trimmed) for (const s of outSessions) { const i = s.exercises.findIndex((x) => primaryLoads(x) && isIso(x)); if (i >= 0) { s.exercises.splice(i, 1); trimmed = true; break; } }
+    if (!trimmed) for (const s of outSessions) { const i = s.exercises.findIndex(primaryLoads); if (i >= 0) { s.exercises.splice(i, 1); trimmed = true; break; } }
+    if (!trimmed) break;
+  }
+
+  // 6) closed-loop self-check on the FINAL (trimmed) plan → rationale + warnings.
+  const warnings = [];
+  const weekVol = projectWeek();
+  const vsLm = volumeVsLandmarks(weekVol, muscleIndex);
   for (const [m, r] of Object.entries(volumeRationale)) {
-    const proj = week[wk]?.[m] ?? 0;
+    const proj = weekVol[m] ?? 0;
     const f = freq[m] ?? 0;
     r.projected_sets = proj;
     r.frequency = f;
     r.projected_status = f ? (vsLm[m]?.status ?? "no-data") : "not-in-split";
-    if (f === 0 || r.target <= 0) continue; // muscle this split doesn't train
+    if (r.target <= 0) continue;
+    if (f === 0) {
+      // Muscle not directly trained this split — it may still get secondary credit;
+      // warn when even that indirect volume leaves it under MEV (so it won't grow).
+      const mev = muscleById.get(m)?.landmarks?.mev?.min;
+      if (mev != null && proj < mev) warnings.push({ code: "below-mev-indirect", muscle: m, message: `${m} only gets ~${proj} indirect sets/wk (below MEV ${mev}) — add a direct ${m} exercise if you want it to grow.` });
+      continue;
+    }
     const hasExercise = compoundPool[m].length || isoPool[m].length;
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });

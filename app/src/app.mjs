@@ -133,9 +133,10 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
-    const today = new Date().toISOString().slice(0, 10);
+    const nowISO = new Date().toISOString();
+    const today = nowISO.slice(0, 10);
     const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === today));
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || []) });
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO) });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
