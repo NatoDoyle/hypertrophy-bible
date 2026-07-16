@@ -16,6 +16,20 @@ export function createD1Store(db) {
         .run();
       return user;
     },
+    // Optimistic concurrency: read the current blob, apply the mutation, and
+    // commit only if the blob is unchanged (compare-and-swap on the exact JSON,
+    // so no schema/version column is needed). Retries a few times if a concurrent
+    // write (double-tap, second tab) slipped in — otherwise one change is lost.
+    async updateUser(id, mutator) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const row = await db.prepare("SELECT data FROM users WHERE id = ?").bind(id).first();
+        if (!row) return null;
+        const next = JSON.stringify(mutator(JSON.parse(row.data)));
+        const res = await db.prepare("UPDATE users SET data = ? WHERE id = ? AND data = ?").bind(next, id, row.data).run();
+        if ((res.meta?.changes ?? 0) === 1) return JSON.parse(next);
+      }
+      throw new Error("write-conflict");
+    },
     async listSessions(id) {
       // rowid tiebreak keeps same-timestamp sessions in insertion order,
       // matching the file store (coach rotation + PR detection depend on it).
@@ -41,6 +55,10 @@ export function createD1Store(db) {
       return results.map((r) => JSON.parse(r.data));
     },
     async addBodyweight(id, entry) {
+      // One weigh-in per user per day: clear any existing same-day row first, so a
+      // replayed offline log (lost response on flaky gym wifi) replaces instead of
+      // duplicating and skewing the bodyweight trend. (No unique column needed.)
+      await db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date = ?").bind(id, entry.date ?? null).run();
       await db
         .prepare("INSERT INTO bodyweights (user_id, date, data) VALUES (?, ?, ?)")
         .bind(id, entry.date ?? null, JSON.stringify(entry))
@@ -67,10 +85,31 @@ export function createD1Store(db) {
     async getAccountByUserId(userId) {
       return (await db.prepare("SELECT email, user_id, verified_at FROM accounts WHERE user_id = ?").bind(userId).first()) ?? null;
     },
-    // Merge-on-restore: move one user's logs to another, then drop the empty shell.
+    // Merge-on-restore: move ALL of one user's data onto another, then drop the
+    // empty shell. Sessions, bodyweights, checkins, AND the custom-exercise
+    // library move — otherwise moved sets reference custom-* ids that no longer
+    // resolve (silent volume/PR corruption) and check-in history is orphaned.
     async reassignUserData(fromId, toId) {
+      // custom exercises live on the user doc → migrate before deleting it (dedup by id).
+      const [fromRow, toRow] = await Promise.all([
+        db.prepare("SELECT data FROM users WHERE id = ?").bind(fromId).first(),
+        db.prepare("SELECT data FROM users WHERE id = ?").bind(toId).first(),
+      ]);
+      if (fromRow && toRow) {
+        const fromU = JSON.parse(fromRow.data), toU = JSON.parse(toRow.data);
+        if (fromU.custom_exercises?.length) {
+          toU.custom_exercises = toU.custom_exercises || [];
+          const have = new Set(toU.custom_exercises.map((x) => x.id));
+          for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { toU.custom_exercises.push(ex); have.add(ex.id); }
+          await db.prepare("UPDATE users SET data = ? WHERE id = ?").bind(JSON.stringify(toU), toId).run();
+        }
+      }
       const s = await db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
       const b = await db.prepare("UPDATE bodyweights SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      // checkins share a (user_id, date) PK → move what doesn't collide, keeping
+      // the target's same-day row, then drop any leftover from-user rows.
+      await db.prepare("UPDATE OR IGNORE checkins SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      await db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(fromId).run();
       await db.prepare("DELETE FROM users WHERE id = ?").bind(fromId).run();
       return { sessions: s.meta?.changes ?? 0, bodyweights: b.meta?.changes ?? 0 };
     },
@@ -94,8 +133,12 @@ export function createD1Store(db) {
         .bind(tokenHash)
         .first()) ?? null;
     },
+    // Atomic single-use flip guarded by `used = 0`: returns true only if THIS
+    // call consumed the link, so two concurrent consumes can't both succeed
+    // (defeating the single-use guarantee / a duplicate merge grant).
     async markMagicLinkUsed(tokenHash) {
-      await db.prepare("UPDATE magic_links SET used = 1 WHERE token_hash = ?").bind(tokenHash).run();
+      const res = await db.prepare("UPDATE magic_links SET used = 1 WHERE token_hash = ? AND used = 0").bind(tokenHash).run();
+      return (res.meta?.changes ?? 0) === 1;
     },
     async countRecentLinks(rlKey, sinceMs) {
       const row = await db.prepare("SELECT COUNT(*) AS n FROM magic_links WHERE rl_key = ? AND created_at >= ?").bind(rlKey, sinceMs).first();

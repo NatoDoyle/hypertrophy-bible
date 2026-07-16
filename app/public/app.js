@@ -594,7 +594,9 @@ async function renderProgress() {
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value); if (!val) return;
     const kg = toKg(val);
-    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg });
+    // Send today's date at log time so an offline weigh-in keeps its real date and
+    // a replayed POST replaces the same-day row instead of duplicating it.
+    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: new Date().toISOString().slice(0, 10) });
     if (res.ok) return renderProgress();
     $("#bw").value = "";
     const note = document.createElement("p");

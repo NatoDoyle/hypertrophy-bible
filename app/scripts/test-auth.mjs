@@ -109,6 +109,34 @@ try {
   await store.reassignUserData("ghost-user", "acct-user"); // deletes ghost-user
   ok("consuming a link bound to a deleted user is rejected", (await consumeMagicLink(store, { token: ghostLink.token })).error === "invalid");
 
+  // --- Wave 3: merge moves custom exercises + checkins, not just sessions/bw ---
+  await store.saveUser("m-to", { profile: {}, custom_exercises: [{ id: "custom-a", name: "A" }] });
+  await store.saveUser("m-from", { profile: {}, custom_exercises: [{ id: "custom-b", name: "B" }, { id: "custom-a", name: "dupe" }] });
+  await store.addCheckin("m-from", { date: "2026-07-10", energy: 4 });
+  await store.addCheckin("m-to", { date: "2026-07-11", energy: 3 });
+  await store.reassignUserData("m-from", "m-to");
+  const mTo = await store.getUser("m-to");
+  ok("merge migrates custom exercises (dedup by id)", mTo.custom_exercises.length === 2 && mTo.custom_exercises.some((x) => x.id === "custom-b"));
+  ok("merge keeps the target's copy on an id collision", mTo.custom_exercises.find((x) => x.id === "custom-a").name === "A");
+  ok("merge moves check-ins", (await store.listCheckins("m-to")).length === 2);
+  ok("merge deletes the from-user's check-ins", (await store.listCheckins("m-from")).length === 0);
+
+  // --- Wave 3: bodyweight is one-per-day (a replayed offline log can't dup) ---
+  await store.saveUser("bw-u", { profile: {} });
+  await store.addBodyweight("bw-u", { date: "2026-07-12", kg: 80 });
+  await store.addBodyweight("bw-u", { date: "2026-07-12", kg: 80 }); // retry
+  ok("duplicate same-day bodyweight replaces, not appends", (await store.listBodyweights("bw-u")).length === 1);
+
+  // --- Wave 3: single-use magic-link flip is atomic (true once, false after) ---
+  await store.createMagicLink({ token_hash: "tok-x", email: "x@t.com", rl_key: "x@t.com", user_id: "bw-u", purpose: "merge-grant", expires_at: Date.now() + 6e5, used: 0, created_at: Date.now() });
+  ok("markMagicLinkUsed returns true the first time", (await store.markMagicLinkUsed("tok-x")) === true);
+  ok("markMagicLinkUsed returns false the second time", (await store.markMagicLinkUsed("tok-x")) === false);
+
+  // --- Wave 3: updateUser is a guarded read-modify-write ---
+  const upd = await store.updateUser("bw-u", (u) => { u.paused = { from: "2026-07-12" }; return u; });
+  ok("updateUser applies the mutation", upd.paused?.from === "2026-07-12");
+  ok("updateUser on a missing user returns null", (await store.updateUser("nope", (u) => u)) === null);
+
   console.log(`\n${pass} auth test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
