@@ -62,8 +62,11 @@ const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
   { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
-  { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable"]], ["Home with dumbbells", ["dumbbell"]], ["Just my bodyweight", ["bodyweight"]]] },
-  { key: "sex", q: "One quick thing — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
+  { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
+  { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Side delts", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Quads", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
+  { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
 let onbStep = 0;
 let onbStarted = false;
@@ -101,9 +104,14 @@ function renderOnboarding() {
   const dots = STEPS.map((_, i) => `<i class="${i <= onbStep ? "on" : ""}"></i>`).join("");
   let body;
   if (step.stepper) {
-    const v = answers[step.key] ?? step.stepper.def;
-    body = `<div class="stepper"><button data-d="-1">–</button><div class="val" id="sv">${v}</div><button data-d="1">+</button></div>
-      <p class="muted center">${step.stepper.hint}</p><button class="btn" id="next">Continue</button>`;
+    const st = step.stepper;
+    const v = answers[step.key] ?? st.def;
+    body = `<div class="stepper"><button data-d="-1">–</button><div class="val" id="sv">${v}${st.unit || ""}</div><button data-d="1">+</button></div>
+      <p class="muted center">${st.hint}</p><button class="btn" id="next">Continue</button>`;
+  } else if (step.multi) {
+    const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
+    body = step.multi.map((o, i) => `<button class="choice${sel.has(JSON.stringify(o[1])) ? " sel" : ""}" data-i="${i}">${esc(o[0])}</button>`).join("")
+      + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
@@ -113,11 +121,22 @@ function renderOnboarding() {
   app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}
     <button class="btn ghost" id="onb-back">‹ Back</button>`;
   if (step.stepper) {
-    let v = answers[step.key] ?? step.stepper.def;
+    const st = step.stepper;
+    let v = answers[step.key] ?? st.def;
     app.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
-      v = Math.max(step.stepper.min, Math.min(step.stepper.max, v + +b.dataset.d)); $("#sv").textContent = v; answers[step.key] = v;
+      v = Math.max(st.min, Math.min(st.max, v + (+b.dataset.d) * (st.step || 1))); $("#sv").textContent = v + (st.unit || ""); answers[step.key] = v;
     });
     answers[step.key] = v;
+    $("#next").onclick = advance;
+  } else if (step.multi) {
+    answers[step.key] = answers[step.key] || [];
+    app.querySelectorAll(".choice").forEach((b) => b.onclick = () => {
+      const val = step.multi[+b.dataset.i][1], k = JSON.stringify(val);
+      const cur = answers[step.key].map((x) => JSON.stringify(x));
+      const idx = cur.indexOf(k);
+      if (idx >= 0) answers[step.key].splice(idx, 1); else answers[step.key].push(val);
+      b.classList.toggle("sel");
+    });
     $("#next").onclick = advance;
   } else {
     app.querySelectorAll(".choice").forEach((b) => b.onclick = () => { answers[step.key] = step.opts[+b.dataset.i][1]; advance(); });
@@ -134,10 +153,42 @@ function onbBack() {
 async function advance() {
   if (onbStep < STEPS.length - 1) { onbStep++; return renderOnboarding(); }
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Building your plan…</h1></div>`;
-  const profile = { training_status: answers.training_status, primary_goal: answers.primary_goal, days_per_week: answers.days_per_week, available_equipment: answers.available_equipment, sex: answers.sex, units: "metric" };
+  const priority = [...new Set((answers.priority_muscles || []).flat())];
+  const injuries = (answers.injuries || []).map((region) => ({ region, severity: "moderate" }));
+  const profile = {
+    training_status: answers.training_status, primary_goal: answers.primary_goal,
+    days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
+    available_equipment: answers.available_equipment, priority_muscles: priority,
+    injuries, sex: answers.sex, units: "metric",
+  };
   const res = await api("/api/onboard", { method: "POST", body: JSON.stringify({ profile }) });
-  if (res.user_id) { uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name); tab = "today"; render(); }
+  if (res.user_id) { uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name); return renderPlanExplain(true); }
   else app.innerHTML = `<p>Something went wrong. <button class="btn" onclick="location.reload()">Retry</button></p>`;
+}
+
+// The coach explaining the plan before the first workout: split reasoning,
+// per-muscle weekly volume vs the KB landmarks, and honest heads-ups.
+const titleCase = (id) => String(id).replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+async function renderPlanExplain(firstTime) {
+  nav.hidden = !!firstTime;
+  app.innerHTML = `<p class="muted">Loading your plan…</p>`;
+  let d; try { d = await api(`/api/plan/explain?u=${uid}`); } catch { app.innerHTML = `<p class="muted">Couldn't load your plan.</p>`; return; }
+  const r = d.rationale || {};
+  const gradeChip = (g) => g ? `<span class="chip">Grade ${g}</span>` : "";
+  const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => v.frequency > 0 && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
+  const volRows = vols.map(([m, v]) => `<div class="row"><div style="flex:1"><b>${esc(titleCase(m))}</b> <span class="muted">${v.projected_sets} sets/wk${v.is_priority ? " · priority" : ""}</span>
+      <div class="bar"><i style="width:${Math.min(100, (v.projected_sets / 24) * 100)}%;background:var(--accent)"></i></div>
+      <span class="muted" style="font-size:.82rem">${esc((v.reasons || []).join(" · "))} ${gradeChip(v.landmark?.evidence_grade)}</span></div>
+      <span class="status ${statusClass(v.projected_status)}">${statusLabel(v.projected_status)}</span></div>`).join("");
+  const warns = (r.warnings || []).map((w) => `<div class="win">ℹ️ ${esc(w.message)}</div>`).join("");
+  app.innerHTML = `<h1>Your plan</h1>
+    <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div>
+      <p class="muted">${esc(r.split?.reason || "")} ${gradeChip("B")}</p></div>
+    <h2>Weekly volume — tuned to your muscles' landmarks</h2>
+    <div class="card">${volRows || '<p class="muted">—</p>'}</div>
+    ${warns ? `<h2>Heads up</h2><div class="card">${warns}</div>` : ""}
+    <button class="btn" id="explain-go">${firstTime ? "Start training" : "Back"}</button>`;
+  $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
 
 // ---------- Today ----------
@@ -338,10 +389,12 @@ function renderMe() {
       : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
   </div>`;
   app.innerHTML = `<h1>Me</h1>
-    <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b></div>
+    <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
+      <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
     ${backup}
     ${funded}
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
+  $("#viewplan").onclick = () => renderPlanExplain(false);
 
   if (!email) {
     $("#sendlink").onclick = async () => {

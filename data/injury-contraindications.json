@@ -1,0 +1,53 @@
+{
+  "$comment": "Practice-based movement-screening heuristics (Grade D) mapping a reported injury region to movement_patterns the plan engine should avoid. exclude_patterns are avoided at any severity; caution_patterns are additionally avoided at moderate/severe. Not medical advice — see content/05-recovery/injury-management.",
+  "regions": {
+    "lower-back": {
+      "exclude_patterns": [],
+      "caution_patterns": ["hinge", "squat"],
+      "note": "Loaded spinal flexion/compression can aggravate low-back injury; prefer machine/supported leg and back work.",
+      "evidence_grade": "D"
+    },
+    "knee": {
+      "exclude_patterns": [],
+      "caution_patterns": ["lunge"],
+      "note": "Deep loaded knee flexion; prefer machine and controlled-range leg work.",
+      "evidence_grade": "D"
+    },
+    "shoulder": {
+      "exclude_patterns": ["vertical-push"],
+      "caution_patterns": ["horizontal-push"],
+      "note": "Overhead and heavy pressing stress an irritated shoulder; prefer neutral-grip machine work in a pain-free range.",
+      "evidence_grade": "D"
+    },
+    "elbow": {
+      "exclude_patterns": [],
+      "caution_patterns": ["isolation-elbow-extension", "isolation-elbow-flexion"],
+      "note": "Direct arm isolation can aggravate elbow tendinopathy; reduce volume and prefer neutral grips.",
+      "evidence_grade": "D"
+    },
+    "wrist": {
+      "exclude_patterns": ["isolation-wrist"],
+      "caution_patterns": [],
+      "note": "Loaded wrist flexion/extension; avoid direct wrist work while symptomatic.",
+      "evidence_grade": "D"
+    },
+    "hip": {
+      "exclude_patterns": [],
+      "caution_patterns": ["hinge", "squat"],
+      "note": "Deep loaded hip flexion; prefer controlled ranges and machine support.",
+      "evidence_grade": "D"
+    },
+    "neck": {
+      "exclude_patterns": ["isolation-other"],
+      "caution_patterns": [],
+      "note": "Avoid direct neck loading while symptomatic.",
+      "evidence_grade": "D"
+    },
+    "ankle": {
+      "exclude_patterns": [],
+      "caution_patterns": ["isolation-plantarflexion"],
+      "note": "Loaded plantarflexion; reduce calf work while symptomatic.",
+      "evidence_grade": "D"
+    }
+  }
+}
