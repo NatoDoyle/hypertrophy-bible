@@ -262,3 +262,59 @@ export function generatePlan(profile, kb, opts = {}) {
   };
   return { program, rationale, meta: { engine_version: "1.0.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries } } };
 }
+
+// Critique any program (generated OR user-built) against the KB: per-muscle
+// weekly volume vs MEV/MRV, missing major muscles, push/pull balance, and
+// compound-before-isolation order. Reuses the SAME volume model as the tracker.
+export function critiquePlan(program, kb) {
+  const { exercises, muscles } = kb;
+  const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
+  const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
+  const muscleById = new Map(muscles.map((m) => [m.id, m]));
+  const exById = new Map(exercises.map((e) => [e.id, e]));
+  const name = (m) => muscleById.get(m)?.name ?? m;
+
+  const pseudo = [{ date: "2026-01-05", sets: (program.sessions ?? []).flatMap((s) => (s.exercises ?? []).flatMap((e) => Array.from({ length: e.sets || 0 }, () => ({ exercise: e.exercise, set_type: "work" })))) }];
+  const week = perMuscleWeeklyVolume(pseudo, exIndex);
+  const wk = Object.keys(week)[0];
+  const vol = wk ? week[wk] : {};
+  const vsLm = wk ? volumeVsLandmarks(vol, muscleIndex) : {};
+
+  const findings = [];
+  const add = (severity, msg, extra = {}) => findings.push({ severity, msg, ...extra });
+
+  // per-muscle vs landmarks
+  for (const [m, r] of Object.entries(vsLm)) {
+    const lm = muscleById.get(m)?.landmarks;
+    if (!lm) continue;
+    const grade = lm.evidence_grade || "C";
+    if (r.status === "over-MRV") add("warn", `${name(m)}: ${r.sets} hard sets/wk is above MRV (~${lm.mrv.max}) — likely more than you can recover from. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+    else if (r.status === "below-MEV") add("warn", `${name(m)}: ${r.sets} hard sets/wk is below MEV (~${lm.mev.min}) — probably too little to grow it. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+  }
+  // major muscles with no volume
+  const MAJOR = ["chest", "upper-back", "lats", "quadriceps", "hamstrings", "glutes", "side-delts"];
+  for (const m of MAJOR) if (!(vol[m] > 0)) add("warn", `${name(m)}: no direct or indirect volume — a balanced plan trains every major muscle.`, { muscle: m });
+  // push/pull balance
+  const sum = (arr) => arr.reduce((a, m) => a + (vol[m] || 0), 0);
+  const push = sum(["chest", "front-delts", "triceps"]), pull = sum(["upper-back", "lats", "rear-delts", "biceps"]);
+  if (push > 0 && pull > 0) {
+    if (push / pull > 1.5) add("info", `Push volume (${push.toFixed(1)}) is well above pull (${pull.toFixed(1)}) — add back/pull work to balance the shoulders.`);
+    else if (pull / push > 1.5) add("info", `Pull volume (${pull.toFixed(1)}) is well above push (${push.toFixed(1)}) — add pressing to balance.`);
+  }
+  // compound-before-isolation order per session
+  for (const s of program.sessions ?? []) {
+    let seenIso = false;
+    for (const e of s.exercises ?? []) {
+      const ex = exById.get(e.exercise);
+      if (!ex) continue;
+      if (ex.mechanic === "isolation") seenIso = true;
+      else if (seenIso) { add("info", `${s.name}: ${ex.name} (a compound) comes after an isolation — compounds usually go first while you're fresh.`, { session: s.name }); break; }
+    }
+  }
+
+  const warns = findings.filter((f) => f.severity === "warn").length;
+  const summary = warns === 0
+    ? (findings.length ? "Solid plan — a couple of small tweaks below." : "This plan checks out against the KB — well balanced and in the productive volume ranges. 💪")
+    : `${warns} thing${warns === 1 ? "" : "s"} worth fixing, plus a few suggestions.`;
+  return { summary, findings, volume_by_muscle: Object.fromEntries(Object.entries(vsLm).map(([m, r]) => [m, { name: name(m), sets: r.sets, status: r.status }])) };
+}
