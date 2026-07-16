@@ -20,7 +20,7 @@ export function createApp(store, config = {}) {
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +
   // exercise DB + equipment/injuries), with a rationale we can explain.
   app.post("/api/onboard", async (c) => {
-    const { profile } = await c.req.json();
+    const { profile } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
     const user_id = crypto.randomUUID();
     profile.user_id = user_id;
@@ -80,10 +80,14 @@ export function createApp(store, config = {}) {
       }))
       .filter((s) => s.exercises.length);
     if (!sessions.length) return c.json({ error: "empty-program" }, 400);
-    const program = { ...user.program, name: String(p.name || user.program.name), split: user.program.split || "other", days_per_week: sessions.length, sessions, custom: true };
-    user.program = program;
-    await store.saveUser(b.user_id, user);
-    return c.json({ ok: true, critique: critiqueUserPlan(program, user.custom_exercises || []) });
+    let program = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      program = { ...u.program, name: String(p.name || u.program.name), split: u.program.split || "other", days_per_week: sessions.length, sessions, custom: true };
+      u.program = program;
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || []) });
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's
@@ -108,13 +112,19 @@ export function createApp(store, config = {}) {
     const equipment = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell", "other"].includes(ex.equipment) ? ex.equipment : "other";
     const mechanic = ex.mechanic === "compound" ? "compound" : "isolation";
     const secondary = (ex.secondary_muscles || []).filter((m) => muscleById.has(m));
-    user.custom_exercises = user.custom_exercises || [];
     const slug = exName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "exercise";
-    const taken = new Set([...exerciseById.keys(), ...user.custom_exercises.map((x) => x.id)]);
-    let id = `custom-${slug}`, n = 2; while (taken.has(id)) id = `custom-${slug}-${n++}`;
-    const custom = { id, name: exName, primary_muscles: primary, ...(secondary.length ? { secondary_muscles: secondary } : {}), equipment, mechanic, movement_pattern: mechanic === "compound" ? "other" : "isolation-other", custom: true, ...(Array.isArray(ex.cues) ? { cues: ex.cues.slice(0, 4).map(String) } : {}) };
-    user.custom_exercises.push(custom);
-    await store.saveUser(b.user_id, user);
+    // Concurrency-safe append: the id is derived and pushed inside the CAS mutator
+    // so two near-simultaneous adds can't collide or clobber one another (#20).
+    let custom = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.custom_exercises = u.custom_exercises || [];
+      const taken = new Set([...exerciseById.keys(), ...u.custom_exercises.map((x) => x.id)]);
+      let id = `custom-${slug}`, n = 2; while (taken.has(id)) id = `custom-${slug}-${n++}`;
+      custom = { id, name: exName, primary_muscles: primary, ...(secondary.length ? { secondary_muscles: secondary } : {}), equipment, mechanic, movement_pattern: mechanic === "compound" ? "other" : "isolation-other", custom: true, ...(Array.isArray(ex.cues) ? { cues: ex.cues.slice(0, 4).map(String) } : {}) };
+      u.custom_exercises.push(custom);
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
     return c.json({ ok: true, exercise: custom });
   });
 
@@ -162,11 +172,10 @@ export function createApp(store, config = {}) {
   // Safety rail: pause suspends all streak pressure with zero penalty (illness/injury).
   app.post("/api/pause", async (c) => {
     const b = await c.req.json().catch(() => ({}));
-    const user = b.user_id && (await store.getUser(b.user_id));
-    if (!user) return c.json({ error: "unknown user" }, 404);
-    user.paused = b.on ? { from: new Date().toISOString().slice(0, 10), reason: b.reason ?? null } : null;
-    await store.saveUser(b.user_id, user);
-    return c.json({ paused: !!user.paused });
+    const paused = b.on ? { from: new Date().toISOString().slice(0, 10), reason: b.reason ?? null } : null;
+    const updated = await store.updateUser(b.user_id, (u) => { u.paused = paused; return u; }); // CAS: won't clobber a concurrent write (#20)
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ paused: !!updated.paused });
   });
 
   app.get("/api/checkin/today", async (c) => {
@@ -180,7 +189,7 @@ export function createApp(store, config = {}) {
 
   // Log a completed session -> derived recap (the reward).
   app.post("/api/session", async (c) => {
-    const body = await c.req.json();
+    const body = await c.req.json().catch(() => ({})); // empty/non-JSON body -> clean 404 below, not a 500
     const id = body.user_id;
     const user = id && (await store.getUser(id));
     if (!user) return c.json({ error: "unknown user" }, 404);
@@ -215,9 +224,10 @@ export function createApp(store, config = {}) {
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).
   app.post("/api/bodyweight", async (c) => {
-    const { user_id, kg, date } = await c.req.json();
+    const { user_id, kg, date } = await c.req.json().catch(() => ({})); // guard empty/non-JSON body
     const user = user_id && (await store.getUser(user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
+    if (!Number.isFinite(Number(kg)) || Number(kg) <= 0) return c.json({ error: "bad-weight" }, 400);
     await store.addBodyweight(user_id, { date: date ?? new Date().toISOString().slice(0, 10), kg: Number(kg) });
     const bw = (await store.listBodyweights(user_id)).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
     const trend = bodyweightTrend(bw);
@@ -252,21 +262,26 @@ export function createApp(store, config = {}) {
     const result = await consumeMagicLink(store, { token });
     if (result.error) return c.json({ error: result.error }, 400);
     const user = await store.getUser(result.user_id);
-    // Issue a short-lived, single-use grant so the device that JUST restored this
-    // account can fold its local data in (see /api/auth/merge). Reuses the
-    // magic_links machinery; purpose 'merge-grant' is never emailed.
-    const now = Date.now();
-    const { token: grant, tokenHash } = await generateToken();
-    await store.createMagicLink({
-      token_hash: tokenHash, email: result.email, rl_key: result.email, ip: null,
-      user_id: result.user_id, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
-    });
+    // Issue the merge grant ONLY for a restore — the one flow that folds a device's
+    // local logs into a re-adopted account. A claim binds the caller's OWN user, so
+    // there is nothing to merge; minting a grant there would hand out a "move + delete
+    // any anonymous user" primitive far broader than intended (#19).
+    let merge_grant = null;
+    if (result.purpose === "restore") {
+      const now = Date.now();
+      const { token: grant, tokenHash } = await generateToken();
+      await store.createMagicLink({
+        token_hash: tokenHash, email: result.email, rl_key: result.email, ip: null,
+        user_id: result.user_id, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
+      });
+      merge_grant = grant;
+    }
     return c.json({
       user_id: result.user_id,
       email: result.email,
       purpose: result.purpose,
       program_name: user?.program?.name ?? null,
-      merge_grant: grant,
+      merge_grant,
     });
   });
 
@@ -283,7 +298,9 @@ export function createApp(store, config = {}) {
     if (!link || link.used || link.purpose !== "merge-grant" || link.user_id !== to_user_id || Date.now() > link.expires_at) {
       return c.json({ error: "bad-grant" }, 403);
     }
-    await store.markMagicLinkUsed(link.token_hash);
+    // Atomically consume the grant: if a concurrent merge already spent it,
+    // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
+    if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
     const [from, to] = await Promise.all([store.getUser(from_user_id), store.getUser(to_user_id)]);
     if (!from || !to) return c.json({ error: "unknown user" }, 404);
     if (await store.getAccountByUserId(from_user_id)) return c.json({ error: "from-user-has-account" }, 409);

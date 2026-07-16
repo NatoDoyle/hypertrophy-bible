@@ -97,7 +97,9 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
   // Guard against binding to a user that no longer exists (e.g. deleted by a
   // merge) — otherwise the account points at a ghost and the app can't load.
   if (!(await store.getUser(boundUserId))) return { error: "invalid" };
-  await store.markMagicLinkUsed(link.token_hash);
+  // Atomically claim the token: if a concurrent request already consumed it,
+  // markMagicLinkUsed returns false and we bail — the link is truly single-use.
+  if (!(await store.markMagicLinkUsed(link.token_hash))) return { error: "used" };
   await store.saveAccount(link.email, boundUserId, new Date(now).toISOString());
   return { user_id: boundUserId, email: link.email, purpose: link.purpose };
 }
