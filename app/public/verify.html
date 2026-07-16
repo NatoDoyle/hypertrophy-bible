@@ -32,25 +32,55 @@
         });
         const d = await r.json();
         if (d.user_id) {
-          // Don't silently replace a different account already on this device
-          // (protects against adopting an attacker-minted link, and against
-          // orphaning workouts logged only on this device). Confirm first.
           const current = localStorage.getItem("hb_user");
+          // Adopt the account, and re-point any offline-queued workouts at it so
+          // they sync to the account (not a stale/deleted anonymous user).
+          const adopt = () => {
+            try {
+              const q = JSON.parse(localStorage.getItem("hb_queue") || "[]");
+              if (q.length) localStorage.setItem("hb_queue", JSON.stringify(q.map((it) => {
+                try { return { ...it, body: JSON.stringify({ ...JSON.parse(it.body), user_id: d.user_id }) }; } catch { return it; }
+              })));
+            } catch (_) {}
+            localStorage.setItem("hb_user", d.user_id);
+            localStorage.setItem("hb_email", d.email);
+            if (d.program_name) localStorage.setItem("hb_program", d.program_name);
+          };
           if (current && current !== d.user_id) {
-            const okToSwitch = confirm(
-              "This device already has workout data. Loading the backup for " + d.email +
-              " will switch this device to that account — anything logged only here won't be carried over. Continue?"
-            );
-            if (!okToSwitch) {
-              msg.textContent = "Kept this device's data.";
-              sub.textContent = "Nothing was changed.";
-              go.hidden = false;
-              return;
+            // Does this device hold data of its own? Count server-side sessions +
+            // bodyweights AND anything still queued offline. If we can't check,
+            // assume yes and prompt rather than silently discard.
+            let localItems = 0, probeFailed = false, queued = 0;
+            try { queued = JSON.parse(localStorage.getItem("hb_queue") || "[]").filter((it) => it.path === "/api/session").length; } catch (_) {}
+            try {
+              const p = await fetch("/api/progress?u=" + encodeURIComponent(current)).then((x) => x.json());
+              localItems = (p.sessions_logged || 0) + (p.bodyweights_logged || 0) + queued;
+            } catch (_) { probeFailed = true; }
+            const hasLocal = localItems > 0 || probeFailed;
+            if (d.purpose === "restore" && hasLocal) {
+              const wantMerge = confirm("This device has workouts logged on it. Bring them into your backup so nothing is lost?");
+              if (wantMerge && d.merge_grant) {
+                const m = await fetch("/api/auth/merge", {
+                  method: "POST", headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ grant: d.merge_grant, from_user_id: current, to_user_id: d.user_id }),
+                }).then((x) => x.json()).catch(() => null);
+                if (!m || !m.merged) {
+                  const proceed = confirm("Couldn't merge the already-saved workouts right now. Switch to the backup anyway? (Offline ones still follow; synced ones stay behind.)");
+                  if (!proceed) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
+                }
+              } else if (!wantMerge) {
+                const proceed = confirm("Switch to the backup for " + d.email + " without them? Already-synced workouts on this device stay behind.");
+                if (!proceed) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
+              }
+            } else if (hasLocal) {
+              const okToSwitch = confirm(
+                "This device already has data. Loading the backup for " + d.email +
+                " will switch this device to that account. Continue?"
+              );
+              if (!okToSwitch) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
             }
           }
-          localStorage.setItem("hb_user", d.user_id);
-          localStorage.setItem("hb_email", d.email);
-          if (d.program_name) localStorage.setItem("hb_program", d.program_name);
+          adopt();
           msg.textContent = "You're all set 💪";
           sub.textContent = "Your progress is backed up to " + d.email + ".";
           go.hidden = false;

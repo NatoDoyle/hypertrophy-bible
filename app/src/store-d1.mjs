@@ -26,8 +26,9 @@ export function createD1Store(db) {
       return results.map((r) => JSON.parse(r.data));
     },
     async addSession(id, session) {
+      // Idempotent on the session_id PK: a replayed offline workout is a no-op.
       await db
-        .prepare("INSERT INTO sessions (session_id, user_id, date, data) VALUES (?, ?, ?, ?)")
+        .prepare("INSERT INTO sessions (session_id, user_id, date, data) VALUES (?, ?, ?, ?) ON CONFLICT(session_id) DO NOTHING")
         .bind(session.session_id, id, session.date ?? null, JSON.stringify(session))
         .run();
       return session;
@@ -50,6 +51,16 @@ export function createD1Store(db) {
     // --- passwordless email backup ---
     async getAccountByEmail(email) {
       return (await db.prepare("SELECT email, user_id, verified_at FROM accounts WHERE email = ?").bind(email).first()) ?? null;
+    },
+    async getAccountByUserId(userId) {
+      return (await db.prepare("SELECT email, user_id, verified_at FROM accounts WHERE user_id = ?").bind(userId).first()) ?? null;
+    },
+    // Merge-on-restore: move one user's logs to another, then drop the empty shell.
+    async reassignUserData(fromId, toId) {
+      const s = await db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      const b = await db.prepare("UPDATE bodyweights SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      await db.prepare("DELETE FROM users WHERE id = ?").bind(fromId).run();
+      return { sessions: s.meta?.changes ?? 0, bodyweights: b.meta?.changes ?? 0 };
     },
     async saveAccount(email, user_id, verified_at) {
       await db

@@ -1,10 +1,10 @@
 // The API. Pure Hono, no filesystem, store injected — the SAME app runs on
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
-import { selectProgram, exerciseById, programs } from "./kb.mjs";
+import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
-import { requestMagicLink, consumeMagicLink } from "./auth.mjs";
+import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -118,19 +118,55 @@ export function createApp(store, config = {}) {
     const result = await consumeMagicLink(store, { token });
     if (result.error) return c.json({ error: result.error }, 400);
     const user = await store.getUser(result.user_id);
+    // Issue a short-lived, single-use grant so the device that JUST restored this
+    // account can fold its local data in (see /api/auth/merge). Reuses the
+    // magic_links machinery; purpose 'merge-grant' is never emailed.
+    const now = Date.now();
+    const { token: grant, tokenHash } = await generateToken();
+    await store.createMagicLink({
+      token_hash: tokenHash, email: result.email, rl_key: result.email, ip: null,
+      user_id: result.user_id, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
+    });
     return c.json({
       user_id: result.user_id,
       email: result.email,
       purpose: result.purpose,
       program_name: user?.program?.name ?? null,
+      merge_grant: grant,
     });
+  });
+
+  // Merge a device's anonymous logs into a restored account (offered by
+  // verify.html after a restore, so nothing logged pre-backup is stranded).
+  // Possession of both ids is the auth model, same as every other route; the
+  // from-user must be anonymous so an email binding is never left dangling.
+  app.post("/api/auth/merge", async (c) => {
+    const { from_user_id, to_user_id, grant } = await c.req.json().catch(() => ({}));
+    if (!from_user_id || !to_user_id || from_user_id === to_user_id || !grant) return c.json({ error: "bad-request" }, 400);
+    // Require a valid merge grant tied to to_user_id: only a caller who just
+    // restored `to` can merge into it (not anyone holding two UUIDs).
+    const link = await store.getMagicLink(await sha256hex(grant));
+    if (!link || link.used || link.purpose !== "merge-grant" || link.user_id !== to_user_id || Date.now() > link.expires_at) {
+      return c.json({ error: "bad-grant" }, 403);
+    }
+    await store.markMagicLinkUsed(link.token_hash);
+    const [from, to] = await Promise.all([store.getUser(from_user_id), store.getUser(to_user_id)]);
+    if (!from || !to) return c.json({ error: "unknown user" }, 404);
+    if (await store.getAccountByUserId(from_user_id)) return c.json({ error: "from-user-has-account" }, 409);
+    const moved = await store.reassignUserData(from_user_id, to_user_id);
+    return c.json({ merged: true, ...moved });
   });
 
   // Exercise detail (the "how do I do this?" tap).
   app.get("/api/exercise/:id", (c) => {
     const e = exerciseById.get(c.req.param("id"));
     if (!e) return c.json({ error: "not found" }, 404);
-    return c.json({ id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [], equipment: e.equipment, primary_muscles: e.primary_muscles });
+    return c.json({
+      id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [],
+      equipment: e.equipment,
+      primary_muscles: (e.primary_muscles ?? []).map((m) => muscleById.get(m)?.name ?? m),
+      secondary_muscles: (e.secondary_muscles ?? []).map((m) => muscleById.get(m)?.name ?? m),
+    });
   });
 
   return app;

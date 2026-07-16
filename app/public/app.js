@@ -12,6 +12,51 @@ const api = async (path, opts = {}) => {
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// Set to your Open Collective / GitHub Sponsors URL when it exists. The support
+// button stays hidden until then — never show a dead or fake donation link.
+const DONATE_URL = "";
+
+// ---------- Offline write queue ----------
+// Logging must never be lost to a dead gym basement signal: failed POSTs wait
+// in localStorage and sync when the connection returns.
+const QKEY = "hb_queue";
+const getQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } };
+const setQueue = (q) => localStorage.setItem(QKEY, JSON.stringify(q));
+let flushing = false; // guard against re-entrancy (load + 'online', or two tabs)
+async function flushQueue() {
+  if (flushing) return;
+  flushing = true;
+  try {
+    while (true) {
+      const q = getQueue();
+      if (!q.length) break;
+      const item = q[0];
+      // The queue is device-local, so the current user always owns it. Rebinding
+      // heals items whose account switched (a restore) after they were queued —
+      // they land on the account instead of a stale/deleted user_id.
+      const body = JSON.stringify({ ...JSON.parse(item.body), user_id: uid });
+      let ok = false;
+      try { ok = (await fetch(item.path, { method: "POST", headers: { "content-type": "application/json" }, body })).ok; }
+      catch { break; } // offline again — keep everything for next time
+      if (!ok) break;   // server/HTTP error — retry later rather than drop the workout
+      // Re-read before dropping the head: an item queued during the POST is preserved.
+      setQueue(getQueue().slice(1));
+    }
+  } finally { flushing = false; }
+}
+window.addEventListener("online", flushQueue);
+async function postOrQueue(path, bodyObj) {
+  const body = JSON.stringify(bodyObj);
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body });
+    if (!r.ok) throw new Error("http " + r.status); // a live HTTP error must queue, not "succeed"
+    return { ok: true, data: await r.json() };
+  } catch {
+    setQueue([...getQueue(), { path, body }]);
+    return { ok: false, queued: true };
+  }
+}
+
 // ---------- Onboarding ----------
 const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
@@ -85,7 +130,13 @@ async function advance() {
 // ---------- Today ----------
 async function renderToday() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  const data = await api(`/api/today?u=${uid}`);
+  let data;
+  try { data = await api(`/api/today?u=${uid}`); }
+  catch {
+    app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p></div>`;
+    return;
+  }
   const s = data.session;
   const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} × ${e.rep_range} · ${(e.primary_muscles || []).join(", ")}</span></div></div>`).join("");
   app.innerHTML = `<h1>Today</h1>
@@ -142,8 +193,9 @@ function renderPlayer(resting = 0) {
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); renderPlayer(); });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); renderPlayer(); });
   $("#how").onclick = async () => {
-    const d = await api(`/api/exercise/${e.exercise}`);
-    alert(`${d.name}\n\nHow to:\n• ${(d.cues || []).join("\n• ")}\n\nAvoid:\n• ${(d.common_errors || []).slice(0, 2).join("\n• ")}`);
+    let d = null;
+    try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
+    renderExerciseSheet(e, d);
   };
   $("#quit").onclick = finish;
   $("#done").onclick = () => {
@@ -158,11 +210,31 @@ function renderPlayer(resting = 0) {
     }
   };
 }
+// The "how do I do this?" sheet: full cues + mistakes from the KB, and a form-
+// video search — an honest stand-in until we have vetted demo media of our own.
+function renderExerciseSheet(ex, d) {
+  const name = d?.name ?? ex.name;
+  const cues = (d?.cues ?? []).map((c) => `<div class="win">✅ ${esc(c)}</div>`).join("") || `<p class="muted">No cues on file for this one.</p>`;
+  const errs = (d?.common_errors ?? []).map((c) => `<div class="win">⚠️ ${esc(c)}</div>`).join("");
+  const muscles = [...(d?.primary_muscles ?? []), ...(d?.secondary_muscles ?? [])].join(", ");
+  const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(name + " proper form")}`;
+  app.innerHTML = `<h1>${esc(name)}</h1>
+    ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
+    <h2>How to do it</h2>${cues}
+    ${errs ? `<h2>Avoid</h2>${errs}` : ""}
+    <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Watch form videos</a>
+    <button class="btn" id="back">Back to workout</button>`;
+  $("#back").onclick = () => renderPlayer(0);
+}
+
 async function finish() {
   if (!sess.logged.length) { sess = null; return render(); }
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Saving…</h1></div>`;
-  const recap = await api("/api/session", { method: "POST", body: JSON.stringify({ user_id: uid, session_name: sess.name, sets: sess.logged }) });
-  renderRecap(recap);
+  // Client-generated id + real time so a queued replay is idempotent (server
+  // ignores a duplicate session_id) and buckets by when the workout happened.
+  const session_id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const res = await postOrQueue("/api/session", { session_id, date: new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged });
+  renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
   sess = null;
 }
 function renderRecap(recap) {
@@ -172,7 +244,15 @@ function renderRecap(recap) {
         <p class="muted">Save it to an email so you never lose it — no password, no account wall.</p>
         <button class="btn secondary" id="backup">Back up now</button></div>`
     : "";
-  app.innerHTML = `<div class="center"><h1>Session ${recap.day_number || ""} done 💪</h1></div>${wins}${nudge}
+  // Post-value support nudge (per docs/donation-page.md): only after a real
+  // milestone (~a month at 3x/week), always skippable, dormant until a real
+  // donation destination exists.
+  const donate = DONATE_URL && recap.day_number && recap.day_number % 12 === 0
+    ? `<div class="card"><p>🎉 That's about a month of training logged. This app is free and always will be — if it's been useful, you can chip in any amount. Totally optional.</p>
+        <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a></div>`
+    : "";
+  const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
+  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${wins}${nudge}${donate}
     <button class="btn" id="ok">Done</button>`;
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
@@ -183,7 +263,13 @@ const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-
 const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "no-landmark": "—" }[s] || s);
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  const p = await api(`/api/progress?u=${uid}`);
+  let p;
+  try { p = await api(`/api/progress?u=${uid}`); }
+  catch {
+    app.innerHTML = `<h1>Progress</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p></div>`;
+    return;
+  }
   const vol = (p.volumeByMuscle || []).map((m) => {
     const pct = Math.min(100, (m.sets / 24) * 100);
     return `<div class="row"><div style="flex:1"><b>${esc(m.muscle)}</b> <span class="muted">${m.sets} set${m.sets === 1 ? "" : "s"}/wk</span>
@@ -206,8 +292,13 @@ async function renderProgress() {
     </div>`;
   $("#logbw").onclick = async () => {
     const kg = parseFloat($("#bw").value); if (!kg) return;
-    await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg }) });
-    renderProgress();
+    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg });
+    if (res.ok) return renderProgress();
+    $("#bw").value = "";
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "📴 Saved offline — it'll sync when you're back online.";
+    $("#logbw").after(note);
   };
 }
 
@@ -223,10 +314,20 @@ function renderMe() {
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:8px 0 4px">
         <button class="btn" id="sendlink">Send me a link</button>
         <p class="muted" id="bmsg"></p></div>`;
+  // "How this is funded" — informational, always reachable, never a gate
+  // (copy per docs/donation-page.md; support button appears only when a real
+  // donation destination is configured).
+  const funded = `<div class="card"><p class="muted">How this is funded</p>
+    <p>This is a not-for-profit passion project: <b>open-source, no ads, no premium tier, no selling your data.</b> Every claim in it is backed by a real study.</p>
+    <p class="muted">What it costs: right now, roughly the price of a domain name — most of it runs on free infrastructure. I cover it myself and put anything received straight back into the project. You get the exact same app either way.</p>
+    ${DONATE_URL
+      ? `<a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a>`
+      : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
+  </div>`;
   app.innerHTML = `<h1>Me</h1>
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b></div>
     ${backup}
-    <div class="card"><p>This app is free and open-source. If it helps you, you'll one day be able to chip in to cover costs — never required.</p></div>
+    ${funded}
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
 
   if (!email) {
@@ -259,4 +360,6 @@ function render() {
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; render(); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+flushQueue(); // push any workouts logged offline last time
 render();

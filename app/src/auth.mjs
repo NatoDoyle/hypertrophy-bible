@@ -89,12 +89,15 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
   if (link.used) return { error: "used" };
   if (now > link.expires_at) return { error: "expired" };
 
-  await store.markMagicLinkUsed(link.token_hash);
   // First claim wins: if this email was already bound by an earlier consumed link,
   // adopt that binding rather than clobbering it (which would orphan the first
   // claimant's data). Turns a duplicate claim into a restore of the same account.
   const current = await store.getAccountByEmail(link.email);
   const boundUserId = current ? current.user_id : link.user_id;
+  // Guard against binding to a user that no longer exists (e.g. deleted by a
+  // merge) — otherwise the account points at a ghost and the app can't load.
+  if (!(await store.getUser(boundUserId))) return { error: "invalid" };
+  await store.markMagicLinkUsed(link.token_hash);
   await store.saveAccount(link.email, boundUserId, new Date(now).toISOString());
   return { user_id: boundUserId, email: link.email, purpose: link.purpose };
 }

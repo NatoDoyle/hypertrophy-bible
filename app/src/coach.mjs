@@ -57,7 +57,10 @@ export function nextSessionIndex(program, sessionCount) {
 // Build today's session card: every exercise pre-filled with a suggested weight.
 export function buildToday(user, sessions) {
   const program = user.program;
-  const idx = nextSessionIndex(program, sessions.length);
+  // Rotate by sessions of THIS program only, so merged sessions from a different
+  // program (e.g. an earlier device) don't phase-shift the cycle.
+  const rotCount = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
+  const idx = nextSessionIndex(program, rotCount);
   const templateSession = program.sessions[idx];
   const exercises = templateSession.exercises.map((ex) => {
     const e = exerciseById.get(ex.exercise);
@@ -147,5 +150,5 @@ export function progressReport(user, sessions, bodyweights) {
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
-  return { sessions_logged: sessions.length, latest_week: latest ?? null, volumeByMuscle, progression, bodyweight_trend: trend, energy_balance: energy };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, bodyweight_trend: trend, energy_balance: energy };
 }

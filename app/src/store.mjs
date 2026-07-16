@@ -25,7 +25,10 @@ export function createFileStore(path) {
     async saveUser(id, user) { db.users[id] = user; flush(); return user; },
     async listSessions(id) { return byDate(db.sessions[id]); },
     async addSession(id, session) {
-      (db.sessions[id] ??= []).push(session); flush(); return session;
+      const list = (db.sessions[id] ??= []);
+      // Idempotent on session_id: a replayed offline workout is a no-op.
+      if (session.session_id && list.some((s) => s.session_id === session.session_id)) return session;
+      list.push(session); flush(); return session;
     },
     async listBodyweights(id) { return byDate(db.bodyweights[id]); },
     async addBodyweight(id, entry) {
@@ -34,6 +37,20 @@ export function createFileStore(path) {
 
     // --- passwordless email backup ---
     async getAccountByEmail(email) { return db.accounts[email] ?? null; },
+    async getAccountByUserId(userId) {
+      return Object.values(db.accounts).find((a) => a.user_id === userId) ?? null;
+    },
+    // Merge-on-restore: move one user's logs to another, then drop the empty shell.
+    async reassignUserData(fromId, toId) {
+      const moved = { sessions: (db.sessions[fromId] ?? []).length, bodyweights: (db.bodyweights[fromId] ?? []).length };
+      if (db.sessions[fromId]?.length) (db.sessions[toId] ??= []).push(...db.sessions[fromId]);
+      if (db.bodyweights[fromId]?.length) (db.bodyweights[toId] ??= []).push(...db.bodyweights[fromId]);
+      delete db.sessions[fromId];
+      delete db.bodyweights[fromId];
+      delete db.users[fromId];
+      flush();
+      return moved;
+    },
     async saveAccount(email, user_id, verified_at) {
       db.accounts[email] = {
         email, user_id, verified_at: verified_at ?? null,

@@ -23,7 +23,10 @@ try {
   ok("two tokens differ", (await generateToken()).token !== (await generateToken()).token);
 
   // --- claim: a new email binds to the caller's anonymous user_id ---
+  // The anon user always exists (onboarding created it) before backup; consume
+  // now guards against binding to a nonexistent user, so tests must create them.
   const anon = "anon-user-1";
+  for (const u of [anon, "u3", "userA", "userB"]) await store.saveUser(u, { profile: {} });
   const claim = await requestMagicLink(store, { email: "Claim@T.com", anonUserId: anon });
   ok("claim: purpose is 'claim'", claim.purpose === "claim");
   ok("claim: binds the anon user_id", claim.boundUserId === anon);
@@ -84,6 +87,27 @@ try {
   ok("first claim binds userA", firstConsumed.user_id === "userA");
   ok("second claim of same email ADOPTS userA (no clobber)", secondConsumed.user_id === "userA");
   ok("account still points at the first claimant", (await store.getAccountByEmail("dup@t.com")).user_id === "userA");
+
+  // --- merge-on-restore (store level) ---
+  await store.saveUser("acct-user", { profile: {} });
+  await store.saveUser("anon-dev", { profile: {} });
+  await store.addSession("anon-dev", { session_id: "s-1", date: "2026-07-01", sets: [] });
+  await store.addSession("anon-dev", { session_id: "s-2", date: "2026-07-03", sets: [] });
+  await store.addBodyweight("anon-dev", { date: "2026-07-01", kg: 80 });
+  const moved = await store.reassignUserData("anon-dev", "acct-user");
+  ok("merge moves sessions", moved.sessions === 2 && (await store.listSessions("acct-user")).length === 2);
+  ok("merge moves bodyweights", moved.bodyweights === 1 && (await store.listBodyweights("acct-user")).length === 1);
+  ok("merge deletes the from-user shell", (await store.getUser("anon-dev")) === null);
+  ok("from-user has nothing left", (await store.listSessions("anon-dev")).length === 0);
+  ok("getAccountByUserId finds a bound account", (await store.getAccountByUserId(anon))?.email === "claim@t.com");
+  ok("getAccountByUserId is null for anonymous users", (await store.getAccountByUserId("acct-user")) === null);
+
+  // consume must refuse to bind an account to a user that was deleted (e.g. merged
+  // away) — otherwise the account points at a ghost and the app can't load.
+  await store.saveUser("ghost-user", { profile: {} });
+  const ghostLink = await requestMagicLink(store, { email: "ghostbind@t.com", anonUserId: "ghost-user" });
+  await store.reassignUserData("ghost-user", "acct-user"); // deletes ghost-user
+  ok("consuming a link bound to a deleted user is rejected", (await consumeMagicLink(store, { token: ghostLink.token })).error === "invalid");
 
   console.log(`\n${pass} auth test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
