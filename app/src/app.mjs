@@ -6,6 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness } f
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan } from "./planner.mjs";
+import { adherenceReport } from "./adherence.mjs";
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -80,6 +81,24 @@ export function createApp(store, config = {}) {
     for (const k of ["sleep_quality", "energy", "stress", "mood"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
     await store.addCheckin(b.user_id, checkin);
     return c.json({ ok: true, readiness: dailyReadiness(checkin) });
+  });
+
+  // Adherence & gamification: streak, XP/level, milestones, motivational state.
+  app.get("/api/adherence", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    const sessions = await store.listSessions(id);
+    return c.json(adherenceReport(user, sessions));
+  });
+
+  // Safety rail: pause suspends all streak pressure with zero penalty (illness/injury).
+  app.post("/api/pause", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    user.paused = b.on ? { from: new Date().toISOString().slice(0, 10), reason: b.reason ?? null } : null;
+    await store.saveUser(b.user_id, user);
+    return c.json({ paused: !!user.paused });
   });
 
   app.get("/api/checkin/today", async (c) => {
