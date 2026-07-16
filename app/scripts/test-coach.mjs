@@ -32,6 +32,15 @@ check("dailyReadiness scores a check-in and buildToday eases a low day", () => {
   assert.ok(lowDay.coach_note); // and told the user why, kindly
 });
 
+check("buildToday resolves a custom exercise from the injected library", () => {
+  const custom = [{ id: "custom-my-move", name: "My Move", primary_muscles: ["chest"], equipment: "dumbbell", mechanic: "isolation" }];
+  const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "custom-my-move", sets: 3, rep_range: "8-12" }] }] } };
+  const t = buildToday(u, [], null, custom);
+  assert.equal(t.exercises[0].name, "My Move");            // custom name resolves
+  assert.equal(t.exercises[0].primary_muscles.length, 1);  // custom muscle resolves
+  assert.equal(buildToday(u, [], null, custom).exercises[0].exercise, "custom-my-move");
+});
+
 check("nextSessionIndex rotates through the program", () => {
   const p = user.program;
   assert.equal(nextSessionIndex(p, 0), 0);
