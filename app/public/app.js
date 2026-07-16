@@ -66,11 +66,12 @@ const STEPS = [
   { key: "sex", q: "One quick thing — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
 let onbStep = 0;
+let onbStarted = false;
 const answers = {};
 
 function renderOnboarding() {
   nav.hidden = true;
-  if (onbStep === 0 && !Object.keys(answers).length) {
+  if (!onbStarted) {
     app.innerHTML = `<div class="center" style="padding-top:14vh">
       <h1>The Hypertrophy Bible</h1>
       <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
@@ -82,7 +83,7 @@ function renderOnboarding() {
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
         <button class="btn secondary" id="sendrestore">Email me a restore link</button>
         <p class="muted" id="rmsg"></p></div></div>`;
-    $("#go").onclick = () => { onbStep = 0; answers._started = true; renderOnboarding(); };
+    $("#go").onclick = () => { onbStarted = true; onbStep = 0; renderOnboarding(); };
     $("#restore").onclick = () => { const b = $("#restorebox"); b.hidden = !b.hidden; if (!b.hidden) $("#remail").focus(); };
     $("#sendrestore").onclick = async () => {
       const val = $("#remail").value.trim();
@@ -104,9 +105,13 @@ function renderOnboarding() {
     body = `<div class="stepper"><button data-d="-1">–</button><div class="val" id="sv">${v}</div><button data-d="1">+</button></div>
       <p class="muted center">${step.stepper.hint}</p><button class="btn" id="next">Continue</button>`;
   } else {
-    body = step.opts.map((o, i) => `<button class="choice" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("");
+    // Highlight the previously chosen option (when returning via Back) so it's clear
+    // what you'd picked; tapping any option still advances immediately.
+    const chosen = JSON.stringify(answers[step.key]);
+    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("");
   }
-  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}`;
+  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}
+    <button class="btn ghost" id="onb-back">‹ Back</button>`;
   if (step.stepper) {
     let v = answers[step.key] ?? step.stepper.def;
     app.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
@@ -117,6 +122,14 @@ function renderOnboarding() {
   } else {
     app.querySelectorAll(".choice").forEach((b) => b.onclick = () => { answers[step.key] = step.opts[+b.dataset.i][1]; advance(); });
   }
+  $("#onb-back").onclick = onbBack;
+}
+// A misclick is always recoverable: step back one question (or to the welcome
+// screen from the first), with prior answers preserved and re-highlighted.
+function onbBack() {
+  if (onbStep === 0) { onbStarted = false; return renderOnboarding(); }
+  onbStep--;
+  renderOnboarding();
 }
 async function advance() {
   if (onbStep < STEPS.length - 1) { onbStep++; return renderOnboarding(); }
@@ -345,7 +358,7 @@ function renderMe() {
   }
   $("#reset").onclick = () => {
     if (confirm("Erase this device's link to your data and start over? If you've backed up to an email, that stays safe and you can restore it.")) {
-      localStorage.clear(); uid = null; onbStep = 0; for (const k in answers) delete answers[k]; render();
+      localStorage.clear(); uid = null; onbStep = 0; onbStarted = false; for (const k in answers) delete answers[k]; render();
     }
   };
 }
