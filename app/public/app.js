@@ -18,6 +18,17 @@ const MUSCLE_LABEL = {
 const friendlyMuscle = (m) => MUSCLE_LABEL[m] || String(m).replace(/-/g, " ");
 const friendlyMuscles = (list) => (list || []).map(friendlyMuscle).join(", ");
 
+// Units: everything is STORED and computed in kg (server + engine). This is a
+// pure display layer — pounds are shown/entered by the user who prefers them and
+// converted at the edges, so a US/UK beginner never has to think in kg.
+const LB_PER_KG = 2.2046226;
+const unitPref = () => localStorage.getItem("hb_units") === "imperial" ? "lb" : "kg";
+const unitLabel = () => unitPref();
+const wInc = () => unitPref() === "lb" ? 5 : 2.5;                       // stepper increment, display units
+const dispWeight = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG / 5) * 5 : Math.round(kg * 4) / 4; // to plate
+const dispBw = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : Math.round(kg * 10) / 10; // bodyweight
+const toKg = (v) => unitPref() === "lb" ? Math.round((v / LB_PER_KG) * 100) / 100 : v;
+
 // Deep-link into the in-app beginner library (content/09-getting-started).
 function openLearn(slug) { learnSlug = slug || null; tab = "learn"; render(); }
 // Wire any [data-learn="slug"] element on the current screen to open that page.
@@ -86,6 +97,7 @@ const STEPS = [
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Side delts", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Quads", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
 // Onboarding answers persist to localStorage as they're picked, so a reload or a
@@ -187,6 +199,7 @@ async function submitOnboarding() {
     available_equipment: answers.available_equipment, priority_muscles: priority,
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
+  localStorage.setItem("hb_units", profile.units); // remember display preference
   let res;
   try { res = await api("/api/onboard", { method: "POST", body: JSON.stringify({ profile }) }); }
   catch { res = {}; }
@@ -432,7 +445,8 @@ function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m
 function renderPlayer(resting = 0) {
   const e = sess.ex[sess.i];
   const total = sess.ex.length;
-  if (sess.weights[sess.i] == null) sess.weights[sess.i] = startWeightDefault(e);
+  // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
+  if (sess.weights[sess.i] == null) sess.weights[sess.i] = dispWeight(startWeightDefault(e));
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
   if (sess.rir[sess.i] == null) sess.rir[sess.i] = 2;
   const w = sess.weights[sess.i], reps = sess.reps[sess.i], rir = sess.rir[sess.i];
@@ -458,7 +472,7 @@ function renderPlayer(resting = 0) {
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
-      <div class="stepper"><label>Weight</label><button data-w="-2.5" aria-label="less weight">–</button><div class="val">${w} kg</div><button data-w="2.5" aria-label="more weight">+</button></div>
+      <div class="stepper"><label>Weight</label><button data-w="-${wInc()}" aria-label="less weight">–</button><div class="val">${w} ${unitLabel()}</div><button data-w="${wInc()}" aria-label="more weight">+</button></div>
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
@@ -478,7 +492,7 @@ function renderPlayer(resting = 0) {
   };
   $("#quit").onclick = finish;
   $("#done").onclick = () => {
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: w, reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
+    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0; sess.i++;
@@ -556,8 +570,9 @@ async function renderProgress() {
       <div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>
       <span class="status ${statusClass(m.status)}">${statusLabel(m.status)}</span></div>`;
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;
-  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.first_e1rm}→${x.last_e1rm} kg (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   const t = p.bodyweight_trend;
+  const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
@@ -570,14 +585,15 @@ async function renderProgress() {
     <div class="card">${prog}</div>
     <h2>Bodyweight & energy balance</h2>
     <div class="card">
-      ${t ? `<p><b>${t.slope_kg_per_week >= 0 ? "+" : ""}${t.slope_kg_per_week} kg/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
+      ${t ? `<p><b>${slopeDisp >= 0 ? "+" : ""}${slopeDisp} ${unitLabel()}/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
         <p class="muted">${esc(eb.suggestion || "")}</p>` : `<p class="muted">Add a few bodyweights to infer your energy balance — no calorie counting needed.</p>`}
-      <div class="stepper"><label>Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="kg" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
+      <div class="stepper"><label>Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
   wireLearnLinks();
   $("#logbw").onclick = async () => {
-    const kg = parseFloat($("#bw").value); if (!kg) return;
+    const val = parseFloat($("#bw").value); if (!val) return;
+    const kg = toKg(val);
     const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg });
     if (res.ok) return renderProgress();
     $("#bw").value = "";
@@ -617,11 +633,15 @@ function renderMe() {
       <p><b>RIR = reps in reserve</b> — how many more reps you could have done before failing. Stop a couple short of failure; that's a hard set, not a max effort.</p>
       <p class="muted">Turn this on to log RIR each set so the coach fine-tunes your weights. Off by default — simple progression works great, especially for beginners.</p>
       <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to turn off" : "Off — tap to turn on"}</button></div>
+    <div class="card"><p class="muted">Units</p>
+      <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
+      <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
     ${backup}
     ${funded}
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
   $("#viewplan").onclick = () => renderPlanExplain(false);
   $("#rirtoggle").onclick = () => { localStorage.setItem("hb_rir", rirOn() ? "0" : "1"); renderMe(); };
+  $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
 
   if (!email) {
     $("#sendlink").onclick = async () => {
