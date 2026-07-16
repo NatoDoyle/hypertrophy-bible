@@ -10,12 +10,24 @@ const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
   return m ? { min: +m[1], max: +m[2] } : { min: 8, max: 12 };
 };
-const loadIncrement = (exId) => {
-  const e = exerciseById.get(exId);
+const loadIncrement = (exId, byId = exerciseById) => {
+  const e = byId.get(exId);
   if (!e) return 2.5;
   if (e.mechanic === "isolation" && (e.equipment === "dumbbell" || e.equipment === "cable")) return 1;
   return 2.5;
 };
+
+// Lookups augmented with a user's custom exercises (or the globals when there are
+// none), so custom moves resolve everywhere: Today, recap, progress, volume.
+function resolveEx(customEx) {
+  if (!customEx || !customEx.length) return { byId: exerciseById, index: exIndex, name: exerciseName };
+  const byId = new Map(exerciseById), index = new Map(exIndex);
+  for (const e of customEx) {
+    byId.set(e.id, e);
+    index.set(e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] });
+  }
+  return { byId, index, name: (id) => byId.get(id)?.name ?? id };
+}
 
 // All working sets of an exercise from a flat list of sessions, newest last.
 const workingSetsFor = (sessions, exId) =>
@@ -36,7 +48,7 @@ function lastSetsForExercise(sessions, exId) {
 
 // Double progression: hit the top of the range on every set last time -> add load;
 // otherwise keep the load and aim to add reps. First time -> no suggestion (user picks).
-export function suggestWeight(sessions, exId, repRange) {
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById) {
   const last = lastSetsForExercise(sessions, exId);
   const { max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -48,13 +60,13 @@ export function suggestWeight(sessions, exId, repRange) {
   if (rirs.length) {
     const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
     if (avgRir >= 3) {
-      const inc = loadIncrement(exId) * (avgRir >= 4 ? 2 : 1);
+      const inc = loadIncrement(exId, byId) * (avgRir >= 4 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
     if (avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   }
   if (allHitTop) {
-    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId)} kg.`, ...base };
+    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
   return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };
 }
@@ -81,7 +93,8 @@ export function dailyReadiness(checkin) {
 
 // Build today's session card: every exercise pre-filled with a suggested weight.
 // A low-readiness check-in trims the last accessory and adds a caring coach note.
-export function buildToday(user, sessions, readiness = null) {
+export function buildToday(user, sessions, readiness = null, customEx = []) {
+  const { byId, name } = resolveEx(customEx);
   const program = user.program;
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
@@ -97,11 +110,11 @@ export function buildToday(user, sessions, readiness = null) {
     coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
   }
   const exercises = templateExercises.map((ex) => {
-    const e = exerciseById.get(ex.exercise);
-    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range);
+    const e = byId.get(ex.exercise);
+    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId);
     return {
       exercise: ex.exercise,
-      name: exerciseName(ex.exercise),
+      name: name(ex.exercise),
       sets: ex.sets,
       rep_range: ex.rep_range,
       rir: ex.rir ?? "1-3",
@@ -127,7 +140,8 @@ export function todayCard(user, sessions) {
 }
 
 // Derived wins for the post-session recap — the reward, straight from the engine.
-export function sessionRecap(user, allSessions, newSession) {
+export function sessionRecap(user, allSessions, newSession, customEx = []) {
+  const { index, name } = resolveEx(customEx);
   // Identify the just-logged session by id, not array position — once sessions
   // are ordered chronologically a backfilled date can land it mid-array.
   const prior = newSession.session_id
@@ -143,7 +157,7 @@ export function sessionRecap(user, allSessions, newSession) {
     const newBest = bestE1RM([newSession], set.exercise);
     const priorBest = bestE1RM(prior, set.exercise);
     if (newBest > priorBest && priorBest > 0) {
-      wins.push(`🏆 ${exerciseName(set.exercise)}: new estimated 1RM of ${newBest} kg (+${Math.round((newBest - priorBest) * 10) / 10}).`);
+      wins.push(`🏆 ${name(set.exercise)}: new estimated 1RM of ${newBest} kg (+${Math.round((newBest - priorBest) * 10) / 10}).`);
     }
   }
 
@@ -152,11 +166,11 @@ export function sessionRecap(user, allSessions, newSession) {
   const closeToFailure = Object.entries(prox).filter(([, v]) => v.inferred === "trained-close-to-failure");
   if (closeToFailure.length) {
     const ex = closeToFailure[0][0].split("@")[0];
-    wins.push(`🔥 You trained ${exerciseName(ex)} close to failure — that's where growth happens.`);
+    wins.push(`🔥 You trained ${name(ex)} close to failure — that's where growth happens.`);
   }
 
   // Weekly per-muscle volume vs the KB's landmarks.
-  const weekly = perMuscleWeeklyVolume(allSessions, exIndex);
+  const weekly = perMuscleWeeklyVolume(allSessions, index);
   const weeks = Object.keys(weekly).sort();
   const latest = weeks[weeks.length - 1];
   if (latest) {
@@ -173,14 +187,15 @@ export function sessionRecap(user, allSessions, newSession) {
 }
 
 // The Progress tab payload: everything derived, nothing asked.
-export function progressReport(user, sessions, bodyweights) {
-  const weekly = perMuscleWeeklyVolume(sessions, exIndex);
+export function progressReport(user, sessions, bodyweights, customEx = []) {
+  const { index } = resolveEx(customEx);
+  const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
   const latest = weeks[weeks.length - 1];
   const volume = latest ? volumeVsLandmarks(weekly[latest], muscleIndex) : {};
   const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: v.status }))
     .sort((a, b) => b.sets - a.sets);
-  const progression = progressionByExercise(sessions, exIndex).filter((p) => p.weeks > 1).slice(0, 8);
+  const progression = progressionByExercise(sessions, index).filter((p) => p.weeks > 1).slice(0, 8);
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);

@@ -59,7 +59,7 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
-    return c.json(critiqueUserPlan(b.program || user.program));
+    return c.json(critiqueUserPlan(b.program || user.program, user.custom_exercises || []));
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -70,11 +70,12 @@ export function createApp(store, config = {}) {
     if (!user) return c.json({ error: "unknown user" }, 404);
     const p = b.program;
     if (!p?.sessions?.length) return c.json({ error: "bad-program" }, 400);
+    const customIds = new Set((user.custom_exercises || []).map((x) => x.id));
     const sessions = p.sessions
       .map((s) => ({
         name: String(s.name || "Day"),
         exercises: (s.exercises || [])
-          .filter((e) => exerciseById.has(e.exercise))
+          .filter((e) => exerciseById.has(e.exercise) || customIds.has(e.exercise))
           .map((e) => ({ exercise: e.exercise, sets: Math.max(1, Math.min(10, Math.round(Number(e.sets) || 3))), rep_range: String(e.rep_range || "8-12"), ...(e.rir ? { rir: String(e.rir) } : {}) })),
       }))
       .filter((s) => s.exercises.length);
@@ -82,12 +83,40 @@ export function createApp(store, config = {}) {
     const program = { ...user.program, name: String(p.name || user.program.name), split: user.program.split || "other", days_per_week: sessions.length, sessions, custom: true };
     user.program = program;
     await store.saveUser(b.user_id, user);
-    return c.json({ ok: true, critique: critiqueUserPlan(program) });
+    return c.json({ ok: true, critique: critiqueUserPlan(program, user.custom_exercises || []) });
   });
 
-  // Lean exercise list for the plan builder's swap pickers.
-  app.get("/api/exercises", (c) =>
-    c.json([...exerciseById.values()].map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic }))));
+  // Lean exercise list for the plan builder's swap pickers (includes the user's
+  // own custom exercises when ?u= is supplied).
+  app.get("/api/exercises", async (c) => {
+    const id = c.req.query("u");
+    const user = id ? await store.getUser(id) : null;
+    const all = [...exerciseById.values(), ...(user?.custom_exercises || [])];
+    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, custom: !!e.custom })));
+  });
+
+  // Add a custom exercise to the user's personal library. Resolves everywhere
+  // (plan editor, Today, recap, progress, critique) via the merged lookups.
+  app.post("/api/exercise/custom", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const ex = b.exercise || {};
+    const exName = String(ex.name || "").trim().slice(0, 60);
+    const primary = (ex.primary_muscles || []).filter((m) => muscleById.has(m));
+    if (!exName || !primary.length) return c.json({ error: "need a name and at least one primary muscle" }, 400);
+    const equipment = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell", "other"].includes(ex.equipment) ? ex.equipment : "other";
+    const mechanic = ex.mechanic === "compound" ? "compound" : "isolation";
+    const secondary = (ex.secondary_muscles || []).filter((m) => muscleById.has(m));
+    user.custom_exercises = user.custom_exercises || [];
+    const slug = exName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "exercise";
+    const taken = new Set([...exerciseById.keys(), ...user.custom_exercises.map((x) => x.id)]);
+    let id = `custom-${slug}`, n = 2; while (taken.has(id)) id = `custom-${slug}-${n++}`;
+    const custom = { id, name: exName, primary_muscles: primary, ...(secondary.length ? { secondary_muscles: secondary } : {}), equipment, mechanic, movement_pattern: mechanic === "compound" ? "other" : "isolation-other", custom: true, ...(Array.isArray(ex.cues) ? { cues: ex.cues.slice(0, 4).map(String) } : {}) };
+    user.custom_exercises.push(custom);
+    await store.saveUser(b.user_id, user);
+    return c.json({ ok: true, exercise: custom });
+  });
 
   const requireUser = async (c) => {
     const id = c.req.query("u") || (await c.req.json().catch(() => ({}))).user_id;
@@ -104,7 +133,7 @@ export function createApp(store, config = {}) {
     const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
     const today = new Date().toISOString().slice(0, 10);
     const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === today));
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness) });
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || []) });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
@@ -170,7 +199,7 @@ export function createApp(store, config = {}) {
     };
     await store.addSession(id, session);
     const all = await store.listSessions(id);
-    return c.json(sessionRecap(user, all, session));
+    return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
   });
 
   // Progress: everything derived, nothing asked.
@@ -178,7 +207,7 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const [sessions, bodyweights] = await Promise.all([store.listSessions(id), store.listBodyweights(id)]);
-    return c.json(progressReport(user, sessions, bodyweights));
+    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || []));
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).
@@ -259,9 +288,11 @@ export function createApp(store, config = {}) {
     return c.json({ merged: true, ...moved });
   });
 
-  // Exercise detail (the "how do I do this?" tap).
-  app.get("/api/exercise/:id", (c) => {
-    const e = exerciseById.get(c.req.param("id"));
+  // Exercise detail (the "how do I do this?" tap) — resolves custom exercises too.
+  app.get("/api/exercise/:id", async (c) => {
+    const uid = c.req.query("u");
+    const user = uid ? await store.getUser(uid) : null;
+    const e = exerciseById.get(c.req.param("id")) || (user?.custom_exercises || []).find((x) => x.id === c.req.param("id"));
     if (!e) return c.json({ error: "not found" }, 404);
     return c.json({
       id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [],

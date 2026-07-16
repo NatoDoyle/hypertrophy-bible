@@ -199,7 +199,7 @@ const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
 const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  const [d, exs] = await Promise.all([api(`/api/plan/explain?u=${uid}`), api(`/api/exercises`)]);
+  const [d, exs] = await Promise.all([api(`/api/plan/explain?u=${uid}`), api(`/api/exercises?u=${uid}`)]);
   allExercises = exs;
   editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
   // show the current plan's critique straight away
@@ -232,10 +232,42 @@ function drawEdit(critique) {
 }
 function renderAddExercise(si) {
   const list = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}</span></button>`).join("");
-  app.innerHTML = `<h1>Add exercise</h1><div class="card" style="max-height:68vh;overflow:auto">${list}</div><button class="btn ghost" id="cancelAdd">Cancel</button>`;
+    .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("");
+  app.innerHTML = `<h1>Add exercise</h1>
+    <button class="btn secondary" id="newEx">+ Create a new exercise</button>
+    <div class="card" style="max-height:62vh;overflow:auto">${list}</div><button class="btn ghost" id="cancelAdd">Cancel</button>`;
   app.querySelectorAll("[data-add-id]").forEach((b) => b.onclick = () => { editState.sessions[si].exercises.push({ exercise: b.dataset.addId, sets: 3, rep_range: "8-12" }); drawEdit(null); });
+  $("#newEx").onclick = () => renderCustomExercise(si);
   $("#cancelAdd").onclick = () => drawEdit(null);
+}
+// Author a brand-new exercise into the user's personal library.
+function renderCustomExercise(si) {
+  const muscles = [...new Set(allExercises.flatMap((e) => e.primary_muscles))].sort();
+  const st = { name: "", muscle: muscles[0], equipment: "dumbbell", mechanic: "isolation" };
+  const chip = (val, cur, attr) => `<button class="chip" data-${attr}="${val}" style="${cur === val ? "background:var(--accent);color:#06210f;border-color:var(--accent)" : ""}">${attr === "m" ? titleCase(val) : val}</button>`;
+  const draw = () => {
+    app.innerHTML = `<h1>New exercise</h1><div class="card">
+      <input id="cx-name" placeholder="Exercise name" value="${esc(st.name)}" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin-bottom:12px">
+      <p class="muted">Primary muscle</p><div style="margin-bottom:12px">${muscles.map((m) => chip(m, st.muscle, "m")).join(" ")}</div>
+      <p class="muted">Equipment</p><div style="margin-bottom:12px">${["barbell", "dumbbell", "machine", "cable", "bodyweight", "other"].map((e) => chip(e, st.equipment, "e")).join(" ")}</div>
+      <p class="muted">Type</p><div>${["compound", "isolation"].map((mm) => chip(mm, st.mechanic, "mech")).join(" ")}</div></div>
+      <button class="btn" id="cx-save">Add to my library</button>
+      <button class="btn ghost" id="cx-cancel">Cancel</button><p class="muted" id="cx-msg"></p>`;
+    $("#cx-name").oninput = (e) => { st.name = e.target.value; };
+    app.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => { st.muscle = b.dataset.m; draw(); });
+    app.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { st.equipment = b.dataset.e; draw(); });
+    app.querySelectorAll("[data-mech]").forEach((b) => b.onclick = () => { st.mechanic = b.dataset.mech; draw(); });
+    $("#cx-save").onclick = async () => {
+      if (!st.name.trim()) { $("#cx-msg").textContent = "Give it a name first."; return; }
+      const r = await api(`/api/exercise/custom`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: { name: st.name.trim(), primary_muscles: [st.muscle], equipment: st.equipment, mechanic: st.mechanic } }) });
+      if (r.error) { $("#cx-msg").textContent = r.error; return; }
+      allExercises = await api(`/api/exercises?u=${uid}`);
+      editState.sessions[si].exercises.push({ exercise: r.exercise.id, sets: 3, rep_range: "8-12" });
+      drawEdit(null);
+    };
+    $("#cx-cancel").onclick = () => renderAddExercise(si);
+  };
+  draw();
 }
 
 // ---------- Today ----------
@@ -343,7 +375,7 @@ function renderPlayer(resting = 0) {
   app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); renderPlayer(); });
   $("#how").onclick = async () => {
     let d = null;
-    try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
+    try { d = await api(`/api/exercise/${e.exercise}?u=${uid}`); } catch {}
     renderExerciseSheet(e, d);
   };
   $("#quit").onclick = finish;
