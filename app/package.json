@@ -5,7 +5,7 @@
   "type": "module",
   "description": "The Hypertrophy Bible app — a coach that has already made every decision. Runs on Node locally and Cloudflare Workers in production.",
   "scripts": {
-    "build-data": "node scripts/gen-kb-data.mjs",
+    "build-data": "node scripts/gen-kb-data.mjs && node scripts/gen-learn-data.mjs",
     "dev": "npm run build-data && node server.node.mjs",
     "start": "node server.node.mjs",
     "test": "node scripts/test-coach.mjs && node scripts/test-auth.mjs && node scripts/test-adherence.mjs",
