@@ -98,6 +98,18 @@ check("buildToday: comeback copy is TRUE — weights are actually eased on a lay
   assert.ok(card.exercises[0].suggested_kg < 100);                  // and actually did
 });
 
+check("buildToday surfaces unilateral so the card can say 'each side'", () => {
+  const custom = [
+    { id: "custom-uni", name: "Uni Move", primary_muscles: ["chest"], equipment: "dumbbell", mechanic: "isolation", unilateral: true },
+    { id: "custom-bi", name: "Bi Move", primary_muscles: ["chest"], equipment: "dumbbell", mechanic: "isolation" },
+  ];
+  const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+    { exercise: "custom-uni", sets: 3, rep_range: "8-12" }, { exercise: "custom-bi", sets: 3, rep_range: "8-12" }] }] } };
+  const t = buildToday(u, [], null, custom);
+  assert.equal(t.exercises[0].unilateral, true);
+  assert.equal(t.exercises[1].unilateral, false); // always a boolean, never undefined
+});
+
 check("no fake 1RM PR from a light high-rep back-off set (#1 confidence gate)", () => {
   const heavyTriple = { date: "2026-06-01T18:00:00Z", session_id: "a", sets: [
     { exercise: "barbell-bench-press", set_type: "work", weight_kg: 45, reps: 3 }] };

@@ -5,6 +5,8 @@
 import assert from "node:assert/strict";
 import {
   estimate1RM,
+  countsForE1RM,
+  RELIABLE_1RM_REPS,
   isoWeekKey,
   isHardSet,
   perMuscleWeeklyVolume,
@@ -104,6 +106,28 @@ check("classifyEnergyBalance from weight trend + goal (no calories)", () => {
   assert.equal(classifyEnergyBalance(losing, "hypertrophy").matchesGoal, false); // wrong way for muscle gain
   assert.equal(classifyEnergyBalance(losing, "fat-loss").matchesGoal, true);
   assert.equal(classifyEnergyBalance({ pct_per_week: 0.0 }, "recomposition").direction, "maintenance");
+});
+
+check("progressionByExercise ignores unreliable high-rep sets (no fake strength gains)", () => {
+  // A light 20-rep back-off set must NOT register as strength over a heavier triple —
+  // this screen has to agree with the session recap's PR logic (both use countsForE1RM).
+  const sessions = [
+    { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 45, reps: 3 }] },
+    { date: "2026-06-08T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 32, reps: 20 }] },
+  ];
+  const p = progressionByExercise(sessions, exIndex).find((x) => x.exercise === "bench");
+  assert.equal(p.weeks, 1);            // week 2 contributed nothing
+  assert.equal(p.change_pct, 0);       // and certainly not a "gain"
+  assert.equal(p.last_e1rm, 49.5);     // still the real 45x3
+});
+
+check("countsForE1RM gates warmups, high reps, and junk", () => {
+  assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: 5 }), true);
+  assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: RELIABLE_1RM_REPS }), true);
+  assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: RELIABLE_1RM_REPS + 1 }), false);
+  assert.equal(countsForE1RM({ set_type: "warmup", weight_kg: 100, reps: 5 }), false);
+  assert.equal(countsForE1RM({ set_type: "work", weight_kg: 0, reps: 5 }), false);
+  assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: 0 }), false);
 });
 
 check("progressionByExercise: est-1RM rises across the log", () => {

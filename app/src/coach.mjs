@@ -1,7 +1,7 @@
 // The coach: decides today's session and prefills every weight, so the user just
 // confirms and taps Done. Reuses the KB's derive-core engine for all derivations.
 import {
-  estimate1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
+  estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
@@ -33,15 +33,12 @@ function resolveEx(customEx) {
 const workingSetsFor = (sessions, exId) =>
   sessions.flatMap((s) => (s.sets ?? []).filter((set) => set.exercise === exId && (set.set_type ?? "work") === "work"));
 
-// Above this rep count the Epley 1RM estimate is guesswork (a light 20-rep back-off
-// set would otherwise "beat" a genuinely heavier triple and be celebrated as a PR).
-// We only ever call something a strength PR from sets in a reliable rep range.
-const RELIABLE_1RM_REPS = 12;
-
 // Best estimated 1RM for an exercise across the given sessions — reliable sets only.
+// Uses derive-core's countsForE1RM so this and the Progress screen's progression
+// trend can never disagree about what counts as a strength number.
 const bestE1RM = (sessions, exId) =>
   Math.max(0, ...workingSetsFor(sessions, exId)
-    .filter((set) => set.reps <= RELIABLE_1RM_REPS)
+    .filter(countsForE1RM)
     .map((set) => estimate1RM(set.weight_kg, set.reps).e1rm));
 
 // The most recent session that contained this exercise, with its date (for
@@ -148,6 +145,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       rep_range: ex.rep_range,
       rir: ex.rir ?? "1-3",
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
+      unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
       suggested_kg: sug.suggested_kg,

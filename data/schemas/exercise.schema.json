@@ -33,7 +33,10 @@
       "enum": ["barbell", "dumbbell", "machine", "cable", "smith-machine", "bodyweight", "band", "kettlebell", "other"]
     },
     "mechanic": { "enum": ["compound", "isolation"] },
-    "force": { "enum": ["push", "pull", "static"] },
+    "force": {
+      "enum": ["push", "pull", "static"],
+      "description": "Descriptive metadata only — nothing in the engine consumes it. The plan critique balances push/pull by MUSCLE GROUP (chest/front-delts/triceps vs upper-back/lats/rear-delts/biceps), which is the right model for hypertrophy volume; do not wire this field into that check without revisiting the ambiguous cases (lateral raises, abs, hip abduction)."
+    },
     "plane": {
       "type": "array",
       "items": { "enum": ["sagittal", "frontal", "transverse"] }

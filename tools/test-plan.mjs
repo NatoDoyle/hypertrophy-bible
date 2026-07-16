@@ -77,6 +77,21 @@ const demanding = [
 ok("no generated plan emits an over-MRV warning (trimmed to the ceiling)",
   demanding.every((prof) => !generatePlan(prof, kb).rationale.warnings.some((w) => w.code === "over-mrv")));
 
+// --- the explanation must describe the plan the user actually gets (post-trim) ---
+// exerciseChoices is built while filling sessions; the MRV trim then mutates them.
+// If the two drift, "Why this plan?" cites sets/exercises that aren't prescribed.
+ok("rationale.exercise_choices matches the trimmed program (no ghosts, no stale set counts)",
+  demanding.concat([profile]).every((prof) => {
+    const { program, rationale } = generatePlan(prof, kb);
+    const actual = new Map();
+    for (const s of program.sessions) for (const e of s.exercises) actual.set(`${s.name}|${e.exercise}`, e.sets);
+    const claimed = new Map();
+    for (const c of rationale.exercise_choices) claimed.set(`${c.session}|${c.exercise}`, c.sets);
+    if (claimed.size !== actual.size) return false;
+    for (const [k, v] of claimed) if (actual.get(k) !== v) return false;
+    return true;
+  }));
+
 // --- KB critique ---
 const badPlan = { name: "Bad", split: "other", days_per_week: 1, sessions: [{ name: "Day 1", exercises: [
   { exercise: "barbell-bench-press", sets: 10, rep_range: "6-10" },
