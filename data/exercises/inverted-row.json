@@ -1,0 +1,32 @@
+{
+  "id": "inverted-row",
+  "name": "Inverted Row",
+  "primary_muscles": [
+    "upper-back"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "horizontal-pull",
+  "secondary_muscles": [
+    "lats",
+    "biceps",
+    "rear-delts"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Under a bar, body straight",
+    "Pull the chest to the bar",
+    "Squeeze the shoulder blades, control down"
+  ],
+  "common_errors": [
+    "Hips sagging",
+    "Short pull"
+  ],
+  "progressions": [
+    "Feet elevated",
+    "Weighted"
+  ],
+  "regressions": [
+    "Feet back / more upright"
+  ]
+}

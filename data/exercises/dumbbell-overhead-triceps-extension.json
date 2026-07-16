@@ -1,0 +1,27 @@
+{
+  "id": "dumbbell-overhead-triceps-extension",
+  "name": "Dumbbell Overhead Triceps Extension",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-elbow-extension",
+  "lengthened_bias": true,
+  "difficulty": "beginner",
+  "cues": [
+    "One dumbbell overhead, elbows tucked",
+    "Lower behind the head into a deep stretch",
+    "Extend fully"
+  ],
+  "common_errors": [
+    "Flaring the elbows wide",
+    "Half reps"
+  ],
+  "progressions": [
+    "Add load"
+  ],
+  "regressions": [
+    "Lighter / two-hand"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "dead-hang",
+  "name": "Dead Hang",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "other",
+  "force": "static",
+  "difficulty": "beginner",
+  "cues": [
+    "Hang from a bar, full grip",
+    "Shoulders active, not fully slumped",
+    "Hold for time"
+  ],
+  "common_errors": [
+    "Letting the grip go loose",
+    "Swinging"
+  ],
+  "progressions": [
+    "Towel / thick-bar hang"
+  ],
+  "regressions": [
+    "Feet lightly supported"
+  ]
+}

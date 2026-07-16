@@ -1,0 +1,25 @@
+{
+  "id": "bodyweight-calf-raise",
+  "name": "Bodyweight Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-plantarflexion",
+  "lengthened_bias": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Ball of the foot on a step",
+    "Full stretch down, tall squeeze up",
+    "Slow and controlled"
+  ],
+  "common_errors": [
+    "Bouncing",
+    "Partial range"
+  ],
+  "progressions": [
+    "Single-leg",
+    "Dumbbell calf raise"
+  ]
+}

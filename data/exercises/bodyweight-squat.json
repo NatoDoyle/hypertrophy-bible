@@ -1,0 +1,30 @@
+{
+  "id": "bodyweight-squat",
+  "name": "Bodyweight Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "squat",
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Feet shoulder-width",
+    "Sit down between the hips",
+    "Full depth, drive through the whole foot"
+  ],
+  "common_errors": [
+    "Knees caving",
+    "Heels rising"
+  ],
+  "progressions": [
+    "Bulgarian split squat",
+    "Pistol squat"
+  ],
+  "regressions": [
+    "Box squat to a chair"
+  ]
+}

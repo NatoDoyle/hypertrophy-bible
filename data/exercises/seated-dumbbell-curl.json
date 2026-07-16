@@ -1,0 +1,29 @@
+{
+  "id": "seated-dumbbell-curl",
+  "name": "Seated Dumbbell Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-elbow-flexion",
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Seated, arms hanging",
+    "Curl without swinging the elbows forward",
+    "Squeeze at the top, control down"
+  ],
+  "common_errors": [
+    "Swinging the torso",
+    "Cutting off the bottom"
+  ],
+  "progressions": [
+    "Incline dumbbell curl"
+  ],
+  "regressions": [
+    "Alternating arms"
+  ]
+}

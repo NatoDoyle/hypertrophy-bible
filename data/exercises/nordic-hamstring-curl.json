@@ -1,0 +1,27 @@
+{
+  "id": "nordic-hamstring-curl",
+  "name": "Nordic Hamstring Curl",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "mechanic": "isolation",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-knee-flexion",
+  "lengthened_bias": true,
+  "difficulty": "advanced",
+  "cues": [
+    "Anchor the ankles, kneel tall",
+    "Lower the body slowly, staying rigid",
+    "Resist as long as possible, then push back up"
+  ],
+  "common_errors": [
+    "Bending at the hips",
+    "Dropping too fast"
+  ],
+  "progressions": [
+    "Full-range unassisted"
+  ],
+  "regressions": [
+    "Band-assisted / shorter range"
+  ]
+}

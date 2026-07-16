@@ -1,0 +1,32 @@
+{
+  "id": "pistol-squat",
+  "name": "Pistol Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "squat",
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": true,
+  "difficulty": "advanced",
+  "cues": [
+    "One leg, other leg extended forward",
+    "Sit all the way down under control",
+    "Drive up without falling back"
+  ],
+  "common_errors": [
+    "Collapsing at the bottom",
+    "Losing balance"
+  ],
+  "progressions": [
+    "Weighted pistol squat"
+  ],
+  "regressions": [
+    "Box pistol / hold a support"
+  ]
+}

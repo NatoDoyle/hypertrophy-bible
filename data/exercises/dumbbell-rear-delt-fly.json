@@ -1,0 +1,29 @@
+{
+  "id": "dumbbell-rear-delt-fly",
+  "name": "Dumbbell Rear Delt Fly",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-shoulder-extension",
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "difficulty": "beginner",
+  "cues": [
+    "Hinge over, slight elbow bend",
+    "Lead with the pinkies, out and back",
+    "Squeeze the rear delts, don't shrug"
+  ],
+  "common_errors": [
+    "Using momentum",
+    "Turning it into a row"
+  ],
+  "progressions": [
+    "Add reps then load"
+  ],
+  "regressions": [
+    "Chest supported on an incline"
+  ]
+}

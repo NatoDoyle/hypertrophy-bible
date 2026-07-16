@@ -1,0 +1,24 @@
+{
+  "id": "cable-pullover",
+  "name": "Cable Straight-Arm Pullover",
+  "primary_muscles": [
+    "lats"
+  ],
+  "mechanic": "isolation",
+  "equipment": "cable",
+  "movement_pattern": "isolation-shoulder-extension",
+  "lengthened_bias": true,
+  "difficulty": "beginner",
+  "cues": [
+    "High pulley, arms nearly straight",
+    "Pull down and back with the lats",
+    "Full stretch at the top"
+  ],
+  "common_errors": [
+    "Bending the elbows",
+    "Using the triceps"
+  ],
+  "progressions": [
+    "Add load"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "dumbbell-bench-press",
+  "name": "Dumbbell Bench Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "mechanic": "compound",
+  "equipment": "dumbbell",
+  "movement_pattern": "horizontal-push",
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Dumbbells over the chest",
+    "Lower into a stretch, elbows ~45°",
+    "Press up and slightly together"
+  ],
+  "common_errors": [
+    "Elbows flaring to 90°",
+    "Short range"
+  ],
+  "progressions": [
+    "Barbell bench press"
+  ],
+  "regressions": [
+    "Machine chest press"
+  ]
+}

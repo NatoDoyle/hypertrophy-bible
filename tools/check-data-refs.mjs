@@ -92,6 +92,28 @@ for (const [id, c] of primaryCount) {
   if (c === 0) warn.push(`  ⚠ muscle '${id}' has no primary exercise (coverage gap)`);
 }
 
+// Coverage matrix: every muscle should have a primary exercise for each realistic
+// equipment set, so the plan engine never has to leave a muscle untrained.
+// full-gym coverage is REQUIRED (fails); the two limited sets warn. A few gaps are
+// legitimately impossible (no pure-bodyweight side-delt exercise exists) — allowlist them.
+const cell = new Map([...muscleIds].map((m) => [m, {}]));
+for (const e of exercises) for (const m of e.primary_muscles ?? []) if (cell.has(m)) cell.get(m)[e.equipment] = (cell.get(m)[e.equipment] ?? 0) + 1;
+const EQUIP_SETS = {
+  "full-gym": ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  "dumbbell-only": ["dumbbell", "bodyweight"],
+  "bodyweight": ["bodyweight"],
+};
+const ALLOW_UNCOVERED = { "full-gym": ["neck"], "dumbbell-only": ["neck"], "bodyweight": ["neck", "side-delts"] };
+for (const [setName, eq] of Object.entries(EQUIP_SETS)) {
+  for (const m of muscleIds) {
+    if (ALLOW_UNCOVERED[setName].includes(m)) continue;
+    const covered = eq.some((e) => (cell.get(m)[e] ?? 0) > 0);
+    if (covered) continue;
+    if (setName === "full-gym") { console.error(`  ✗ coverage: muscle '${m}' has no primary exercise for a full gym`); errors++; }
+    else warn.push(`  ⚠ coverage: muscle '${m}' has no primary exercise for '${setName}'`);
+  }
+}
+
 for (const w of warn) console.warn(w);
 console.log(
   `\n${exercises.length} exercises, ${muscles.length} muscles, ${programs.length} programs checked. ${errors} error(s), ${warn.length} warning(s).`

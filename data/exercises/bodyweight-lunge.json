@@ -1,0 +1,32 @@
+{
+  "id": "bodyweight-lunge",
+  "name": "Bodyweight Lunge",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "mechanic": "compound",
+  "equipment": "bodyweight",
+  "movement_pattern": "lunge",
+  "secondary_muscles": [
+    "glutes",
+    "hamstrings"
+  ],
+  "lengthened_bias": true,
+  "unilateral": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Long step, drop the back knee",
+    "Torso tall",
+    "Push back up through the front foot"
+  ],
+  "common_errors": [
+    "Short stride",
+    "Front knee collapsing in"
+  ],
+  "progressions": [
+    "Walking lunge"
+  ],
+  "regressions": [
+    "Split squat holding support"
+  ]
+}

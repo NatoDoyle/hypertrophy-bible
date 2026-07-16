@@ -1,0 +1,27 @@
+{
+  "id": "dumbbell-calf-raise",
+  "name": "Dumbbell Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-plantarflexion",
+  "lengthened_bias": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Hold a dumbbell, ball of the foot on a step",
+    "Full stretch at the bottom, tall squeeze at the top",
+    "Pause a beat at each end"
+  ],
+  "common_errors": [
+    "Bouncing out of the bottom",
+    "Cutting the range short"
+  ],
+  "progressions": [
+    "Single-leg dumbbell calf raise"
+  ],
+  "regressions": [
+    "Bodyweight calf raise"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "dumbbell-wrist-curl",
+  "name": "Dumbbell Wrist Curl",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "mechanic": "isolation",
+  "equipment": "dumbbell",
+  "movement_pattern": "isolation-wrist",
+  "difficulty": "beginner",
+  "cues": [
+    "Forearm on your thigh, palm up",
+    "Let the dumbbell roll to the fingertips",
+    "Curl up through a full range"
+  ],
+  "common_errors": [
+    "Moving the whole forearm",
+    "Tiny range"
+  ],
+  "progressions": [
+    "Add reps then load"
+  ],
+  "regressions": [
+    "Lighter dumbbell"
+  ]
+}
