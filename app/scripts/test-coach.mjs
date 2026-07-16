@@ -42,6 +42,20 @@ check("suggestWeight: double progression adds load only when top of range is hit
   assert.equal(suggestWeight([], "barbell-bench-press", "6-10").suggested_kg, null); // first time
 });
 
+check("suggestWeight: RIR autoregulation raises load when reps are left in reserve", () => {
+  // missed top of range (reps 8/10) but left 3-4 RIR -> go up anyway
+  const easy = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 4 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 4 },
+  ] }];
+  assert.equal(suggestWeight(easy, "barbell-bench-press", "6-10").suggested_kg, 105); // +2×2.5 (avg RIR 4)
+  // hit failure (RIR 0), didn't hit top -> hold
+  const failed = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 7, rir: 0 },
+  ] }];
+  assert.equal(suggestWeight(failed, "barbell-bench-press", "6-10").suggested_kg, 100);
+});
+
 check("sessionRecap returns derived wins (PR detection)", () => {
   const s1 = { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] };
   const s2 = { date: "2026-06-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 105, reps: 8 }] };
