@@ -42,10 +42,21 @@ export function suggestWeight(sessions, exId, repRange) {
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
   const lastWeight = last[0].weight_kg;
   const allHitTop = last.every((s) => s.reps >= max);
-  if (allHitTop) {
-    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId)} kg.`, last_kg: lastWeight, last_reps: last.map((s) => s.reps) };
+  const base = { last_kg: lastWeight, last_reps: last.map((s) => s.reps) };
+  // RIR autoregulation (only when effort was logged): lots left in the tank -> go up.
+  const rirs = last.map((s) => s.rir).filter((r) => typeof r === "number");
+  if (rirs.length) {
+    const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
+    if (avgRir >= 3) {
+      const inc = loadIncrement(exId) * (avgRir >= 4 ? 2 : 1);
+      return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
+    }
+    if (avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   }
-  return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", last_kg: lastWeight, last_reps: last.map((s) => s.reps) };
+  if (allHitTop) {
+    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId)} kg.`, ...base };
+  }
+  return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };
 }
 
 // Which program session is due today (simple rotation by sessions completed).

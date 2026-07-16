@@ -213,8 +213,9 @@ async function renderToday() {
 
 // ---------- Session Player ----------
 let sess = null;
+const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
-  sess = { name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0, logged: [], weights: {}, reps: {} };
+  sess = { name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0, logged: [], weights: {}, reps: {}, rir: {} };
   renderPlayer();
 }
 function startWeightDefault(e) {
@@ -228,7 +229,8 @@ function renderPlayer(resting = 0) {
   const total = sess.ex.length;
   if (sess.weights[sess.i] == null) sess.weights[sess.i] = startWeightDefault(e);
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
-  const w = sess.weights[sess.i], reps = sess.reps[sess.i];
+  if (sess.rir[sess.i] == null) sess.rir[sess.i] = 2;
+  const w = sess.weights[sess.i], reps = sess.reps[sess.i], rir = sess.rir[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
 
   if (resting > 0) {
@@ -249,6 +251,7 @@ function renderPlayer(resting = 0) {
     <div class="card">
       <div class="stepper"><label>Weight</label><button data-w="-2.5">–</button><div class="val">${w} kg</div><button data-w="2.5">+</button></div>
       <div class="stepper"><label>Reps</label><button data-r="-1">–</button><div class="val">${reps}</div><button data-r="1">+</button></div>
+      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>` : ""}
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
@@ -256,6 +259,7 @@ function renderPlayer(resting = 0) {
 
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); renderPlayer(); });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); renderPlayer(); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); renderPlayer(); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -263,7 +267,7 @@ function renderPlayer(resting = 0) {
   };
   $("#quit").onclick = finish;
   $("#done").onclick = () => {
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: w, reps, completed_at: new Date().toISOString() });
+    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: w, reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0; sess.i++;
@@ -391,10 +395,14 @@ function renderMe() {
   app.innerHTML = `<h1>Me</h1>
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
+    <div class="card"><p class="muted">Effort logging (RIR)</p>
+      <p>Log reps-in-reserve each set so the coach autoregulates your load. Off by default — simple progression works great, especially for beginners.</p>
+      <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to turn off" : "Off — tap to turn on"}</button></div>
     ${backup}
     ${funded}
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
   $("#viewplan").onclick = () => renderPlanExplain(false);
+  $("#rirtoggle").onclick = () => { localStorage.setItem("hb_rir", rirOn() ? "0" : "1"); renderMe(); };
 
   if (!email) {
     $("#sendlink").onclick = async () => {

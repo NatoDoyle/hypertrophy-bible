@@ -86,6 +86,7 @@ export function createApp(store, config = {}) {
         weight_kg: Number(s.weight_kg) || 0,
         reps: Math.max(0, Math.round(Number(s.reps) || 0)),
         ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
+        ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
         completed_at: s.completed_at ?? new Date().toISOString(),
       })),
     };
