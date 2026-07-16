@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport } from "./coach.mjs";
+import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan } from "./planner.mjs";
@@ -64,8 +64,31 @@ export function createApp(store, config = {}) {
   app.get("/api/today", async (c) => {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
-    const sessions = await store.listSessions(id);
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions) });
+    const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
+    const today = new Date().toISOString().slice(0, 10);
+    const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === today));
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness) });
+  });
+
+  // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
+  // an immediate readiness read that gently shapes today's session.
+  app.post("/api/checkin", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const checkin = { user_id: b.user_id, date: b.date || new Date().toISOString().slice(0, 10), source: "manual" };
+    for (const k of ["sleep_quality", "energy", "stress", "mood"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
+    await store.addCheckin(b.user_id, checkin);
+    return c.json({ ok: true, readiness: dailyReadiness(checkin) });
+  });
+
+  app.get("/api/checkin/today", async (c) => {
+    const { id, error } = await requireUser(c);
+    if (error) return error;
+    const checkins = await store.listCheckins(id);
+    const today = new Date().toISOString().slice(0, 10);
+    const ck = checkins.find((x) => (x.date || "").slice(0, 10) === today) || null;
+    return c.json({ done: !!ck, checkin: ck, readiness: dailyReadiness(ck) });
   });
 
   // Log a completed session -> derived recap (the reward).

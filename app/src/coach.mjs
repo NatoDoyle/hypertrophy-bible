@@ -65,15 +65,38 @@ export function nextSessionIndex(program, sessionCount) {
   return ((sessionCount % n) + n) % n;
 }
 
+// Immediate same-day readiness from an optional check-in (1-5 fields; stress
+// inverted). Gentle + honest: a low day eases the session, never blocks or guilts.
+export function dailyReadiness(checkin) {
+  if (!checkin) return null;
+  const parts = [];
+  if (typeof checkin.sleep_quality === "number") parts.push(checkin.sleep_quality);
+  if (typeof checkin.energy === "number") parts.push(checkin.energy);
+  if (typeof checkin.mood === "number") parts.push(checkin.mood);
+  if (typeof checkin.stress === "number") parts.push(6 - checkin.stress);
+  if (!parts.length) return null;
+  const score = parts.reduce((a, b) => a + b, 0) / parts.length; // 1-5
+  return { score: Math.round(score * 10) / 10, level: score < 2.75 ? "low" : score > 4 ? "high" : "normal" };
+}
+
 // Build today's session card: every exercise pre-filled with a suggested weight.
-export function buildToday(user, sessions) {
+// A low-readiness check-in trims the last accessory and adds a caring coach note.
+export function buildToday(user, sessions, readiness = null) {
   const program = user.program;
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
   const rotCount = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
   const idx = nextSessionIndex(program, rotCount);
   const templateSession = program.sessions[idx];
-  const exercises = templateSession.exercises.map((ex) => {
+  let templateExercises = templateSession.exercises;
+  let coach_note = null;
+  if (readiness?.level === "low" && templateExercises.length > 3) {
+    templateExercises = templateExercises.slice(0, -1); // drop the last accessory
+    coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
+  } else if (readiness?.level === "high") {
+    coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
+  }
+  const exercises = templateExercises.map((ex) => {
     const e = exerciseById.get(ex.exercise);
     const sug = suggestWeight(sessions, ex.exercise, ex.rep_range);
     return {
@@ -89,7 +112,7 @@ export function buildToday(user, sessions) {
       suggestion_note: sug.note,
     };
   });
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises };
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null };
 }
 
 // The Today card state machine: one decision only.

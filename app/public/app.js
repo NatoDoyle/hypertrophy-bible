@@ -203,12 +203,37 @@ async function renderToday() {
   }
   const s = data.session;
   const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} × ${e.rep_range} · ${(e.primary_muscles || []).join(", ")}</span></div></div>`).join("");
-  app.innerHTML = `<h1>Today</h1>
+  // No check-in yet today → gently offer one; otherwise surface the readiness note.
+  const readinessCard = s.readiness == null
+    ? `<div class="card"><b>How are you feeling today?</b>
+        <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
+        <button class="btn secondary" id="checkin">Quick check-in</button></div>`
+    : (s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "");
+  app.innerHTML = `<h1>Today</h1>${readinessCard}
     <div class="card"><div class="big">${esc(s.name)}</div>
       <p class="muted">${esc(s.program_name)} · day ${s.day_number} · ${s.exercises.length} exercises</p>
       <button class="btn" id="start">Start workout</button></div>
     <h2>What you'll do</h2><div class="card">${list}</div>`;
   $("#start").onclick = () => startSession(s);
+  if (s.readiness == null) $("#checkin").onclick = renderCheckin;
+}
+
+// Optional daily check-in survey — four 1-5 taps; low readiness eases today.
+function renderCheckin() {
+  const fields = [["sleep_quality", "Sleep quality"], ["energy", "Energy"], ["stress", "Stress"], ["mood", "Mood"]];
+  const vals = { sleep_quality: 3, energy: 3, stress: 3, mood: 3 };
+  const draw = () => {
+    const row = ([key, label]) => `<div class="row"><span style="flex:1">${label}</span>${[1, 2, 3, 4, 5].map((n) =>
+      `<button class="chip" data-k="${key}" data-v="${n}" style="min-width:40px;text-align:center${vals[key] === n ? ";background:var(--accent);color:#06210f;border-color:var(--accent)" : ""}">${n}</button>`).join("")}</div>`;
+    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Rate each 1–5 — this just tunes today, it's never a score or a judgment.</p>
+      <div class="card">${fields.map(row).join("")}</div>
+      <button class="btn" id="submitck">Save</button>
+      <button class="btn ghost" id="skipck">Skip today</button>`;
+    app.querySelectorAll(".chip[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
+    $("#submitck").onclick = async () => { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); tab = "today"; render(); };
+    $("#skipck").onclick = () => { tab = "today"; render(); };
+  };
+  draw();
 }
 
 // ---------- Session Player ----------
