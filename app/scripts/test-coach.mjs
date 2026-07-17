@@ -21,6 +21,11 @@ check("buildToday: first-timer gets a session with no pre-filled weight", () => 
   assert.ok(today.name && today.day_number === 1);
 });
 
+check("a normal-readiness check-in is ACKNOWLEDGED, never silent", () => {
+  const t = buildToday(user, [], { level: "normal", score: 3 });
+  assert.ok(t.coach_note && /checked in/i.test(t.coach_note)); // majority path must confirm receipt
+});
+
 check("dailyReadiness scores a check-in and buildToday eases a low day", () => {
   assert.equal(dailyReadiness(null), null);
   assert.equal(dailyReadiness({ sleep_quality: 5, energy: 5, stress: 1, mood: 5 }).level, "high");
@@ -116,7 +121,7 @@ check("no fake 1RM PR from a light high-rep back-off set (#1 confidence gate)", 
   const lightBackoff = { date: "2026-06-08T18:00:00Z", session_id: "b", sets: [
     { exercise: "barbell-bench-press", set_type: "work", weight_kg: 32, reps: 20 }] };
   const recap = sessionRecap(user, [heavyTriple, lightBackoff], lightBackoff);
-  assert.ok(!recap.wins.some((w) => /1RM/i.test(w))); // 32×20 must not "beat" 45×3
+  assert.ok(!recap.wins.some((w) => w.kind === "pr" || /1RM/i.test(w))); // 32×20 must not "beat" 45×3
 });
 
 check("sessionRecap returns derived wins (PR detection)", () => {
@@ -124,7 +129,8 @@ check("sessionRecap returns derived wins (PR detection)", () => {
   const s2 = { date: "2026-06-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 105, reps: 8 }] };
   const recap = sessionRecap(user, [s1, s2], s2);
   assert.ok(Array.isArray(recap.wins) && recap.wins.length > 0);
-  assert.ok(recap.wins.some((w) => /estimated 1RM/i.test(w))); // new e1RM PR detected
+  const pr = recap.wins.find((w) => w.kind === "pr"); // structured: client formats in the user's unit
+  assert.ok(pr && pr.e1rm_kg > 0 && pr.delta_kg > 0 && pr.name); // new e1RM PR detected
 });
 
 check("progressReport infers energy balance from bodyweight trend (no calories)", () => {

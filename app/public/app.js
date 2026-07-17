@@ -446,12 +446,20 @@ async function renderToday() {
 
 // Optional daily check-in survey — four 1-5 taps; low readiness eases today.
 function renderCheckin() {
-  const fields = [["sleep_quality", "Sleep quality"], ["energy", "Energy"], ["stress", "Stress"], ["mood", "Mood"]];
+  // Each row carries its OWN anchors. A single global "1 = low, 5 = great" read
+  // backwards for stress: a calm person tapped 5 ("great!") and was scored as
+  // maximally stressed — flipping the readiness rail to fire on good days.
+  const fields = [
+    ["sleep_quality", "Sleep quality", "1 = awful · 5 = great"],
+    ["energy", "Energy", "1 = drained · 5 = full of beans"],
+    ["stress", "Stress", "1 = calm · 5 = maxed out"],
+    ["mood", "Mood", "1 = low · 5 = great"],
+  ];
   const vals = { sleep_quality: 3, energy: 3, stress: 3, mood: 3 };
   const draw = () => {
-    const row = ([key, label]) => `<div class="ckrow"><span class="cklabel">${label}</span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
+    const row = ([key, label, anchors]) => `<div class="ckrow"><span class="cklabel">${label} <span class="muted" style="font-weight:400">${anchors}</span></span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
       `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}">${n}</button>`).join("")}</div></div>`;
-    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Tap 1 to 5 for each — <b>1 = low, 5 = great</b>. This just tunes today; it's never a score or a judgment.</p>
+    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Tap 1 to 5 for each. This just tunes today; it's never a score or a judgment.</p>
       <div class="card">${fields.map(row).join("")}</div>
       <button class="btn" id="submitck">Save</button>
       <button class="btn ghost" id="skipck">Skip today</button>`;
@@ -650,7 +658,12 @@ async function finish() {
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
 }
 function renderRecap(recap) {
-  const wins = (recap.wins || []).map((w) => `<div class="win">${esc(w)}</div>`).join("");
+  // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
+  const fmtDelta = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : kg;
+  const winHtml = (w) => typeof w === "string"
+    ? esc(w)
+    : `🏆 ${esc(w.name)}: new estimated best single lift — <b>${dispWeight(w.e1rm_kg)} ${unitLabel()}</b> (up ${fmtDelta(w.delta_kg)} ${unitLabel()}).`;
+  const wins = (recap.wins || []).map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
   const nudge = !localStorage.getItem("hb_email")
     ? `<div class="card"><b>Keep this progress safe</b>
         <p class="muted">Create your free account with just an email — no password, ever. It protects today's workout if you lose this phone, and syncs to any device.</p>
@@ -684,7 +697,7 @@ async function renderProgress() {
   }
   const vol = (p.volumeByMuscle || []).map((m) => {
     const pct = Math.min(100, (m.sets / 24) * 100);
-    return `<div class="row"><div style="flex:1"><b>${esc(m.muscle)}</b> <span class="muted">${m.sets} set${m.sets === 1 ? "" : "s"}/wk</span>
+    return `<div class="row"><div style="flex:1"><b>${esc(m.id ? cap(friendlyMuscle(m.id)) : m.muscle)}</b> <span class="muted">${m.sets} set${m.sets === 1 ? "" : "s"}/wk</span>
       <div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>
       <span class="status ${statusClass(m.status)}">${statusLabel(m.status)}</span></div>`;
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;

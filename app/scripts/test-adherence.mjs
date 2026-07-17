@@ -1,5 +1,6 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
 import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport } from "../src/adherence.mjs";
+import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -37,6 +38,16 @@ ok("status paused overrides everything", adherenceStatus(three, "2026-01-21", tr
 ok("status on-track when trained this week", adherenceStatus(three, "2026-01-21", false).state === "on-track");
 ok("status at-risk when not trained this week", adherenceStatus([sess("2026-01-12")], "2026-01-21", false).state === "at-risk");
 ok("status comeback after a long gap", adherenceStatus([sess("2026-01-05")], "2026-01-21", false).state === "comeback");
+// The comeback MESSAGE must fire at exactly the same threshold as the coach's
+// weight deload (COMEBACK_GAP_DAYS) — it once promised eased weights at 10 days
+// while the engine eased at 12, prescribing HEAVIER loads under a safety banner.
+ok("comeback fires at exactly the deload threshold (>= " + COMEBACK_GAP_DAYS + "d), not before", (() => {
+  const day = (n) => new Date(+new Date("2026-03-01T18:00:00Z") + n * 86400000).toISOString();
+  const s = [{ date: "2026-03-01T18:00:00Z", sets: [] }];
+  const before = adherenceStatus(s, day(COMEBACK_GAP_DAYS - 1), false).state;
+  const at = adherenceStatus(s, day(COMEBACK_GAP_DAYS), false).state;
+  return before !== "comeback" && at === "comeback";
+})());
 
 // weekly summary
 ok("weeklySummary counts this week's sessions + hard sets", (() => { const w = weeklySummary(three, "2026-01-21"); return w.sessions === 1 && w.hard_sets === 3; })());
