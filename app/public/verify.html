@@ -45,6 +45,7 @@
             localStorage.setItem("hb_user", d.user_id);
             localStorage.setItem("hb_email", d.email);
             if (d.program_name) localStorage.setItem("hb_program", d.program_name);
+            if (d.units) localStorage.setItem("hb_units", d.units); // restored device shows kg/lb correctly from the first screen
           };
           if (current && current !== d.user_id) {
             // Does this device hold data of its own? Count server-side sessions +

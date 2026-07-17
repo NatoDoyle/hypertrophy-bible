@@ -302,6 +302,7 @@ export function createApp(store, config = {}) {
       email: result.email,
       purpose: result.purpose,
       program_name: user?.program?.name ?? null,
+      units: user?.profile?.units ?? null, // so a fresh device shows weights in the user's unit immediately
       merge_grant,
     });
   });
