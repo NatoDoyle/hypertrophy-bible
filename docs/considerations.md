@@ -11,6 +11,19 @@ Everything below should be taken under consideration for implementation. Once it
 
 ## Responses (updated as items are actioned — newest first)
 
+### Iteration-2 elite scope — three features deferred for your sign-off
+The audit proposed three genuine product features. I shipped the safe parts
+(plateau **detection** with a KB playbook; deload-aware progression anchoring;
+honest warning copy) and deferred the rest rather than decide unilaterally:
+1. **Specialization blocks** — priority muscles at near-MRV while everything else
+   drops to maintenance for 1–2 mesocycles. Real feature, real value for advanced
+   users; needs UX (a Settings toggle? auto-offer?). Say go and I'll build it.
+2. **Prescribed intensity techniques** — e.g. pairing non-competing isolations as
+   supersets when your session length is the binding constraint. The KB frames
+   these as "accents, not the meal", so Learn-only is defensible — your call.
+3. **Automatic accessory rotation each mesocycle** — needs plan-regeneration at
+   block boundaries (infrastructure), so it's an iteration-3 candidate.
+
 ### 1. Program volume — you were right, and it was worse than it looked ✅ implemented
 Measured before the fix: a **beginner got 20 direct hard sets/session (29 effective with
 secondary credit); advanced up to 30 direct (41 effective)**. The engine's session budget was

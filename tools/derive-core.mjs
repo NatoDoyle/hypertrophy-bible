@@ -180,6 +180,36 @@ export function progressionByExercise(sessions, exIndex) {
   return out.sort((a, b) => b.change_pct - a.change_pct);
 }
 
+// Plateau detection: an exercise is STALLED when its best weekly e1RM has been
+// flat (within a noise band) for >= minWeeks consecutive training weeks. The
+// data always existed (progressionByExercise); nothing consumed it — a stalled
+// bench got "add a rep" forever. Deload-tagged sets are excluded (an easy week
+// is planned recovery, not a plateau).
+export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } = {}) {
+  const byEx = {};
+  for (const s of sessions) {
+    const wk = isoWeekKey(s.date);
+    for (const set of s.sets ?? []) {
+      if (!countsForE1RM(set) || set.deload) continue;
+      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+      byEx[set.exercise] ??= {};
+      byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+    }
+  }
+  const out = [];
+  for (const [ex, weekMap] of Object.entries(byEx)) {
+    const weeks = Object.keys(weekMap).sort();
+    if (weeks.length < minWeeks) continue;
+    const recent = weeks.slice(-minWeeks).map((w) => weekMap[w]);
+    const hi = Math.max(...recent), lo = Math.min(...recent);
+    // Flat = the whole recent window sits inside the noise band AND the latest
+    // week isn't the best (still nudging up = progressing, however slowly).
+    const flat = hi > 0 && ((hi - lo) / hi) * 100 <= noisePct && recent[recent.length - 1] < hi + 0.01;
+    if (flat) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
+  }
+  return out;
+}
+
 // Rest times derived from set timestamps (never asked). Returns avg seconds per exercise.
 export function restTimes(session) {
   const byEx = {};

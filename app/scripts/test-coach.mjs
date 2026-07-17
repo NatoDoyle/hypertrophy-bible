@@ -115,6 +115,15 @@ check("mesocycle: beginners are exempt — flat sets, no block", () => {
   assert.equal(t.exercises[0].sets, 3);
 });
 
+check("suggestWeight anchors past deload sets — the next block resumes at pre-deload load", () => {
+  const hist = [
+    { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] },
+    { date: "2026-06-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 90, reps: 8, deload: true }] },
+  ];
+  // anchored to the 100x10 (top of range) -> progress to 102.5, NOT held at 90
+  assert.equal(suggestWeight(hist, "barbell-bench-press", "6-10", undefined, "2026-06-10T18:00:00Z").suggested_kg, 102.5);
+});
+
 check("suggestWeight: a layoff eases the load instead of piling on more (comeback safety)", () => {
   const last = [{ date: "2026-06-01T18:00:00Z", sets: [
     { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
