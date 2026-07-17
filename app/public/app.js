@@ -131,7 +131,18 @@ const saveOnb = () => { if (settingsMode) return; try { localStorage.setItem(ONB
 async function renderSettings() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
-  const p = d?.profile || {};
+  const p = d?.profile;
+  if (!p) {
+    // NEVER open the wizard on factory defaults: saving it would silently replace
+    // the real profile (days, equipment, injuries) with 3-day/60-min boilerplate.
+    app.innerHTML = `<h1>Settings</h1><div class="card"><p>📴 Couldn't load your current settings.</p>
+      <p class="muted">Editing needs them first — otherwise a save could overwrite what you've got.</p>
+      <button class="btn" id="retry-set">Try again</button>
+      <button class="btn ghost" id="back-me">‹ Back</button></div>`;
+    $("#retry-set").onclick = renderSettings;
+    $("#back-me").onclick = () => { tab = "me"; render(); };
+    return;
+  }
   answers = {
     training_status: p.training_status, primary_goal: p.primary_goal, sex: p.sex,
     days_per_week: p.days_per_week ?? 3, session_length_min: p.session_length_min ?? 60,
@@ -140,7 +151,7 @@ async function renderSettings() {
     priority_muscles: (STEPS.find((s) => s.key === "priority_muscles")?.multi || [])
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
-    units: unitPref() === "lb" ? "imperial" : "metric",
+    units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
   renderOnboarding();
@@ -433,8 +444,12 @@ function renderResume() {
   // A COMPLETE workout whose final save was interrupted resumes into saving, not
   // into the player — every set is already logged; it just needs to reach the server.
   const done = !!sess.complete;
+  // An old session says WHEN it's from — the user decides its fate, never a timer.
+  const when = sess.stale && sess.startedAt
+    ? ` from ${new Date(sess.startedAt).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}`
+    : "";
   app.innerHTML = `<h1>Today</h1>
-    <div class="card info"><b>${done ? "✅ Workout finished — just needs saving" : "▶ Workout in progress"}</b>
+    <div class="card info"><b>${done ? "✅ Workout finished — just needs saving" : `▶ Workout in progress${esc(when)}`}</b>
       <p class="muted">${esc(sess.name)} — <b>${n} set${n === 1 ? "" : "s"}</b> logged. Nothing is lost.</p>
       <button class="btn" id="resume">${done ? "Save my workout" : "Resume workout"}</button>
       <button class="btn ghost" id="discard">${discardPending ? "Tap again to discard these sets" : "Discard this workout"}</button></div>`;
@@ -534,7 +549,12 @@ function loadSess() {
   try {
     const s = JSON.parse(localStorage.getItem(SESS_KEY) || "null");
     if (!s || !Array.isArray(s.ex) || !s.ex.length || !Array.isArray(s.logged)) return null;
-    if (!s.startedAt || Date.now() - new Date(s.startedAt).getTime() > SESS_MAX_AGE_MS) { localStorage.removeItem(SESS_KEY); return null; }
+    // Age-out ONLY empty sessions. Logged sets are user data — "Nothing is lost"
+    // is a literal promise, so an old half-workout keeps offering a dated
+    // Save/Resume card and the USER decides; it is never silently destroyed.
+    const stale = !s.startedAt || Date.now() - new Date(s.startedAt).getTime() > SESS_MAX_AGE_MS;
+    if (stale && !s.logged.length) { localStorage.removeItem(SESS_KEY); return null; }
+    if (stale) s.stale = true; // renderResume shows when it's from
     // REPAIR, never crash: a save interrupted at the wrong moment (or a future bug)
     // must not brick Resume — the logged sets are the valuable part. Clamp the
     // cursor into range; a past-the-end cursor means the workout was complete and
@@ -550,6 +570,7 @@ function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } c
 
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
+let quitPending = false;    // two-tap guard on ending a workout early
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
   sess = {
@@ -595,6 +616,7 @@ const stopRestTimer = () => { if (restTimer) { clearInterval(restTimer); restTim
 
 function renderPlayer(resting = 0) {
   stopRestTimer();
+  if (resting > 0) quitPending = false; // resting = a set was just done; reset the guard
   // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
   // slips through may crash the recovery path for a user's unposted sets.
   if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
@@ -637,7 +659,7 @@ function renderPlayer(resting = 0) {
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
-    <button class="btn ghost" id="quit">End workout early</button>`;
+    <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
 
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
@@ -648,7 +670,13 @@ function renderPlayer(resting = 0) {
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
     renderExerciseSheet(e, d);
   };
-  $("#quit").onclick = finish;
+  $("#quit").onclick = () => {
+    // One stray tap must not end a workout: confirm on the second tap.
+    if (!quitPending) { quitPending = true; return renderPlayer(0); }
+    quitPending = false;
+    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
+    finish();
+  };
   $("#done").onclick = () => {
     sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
     sess.set++;
@@ -692,7 +720,9 @@ async function finish() {
   // retried after a reload, the server's ON CONFLICT dedupe makes it a no-op rather
   // than a duplicate workout. (Minting a fresh id here would double-save.)
   const session_id = sess.session_id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const payload = { session_id, date: new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged };
+  // Date the workout by when it was DONE, not when the save finally lands — a
+  // Tuesday session rescued on Thursday belongs to Tuesday's week.
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged };
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one
@@ -943,6 +973,7 @@ async function renderLearnPage(slug) {
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
+  quitPending = false;
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
