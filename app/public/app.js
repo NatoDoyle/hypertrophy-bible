@@ -80,7 +80,9 @@ async function flushQueue() {
       catch { break; } // offline again — keep everything for next time
       if (!ok) break;   // server/HTTP error — retry later rather than drop the workout
       // Re-read before dropping the head: an item queued during the POST is preserved.
-      setQueue(getQueue().slice(1));
+      // If storage fails here, stop — the item was already delivered, and every write
+      // it could duplicate on the next flush is idempotent server-side.
+      try { setQueue(getQueue().slice(1)); } catch { break; }
     }
   } finally { flushing = false; }
 }
@@ -92,8 +94,10 @@ async function postOrQueue(path, bodyObj) {
     if (!r.ok) throw new Error("http " + r.status); // a live HTTP error must queue, not "succeed"
     return { ok: true, data: await r.json() };
   } catch {
-    setQueue([...getQueue(), { path, body }]);
-    return { ok: false, queued: true };
+    // Queueing itself can fail (storage full / private mode). Report it honestly —
+    // callers holding irreplaceable data (finish()) keep their copy and retry.
+    try { setQueue([...getQueue(), { path, body }]); return { ok: false, queued: true }; }
+    catch { return { ok: false, queued: false }; }
   }
 }
 
@@ -382,12 +386,15 @@ function renderCustomExercise(si) {
 // overwrote sets you'd already done.
 function renderResume() {
   const n = sess.logged.length;
+  // A COMPLETE workout whose final save was interrupted resumes into saving, not
+  // into the player — every set is already logged; it just needs to reach the server.
+  const done = !!sess.complete;
   app.innerHTML = `<h1>Today</h1>
-    <div class="card info"><b>▶ Workout in progress</b>
-      <p class="muted">${esc(sess.name)} — <b>${n} set${n === 1 ? "" : "s"}</b> logged so far. Nothing is lost.</p>
-      <button class="btn" id="resume">Resume workout</button>
+    <div class="card info"><b>${done ? "✅ Workout finished — just needs saving" : "▶ Workout in progress"}</b>
+      <p class="muted">${esc(sess.name)} — <b>${n} set${n === 1 ? "" : "s"}</b> logged. Nothing is lost.</p>
+      <button class="btn" id="resume">${done ? "Save my workout" : "Resume workout"}</button>
       <button class="btn ghost" id="discard">${discardPending ? "Tap again to discard these sets" : "Discard this workout"}</button></div>`;
-  $("#resume").onclick = () => { discardPending = false; renderPlayer(0); };
+  $("#resume").onclick = () => { discardPending = false; done ? finish() : renderPlayer(0); };
   $("#discard").onclick = () => {
     if (discardPending) { discardPending = false; clearSess(); renderToday(); }
     else { discardPending = true; renderResume(); }
@@ -468,8 +475,16 @@ function saveSess() {
 function loadSess() {
   try {
     const s = JSON.parse(localStorage.getItem(SESS_KEY) || "null");
-    if (!s || !Array.isArray(s.ex) || !s.ex.length) return null;
+    if (!s || !Array.isArray(s.ex) || !s.ex.length || !Array.isArray(s.logged)) return null;
     if (!s.startedAt || Date.now() - new Date(s.startedAt).getTime() > SESS_MAX_AGE_MS) { localStorage.removeItem(SESS_KEY); return null; }
+    // REPAIR, never crash: a save interrupted at the wrong moment (or a future bug)
+    // must not brick Resume — the logged sets are the valuable part. Clamp the
+    // cursor into range; a past-the-end cursor means the workout was complete and
+    // only the final save was cut short.
+    if (!Number.isInteger(s.i) || s.i < 0) s.i = 0;
+    if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
+    if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
+    s.weights ??= {}; s.reps ??= {}; s.rir ??= {};
     return s;
   } catch { return null; }
 }
@@ -479,9 +494,32 @@ let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
-  sess = { name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0, logged: [], weights: {}, reps: {}, rir: {}, startedAt: new Date().toISOString() };
+  sess = {
+    name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0,
+    logged: [], weights: {}, reps: {}, rir: {},
+    // The id is minted ONCE, here — so if the final save is interrupted and retried
+    // after a reload, the server's ON CONFLICT dedupe sees the SAME id and the
+    // workout can never be double-saved.
+    session_id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    units: unitPref(), // weights below are stored in DISPLAY units — stamp which
+    startedAt: new Date().toISOString(),
+  };
   saveSess();
   renderPlayer();
+}
+
+// sess.weights are display-unit values. If the user toggles kg/lb mid-workout (the
+// Me tab is reachable from the player via the nav), convert them once — otherwise
+// "60" quietly changes meaning from kg to lb and every resumed weight is wrong.
+function normalizeSessUnits() {
+  const from = sess.units ?? unitPref(); // old blobs: assume current pref (no-op)
+  if (from === unitPref()) { sess.units = from; return; }
+  for (const k of Object.keys(sess.weights || {})) {
+    const kg = from === "lb" ? sess.weights[k] / LB_PER_KG : sess.weights[k];
+    sess.weights[k] = dispWeight(kg);
+  }
+  sess.units = unitPref();
+  saveSess();
 }
 function startWeightDefault(e) {
   if (e.suggested_kg != null) return e.suggested_kg;
@@ -491,7 +529,18 @@ function startWeightDefault(e) {
 }
 function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
 
+// The rest countdown's interval id lives at module level so ANY navigation can
+// cancel it — otherwise it fires up to two minutes later and repaints the player
+// over whatever screen the user moved to.
+let restTimer = null;
+const stopRestTimer = () => { if (restTimer) { clearInterval(restTimer); restTimer = null; } };
+
 function renderPlayer(resting = 0) {
+  stopRestTimer();
+  // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
+  // slips through may crash the recovery path for a user's unposted sets.
+  if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
+  normalizeSessUnits(); // kg/lb may have been toggled since the weights were stored
   const e = sess.ex[sess.i];
   const total = sess.ex.length;
   // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
@@ -506,8 +555,8 @@ function renderPlayer(resting = 0) {
       <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
       <button class="btn" id="skip">I'm ready</button></div>`;
     let left = resting;
-    const iv = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { clearInterval(iv); renderPlayer(0); } }, 1000);
-    $("#skip").onclick = () => { clearInterval(iv); renderPlayer(0); };
+    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); renderPlayer(0); } }, 1000);
+    $("#skip").onclick = () => { stopRestTimer(); renderPlayer(0); };
     return;
   }
 
@@ -544,9 +593,17 @@ function renderPlayer(resting = 0) {
   $("#done").onclick = () => {
     sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
     sess.set++;
-    if (sess.set >= e.sets) { sess.set = 0; sess.i++; }
+    if (sess.set >= e.sets) {
+      sess.set = 0;
+      // Never persist a past-the-end cursor: if that was the final set, the cursor
+      // STAYS on the last exercise and `complete` marks the workout done. (The old
+      // code saved i === ex.length; a phone dying during the final save then made
+      // Resume crash forever on sess.ex[sess.i].)
+      if (sess.i + 1 >= total) sess.complete = true;
+      else sess.i++;
+    }
     saveSess(); // the set is banked before anything else can go wrong
-    if (sess.i >= total) return finish();
+    if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
   };
 }
@@ -571,13 +628,23 @@ function renderExerciseSheet(ex, d) {
 async function finish() {
   if (!sess || !sess.logged.length) { clearSess(); return render(); }
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Saving…</h1></div>`;
-  // Client-generated id + real time so a queued replay is idempotent (server
-  // ignores a duplicate session_id) and buckets by when the workout happened.
-  const session_id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // REUSE the id minted at startSession: if this save was interrupted and is being
+  // retried after a reload, the server's ON CONFLICT dedupe makes it a no-op rather
+  // than a duplicate workout. (Minting a fresh id here would double-save.)
+  const session_id = sess.session_id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const payload = { session_id, date: new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged };
   const res = await postOrQueue("/api/session", payload);
-  // postOrQueue only returns after the write is either accepted OR safely queued
-  // offline, so it's now safe to drop the in-progress copy.
+  if (!res.ok && !res.queued) {
+    // Network AND the offline queue both failed (storage full/blocked). The one
+    // thing we must not do is drop the workout — keep the in-progress copy and
+    // let the user retry.
+    app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Couldn't save yet</h1>
+      <p>Your workout is still safe on this phone.</p>
+      <button class="btn" id="retrysave">Try saving again</button></div>`;
+    $("#retrysave").onclick = finish;
+    return;
+  }
+  // Accepted or safely queued — now it's safe to drop the in-progress copy.
   clearSess();
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
 }
@@ -794,6 +861,7 @@ async function renderLearnPage(slug) {
 
 // ---------- Router ----------
 function render() {
+  stopRestTimer(); // leaving the player must always cancel the pending repaint
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
