@@ -105,6 +105,9 @@ export function createD1Store(db) {
         }
       }
       const s = await db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      // One weigh-in per day survives the merge: drop from-rows whose date the
+      // target already has (keep the target's), THEN move the rest.
+      await db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date IN (SELECT date FROM bodyweights WHERE user_id = ?)").bind(fromId, toId).run();
       const b = await db.prepare("UPDATE bodyweights SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
       // checkins share a (user_id, date) PK → move what doesn't collide, keeping
       // the target's same-day row, then drop any leftover from-user rows.

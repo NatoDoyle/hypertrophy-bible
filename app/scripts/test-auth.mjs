@@ -121,6 +121,18 @@ try {
   ok("merge moves check-ins", (await store.listCheckins("m-to")).length === 2);
   ok("merge deletes the from-user's check-ins", (await store.listCheckins("m-from")).length === 0);
 
+  // --- It2/W6: the merge respects idempotency invariants ---
+  await store.saveUser("p-to", { profile: {} });
+  await store.saveUser("p-from", { profile: {} });
+  await store.addSession("p-to", { session_id: "dup-1", date: "2026-07-01", sets: [] });
+  await store.addSession("p-from", { session_id: "dup-1", date: "2026-07-01", sets: [] }); // same id on both (replayed queue)
+  await store.addBodyweight("p-to", { date: "2026-07-02", kg: 80 });
+  await store.addBodyweight("p-from", { date: "2026-07-02", kg: 99 });
+  await store.reassignUserData("p-from", "p-to");
+  ok("merge skips duplicate session_ids (no double-counted volume)", (await store.listSessions("p-to")).length === 1);
+  const bwAfter = await store.listBodyweights("p-to");
+  ok("merge keeps ONE weigh-in per day (the target's)", bwAfter.length === 1 && bwAfter[0].kg === 80);
+
   // --- Wave 3: bodyweight is one-per-day (a replayed offline log can't dup) ---
   await store.saveUser("bw-u", { profile: {} });
   await store.addBodyweight("bw-u", { date: "2026-07-12", kg: 80 });

@@ -44,9 +44,11 @@ export function createFileStore(path) {
     async addBodyweight(id, entry) {
       // One weigh-in per day (mirrors check-ins): a replayed offline log with the
       // same date replaces rather than duplicating, so the trend can't be skewed.
-      const arr = (db.bodyweights[id] ??= []);
-      const i = arr.findIndex((b) => b.date === entry.date);
-      if (i >= 0) arr[i] = entry; else arr.push(entry);
+      // Replace ALL same-date rows (parity with D1's DELETE-then-INSERT): a merge
+      // can leave two rows on one date, and replacing only the first kept a
+      // duplicate forever.
+      db.bodyweights[id] = (db.bodyweights[id] ?? []).filter((b) => b.date !== entry.date);
+      db.bodyweights[id].push(entry);
       flush(); return entry;
     },
     async listCheckins(id) { return byDate(db.checkins[id]); },
@@ -76,8 +78,19 @@ export function createFileStore(path) {
         const have = new Set(toU.custom_exercises.map((x) => x.id));
         for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { toU.custom_exercises.push(ex); have.add(ex.id); }
       }
-      if (db.sessions[fromId]?.length) (db.sessions[toId] ??= []).push(...db.sessions[fromId]);
-      if (db.bodyweights[fromId]?.length) (db.bodyweights[toId] ??= []).push(...db.bodyweights[fromId]);
+      if (db.sessions[fromId]?.length) {
+        // Skip duplicate session_ids (parity with D1's PRIMARY KEY): a replayed
+        // queue item on both users would otherwise double-count volume and PRs.
+        const dst = (db.sessions[toId] ??= []);
+        const have = new Set(dst.map((s) => s.session_id));
+        for (const s of db.sessions[fromId]) if (!s.session_id || !have.has(s.session_id)) { dst.push(s); if (s.session_id) have.add(s.session_id); }
+      }
+      if (db.bodyweights[fromId]?.length) {
+        // One weigh-in per day survives the merge: keep the TARGET's same-date row.
+        const dst = (db.bodyweights[toId] ??= []);
+        const dates = new Set(dst.map((b) => b.date));
+        for (const b of db.bodyweights[fromId]) if (!dates.has(b.date)) { dst.push(b); dates.add(b.date); }
+      }
       // checkins: keep the target's row on a same-day conflict.
       if (db.checkins[fromId]?.length) {
         const dst = (db.checkins[toId] ??= []);
