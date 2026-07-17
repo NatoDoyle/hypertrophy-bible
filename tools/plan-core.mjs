@@ -65,7 +65,11 @@ export function targetWeeklySets(landmarks, { experience, isPriority }) {
   let base;
   if (experience === "beginner") { base = mev.min; reasons.push(`beginner → start near MEV (${mev.min})`); }
   else if (experience === "advanced") { base = mav.max; reasons.push(`advanced → top of MAV (${mav.max})`); }
-  else { base = round((mav.min + mav.max) / 2); reasons.push(`intermediate → mid-MAV (${base})`); }
+  else { base = mav.min; reasons.push(`intermediate → bottom of MAV (${mav.min})`); }
+  // (Intermediate was mid-MAV, but summed mid-MAV targets across all muscles are
+  // undeliverable inside a typical 3-4 day week under the session quality cap —
+  // guaranteeing under-target warnings on every default plan. Bottom-of-MAV is
+  // still above MEV and grows; users wanting more add days or priority muscles.)
   let target = base;
   if (isPriority) { target = round(target * 1.3); reasons.push(`priority muscle → ×1.3 (${target})`); }
   const clamped = clamp(target, mev.min, mrv.max);
@@ -190,7 +194,8 @@ export function generatePlan(profile, kb, opts = {}) {
   const EX_SET_CAP = 5;   // no single exercise exceeds 5 sets
   const EX_BUDGET = 8;    // no session exceeds 8 exercises
   const exerciseChoices = [];
-  const outSessions = sessionSpecs.map((spec) => {
+  const weekServed = new Set(); // muscles with a direct exercise ANYWHERE this week
+  const outSessions = sessionSpecs.map((spec, sIdx) => {
     const mset = ARCH[spec.arch];
     const credited = {};      // effective sets credited to each muscle THIS session
     const placed = new Set(); // exercise ids already in this session
@@ -236,6 +241,7 @@ export function generatePlan(profile, kb, opts = {}) {
       : pat === "horizontal-pull" || pat === "vertical-pull" ? "pull"
       : pat;
     const fams = new Set(items.map((it) => famOf(exById.get(it.exercise)?.movement_pattern)));
+    const servedFor = new Set(exerciseChoices.filter((c) => c.session === spec.name).map((c) => c.for_muscle));
     for (const pass of [0, 1]) {
       for (const m of order) {
         if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length) continue;
@@ -244,6 +250,32 @@ export function generatePlan(profile, kb, opts = {}) {
         rot[m]++;
         if (add(ex, compoundSets, m, ["compound before isolations", `${ex.equipment} available`, ex.lengthened_bias ? "lengthened-biased" : "primary for " + m])) {
           fams.add(famOf(ex.movement_pattern));
+          servedFor.add(m);
+        }
+      }
+      // 4a½) FIRST-SERVE before any doubling: every muscle this session trains gets
+      // ONE exercise (isolations allowed, 2-3 sets) before any muscle gets seconds.
+      // The quality cap was letting quad/chest compounds double up while side-delts,
+      // calves, abs, and biceps got ZERO sets — failing the engine's own MEV checks.
+      // One session's budget can't serve every muscle — but the WEEK must. Muscles
+      // no session has served yet jump the queue, so the same last-in-order
+      // muscles (calves, abs) can't lose every single day.
+      if (pass === 0) {
+        const fsOrder = [...order].sort((a, b) => (weekServed.has(a) ? 1 : 0) - (weekServed.has(b) ? 1 : 0));
+        for (const m of fsOrder) {
+          if (servedFor.has(m) || !room() || (credited[m] ?? 0) >= perTarget(m)) continue;
+          const pool = compoundPool[m].length ? compoundPool[m] : isoPool[m];
+          if (!pool.length) continue;
+          let ex = null;
+          for (let t = 0; t < pool.length; t++) {
+            const cand = pool[(rot[m] + t) % pool.length];
+            if (!placed.has(cand.id)) { ex = cand; rot[m] += t + 1; break; }
+          }
+          if (!ex) continue;
+          if (add(ex, Math.min(3, Math.max(2, perTarget(m))), m, ["every muscle served before any doubles up", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m])) {
+            fams.add(famOf(ex.movement_pattern));
+            servedFor.add(m);
+          }
         }
       }
     }
@@ -261,6 +293,14 @@ export function generatePlan(profile, kb, opts = {}) {
         add(ex, clamp(round(residual), 1, EX_SET_CAP), m, ex.lengthened_bias ? ["fills residual volume", "lengthened-biased"] : ["fills residual volume for " + m]);
       }
     }
+    for (const c of exerciseChoices) if (c.session === spec.name) weekServed.add(c.for_muscle);
+    // Emit compound-before-isolation (stable within each group): the 4a0 priority
+    // pass reserves budget first, which is right — but a session should still READ
+    // in the order you should lift it, and the app's own critique checks this.
+    items.sort((a, b) => {
+      const iso = (it) => (exById.get(it.exercise)?.mechanic === "isolation" ? 1 : 0);
+      return iso(a) - iso(b);
+    });
     return { name: spec.name, exercises: items };
   });
 
@@ -338,6 +378,7 @@ export function generatePlan(profile, kb, opts = {}) {
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
+    else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
     else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days or a specialization block would close the gap.` });
   }
 

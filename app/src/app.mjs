@@ -58,12 +58,24 @@ export function createApp(store, config = {}) {
     if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
+    const priorSessions = await store.listSessions(id);
     let out = null;
     const updated = await store.updateUser(id, (u) => {
+      const before = u.profile;
       if (body.profile) u.profile = { ...u.profile, ...body.profile, user_id: id };
       const { program, rationale, meta } = generateUserPlan(u.profile);
       u.program = program; u.plan_rationale = rationale;
-      u.plan_meta = { ...meta, block_start: new Date().toISOString() }; // a new plan starts a fresh mesocycle
+      // A cosmetic edit (units, sex) must NOT restart the mesocycle — a week-5
+      // lifter switching kg->lb shouldn't be sent back to 70% week-1 volume.
+      const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries"];
+      const trainingChanged = TRAINING_FIELDS.some((k) => JSON.stringify(before?.[k]) !== JSON.stringify(u.profile[k]));
+      u.plan_meta = {
+        ...meta,
+        block_start: trainingChanged || !u.plan_meta?.block_start ? new Date().toISOString() : u.plan_meta.block_start,
+        // The regenerated program keeps its deterministic id, so old sessions would
+        // phase-shift its rotation — a fresh plan must open at day A. Rebase.
+        rotation_base: priorSessions.length,
+      };
       out = program;
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
