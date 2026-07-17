@@ -421,7 +421,7 @@ async function renderToday() {
       <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
       <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
     ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
-  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b><br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
+  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b>${e.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   const readinessCard = s.readiness == null
     ? `<div class="card"><b>How are you feeling today?</b>
@@ -564,6 +564,7 @@ function renderPlayer(resting = 0) {
   app.innerHTML = `<div class="exhead"><h1>${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
+    ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     <div class="setdots">${setDots}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
@@ -651,9 +652,9 @@ async function finish() {
 function renderRecap(recap) {
   const wins = (recap.wins || []).map((w) => `<div class="win">${esc(w)}</div>`).join("");
   const nudge = !localStorage.getItem("hb_email")
-    ? `<div class="card"><b>Back up your progress</b>
-        <p class="muted">Save it to an email so you never lose it — no password, no account wall.</p>
-        <button class="btn secondary" id="backup">Back up now</button></div>`
+    ? `<div class="card"><b>Keep this progress safe</b>
+        <p class="muted">Create your free account with just an email — no password, ever. It protects today's workout if you lose this phone, and syncs to any device.</p>
+        <button class="btn secondary" id="backup">Create my account</button></div>`
     : "";
   // Post-value support nudge (per docs/donation-page.md): only after a real
   // milestone (~a month at 3x/week), always skippable, dormant until a real
@@ -726,14 +727,16 @@ async function renderProgress() {
 // ---------- Me ----------
 function renderMe() {
   const email = localStorage.getItem("hb_email");
+  // This IS the account system — passwordless by design (an email-bound identity
+  // with magic-link sign-in and cross-device restore). Present it as one.
   const backup = email
-    ? `<div class="card"><p class="muted">Backed up</p><b>${esc(email)}</b>
-        <p class="muted" style="margin-top:8px">On another device, open the app and enter this same email to load your progress there.</p></div>`
-    : `<div class="card"><p class="muted">Back up &amp; sync</p>
-        <p>Save your progress to an email so you never lose it — and to pick up on another phone or computer. No password.</p>
+    ? `<div class="card"><p class="muted">Your account</p><b>${esc(email)}</b> <span class="chip">✓ signed in</span>
+        <p class="muted" style="margin-top:8px">Your progress is saved to this account. On any other device, open the app, tap "Restore", and enter this email to pick up where you left off. No password — sign-in links come to your inbox.</p></div>`
+    : `<div class="card"><p class="muted">Create your account</p>
+        <p>One email — <b>no password, ever</b>. It keeps your progress safe if you lose this phone, and syncs it to any other device.</p>
         <input id="bemail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:8px 0 4px">
-        <button class="btn" id="sendlink">Send me a link</button>
+        <button class="btn" id="sendlink">Create my account</button>
         <p class="muted" id="bmsg"></p></div>`;
   // "How this is funded" — informational, always reachable, never a gate
   // (copy per docs/donation-page.md; support button appears only when a real

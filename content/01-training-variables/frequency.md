@@ -20,6 +20,8 @@
 
 **How splits deliver frequency.** A full-body or upper/lower structure hits each muscle 2–4× per week almost automatically; a classic one-muscle-per-day "bro split" hits each muscle 1×. Neither is wrong — but the low-frequency split forces all of a muscle's volume into one session, which caps quality. See [Programming → Splits](../03-programming/index.md).
 
+**The whole session has a quality ceiling too.** The same logic that caps one muscle at ~6–10 quality sets applies to the session as a whole: effort per set degrades as total hard sets accumulate, whatever muscle they hit. Most lifters report their later sets losing genuine effort somewhere past **~12–20 total hard sets**, with the ceiling rising with training age — a newer lifter has both less need for volume and less capacity to sustain quality, an advanced lifter more of each. A practical guide: **~12 (newer) → ~16 (intermediate) → ~20 (advanced) hard sets per session**, and if your weekly targets don't fit under that, add a day rather than cramming — the frequency evidence above suggests spreading volume preserves per-set quality[^schoenfeld-2015-frequency-well-trained]. **[Grade C]** (extrapolated from the per-muscle quality window and the volume-equated frequency evidence; the exact numbers are practice-based, not from direct trials).
+
 **Don't overthink it.** Once you're training a muscle roughly twice a week, chasing higher frequency for its own sake yields little. Consistency and hitting your weekly volume matter far more than the exact number of sessions.
 
 ## The Evidence

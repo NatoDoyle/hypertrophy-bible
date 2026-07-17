@@ -164,9 +164,16 @@ export function generatePlan(profile, kb, opts = {}) {
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
 
-  // 4) build each session, within a realistic time budget
+  // 4) build each session, within a realistic time budget AND a quality ceiling.
+  // Time alone is not a licence to fill a session with hard sets: per-set effort
+  // collapses well before the clock runs out (the KB's per-muscle 6-10 quality
+  // window and Schoenfeld 2015's per-set-quality mechanism both point here, and
+  // real lifters report effort degrading after ~a dozen hard sets). The ceiling
+  // scales with training age — beginners need far less to grow and can sustain
+  // less; advanced lifters tolerate more.
+  const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
   const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
-  const setBudget = Math.round(sessionMin / 3); // ~3 min/set incl. rest
+  const setBudget = Math.min(Math.round(sessionMin / 3), SESSION_QUALITY_CAP[experience] ?? 16); // ~3 min/set incl. rest, capped for quality
   const EX_SET_CAP = 5;   // no single exercise exceeds 5 sets
   const EX_BUDGET = 8;    // no session exceeds 8 exercises
   const exerciseChoices = [];
@@ -193,6 +200,17 @@ export function generatePlan(profile, kb, opts = {}) {
     // muscles this session trains, priority ones first so they win contested budget
     const order = [...PLACE_ORDER].filter((m) => mset.includes(m)).sort((a, b) => (priority.has(b) ? 1 : 0) - (priority.has(a) ? 1 : 0));
 
+    // 4a0) PRIORITY muscles are served before anything else. Under a scarce
+    // quality budget the general compound pass would otherwise consume every set
+    // and an isolation-fed priority muscle (side-delts, biceps) would get scraps —
+    // but "I especially want to grow X" is the user's most explicit instruction.
+    for (const m of order) {
+      if (!priority.has(m) || !room() || (credited[m] ?? 0) >= perTarget(m)) continue;
+      const pool = compoundPool[m].length ? compoundPool[m] : isoPool[m];
+      if (!pool.length) continue;
+      const ex = pool[rot[m]++ % pool.length];
+      add(ex, Math.min(perTarget(m), EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+    }
     // 4a) one compound per compound-driven muscle (priority first, budget-limited)
     for (const m of order) {
       if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length) continue;
@@ -278,7 +296,7 @@ export function generatePlan(profile, kb, opts = {}) {
     r.projected_sets = proj;
     r.frequency = f;
     r.projected_status = f ? (vsLm[m]?.status ?? "no-data") : "not-in-split";
-    if (r.target <= 0) continue;
+    if (r.target_sets <= 0) continue; // NOTE: the field is target_sets — `r.target` was undefined here, which silently killed the under-target warning below for every profile
     if (f === 0) {
       // Muscle not directly trained this split — it may still get secondary credit;
       // warn when even that indirect volume leaves it under MEV (so it won't grow).
@@ -290,7 +308,7 @@ export function generatePlan(profile, kb, opts = {}) {
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
-    else if (proj < r.target * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target} sets/wk fit for ${m} — more days or a specialization block would close the gap.` });
+    else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days or a specialization block would close the gap.` });
   }
 
   const citations = [...new Set([...splitCites, ...exerciseChoices.flatMap((c) => c.citations), ...Object.values(volumeRationale).flatMap((r) => r.landmark?.citations ?? [])])];
@@ -308,7 +326,12 @@ export function generatePlan(profile, kb, opts = {}) {
   };
   const rationale = {
     split: { choice: split, days_per_week: sessionSpecs.length, training_status: experience, reason: splitReason, citations: splitCites },
-    goal_prescription: { primary_goal: goal, rep_scheme: scheme },
+    goal_prescription: {
+      primary_goal: goal, rep_scheme: scheme,
+      // The session ceiling, stated so the plan can explain itself: quality beats quantity.
+      session_budget: { hard_sets: setBudget, minutes: sessionMin,
+        reason: `Capped at ${setBudget} hard sets per session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
+    },
     volume_by_muscle: volumeRationale,
     frequency_by_muscle: Object.fromEntries(muscles.map((m) => [m.id, freq[m.id] ?? 0])),
     exercise_choices: exerciseChoices,

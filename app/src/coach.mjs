@@ -146,6 +146,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       rir: ex.rir ?? "1-3",
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
+      lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
       suggested_kg: sug.suggested_kg,
