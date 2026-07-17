@@ -53,7 +53,10 @@ function lastSetsForExercise(sessions, exId) {
 
 // A gap this long since an exercise was last trained triggers a deload on return —
 // coming back heavier than you left is how people get hurt after a layoff.
-const COMEBACK_GAP_DAYS = 12;
+// EXPORTED because the adherence engine's "welcome back — I've eased your weights"
+// message must fire at exactly the same threshold; a hardcoded copy drifted once
+// (10 vs 12 days) and the app promised eased weights while prescribing heavier.
+export const COMEBACK_GAP_DAYS = 12;
 const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels easy
 
 // Double progression: hit the top of the range on every set last time -> add load;
@@ -126,6 +129,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
   } else if (readiness?.level === "high") {
     coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
+  } else if (readiness) {
+    // The common case must never be silent: a user who checked in and saw nothing
+    // change concludes it didn't work. Acknowledge, then confirm the plan stands.
+    coach_note = "Checked in ✓ — you're in your normal range, so today's session stands as planned.";
   }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
   // Coach's "welcome back — I eased your weights" claim matches what's on the card.
@@ -185,8 +192,10 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
     const newBest = bestE1RM([newSession], set.exercise);
     const priorBest = bestE1RM(prior, set.exercise);
     // Require a real margin (>0.5 kg) so estimator noise isn't dressed up as a PR.
+    // Structured (not a pre-baked "N kg" string) so the client renders the reward
+    // in the unit the user actually chose — a lb user's PR shouldn't arrive in kg.
     if (priorBest > 0 && newBest - priorBest > 0.5) {
-      wins.push(`🏆 ${name(set.exercise)}: new estimated 1RM of ${newBest} kg (+${Math.round((newBest - priorBest) * 10) / 10}).`);
+      wins.push({ kind: "pr", name: name(set.exercise), e1rm_kg: newBest, delta_kg: Math.round((newBest - priorBest) * 10) / 10 });
     }
   }
 

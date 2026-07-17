@@ -6,6 +6,7 @@
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
 import { isoWeekKey, isHardSet } from "../../tools/derive-core.mjs";
+import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
 function isoWeekMondayMs(year, week) {
@@ -71,7 +72,9 @@ export function adherenceStatus(sessions, now, paused) {
   const times = sessions.filter((s) => s.date).map((s) => +new Date(s.date)).sort((a, b) => b - a);
   if (!times.length) return { state: "new", message: "Log your first session to start your streak." };
   const daysSince = (+new Date(now) - times[0]) / 86400000;
-  if (daysSince >= 10) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
+  // Same threshold AND same rounding as suggestWeight's layoff deload, so this
+  // message is only ever shown when the weights really are eased.
+  if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
   const trainedThisWeek = sessions.some((s) => s.date && weekOrdinal(s.date) === weekOrdinal(now));
   if (!trainedThisWeek) return { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
   return { state: "on-track", message: "On track this week. Nice." };
