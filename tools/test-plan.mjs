@@ -67,6 +67,16 @@ const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map
 ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
 ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
 
+// --- session quality ceiling: time is not a licence to fill a session with hard
+//     sets. Per-set effort collapses long before the clock runs out (user-reported
+//     ~12; the KB's per-muscle quality window points the same way), so sessions cap
+//     by training age regardless of session_length_min ---
+const CAPS = { beginner: 12, intermediate: 16, advanced: 20 };
+ok("sessions never exceed the per-level quality cap even with long sessions",
+  Object.entries(CAPS).every(([lvl, cap]) =>
+    generatePlan({ user_id: "cap-" + lvl, training_status: lvl, primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 120 }, kb)
+      .program.sessions.every((s) => s.exercises.reduce((a, e) => a + e.sets, 0) <= cap)));
+
 // --- recovery ceiling: the engine trims to MRV, so no generated plan prescribes
 //     past what the KB says you can recover from (#13), across demanding profiles ---
 const demanding = [
