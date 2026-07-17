@@ -81,6 +81,40 @@ check("suggestWeight: RIR autoregulation raises load when reps are left in reser
   assert.equal(suggestWeight(failed, "barbell-bench-press", "6-10").suggested_kg, 100);
 });
 
+check("mesocycle: sets ramp 70%->peak across weeks 1-5, deload halves week 6, then cycles", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  const setsAt = (n) => buildToday(u, [], null, [], day(n)).exercises[0].sets;
+  assert.equal(setsAt(0), 3);   // wk1: 4 × 0.7 → 3
+  assert.equal(setsAt(14), 4);  // wk3: 4 × 0.9 → 4
+  assert.equal(setsAt(28), 4);  // wk5 peak: full
+  assert.equal(setsAt(35), 2);  // wk6 deload: half
+  assert.equal(setsAt(42), 3);  // next block wk1 again — cycles automatically
+  const deload = buildToday(u, [], null, [], day(35));
+  assert.equal(deload.block.phase, "deload");
+  assert.equal(deload.exercises[0].rir, "3-4"); // comfortably shy of failure
+});
+
+check("mesocycle: deload eases the suggested load ~10%", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const u = { profile: { training_status: "advanced", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  const last = [{ date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] }];
+  const deloadDay = new Date(+new Date(start) + 36 * 86400000).toISOString(); // inside week 6
+  const t = buildToday(u, last, null, [], deloadDay);
+  assert.equal(t.exercises[0].suggested_kg, 90); // held weight 100 → 90 on deload
+});
+
+check("mesocycle: beginners are exempt — flat sets, no block", () => {
+  const u = { profile: { training_status: "beginner", days_per_week: 3 }, plan_meta: { block_start: "2026-01-05T00:00:00Z" },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };
+  const t = buildToday(u, [], null, [], "2026-01-06T00:00:00Z");
+  assert.equal(t.block, null);
+  assert.equal(t.exercises[0].sets, 3);
+});
+
 check("suggestWeight: a layoff eases the load instead of piling on more (comeback safety)", () => {
   const last = [{ date: "2026-06-01T18:00:00Z", sets: [
     { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },

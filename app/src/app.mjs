@@ -38,7 +38,7 @@ export function createApp(store, config = {}) {
     profile.units ??= "metric";
     profile.days_per_week ??= 3;
     const { program, rationale, meta } = generateUserPlan(profile);
-    const user = { profile, program, plan_rationale: rationale, plan_meta: meta, created_at: new Date().toISOString() };
+    const user = { profile, program, plan_rationale: rationale, plan_meta: { ...meta, block_start: new Date().toISOString() }, created_at: new Date().toISOString() };
     await store.saveUser(user_id, user);
     return c.json({ user_id, program: { id: program.id, name: program.name, days_per_week: program.days_per_week, split: program.split } });
   });
@@ -62,7 +62,8 @@ export function createApp(store, config = {}) {
     const updated = await store.updateUser(id, (u) => {
       if (body.profile) u.profile = { ...u.profile, ...body.profile, user_id: id };
       const { program, rationale, meta } = generateUserPlan(u.profile);
-      u.program = program; u.plan_rationale = rationale; u.plan_meta = meta;
+      u.program = program; u.plan_rationale = rationale;
+      u.plan_meta = { ...meta, block_start: new Date().toISOString() }; // a new plan starts a fresh mesocycle
       out = program;
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
