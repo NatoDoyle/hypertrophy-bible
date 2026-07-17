@@ -4,9 +4,8 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented.
 
-1. Can we please review the total volume of the programs? They seem to be quite high. When secondary activation is taken into consideration, the volume is very high. After the first 12 hard sets in a workout, it's difficult to apply the same effort to the remaining sets.
-2. for the intermediate to advanced lifter, stuff like emphasising the lengthened position is important. I haven't seen stuff like that in the app .
-3. I would really like to have accounts for the app.
+1. you said the plan engine scores exercises, but is it thorough scoring ?
+2. I see you've added 
 
 ---
 
