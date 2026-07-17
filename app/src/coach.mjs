@@ -149,7 +149,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
-  const rotCount = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
+  // rotation_base rebases the cycle at the last regenerate: the deterministic
+  // program id is reused, so without it old sessions phase-shift a fresh plan.
+  const rotCount = Math.max(0, sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length - (user.plan_meta?.rotation_base ?? 0));
   const idx = nextSessionIndex(program, rotCount);
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;

@@ -24,9 +24,9 @@ ok("2d → full-body", chooseSplit({ days_per_week: 2, training_status: "beginne
 // --- volume target math (side-delts: mev8 mav12-20 mrv24-26) ---
 const sd = muscleById.get("side-delts").landmarks;
 ok("beginner → MEV.min (8)", targetWeeklySets(sd, { experience: "beginner", isPriority: false }).target === 8);
-ok("intermediate → mid-MAV (16)", targetWeeklySets(sd, { experience: "intermediate", isPriority: false }).target === 16);
+ok("intermediate → bottom of MAV (12) — mid-MAV summed targets were undeliverable in a capped week", targetWeeklySets(sd, { experience: "intermediate", isPriority: false }).target === 12);
 ok("advanced → MAV.max (20)", targetWeeklySets(sd, { experience: "advanced", isPriority: false }).target === 20);
-ok("intermediate priority → ×1.3 (21)", targetWeeklySets(sd, { experience: "intermediate", isPriority: true }).target === 21);
+ok("intermediate priority → ×1.3 (16)", targetWeeklySets(sd, { experience: "intermediate", isPriority: true }).target === 16);
 const chestLm = muscleById.get("chest").landmarks;
 ok("target never exceeds MRV.max", targetWeeklySets(chestLm, { experience: "advanced", isPriority: true }).target <= chestLm.mrv.max);
 
@@ -83,6 +83,15 @@ ok("beginner bodyweight hamstring work is now a beginner movement",
     const ham = ids.filter((id) => (exercises.find((x) => x.id === id).primary_muscles ?? []).includes("hamstrings"));
     return ham.length > 0 && ham.every((id) => diffOf[id] === "beginner");
   })());
+
+// --- first-serve: default intermediate/advanced plans leave NO directly-trained
+//     muscle at zero weekly sets (the quality cap was letting big-muscle compounds
+//     double up while calves/abs/side-delts got nothing all week) ---
+ok("no directly-trained muscle gets zero weekly sets (intermediate + advanced defaults)",
+  [{ user_id: "fs-i", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60 },
+   { user_id: "fs-a", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90 }]
+    .every((prof) => Object.values(generatePlan(prof, kb).rationale.volume_by_muscle)
+      .every((r) => r.frequency === 0 || r.projected_sets > 0)));
 
 // --- session quality ceiling: time is not a licence to fill a session with hard
 //     sets. Per-set effort collapses long before the clock runs out (user-reported
