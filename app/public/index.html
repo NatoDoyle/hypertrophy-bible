@@ -9,7 +9,10 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main id="app" aria-live="polite"></main>
+  <main id="app"></main>
+  <!-- Screen-reader announcements only: whole-screen aria-live made every tap
+       re-announce the entire page. Deliberate events are pushed here instead. -->
+  <div id="say" class="sr-only" aria-live="polite"></div>
   <nav id="nav" hidden>
     <button data-tab="today" class="active"><span>🏋️</span>Today</button>
     <button data-tab="progress"><span>📈</span>Progress</button>
