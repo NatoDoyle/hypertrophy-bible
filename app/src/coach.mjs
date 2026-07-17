@@ -2,7 +2,7 @@
 // confirms and taps Done. Reuses the KB's derive-core engine for all derivations.
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
-  bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff,
+  bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -45,7 +45,9 @@ const bestE1RM = (sessions, exId) =>
 // progression + layoff detection). Returns { sets, date } or null.
 function lastSetsForExercise(sessions, exId) {
   for (let i = sessions.length - 1; i >= 0; i--) {
-    const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work");
+    // Deload sets are planned-easy — anchoring double progression to them would
+    // leave every next block permanently one increment behind. Skip them.
+    const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work" && !s.deload);
     if (sets.length) return { sets, date: sessions[i].date ?? null };
   }
   return null;
@@ -271,9 +273,15 @@ export function progressReport(user, sessions, bodyweights, customEx = []) {
   const volume = latest ? volumeVsLandmarks(weekly[latest], muscleIndex) : {};
   const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: v.status }))
     .sort((a, b) => b.sets - a.sets);
-  const progression = progressionByExercise(sessions, index).filter((p) => p.weeks > 1).slice(0, 8);
+  const stalls = stallDetect(sessions, index);
+  const stalledIds = new Set(stalls.map((x) => x.exercise));
+  // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
+  const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
+  const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
+    .slice(0, 8)
+    .map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, bodyweight_trend: trend, energy_balance: energy };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, stalls, bodyweight_trend: trend, energy_balance: energy };
 }

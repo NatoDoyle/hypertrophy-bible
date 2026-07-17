@@ -600,6 +600,7 @@ const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort l
 function startSession(templateSession) {
   sess = {
     name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0,
+    deload: templateSession.block?.phase === "deload", // sets logged today are planned-easy
     logged: [], weights: {}, reps: {}, rir: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
     // after a reload, the server's ON CONFLICT dedupe sees the SAME id and the
@@ -703,7 +704,7 @@ function renderPlayer(resting = 0) {
     finish();
   };
   $("#done").onclick = () => {
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), completed_at: new Date().toISOString() });
+    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -808,7 +809,13 @@ async function renderProgress() {
       <div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>
       <span class="status ${statusClass(m.status)}">${statusLabel(m.status)}</span></div>`;
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;
-  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
+  const stallCard = (p.stalls || []).length
+    ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
+        <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable. In order: 1) check sleep and food first, 2) swap the exercise for a cousin (same muscle, new angle) in the plan editor, 3) push those sets a rep closer to failure. ${""}</p>
+        <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
+    : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
@@ -818,6 +825,7 @@ async function renderProgress() {
     <p class="muted">How many hard sets each muscle got this week, and whether that's in the range that builds muscle.</p>
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
+    ${stallCard}
     <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
     <p class="muted">The most you could likely lift for one rep, estimated from your sets. Watch the trend, not the exact number.</p>
     <div class="card">${prog}</div>
