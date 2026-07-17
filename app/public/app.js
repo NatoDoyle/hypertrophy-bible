@@ -54,6 +54,13 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // Screen-reader announcement for deliberate events only (the old whole-app
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
+// Inline failure notice: never a silent dead button.
+function alertBar(msg) {
+  let el = $("#alertbar");
+  if (!el) { el = document.createElement("div"); el.id = "alertbar"; el.className = "card info"; app.prepend(el); }
+  el.innerHTML = `<p>${esc(msg)}</p>`;
+  el.scrollIntoView({ block: "nearest" });
+}
 
 // Set to your Open Collective / GitHub Sponsors URL when it exists. The support
 // button stays hidden until then — never show a dead or fake donation link.
@@ -177,7 +184,8 @@ function renderOnboarding() {
       const val = $("#remail").value.trim();
       if (!val) { $("#rmsg").textContent = "Enter your email first."; return; }
       $("#sendrestore").disabled = true; $("#rmsg").textContent = "Sending…";
-      const r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val }) });
+      let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val }) }); }
+      catch { $("#rmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendrestore").disabled = false; return; }
       if (r.error === "invalid-email") { $("#rmsg").textContent = "That doesn't look like an email."; $("#sendrestore").disabled = false; return; }
       if (r.sent === false) { $("#rmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendrestore").disabled = false; return; }
       $("#rmsg").innerHTML = "If that email has a backup, a restore link is on its way — it works once and expires in 30 minutes."
@@ -354,7 +362,15 @@ const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
 const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  const [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]);
+  let d, exs;
+  try { [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]); }
+  catch {
+    app.innerHTML = `<h1>Edit &amp; review</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Plan editing needs a connection. Nothing you've logged is affected.</p>
+      <button class="btn" id="pe-retry">Try again</button></div>`;
+    $("#pe-retry").onclick = renderPlanEdit;
+    return;
+  }
   allExercises = exs;
   editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
   pendingRm = null;
@@ -391,7 +407,11 @@ function drawEdit(critique) {
     drawEdit(critique);
   });
   app.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => renderAddExercise(+b.dataset.add));
-  $("#savePlan").onclick = async () => { const r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); if (r.ok) { localStorage.setItem("hb_program", editState.name); drawEdit(r.critique); } };
+  $("#savePlan").onclick = async () => {
+    let r; try { r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); } catch { r = null; }
+    if (r && r.ok) { localStorage.setItem("hb_program", editState.name); say("Plan saved."); drawEdit(r.critique); }
+    else { say("Couldn't save."); alertBar("📴 Couldn't save — check your connection and tap Save again. Your edits are still here."); }
+  };
   $("#backPlan").onclick = () => { tab = "today"; render(); };
 }
 function renderAddExercise(si) {
@@ -423,7 +443,8 @@ function renderCustomExercise(si) {
     app.querySelectorAll("[data-mech]").forEach((b) => b.onclick = () => { st.mechanic = b.dataset.mech; draw(); });
     $("#cx-save").onclick = async () => {
       if (!st.name.trim()) { $("#cx-msg").textContent = "Give it a name first."; return; }
-      const r = await api(`/api/exercise/custom`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: { name: st.name.trim(), primary_muscles: [st.muscle], equipment: st.equipment, mechanic: st.mechanic } }) });
+      let r; try { r = await api(`/api/exercise/custom`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: { name: st.name.trim(), primary_muscles: [st.muscle], equipment: st.equipment, mechanic: st.mechanic } }) }); }
+      catch { $("#cx-msg").textContent = "📴 You're offline — try again when connected."; return; }
       if (r.error) { $("#cx-msg").textContent = r.error; return; }
       allExercises = await api(`/api/exercises`);
       editState.sessions[si].exercises.push({ exercise: r.exercise.id, sets: 3, rep_range: "8-12" });
@@ -529,7 +550,11 @@ function renderCheckin() {
       <button class="btn" id="submitck">Save</button>
       <button class="btn ghost" id="skipck">Skip today</button>`;
     app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
-    $("#submitck").onclick = async () => { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); say("Check-in saved."); tab = "today"; render(); };
+    $("#submitck").onclick = async () => {
+      try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); say("Check-in saved."); }
+      catch { say("Offline — check-in skipped."); } // it only tunes TODAY; a stale queued one would lie tomorrow
+      tab = "today"; render();
+    };
     $("#skipck").onclick = () => { tab = "today"; render(); };
   };
   draw();
@@ -870,7 +895,8 @@ function renderMe() {
       if (!val) { $("#bmsg").textContent = "Enter your email first."; return; }
       $("#sendlink").disabled = true;
       $("#bmsg").textContent = "Sending…";
-      const r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val, user_id: uid }) });
+      let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val, user_id: uid }) }); }
+      catch { $("#bmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendlink").disabled = false; return; }
       if (r.error === "invalid-email") { $("#bmsg").textContent = "That doesn't look like an email."; $("#sendlink").disabled = false; return; }
       if (r.sent === false) { $("#bmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendlink").disabled = false; return; }
       $("#bmsg").innerHTML = "Check your inbox for a link to finish — it works once and expires in 30 minutes."
@@ -897,7 +923,7 @@ function downloadTrainingCalendar(days, time) {
 }
 async function renderCoach() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let a; try { a = await api(`/api/adherence`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 Offline.</p></div>`; return; }
+  let a; try { a = await api(`/api/adherence`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your streak and XP are safe — they'll show as soon as you reconnect.</p></div>`; return; }
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
@@ -925,7 +951,10 @@ async function renderCoach() {
     if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; } else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; }
   });
   $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
-  $("#pause").onclick = async () => { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); };
+  $("#pause").onclick = async () => {
+    try { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); }
+    catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
+  };
 }
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
