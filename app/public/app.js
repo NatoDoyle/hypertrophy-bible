@@ -51,6 +51,9 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Screen-reader announcement for deliberate events only (the old whole-app
+// aria-live re-announced every repaint, making the player unusable by ear).
+const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
 
 // Set to your Open Collective / GitHub Sponsors URL when it exists. The support
 // button stays hidden until then — never show a dead or fake donation link.
@@ -511,7 +514,7 @@ function renderCheckin() {
       <button class="btn" id="submitck">Save</button>
       <button class="btn ghost" id="skipck">Skip today</button>`;
     app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
-    $("#submitck").onclick = async () => { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); tab = "today"; render(); };
+    $("#submitck").onclick = async () => { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); say("Check-in saved."); tab = "today"; render(); };
     $("#skipck").onclick = () => { tab = "today"; render(); };
   };
   draw();
@@ -610,7 +613,7 @@ function renderPlayer(resting = 0) {
       <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
       <button class="btn" id="skip">I'm ready</button></div>`;
     let left = resting;
-    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); renderPlayer(0); } }, 1000);
+    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next set."); renderPlayer(0); } }, 1000);
     $("#skip").onclick = () => { stopRestTimer(); renderPlayer(0); };
     return;
   }
@@ -659,6 +662,7 @@ function renderPlayer(resting = 0) {
       else sess.i++;
     }
     saveSess(); // the set is banked before anything else can go wrong
+    say(`Set logged — ${sess.logged.length} so far.`);
     if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
   };
@@ -702,6 +706,7 @@ async function finish() {
   }
   // Accepted or safely queued — now it's safe to drop the in-progress copy.
   clearSess();
+  say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
 }
 function renderRecap(recap) {
@@ -765,7 +770,7 @@ async function renderProgress() {
     <div class="card">
       ${t ? `<p><b>${slopeDisp >= 0 ? "+" : ""}${slopeDisp} ${unitLabel()}/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
         <p class="muted">${esc(eb.suggestion || "")}</p>` : `<p class="muted">Add a few bodyweights to infer your energy balance — no calorie counting needed.</p>`}
-      <div class="stepper"><label>Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
+      <div class="stepper"><label for="bw">Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
   wireLearnLinks();
@@ -877,7 +882,7 @@ async function renderCoach() {
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
-      <div class="stepper"><label>Time</label><input id="sched-time" type="time" value="18:00" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem"></div>
+      <div class="stepper"><label for="sched-time">Time</label><input id="sched-time" type="time" value="18:00" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem"></div>
       <button class="btn secondary" id="addcal">Add to my calendar</button>
       <p class="muted" id="calmsg"></p></div>
     <h2>Injury or illness?</h2>
@@ -900,9 +905,17 @@ async function renderLearn() {
   let LEARN_INDEX;
   try { ({ LEARN_INDEX } = await learnData()); }
   catch { app.innerHTML = `<h1>Learn</h1><div class="card"><p>📴 Couldn't load the guides.</p><p class="muted">Connect once and they'll be saved on this device for good.</p></div>`; return; }
-  const cats = LEARN_INDEX.map((c) => `<h2>${esc(c.category)}</h2><div class="card">${
-    c.items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
-  }</div>`).join("");
+  let deeperShown = false;
+  const cats = LEARN_INDEX.map((c) => {
+    // One divider where the beginner on-ramp ends and the full evidence base begins.
+    const divider = c.tier === "deeper" && !deeperShown
+      ? (deeperShown = true, `<div class="card tldr" style="margin-top:26px"><b>🔬 Go deeper — the science library</b>
+          <p class="muted" style="margin:6px 0 0">The full evidence base behind your plan: every claim graded A–D by strength of evidence. Read what interests you — none of it is required to train well.</p></div>`)
+      : "";
+    return `${divider}<h2>${esc(c.category)}</h2><div class="card">${
+      c.items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
+    }</div>`;
+  }).join("");
   app.innerHTML = `<h1>Learn</h1>
     <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>${cats}`;
   wireLearnLinks();

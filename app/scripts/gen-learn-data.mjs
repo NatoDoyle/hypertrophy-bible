@@ -7,8 +7,24 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SRC = join(here, "../../content/09-getting-started");
+const CONTENT = join(here, "../../content");
 const OUT = join(here, "../public/learn-data.js");
+
+// Every pillar ships. The beginner on-ramp leads (tier "start", curated
+// categories); the evidence pillars follow under "Go deeper" (tier "deeper") —
+// the KB's ~75 graded science pages previously shipped to nobody.
+const PILLARS = [
+  { dir: "09-getting-started", tier: "start" },
+  { dir: "00-foundations", tier: "deeper", title: "🧬 How muscle grows" },
+  { dir: "01-training-variables", tier: "deeper", title: "🎛️ Training variables" },
+  { dir: "03-programming", tier: "deeper", title: "🗓️ Programming" },
+  { dir: "02-muscle-guides", tier: "deeper", title: "💪 Muscle guides" },
+  { dir: "04-nutrition", tier: "deeper", title: "🍽️ Nutrition" },
+  { dir: "05-recovery", tier: "deeper", title: "😴 Recovery" },
+  { dir: "06-individualization", tier: "deeper", title: "🧍 Individualization" },
+  { dir: "07-tracking", tier: "deeper", title: "📊 Tracking & plateaus" },
+  { dir: "08-myths", tier: "deeper", title: "🚫 Myths & BS detection" },
+];
 
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -25,10 +41,13 @@ const BUNDLED = new Set();
 // (so a `javascript:` URL renders as inert text).
 function inline(text) {
   let t = esc(text);
+  t = t.replace(/\[\^[^\]\s]+\]/g, ""); // inline footnote markers — refs live on the site, not in-app
   t = t.replace(/\[Grade ([A-D])\]/g, '<span class="gradetag">Grade $1</span>');
   t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
     if (/^https?:\/\//.test(url)) return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
-    const m = url.match(/^([a-z0-9-]+)\.md(?:#.*)?$/); // sibling page in this pillar
+    // sibling (volume.md) OR cross-pillar (../03-programming/warm-up.md) — every
+    // bundled page is a valid in-app jump now that all pillars ship
+    const m = url.match(/^(?:\.\.\/[a-z0-9-]+\/)?([a-z0-9-]+)\.md(?:#.*)?$/);
     if (m && BUNDLED.has(m[1])) return `<button class="learnlink" data-learn="${m[1]}">${label}</button>`;
     return label;
   });
@@ -52,7 +71,9 @@ function toHtml(md) {
     // title (first h1)
     const h1 = line.match(/^# (.+)/);
     if (h1 && !title) { title = h1[1].trim(); i++; continue; }
+    if (/^\[\^[^\]]+\]:/.test(line)) { i++; continue; } // footnote definitions (References live on the site)
     const h = line.match(/^(#{2,4}) (.+)/);
+    if (h && /^(references|backing data)$/i.test(h[2].trim())) { i++; continue; } // headers for stripped sections
     if (h) { const lvl = Math.min(4, h[1].length); out.push(`<h${lvl}>${inline(h[2].trim())}</h${lvl}>`); i++; continue; }
     // table
     if (line.startsWith("|") && lines[i + 1] && /^\|[\s:|-]+\|/.test(lines[i + 1])) {
@@ -112,34 +133,46 @@ function parseIndex(md) {
   return cats;
 }
 
-const files = Object.fromEntries(
-  readdirSync(SRC).filter((f) => f.endsWith(".md")).map((f) => [f.replace(/\.md$/, ""), readFileSync(join(SRC, f), "utf8")])
-);
-// Every page we ship is a valid deep-link target, so cross-references inside the
-// prose become tappable instead of dead text. Must be filled BEFORE any toHtml().
-for (const slug of Object.keys(files)) if (slug !== "index") BUNDLED.add(slug);
-const index = parseIndex(files["index"] || "");
+// Load every pillar's pages up front (slugs are globally unique — verified),
+// so BUNDLED is complete BEFORE any toHtml() runs and cross-pillar links resolve.
+const byPillar = new Map(); // dir -> { slug -> md }
+for (const p of PILLARS) {
+  const dir = join(CONTENT, p.dir);
+  const files = Object.fromEntries(
+    readdirSync(dir).filter((f) => f.endsWith(".md")).map((f) => [f.replace(/\.md$/, ""), readFileSync(join(dir, f), "utf8")])
+  );
+  byPillar.set(p.dir, files);
+  for (const slug of Object.keys(files)) if (slug !== "index") BUNDLED.add(slug);
+}
+
+const index = [];
 const pages = {};
-const seen = new Set();
-for (const cat of index) {
-  for (const it of cat.items) {
-    const md = files[it.slug];
-    if (!md) { console.warn("  ! index references missing page:", it.slug); continue; }
-    const { title, tldr, html } = toHtml(md);
-    pages[it.slug] = { title: title || it.title, tldr, html };
-    seen.add(it.slug);
+for (const p of PILLARS) {
+  const files = byPillar.get(p.dir);
+  const cats = parseIndex(files["index"] || "");
+  const seen = new Set();
+  for (const cat of cats) {
+    const items = [];
+    for (const it of cat.items) {
+      const md = files[it.slug];
+      if (!md) { console.warn(`  ! ${p.dir} index references missing page:`, it.slug); continue; }
+      const { title, tldr, html } = toHtml(md);
+      pages[it.slug] = { title: title || it.title, tldr, html };
+      seen.add(it.slug);
+      items.push(it);
+    }
+    if (items.length) index.push({ category: p.tier === "deeper" ? `${p.title} · ${cat.category.replace(/\*\*/g, "")}` : cat.category, tier: p.tier, items });
   }
+  // Pages a pillar's index doesn't list still ship (deep-linkable), never dropped.
+  const extras = [];
+  for (const [slug, md] of Object.entries(files)) {
+    if (slug === "index" || seen.has(slug)) continue;
+    const { title, tldr, html } = toHtml(md);
+    pages[slug] = { title, tldr, html };
+    extras.push({ slug, title, desc: "" });
+  }
+  if (extras.length) index.push({ category: p.tier === "deeper" ? `${p.title} · More` : "More", tier: p.tier, items: extras });
 }
-// Any getting-started page not listed in the index still gets bundled (reachable
-// via deep-links), appended under a catch-all so nothing is silently dropped.
-const extras = [];
-for (const [slug, md] of Object.entries(files)) {
-  if (slug === "index" || seen.has(slug)) continue;
-  const { title, tldr, html } = toHtml(md);
-  pages[slug] = { title, tldr, html };
-  extras.push({ slug, title, desc: "" });
-}
-if (extras.length) index.push({ category: "More", items: extras });
 
 const banner = "// AUTO-GENERATED by app/scripts/gen-learn-data.mjs — do not edit by hand.\n";
 writeFileSync(OUT, `${banner}export const LEARN_INDEX = ${JSON.stringify(index)};\nexport const LEARN_PAGES = ${JSON.stringify(pages)};\n`);
