@@ -117,8 +117,31 @@ const STEPS = [
 // failed submit never makes a nervous first-timer re-answer all eight questions.
 const ONB_KEY = "hb_onboarding";
 let onbStep = 0, onbStarted = false, answers = {};
+// Settings reuses the SAME wizard the user already learned in onboarding —
+// pre-filled from their profile, submitting to /api/plan/regenerate instead of
+// creating a new user. Zero new UI concepts; the plan regenerates on save.
+let settingsMode = false;
 try { const s = JSON.parse(localStorage.getItem(ONB_KEY) || "null"); if (s) { answers = s.answers || {}; onbStep = s.onbStep || 0; onbStarted = !!s.onbStarted; } } catch {}
-const saveOnb = () => { try { localStorage.setItem(ONB_KEY, JSON.stringify({ answers, onbStep, onbStarted })); } catch {} };
+const saveOnb = () => { if (settingsMode) return; try { localStorage.setItem(ONB_KEY, JSON.stringify({ answers, onbStep, onbStarted })); } catch {} };
+
+// Open the wizard as a pre-filled settings editor for an existing user.
+async function renderSettings() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
+  const p = d?.profile || {};
+  answers = {
+    training_status: p.training_status, primary_goal: p.primary_goal, sex: p.sex,
+    days_per_week: p.days_per_week ?? 3, session_length_min: p.session_length_min ?? 60,
+    available_equipment: p.available_equipment,
+    // multi steps store option-value arrays: select each group fully covered by the profile
+    priority_muscles: (STEPS.find((s) => s.key === "priority_muscles")?.multi || [])
+      .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
+    injuries: (p.injuries || []).map((i) => i.region),
+    units: unitPref() === "lb" ? "imperial" : "metric",
+  };
+  settingsMode = true; onbStarted = true; onbStep = 0;
+  renderOnboarding();
+}
 
 function renderOnboarding() {
   nav.hidden = true;
@@ -194,6 +217,7 @@ function renderOnboarding() {
 // A misclick is always recoverable: step back one question (or to the welcome
 // screen from the first), with prior answers preserved and re-highlighted.
 function onbBack() {
+  if (settingsMode && onbStep === 0) { settingsMode = false; tab = "me"; return render(); } // exit settings, change nothing
   if (onbStep === 0) { onbStarted = false; saveOnb(); return renderOnboarding(); }
   onbStep--; saveOnb();
   renderOnboarding();
@@ -213,6 +237,23 @@ async function submitOnboarding() {
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
   localStorage.setItem("hb_units", profile.units); // remember display preference
+  // Settings edit: same wizard, but the profile updates the EXISTING user and the
+  // plan regenerates — never a new identity.
+  if (settingsMode) {
+    let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile }) }); } catch { r = {}; }
+    if (r.program) {
+      settingsMode = false;
+      localStorage.setItem("hb_program", r.program.name);
+      return renderPlanExplain(false); // show the regenerated plan immediately
+    }
+    app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Hmm — that didn't go through.</h1>
+      <p>Your settings weren't changed. Let's try again.</p>
+      <button class="btn" id="retryset">Try again</button>
+      <button class="btn ghost" id="backset">‹ Keep my old settings</button></div>`;
+    $("#retryset").onclick = submitOnboarding;
+    $("#backset").onclick = () => { settingsMode = false; tab = "me"; render(); };
+    return;
+  }
   let res;
   try { res = await api("/api/onboard", { method: "POST", body: JSON.stringify({ profile }) }); }
   catch { res = {}; }
@@ -764,6 +805,9 @@ function renderMe() {
   app.innerHTML = `<h1>Me</h1>
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
+    <div class="card"><p class="muted">Training settings</p>
+      <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
+      <button class="btn secondary" id="settings">Update my settings &amp; rebuild plan</button></div>
     <div class="card"><p class="muted">Effort logging (RIR)</p>
       <p><b>RIR = reps in reserve</b> — how many more reps you could have done before failing. Stop a couple short of failure; that's a hard set, not a max effort.</p>
       <p class="muted">Turn this on to log RIR each set so the coach fine-tunes your weights. Off by default — simple progression works great, especially for beginners.</p>
@@ -775,6 +819,7 @@ function renderMe() {
     ${funded}
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
   $("#viewplan").onclick = () => renderPlanExplain(false);
+  $("#settings").onclick = renderSettings;
   $("#rirtoggle").onclick = () => { localStorage.setItem("hb_rir", rirOn() ? "0" : "1"); renderMe(); };
   $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
 
@@ -878,6 +923,7 @@ async function renderLearnPage(slug) {
 // ---------- Router ----------
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
+  settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));

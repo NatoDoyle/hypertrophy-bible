@@ -48,20 +48,26 @@ export function createApp(store, config = {}) {
   app.get("/api/plan/explain", async (c) => {
     const { user, error } = await requireUser(c);
     if (error) return error;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions }, rationale: user.plan_rationale ?? null });
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
-    const user = id && (await store.getUser(id));
-    if (!user) return c.json({ error: "unknown user" }, 404);
-    if (body.profile) user.profile = { ...user.profile, ...body.profile, user_id: id };
-    const { program, rationale, meta } = generateUserPlan(user.profile);
-    user.program = program; user.plan_rationale = rationale; user.plan_meta = meta;
-    await store.saveUser(id, user);
-    return c.json({ program: { id: program.id, name: program.name, split: program.split, days_per_week: program.days_per_week } });
+    if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
+    // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
+    // this route now backs the Settings screen, so it will see real traffic.
+    let out = null;
+    const updated = await store.updateUser(id, (u) => {
+      if (body.profile) u.profile = { ...u.profile, ...body.profile, user_id: id };
+      const { program, rationale, meta } = generateUserPlan(u.profile);
+      u.program = program; u.plan_rationale = rationale; u.plan_meta = meta;
+      out = program;
+      return u;
+    }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+    if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+    return c.json({ program: { id: out.id, name: out.name, split: out.split, days_per_week: out.days_per_week } });
   });
 
   // KB critique of the current (or a supplied) plan: volume vs landmarks, gaps,
@@ -282,7 +288,10 @@ export function createApp(store, config = {}) {
       const now = Date.now();
       const { token: grant, tokenHash } = await generateToken();
       await store.createMagicLink({
-        token_hash: tokenHash, email: result.email, rl_key: result.email, ip: null,
+        // Distinct rl_key bucket: server-minted grants must never consume the
+        // user's 5/hour email budget (the 4th restore in a sitting was silently
+        // sending nothing because internal grants had filled the bucket).
+        token_hash: tokenHash, email: result.email, rl_key: "grant:" + result.email, ip: null,
         user_id: result.user_id, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
       });
       merge_grant = grant;
