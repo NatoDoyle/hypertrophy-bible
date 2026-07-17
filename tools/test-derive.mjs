@@ -139,6 +139,10 @@ check("stallDetect flags a lift flat for 4+ weeks, ignores progress and deloads"
   // still nudging up -> NOT stalled
   const rising = [wk(0, 100), wk(1, 102.5), wk(2, 105), wk(3, 107.5)];
   assert.equal(stallDetect(rising, exIndex).length, 0);
+  // SLOW steady progress inside the noise band, latest week is the best -> NOT
+  // stalled (the original guard was a tautology and flagged exactly this lifter)
+  const slow = [wk(0, 100), wk(1, 100.5), wk(2, 101), wk(3, 101.5)];
+  assert.equal(stallDetect(slow, exIndex).length, 0);
   // a deload week inside the window is ignored, not read as a crash/plateau signal
   const withDeload = [wk(0, 100), wk(1, 90, { deload: true }), wk(2, 102.5), wk(3, 105), wk(4, 107.5)];
   assert.equal(stallDetect(withDeload, exIndex).length, 0);

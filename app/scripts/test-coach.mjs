@@ -46,6 +46,18 @@ check("buildToday resolves a custom exercise from the injected library", () => {
   assert.equal(buildToday(u, [], null, custom).exercises[0].exercise, "custom-my-move");
 });
 
+check("rotation_base rebases the cycle and ignores foreign-program sessions", () => {
+  const prog = { id: "gen-mine", name: "P", sessions: [{ name: "A", exercises: [] }, { name: "B", exercises: [] }, { name: "C", exercises: [] }] };
+  const mine = (n) => ({ date: `2026-06-0${n + 1}T18:00:00Z`, program_ref: "gen-mine", sets: [] });
+  const foreign = (n) => ({ date: `2026-05-0${n + 1}T18:00:00Z`, program_ref: "gen-other", sets: [] });
+  // 3 foreign + 5 own sessions; base counted with the SAME predicate = 5 own.
+  const sessions = [foreign(0), foreign(1), foreign(2), mine(0), mine(1), mine(2), mine(3), mine(4)];
+  const u = { profile: { days_per_week: 3 }, plan_meta: { rotation_base: 5 }, program: prog };
+  assert.equal(buildToday(u, sessions).index, 0); // fresh plan opens at Day A
+  // one more own session -> Day B (the cycle advances from the rebased zero)
+  assert.equal(buildToday(u, [...sessions, mine(5)]).index, 1);
+});
+
 check("nextSessionIndex rotates through the program", () => {
   const p = user.program;
   assert.equal(nextSessionIndex(p, 0), 0);
