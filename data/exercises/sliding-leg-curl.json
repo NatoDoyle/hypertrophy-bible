@@ -1,0 +1,40 @@
+{
+  "id": "sliding-leg-curl",
+  "name": "Sliding Leg Curl",
+  "aliases": ["slick-floor bridge curl", "towel leg curl"],
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "mechanic": "isolation",
+  "force": "pull",
+  "equipment": "bodyweight",
+  "movement_pattern": "isolation-knee-flexion",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Bodyweight leverage rises as the legs extend, loading the hamstrings hardest near full extension (long muscle length).",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Lie on your back, heels on a towel or sliders, hips bridged up",
+    "Slide your heels away until your legs are almost straight",
+    "Pull your heels back toward you while keeping the hips high"
+  ],
+  "common_errors": [
+    "Letting the hips drop to the floor mid-rep",
+    "Sliding out further than you can pull back with control"
+  ],
+  "progressions": [
+    "Single-leg sliding curl",
+    "Nordic hamstring curl"
+  ],
+  "regressions": [
+    "Glute bridge (hold, no slide)",
+    "Shorter slide-out range"
+  ],
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}

@@ -114,6 +114,20 @@ for (const [setName, eq] of Object.entries(EQUIP_SETS)) {
   }
 }
 
+// Beginner reachability: a muscle whose ONLY exercise for an equipment set is
+// advanced forces the plan engine's difficulty fallback to hand a day-one novice
+// an advanced movement (this shipped: Nordic curls were the sole bodyweight
+// hamstring option). Warn so the gap gets an easier variant, not a silent pass.
+for (const [setName, eq] of Object.entries(EQUIP_SETS)) {
+  for (const m of muscleIds) {
+    if (ALLOW_UNCOVERED[setName].includes(m)) continue;
+    const pool = exercises.filter((e) => (e.primary_muscles ?? []).includes(m) && eq.includes(e.equipment));
+    if (pool.length && !pool.some((e) => (e.difficulty ?? "intermediate") !== "advanced")) {
+      warn.push(`  ⚠ beginner-reachability: every '${setName}' exercise for '${m}' is advanced (${pool.map((e) => e.id).join(", ")}) — add an easier variant`);
+    }
+  }
+}
+
 for (const w of warn) console.warn(w);
 console.log(
   `\n${exercises.length} exercises, ${muscles.length} muscles, ${programs.length} programs checked. ${errors} error(s), ${warn.length} warning(s).`

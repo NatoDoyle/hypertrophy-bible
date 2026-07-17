@@ -158,8 +158,21 @@ export function generatePlan(profile, kb, opts = {}) {
   // pools per muscle (filtered + ranked), and a rotation counter for variety
   const compoundPool = {}, isoPool = {}, rot = {};
   for (const m of muscles) {
-    compoundPool[m.id] = rankPool(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id)), { experience, seed });
-    isoPool[m.id] = rankPool(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id)), { experience, seed });
+    // Difficulty is a HARD gate, not a soft penalty: rotation through a small pool
+    // was handing pistol squats and Nordic curls to day-one beginners. Keep only
+    // exercises at or below the user's level — falling back to the next tier up
+    // ONLY when nothing easier trains the muscle (honest > empty).
+    const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
+    const userLvl = diffRank[experience] ?? 1;
+    const gate = (pool) => {
+      for (let lvl = userLvl; lvl <= 2; lvl++) {
+        const ok = pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= lvl);
+        if (ok.length) return ok;
+      }
+      return pool;
+    };
+    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
+    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
@@ -211,11 +224,28 @@ export function generatePlan(profile, kb, opts = {}) {
       const ex = pool[rot[m]++ % pool.length];
       add(ex, Math.min(perTarget(m), EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
     }
-    // 4a) one compound per compound-driven muscle (priority first, budget-limited)
-    for (const m of order) {
-      if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length) continue;
-      const ex = compoundPool[m][rot[m]++ % compoundPool[m].length]; // rotate for weekly variety
-      add(ex, compoundSets, m, ["compound before isolations", `${ex.equipment} available`, ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+    // 4a) one compound per compound-driven muscle — but under a scarce quality
+    // budget, cover every fundamental MOVEMENT PATTERN before doubling one. The
+    // 12-set beginner budget was filling with squat+push+row+chin-up (two pulls)
+    // and no hinge, leaving hamstrings untrained. Pass 0 serves unseen pattern
+    // families; pass 1 doubles up only if budget remains.
+    const famOf = (pat) =>
+      pat === "squat" || pat === "lunge" ? "knee"
+      : pat === "hinge" ? "hip"
+      : pat === "horizontal-push" || pat === "vertical-push" ? "push"
+      : pat === "horizontal-pull" || pat === "vertical-pull" ? "pull"
+      : pat;
+    const fams = new Set(items.map((it) => famOf(exById.get(it.exercise)?.movement_pattern)));
+    for (const pass of [0, 1]) {
+      for (const m of order) {
+        if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length) continue;
+        const ex = compoundPool[m][rot[m] % compoundPool[m].length]; // peek (rotate only on placement)
+        if (pass === 0 && fams.has(famOf(ex.movement_pattern))) continue;
+        rot[m]++;
+        if (add(ex, compoundSets, m, ["compound before isolations", `${ex.equipment} available`, ex.lengthened_bias ? "lengthened-biased" : "primary for " + m])) {
+          fams.add(famOf(ex.movement_pattern));
+        }
+      }
     }
     // 4b) up to 2 isolations per muscle fill the residual (per-exercise capped)
     for (const m of order) {
