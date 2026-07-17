@@ -51,7 +51,7 @@ function inline(text) {
     if (m && BUNDLED.has(m[1])) return `<button class="learnlink" data-learn="${m[1]}">${label}</button>`;
     return label;
   });
-  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, "<strong>$1</strong>"); // tolerates *italics* inside **bold** (11 pages rendered literal ** before)
   t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
   t = t.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
   return t;
@@ -73,7 +73,18 @@ function toHtml(md) {
     if (h1 && !title) { title = h1[1].trim(); i++; continue; }
     if (/^\[\^[^\]]+\]:/.test(line)) { i++; continue; } // footnote definitions (References live on the site)
     const h = line.match(/^(#{2,4}) (.+)/);
-    if (h && /^(references|backing data)$/i.test(h[2].trim())) { i++; continue; } // headers for stripped sections
+    if (h && /^(references|backing data)$/i.test(h[2].trim())) {
+      // Skip the WHOLE section, not just its heading — leaving the body produced
+      // orphaned "None (conceptual)…" fragments dangling at the end of 53 pages.
+      const lvl = h[1].length;
+      i++;
+      while (i < lines.length) {
+        const nh = lines[i].match(/^(#{1,4}) /);
+        if (nh && nh[1].length <= lvl) break;
+        i++;
+      }
+      continue;
+    }
     if (h) { const lvl = Math.min(4, h[1].length); out.push(`<h${lvl}>${inline(h[2].trim())}</h${lvl}>`); i++; continue; }
     // table
     if (line.startsWith("|") && lines[i + 1] && /^\|[\s:|-]+\|/.test(lines[i + 1])) {

@@ -108,6 +108,17 @@ function collectCitationKeys(node, acc = []) {
 for (const k of registryKeys) {
   if (!usedKeys.has(k)) warn.push(`  ⚠ registry '${k}' is never referenced (orphan)`);
 }
+// --- Published bibliography staleness (error) --------------------------------
+// citations/registry.md is generated from registry.json; a registry entry
+// missing from the published bibliography means someone forgot `npm run
+// build-bib` (this shipped: 87 vs 88, missing a load-bearing Maeo 2021 entry).
+try {
+  const bib = readFileSync(new URL("../citations/registry.md", import.meta.url), "utf8");
+  for (const k of registryKeys) {
+    if (!bib.includes(k)) { console.error(`  ✗ citations/registry.md is stale — missing '${k}'. Run: npm run build-bib`); errors++; }
+  }
+} catch { console.error("  ✗ citations/registry.md missing. Run: npm run build-bib"); errors++; }
+
 for (const w of warn) console.warn(w);
 
 const entryWord = registryKeys.size === 1 ? "entry" : "entries";

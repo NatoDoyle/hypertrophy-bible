@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**87** verified references.
+**88** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -295,6 +295,14 @@ Lopez P & et al. (2021). Resistance Training Load Effects on Muscle Hypertrophy 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1249/MSS.0000000000002585](https://doi.org/10.1249/MSS.0000000000002585) · PMID: [33433148](https://pubmed.ncbi.nlm.nih.gov/33433148/)
+
+### maeo-2021-hamstring-length
+Maeo S et al. (2021). Greater Hamstrings Muscle Hypertrophy but Similar Damage Protection after Training at Long versus Short Muscle Lengths.
+
+*Medicine & Science in Sports & Exercise*, 53(4), 825-837.
+
+- Type: RCT · Population: untrained
+- DOI: [10.1249/MSS.0000000000002523](https://doi.org/10.1249/MSS.0000000000002523) · PMID: [33009197](https://pubmed.ncbi.nlm.nih.gov/33009197/)
 
 ### maeo-2023-triceps-overhead
 Maeo S & et al. (2023). Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.
