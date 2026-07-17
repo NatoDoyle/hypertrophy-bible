@@ -928,8 +928,9 @@ async function renderCoach() {
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
   app.innerHTML = `<h1>Coach</h1>
+    ${a.sessions_logged === 0 ? `<div class="card"><p>🌱 ${esc(a.status?.message || "Log your first session to start your streak.")}</p></div>` : ""}
     <div class="card center">
-      <div class="big">🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong</div>
+      <div class="big">${a.sessions_logged === 0 ? "Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
       <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
       <p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
       <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p></div>
