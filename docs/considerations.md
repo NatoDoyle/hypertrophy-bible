@@ -5,8 +5,7 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented.
 
 1. you said the plan engine scores exercises, but is it thorough scoring ?
-2. I see you've added 
-
+2. I see you've added a per-session quality cap but this should be the foundation, i want the plan to adjust based off the feedback the user inputs because some people react differently to different volumes and intensities. Some people might only need 6 sets, some might need 20. Some people train harder than others. I want the engine to use the knowledge base as a starting point and reference point but to learn and adapt based on the data it's fed.
 ---
 
 ## Responses (updated as items are actioned — newest first)

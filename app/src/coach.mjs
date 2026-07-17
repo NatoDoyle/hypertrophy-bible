@@ -98,6 +98,34 @@ export function nextSessionIndex(program, sessionCount) {
   return ((sessionCount % n) + n) % n;
 }
 
+// ---------------------------------------------------------------------------
+// The mesocycle: the KB's volume wave (volume-progression-and-deloads.md) made
+// real. Weeks 1-5 ramp set volume from ~70% toward the plan's generated target
+// (which is already MRV-trimmed, so the ramp PEAKS at the recoverable ceiling);
+// week 6 is a deload — roughly half volume, ~10% lighter, comfortably shy of
+// failure — then the next block starts automatically. Beginners are exempt:
+// they progress by load/reps and don't yet need volume waves (KB: periodization
+// -and-progression.md), and their UX stays maximally simple.
+// ---------------------------------------------------------------------------
+export const BLOCK_WEEKS = 6;
+const BLOCK_SET_SCALE = [0.7, 0.8, 0.9, 1.0, 1.0, 0.5]; // w1..w5 build->peak, w6 deload
+export function blockPhase(now, blockStart, experience) {
+  if (experience === "beginner" || !now || !blockStart) return null;
+  const days = Math.floor((+new Date(now) - +new Date(blockStart)) / 86400000);
+  if (!Number.isFinite(days) || days < 0) return null;
+  const week = (Math.floor(days / 7) % BLOCK_WEEKS) + 1; // 1..6, cycles forever
+  const phase = week === BLOCK_WEEKS ? "deload" : week >= 4 ? "peak" : "build";
+  return {
+    week, of: BLOCK_WEEKS, phase,
+    setScale: BLOCK_SET_SCALE[week - 1],
+    note: phase === "deload"
+      ? `Deload week — about half the sets, a little lighter, and stop 3–4 reps shy of failure. Recovery is where the growth you've built this block shows up.`
+      : phase === "peak"
+        ? `Week ${week} of ${BLOCK_WEEKS} — peak volume. Push your sets hard (1–2 in the tank); the deload is coming.`
+        : `Week ${week} of ${BLOCK_WEEKS} — building. Volume ramps up each week toward your peak.`,
+  };
+}
+
 // Immediate same-day readiness from an optional check-in (1-5 fields; stress
 // inverted). Gentle + honest: a low day eases the session, never blocks or guilts.
 export function dailyReadiness(checkin) {
@@ -117,6 +145,8 @@ export function dailyReadiness(checkin) {
 export function buildToday(user, sessions, readiness = null, customEx = [], now = null) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
+  // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
+  const block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
   const rotCount = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
@@ -145,22 +175,28 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now);
+    // Apply the mesocycle wave: sets scale with the block week (never below 1);
+    // on a deload the suggested load also eases ~10% so effort genuinely drops.
+    const sets = block ? Math.max(1, Math.round(ex.sets * block.setScale)) : ex.sets;
+    const suggested_kg = block?.phase === "deload" && sug.suggested_kg != null
+      ? Math.round(sug.suggested_kg * 0.9 * 4) / 4
+      : sug.suggested_kg;
     return {
       exercise: ex.exercise,
       name: name(ex.exercise),
-      sets: ex.sets,
+      sets,
       rep_range: ex.rep_range,
-      rir: ex.rir ?? "1-3",
+      rir: block?.phase === "deload" ? "3-4" : ex.rir ?? "1-3",
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
-      suggested_kg: sug.suggested_kg,
+      suggested_kg,
       suggestion_note: sug.note,
     };
   });
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null };
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block };
 }
 
 // The Today card state machine: one decision only.

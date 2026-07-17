@@ -475,7 +475,13 @@ async function renderToday() {
         <p class="muted">Here's exactly how a session goes — arrive, warm up, find a comfy weight, do your sets. A 2-minute read makes the whole thing easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Read: Your first session</button></div>`
     : "";
-  app.innerHTML = `<h1>Today</h1>${header}${firstTimer}${readinessCard}
+  // The mesocycle position (intermediate/advanced only): where this week sits in
+  // the build → peak → deload wave, in one glance.
+  const blockCard = s.block
+    ? `<div class="card"><b>${s.block.phase === "deload" ? "🌊" : s.block.phase === "peak" ? "⛰️" : "📈"} Week ${s.block.week} of ${s.block.of} — ${s.block.phase}</b>
+        <p class="muted">${esc(s.block.note)}</p></div>`
+    : "";
+  app.innerHTML = `<h1>Today</h1>${header}${firstTimer}${blockCard}${readinessCard}
     <div class="card"><div class="big">${esc(s.name)}</div>
       <p class="muted">${esc(s.program_name)} · day ${s.day_number} · ${s.exercises.length} exercises</p>
       <button class="btn" id="start">Start workout</button></div>
