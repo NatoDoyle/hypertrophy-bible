@@ -73,8 +73,13 @@ export function createApp(store, config = {}) {
         ...meta,
         block_start: trainingChanged || !u.plan_meta?.block_start ? new Date().toISOString() : u.plan_meta.block_start,
         // The regenerated program keeps its deterministic id, so old sessions would
-        // phase-shift its rotation — a fresh plan must open at day A. Rebase.
-        rotation_base: priorSessions.length,
+        // phase-shift its rotation — a fresh plan must open at day A. Rebase with
+        // the SAME predicate buildToday uses (own-program sessions only — counting
+        // merged foreign sessions froze Today on Day A), and only when the plan
+        // actually changed (a units toggle must not reset the cycle).
+        rotation_base: trainingChanged
+          ? priorSessions.filter((s) => !s.program_ref || s.program_ref === program.id).length
+          : (u.plan_meta?.rotation_base ?? 0),
       };
       out = program;
       return u;

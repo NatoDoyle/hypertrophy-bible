@@ -54,6 +54,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // Screen-reader announcement for deliberate events only (the old whole-app
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
+let pendingNotice = null; // a one-shot notice for the NEXT screen (survives re-render)
 // Inline failure notice: never a silent dead button.
 function alertBar(msg) {
   let el = $("#alertbar");
@@ -470,7 +471,7 @@ function renderResume() {
     ? ` from ${new Date(sess.startedAt).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}`
     : "";
   app.innerHTML = `<h1>Today</h1>
-    <div class="card info"><b>${done ? "✅ Workout finished — just needs saving" : `▶ Workout in progress${esc(when)}`}</b>
+    <div class="card info"><b>${done ? `✅ Workout finished${esc(when)} — just needs saving` : `▶ Workout in progress${esc(when)}`}</b>
       <p class="muted">${esc(sess.name)} — <b>${n} set${n === 1 ? "" : "s"}</b> logged. Nothing is lost.</p>
       <button class="btn" id="resume">${done ? "Save my workout" : "Resume workout"}</button>
       <button class="btn ghost" id="discard">${discardPending ? "Tap again to discard these sets" : "Discard this workout"}</button></div>`;
@@ -528,6 +529,7 @@ async function renderToday() {
   $("#start").onclick = () => startSession(s);
   if (s.readiness == null) $("#checkin").onclick = renderCheckin;
   wireLearnLinks();
+  if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
 }
 
 // Optional daily check-in survey — four 1-5 taps; low readiness eases today.
@@ -552,7 +554,7 @@ function renderCheckin() {
     app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
     $("#submitck").onclick = async () => {
       try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); say("Check-in saved."); }
-      catch { say("Offline — check-in skipped."); } // it only tunes TODAY; a stale queued one would lie tomorrow
+      catch { say("Offline — check-in skipped."); pendingNotice = "📴 Offline — today\u2019s check-in was skipped (it only tunes today\u2019s session)."; } // never queued: a stale one would lie tomorrow
       tab = "today"; render();
     };
     $("#skipck").onclick = () => { tab = "today"; render(); };
@@ -688,9 +690,9 @@ function renderPlayer(resting = 0) {
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
 
-  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); renderPlayer(); });
+  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); renderPlayer(); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -704,6 +706,7 @@ function renderPlayer(resting = 0) {
     finish();
   };
   $("#done").onclick = () => {
+    quitPending = false; // a logged set is an unambiguous "I'm continuing"
     sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
@@ -936,12 +939,11 @@ async function renderCoach() {
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
   app.innerHTML = `<h1>Coach</h1>
-    ${a.sessions_logged === 0 ? `<div class="card"><p>🌱 ${esc(a.status?.message || "Log your first session to start your streak.")}</p></div>` : ""}
     <div class="card center">
-      <div class="big">${a.sessions_logged === 0 ? "Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
+      <div class="big">${a.sessions_logged === 0 ? "🌱 Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
       <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
-      <p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
-      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p></div>
+      ${a.sessions_logged === 0 ? "" : `<p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
+      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}</div>
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
     <h2>Schedule your sessions</h2>
@@ -1012,6 +1014,7 @@ function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
   quitPending = false;
+  discardPending = false; // an armed Discard must not survive a trip to another tab
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
