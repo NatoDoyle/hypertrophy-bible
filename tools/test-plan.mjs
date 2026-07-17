@@ -67,6 +67,23 @@ const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map
 ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
 ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
 
+// --- difficulty is a HARD gate: a beginner is never prescribed an advanced
+//     exercise while an easier one trains the muscle; intermediates never get an
+//     advanced one under the same condition. (Pistol squats and Nordic curls were
+//     reaching day-one beginners via the soft penalty + small-pool rotation.) ---
+const diffOf = Object.fromEntries(exercises.map((e) => [e.id, e.difficulty ?? "intermediate"]));
+ok("beginner plans (any equipment) never contain an advanced exercise",
+  [["bodyweight"], ["dumbbell", "bodyweight"], ["barbell", "dumbbell", "machine", "cable", "bodyweight"]].every((eqp) =>
+    generatePlan({ user_id: "dg-" + eqp.join(""), training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: eqp }, kb)
+      .program.sessions.every((s) => s.exercises.every((e) => diffOf[e.exercise] !== "advanced"))));
+ok("beginner bodyweight hamstring work is now a beginner movement",
+  (() => {
+    const p2 = generatePlan({ user_id: "bw-ham", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] }, kb);
+    const ids = p2.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+    const ham = ids.filter((id) => (exercises.find((x) => x.id === id).primary_muscles ?? []).includes("hamstrings"));
+    return ham.length > 0 && ham.every((id) => diffOf[id] === "beginner");
+  })());
+
 // --- session quality ceiling: time is not a licence to fill a session with hard
 //     sets. Per-set effort collapses long before the clock runs out (user-reported
 //     ~12; the KB's per-muscle quality window points the same way), so sessions cap

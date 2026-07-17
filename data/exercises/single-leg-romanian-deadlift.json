@@ -1,0 +1,43 @@
+{
+  "id": "single-leg-romanian-deadlift",
+  "name": "Single-Leg Romanian Deadlift (Bodyweight)",
+  "aliases": ["single-leg RDL", "SL-RDL"],
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "spinal-erectors"
+  ],
+  "mechanic": "compound",
+  "force": "pull",
+  "equipment": "bodyweight",
+  "movement_pattern": "hinge",
+  "plane": [
+    "sagittal"
+  ],
+  "resistance_profile": "Hinging over one leg loads the hamstring under stretch at the bottom of the reach.",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": true,
+  "rom_notes": "Hinge until you feel a clear hamstring stretch; a soft knee, flat back.",
+  "difficulty": "beginner",
+  "cues": [
+    "Stand on one leg with a soft knee",
+    "Hinge at the hip, reaching your chest forward and free leg back",
+    "Stop at a clear hamstring stretch, then squeeze back up"
+  ],
+  "common_errors": [
+    "Rounding the back to reach lower",
+    "Twisting the hips open instead of keeping them square"
+  ],
+  "progressions": [
+    "Hold a dumbbell in one hand",
+    "Dumbbell Romanian deadlift"
+  ],
+  "regressions": [
+    "Keep the back-leg toes lightly on the floor for balance",
+    "Hold a wall or chair with one hand"
+  ],
+  "citations": ["schoenfeld-2017-volume-dose-response"]
+}
