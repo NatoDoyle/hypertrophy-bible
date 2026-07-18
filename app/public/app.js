@@ -396,7 +396,9 @@ function drawEdit(critique) {
       <button class="tapchip ${pendingRm === si + "-" + ei ? "danger" : ""}" data-act="rm">${pendingRm === si + "-" + ei ? "Remove?" : "✕"}</button></div>`).join("")}
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
-  app.innerHTML = `<h1>Edit &amp; review</h1>${crit}${sessions}
+  app.innerHTML = `<h1>Edit &amp; review</h1>
+    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan pauses the automatic accessory rotation between blocks. Rebuild from Settings any time to hand the wheel back.</p>
+    ${crit}${sessions}
     <button class="btn" id="savePlan">Save &amp; re-check</button>
     <button class="btn ghost" id="backPlan">Done</button>`;
   app.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
