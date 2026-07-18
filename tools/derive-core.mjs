@@ -202,12 +202,14 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
     if (weeks.length < minWeeks) continue;
     const recent = weeks.slice(-minWeeks).map((w) => weekMap[w]);
     const hi = Math.max(...recent), lo = Math.min(...recent);
-    // Flat = the whole recent window sits inside the noise band AND the latest
-    // week is STRICTLY below the window's best. If the newest week ties or sets
-    // the best, the lifter is still nudging up — slow progress is not a plateau.
-    // (The original `< hi + 0.01` was a tautology: the latest week is <= hi by
-    // definition, so steady +0.5/wk progress inside the band got flagged.)
-    const flat = hi > 0 && ((hi - lo) / hi) * 100 <= noisePct && recent[recent.length - 1] < hi - 0.01;
+    // Stalled = the recent window sits inside the noise band AND shows NO net
+    // progress across it (the latest week is not meaningfully above the earliest).
+    // This flags the textbook plateau (identical numbers every week: latest ==
+    // earliest) and shallow declines, while still exempting genuine slow progress
+    // (latest clearly above earliest). Two earlier versions each missed one end:
+    // `< hi + 0.01` was a tautology (flagged everyone); `< hi - 0.01` missed the
+    // dead-flat plateau (latest ties the max). Compare ends, not to the max.
+    const flat = hi > 0 && ((hi - lo) / hi) * 100 <= noisePct && recent[recent.length - 1] <= recent[0] + 0.01;
     if (flat) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
   }
   return out;
