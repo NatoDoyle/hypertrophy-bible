@@ -120,6 +120,7 @@ const STEPS = [
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Side delts", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Quads", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
+  { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
@@ -159,6 +160,7 @@ async function renderSettings() {
     priority_muscles: (STEPS.find((s) => s.key === "priority_muscles")?.multi || [])
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
+    specialization: p.specialization === true,
     units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
@@ -210,7 +212,8 @@ function renderOnboarding() {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
     const chosen = JSON.stringify(answers[step.key]);
-    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("");
+    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("")
+      + (step.hint ? `<p class="muted center">${esc(step.hint)}</p>` : "");
   }
   app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}
     <button class="btn ghost" id="onb-back">‹ Back</button>`;
@@ -242,11 +245,15 @@ function renderOnboarding() {
 function onbBack() {
   if (settingsMode && onbStep === 0) { settingsMode = false; tab = "me"; return render(); } // exit settings, change nothing
   if (onbStep === 0) { onbStarted = false; saveOnb(); return renderOnboarding(); }
-  onbStep--; saveOnb();
+  let prev = onbStep - 1;
+  while (prev > 0 && STEPS[prev].showIf && !STEPS[prev].showIf(answers)) prev--; // skip conditional steps backwards
+  onbStep = prev; saveOnb();
   renderOnboarding();
 }
 async function advance() {
-  if (onbStep < STEPS.length - 1) { onbStep++; saveOnb(); return renderOnboarding(); }
+  let next = onbStep + 1;
+  while (next < STEPS.length && STEPS[next].showIf && !STEPS[next].showIf(answers)) next++; // skip conditional steps
+  if (next < STEPS.length) { onbStep = next; saveOnb(); return renderOnboarding(); }
   await submitOnboarding();
 }
 async function submitOnboarding() {
@@ -257,6 +264,7 @@ async function submitOnboarding() {
     training_status: answers.training_status, primary_goal: answers.primary_goal,
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
     available_equipment: answers.available_equipment, priority_muscles: priority,
+    specialization: priority.length ? answers.specialization === true : false,
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
   localStorage.setItem("hb_units", profile.units); // remember display preference
@@ -502,7 +510,7 @@ async function renderToday() {
       <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
       <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
     ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
-  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b>${e.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
+  const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b>${e.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""}${e.superset_with_name ? ` · <b>🔗 superset with ${esc(e.superset_with_name)}</b>` : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   const readinessCard = s.readiness == null
     ? `<div class="card"><b>How are you feeling today?</b>
@@ -673,6 +681,7 @@ function renderPlayer(resting = 0) {
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
+    ${e.superset_with_name ? `<div class="cue">🔗 <b>Superset with ${esc(e.superset_with_name)}:</b> alternate sets between the two with only ~60s rest — they don't compete, so quality holds and you fit more into your time.</div>` : ""}
     <div class="setdots">${setDots}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}

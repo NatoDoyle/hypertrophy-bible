@@ -11,7 +11,19 @@ Everything below should be taken under consideration for implementation. Once it
 
 ## Responses (updated as items are actioned — newest first)
 
-### Iteration-2 elite scope — three features deferred for your sign-off
+### Iteration-2 elite scope — ✅ all three built (you gave the go-ahead)
+1. **Specialization blocks** — shipped. Pick priority muscles in Settings and choose
+   "All-in specialization block": your picks push to the recoverable ceiling while
+   everything else drops to an honest maintenance dose (labelled, never warned about).
+   Best run for a block or two, then switch back to balanced — the hint says so.
+2. **Supersets for time-boxed sessions** — shipped. When your session length is the
+   binding constraint, the plan may pair ONE extra isolation with a non-competing
+   partner ("🔗 superset with X — alternate sets, ~60s rest"). An accent, not the meal.
+3. **Accessory rotation each mesocycle** — shipped. Every 6 weeks the app rotates
+   your isolation work automatically (fresh stimulus) while compounds stay put so
+   progression baselines carry. Custom-edited plans are never touched.
+
+### (superseded) the original deferral note
 The audit proposed three genuine product features. I shipped the safe parts
 (plateau **detection** with a KB playbook; deload-aware progression anchoring;
 honest warning copy) and deferred the rest rather than decide unilaterally:

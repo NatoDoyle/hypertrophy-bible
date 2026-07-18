@@ -56,6 +56,19 @@ try {
   const stored3 = (await store.listSessions(uid)).find((s) => s.session_id === "rt-3")?.sets?.[0];
   ok("junk fields stripped; falsy deload omitted", stored3 && !("evil" in stored3) && !("deload" in stored3));
 
+  // A new mesocycle auto-rotates accessories through the real route.
+  await store.updateUser(uid, (u) => {
+    u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 43 * 86400000).toISOString(), block_index: 0 };
+    return u;
+  });
+  const before = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
+  const rolled = await app.request("/api/today", { headers: { "X-HB-User": uid } });
+  ok("today succeeds across a block boundary", rolled.status === 200);
+  const after = await store.getUser(uid);
+  ok("new mesocycle bumps block_index and keeps block_start", after.plan_meta.block_index === 1 && !!after.plan_meta.block_start);
+  const afterIds = after.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
+  ok("accessories rotated at the boundary", afterIds !== before);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

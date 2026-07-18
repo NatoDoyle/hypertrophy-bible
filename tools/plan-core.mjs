@@ -96,7 +96,7 @@ export function chooseSplit({ days_per_week, training_status }) {
 
 // rank a pool of exercises for a muscle: lengthened-bias + difficulty-fit first,
 // deterministic tie-break by seed. Returns a new sorted array (best first).
-function rankPool(pool, { experience, seed }) {
+function rankPool(pool, { experience, seed, blockJitter = 0 }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
   return [...pool]
@@ -105,7 +105,7 @@ function rankPool(pool, { experience, seed }) {
       if (e.lengthened_bias) score -= 2;                 // KB: bias toward lengthened loading
       const d = diffRank[e.difficulty] ?? 1;
       if (d > userLvl) score += 3 * (d - userLvl);       // too advanced → penalize
-      score += ((seed ^ hashStr(e.id)) % 100) / 1000;    // deterministic jitter for ties
+      score += (((seed ^ hashStr(e.id)) + blockJitter * 2654435761) % 100) / 1000; // deterministic jitter; blockJitter rotates ties each mesocycle
       return { e, score };
     })
     .sort((a, b) => a.score - b.score)
@@ -136,6 +136,8 @@ export function generatePlan(profile, kb, opts = {}) {
   const injuries = profile.injuries ?? [];
   const equip = new Set(profile.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
   const seed = seedFromProfile(profile);
+  const specialization = !!profile.specialization; // all-in block: priorities to the ceiling, the rest to maintenance
+  const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
@@ -153,6 +155,23 @@ export function generatePlan(profile, kb, opts = {}) {
     const t = targetWeeklySets(m.landmarks, { experience, isPriority: priority.has(m.id) });
     targets[m.id] = t.target;
     volumeRationale[m.id] = { target_sets: t.target, is_priority: priority.has(m.id), landmark: t.landmark, reasons: t.reasons };
+    // SPECIALIZATION BLOCK (KB: weak-point-prioritization): the user goes all-in —
+    // priority muscles push to the recoverable ceiling while everything else drops
+    // to a maintenance dose (~half MEV keeps muscle; detraining-and-maintenance).
+    // The freed recovery budget is what pays for the specialization.
+    if (specialization && priority.size && m.landmarks) {
+      if (priority.has(m.id)) {
+        targets[m.id] = m.landmarks.mrv.max; // the MRV trim keeps the projection legal
+        volumeRationale[m.id].target_sets = targets[m.id];
+        volumeRationale[m.id].reasons = [`specialization block → push to the ceiling (${targets[m.id]})`];
+      } else {
+        const maint = Math.max(2, Math.ceil(m.landmarks.mev.min / 2));
+        targets[m.id] = maint;
+        volumeRationale[m.id].target_sets = maint;
+        volumeRationale[m.id].maintenance = true; // intentionally below MEV — holds muscle, frees recovery
+        volumeRationale[m.id].reasons = [`maintenance during specialization (~${maint} sets holds what you've built)`];
+      }
+    }
   }
 
   // 3) how many sessions each muscle appears in (its frequency)
@@ -176,7 +195,9 @@ export function generatePlan(profile, kb, opts = {}) {
       return pool;
     };
     compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
-    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
+    // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
+    // compounds keep their ranking so double-progression baselines survive blocks.
+    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, blockJitter: blockIndex });
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
@@ -293,6 +314,39 @@ export function generatePlan(profile, kb, opts = {}) {
         add(ex, clamp(round(residual), 1, EX_SET_CAP), m, ex.lengthened_bias ? ["fills residual volume", "lengthened-biased"] : ["fills residual volume for " + m]);
       }
     }
+    // 4c) SUPERSET rescue for time-boxed sessions (KB: advanced-techniques —
+    // "accents, not the meal"): if the budget is spent AND a muscle this session
+    // trains is still short of target with an isolation available, pair ONE bonus
+    // isolation (2 sets) with an existing NON-COMPETING isolation. Alternating
+    // non-competing isolations costs roughly half the rest, so two paired sets
+    // add ~2 minutes, not ~6 — honest time math for the lifter whose session
+    // length is the binding constraint.
+    if (setsUsed >= setBudget) {
+      const isoItems = items.filter((it) => exById.get(it.exercise)?.mechanic === "isolation" && !it.superset_with);
+      outer: for (const m of order) {
+        if ((credited[m] ?? 0) >= perTarget(m) || !isoPool[m].length) continue;
+        for (let t = 0; t < isoPool[m].length; t++) {
+          const cand = isoPool[m][(rot[m] + t) % isoPool[m].length];
+          if (placed.has(cand.id)) continue;
+          const candMuscles = new Set([...(cand.primary_muscles ?? []), ...(cand.secondary_muscles ?? [])]);
+          const partner = isoItems.find((it) => {
+            const p = exById.get(it.exercise);
+            return ![...(p.primary_muscles ?? []), ...(p.secondary_muscles ?? [])].some((mm) => candMuscles.has(mm));
+          });
+          if (!partner) continue;
+          rot[m] += t + 1;
+          const sN = 2;
+          placed.add(cand.id); // NOTE: deliberately not counted in setsUsed — the pairing pays the time
+          const sch = priority.has(m) ? scheme.priorityIso : scheme.isolation;
+          items.push({ exercise: cand.id, sets: sN, rep_range: sch[0], rir: sch[1], superset_with: partner.exercise });
+          partner.superset_with = cand.id;
+          for (const mm of cand.primary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + sN;
+          for (const mm of cand.secondary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + sN * 0.5;
+          exerciseChoices.push({ exercise: cand.id, for_muscle: m, session: spec.name, sets: sN, rep_range: sch[0], rir: sch[1], why: ["superset — fits extra volume into your session length", "paired with " + partner.exercise], difficulty: cand.difficulty, citations: cand.citations ?? [] });
+          break outer; // at most ONE rescue pair per session — an accent, not the meal
+        }
+      }
+    }
     for (const c of exerciseChoices) if (c.session === spec.name) weekServed.add(c.for_muscle);
     // Emit compound-before-isolation (stable within each group): the 4a0 priority
     // pass reserves budget first, which is right — but a session should still READ
@@ -354,6 +408,11 @@ export function generatePlan(profile, kb, opts = {}) {
       .map((c) => ({ ...c, sets: kept.get(`${c.session}|${c.exercise}`) }));
     exerciseChoices.length = 0;
     exerciseChoices.push(...reconciled);
+    // the trim can remove one half of a superset pair — never leave a dangling link
+    for (const sess of outSessions) {
+      const ids = new Set(sess.exercises.map((e) => e.exercise));
+      for (const e of sess.exercises) if (e.superset_with && !ids.has(e.superset_with)) delete e.superset_with;
+    }
   }
 
   // 6) closed-loop self-check on the FINAL (trimmed) plan → rationale + warnings.
@@ -378,6 +437,7 @@ export function generatePlan(profile, kb, opts = {}) {
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
+    else if (r.maintenance) { r.projected_status = "maintenance"; } // intentionally low — holds muscle while the specialization runs
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
     else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
   }
