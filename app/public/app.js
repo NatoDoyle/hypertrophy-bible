@@ -1,5 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress } from "/session-core.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -612,7 +613,7 @@ let quitPending = false;    // two-tap guard on ending a workout early
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
   sess = {
-    name: templateSession.name, ex: templateSession.exercises, i: 0, set: 0,
+    name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
     deload: templateSession.block?.phase === "deload", // sets logged today are planned-easy
     logged: [], weights: {}, reps: {}, rir: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
@@ -647,6 +648,13 @@ function startWeightDefault(e) {
 }
 function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
 
+// ---------- Superset helpers ----------
+// Pure session logic (superset ordering + banked-set progress) lives in
+// session-core.mjs so it can be unit-tested in Node. These thin wrappers bind the
+// live `sess` to the pure functions.
+const loggedSetCount = (exId) => loggedWorkSets(sess.logged, exId);
+const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, from);
+
 // The rest countdown's interval id lives at module level so ANY navigation can
 // cancel it — otherwise it fires up to two minutes later and repaints the player
 // over whatever screen the user moved to.
@@ -662,6 +670,16 @@ function renderPlayer(resting = 0) {
   normalizeSessUnits(); // kg/lb may have been toggled since the weights were stored
   const e = sess.ex[sess.i];
   const total = sess.ex.length;
+  // Superset station: while BOTH paired moves still owe rounds, run them together
+  // as one interleaved card. Once the paired rounds are spent (they can have
+  // different set counts), fall through to the normal single-exercise path so any
+  // remainder of the longer move is finished the ordinary way.
+  const pIdx = e.superset_with ? sess.ex.findIndex((x) => x.exercise === e.superset_with) : -1;
+  if (pIdx >= 0) {
+    const L = Math.min(sess.i, pIdx), P = Math.max(sess.i, pIdx);
+    if (!stationProgress(sess.logged, sess.ex, L, P).done)
+      return renderSupersetStation(L, P, resting);
+  }
   // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
   if (sess.weights[sess.i] == null) sess.weights[sess.i] = dispWeight(startWeightDefault(e));
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
@@ -684,7 +702,7 @@ function renderPlayer(resting = 0) {
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
-    ${e.superset_with_name ? `<div class="cue">🔗 <b>Superset with ${esc(e.superset_with_name)}:</b> alternate sets between the two with only ~60s rest — they don't compete, so quality holds and you fit more into your time.</div>` : ""}
+    ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
     <div class="setdots">${setDots}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
@@ -727,13 +745,105 @@ function renderPlayer(resting = 0) {
       // STAYS on the last exercise and `complete` marks the workout done. (The old
       // code saved i === ex.length; a phone dying during the final save then made
       // Resume crash forever on sess.ex[sess.i].)
-      if (sess.i + 1 >= total) sess.complete = true;
-      else sess.i++;
+      // Advance to the next exercise still owing sets — this skips anything already
+      // fully logged (e.g. a superset partner completed during its station), so the
+      // player can never land back on a done move and log a phantom extra set.
+      const nx = nextExerciseIndex(sess.i);
+      if (nx < 0) sess.complete = true; else sess.i = nx;
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
     if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
+  };
+}
+
+// A superset "station": the two paired moves are done together, one set of each
+// per round with a short rest, exactly as the plan's cue promises. A ROUND logs
+// BOTH members atomically, so progress is derived from banked sets and a crash /
+// resume always lands on a clean round boundary — there is no half-round state to
+// corrupt. L/P are the pair's indices in sess.ex (L < P). Only entered while both
+// members still owe paired rounds; any set-count remainder of the longer move is
+// finished afterwards by the normal single-exercise path.
+function renderSupersetStation(L, P, resting = 0) {
+  stopRestTimer();
+  if (!sess || !sess.ex[L] || !sess.ex[P]) { clearSess(); return render(); }
+  normalizeSessUnits();
+  const A = sess.ex[L], B = sess.ex[P];
+  const { paired, round, done } = stationProgress(sess.logged, sess.ex, L, P); // round is 0-indexed
+  if (done) return renderPlayer(0); // defensive: paired work done → hand back
+
+  if (resting > 0) {
+    quitPending = false;
+    app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
+      <p class="muted">Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}</p>
+      <button class="btn" id="skip">I'm ready</button></div>`;
+    let left = resting;
+    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next round."); renderSupersetStation(L, P, 0); } }, 1000);
+    $("#skip").onclick = () => { stopRestTimer(); renderSupersetStation(L, P, 0); };
+    return;
+  }
+
+  const memberBlock = (idx) => {
+    const m = sess.ex[idx];
+    if (sess.weights[idx] == null) sess.weights[idx] = dispWeight(startWeightDefault(m));
+    if (sess.reps[idx] == null) sess.reps[idx] = topReps(m.rep_range);
+    if (sess.rir[idx] == null) sess.rir[idx] = 2;
+    const w = sess.weights[idx], reps = sess.reps[idx], rir = sess.rir[idx];
+    return `<div class="card">
+      <h2 style="margin-top:0">${esc(m.name)}</h2>
+      <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
+      ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
+      ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
+      <div class="stepper"><label>Weight</label><button data-w="-${wInc()}" data-i="${idx}" aria-label="less weight">–</button><div class="val">${w} ${unitLabel()}</div><button data-w="${wInc()}" data-i="${idx}" aria-label="more weight">+</button></div>
+      <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
+      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}">–</button><div class="val">${rir}</div><button data-rir="1" data-i="${idx}">+</button></div>` : ""}
+      <button class="btn ghost" data-how="${idx}">How do I do this?</button>
+    </div>`;
+  };
+
+  app.innerHTML = `<div class="exhead"><h1>🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span></div>
+    <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
+    ${memberBlock(L)}${memberBlock(P)}
+    <button class="btn" id="doner">Done — round ${round + 1} of ${paired}</button>
+    <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
+
+  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.weights[i] = Math.max(0, Math.round((sess.weights[i] + +b.dataset.w) * 4) / 4); saveSess(); renderSupersetStation(L, P, 0); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); renderSupersetStation(L, P, 0); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); renderSupersetStation(L, P, 0); });
+  app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
+    const m = sess.ex[+b.dataset.how];
+    let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
+    renderExerciseSheet(m, d); // its "Back" calls renderPlayer(0), which re-routes here
+  });
+  $("#doner").onclick = () => {
+    quitPending = false; // a logged round is an unambiguous "I'm continuing"
+    for (const idx of [L, P]) { // both members of the round, banked together
+      const m = sess.ex[idx];
+      sess.logged.push({ exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
+    }
+    say(`Round logged — ${sess.logged.length} sets so far.`);
+    if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
+    // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
+    // (scan from -1). This one rule covers every follow-on: a set-count remainder of
+    // the longer paired move (it's the earliest unfinished, so it's picked and the
+    // normal path finishes it), and — for a session started by an OLD build, before
+    // the adjacency reorder shipped — an exercise sitting BETWEEN a non-adjacent
+    // pair (also earliest-unfinished, so never jumped past). "Nothing is lost" holds
+    // across the deploy. -1 = the whole session is done.
+    const nx = nextExerciseIndex(-1);
+    if (nx < 0) { sess.complete = true; sess.i = Math.max(L, P); sess.set = 0; saveSess(); return finish(); }
+    sess.i = nx; sess.set = loggedSetCount(sess.ex[nx].exercise);
+    saveSess();
+    // A rest only when the next move is this pair's own remainder (it follows the
+    // last round); moving on to a fresh exercise starts clean, like any handoff.
+    renderPlayer(nx === L || nx === P ? 60 : 0);
+  };
+  $("#quitr").onclick = () => {
+    if (!quitPending) { quitPending = true; return renderSupersetStation(L, P, 0); }
+    quitPending = false;
+    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
+    finish();
   };
 }
 // The "how do I do this?" sheet: full cues + mistakes from the KB, and a form-

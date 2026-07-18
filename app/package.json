@@ -8,7 +8,7 @@
     "build-data": "node scripts/gen-kb-data.mjs && node scripts/gen-learn-data.mjs",
     "dev": "npm run build-data && node server.node.mjs",
     "start": "node server.node.mjs",
-    "test": "node scripts/test-coach.mjs && node scripts/test-auth.mjs && node scripts/test-adherence.mjs && node scripts/test-routes.mjs",
+    "test": "node scripts/test-coach.mjs && node scripts/test-auth.mjs && node scripts/test-adherence.mjs && node scripts/test-routes.mjs && node scripts/test-session.mjs",
     "db:init:local": "wrangler d1 execute hypertrophy-bible --local --file=./schema.sql",
     "db:init:remote": "wrangler d1 execute hypertrophy-bible --remote --file=./schema.sql",
     "cf:dev": "npm run build-data && wrangler dev",
