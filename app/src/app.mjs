@@ -241,6 +241,11 @@ export function createApp(store, config = {}) {
         reps: Math.max(0, Math.round(Number(s.reps) || 0)),
         ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
         ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
+        // deload MUST round-trip: progression anchoring and stall detection both
+        // filter on it — the whitelist silently dropping it made the entire
+        // deload-aware pipeline inert in production while unit tests (which
+        // bypass this route) stayed green.
+        ...(s.deload ? { deload: true } : {}),
         completed_at: s.completed_at ?? new Date().toISOString(),
       })),
     };

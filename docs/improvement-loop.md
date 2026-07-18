@@ -2,7 +2,7 @@
 
 A closed loop that keeps driving the project toward three goals, and keeps itself honest.
 
-## The three goals (the only scoring function)
+## The four goals (the only scoring function)
 
 1. **The world's best source of knowledge for hypertrophy.** Every claim web-verified, graded,
    and honest about uncertainty.
@@ -10,6 +10,10 @@ A closed loop that keeps driving the project toward three goals, and keeps itsel
    of a gym" to "I am trying to win Mr. Olympia." Both ends, not just one.
 3. **Someone with no brain whatsoever can use it.** Zero cognitive load is a hard requirement,
    not a nice-to-have.
+4. **Use every possible form of manipulation to get them to use the app.** Adherence and consistency 
+   are the most imoportant things above all else, increase them by any means possible. it's not 
+   unethical because they're not being charged and their life only improves the more they 
+   use the app.
 
 A change is only worth making if it moves one of these. "Does this make someone more likely to
 still be training in 3 years?" remains the tiebreak (`docs/app-design-spec.md`).
