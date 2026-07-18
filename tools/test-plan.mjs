@@ -134,6 +134,24 @@ ok("rationale.exercise_choices matches the trimmed program (no ghosts, no stale 
     return true;
   }));
 
+// --- coverage floor + specialization maintenance (iteration 3) ---
+// forearms/neck are legitimately grip-/indirect-trained and hard to always give
+// DIRECT work (same reason check-data-refs allowlists them) — assert the coverage
+// floor on every OTHER in-split muscle.
+const COVERAGE_EXEMPT = new Set(["forearms", "neck"]);
+ok("no major directly-trained muscle gets zero weekly sets across the int/adv grid",
+  ["intermediate", "advanced"].every((lvl) => [2, 3, 4, 5].every((days) => [45, 60, 90].every((min) =>
+    Object.entries(generatePlan({ user_id: `cf-${lvl}-${days}-${min}`, training_status: lvl, primary_goal: "hypertrophy", days_per_week: days, session_length_min: min }, kb).rationale.volume_by_muscle)
+      .every(([m, r]) => r.frequency === 0 || r.projected_sets > 0 || COVERAGE_EXEMPT.has(m))))));
+{
+  const sp = generatePlan({ user_id: "sp-mv", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75, priority_muscles: ["side-delts"], specialization: true }, kb);
+  ok("specialization maintenance dose uses the KB's MV landmark, not half-MEV",
+    sp.rationale.volume_by_muscle["chest"].target_sets === muscleById.get("chest").landmarks.mv.min);
+  ok("specialization emits no growth-warning noise for maintenance muscles",
+    !sp.rationale.warnings.some((w) => (w.code === "below-mev" || w.code === "below-mev-indirect" || w.code === "under-target") && sp.rationale.volume_by_muscle[w.muscle]?.maintenance));
+  ok("specialization never programs over MRV", !sp.rationale.warnings.some((w) => w.code === "over-mrv"));
+}
+
 // --- elite features: specialization, supersets, block rotation ---
 const specP = generatePlan({ user_id: "sp", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 75, priority_muscles: ["side-delts", "chest"], specialization: true }, kb);
 ok("specialization: priority targets push to the MRV ceiling", specP.rationale.volume_by_muscle["side-delts"].target_sets === muscleById.get("side-delts").landmarks.mrv.max);

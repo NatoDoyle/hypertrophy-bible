@@ -165,11 +165,14 @@ export function generatePlan(profile, kb, opts = {}) {
         volumeRationale[m.id].target_sets = targets[m.id];
         volumeRationale[m.id].reasons = [`specialization block → push to the ceiling (${targets[m.id]})`];
       } else {
-        const maint = Math.max(2, Math.ceil(m.landmarks.mev.min / 2));
+        // Maintenance = the KB's own MV (maintenance volume) landmark, NOT a
+        // guessed half-MEV: mv.min actually holds muscle, ceil(mev/2) was below MV
+        // for ~15 of 16 muscles and would slowly detrain what it claims to protect.
+        const maint = m.landmarks.mv?.min ?? Math.max(2, Math.ceil(m.landmarks.mev.min / 2));
         targets[m.id] = maint;
         volumeRationale[m.id].target_sets = maint;
-        volumeRationale[m.id].maintenance = true; // intentionally below MEV — holds muscle, frees recovery
-        volumeRationale[m.id].reasons = [`maintenance during specialization (~${maint} sets holds what you've built)`];
+        volumeRationale[m.id].maintenance = true; // the muscle's maintenance dose — holds it, frees recovery
+        volumeRationale[m.id].reasons = [`maintenance during specialization (~${maint} sets, the KB's maintenance volume — holds what you've built)`];
       }
     }
   }
@@ -239,17 +242,35 @@ export function generatePlan(profile, kb, opts = {}) {
     // muscles this session trains, priority ones first so they win contested budget
     const order = [...PLACE_ORDER].filter((m) => mset.includes(m)).sort((a, b) => (priority.has(b) ? 1 : 0) - (priority.has(a) ? 1 : 0));
 
-    // 4a0) PRIORITY muscles are served before anything else. Under a scarce
-    // quality budget the general compound pass would otherwise consume every set
-    // and an isolation-fed priority muscle (side-delts, biceps) would get scraps —
-    // but "I especially want to grow X" is the user's most explicit instruction.
+    // 4a0) PRIORITY muscles get FIRST dibs on budget — but not ALL of it. A
+    // side-delts+biceps priority at a short session length was producing three
+    // identical curl+raise days with no squat, hinge, or press. Each priority gets
+    // ONE exercise of ≤3 sets here (the 4b residual pass tops it up later), and the
+    // whole pass stops at half the budget so pattern coverage below can still run.
+    const priorityBudget = Math.max(compoundSets + 1, Math.ceil(setBudget / 2));
     for (const m of order) {
-      if (!priority.has(m) || !room() || (credited[m] ?? 0) >= perTarget(m)) continue;
+      if (!priority.has(m) || setsUsed >= priorityBudget || (credited[m] ?? 0) >= perTarget(m)) continue;
       const pool = compoundPool[m].length ? compoundPool[m] : isoPool[m];
       if (!pool.length) continue;
       const ex = pool[rot[m]++ % pool.length];
-      add(ex, Math.min(perTarget(m), EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+      add(ex, Math.min(perTarget(m), 3, EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
     }
+
+    // 4a¼) WEEKLY COVERAGE FLOOR: before this session doubles up on big muscles,
+    // every muscle it trains that NO session has served yet this week gets one
+    // exercise (~2 sets). One 16-set session can't serve 11 muscles, but the week
+    // must — abs/calves were getting zero all week on 2-day splits (last in
+    // PLACE_ORDER), and specialization-maintenance muscles were dropping to zero
+    // rather than their maintenance floor. Runs BEFORE pattern-coverage doubling.
+    for (const m of order) {
+      if (weekServed.has(m) || (credited[m] ?? 0) >= perTarget(m) || !room()) continue;
+      const pool = compoundPool[m].length ? compoundPool[m] : isoPool[m];
+      if (!pool.length) continue;
+      let ex = null;
+      for (let t = 0; t < pool.length; t++) { const cand = pool[(rot[m] + t) % pool.length]; if (!placed.has(cand.id)) { ex = cand; rot[m] += t + 1; break; } }
+      if (ex) add(ex, Math.min(2, perTarget(m), EX_SET_CAP), m, ["weekly coverage — every muscle gets served before any doubles up", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+    }
+
     // 4a) one compound per compound-driven muscle — but under a scarce quality
     // budget, cover every fundamental MOVEMENT PATTERN before doubling one. The
     // 12-set beginner budget was filling with squat+push+row+chin-up (two pulls)
@@ -321,10 +342,11 @@ export function generatePlan(profile, kb, opts = {}) {
     // non-competing isolations costs roughly half the rest, so two paired sets
     // add ~2 minutes, not ~6 — honest time math for the lifter whose session
     // length is the binding constraint.
-    if (setsUsed >= setBudget) {
+    if (setsUsed >= setBudget && items.length < EX_BUDGET) { // the rescue is a bonus exercise — still honour the per-session exercise cap
       const isoItems = items.filter((it) => exById.get(it.exercise)?.mechanic === "isolation" && !it.superset_with);
       outer: for (const m of order) {
         if ((credited[m] ?? 0) >= perTarget(m) || !isoPool[m].length) continue;
+        if (volumeRationale[m]?.maintenance) continue; // the one rescue slot serves growth, not a muscle we're only holding
         for (let t = 0; t < isoPool[m].length; t++) {
           const cand = isoPool[m][(rot[m] + t) % isoPool[m].length];
           if (placed.has(cand.id)) continue;
@@ -426,6 +448,10 @@ export function generatePlan(profile, kb, opts = {}) {
     r.frequency = f;
     r.projected_status = f ? (vsLm[m]?.status ?? "no-data") : "not-in-split";
     if (r.target_sets <= 0) continue; // NOTE: the field is target_sets — `r.target` was undefined here, which silently killed the under-target warning below for every profile
+    // A maintenance muscle (specialization block) is INTENTIONALLY low — its status
+    // is "maintenance" and it earns no growth warnings; warning that a muscle we're
+    // deliberately only holding is "below MEV" would contradict the block's whole point.
+    if (r.maintenance) { r.projected_status = proj > 0 ? "maintenance" : "not-reached"; continue; }
     if (f === 0) {
       // Muscle not directly trained this split — it may still get secondary credit;
       // warn when even that indirect volume leaves it under MEV (so it won't grow).
@@ -437,7 +463,6 @@ export function generatePlan(profile, kb, opts = {}) {
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
-    else if (r.maintenance) { r.projected_status = "maintenance"; } // intentionally low — holds muscle while the specialization runs
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
     else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
   }

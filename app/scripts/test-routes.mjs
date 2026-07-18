@@ -69,6 +69,24 @@ try {
   const afterIds = after.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
   ok("accessories rotated at the boundary", afterIds !== before);
 
+  // A cosmetic settings save mid-block must NOT reset the mesocycle or re-rotate.
+  await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 44 * 86400000).toISOString(), block_index: 1 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": uid } }); // settle at block 1
+  const preMeta = (await store.getUser(uid)).plan_meta;
+  const preIds = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
+  const cosmetic = await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+  ok("cosmetic settings save succeeds", cosmetic.status === 200);
+  const postMeta = (await store.getUser(uid)).plan_meta;
+  ok("cosmetic edit preserves block_start and block_index", postMeta.block_start === preMeta.block_start && postMeta.block_index === preMeta.block_index);
+  const postIds = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
+  ok("cosmetic edit does not re-rotate accessories", postIds === preIds && !postMeta.rotated_at);
+
+  // A no-op plan-editor save must NOT flip the plan to custom (which freezes rotation).
+  const gen = await store.getUser(uid);
+  const noop = await json("POST", "/api/plan/save", { user_id: uid, program: { name: gen.program.name, sessions: gen.program.sessions } });
+  ok("no-op plan save succeeds", noop.status === 200);
+  ok("an unchanged plan save does not flip custom:true", !(await store.getUser(uid)).program.custom);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
