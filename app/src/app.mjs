@@ -67,7 +67,7 @@ export function createApp(store, config = {}) {
       u.program = program; u.plan_rationale = rationale;
       // A cosmetic edit (units, sex) must NOT restart the mesocycle — a week-5
       // lifter switching kg->lb shouldn't be sent back to 70% week-1 volume.
-      const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries"];
+      const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization"];
       const trainingChanged = TRAINING_FIELDS.some((k) => JSON.stringify(before?.[k]) !== JSON.stringify(u.profile[k]));
       u.plan_meta = {
         ...meta,
@@ -111,10 +111,15 @@ export function createApp(store, config = {}) {
         name: String(s.name || "Day"),
         exercises: (s.exercises || [])
           .filter((e) => exerciseById.has(e.exercise) || customIds.has(e.exercise))
-          .map((e) => ({ exercise: e.exercise, sets: Math.max(1, Math.min(10, Math.round(Number(e.sets) || 3))), rep_range: String(e.rep_range || "8-12"), ...(e.rir ? { rir: String(e.rir) } : {}) })),
+          .map((e) => ({ exercise: e.exercise, sets: Math.max(1, Math.min(10, Math.round(Number(e.sets) || 3))), rep_range: String(e.rep_range || "8-12"), ...(e.rir ? { rir: String(e.rir) } : {}), ...(e.superset_with ? { superset_with: String(e.superset_with) } : {}) })),
       }))
       .filter((s) => s.exercises.length);
     if (!sessions.length) return c.json({ error: "empty-program" }, 400);
+    // an edit can remove one half of a superset pair — never keep a dangling link
+    for (const sess of sessions) {
+      const ids = new Set(sess.exercises.map((e) => e.exercise));
+      for (const e of sess.exercises) if (e.superset_with && !ids.has(e.superset_with)) delete e.superset_with;
+    }
     let program = null;
     const updated = await store.updateUser(b.user_id, (u) => {
       program = { ...u.program, name: String(p.name || u.program.name), split: u.program.split || "other", days_per_week: sessions.length, sessions, custom: true };

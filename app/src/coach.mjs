@@ -160,6 +160,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   let coach_note = null;
   if (readiness?.level === "low" && templateExercises.length > 3) {
     templateExercises = templateExercises.slice(0, -1); // drop the last accessory
+    // the dropped accessory may have been half a superset pair — unlink survivors
+    const ids = new Set(templateExercises.map((e) => e.exercise));
+    templateExercises = templateExercises.map((e) => e.superset_with && !ids.has(e.superset_with) ? { ...e, superset_with: undefined } : e);
     coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
   } else if (readiness?.level === "high") {
     coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
@@ -167,6 +170,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // The common case must never be silent: a user who checked in and saw nothing
     // change concludes it didn't work. Acknowledge, then confirm the plan stands.
     coach_note = "Checked in ✓ — you're in your normal range, so today's session stands as planned.";
+  }
+  // A fresh mesocycle rotated the accessories — say so ONCE (until a session is
+  // logged under the new block), so the changed exercise list never feels random.
+  const rotatedAt = user.plan_meta?.rotated_at;
+  if (rotatedAt && !sessions.some((s) => s.date && s.date > rotatedAt)) {
+    const msg = "New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.";
+    coach_note = coach_note ? `${msg} ${coach_note}` : msg;
   }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
   // Coach's "welcome back — I eased your weights" claim matches what's on the card.

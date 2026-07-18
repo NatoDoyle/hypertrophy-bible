@@ -7,6 +7,7 @@ Everything below should be taken under consideration for implementation. Once it
 1. you said the plan engine scores exercises, but is it thorough scoring ?
 2. I see you've added a per-session quality cap but this should be the foundation, i want the plan to adjust based off the feedback the user inputs because some people react differently to different volumes and intensities. Some people might only need 6 sets, some might need 20. Some people train harder than others. I want the engine to use the knowledge base as a starting point and reference point but to learn and adapt based on the data it's fed.
 3. Expand the exercises library. I want every exercise. I want all the information for each exercise, whether it's barbell, kettlebell, dumbbell, bodyweight, cable, resistence bands, etc. I want to know whether it biases the lengthened stretched posistion or the shortened flexed posistion. i want to know how to make it easier, i want to know how to make it harder. I want a step-by-step guide on how it should be performed. I want to know what muscles it primarly hits, what muscles it secondarily hits. I want to know in what situations it's a good pick and what situations it's a bad pick. I want to know it's cns cost. 
+4. What if someone mid workout decides to do a different exercise, maybe the machine they wanted was occupied. there's no option to change the order of the exercies during a session or temporarily swap an exercise for the workout.
 ---
 
 ## Responses (updated as items are actioned — newest first)
