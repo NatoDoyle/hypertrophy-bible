@@ -62,6 +62,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .status{font-size:.8rem;padding:2px 8px;border-radius:999px}
 .s-below{background:#3a2f1a;color:var(--warn)} .s-in{background:#12251a;color:var(--accent)}
 .s-near{background:#2a1f12;color:var(--warn)} .s-over{background:#301a17;color:var(--bad)} .s-none{background:var(--card2);color:var(--dim)}
+.s-maint{background:#17212e;color:var(--accent2)}
 .win{background:var(--card2);border-radius:12px;padding:14px;margin:10px 0;font-size:1.05rem}
 
 /* Bottom nav */

@@ -311,7 +311,8 @@ const STATUS_LEGEND = `<p class="muted legend"><b>What the tags mean:</b>
   <span class="status s-in">on target</span> the sweet spot ·
   <span class="status s-near">near max</span> plenty ·
   <span class="status s-over">over max</span> more than you can recover from.<br>
-  <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.</p>`;
+  <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.<br>
+  <span class="status s-maint">holding steady</span> during a specialization block, this muscle is intentionally kept at a maintenance dose while your priority muscles get the extra volume.</p>`;
 async function renderPlanExplain(firstTime) {
   nav.hidden = !!firstTime;
   app.innerHTML = `<p class="muted">Loading your plan…</p>`;
@@ -806,8 +807,8 @@ function renderRecap(recap) {
 }
 
 // ---------- Progress ----------
-const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over" }[s] || "s-none");
-const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "no-landmark": "—" }[s] || s);
+const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint" }[s] || "s-none");
+const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "no-landmark": "—" }[s] || s);
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
