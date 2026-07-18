@@ -17,6 +17,10 @@
     "training_status": { "enum": ["beginner", "intermediate", "advanced"] },
     "experience_years": { "type": "number", "minimum": 0, "maximum": 80 },
     "primary_goal": { "enum": ["hypertrophy", "strength", "recomposition", "fat-loss", "general-fitness"] },
+    "specialization": {
+      "type": "boolean",
+      "description": "All-in specialization block: priority muscles push to the recoverable ceiling while everything else drops to a maintenance dose. Only meaningful when priority_muscles is non-empty."
+    },
     "priority_muscles": {
       "type": "array",
       "items": { "type": "string", "description": "muscle id to bias volume toward" }

@@ -3,8 +3,8 @@
 import { exercises, muscles, contraindications } from "./kb-data.mjs";
 import { generatePlan, critiquePlan } from "../../tools/plan-core.mjs";
 
-export function generateUserPlan(profile) {
-  return generatePlan(profile, { exercises, muscles, contraindications });
+export function generateUserPlan(profile, opts = {}) {
+  return generatePlan(profile, { exercises, muscles, contraindications }, opts);
 }
 
 // KB critique of any program (generated or user-built), including the user's

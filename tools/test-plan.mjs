@@ -98,10 +98,16 @@ ok("no directly-trained muscle gets zero weekly sets (intermediate + advanced de
 //     ~12; the KB's per-muscle quality window points the same way), so sessions cap
 //     by training age regardless of session_length_min ---
 const CAPS = { beginner: 12, intermediate: 16, advanced: 20 };
-ok("sessions never exceed the per-level quality cap even with long sessions",
+ok("sessions never exceed the per-level quality cap (+ at most 2 superset-paired bonus sets)",
   Object.entries(CAPS).every(([lvl, cap]) =>
     generatePlan({ user_id: "cap-" + lvl, training_status: lvl, primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 120 }, kb)
-      .program.sessions.every((s) => s.exercises.reduce((a, e) => a + e.sets, 0) <= cap)));
+      .program.sessions.every((s) => {
+        // The rescue adds at most ONE 2-set isolation above the cap; its paired
+        // partner was already inside the budget. Paired sets ride the partner's
+        // rest, so the time cost is ~2 minutes, not ~6.
+        const rescues = s.exercises.filter((e) => e.superset_with && e.sets === 2);
+        return s.exercises.reduce((a, e) => a + e.sets, 0) <= cap + 2 && rescues.length <= 2;
+      })));
 
 // --- recovery ceiling: the engine trims to MRV, so no generated plan prescribes
 //     past what the KB says you can recover from (#13), across demanding profiles ---
@@ -127,6 +133,34 @@ ok("rationale.exercise_choices matches the trimmed program (no ghosts, no stale 
     for (const [k, v] of claimed) if (actual.get(k) !== v) return false;
     return true;
   }));
+
+// --- elite features: specialization, supersets, block rotation ---
+const specP = generatePlan({ user_id: "sp", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 75, priority_muscles: ["side-delts", "chest"], specialization: true }, kb);
+ok("specialization: priority targets push to the MRV ceiling", specP.rationale.volume_by_muscle["side-delts"].target_sets === muscleById.get("side-delts").landmarks.mrv.max);
+ok("specialization: non-priority muscles run at labelled maintenance with no below-MEV noise",
+  specP.rationale.volume_by_muscle["quadriceps"].projected_status === "maintenance" &&
+  specP.rationale.warnings.filter((w) => w.code === "below-mev").length === 0);
+ok("specialization: still never over MRV", specP.rationale.warnings.filter((w) => w.code === "over-mrv").length === 0);
+
+const tightP = generatePlan({ user_id: "tb", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 40 }, kb);
+ok("supersets: pairs are mutual, in-session, and non-competing (or absent)",
+  tightP.program.sessions.every((s) => {
+    const ids = new Set(s.exercises.map((e) => e.exercise));
+    return s.exercises.every((e) => {
+      if (!e.superset_with) return true;
+      if (!ids.has(e.superset_with)) return false;
+      const a = exercises.find((x) => x.id === e.exercise), b = exercises.find((x) => x.id === e.superset_with);
+      const am = new Set([...(a.primary_muscles ?? []), ...(a.secondary_muscles ?? [])]);
+      return ![...(b.primary_muscles ?? []), ...(b.secondary_muscles ?? [])].some((m) => am.has(m));
+    });
+  }));
+
+const rotA = generatePlan({ user_id: "rot", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90 }, kb, { blockIndex: 0 });
+const rotB = generatePlan({ user_id: "rot", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90 }, kb, { blockIndex: 1 });
+const kindOf = (p, iso) => p.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).filter((id) => (exercises.find((x) => x.id === id).mechanic === "isolation") === iso).join(",");
+ok("block rotation: compounds stable, accessories rotate, deterministic",
+  kindOf(rotA, false) === kindOf(rotB, false) && kindOf(rotA, true) !== kindOf(rotB, true) &&
+  JSON.stringify(rotB.program) === JSON.stringify(generatePlan({ user_id: "rot", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90 }, kb, { blockIndex: 1 }).program));
 
 // --- KB critique ---
 const badPlan = { name: "Bad", split: "other", days_per_week: 1, sessions: [{ name: "Day 1", exercises: [

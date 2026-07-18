@@ -175,10 +175,33 @@ export function createApp(store, config = {}) {
 
   // Today: the one-decision card + the fully pre-filled session.
   app.get("/api/today", async (c) => {
-    const { id, user, error } = await requireUser(c);
+    let { id, user, error } = await requireUser(c);
     if (error) return error;
     const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
     const nowISO = new Date().toISOString();
+    // NEW MESOCYCLE -> rotate the accessories. Compounds keep their ranking so
+    // double-progression baselines survive; isolations get a fresh deterministic
+    // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
+    // sacred and never auto-regenerated; beginners don't run blocks.
+    const blockStart = user.plan_meta?.block_start;
+    if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
+      const blockIndex = Math.max(0, Math.floor((Date.now() - +new Date(blockStart)) / (7 * 6 * 86400000)));
+      if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
+        const updated = await store.updateUser(id, (u) => {
+          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex });
+          u.program = program; u.plan_rationale = rationale;
+          u.plan_meta = {
+            ...meta,
+            block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
+            block_index: blockIndex,
+            rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
+            rotated_at: nowISO, // buildToday's consumer shows "new block" once
+          };
+          return u;
+        }).catch(() => null);
+        if (updated) user = updated;
+      }
+    }
     const today = nowISO.slice(0, 10);
     const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === today));
     return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO) });

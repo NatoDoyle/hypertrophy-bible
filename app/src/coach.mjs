@@ -198,6 +198,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       equipment: e?.equipment ?? null,
       suggested_kg,
       suggestion_note: sug.note,
+      ...(ex.superset_with ? { superset_with: ex.superset_with, superset_with_name: name(ex.superset_with) } : {}),
     };
   });
   return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block };
