@@ -59,24 +59,29 @@ export function createApp(store, config = {}) {
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
+    const nowISO = new Date().toISOString();
+    // Compare arrays order-insensitively — a settings save that RE-ORDERS
+    // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
+    // not a real change and must not restart the mesocycle.
+    const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
+    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;
-      if (body.profile) u.profile = { ...u.profile, ...body.profile, user_id: id };
-      const { program, rationale, meta } = generateUserPlan(u.profile);
+      const next = body.profile ? { ...u.profile, ...body.profile, user_id: id } : u.profile;
+      const trainingChanged = TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
+      // Cosmetic edit (units, sex): keep the CURRENT block's accessory rotation and
+      // mesocycle position. Training change: fresh block 0 (week-1 ramp, rebased rotation).
+      const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
+      u.profile = next;
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex });
       u.program = program; u.plan_rationale = rationale;
-      // A cosmetic edit (units, sex) must NOT restart the mesocycle — a week-5
-      // lifter switching kg->lb shouldn't be sent back to 70% week-1 volume.
-      const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization"];
-      const trainingChanged = TRAINING_FIELDS.some((k) => JSON.stringify(before?.[k]) !== JSON.stringify(u.profile[k]));
       u.plan_meta = {
         ...meta,
-        block_start: trainingChanged || !u.plan_meta?.block_start ? new Date().toISOString() : u.plan_meta.block_start,
-        // The regenerated program keeps its deterministic id, so old sessions would
-        // phase-shift its rotation — a fresh plan must open at day A. Rebase with
-        // the SAME predicate buildToday uses (own-program sessions only — counting
-        // merged foreign sessions froze Today on Day A), and only when the plan
-        // actually changed (a units toggle must not reset the cycle).
+        block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
+        block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
+        // Rebase rotation with buildToday's OWN-program predicate (merged foreign
+        // sessions once froze Today on Day A), only on a real training change.
         rotation_base: trainingChanged
           ? priorSessions.filter((s) => !s.program_ref || s.program_ref === program.id).length
           : (u.plan_meta?.rotation_base ?? 0),
@@ -122,7 +127,13 @@ export function createApp(store, config = {}) {
     }
     let program = null;
     const updated = await store.updateUser(b.user_id, (u) => {
-      program = { ...u.program, name: String(p.name || u.program.name), split: u.program.split || "other", days_per_week: sessions.length, sessions, custom: true };
+      // Only mark the plan `custom` (which permanently opts it out of mesocycle
+      // accessory rotation) when the saved exercises ACTUALLY differ from the
+      // generated ones — a no-op "Save & re-check" must not silently freeze a
+      // generated plan out of its rotation forever.
+      const sig = (ss) => JSON.stringify((ss || []).map((s) => s.exercises.map((e) => `${e.exercise}:${e.sets}:${e.rep_range}`)));
+      const changed = !!u.program?.custom || sig(u.program?.sessions) !== sig(sessions);
+      program = { ...u.program, name: String(p.name || u.program.name), split: u.program.split || "other", days_per_week: sessions.length, sessions, ...(changed ? { custom: true } : {}) };
       u.program = program;
       return u;
     });
@@ -200,10 +211,10 @@ export function createApp(store, config = {}) {
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
             block_index: blockIndex,
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
-            rotated_at: nowISO, // buildToday's consumer shows "new block" once
+            rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
           };
           return u;
-        }).catch(() => null);
+        }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
         if (updated) user = updated;
       }
     }
