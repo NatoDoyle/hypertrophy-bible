@@ -142,9 +142,9 @@ export function createApp(store, config = {}) {
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's
-  // own custom exercises when ?u= is supplied).
+  // own custom exercises when the X-HB-User header identifies them).
   app.get("/api/exercises", async (c) => {
-    const id = c.req.header("X-HB-User") || c.req.query("u");
+    const id = c.req.header("X-HB-User");
     const user = id ? await store.getUser(id) : null;
     const all = [...exerciseById.values(), ...(user?.custom_exercises || [])];
     return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, custom: !!e.custom })));
@@ -180,9 +180,11 @@ export function createApp(store, config = {}) {
   });
 
   const requireUser = async (c) => {
-    // Prefer the X-HB-User header (kept out of URLs/logs); fall back to ?u= for
-    // links like the email verify page, and to the POST body.
-    const id = c.req.header("X-HB-User") || c.req.query("u") || (await c.req.json().catch(() => ({}))).user_id;
+    // The user_id IS the full account credential (possession model), so it must
+    // NEVER travel in a URL — a `?u=` query string leaks it into access logs,
+    // browser history, and any copied/shared link. Accept it only from the
+    // X-HB-User header (GETs) or the POST body, both of which stay out of URLs.
+    const id = c.req.header("X-HB-User") || (await c.req.json().catch(() => ({}))).user_id;
     if (!id) return { error: c.json({ error: "no user" }, 400) };
     const user = await store.getUser(id);
     if (!user) return { error: c.json({ error: "unknown user" }, 404) };
@@ -204,6 +206,12 @@ export function createApp(store, config = {}) {
       const blockIndex = Math.max(0, Math.floor((Date.now() - +new Date(blockStart)) / (7 * 6 * 86400000)));
       if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
         const updated = await store.updateUser(id, (u) => {
+          // Re-check the FRESH CAS-read state: the outer guard (L203) saw a stale
+          // copy. If, in the race window, a concurrent /api/plan/save made the plan
+          // custom, or another request already rotated to this block, leave it
+          // untouched — otherwise the rotation silently clobbers a just-saved custom
+          // plan. (Every other mutator here re-checks its precondition inside the CAS.)
+          if (u.program?.custom || blockIndex === (u.plan_meta?.block_index ?? 0)) return u;
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex });
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
@@ -375,6 +383,15 @@ export function createApp(store, config = {}) {
   app.post("/api/auth/merge", async (c) => {
     const { from_user_id, to_user_id, grant } = await c.req.json().catch(() => ({}));
     if (!from_user_id || !to_user_id || from_user_id === to_user_id || !grant) return c.json({ error: "bad-request" }, 400);
+    // Merge is the ONLY route that permanently DELETES a user (its final step drops
+    // the from-user row), so it needs proof of BOTH ids, not just knowledge of one.
+    // The grant (below) proves the caller just restored `to`; this proves they also
+    // hold `from` — the caller must present it as their own X-HB-User, exactly like
+    // every other authenticated route. Without this, anyone who merely LEARNS an
+    // anonymous user's UUID could move that victim's data into their own account and
+    // then delete the victim — a destructive escalation beyond the read/write that
+    // bare possession already grants.
+    if (c.req.header("X-HB-User") !== from_user_id) return c.json({ error: "from-not-authorized" }, 403);
     // Require a valid merge grant tied to to_user_id: only a caller who just
     // restored `to` can merge into it (not anyone holding two UUIDs).
     const link = await store.getMagicLink(await sha256hex(grant));
@@ -393,7 +410,7 @@ export function createApp(store, config = {}) {
 
   // Exercise detail (the "how do I do this?" tap) — resolves custom exercises too.
   app.get("/api/exercise/:id", async (c) => {
-    const uid = c.req.header("X-HB-User") || c.req.query("u");
+    const uid = c.req.header("X-HB-User");
     const user = uid ? await store.getUser(uid) : null;
     const e = exerciseById.get(c.req.param("id")) || (user?.custom_exercises || []).find((x) => x.id === c.req.param("id"));
     if (!e) return c.json({ error: "not found" }, 404);
