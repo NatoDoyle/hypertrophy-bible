@@ -3,6 +3,7 @@
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
+  deriveVolumeAdjust,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -185,7 +186,16 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // logged under the new block), so the changed exercise list never feels random.
   const rotatedAt = user.plan_meta?.rotated_at;
   if (rotatedAt && !sessions.some((s) => s.date && s.date > rotatedAt)) {
-    const msg = "New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.";
+    // If the adaptive tune moved any muscle's volume this block, say so — the plan
+    // visibly learning from the user's own logs is the point of the adaptive engine.
+    const adj = user.plan_meta?.volume_adjust ?? {};
+    const mName = (m) => (muscleById.get(m)?.name ?? m).replace(/\s*\([^)]*\)/, ""); // drop the "(Pectoralis Major)" scientific suffix
+    const bumped = Object.entries(adj).filter(([, d]) => d > 0).map(([m]) => mName(m));
+    const eased = Object.entries(adj).filter(([, d]) => d < 0).map(([m]) => mName(m));
+    const tuned = bumped.length || eased.length
+      ? ` Based on how you've been responding, I've ${[bumped.length ? `added volume for your ${bumped.join(", ")}` : "", eased.length ? `eased off your ${eased.join(", ")}` : ""].filter(Boolean).join(" and ")}.`
+      : "";
+    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}`;
     coach_note = coach_note ? `${msg} ${coach_note}` : msg;
   }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
@@ -293,6 +303,21 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
 }
 
 // The Progress tab payload: everything derived, nothing asked.
+// AUTO-TUNE binder (#2): fold the just-completed block's response into the running
+// per-muscle volume adjustment. Called at each mesocycle boundary so the NEXT block
+// is generated with volumeAdjust applied — a muscle that keeps stalling gets more
+// volume over time, one at its ceiling gets eased, all bounded to MEV↔MRV. Pure
+// derive-core does the math; this just resolves the muscle index + stalled muscles.
+export function computeVolumeAdjust(prevAdjust, sessions, customEx = []) {
+  const { index } = resolveEx(customEx);
+  const weekly = perMuscleWeeklyVolume(sessions, index);
+  const weeks = Object.keys(weekly).sort();
+  const latest = weeks[weeks.length - 1];
+  if (!latest) return prevAdjust || {};
+  const stalledMuscleIds = new Set(stallDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
+  return deriveVolumeAdjust(prevAdjust || {}, weekly[latest], muscleIndex, stalledMuscleIds);
+}
+
 export function progressReport(user, sessions, bodyweights, customEx = []) {
   const { index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);

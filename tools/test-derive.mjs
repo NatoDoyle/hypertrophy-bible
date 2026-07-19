@@ -13,6 +13,7 @@ import {
   perMuscleWeeklyVolume,
   volumeVsLandmarks,
   volumeResponse,
+  deriveVolumeAdjust,
   bodyweightTrend,
   classifyEnergyBalance,
   progressionByExercise,
@@ -234,6 +235,26 @@ check("volumeResponse gives honest, MEV<->MRV-bounded per-muscle advice", () => 
   const mixed = volumeResponse({ chest: 14, biceps: 4 }, mIndex);
   assert.equal(mixed[0].muscle, "biceps"); // biceps below-MEV "add" sorts before chest "hold"
   assert.equal(volumeResponse({ unknown: 5 }, mIndex).length, 0); // no landmark → skipped
+});
+
+check("deriveVolumeAdjust accumulates ±2 from stalls, bounded to MEV↔MRV, ignores below-MEV", () => {
+  const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
+  // stalled with headroom (12 < MAV.max 20) → +2, accumulating from a prior +2 → +4
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, mIndex, new Set(["chest"])).chest, 4);
+  // stalled AT the ceiling (22 >= MAV.max) → ease -2
+  assert.equal(deriveVolumeAdjust({ chest: 4 }, { chest: 22 }, mIndex, new Set(["chest"])).chest, 2);
+  // over MRV (26 > 24) → ease -2 even if not flagged stalled
+  assert.equal(deriveVolumeAdjust({}, { chest: 26 }, mIndex, new Set()).chest, -2);
+  // progressing in range, not stalled → hold (prior adjust persists)
+  assert.equal(deriveVolumeAdjust({ chest: 4 }, { chest: 14 }, mIndex, new Set()).chest, 4);
+  // BELOW MEV is a plan-fit issue, NOT a response signal → no adjustment created
+  assert.equal(deriveVolumeAdjust({}, { chest: 6 }, mIndex, new Set()).chest, undefined);
+  // the accumulated delta can never exceed the muscle's own MEV↔MRV range (24-10=14)
+  let adj = { chest: 14 };
+  adj = deriveVolumeAdjust(adj, { chest: 18 }, mIndex, new Set(["chest"])); // another +2 attempt
+  assert.equal(adj.chest, 14); // clamped, doesn't run away
+  // a delta returning to 0 is dropped from the map
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 26 }, mIndex, new Set()).chest, undefined);
 });
 
 console.log(`\n${passed} test(s) passed.`);

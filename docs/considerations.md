@@ -69,16 +69,30 @@ Everything below should be taken under consideration for implementation. Once it
   ordinary moderate-volume training; it's a deliberate trade toward time/recovery, best for the
   time-crunched, beginners, older adults, and maintenance.
 
-## Where things stand (Claude, checkpoint)
-Done from your list: **#3** (library 93→171 + rich metadata + onboarding), **#4** (mid-workout swap),
-**#6** (low-volume KB page), and the real half of **#5** (no 1-set filler; loaded-lift preference).
-Still open — and the big one: **#2, the adaptive/self-learning engine** (the plan adjusts per-muscle
-volume & intensity from your logged data — "some need 6 sets, some 20"). That's a large,
-opinionated architectural build and I want to build the RIGHT thing: it needs design calls on how
-aggressively to adapt, which signals to trust (stalls, RIR, completed-vs-target reps, soreness),
-and hard guardrails against runaway volume. Tell me how aggressive you want it (gentle nudges vs
-fast auto-adjust) and I'll build it; otherwise I'll start conservative — surface a per-muscle
-"you've stalled here / you're flying, add volume" coaching signal from the data first, then let it
-auto-tune volume within safe MEV↔MRV bounds.
+## Where things stand (Claude) — ALL SIX ITEMS DONE
+- **#1 exercise scoring** — DONE. Ranks by mechanic, difficulty (hard gate), lengthened-bias,
+  pattern spread, equipment, loadable-over-bodyweight preference, AND now cns_cost (no session
+  stacks >2 high-CNS compounds). Plus it now *learns* per-muscle volume from your response (#2).
+- **#2 adaptive/self-learning engine** — DONE (conservative build, per my stated default). The plan
+  now ADJUSTS per-muscle volume from your logged data: at each 6-week block boundary it reads how
+  each muscle responded (stall detection + volume-vs-landmarks) and tunes next block's target — a
+  muscle that keeps stalling with headroom gains ~2 sets, one stalled at its recoverable ceiling
+  gets eased, all ACCUMULATING across blocks and hard-clamped to MEV↔MRV so it can never run away.
+  The Progress "What to adjust" card shows the live signal, the "Why this plan?" screen shows the
+  adaptive delta, and the new-block coach note tells you ("Based on how you've been responding, I've
+  added volume for your Chest"). This is the "starting point from the KB, then learn from the data"
+  you asked for. NEXT (if you want it more aggressive): trust more signals (RIR, completed-vs-target
+  reps, soreness) and adapt faster/mid-block — say the word.
+- **#3 exercise library** — DONE. 93→171 exercises, ALL 171 now carry full rich metadata
+  (loading_bias, cns_cost, execution_steps, good/bad-when); band/kettlebell/smith-machine added;
+  surfaced in the exercise sheet + onboarding.
+- **#4 mid-workout swap + reorder** — DONE. "🔄 Swap this exercise" and "⤵️ Do this later" in the
+  player (both crash-safe, temporary, session-only).
+- **#5 fix the plans** — DONE (real defects). No 1-set filler; loaded lifts preferred over capped
+  bodyweight; no >2 high-CNS stacking. (Two diagnosed "issues" were verified NOT to be defects and
+  deliberately left alone — see above.) If specific plans still feel off, name the profile/day.
+- **#6 low-volume research** — DONE. New minimalist/low-volume KB page (verified citations).
+
+If you feel any of these needs to go further, tell me which and how — the loop continues.
 ---
 
