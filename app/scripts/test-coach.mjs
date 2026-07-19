@@ -109,6 +109,20 @@ check("mesocycle: sets ramp 70%->peak across weeks 1-5, deload halves week 6, th
   assert.equal(deload.exercises[0].rir, "3-4"); // comfortably shy of failure
 });
 
+check("#8-3 high-readiness never invites a back-off set during a deload week", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  const high = { level: "high", score: 4.5 };
+  const deload = buildToday(u, [], high, [], day(35)); // wk6 deload
+  assert.equal(deload.block.phase, "deload");
+  assert.ok(deload.coach_note && !/back-off set/i.test(deload.coach_note)); // no "add volume" during recovery
+  assert.ok(/deload/i.test(deload.coach_note)); // holds the deload line
+  const peak = buildToday(u, [], high, [], day(28)); // wk5 peak — adding volume IS fine
+  assert.ok(/back-off set/i.test(peak.coach_note));
+});
+
 check("mesocycle: deload eases the suggested load ~10%", () => {
   const start = "2026-01-05T00:00:00Z";
   const u = { profile: { training_status: "advanced", days_per_week: 3 }, plan_meta: { block_start: start },

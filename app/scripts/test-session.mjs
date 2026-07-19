@@ -156,6 +156,32 @@ check("pathological: OLD non-adjacent pair with UNEQUAL sets still drops nothing
   assert.equal(owed("plank"), 0); // the between-exercise survived
   assert.equal(owed("legext"), 0); // and the longer member's remainder was finished
 });
+check("#8-2 a defer that lands on an already-finished exercise never logs a phantom set", () => {
+  // OLD-build non-adjacent superset A(3)<->B(2) with M(2) between, then C(2). Run the
+  // A+B station to completion (B done@2, A done@3); the player advances to M. The user
+  // taps "Do this later" on M → it splices to the end ([A,B,C,M]) and the cursor stays
+  // put, now pointing at B, which is ALREADY fully logged. renderPlayer's self-heal
+  // guard must skip B (never render "Done — set 3 of 2") and resolve to the first lift
+  // still owing sets — exactly nextUnfinishedIndex(logged, ex, -1).
+  const exs = [ex("A", 3, "B"), ex("M", 2), ex("B", 2, "A"), ex("C", 2)]; // NOT reordered (old build)
+  const logged = [];
+  const bank = (id) => logged.push({ exercise: id, set_type: "work" });
+  const owed = (id) => { const e = exs.find((x) => x.exercise === id); return e.sets - loggedWorkSets(logged, id); };
+  while (!stationProgress(logged, exs, 0, 2).done) { bank("A"); bank("B"); } // 2 paired rounds
+  bank("A"); // A's remaining 3rd set
+  assert.equal(owed("A"), 0); assert.equal(owed("B"), 0);
+  // defer M (cursor idx 1): splice to the end, cursor stays at idx 1 → now points at B
+  const [moved] = exs.splice(1, 1); exs.push(moved);
+  let cursor = 1;
+  // the guard: parked on a fully-logged exercise → jump to the first still owing sets
+  if (loggedWorkSets(logged, exs[cursor].exercise) >= exs[cursor].sets) cursor = nextUnfinishedIndex(logged, exs, -1);
+  assert.notEqual(exs[cursor].exercise, "B");  // never parked on the finished partner
+  assert.ok(owed(exs[cursor].exercise) > 0);   // lands on a lift that still owes sets
+  let guard = 0;
+  while (cursor >= 0) { if (++guard > 100) throw new Error("loop"); bank(exs[cursor].exercise); cursor = nextUnfinishedIndex(logged, exs, -1); }
+  assert.equal(loggedWorkSets(logged, "B"), 2); // B stayed at exactly 2 — no phantom 3rd set
+  assert.equal(owed("C"), 0); assert.equal(owed("M"), 0); // and everything else finished cleanly
+});
 check("offline queue: two tabs flushing the same item never drop an UNdelivered workout", () => {
   // The data-loss bug: two tabs both flush on reconnect; position-based slice(1)
   // could drop item B that no tab delivered. filter-by-id can only remove the

@@ -95,6 +95,17 @@ const carryGrid = ["beginner", "intermediate", "advanced"].flatMap((st) =>
 const carryLeaks = carryGrid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => exPattern[e.exercise] === "carry");
 ok("#13 no generated plan prescribes a loaded carry as rep-based work (kettlebell grid)", carryLeaks.length === 0);
 
+// #8-1 `neck` is in no session archetype, so the plan can never program it — a
+// "below MEV, add a direct neck exercise" nag would otherwise fire on EVERY plan.
+// It must stay silent unless the user prioritises neck (then it is actionable).
+const neckGrid = ["beginner", "intermediate", "advanced"].flatMap((st) =>
+  [2, 3, 4, 5, 6].map((days) =>
+    generatePlan({ user_id: `neck-${st}-${days}`, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] }, kb)));
+const neckNags = neckGrid.flatMap((pl) => pl.rationale.warnings ?? []).filter((w) => w.muscle === "neck");
+ok("#8-1 no plan nags to add direct neck work when neck was never prioritised", neckNags.length === 0);
+const neckPri = generatePlan({ user_id: "neck-pri", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["neck"] }, kb);
+ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan can't fit it)", (neckPri.rationale.warnings ?? []).some((w) => w.muscle === "neck"));
+
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +
 // a deadlift is already a hard day; a 3rd heavy barbell lift over-taxes recovery.
 const exCns = Object.fromEntries(exercises.map((e) => [e.id, e.cns_cost]));

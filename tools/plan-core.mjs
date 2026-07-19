@@ -18,6 +18,12 @@ const ARCH = {
   LEGS: ["quadriceps", "hamstrings", "glutes", "calves", "abs", "spinal-erectors"],
 };
 
+// Every muscle any archetype can program. A muscle NOT in this set (only `neck`,
+// which is niche opt-in work and appears in no split) can never receive volume from
+// the generative plan, so a "below MEV — add a direct exercise" nag for it is noise
+// on 100% of plans — suppressed unless the user explicitly prioritises it.
+const PROGRAMMABLE_MUSCLES = new Set(Object.values(ARCH).flat());
+
 // split by days_per_week × training_status → ordered list of archetypes
 const SPLIT_TABLE = {
   "2": { "*": ["FULL", "FULL"] },
@@ -564,8 +570,12 @@ export function generatePlan(profile, kb, opts = {}) {
     if (f === 0) {
       // Muscle not directly trained this split — it may still get secondary credit;
       // warn when even that indirect volume leaves it under MEV (so it won't grow).
+      // But stay silent for a muscle no archetype can ever program (neck) unless the
+      // user prioritised it — otherwise every plan nags to bolt on a niche muscle the
+      // guided flow never trains, drowning the genuinely actionable warnings.
       const mev = muscleById.get(m)?.landmarks?.mev?.min;
-      if (mev != null && proj < mev) warnings.push({ code: "below-mev-indirect", muscle: m, message: `${m} only gets ~${proj} indirect sets/wk (below MEV ${mev}) — add a direct ${m} exercise if you want it to grow.` });
+      if (mev != null && proj < mev && (PROGRAMMABLE_MUSCLES.has(m) || priority.has(m)))
+        warnings.push({ code: "below-mev-indirect", muscle: m, message: `${m} only gets ~${proj} indirect sets/wk (below MEV ${mev}) — add a direct ${m} exercise if you want it to grow.` });
       continue;
     }
     const hasExercise = compoundPool[m].length || isoPool[m].length;

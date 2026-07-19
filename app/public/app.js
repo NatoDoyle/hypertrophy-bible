@@ -720,6 +720,18 @@ function renderPlayer(resting = 0) {
     if (!stationProgress(sess.logged, sess.ex, L, P).done)
       return renderSupersetStation(L, P, resting);
   }
+  // Belt-and-braces: the cursor must never rest on an already-finished exercise.
+  // Healthy flow advances via nextExerciseIndex, but a resumed old-build session (or
+  // a defer that lands on a slot already banked during a superset station) could park
+  // sess.i on a done lift — which would render a loggable "Done — set N+1 of N" and
+  // bank a phantom set past the target. Progress is the truth derived from banked
+  // sets, so self-heal: jump to the first lift still owing sets, or finish if none.
+  if (loggedWorkSets(sess.logged, e.exercise) >= e.sets) {
+    const nx = nextExerciseIndex(-1);
+    if (nx < 0) { sess.complete = true; saveSess(); return finish(); }
+    sess.i = nx; sess.set = loggedSetCount(sess.ex[sess.i].exercise); saveSess();
+    return renderPlayer(0);
+  }
   // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
   if (sess.weights[sess.i] == null) sess.weights[sess.i] = dispWeight(startWeightDefault(e));
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
