@@ -49,14 +49,36 @@ Everything below should be taken under consideration for implementation. Once it
 - **#2 Adaptive engine — noted as the headline vision, after #3/#5.** The plan learns from logged
   data (RIR, completed reps, stalls) and adjusts per-muscle volume/intensity per person. Needs a
   solid baseline plan to adapt from, so it follows the library + plan fixes.
-- **#1 "is the exercise scoring thorough?"** — partially: it ranks by mechanic (compounds first),
-  difficulty fit, lengthened-bias bonus, movement-pattern spread, equipment, and a deterministic
-  tie-break. It does NOT yet weight CNS cost or prefer well-loaded gym lifts over bodyweight when
-  equipment exists — both are on the #5 plan-fix list, and the new `cns_cost` field feeds it.
-- **#4 Mid-workout swap/reorder** — discrete UX feature, will slot in as its own wave.
-- **#6 low-volume / high-frequency / high-intensity research** — will do a KB research pass; short
-  answer, the current KB covers volume dose-response, frequency (~2x, Currier/Grgic), and
-  proximity-to-failure, but a dedicated low-volume-high-intensity (e.g. HIT-style, minimalist)
-  synthesis is a genuine gap worth a verified pass.
+- **#1 "is the exercise scoring thorough?"** — PARTIALLY IMPROVED. It ranks by mechanic (compounds
+  first), difficulty fit (hard gate), lengthened-bias bonus, movement-pattern spread, equipment,
+  and a deterministic tie-break — and now (Wave 6-G) PREFERS well-loaded gym lifts over capped
+  bodyweight when equipment exists. Still NOT wired in: `cns_cost` (avoid stacking too many
+  high-systemic-fatigue lifts in one session) — the field now exists on the new exercises; a
+  future wave can use it. Remaining honest gap: scoring is rule-based, not yet *learned* from the
+  user's own response — that's #2.
+- **#4 Mid-workout swap — DONE (Wave 6-I).** In the player, a "🔄 Swap this exercise" button (shown
+  before you've logged any set of the current lift) offers same-muscle, equipment-and-injury-filtered
+  alternatives; picking one temporarily replaces it for THIS workout (saved plan untouched),
+  crash-safe. The "machine occupied" case is covered. REORDER-during-session is deferred (lower
+  value than swap).
+- **#6 low-volume / high-frequency / high-intensity research — DONE (Wave 6-H).** Honest answer:
+  the KB covered the pieces (volume dose-response, frequency, failure) but had NO dedicated
+  synthesis, so I wrote content/03-programming/minimalist-and-low-volume-training.md (verified
+  citations only). Thesis: "low volume + high frequency + high effort" is evidence-consistent and
+  efficient/sustainable, but at MATCHED weekly volume it's equivalent to — not better than —
+  ordinary moderate-volume training; it's a deliberate trade toward time/recovery, best for the
+  time-crunched, beginners, older adults, and maintenance.
+
+## Where things stand (Claude, checkpoint)
+Done from your list: **#3** (library 93→171 + rich metadata + onboarding), **#4** (mid-workout swap),
+**#6** (low-volume KB page), and the real half of **#5** (no 1-set filler; loaded-lift preference).
+Still open — and the big one: **#2, the adaptive/self-learning engine** (the plan adjusts per-muscle
+volume & intensity from your logged data — "some need 6 sets, some 20"). That's a large,
+opinionated architectural build and I want to build the RIGHT thing: it needs design calls on how
+aggressively to adapt, which signals to trust (stalls, RIR, completed-vs-target reps, soreness),
+and hard guardrails against runaway volume. Tell me how aggressive you want it (gentle nudges vs
+fast auto-adjust) and I'll build it; otherwise I'll start conservative — surface a per-muscle
+"you've stalled here / you're flying, add volume" coaching signal from the data first, then let it
+auto-tune volume within safe MEV↔MRV bounds.
 ---
 
