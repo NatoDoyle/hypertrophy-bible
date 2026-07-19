@@ -30,10 +30,16 @@ try {
   const uid = onboard.data.user_id;
 
   // Log a normal week-1 session, then a deload-stamped session — through the route.
-  const s1 = await json("POST", "/api/session", { user_id: uid, session_id: "rt-1", date: "2026-06-01T18:00:00Z",
+  // Date them RELATIVE to now (a week ago, then yesterday): /api/today reads the
+  // REAL current time, so fixed past dates would look like a 40+ day LAYOFF and ease
+  // the weight — polluting the deload-anchoring check this test is actually about,
+  // and making it flaky (it only fired when the randomly-seeded plan happened to put
+  // bench in today's session). Recent dates isolate the deload behaviour deterministically.
+  const dAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const s1 = await json("POST", "/api/session", { user_id: uid, session_id: "rt-1", date: dAgo(8),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] });
   ok("work session accepted", s1.status === 200);
-  const s2 = await json("POST", "/api/session", { user_id: uid, session_id: "rt-2", date: "2026-06-08T18:00:00Z",
+  const s2 = await json("POST", "/api/session", { user_id: uid, session_id: "rt-2", date: dAgo(1),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 90, reps: 8, deload: true }] });
   ok("deload session accepted", s2.status === 200);
 

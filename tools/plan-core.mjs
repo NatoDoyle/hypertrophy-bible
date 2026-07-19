@@ -264,9 +264,18 @@ export function generatePlan(profile, kb, opts = {}) {
     const placed = new Set(); // exercise ids already in this session
     const items = [];
     let setsUsed = 0;
+    let highCns = 0;          // count of high-CNS-cost lifts placed this session
     const room = () => setsUsed < setBudget && items.length < EX_BUDGET;
     const add = (ex, sets, forMuscle, why) => {
       if (placed.has(ex.id) || !room()) return false;
+      // No more than 2 maximal-systemic-fatigue (high cns_cost) COMPOUNDS per
+      // session: squat + a deadlift is already a hard day, and a 3rd heavy barbell
+      // lift (typically a redundant 2nd squat or hinge variant on an advanced lower
+      // day) over-taxes recovery for little extra stimulus. By the time a session
+      // has 2 high-CNS lifts the muscles they train are already covered, so refusing
+      // the 3rd never starves anything — later isolation passes fill the budget with
+      // lower-CNS work. Isolations are never high-CNS, so this only touches compounds.
+      if (ex.cns_cost === "high" && ex.mechanic === "compound" && highCns >= 2) return false;
       const iso = ex.mechanic === "isolation";
       const s = iso ? (priority.has(forMuscle) ? scheme.priorityIso : scheme.isolation) : scheme.compound;
       // Held-at-maintenance muscles never receive more direct volume than their
@@ -285,6 +294,7 @@ export function generatePlan(profile, kb, opts = {}) {
       const setN = clamp(Math.min(want, EX_SET_CAP, setBudget - setsUsed), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       items.push({ exercise: ex.id, sets: setN, rep_range: s[0], rir: s[1] });
+      if (ex.cns_cost === "high") highCns++;
       for (const m of ex.primary_muscles ?? []) credited[m] = (credited[m] ?? 0) + setN;
       for (const m of ex.secondary_muscles ?? []) credited[m] = (credited[m] ?? 0) + setN * 0.5;
       exerciseChoices.push({ exercise: ex.id, for_muscle: forMuscle, session: spec.name, sets: setN, rep_range: s[0], rir: s[1], why, difficulty: ex.difficulty, citations: ex.citations ?? [] });
