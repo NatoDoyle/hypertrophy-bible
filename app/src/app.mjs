@@ -395,13 +395,17 @@ export function createApp(store, config = {}) {
     const { from_user_id, to_user_id, grant } = await c.req.json().catch(() => ({}));
     if (!from_user_id || !to_user_id || from_user_id === to_user_id || !grant) return c.json({ error: "bad-request" }, 400);
     // Merge is the ONLY route that permanently DELETES a user (its final step drops
-    // the from-user row), so it needs proof of BOTH ids, not just knowledge of one.
-    // The grant (below) proves the caller just restored `to`; this proves they also
-    // hold `from` — the caller must present it as their own X-HB-User, exactly like
-    // every other authenticated route. Without this, anyone who merely LEARNS an
-    // anonymous user's UUID could move that victim's data into their own account and
-    // then delete the victim — a destructive escalation beyond the read/write that
-    // bare possession already grants.
+    // the from-user row). Its REAL boundaries are two: (1) the grant below is bound
+    // to `to`, so only a caller who just restored `to` can merge into it; (2) the
+    // from-user must be anonymous (no email account), so an email-bound account can
+    // never be merged away. The X-HB-User === from_user_id check below is a
+    // consistency / CSRF guard only — NOT a strong boundary: like every route under
+    // the bare-UUID possession model, an attacker who already KNOWS an anonymous
+    // victim's UUID can set both the header and the body to it. That is an accepted
+    // residual risk of the possession model (such an attacker can already read/write
+    // that user); the only EXTRA power merge grants is deleting the anonymous row.
+    // Genuinely hardening this (a non-forgeable possession token for `from`, or not
+    // deleting the row at all) is a security-design decision tracked in BLOCKERS.md.
     if (c.req.header("X-HB-User") !== from_user_id) return c.json({ error: "from-not-authorized" }, 403);
     // Require a valid merge grant tied to to_user_id: only a caller who just
     // restored `to` can merge into it (not anyone holding two UUIDs).
