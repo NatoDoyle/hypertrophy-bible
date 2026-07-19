@@ -5,7 +5,7 @@ import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
 
 export function createApp(store, config = {}) {
@@ -99,7 +99,7 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
-    return c.json(critiqueUserPlan(b.program || user.program, user.custom_exercises || []));
+    return c.json(critiqueUserPlan(b.program || user.program, user.custom_exercises || [], user.profile?.training_status));
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -135,10 +135,15 @@ export function createApp(store, config = {}) {
       const changed = !!u.program?.custom || sig(u.program?.sessions) !== sig(sessions);
       program = { ...u.program, name: String(p.name || u.program.name), split: u.program.split || "other", days_per_week: sessions.length, sessions, ...(changed ? { custom: true } : {}) };
       u.program = program;
+      // The generated plan_rationale (per-muscle volumes, grades, warnings shown on
+      // "Why this plan?") described the OLD plan. Once the user edits the exercises,
+      // it's stale — showing it beside the new session list is silent misinformation.
+      // Clear it on a real edit; the explain screen falls back to the live critique.
+      if (changed) u.plan_rationale = null;
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
-    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || []) });
+    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status) });
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's
@@ -146,7 +151,13 @@ export function createApp(store, config = {}) {
   app.get("/api/exercises", async (c) => {
     const id = c.req.header("X-HB-User");
     const user = id ? await store.getUser(id) : null;
-    const all = [...exerciseById.values(), ...(user?.custom_exercises || [])];
+    // Filter to what THIS user can actually perform (their equipment, minus injury
+    // contraindications) so the editor's swap/add pickers never offer a lift the
+    // generator itself excluded for safety or unavailable kit. Anonymous callers
+    // (no user) get the full library. Custom exercises are always the user's to use.
+    const all = user
+      ? userExercises(user.profile, user.custom_exercises || [])
+      : [...exerciseById.values()];
     return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, custom: !!e.custom })));
   });
 

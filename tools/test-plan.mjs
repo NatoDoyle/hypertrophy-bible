@@ -235,5 +235,21 @@ ok("critique flags a compound placed after an isolation", crit.findings.some((f)
 const goodCrit = critiquePlan(p.program, kb);
 ok("critique summarizes a generated plan without over-MRV warnings", !goodCrit.findings.some((f) => /above MRV/.test(f.msg)));
 
+// #D2: a beginner is BUILT at ~MEV under a session cap, so their own generated plan
+// sits a little below MEV on many muscles BY DESIGN. Critiquing it must not greet
+// them with a pile of red "worth fixing" warnings (the plan the app just called
+// "ready 🎉"). For a beginner a modest shortfall is a gentle info; the same plan
+// judged at the default (intermediate) bar shows them as warns.
+const begPlan = generatePlan({ user_id: "begc", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60 }, kb);
+const begCrit = critiquePlan(begPlan.program, kb, { experience: "beginner" });
+const begCritDefault = critiquePlan(begPlan.program, kb); // default = intermediate bar
+const infoBelowBeg = begCrit.findings.filter((f) => f.severity === "info" && /below MEV/.test(f.msg)).length;
+const warnBelowDefault = begCritDefault.findings.filter((f) => f.severity === "warn" && /below MEV/.test(f.msg)).length;
+ok("#D2 a beginner's own plan reports modest below-MEV as gentle info, not 'worth fixing'", infoBelowBeg > 0);
+ok("#D2 the same shortfalls are warns under the default (intermediate) bar", warnBelowDefault >= infoBelowBeg);
+ok("#D2 a SEVERELY short muscle (< 0.6×MEV) is still a warn even for a beginner",
+  critiquePlan({ sessions: [{ name: "D", exercises: [{ exercise: "cable-crunch", sets: 1, rep_range: "10-15" }] }] }, kb, { experience: "beginner" })
+    .findings.some((f) => f.severity === "warn" && /below MEV/.test(f.msg) && f.muscle === "abs"));
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

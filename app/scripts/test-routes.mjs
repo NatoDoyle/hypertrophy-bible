@@ -126,6 +126,36 @@ try {
   ok("#6 block rotation leaves a custom plan untouched (no silent clobber)",
     afterRotate.program.custom === true && afterRotate.program.name === customName);
 
+  // --- Wave 5-D: plan-editor integrity ---
+
+  // #D1: the editor's exercise list (swap/add pickers) is filtered to what the user
+  // can actually perform — no equipment they lack, no injury-contraindicated lift.
+  const dbUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["dumbbell", "bodyweight"] } })).data.user_id;
+  const dbEx = await (await app.request("/api/exercises", { headers: { "X-HB-User": dbUser } })).json();
+  ok("#D1 /api/exercises excludes equipment the user lacks (no barbell/machine/cable for dumbbell-only)",
+    dbEx.length > 0 && dbEx.every((e) => e.custom || ["dumbbell", "bodyweight"].includes(e.equipment)));
+  const kneeUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    injuries: [{ region: "knee", severity: "moderate" }] } })).data.user_id;
+  const kneeEx = await (await app.request("/api/exercises", { headers: { "X-HB-User": kneeUser } })).json();
+  ok("#D1 /api/exercises drops injury-contraindicated lifts (no back squat / leg extension for a knee injury)",
+    !kneeEx.some((e) => e.id === "barbell-back-squat" || e.id === "leg-extension"));
+
+  // #D3: a custom plan edit clears the now-stale generated rationale (the "Why this
+  // plan?" science block must not describe a plan the user no longer has).
+  const rUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  ok("#D3 a fresh generated plan has a rationale", !!(await store.getUser(rUser)).plan_rationale);
+  const genPlan = (await store.getUser(rUser)).program;
+  const edited = { name: genPlan.name, sessions: genPlan.sessions.map((s, i) => i === 0 ? { ...s, exercises: s.exercises.slice(0, -1) } : s) };
+  await json("POST", "/api/plan/save", { user_id: rUser, program: edited });
+  const rAfter = await store.getUser(rUser);
+  ok("#D3 saving a custom edit clears the stale plan_rationale (and marks custom)", rAfter.plan_rationale == null && rAfter.program.custom === true);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

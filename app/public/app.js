@@ -352,12 +352,18 @@ async function renderPlanExplain(firstTime) {
   const sessions = d.program?.sessions || [];
   const sessionRows = sessions.map((s) => `<div class="row"><div style="flex:1"><b>${esc(s.name)}</b></div>
     <span class="muted">${s.exercises.length} exercise${s.exercises.length === 1 ? "" : "s"}</span></div>`).join("");
-  const whyBlock = `<details class="why"><summary>Why this plan? <span class="muted">(the science)</span></summary>
+  // A custom-edited plan clears plan_rationale (it described the pre-edit plan), so
+  // the generated science breakdown no longer matches the sessions shown. Rather
+  // than render a stale/empty "why", point to the live editor critique.
+  const hasRationale = !!(r.volume_by_muscle && Object.keys(r.volume_by_muscle).length);
+  const whyBlock = hasRationale
+    ? `<details class="why"><summary>Why this plan? <span class="muted">(the science)</span></summary>
     <p class="muted" style="margin-top:8px">${esc(r.split?.reason || "")} ${gradeChip("B")}</p>
     <h3>Weekly sets per muscle</h3>
     <div class="card">${volRows || '<p class="muted">—</p>'}</div>
     ${STATUS_LEGEND}
-    ${warns ? `<h3>Heads up</h3><div class="card">${warns}</div>` : ""}</details>`;
+    ${warns ? `<h3>Heads up</h3><div class="card">${warns}</div>` : ""}</details>`
+    : `<div class="card"><p class="muted">You've customised this plan, so the auto-generated “why” breakdown no longer describes it. Use <b>Edit &amp; review my plan</b> below for a live check of your plan against the KB.</p></div>`;
 
   if (firstTime) {
     app.innerHTML = `<div class="center"><h1>Your plan is ready 🎉</h1></div>
