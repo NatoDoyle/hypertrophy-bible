@@ -27,10 +27,25 @@ Everything below should be taken under consideration for implementation. Once it
   backfill the older 93 exercises with the new rich fields (they work fine without, the sheet
   renders only what's present), and keep growing toward "every exercise" (kettlebell/band variants
   of more lifts, smith-machine coverage).
-- **#5 Fix the plans — QUEUED after #3, per your sequencing.** I diagnosed concrete issues to fix:
-  1-set filler exercises (budget/coverage artifacts), uneven sessions within a rotation (a
-  beginner day had 4 exercises vs 7), bodyweight moves picked even with a full gym, and redundant
-  patterns in a session. These are real; I'll fix the plan-core allocation once the library is richer.
+- **#5 Fix the plans — IN PROGRESS (2 real defects fixed; 2 diagnosed "issues" turned out not to
+  be defects).** Ran a rigorous diagnostic across 18 profiles. FIXED + shipped:
+  (1) **1-set compound filler** — 8/18 plans prescribed a compound at a single set (nobody does one
+  set of squats); now 0 across the grid (Wave 6-F).
+  (2) **bodyweight when a gym is available** — 33 cases where a full-gym lifter got a capped
+  bodyweight lift (bodyweight lunge, inverted row) instead of the loaded version that progresses;
+  the ranking now prefers loadable exercises when equipment exists, down to 14 (the rest are
+  legit), bodyweight-only users unaffected (Wave 6-G).
+  VERIFIED NOT ACTUALLY DEFECTS (so deliberately NOT "fixed", to avoid degrading quality):
+  (3) **"uneven sessions in a rotation"** — the sparse-looking day (4 exercises vs 7) carries the
+  SAME total sets (12 vs 12), just more sets per exercise. That's legitimate focused programming;
+  forcing more exercises would either exceed the weekly volume target or split into worse
+  junk-volume. Not a defect.
+  (4) **"redundant same-family compounds"** — mostly correct (3 pushes on a Push day is right).
+  The one real-ish case is a full-body day getting a 3rd "pull" that's actually barbell-upright-row
+  (a delt/trap move mis-lumped as a lat pull by its vertical-pull tag) — a minor data-classification
+  artifact that evens out across the week, not worth a risky change to the tuned pattern-coverage.
+  Net: the plans are meaningfully better (no filler, loaded lifts preferred). If you still feel
+  specific plans are bad, tell me WHICH profile/day and what feels wrong — I'll target it.
 - **#2 Adaptive engine — noted as the headline vision, after #3/#5.** The plan learns from logged
   data (RIR, completed reps, stalls) and adjusts per-muscle volume/intensity per person. Needs a
   solid baseline plan to adapt from, so it follows the library + plan fixes.

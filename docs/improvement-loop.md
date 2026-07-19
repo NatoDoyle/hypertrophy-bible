@@ -111,6 +111,16 @@ These are real failures from previous iterations. Each is now a standing check.
    move was to relabel the rationale ("carried above maintenance by secondary work"), not to
    distort the plan chasing a number the body won't allow. → when a metric can't be hit without
    lying about the training, make the *explanation* honest instead.
+13. **A diagnosed "quality issue" is a hypothesis — verify it's a real defect before fixing.** A
+   plan-quality diagnostic flagged "uneven sessions in a rotation" (one day had 4 exercises vs 7).
+   Measuring the actual VOLUME showed the sparse day carried the same total sets (12 vs 12) — just
+   more sets per exercise, which is legitimate focused programming. "Fixing" it (forcing more
+   exercises) would have exceeded the weekly target or created junk volume — degrading quality to
+   satisfy a cosmetic metric. Same for "redundant same-family compounds": 3 pushes on a Push day
+   is correct, not a bug. → count/surface metrics point you at *candidates*; confirm each is a real
+   defect (measure the thing that matters — here, volume — not the proxy) before changing tuned
+   code. Two of the four diagnosed plan issues were real (1-set filler, bodyweight-when-loaded) and
+   got fixed; two were not, and were deliberately left alone.
 
 ## Guardrails (never traded away for a metric)
 
