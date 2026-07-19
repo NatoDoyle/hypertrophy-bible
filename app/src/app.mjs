@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness } from "./coach.mjs";
+import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
@@ -74,12 +74,17 @@ export function createApp(store, config = {}) {
       // mesocycle position. Training change: fresh block 0 (week-1 ramp, rebased rotation).
       const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
       u.profile = next;
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex });
+      // Preserve the adaptive per-muscle tune across a settings edit — a change in
+      // days/equipment doesn't invalidate "this person's chest responds to more
+      // volume". (Specialization muscles ignore it; their target is overridden.)
+      const volumeAdjust = u.plan_meta?.volume_adjust ?? {};
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
       u.program = program; u.plan_rationale = rationale;
       u.plan_meta = {
         ...meta,
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
+        volume_adjust: volumeAdjust,
         // Rebase rotation with buildToday's OWN-program predicate (merged foreign
         // sessions once froze Today on Day A), only on a real training change.
         rotation_base: trainingChanged
@@ -223,7 +228,12 @@ export function createApp(store, config = {}) {
           // untouched — otherwise the rotation silently clobbers a just-saved custom
           // plan. (Every other mutator here re-checks its precondition inside the CAS.)
           if (u.program?.custom || blockIndex === (u.plan_meta?.block_index ?? 0)) return u;
-          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex });
+          // ADAPTIVE (#2): fold the just-completed block's response into the running
+          // per-muscle volume adjustment, so the new block's targets are tuned to how
+          // THIS person actually responded — stalled muscles get more, ceiling-bound
+          // ones get eased, all bounded to MEV↔MRV. Accumulates across blocks.
+          const volumeAdjust = computeVolumeAdjust(u.plan_meta?.volume_adjust, sessions, u.custom_exercises || []);
+          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
@@ -231,6 +241,7 @@ export function createApp(store, config = {}) {
             block_index: blockIndex,
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
+            volume_adjust: volumeAdjust, // the running adaptive tune, carried forward
           };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed

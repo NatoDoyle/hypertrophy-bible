@@ -170,6 +170,23 @@ try {
     Array.isArray(kbSwing.good_when) && Array.isArray(kbSwing.bad_when) &&
     kbSwing.loading_bias === "mid-range" && kbSwing.cns_cost === "moderate");
 
+  // #2 AUTO-TUNE: a lift that stalls across a block bumps that muscle's volume in the
+  // NEXT block (bounded to MEV↔MRV), driven by the user's own logged response.
+  const atUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  const dayAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  // 5 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
+  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(35 - w * 7),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+  const chestBefore = (await store.getUser(atUser)).plan_rationale?.volume_by_muscle?.chest?.target_sets;
+  // backdate block_start so a mesocycle boundary has passed → /api/today rotates + auto-tunes
+  await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": atUser } });
+  const atAfter = await store.getUser(atUser);
+  ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
+  ok("#2 the new block's chest target increased from the adaptive bump", atAfter.plan_rationale?.volume_by_muscle?.chest?.target_sets > chestBefore);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

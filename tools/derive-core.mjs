@@ -131,6 +131,32 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
   return out.sort((a, b) => (rank[a.signal] - rank[b.signal]) || (b.sets - a.sets));
 }
 
+// AUTO-TUNE: turn the per-muscle response into a persistent volume ADJUSTMENT the
+// plan applies next block. This is the actual "learn from the data it's fed" step
+// (#2): a muscle that keeps stalling with headroom gets more sets over time; one
+// stalled at its recoverable ceiling (or over it) gets eased. Gentle and bounded:
+// ±2 sets per block, ACCUMULATED across blocks (so a persistent responder keeps
+// climbing until it responds or hits the ceiling), and each muscle's total delta is
+// clamped to its own MEV↔MRV range so volume can never run away. Below-MEV is NOT a
+// response signal (it's a plan-fit/time constraint, surfaced as a warning), so it
+// never drives an adjustment. `prevAdjust` is the accumulated map so far (or {}).
+export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledMuscleIds = new Set()) {
+  const out = { ...(prevAdjust || {}) };
+  for (const [m, sets] of Object.entries(weekVolume || {})) {
+    const lm = muscleIndex.get(m);
+    if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
+    let step = 0;
+    if (sets > lm.mrv.max) step = -2;                                  // over the ceiling → ease
+    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? 2 : -2; // stalled: add if room, else ease/deload
+    // not stalled and within range → progressing fine → hold (no change)
+    const prev = prevAdjust?.[m] ?? 0;
+    const range = lm.mrv.max - lm.mev.min;
+    const next = Math.max(-range, Math.min(range, prev + step));
+    if (next === 0) delete out[m]; else out[m] = next;
+  }
+  return out;
+}
+
 // Bodyweight trend via least-squares regression (kg/week). Daily weight is noise;
 // the slope of the trend is the signal — and doubles as the energy-balance sensor.
 export function bodyweightTrend(series) {

@@ -174,12 +174,22 @@ export function generatePlan(profile, kb, opts = {}) {
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
 
   // 2) weekly target per muscle
+  // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
+  // logged response has nudged each muscle's target up or down over past blocks.
+  // Applied to the landmark-derived base and re-clamped to [MEV.min, MRV.max] so an
+  // adaptive bump can never push a muscle past its recoverable ceiling.
+  const volumeAdjust = opts.volumeAdjust ?? {};
   const targets = {};
   const volumeRationale = {};
   for (const m of muscles) {
     const t = targetWeeklySets(m.landmarks, { experience, isPriority: priority.has(m.id) });
+    const delta = volumeAdjust[m.id];
+    if (delta && m.landmarks) {
+      const tuned = clamp(t.target + delta, m.landmarks.mev.min, m.landmarks.mrv.max);
+      if (tuned !== t.target) { t.reasons.push(`adaptive: ${tuned - t.target > 0 ? "+" : ""}${tuned - t.target} set${Math.abs(tuned - t.target) === 1 ? "" : "s"} from your logged response`); t.target = tuned; }
+    }
     targets[m.id] = t.target;
-    volumeRationale[m.id] = { target_sets: t.target, is_priority: priority.has(m.id), landmark: t.landmark, reasons: t.reasons };
+    volumeRationale[m.id] = { target_sets: t.target, is_priority: priority.has(m.id), landmark: t.landmark, reasons: t.reasons, ...(volumeAdjust[m.id] ? { adaptive_delta: volumeAdjust[m.id] } : {}) };
     // SPECIALIZATION BLOCK (KB: weak-point-prioritization): the user goes all-in —
     // priority muscles push to the recoverable ceiling while everything else drops
     // to a maintenance dose (~half MEV keeps muscle; detraining-and-maintenance).
