@@ -158,12 +158,22 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;
   let coach_note = null;
-  if (readiness?.level === "low" && templateExercises.length > 3) {
-    templateExercises = templateExercises.slice(0, -1); // drop the last accessory
-    // the dropped accessory may have been half a superset pair — unlink survivors
-    const ids = new Set(templateExercises.map((e) => e.exercise));
-    templateExercises = templateExercises.map((e) => e.superset_with && !ids.has(e.superset_with) ? { ...e, superset_with: undefined } : e);
-    coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
+  if (readiness?.level === "low") {
+    // Branch on the LEVEL, never on whether we can trim. A low day always earns an
+    // honest easing note — trimming is just the primary lever when the session is
+    // long enough. On an already-short (≤3-exercise) session we keep it whole but
+    // still ease effort; the one thing we must never do is tell someone who reported
+    // awful sleep/energy that they're "in their normal range" (that fabricates a
+    // status against their own input and teaches them the check-in is fake).
+    if (templateExercises.length > 3) {
+      templateExercises = templateExercises.slice(0, -1); // drop the last accessory
+      // the dropped accessory may have been half a superset pair — unlink survivors
+      const ids = new Set(templateExercises.map((e) => e.exercise));
+      templateExercises = templateExercises.map((e) => e.superset_with && !ids.has(e.superset_with) ? { ...e, superset_with: undefined } : e);
+      coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
+    } else {
+      coach_note = "You flagged low sleep/energy today. It's already a short session, so keep it — but take a little extra rest and stop 2–3 reps short of failure. Showing up is the win.";
+    }
   } else if (readiness?.level === "high") {
     coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
   } else if (readiness) {
@@ -192,8 +202,15 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // Apply the mesocycle wave: sets scale with the block week (never below 1);
     // on a deload the suggested load also eases ~10% so effort genuinely drops.
     const sets = block ? Math.max(1, Math.round(ex.sets * block.setScale)) : ex.sets;
+    // Deload load must ease from last week's ACTUAL weight, not the progressed
+    // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
+    // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
+    // week (e.g. (40+5)*0.9 = 40.5 > 40). Anchor on `last_kg` and take the MIN with
+    // whatever suggestWeight already returned, so a deload can never be heavier than
+    // the prior real week and never undoes a lighter ease (a layoff comeback at
+    // 0.88× stays at 0.88×, not bumped back up to 0.9×).
     const suggested_kg = block?.phase === "deload" && sug.suggested_kg != null
-      ? Math.round(sug.suggested_kg * 0.9 * 4) / 4
+      ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
       : sug.suggested_kg;
     return {
       exercise: ex.exercise,
