@@ -1,0 +1,40 @@
+{
+  "id": "side-plank",
+  "name": "Side Plank",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "other",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "static",
+  "plane": [
+    "frontal"
+  ],
+  "resistance_profile": "Anti-lateral-flexion core hold: resist gravity pulling the hips toward the floor — trains the obliques and lateral core to brace. A no-equipment rotation/anti-rotation option.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": true,
+  "difficulty": "beginner",
+  "cues": [
+    "Stack the feet and hips in a straight line",
+    "Lift the hips and brace the side of your core",
+    "Do both sides"
+  ],
+  "common_errors": [
+    "Letting the hips sag toward the floor",
+    "Rotating the torso forward or back"
+  ],
+  "progressions": [
+    "Add time",
+    "Raise the top leg",
+    "Hold a weight on the hip"
+  ],
+  "regressions": [
+    "Bottom knee down",
+    "Shorter holds"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}

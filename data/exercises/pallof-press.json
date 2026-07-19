@@ -1,0 +1,39 @@
+{
+  "id": "pallof-press",
+  "name": "Pallof Press",
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "force": "static",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Anti-rotation core exercise: the cable pulls you into a twist and you resist it — trains the obliques and deep core to brace against rotation.",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Stand side-on to the cable, hands at your chest",
+    "Press straight out and resist the twist",
+    "Brace the abs; don't let your torso rotate"
+  ],
+  "common_errors": [
+    "Letting the torso rotate toward the cable",
+    "Using the arms instead of bracing the core"
+  ],
+  "progressions": [
+    "Step further from the anchor",
+    "Add load",
+    "Half-kneeling variation"
+  ],
+  "regressions": [
+    "Lighter load",
+    "Hands held closer to the chest (shorter lever)"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
+}
