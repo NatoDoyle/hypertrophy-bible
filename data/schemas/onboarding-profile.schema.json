@@ -30,7 +30,7 @@
     "available_equipment": {
       "type": "array",
       "minItems": 1,
-      "items": { "enum": ["barbell", "dumbbell", "machine", "cable", "bodyweight"], "description": "Only equipment the exercise library actually covers — band/kettlebell/smith-machine are omitted until primary exercises exist for them, so a user can't select an equipment set that resolves to an empty pool." }
+      "items": { "enum": ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"], "description": "Only equipment the exercise library actually covers. band + kettlebell were added once they had real primary-exercise pools (band covers 15/16 muscles, kettlebell 14/16). smith-machine is still omitted from onboarding (only 9/16 muscles) — its exercises are reachable via the plan editor." }
     },
     "injuries": {
       "type": "array",
