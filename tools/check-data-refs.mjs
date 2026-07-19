@@ -66,6 +66,17 @@ for (const e of exercises) {
   for (const m of e.primary_muscles ?? []) {
     if (primaryCount.has(m)) primaryCount.set(m, primaryCount.get(m) + 1);
   }
+  // The plan engine reads the boolean `lengthened_bias`; `loading_bias` is the
+  // richer reader-facing field. They must not disagree — a lengthened_bias:true
+  // exercise whose loading_bias says "shortened" would train the opposite of what
+  // the engine thinks it does.
+  if (e.loading_bias != null && e.lengthened_bias != null) {
+    const shouldBe = e.loading_bias === "lengthened";
+    if (e.lengthened_bias !== shouldBe) {
+      console.error(`  ✗ exercise '${e.id}': lengthened_bias (${e.lengthened_bias}) disagrees with loading_bias ('${e.loading_bias}')`);
+      errors++;
+    }
+  }
 }
 
 // Programs -> exercise + progression refs
