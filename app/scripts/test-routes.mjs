@@ -87,6 +87,45 @@ try {
   ok("no-op plan save succeeds", noop.status === 200);
   ok("an unchanged plan save does not flip custom:true", !(await store.getUser(uid)).program.custom);
 
+  // --- Wave 4-B: auth + data-loss guardrails ---
+
+  // #16: the credential must NOT be accepted from a URL query string anymore — a
+  // GET with ?u= and no header must NOT authenticate (it used to leak into logs).
+  const viaQuery = await app.request(`/api/today?u=${uid}`); // no X-HB-User header
+  ok("#16 ?u= query no longer authenticates a GET (credential kept out of URLs)", viaQuery.status === 400);
+  const viaHeader = await app.request("/api/today", { headers: { "X-HB-User": uid } });
+  ok("#16 the X-HB-User header still authenticates the same GET", viaHeader.status === 200);
+
+  // #17: merge is the only route that deletes a user, so it now demands proof the
+  // caller HOLDS from_user_id (X-HB-User), not merely knowledge of it. A victim's
+  // UUID alone (no matching header) must be rejected before any destructive move.
+  const victim = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const attacker = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const noProof = await app.request("/api/auth/merge", {
+    method: "POST", headers: { "content-type": "application/json" }, // NO X-HB-User for `from`
+    body: JSON.stringify({ from_user_id: victim, to_user_id: attacker, grant: "anything" }),
+  });
+  ok("#17 merge without from-side possession (X-HB-User) is refused 403", noProof.status === 403);
+  ok("#17 the victim's account is untouched (never reached the destructive move)", !!(await store.getUser(victim)));
+
+  // #6: a block-boundary /api/today must never clobber a plan that became custom.
+  // Flip the user custom + backdate the block so rotation WOULD fire, then confirm
+  // the CAS mutator leaves the custom plan intact.
+  await store.updateUser(uid, (u) => {
+    u.program.custom = true;
+    u.plan_meta = { ...(u.plan_meta || {}), block_start: "2020-01-01T00:00:00Z", block_index: 0 };
+    return u;
+  });
+  const customName = (await store.getUser(uid)).program.name;
+  await app.request("/api/today", { headers: { "X-HB-User": uid } }); // would rotate if unguarded
+  const afterRotate = await store.getUser(uid);
+  ok("#6 block rotation leaves a custom plan untouched (no silent clobber)",
+    afterRotate.program.custom === true && afterRotate.program.name === customName);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

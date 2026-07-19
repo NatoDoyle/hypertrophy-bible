@@ -70,7 +70,10 @@ export function createFileStore(path) {
     // library are moved — otherwise moved sets reference custom-* ids that no
     // longer resolve (silent volume/PR corruption) and today's check-in is lost.
     async reassignUserData(fromId, toId) {
-      const moved = { sessions: (db.sessions[fromId] ?? []).length, bodyweights: (db.bodyweights[fromId] ?? []).length };
+      // Count what ACTUALLY lands on the target (after same-id / same-date dedup),
+      // not the raw source lengths — otherwise this diverges from D1, which returns
+      // the true rows changed. Parity matters the moment any surface shows "N imported".
+      const moved = { sessions: 0, bodyweights: 0 };
       // custom exercises live on the user doc → migrate before deleting it (dedup by id).
       const fromU = db.users[fromId], toU = db.users[toId];
       if (fromU?.custom_exercises?.length && toU) {
@@ -83,13 +86,13 @@ export function createFileStore(path) {
         // queue item on both users would otherwise double-count volume and PRs.
         const dst = (db.sessions[toId] ??= []);
         const have = new Set(dst.map((s) => s.session_id));
-        for (const s of db.sessions[fromId]) if (!s.session_id || !have.has(s.session_id)) { dst.push(s); if (s.session_id) have.add(s.session_id); }
+        for (const s of db.sessions[fromId]) if (!s.session_id || !have.has(s.session_id)) { dst.push(s); moved.sessions++; if (s.session_id) have.add(s.session_id); }
       }
       if (db.bodyweights[fromId]?.length) {
         // One weigh-in per day survives the merge: keep the TARGET's same-date row.
         const dst = (db.bodyweights[toId] ??= []);
         const dates = new Set(dst.map((b) => b.date));
-        for (const b of db.bodyweights[fromId]) if (!dates.has(b.date)) { dst.push(b); dates.add(b.date); }
+        for (const b of db.bodyweights[fromId]) if (!dates.has(b.date)) { dst.push(b); moved.bodyweights++; dates.add(b.date); }
       }
       // checkins: keep the target's row on a same-day conflict.
       if (db.checkins[fromId]?.length) {

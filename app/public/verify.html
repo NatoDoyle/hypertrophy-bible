@@ -54,7 +54,7 @@
             let localItems = 0, probeFailed = false, queued = 0;
             try { queued = JSON.parse(localStorage.getItem("hb_queue") || "[]").filter((it) => it.path === "/api/session").length; } catch (_) {}
             try {
-              const p = await fetch("/api/progress?u=" + encodeURIComponent(current)).then((x) => x.json());
+              const p = await fetch("/api/progress", { headers: { "X-HB-User": current } }).then((x) => x.json());
               localItems = (p.sessions_logged || 0) + (p.bodyweights_logged || 0) + queued;
             } catch (_) { probeFailed = true; }
             const hasLocal = localItems > 0 || probeFailed;
@@ -62,7 +62,9 @@
               const wantMerge = confirm("This device has workouts logged on it. Bring them into your backup so nothing is lost?");
               if (wantMerge && d.merge_grant) {
                 const m = await fetch("/api/auth/merge", {
-                  method: "POST", headers: { "content-type": "application/json" },
+                  // X-HB-User proves this device holds `from` (the merge route deletes
+                  // it, so it demands from-side possession, not just the id in the body).
+                  method: "POST", headers: { "content-type": "application/json", "X-HB-User": current },
                   body: JSON.stringify({ grant: d.merge_grant, from_user_id: current, to_user_id: d.user_id }),
                 }).then((x) => x.json()).catch(() => null);
                 if (!m || !m.merged) {
