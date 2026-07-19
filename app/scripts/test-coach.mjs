@@ -119,6 +119,31 @@ check("mesocycle: deload eases the suggested load ~10%", () => {
   assert.equal(t.exercises[0].suggested_kg, 90); // held weight 100 → 90 on deload
 });
 
+check("#A2 deload never prescribes >= the prior real week (eases from last load, not the progressed target)", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const u = { profile: { training_status: "advanced", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  // Last week hit the TOP of the range at a LIGHT load → suggestWeight ADDS load.
+  // The old deload multiplied that bumped target by 0.9 and came out HEAVIER than 20.
+  const last = [{ date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 20, reps: 10 }] }];
+  const deloadDay = new Date(+new Date(start) + 36 * 86400000).toISOString();
+  const t = buildToday(u, last, null, [], deloadDay);
+  assert.equal(t.block.phase, "deload");
+  assert.ok(t.exercises[0].suggested_kg < 20, `deload ${t.exercises[0].suggested_kg} must be lighter than the 20kg peak week`);
+});
+
+check("#A1 a low check-in on an already-short session is eased honestly, never told 'normal range'", () => {
+  const u = { profile: { training_status: "beginner", days_per_week: 3 },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+      { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" },
+      { exercise: "barbell-row", sets: 3, rep_range: "6-10" },
+      { exercise: "goblet-squat", sets: 3, rep_range: "6-10" }] }] } };
+  const t = buildToday(u, [], { level: "low", score: 1.5 });
+  assert.equal(t.exercises.length, 3);                          // ≤3 → nothing to trim, keep it whole
+  assert.ok(t.coach_note && !/normal range/i.test(t.coach_note), "must NOT fabricate a 'normal range' status on a low day");
+  assert.ok(/short session|extra rest|reps short/i.test(t.coach_note), "must give an honest low-day easing note");
+});
+
 check("mesocycle: beginners are exempt — flat sets, no block", () => {
   const u = { profile: { training_status: "beginner", days_per_week: 3 }, plan_meta: { block_start: "2026-01-05T00:00:00Z" },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };
