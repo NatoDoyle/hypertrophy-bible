@@ -158,7 +158,12 @@ export function progressionByExercise(sessions, exIndex) {
     for (const set of s.sets ?? []) {
       // Reliable rep ranges only — otherwise a light high-rep back-off set shows
       // up as a strength GAIN, and this screen contradicts the session recap.
-      if (!countsForE1RM(set)) continue;
+      // Deload weeks are eased ~10% ON PURPOSE, so their e1RM must NOT anchor the
+      // trend — otherwise the block-ending recovery week reads as a fabricated ~10%
+      // strength LOSS, shown precisely when the coach copy says growth shows up.
+      // (Mirrors stallDetect and suggestWeight, which both already exclude deloads —
+      // this was the one "deload-aware progression" sibling the guard missed.)
+      if (!countsForE1RM(set) || set.deload) continue;
       const { e1rm } = estimate1RM(set.weight_kg, set.reps);
       byEx[set.exercise] ??= {};
       byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);

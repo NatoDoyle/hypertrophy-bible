@@ -464,7 +464,14 @@ export function generatePlan(profile, kb, opts = {}) {
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
-    else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m, message: `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
+    else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m,
+      // Priority-aware: a muscle you've ALREADY prioritised (or set as a
+      // specialization target, whose ceiling is mrv.max and never fits under the
+      // session-quality cap) must not be told to "mark it a priority" — it reads as
+      // broken, contradictory coaching. Give the only real levers left instead.
+      message: priority.has(m)
+        ? `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — its ceiling is more than these ${sessionSpecs.length} days can recover; an extra training day or longer sessions would close the gap.`
+        : `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
   }
 
   const citations = [...new Set([...splitCites, ...exerciseChoices.flatMap((c) => c.citations), ...Object.values(volumeRationale).flatMap((r) => r.landmark?.citations ?? [])])];
