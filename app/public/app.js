@@ -890,16 +890,30 @@ function renderSupersetStation(L, P, resting = 0) {
 }
 // The "how do I do this?" sheet: full cues + mistakes from the KB, and a form-
 // video search — an honest stand-in until we have vetted demo media of our own.
+const BIAS_LABEL = { lengthened: "loads the stretch 🎯", shortened: "loads the squeeze", "mid-range": "hardest mid-range", uniform: "even resistance" };
 function renderExerciseSheet(ex, d) {
   const name = d?.name ?? ex.name;
-  const cues = (d?.cues ?? []).map((c) => `<div class="win">✅ ${esc(c)}</div>`).join("") || `<p class="muted">No cues on file for this one.</p>`;
+  const steps = (d?.execution_steps ?? []).map((s, i) => `<div class="win"><b>${i + 1}.</b> ${esc(s)}</div>`).join("");
+  const cues = (d?.cues ?? []).map((c) => `<div class="win">✅ ${esc(c)}</div>`).join("");
   const errs = (d?.common_errors ?? []).map((c) => `<div class="win">⚠️ ${esc(c)}</div>`).join("");
+  const good = (d?.good_when ?? []).map((c) => `<div class="win">👍 ${esc(c)}</div>`).join("");
+  const bad = (d?.bad_when ?? []).map((c) => `<div class="win">👎 ${esc(c)}</div>`).join("");
   const muscles = friendlyMuscles([...(d?.primary_muscles ?? []), ...(d?.secondary_muscles ?? [])]);
+  // quick fact chips: loading bias, systemic fatigue, difficulty
+  const chips = [
+    d?.loading_bias ? BIAS_LABEL[d.loading_bias] : null,
+    d?.cns_cost ? `${d.cns_cost} systemic fatigue` : null,
+    d?.difficulty ? d.difficulty : null,
+  ].filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join(" ");
   const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(name + " proper form")}`;
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
-    <h2>How to do it</h2>${cues}
+    ${chips ? `<p>${chips}</p>` : ""}
+    ${steps ? `<h2>Step by step</h2>${steps}` : ""}
+    ${cues ? `<h2>Coaching cues</h2>${cues}` : (!steps ? `<p class="muted">No cues on file for this one.</p>` : "")}
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
+    ${good ? `<h2>Good pick when</h2>${good}` : ""}
+    ${bad ? `<h2>Maybe skip when</h2>${bad}` : ""}
     <p class="muted">Want to see it? This opens a YouTube search in a new tab — pick a clear, calm demo (avoid ego-lifting clips).</p>
     <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Find a form video</a>
     <button class="btn" id="back">Back to workout</button>`;
