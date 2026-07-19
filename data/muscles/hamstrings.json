@@ -16,6 +16,6 @@
     "notes": "Two functions (knee flexion and hip extension) usually need separate exercises. High-eccentric work (RDLs) causes notable damage; individualize volume. Estimate only."
   },
   "frequency_notes": "~2x/week; separate a hip-hinge day from a knee-flexion (leg curl) day if volume is high.",
-  "training_notes": "Train BOTH functions: Romanian deadlifts (hip extension, loaded stretch) and leg curls (knee flexion). Seated leg curls load the lengthened position more than lying/standing.",
-  "citations": ["pedrosa-2022-lengthened-partials"]
+  "training_notes": "Train BOTH functions: Romanian deadlifts (hip extension, loaded stretch) and leg curls (knee flexion). Seated leg curls load the lengthened position more than lying/standing, and grow the hamstrings more (Maeo 2021: +14% vs +9% muscle volume, seated vs prone).",
+  "citations": ["maeo-2021-hamstring-length", "pedrosa-2022-lengthened-partials"]
 }

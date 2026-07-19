@@ -19,5 +19,5 @@
   "common_errors": ["Partial range at the contracted end", "Hips lifting off the pad", "Snapping the weight up"],
   "progressions": ["Add load", "Pause at full flexion", "Slow eccentric emphasis"],
   "regressions": ["Lying leg curl", "Nordic curl (regressed range)"],
-  "citations": ["pedrosa-2022-lengthened-partials"]
+  "citations": ["maeo-2021-hamstring-length", "pedrosa-2022-lengthened-partials"]
 }
