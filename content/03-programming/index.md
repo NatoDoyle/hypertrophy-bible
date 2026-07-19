@@ -13,6 +13,7 @@ keeps effective, recoverable volume high.
 | [Training Splits](splits.md) | Full-body, upper/lower, PPL, bro splits; how splits distribute frequency & volume | ✅ |
 | [Periodization & Progression](periodization-and-progression.md) | Linear vs undulating vs block; double progression, load progression, RIR autoregulation | ✅ |
 | [Volume Progression & Deloads](volume-progression-and-deloads.md) | Ramping MEV→MRV across a mesocycle, then deloading | ✅ |
+| [Minimalist, Low-Volume & High-Frequency Training](minimalist-and-low-volume-training.md) | Growing on little, done hard; low volume + high frequency + high effort; when it fits | ✅ |
 | [Exercise Variation & Specialization](variation-and-specialization.md) | How much novelty helps; bringing up lagging muscles; fatigue management | ✅ |
 | [Warm-Ups](warm-up.md) | General warm-up + ramp-up sets; warming up without pre-fatigue | ✅ |
 | [Cardio & Concurrent Training](cardio-and-concurrent-training.md) | The interference effect, programming cardio, cardio for fat loss | ✅ |
