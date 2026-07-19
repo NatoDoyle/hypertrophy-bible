@@ -263,6 +263,12 @@ export function generatePlan(profile, kb, opts = {}) {
       const want = holdMaint(forMuscle)
         ? Math.min(sets, Math.max(1, Math.ceil(Math.ceil((targets[forMuscle] ?? 0) / Math.max(1, freq[forMuscle] ?? 1)) - (credited[forMuscle] ?? 0))))
         : sets;
+      // No 1-set COMPOUNDS: nobody does a single set of squats/rows/presses. A
+      // compound only lands with 1 set left when the session is essentially full,
+      // so it would be token redundant coverage — refuse it and leave the budget
+      // (an isolation filling a small residual, or a clean end, is better). Compounds
+      // are placed early when budget is ample, so this never starves a muscle.
+      if (ex.mechanic === "compound" && Math.min(want, setBudget - setsUsed) < 2) return false;
       const setN = clamp(Math.min(want, EX_SET_CAP, setBudget - setsUsed), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       items.push({ exercise: ex.id, sets: setN, rep_range: s[0], rir: s[1] });
@@ -445,7 +451,10 @@ export function generatePlan(profile, kb, opts = {}) {
     const isIso = (it) => exById.get(it.exercise)?.mechanic === "isolation";
     let trimmed = false;
     for (const s of outSessions) { const it = s.exercises.find((x) => primaryLoads(x) && isIso(x) && x.sets > 1); if (it) { it.sets--; trimmed = true; break; } }
-    if (!trimmed) for (const s of outSessions) { const it = s.exercises.find((x) => primaryLoads(x) && x.sets > 1); if (it) { it.sets--; trimmed = true; break; } }
+    // Shave a compound only while it stays >= 2 sets — never leave a 1-set compound
+    // (nobody does one set of squats). A compound already at 2 that still needs
+    // trimming is DROPPED whole by the branches below instead.
+    if (!trimmed) for (const s of outSessions) { const it = s.exercises.find((x) => primaryLoads(x) && x.sets > (isIso(x) ? 1 : 2)); if (it) { it.sets--; trimmed = true; break; } }
     if (!trimmed) for (const s of outSessions) { const i = s.exercises.findIndex((x) => primaryLoads(x) && isIso(x)); if (i >= 0) { s.exercises.splice(i, 1); trimmed = true; break; } }
     if (!trimmed) for (const s of outSessions) { const i = s.exercises.findIndex(primaryLoads); if (i >= 0) { s.exercises.splice(i, 1); trimmed = true; break; } }
     if (!trimmed) break;
