@@ -1,7 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram } from "../src/kb.mjs";
-import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness } from "../src/coach.mjs";
+import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust } from "../src/coach.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -172,6 +172,17 @@ check("suggestWeight: a layoff eases the load instead of piling on more (comebac
   assert.ok(back.layoff_days >= 12 && /eased/i.test(back.note));
   // 2 days later (no layoff) -> normal double progression still adds load.
   assert.equal(suggestWeight(last, "barbell-bench-press", "6-10", undefined, "2026-06-03T18:00:00Z").suggested_kg, 102.5);
+});
+
+check("computeVolumeAdjust samples PEAK block volume, not the deload week (ease branch reachable)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  // chest (bench primary) stalled at 20 working sets/wk (= its MAV.max), block ends on a
+  // deload week at 10. Sampling the deload (10 < MAV.max) would BUMP; sampling the peak
+  // (20 >= MAV.max) correctly EASES a ceiling-stalled muscle.
+  const sessions = [wk(42, 20), wk(35, 20), wk(28, 20), wk(21, 20), wk(14, 20), wk(7, 10)];
+  const adj = computeVolumeAdjust({ chest: 6 }, sessions);
+  assert.equal(adj.chest, 4, `stalled at ceiling should EASE +6→+4, got ${adj.chest}`);
 });
 
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {

@@ -186,12 +186,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // logged under the new block), so the changed exercise list never feels random.
   const rotatedAt = user.plan_meta?.rotated_at;
   if (rotatedAt && !sessions.some((s) => s.date && s.date > rotatedAt)) {
-    // If the adaptive tune moved any muscle's volume this block, say so — the plan
-    // visibly learning from the user's own logs is the point of the adaptive engine.
-    const adj = user.plan_meta?.volume_adjust ?? {};
+    // If the adaptive tune moved a muscle's volume THIS block, say so — announce only
+    // what changed this block (not the whole accumulated total, which would re-claim
+    // "I added volume for X" every block long after the one-time bump).
+    const changed = user.plan_meta?.tuned_this_block ?? {};
     const mName = (m) => (muscleById.get(m)?.name ?? m).replace(/\s*\([^)]*\)/, ""); // drop the "(Pectoralis Major)" scientific suffix
-    const bumped = Object.entries(adj).filter(([, d]) => d > 0).map(([m]) => mName(m));
-    const eased = Object.entries(adj).filter(([, d]) => d < 0).map(([m]) => mName(m));
+    const bumped = (changed.bumped ?? []).map((m) => mName(m));
+    const eased = (changed.eased ?? []).map((m) => mName(m));
     const tuned = bumped.length || eased.length
       ? ` Based on how you've been responding, I've ${[bumped.length ? `added volume for your ${bumped.join(", ")}` : "", eased.length ? `eased off your ${eased.join(", ")}` : ""].filter(Boolean).join(" and ")}.`
       : "";
@@ -312,10 +313,17 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = []) {
   const { index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
-  const latest = weeks[weeks.length - 1];
-  if (!latest) return prevAdjust || {};
+  if (!weeks.length) return prevAdjust || {};
+  // Sample each muscle's PEAK weekly volume over the recent block — NOT the last
+  // logged week. A mesocycle ends on a DELOAD (~half volume), so sampling the latest
+  // week would make every "at/over the recoverable ceiling → ease" branch unreachable
+  // (deload volume is always well below MAV.max), leaving the tune able only to
+  // ratchet UP. Peak volume reflects the working load the muscle actually stalled at.
+  const recent = weeks.slice(-6);
+  const peak = {};
+  for (const wk of recent) for (const [m, sets] of Object.entries(weekly[wk] ?? {})) peak[m] = Math.max(peak[m] ?? 0, sets);
   const stalledMuscleIds = new Set(stallDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
-  return deriveVolumeAdjust(prevAdjust || {}, weekly[latest], muscleIndex, stalledMuscleIds);
+  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds);
 }
 
 export function progressReport(user, sessions, bodyweights, customEx = []) {

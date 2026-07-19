@@ -232,7 +232,20 @@ export function createApp(store, config = {}) {
           // per-muscle volume adjustment, so the new block's targets are tuned to how
           // THIS person actually responded — stalled muscles get more, ceiling-bound
           // ones get eased, all bounded to MEV↔MRV. Accumulates across blocks.
-          const volumeAdjust = computeVolumeAdjust(u.plan_meta?.volume_adjust, sessions, u.custom_exercises || []);
+          // DURING a SPECIALIZATION block, non-priority muscles are DELIBERATELY
+          // maintenance-dosed (low), so their lifts "stall" by design — folding that
+          // in would spuriously bump their target, which then lands once specialization
+          // ends. So freeze the tune during a spec block (carry the prior forward).
+          const prevAdjust = u.plan_meta?.volume_adjust ?? {};
+          const volumeAdjust = u.profile?.specialization
+            ? prevAdjust
+            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || []);
+          // What CHANGED this block — so the new-block coach note announces the actual
+          // adjustment, not the whole accumulated total re-announced every block.
+          const tunedThisBlock = {
+            bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
+            eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
+          };
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
@@ -242,6 +255,7 @@ export function createApp(store, config = {}) {
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
             volume_adjust: volumeAdjust, // the running adaptive tune, carried forward
+            tuned_this_block: tunedThisBlock, // what changed THIS block, for the coach note
           };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
