@@ -96,15 +96,28 @@ export function chooseSplit({ days_per_week, training_status }) {
 
 // rank a pool of exercises for a muscle: lengthened-bias + difficulty-fit first,
 // deterministic tie-break by seed. Returns a new sorted array (best first).
+// Bodyweight moves you can load with a belt/plate (pull-ups, dips, muscle-ups) are
+// top-tier and progress fine — never penalized. Other bodyweight moves (lunges,
+// inverted rows, single-leg RDLs) cap out once you can do them for reps.
+const LOADABLE_BODYWEIGHT = /pull-up|chin-up|dip|muscle-up/;
 function rankPool(pool, { experience, seed, blockJitter = 0 }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
+  // Only prefer loaded exercises when the pool actually offers one — a
+  // bodyweight-only user's ranking is left completely unchanged.
+  const hasLoaded = pool.some((e) => e.equipment !== "bodyweight");
   return [...pool]
     .map((e) => {
       let score = 0;
       if (e.lengthened_bias) score -= 2;                 // KB: bias toward lengthened loading
       const d = diffRank[e.difficulty] ?? 1;
       if (d > userLvl) score += 3 * (d - userLvl);       // too advanced → penalize
+      // Prefer progressively-loadable exercises: when a loaded option exists, a
+      // non-loadable bodyweight move (lunge, inverted row) ranks below it because it
+      // can't be overloaded once mastered — the #1 driver of long-term growth. Small
+      // enough (0.6) that a lengthened-biased or difficulty-appropriate bodyweight
+      // move can still win; bigger than the jitter so it reliably breaks ties.
+      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 0.6;
       score += (((seed ^ hashStr(e.id)) + blockJitter * 2654435761) % 100) / 1000; // deterministic jitter; blockJitter rotates ties each mesocycle
       return { e, score };
     })
