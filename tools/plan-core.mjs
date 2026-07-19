@@ -113,11 +113,16 @@ function rankPool(pool, { experience, seed, blockJitter = 0 }) {
       const d = diffRank[e.difficulty] ?? 1;
       if (d > userLvl) score += 3 * (d - userLvl);       // too advanced → penalize
       // Prefer progressively-loadable exercises: when a loaded option exists, a
-      // non-loadable bodyweight move (lunge, inverted row) ranks below it because it
-      // can't be overloaded once mastered — the #1 driver of long-term growth. Small
-      // enough (0.6) that a lengthened-biased or difficulty-appropriate bodyweight
-      // move can still win; bigger than the jitter so it reliably breaks ties.
-      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 0.6;
+      // non-loadable bodyweight move (lunge, inverted row, single-leg RDL) ranks
+      // below EVERY loaded option for that muscle, because it can't be overloaded once
+      // mastered — the #1 driver of long-term growth. The penalty (2.5) is decisive:
+      // big enough that even a lengthened-biased bodyweight move (−2) still sorts
+      // above 0 (a loaded non-lengthened option), so the block rotation exhausts all
+      // loadable variants before ever reaching the capped one. Kept below one
+      // difficulty step (3) so a too-advanced loaded lift can still yield to an
+      // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
+      // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
+      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
       score += (((seed ^ hashStr(e.id)) + blockJitter * 2654435761) % 100) / 1000; // deterministic jitter; blockJitter rotates ties each mesocycle
       return { e, score };
     })
@@ -247,6 +252,17 @@ export function generatePlan(profile, kb, opts = {}) {
       return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
     };
     compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
+    // Progressive-overload guard: a loaded user never rotates onto a non-loadable
+    // bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already
+    // sorts these last, but the block-rotation counter still periodically lands on
+    // one for a high-frequency muscle on a 5–6-day split, and an int/adv lifter who
+    // owns a barbell should overload a loaded variant instead. Drop them outright
+    // when ≥1 loadable compound survives; keep them only as the sole fallback, so a
+    // bodyweight-only pool (all non-loadable) is left completely untouched.
+    {
+      const loadable = compoundPool[m.id].filter((e) => e.equipment !== "bodyweight" || LOADABLE_BODYWEIGHT.test(e.id));
+      if (loadable.length) compoundPool[m.id] = loadable;
+    }
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
     // compounds keep their ranking so double-progression baselines survive blocks.
     isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, blockJitter: blockIndex });

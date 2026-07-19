@@ -74,11 +74,16 @@ ok("no COMPOUND is ever prescribed at 1 set (across the whole profile grid)", on
 // correctly get a beginner-difficulty bodyweight lift like single-leg RDL when the
 // loaded alternatives are intermediate+ — the difficulty gate rightly outranks the
 // loadable-preference there.)
-const fullGymGrid = ["intermediate", "advanced"].map((st) =>
-  generatePlan({ user_id: `bw-${st}`, training_status: st, primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] }, kb));
+// Swept across 3–6 days AND both loaded-equipment profiles: high-frequency splits
+// give a muscle many slots, and the block-rotation counter used to walk onto the
+// capped bodyweight lift once loaded variants were spent (a 6-day back day picking
+// inverted-row, a 3-day picking single-leg RDL) — the day=4-only grid missed both.
+const fullGymGrid = ["intermediate", "advanced"].flatMap((st) =>
+  [3, 4, 5, 6].flatMap((days) => [["barbell", "dumbbell", "machine", "cable", "bodyweight"], ["dumbbell", "bodyweight"]].map((eqp) =>
+    generatePlan({ user_id: `bw-${st}-${days}-${eqp.length}`, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: eqp }, kb))));
 const cappedBodyweight = new Set(["bodyweight-lunge", "bodyweight-squat", "inverted-row", "single-leg-romanian-deadlift"]);
 const cappedBwLeaks = fullGymGrid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => cappedBodyweight.has(e.exercise));
-ok("#5 an int/adv full-gym plan doesn't use capped bodyweight lifts when loaded versions exist", cappedBwLeaks.length === 0);
+ok("#5 an int/adv loaded plan never rotates onto a capped bodyweight lift (3–6 days, full-gym & dumbbell)", cappedBwLeaks.length === 0);
 
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +
 // a deadlift is already a hard day; a 3rd heavy barbell lift over-taxes recovery.

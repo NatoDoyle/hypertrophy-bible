@@ -16,8 +16,8 @@
     "sagittal"
   ],
   "resistance_profile": "Dynamic single-leg loading for quads and glutes.",
-  "loading_bias": "mid-range",
-  "lengthened_bias": false,
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
   "stability": "low",
   "unilateral": true,
   "cns_cost": "moderate",

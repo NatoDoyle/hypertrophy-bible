@@ -8,9 +8,12 @@
     "spinal-erectors",
     "forearms"
   ],
-  "movement_pattern": "isolation-spinal-flexion",
+  "movement_pattern": "isolation-other",
   "equipment": "kettlebell",
   "mechanic": "isolation",
+  "plane": [
+    "frontal"
+  ],
   "resistance_profile": "Dynamic lateral flexion — the obliques and QL on the side away from the weight are loaded in a deep stretch at the bottom, then shorten to bend you back upright.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,

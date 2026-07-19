@@ -15,7 +15,7 @@
   "lengthened_bias": false,
   "stability": "moderate",
   "unilateral": false,
-  "cns_cost": "moderate",
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Lead with the elbows, not the hands.",

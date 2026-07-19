@@ -13,7 +13,7 @@
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
-  "cns_cost": "moderate",
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Cup the horns and keep the wrists stacked",
