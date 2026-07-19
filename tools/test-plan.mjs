@@ -85,6 +85,16 @@ const cappedBodyweight = new Set(["bodyweight-lunge", "bodyweight-squat", "inver
 const cappedBwLeaks = fullGymGrid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => cappedBodyweight.has(e.exercise));
 ok("#5 an int/adv loaded plan never rotates onto a capped bodyweight lift (3–6 days, full-gym & dumbbell)", cappedBwLeaks.length === 0);
 
+// #13 loaded carries are a time/distance movement — the rep-based generator must
+// never prescribe one (a "3×6–10" suitcase carry is nonsense). Swept over the
+// kettlebell users who actually own them; abs/forearms keep other options.
+const exPattern = Object.fromEntries(exercises.map((e) => [e.id, e.movement_pattern]));
+const carryGrid = ["beginner", "intermediate", "advanced"].flatMap((st) =>
+  [3, 4, 5, 6].map((days) =>
+    generatePlan({ user_id: `carry-${st}-${days}`, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: ["kettlebell", "bodyweight"] }, kb)));
+const carryLeaks = carryGrid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => exPattern[e.exercise] === "carry");
+ok("#13 no generated plan prescribes a loaded carry as rep-based work (kettlebell grid)", carryLeaks.length === 0);
+
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +
 // a deadlift is already a hard day; a 3rd heavy barbell lift over-taxes recovery.
 const exCns = Object.fromEntries(exercises.map((e) => [e.id, e.cns_cost]));

@@ -149,6 +149,13 @@ try {
   const kneeEx = await (await app.request("/api/exercises", { headers: { "X-HB-User": kneeUser } })).json();
   ok("#D1 /api/exercises drops injury-contraindicated lifts (no back squat / leg extension for a knee injury)",
     !kneeEx.some((e) => e.id === "barbell-back-squat" || e.id === "leg-extension"));
+  // #12 the swap picker needs unilateral / lengthened_bias on every row so a
+  // mid-workout swap carries the "each side" / "stretch-focused" cues onto the new
+  // lift. A known unilateral+lengthened lift must report both true.
+  const bss = dbEx.find((e) => e.id === "bulgarian-split-squat");
+  ok("#12 /api/exercises carries unilateral + lengthened_bias for swap cue preservation",
+    dbEx.every((e) => typeof e.unilateral === "boolean" && typeof e.lengthened_bias === "boolean")
+    && !!bss && bss.unilateral === true && bss.lengthened_bias === true);
 
   // #D3: a custom plan edit clears the now-stale generated rationale (the "Why this
   // plan?" science block must not describe a plan the user no longer has).

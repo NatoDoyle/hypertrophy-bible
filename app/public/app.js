@@ -964,7 +964,11 @@ async function renderSwap() {
       ...cur, exercise: id, name,
       primary_muscles: chosen?.primary_muscles ?? [],
       equipment: chosen?.equipment ?? null,
-      suggested_kg: null, cue: null, unilateral: false, lengthened_bias: false,
+      // Carry the new lift's own coaching cues (the endpoint now returns them) — a
+      // unilateral or stretch-focused replacement keeps its "each side" / "🎯
+      // stretch-focused" guidance instead of inheriting a blank.
+      suggested_kg: null, cue: null,
+      unilateral: !!chosen?.unilateral, lengthened_bias: !!chosen?.lengthened_bias,
       superset_with: undefined, superset_with_name: undefined,
     };
     delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.rir[sess.i];
@@ -998,9 +1002,11 @@ function deferCurrentExercise() {
     return out;
   };
   sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.rir = remap(sess.rir);
-  // sess.i stays put — it now points at the exercise that was next (still unstarted,
-  // so set 0 is correct); the deferred lift waits at the end.
-  sess.set = 0;
+  // sess.i stays put — it now points at the exercise that was next; the deferred lift
+  // waits at the end. Resume its cursor from however many of its sets are already
+  // banked (0 in the normal unstarted case), matching how advancing resolves the set
+  // pointer everywhere else — never blindly reset a partially-logged lift to set 0.
+  sess.set = loggedSetCount(sess.ex[sess.i].exercise);
   saveSess();
   say(`Moved ${moved.name} to the end — you'll come back to it.`);
   renderPlayer(0);
