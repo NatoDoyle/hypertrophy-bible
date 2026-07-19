@@ -1,0 +1,41 @@
+{
+  "id": "cable-woodchop",
+  "name": "Cable Wood-Chop",
+  "aliases": [
+    "woodchopper"
+  ],
+  "primary_muscles": [
+    "abs"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "resistance_profile": "Rotational core exercise: drive the cable diagonally across the body — trains the obliques through loaded trunk rotation.",
+  "lengthened_bias": false,
+  "stability": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Pivot the back foot and rotate through the trunk, not the arms",
+    "Keep the arms fairly straight — power comes from the core",
+    "Control the return; don't let it yank you back"
+  ],
+  "common_errors": [
+    "Bending the arms and turning it into an arm exercise",
+    "Rotating from the lower back instead of the trunk"
+  ],
+  "progressions": [
+    "Add load",
+    "High-to-low and low-to-high variations"
+  ],
+  "regressions": [
+    "Lighter load",
+    "Half-kneeling for stability"
+  ],
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
+}
