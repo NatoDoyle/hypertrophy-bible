@@ -176,7 +176,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       coach_note = "You flagged low sleep/energy today. It's already a short session, so keep it — but take a little extra rest and stop 2–3 reps short of failure. Showing up is the win.";
     }
   } else if (readiness?.level === "high") {
-    coach_note = "You're fresh today — if a lift feels easy, add a back-off set.";
+    // Never invite added volume during a deload: the block card is simultaneously
+    // telling the user to cut sets and recover, so "add a back-off set" would be a
+    // direct contradiction on the same screen and undercuts the one week the program
+    // exists to de-fatigue. Acknowledge the good day, but hold the deload line.
+    coach_note = block?.phase === "deload"
+      ? "You're feeling fresh — good sign the deload is working. Still keep it a genuine deload; the volume comes back next week."
+      : "You're fresh today — if a lift feels easy, add a back-off set.";
   } else if (readiness) {
     // The common case must never be silent: a user who checked in and saw nothing
     // change concludes it didn't work. Acknowledge, then confirm the plan stands.
