@@ -12,6 +12,7 @@ import {
   isHardSet,
   perMuscleWeeklyVolume,
   volumeVsLandmarks,
+  volumeResponse,
   bodyweightTrend,
   classifyEnergyBalance,
   progressionByExercise,
@@ -203,6 +204,36 @@ check("readinessIndex uses personal baseline (returns 0-100 or null)", () => {
   const r = readinessIndex(checkins);
   assert.ok(r && r.latest >= 0 && r.latest <= 100, `readiness ${JSON.stringify(r)}`);
   assert.equal(readinessIndex([{ date: "2026-06-01" }]), null); // insufficient data
+});
+
+check("volumeResponse gives honest, MEV<->MRV-bounded per-muscle advice", () => {
+  // landmarks: MEV 10, MAV 14-20, MRV 24 (chest-like); MEV 8 for a smaller muscle
+  const mIndex = new Map([
+    ["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+    ["biceps", { mev: { min: 8 }, mav: { max: 16 }, mrv: { max: 20 } }],
+  ]);
+  const below = volumeResponse({ chest: 6 }, mIndex).find((x) => x.muscle === "chest");
+  assert.equal(below.signal, "add"); // below MEV → add
+
+  const overMrv = volumeResponse({ chest: 26 }, mIndex).find((x) => x.muscle === "chest");
+  assert.equal(overMrv.signal, "reduce"); // above MRV → reduce
+
+  // stalled with room below MAV.max → add ~2 sets
+  const stalledRoom = volumeResponse({ chest: 12 }, mIndex, new Set(["chest"])).find((x) => x.muscle === "chest");
+  assert.equal(stalledRoom.signal, "add");
+
+  // stalled AT the ceiling → CHANGE/deload, never "add more" (the runaway rail)
+  const stalledCeil = volumeResponse({ chest: 22 }, mIndex, new Set(["chest"])).find((x) => x.muscle === "chest");
+  assert.equal(stalledCeil.signal, "change");
+
+  // progressing in range, not stalled → hold
+  const holding = volumeResponse({ chest: 14 }, mIndex).find((x) => x.muscle === "chest");
+  assert.equal(holding.signal, "hold");
+
+  // no-landmark muscles are skipped, actionable signals sort before "hold"
+  const mixed = volumeResponse({ chest: 14, biceps: 4 }, mIndex);
+  assert.equal(mixed[0].muscle, "biceps"); // biceps below-MEV "add" sorts before chest "hold"
+  assert.equal(volumeResponse({ unknown: 5 }, mIndex).length, 0); // no landmark → skipped
 });
 
 console.log(`\n${passed} test(s) passed.`);
