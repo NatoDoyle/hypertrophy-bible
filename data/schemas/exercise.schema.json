@@ -47,16 +47,39 @@
     },
     "lengthened_bias": {
       "type": "boolean",
-      "description": "Loads the stretched/lengthened position heavily"
+      "description": "Loads the stretched/lengthened position heavily. Kept for the plan engine (which reads this boolean); MUST equal (loading_bias === 'lengthened') when loading_bias is present."
+    },
+    "loading_bias": {
+      "enum": ["lengthened", "shortened", "mid-range", "uniform"],
+      "description": "Where in the range the exercise challenges the muscle most: 'lengthened' (hardest at the stretch — e.g. incline curl, RDL), 'shortened' (hardest at peak contraction — e.g. leg extension, cable crossover), 'mid-range' (hardest mid-way — most free-weight compounds), or 'uniform' (cables/machines with an even profile). The reader-facing, richer version of lengthened_bias."
     },
     "stability": { "enum": ["high", "moderate", "low"] },
     "unilateral": { "type": "boolean" },
+    "cns_cost": {
+      "enum": ["low", "moderate", "high"],
+      "description": "Systemic / central-nervous-system fatigue cost per hard set. Heavy multi-joint barbell lifts (squat, deadlift) are 'high'; most machine/cable isolations are 'low'. Informs how many can be programmed together and recovery between sessions."
+    },
     "rom_notes": { "type": "string" },
     "difficulty": { "enum": ["beginner", "intermediate", "advanced"] },
     "cues": { "type": "array", "items": { "type": "string" } },
+    "execution_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ordered step-by-step guide to performing the exercise from setup to finish — the 'how do I do this?' walkthrough a novice can follow."
+    },
+    "good_when": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Situations where this is a strong pick (e.g. 'limited equipment', 'want a deep loaded stretch', 'lower-back-friendly quad work')."
+    },
+    "bad_when": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Situations where a different exercise is better (e.g. 'cranky lower back', 'no way to progress load', 'shoulder impingement')."
+    },
     "common_errors": { "type": "array", "items": { "type": "string" } },
-    "progressions": { "type": "array", "items": { "type": "string" } },
-    "regressions": { "type": "array", "items": { "type": "string" } },
+    "progressions": { "type": "array", "items": { "type": "string" }, "description": "How to make it harder (add load, reps, ROM, tempo, or a harder variation)." },
+    "regressions": { "type": "array", "items": { "type": "string" }, "description": "How to make it easier (less load/ROM, a supported or assisted variation)." },
     "citations": { "type": "array", "items": { "type": "string" } }
   }
 }
