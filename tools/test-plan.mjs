@@ -53,6 +53,17 @@ ok("priority side-delts lands in a productive range (>= MEV)", vols["side-delts"
 const overMrv = Object.entries(vols).filter(([m, r]) => { const lm = muscleById.get(m)?.landmarks; return lm && r.projected_sets > lm.mrv.max; });
 ok("no muscle is programmed over MRV", overMrv.length === 0);
 
+// --- INVARIANT (#5 quality): no COMPOUND is ever prescribed at just 1 set ---
+// Nobody does a single set of squats/rows/presses; a 1-set compound was a
+// budget/coverage/MRV-trim artifact. Checked across the whole profile grid.
+const exMechanic = Object.fromEntries(exercises.map((e) => [e.id, e.mechanic]));
+const oneSetCompoundGrid = ["beginner", "intermediate", "advanced"].flatMap((st) =>
+  [3, 4, 5].flatMap((days) => [["barbell", "dumbbell", "machine", "cable", "bodyweight"], ["dumbbell", "bodyweight"]].map((eqp) =>
+    generatePlan({ user_id: `q-${st}-${days}-${eqp.length}`, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: eqp }, kb))))
+  .flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises))
+  .filter((e) => e.sets === 1 && exMechanic[e.exercise] === "compound");
+ok("no COMPOUND is ever prescribed at 1 set (across the whole profile grid)", oneSetCompoundGrid.length === 0);
+
 // --- determinism ---
 ok("same profile → byte-identical program", JSON.stringify(generatePlan(profile, kb).program) === JSON.stringify(p.program));
 
