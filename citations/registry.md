@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**88** verified references.
+**89** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -215,6 +215,14 @@ Hubal MJ & et al. (2005). Variability in muscle size and strength gain after uni
 
 - Type: cohort · Population: untrained
 - PMID: [15947721](https://pubmed.ncbi.nlm.nih.gov/15947721/)
+
+### jakubowski-2020-hmb-meta
+Jakubowski JS et al. (2020). Supplementation with the Leucine Metabolite beta-hydroxy-beta-methylbutyrate (HMB) does not Improve Resistance Exercise-Induced Changes in Body Composition or Strength in Young Subjects: A Systematic Review and Meta-Analysis.
+
+*Nutrients*, 12(5), 1523.
+
+- Type: meta-analysis · Population: trained-and-untrained
+- DOI: [10.3390/nu12051523](https://doi.org/10.3390/nu12051523) · PMID: [32456217](https://pubmed.ncbi.nlm.nih.gov/32456217/)
 
 ### kassiano-2023-rom-review
 Kassiano W & et al. (2023). Which ROMs Lead to Rome? A Systematic Review of the Effects of Range of Motion on Muscle Hypertrophy.

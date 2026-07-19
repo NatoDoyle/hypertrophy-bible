@@ -3,7 +3,7 @@
 > **TL;DR** — To gain muscle *maximally*, eat at a **slight calorie surplus** (~5–15% above maintenance) so your body has the energy and raw materials to build tissue. A surplus isn't strictly *required* — beginners, returning lifters, and those with higher body fat can gain muscle at maintenance or even in a deficit ("recomposition") — but for most trained lifters, a modest surplus supports faster gains. Keep it **modest**: a big surplus adds fat, not extra muscle.
 
 **Quick recommendations**
-- To gain lean mass fastest, run a **slight surplus (~+5–15%, roughly +150–350 kcal/day)**. **[Grade B]**
+- To gain lean mass fastest, run a **slight surplus**. That a surplus supports (but isn't strictly required for) maximal gain is **[Grade B]**; the specific **~+5–15% / +150–350 kcal/day** magnitude is a practical consensus heuristic, not a proven optimum. **[Grade C]**
 - Keep the surplus **small** — muscle gain has a ceiling; excess calories become fat. **[Grade B]**
 - **Recomposition** (gain muscle, lose fat at ~maintenance) is realistic for **beginners, returnees, and higher-body-fat individuals**. **[Grade B]**
 - Adjust by **outcome**: track weight and measurements over weeks and nudge intake to hit ~0.25–0.5% bodyweight gain/week when bulking. **[Grade C]**

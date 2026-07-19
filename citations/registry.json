@@ -1612,6 +1612,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23374455/"
     },
     {
+      "key": "jakubowski-2020-hmb-meta",
+      "authors": [
+        "Jakubowski JS",
+        "Nunes EA",
+        "Teixeira FJ",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "Supplementation with the Leucine Metabolite beta-hydroxy-beta-methylbutyrate (HMB) does not Improve Resistance Exercise-Induced Changes in Body Composition or Strength in Young Subjects: A Systematic Review and Meta-Analysis.",
+      "source": "Nutrients",
+      "volume": "12",
+      "issue": "5",
+      "pages": "1523",
+      "doi": "10.3390/nu12051523",
+      "pmid": "32456217",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32456217/"
+    },
+    {
       "key": "wolfe-2017-bcaa",
       "authors": [
         "Wolfe RR"

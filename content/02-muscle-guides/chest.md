@@ -14,7 +14,7 @@
 
 | Role | Good picks |
 |------|-----------|
-| Lower/mid chest (bulk) | Flat/decline barbell or dumbbell press, [flat dumbbell press](../../data/exercises/incline-dumbbell-press.json) |
+| Lower/mid chest (bulk) | Flat/decline barbell or dumbbell press, [flat dumbbell press](../../data/exercises/dumbbell-bench-press.json) |
 | Upper chest | Incline dumbbell/barbell press, low-to-high cable fly |
 | Stretch & adduction | Deep dumbbell fly, cable crossover |
 
