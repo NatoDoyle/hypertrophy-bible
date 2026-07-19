@@ -4,16 +4,32 @@
   "primary_muscles": [
     "hamstrings"
   ],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-knee-flexion",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "moderate",
   "difficulty": "advanced",
   "cues": [
     "Anchor the ankles, kneel tall",
     "Lower the body slowly, staying rigid",
     "Resist as long as possible, then push back up"
+  ],
+  "execution_steps": [
+    "Kneel on a pad with your ankles anchored under a fixed support or held by a partner.",
+    "Keep your body rigid in a straight line from knees to head, hips fully extended.",
+    "Lower your torso toward the floor as slowly as you can, resisting the whole way down.",
+    "Catch yourself with your hands, then push and pull back up to the kneeling start."
+  ],
+  "good_when": [
+    "You want intense eccentric hamstring loading for hypertrophy and injury resilience.",
+    "You have no leg-curl machine but want hard knee-flexion work."
+  ],
+  "bad_when": [
+    "You cannot yet control the eccentric (regress to band-assisted or a shorter range).",
+    "You need low soreness for an upcoming session (Nordics cause heavy muscle damage)."
   ],
   "common_errors": [
     "Bending at the hips",

@@ -5,21 +5,41 @@
     "spinal-erectors",
     "glutes"
   ],
-  "mechanic": "compound",
-  "force": "pull",
-  "equipment": "barbell",
-  "movement_pattern": "hinge",
   "secondary_muscles": [
     "hamstrings",
     "upper-back",
     "quadriceps"
   ],
+  "movement_pattern": "hinge",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "high",
   "difficulty": "intermediate",
   "cues": [
     "Bar over mid-foot, flat back",
     "Push the floor away — hips and shoulders rise together",
     "Lock out tall, then control down"
+  ],
+  "execution_steps": [
+    "Stand with feet hip-width, bar over mid-foot and shins close to the bar.",
+    "Hinge and bend your knees to grip the bar just outside your legs; set a flat back and brace your core.",
+    "Pull the slack out of the bar, then drive your feet through the floor — hips and shoulders rise together.",
+    "Stand tall at the top with hips fully extended, without leaning back.",
+    "Push your hips back and control the bar down along your legs to the floor, then reset before the next rep."
+  ],
+  "good_when": [
+    "You want the highest-yield posterior-chain and total-body strength and mass builder in one lift.",
+    "You can hold a flat, braced spine under heavy load.",
+    "You're training for maximal strength or overall size."
+  ],
+  "bad_when": [
+    "You can't keep a neutral spine under load — build up with RDLs or back extensions first.",
+    "You're already fatigued or need low-CNS accessory volume, since the deadlift is very taxing.",
+    "You have an active lower-back injury."
   ],
   "common_errors": [
     "Rounding the back",

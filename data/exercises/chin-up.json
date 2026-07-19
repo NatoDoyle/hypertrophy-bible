@@ -5,19 +5,35 @@
     "biceps",
     "lats"
   ],
-  "mechanic": "compound",
-  "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "vertical-pull",
   "secondary_muscles": [
     "upper-back"
   ],
+  "movement_pattern": "vertical-pull",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "pull",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Underhand grip, shoulder-width",
     "Pull the chest to the bar, drive the elbows down",
     "Full stretch at the bottom"
+  ],
+  "execution_steps": [
+    "Grip a pull-up bar underhand (palms toward you) at about shoulder width.",
+    "Hang at full arm extension with the shoulders and biceps stretched.",
+    "Pull your chest toward the bar by driving your elbows down and back.",
+    "Bring your chin over the bar, then lower under control to a full hang."
+  ],
+  "good_when": [
+    "You want a single heavy compound that trains the biceps and lats together.",
+    "You want a loaded stretch on the biceps at the bottom of each rep."
+  ],
+  "bad_when": [
+    "You cannot yet perform bodyweight reps (use band-assisted chins or lat pulldowns).",
+    "You want to isolate the biceps without back involvement (use a curl)."
   ],
   "common_errors": [
     "Kipping / swinging",

@@ -1,23 +1,65 @@
 {
   "id": "seated-leg-curl",
   "name": "Seated Leg Curl",
-  "aliases": ["seated hamstring curl"],
-  "primary_muscles": ["hamstrings"],
-  "secondary_muscles": ["calves"],
+  "aliases": [
+    "seated hamstring curl"
+  ],
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "calves"
+  ],
   "movement_pattern": "isolation-knee-flexion",
   "equipment": "machine",
   "mechanic": "isolation",
   "force": "pull",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Seated position holds the hip flexed, keeping the hamstrings at longer length under load than lying/standing curls — a lengthened-biased knee-flexion choice.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
   "unilateral": false,
+  "cns_cost": "low",
   "rom_notes": "Allow the knees to extend fully into the stretch between reps; curl to full flexion.",
   "difficulty": "beginner",
-  "cues": ["Fix the hips against the pad", "Curl fully, then control the return to a stretch", "Avoid using momentum or lifting the hips"],
-  "common_errors": ["Partial range at the contracted end", "Hips lifting off the pad", "Snapping the weight up"],
-  "progressions": ["Add load", "Pause at full flexion", "Slow eccentric emphasis"],
-  "regressions": ["Lying leg curl", "Nordic curl (regressed range)"],
-  "citations": ["maeo-2021-hamstring-length", "pedrosa-2022-lengthened-partials"]
+  "cues": [
+    "Fix the hips against the pad",
+    "Curl fully, then control the return to a stretch",
+    "Avoid using momentum or lifting the hips"
+  ],
+  "execution_steps": [
+    "Sit in the machine with the back pad supporting you and the lever resting above your ankles.",
+    "Secure the thigh pad across your legs and grip the handles.",
+    "Curl your heels down and under toward the seat as far as possible.",
+    "Return under control until your knees straighten and the hamstrings stretch."
+  ],
+  "good_when": [
+    "You want lengthened-biased knee-flexion work, since the flexed hip keeps the hamstrings long.",
+    "You want an easy-to-load, low-fatigue isolation for high volume."
+  ],
+  "bad_when": [
+    "You already do plenty of hip-flexed stretch work and want the shortened end (use a lying curl).",
+    "No machine is available (use a sliding or Nordic curl)."
+  ],
+  "common_errors": [
+    "Partial range at the contracted end",
+    "Hips lifting off the pad",
+    "Snapping the weight up"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at full flexion",
+    "Slow eccentric emphasis"
+  ],
+  "regressions": [
+    "Lying leg curl",
+    "Nordic curl (regressed range)"
+  ],
+  "citations": [
+    "maeo-2021-hamstring-length",
+    "pedrosa-2022-lengthened-partials"
+  ]
 }

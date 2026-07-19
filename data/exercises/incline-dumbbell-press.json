@@ -1,23 +1,64 @@
 {
   "id": "incline-dumbbell-press",
   "name": "Incline Dumbbell Press",
-  "aliases": ["incline DB press"],
-  "primary_muscles": ["chest"],
-  "secondary_muscles": ["front-delts", "triceps"],
+  "aliases": [
+    "incline DB press"
+  ],
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
   "movement_pattern": "horizontal-push",
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "push",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Incline (~30 degrees) biases the clavicular (upper) chest; dumbbells allow a deeper stretch at the bottom than a barbell.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "moderate",
   "rom_notes": "Lower until a comfortable deep stretch across the upper chest; do not let the shoulders roll forward.",
   "difficulty": "beginner",
-  "cues": ["Set a low incline (~15-30 degrees)", "Lower under control into the stretch", "Press the dumbbells up and slightly together"],
-  "common_errors": ["Incline set too steep (turns into a shoulder press)", "Short range at the top only", "Letting the dumbbells drift"],
-  "progressions": ["Add load", "Add a pause in the stretched position"],
-  "regressions": ["Machine incline press", "Incline barbell press"],
-  "citations": ["schoenfeld-2010-mechanisms"]
+  "cues": [
+    "Set a low incline (~15-30 degrees)",
+    "Lower under control into the stretch",
+    "Press the dumbbells up and slightly together"
+  ],
+  "execution_steps": [
+    "Set the bench to a low incline (about 15-30 degrees) and sit with a dumbbell resting on each thigh.",
+    "Lie back and kick the dumbbells up to arm's length over your upper chest.",
+    "Lower under control into a deep stretch across the upper chest, elbows about 45 degrees from the torso.",
+    "Press the dumbbells up and slightly together, keeping them stacked over the upper chest."
+  ],
+  "good_when": [
+    "You want upper-chest emphasis with a deeper stretch than an incline barbell.",
+    "You want an even left-right load and a shoulder-friendly path."
+  ],
+  "bad_when": [
+    "The incline is set too steep and it turns into a shoulder press.",
+    "You want to move maximal absolute load (an incline barbell allows more)."
+  ],
+  "common_errors": [
+    "Incline set too steep (turns into a shoulder press)",
+    "Short range at the top only",
+    "Letting the dumbbells drift"
+  ],
+  "progressions": [
+    "Add load",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Machine incline press",
+    "Incline barbell press"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
 }

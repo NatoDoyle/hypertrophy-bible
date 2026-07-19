@@ -4,15 +4,32 @@
   "primary_muscles": [
     "upper-back"
   ],
+  "movement_pattern": "isolation-other",
+  "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-other",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Dumbbells at the sides",
     "Shrug straight up, pause at the top",
     "Lower fully"
+  ],
+  "execution_steps": [
+    "Hold a dumbbell in each hand at your sides, arms straight, standing tall.",
+    "Brace your core and keep shoulders relaxed down to start.",
+    "Shrug the shoulders straight up toward your ears and pause at the top.",
+    "Lower fully to a stretch under control, without rolling the shoulders."
+  ],
+  "good_when": [
+    "You want a longer range and deeper stretch on the traps than a barbell allows.",
+    "You train at home or want a simple, joint-friendly trap movement."
+  ],
+  "bad_when": [
+    "Grip fails before the traps on heavy sets (use straps or a barbell).",
+    "You want maximum absolute load, which a barbell shrug handles better."
   ],
   "common_errors": [
     "Rolling the shoulders",

@@ -4,20 +4,38 @@
   "primary_muscles": [
     "upper-back"
   ],
-  "mechanic": "compound",
-  "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "horizontal-pull",
   "secondary_muscles": [
     "lats",
     "biceps",
     "rear-delts"
   ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "pull",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Under a bar, body straight",
     "Pull the chest to the bar",
     "Squeeze the shoulder blades, control down"
+  ],
+  "execution_steps": [
+    "Set a bar at about hip height in a rack or Smith machine.",
+    "Lie underneath and grip slightly wider than shoulder-width, arms extended.",
+    "Set a straight line from heels to head, bracing the glutes and core.",
+    "Pull your chest to the bar, driving the elbows down and squeezing the shoulder blades.",
+    "Lower under control to full arm extension, keeping the hips up."
+  ],
+  "good_when": [
+    "You train with minimal equipment or bodyweight and want a horizontal pull.",
+    "You're a beginner building back strength and scapular control before loaded rows."
+  ],
+  "bad_when": [
+    "You need heavy progressive overload and the hardest bodyweight variation is too easy (use barbell or cable rows).",
+    "You can't yet hold a rigid body line and your hips sag (regress to a more upright angle first)."
   ],
   "common_errors": [
     "Hips sagging",

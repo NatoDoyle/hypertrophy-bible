@@ -15,13 +15,31 @@
     "sagittal"
   ],
   "resistance_profile": "Elbow extension with the arms back, giving the long head some stretch.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Lower to the forehead/behind the head",
     "Keep the upper arms angled back",
     "Extend without flaring"
+  ],
+  "execution_steps": [
+    "Lie on a flat bench holding an EZ-bar or barbell over your chest with arms extended.",
+    "Angle the upper arms slightly back toward your head rather than straight up.",
+    "Bend the elbows to lower the bar toward your forehead or just behind your head.",
+    "Extend the elbows back to lockout without flaring or turning it into a press."
+  ],
+  "good_when": [
+    "You want a free-weight triceps builder with a stretch on the long head.",
+    "Adding elbow-flexed stretch loading alongside pushdowns.",
+    "You prefer barbell or EZ-bar work over cables."
+  ],
+  "bad_when": [
+    "Your elbows are sensitive to the lower-to-forehead position.",
+    "You want constant tension, since a cable holds tension better near lockout.",
+    "You want a fuller overhead long-head stretch (use an overhead extension)."
   ],
   "common_errors": [
     "Elbows flaring wide",

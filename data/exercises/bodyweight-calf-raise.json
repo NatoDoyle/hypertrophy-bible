@@ -4,16 +4,34 @@
   "primary_muscles": [
     "calves"
   ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-plantarflexion",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Ball of the foot on a step",
     "Full stretch down, tall squeeze up",
     "Slow and controlled"
+  ],
+  "execution_steps": [
+    "Stand with the balls of both feet on the edge of a step or plate, heels hanging off",
+    "Hold a rail or wall for balance and stand tall",
+    "Lower your heels below the step until you feel a deep stretch in the calves",
+    "Drive up onto your toes as high as possible and squeeze at the top",
+    "Pause briefly, then lower slowly under control"
+  ],
+  "good_when": [
+    "Training at home or with no equipment",
+    "A complete beginner learning the calf-raise pattern",
+    "Adding high-rep calf volume as a finisher"
+  ],
+  "bad_when": [
+    "Bodyweight no longer challenges you within your rep range (needs added load)",
+    "You want to isolate the soleus (use a seated calf raise instead)"
   ],
   "common_errors": [
     "Bouncing",

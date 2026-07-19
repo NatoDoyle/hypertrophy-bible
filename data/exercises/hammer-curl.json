@@ -15,14 +15,30 @@
     "sagittal"
   ],
   "resistance_profile": "Neutral grip emphasizes the brachialis and brachioradialis alongside the biceps.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "rom_notes": "Full extension to full flexion, neutral (thumbs-up) grip.",
   "difficulty": "beginner",
   "cues": [
     "Neutral grip throughout",
     "Keep the elbows still",
     "Control the eccentric"
+  ],
+  "execution_steps": [
+    "Stand holding a dumbbell in each hand with a neutral (palms-facing-in, thumbs-up) grip.",
+    "Keep your elbows pinned to your sides and your wrists straight.",
+    "Curl the dumbbells up while maintaining the neutral grip throughout.",
+    "Lower under control to a full extension without swinging the elbows forward."
+  ],
+  "good_when": [
+    "You want to build the brachialis and forearm (brachioradialis) alongside the biceps.",
+    "A palms-up (supinated) grip bothers your wrists or elbows."
+  ],
+  "bad_when": [
+    "You want to maximize the supinated biceps peak (use a supinating dumbbell or barbell curl).",
+    "You want a stretch-biased curl (use an incline curl)."
   ],
   "common_errors": [
     "Swinging the elbows forward",

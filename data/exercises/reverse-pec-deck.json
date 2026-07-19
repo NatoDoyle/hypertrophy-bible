@@ -19,14 +19,31 @@
     "transverse"
   ],
   "resistance_profile": "Horizontal abduction against a stable machine path; ideal for hard, safe rear-delt work.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Open the arms back through a full horizontal abduction; control the return to a stretch.",
   "difficulty": "beginner",
   "cues": [
     "Lead with the elbows/pinkies",
     "Keep a soft elbow angle fixed",
     "Squeeze the rear delts, control back"
+  ],
+  "execution_steps": [
+    "Adjust the seat so the handles sit at shoulder height, then sit facing the pad with your chest against it.",
+    "Grab the handles with your arms extended in front of you and a soft, fixed elbow bend.",
+    "Open your arms back in a wide arc, leading with your elbows and pinkies, until your arms are out to your sides.",
+    "Squeeze your rear delts hard, then control the handles back to a stretch in front of you."
+  ],
+  "good_when": [
+    "You want to push rear delts hard and safely along a fixed, stable path.",
+    "You are a beginner who wants a near-foolproof rear-delt movement.",
+    "You want to isolate the rear delts with minimal balance or setup demand."
+  ],
+  "bad_when": [
+    "No reverse pec-deck machine is available — use a cable or dumbbell version instead.",
+    "You want a stretch-loaded (lengthened) stimulus — this machine peaks at the contracted end."
   ],
   "common_errors": [
     "Using the traps/lower back",

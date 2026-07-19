@@ -4,21 +4,38 @@
   "primary_muscles": [
     "chest"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "dumbbell",
-  "movement_pattern": "horizontal-push",
   "secondary_muscles": [
     "front-delts",
     "triceps"
   ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Dumbbells over the chest",
     "Lower into a stretch, elbows ~45°",
     "Press up and slightly together"
+  ],
+  "execution_steps": [
+    "Sit on a flat bench with a dumbbell resting on each thigh, then lie back, using your legs to kick the weights up.",
+    "Press the dumbbells to arm's length over your chest with your shoulder blades pinched back and down.",
+    "Lower under control into a stretch, keeping elbows about 45 degrees from your torso.",
+    "Press the dumbbells up and slightly together, stopping just short of clashing them."
+  ],
+  "good_when": [
+    "You want a deeper chest stretch and a more natural wrist and shoulder path than a barbell.",
+    "You train alone and want to bail safely by dropping the dumbbells.",
+    "You need to even out left-right strength differences."
+  ],
+  "bad_when": [
+    "You want to lift maximal absolute load (a barbell lets you handle more).",
+    "Getting heavy dumbbells into the start position is your limiter."
   ],
   "common_errors": [
     "Elbows flaring to 90°",

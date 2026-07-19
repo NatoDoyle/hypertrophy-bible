@@ -4,15 +4,34 @@
   "primary_muscles": [
     "forearms"
   ],
+  "movement_pattern": "isolation-wrist",
+  "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-wrist",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Forearm on your thigh, palm up",
     "Let the dumbbell roll to the fingertips",
     "Curl up through a full range"
+  ],
+  "execution_steps": [
+    "Sit and rest one forearm along your thigh (or a bench), palm facing up, with your wrist just past your knee.",
+    "Hold a dumbbell and let it roll down to your fingertips for a full stretch at the bottom.",
+    "Curl the dumbbell up by flexing only your wrist as high as it will go.",
+    "Lower under control back to the fingertip stretch, then repeat; switch arms."
+  ],
+  "good_when": [
+    "You want to train each forearm one at a time to fix left-right imbalances.",
+    "Only dumbbells are available.",
+    "You want a deep, loaded stretch on the wrist flexors."
+  ],
+  "bad_when": [
+    "You want to load both wrists heavily at once, where a barbell wrist curl is more time-efficient.",
+    "You are targeting the wrist extensors, which need a reverse wrist curl.",
+    "You want a longer set without re-racking between arms."
   ],
   "common_errors": [
     "Moving the whole forearm",

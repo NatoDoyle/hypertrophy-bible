@@ -1,23 +1,63 @@
 {
   "id": "incline-dumbbell-curl",
   "name": "Incline Dumbbell Curl",
-  "aliases": ["incline curl"],
-  "primary_muscles": ["biceps"],
-  "secondary_muscles": ["forearms"],
+  "aliases": [
+    "incline curl"
+  ],
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
   "movement_pattern": "isolation-elbow-flexion",
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Reclined bench draws the arms behind the torso, stretching the biceps long head under load — a lengthened-biased curl.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "low",
   "rom_notes": "Let the arms hang back into a full stretch at the bottom; supinate as you curl.",
   "difficulty": "beginner",
-  "cues": ["Sit back on a ~45-60 degree incline", "Let the arms hang behind the body at the bottom", "Curl and supinate, keep the elbows still"],
-  "common_errors": ["Swinging the elbows forward", "Cutting the bottom stretch short", "Using momentum"],
-  "progressions": ["Add load via double progression", "Pause in the stretched position"],
-  "regressions": ["Standing dumbbell curl", "Cable curl"],
-  "citations": ["schoenfeld-2010-mechanisms"]
+  "cues": [
+    "Sit back on a ~45-60 degree incline",
+    "Let the arms hang behind the body at the bottom",
+    "Curl and supinate, keep the elbows still"
+  ],
+  "execution_steps": [
+    "Set an incline bench to about 45-60 degrees and sit back against it, a dumbbell in each hand.",
+    "Let your arms hang straight down and slightly behind your torso for a full stretch.",
+    "Curl the dumbbells up and supinate (turn palms up) as you lift, keeping the elbows still.",
+    "Squeeze at the top, then lower fully until the biceps are stretched at the bottom."
+  ],
+  "good_when": [
+    "You want a curl that loads the biceps hard in the stretched position for growth.",
+    "You want to limit cheating by fixing the upper arms behind the body."
+  ],
+  "bad_when": [
+    "No adjustable incline bench is available (use a standing or preacher curl).",
+    "The deep stretch aggravates your shoulder or elbow."
+  ],
+  "common_errors": [
+    "Swinging the elbows forward",
+    "Cutting the bottom stretch short",
+    "Using momentum"
+  ],
+  "progressions": [
+    "Add load via double progression",
+    "Pause in the stretched position"
+  ],
+  "regressions": [
+    "Standing dumbbell curl",
+    "Cable curl"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
 }

@@ -16,14 +16,32 @@
     "sagittal"
   ],
   "resistance_profile": "Loads the quads through a deep, stable range without spinal loading.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "moderate",
   "rom_notes": "Lower under control to a deep knee bend without the lower back rounding off the pad.",
   "difficulty": "beginner",
   "cues": [
     "Feet mid-platform, knees track over toes",
     "Deep but controlled range",
     "Do not lock out aggressively"
+  ],
+  "execution_steps": [
+    "Sit in the machine with your back flat against the pad and feet mid-platform, shoulder-width.",
+    "Press the sled up and release the safety catches.",
+    "Lower the platform under control to a deep knee bend without your lower back rounding off the pad.",
+    "Press through your whole foot back up, stopping just short of a hard lockout.",
+    "Re-engage the safeties after your last rep."
+  ],
+  "good_when": [
+    "You want heavy quad overload without loading your spine or balancing a bar.",
+    "You want to train close to failure safely on a fixed path.",
+    "You're working around lower-back limitations."
+  ],
+  "bad_when": [
+    "You have no machine access.",
+    "You want the whole-body stability and core demand of a free-weight squat."
   ],
   "common_errors": [
     "Half-range reps",

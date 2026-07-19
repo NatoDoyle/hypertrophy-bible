@@ -12,13 +12,29 @@
     "sagittal"
   ],
   "resistance_profile": "Constant tension through the whole curl, including the bottom.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Elbows fixed",
     "Full flexion, controlled return",
     "Keep tension at the bottom"
+  ],
+  "execution_steps": [
+    "Attach a straight or EZ bar to a low pulley and grip it underhand at shoulder width.",
+    "Step back so the cable stays taut with your arms extended at the bottom.",
+    "Keep your elbows fixed at your sides and curl the handle up toward your shoulders.",
+    "Squeeze at the top, then lower under control while keeping tension at the bottom."
+  ],
+  "good_when": [
+    "You want constant tension on the biceps through the whole range, including the bottom.",
+    "You want a low-fatigue movement to add volume at the end of a session."
+  ],
+  "bad_when": [
+    "No cable station is available (use dumbbells or a barbell).",
+    "You specifically want a loaded deep stretch (use an incline or preacher curl)."
   ],
   "common_errors": [
     "Elbows drifting forward",

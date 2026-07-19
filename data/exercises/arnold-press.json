@@ -17,13 +17,32 @@
     "transverse"
   ],
   "resistance_profile": "Rotating dumbbell press adding range through the delt.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Start palms-in at the bottom",
     "Rotate and press overhead",
     "Control the return"
+  ],
+  "execution_steps": [
+    "Sit or stand tall holding dumbbells at chin height, palms facing you and elbows in front of your body.",
+    "Brace your core and keep your ribs down.",
+    "Press the dumbbells up while rotating your palms to face forward.",
+    "Finish with arms extended overhead, palms forward, without harshly locking the elbows.",
+    "Reverse the rotation on the way down, returning to palms-in at the bottom under control."
+  ],
+  "good_when": [
+    "You want extra front-delt range and time under tension from the rotation.",
+    "You want variety within a dumbbell overhead-press slot.",
+    "Your shoulders tolerate rotation and you can control moderate loads well."
+  ],
+  "bad_when": [
+    "You are chasing maximal overhead load or strength (a straight barbell or dumbbell press is better).",
+    "You have shoulder impingement aggravated by rotating under load.",
+    "You are a novice still learning the basic overhead press pattern."
   ],
   "common_errors": [
     "Rushing the rotation",

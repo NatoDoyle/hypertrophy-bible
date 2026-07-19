@@ -15,13 +15,32 @@
     "transverse"
   ],
   "resistance_profile": "Rotational core exercise: drive the cable diagonally across the body — trains the obliques through loaded trunk rotation.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "low",
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Pivot the back foot and rotate through the trunk, not the arms",
     "Keep the arms fairly straight — power comes from the core",
     "Control the return; don't let it yank you back"
+  ],
+  "execution_steps": [
+    "Set the cable to shoulder height and stand side-on to the stack with feet shoulder-width apart.",
+    "Grip the handle with both hands and extend your arms out in front of your chest.",
+    "Rotate your trunk away from the stack, pivoting your back foot as you turn.",
+    "Keep your arms fairly straight and drive the rotation from your core, not your shoulders.",
+    "Control the return slowly to the start, finish all reps, then switch sides."
+  ],
+  "good_when": [
+    "You want to train the obliques through loaded, dynamic trunk rotation.",
+    "You want rotational carryover for sports like throwing or swinging.",
+    "You already have core stability and want to add a rotation pattern."
+  ],
+  "bad_when": [
+    "You tend to rotate from the lower back rather than the trunk and hips.",
+    "You want direct rectus abdominis (six-pack) work (use a crunch).",
+    "You're a beginner still learning to brace (start with a Pallof press)."
   ],
   "common_errors": [
     "Bending the arms and turning it into an arm exercise",

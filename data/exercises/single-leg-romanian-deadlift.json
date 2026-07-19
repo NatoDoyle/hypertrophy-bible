@@ -1,7 +1,10 @@
 {
   "id": "single-leg-romanian-deadlift",
   "name": "Single-Leg Romanian Deadlift (Bodyweight)",
-  "aliases": ["single-leg RDL", "SL-RDL"],
+  "aliases": [
+    "single-leg RDL",
+    "SL-RDL"
+  ],
   "primary_muscles": [
     "hamstrings"
   ],
@@ -9,23 +12,39 @@
     "glutes",
     "spinal-erectors"
   ],
+  "movement_pattern": "hinge",
+  "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "hinge",
   "plane": [
     "sagittal"
   ],
   "resistance_profile": "Hinging over one leg loads the hamstring under stretch at the bottom of the reach.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "low",
   "unilateral": true,
+  "cns_cost": "moderate",
   "rom_notes": "Hinge until you feel a clear hamstring stretch; a soft knee, flat back.",
   "difficulty": "beginner",
   "cues": [
     "Stand on one leg with a soft knee",
     "Hinge at the hip, reaching your chest forward and free leg back",
     "Stop at a clear hamstring stretch, then squeeze back up"
+  ],
+  "execution_steps": [
+    "Stand on one leg with a soft knee, the other foot lightly off the floor.",
+    "Hinge at the hip, reaching your chest forward and your free leg straight back.",
+    "Lower until you feel a clear hamstring stretch, keeping your hips square and back flat.",
+    "Squeeze the hamstring and glute to return to standing."
+  ],
+  "good_when": [
+    "You want to train the hamstrings alongside balance and hip stability with no equipment.",
+    "You are correcting a left-to-right strength imbalance."
+  ],
+  "bad_when": [
+    "Balance fails before the hamstring is challenged (use a two-leg RDL or add light support).",
+    "You want heavy bilateral loading for strength (use a barbell RDL)."
   ],
   "common_errors": [
     "Rounding the back to reach lower",
@@ -39,5 +58,7 @@
     "Keep the back-leg toes lightly on the floor for balance",
     "Hold a wall or chair with one hand"
   ],
-  "citations": ["schoenfeld-2017-volume-dose-response"]
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
 }

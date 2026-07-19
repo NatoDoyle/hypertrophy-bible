@@ -12,13 +12,31 @@
     "sagittal"
   ],
   "resistance_profile": "Loads the lower-ab region via posterior pelvic tilt; curl the pelvis, not just the legs.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "low",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Curl the pelvis up (not just hip-flex)",
     "Control the descent",
     "Minimize swinging"
+  ],
+  "execution_steps": [
+    "Hang from a pull-up bar with an overhand grip, arms straight and body still.",
+    "Brace your abs and tilt your pelvis to stop any swinging.",
+    "Curl your pelvis up and raise your legs, leading with the pelvic tilt rather than just lifting the legs.",
+    "Pause briefly at the top, then lower under control back to a dead hang."
+  ],
+  "good_when": [
+    "You want a challenging bodyweight ab exercise with a long range of motion.",
+    "You have the grip and shoulder strength to hang and control your bodyweight.",
+    "You've progressed beyond floor crunches and lying leg raises."
+  ],
+  "bad_when": [
+    "You can't control the swing yet (regress to a hanging knee raise or lying leg raise).",
+    "Your grip fails before your abs do (use a captain's-chair or lying variation).",
+    "You only feel it in your hip flexors and haven't drilled the pelvic curl yet."
   ],
   "common_errors": [
     "Swinging / using momentum",

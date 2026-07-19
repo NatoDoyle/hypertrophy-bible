@@ -4,18 +4,35 @@
   "primary_muscles": [
     "biceps"
   ],
-  "mechanic": "isolation",
-  "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-elbow-flexion",
   "secondary_muscles": [
     "forearms"
   ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Seated, arms hanging",
     "Curl without swinging the elbows forward",
     "Squeeze at the top, control down"
+  ],
+  "execution_steps": [
+    "Sit upright on a bench with a dumbbell in each hand, arms hanging at your sides.",
+    "Keep your elbows pinned near your torso and your chest up.",
+    "Curl the dumbbells up toward your shoulders, supinating as you lift.",
+    "Squeeze at the top, then lower under control to a full extension."
+  ],
+  "good_when": [
+    "You want a stricter curl than standing because the seated position limits swinging.",
+    "You want to train each arm independently to fix imbalances (alternate arms)."
+  ],
+  "bad_when": [
+    "You want a stretch-position emphasis (use an incline curl).",
+    "You want to move maximal load bilaterally (use a barbell curl)."
   ],
   "common_errors": [
     "Swinging the torso",

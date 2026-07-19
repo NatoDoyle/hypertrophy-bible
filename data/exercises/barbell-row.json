@@ -17,13 +17,30 @@
     "transverse"
   ],
   "resistance_profile": "Heavy horizontal pull; loads mid-back hard but taxes the lower back.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Hinge to a stable torso angle",
     "Row to the lower ribs",
     "Keep a neutral spine"
+  ],
+  "execution_steps": [
+    "Stand with feet hip-width, bar over mid-foot, and grip it just outside your knees.",
+    "Hinge at the hips to a stable torso angle near parallel, knees soft, spine neutral.",
+    "Let the bar hang at arm's length, shoulders set.",
+    "Drive the elbows back and row the bar to your lower ribs.",
+    "Lower under control to full arm extension without standing up or using momentum."
+  ],
+  "good_when": [
+    "You want a heavy, high-load horizontal pull to build overall back mass and strength.",
+    "You can hold a stable hinge with a neutral spine and want simple progressive overload."
+  ],
+  "bad_when": [
+    "Your lower back is fatigued or injured, or you can't maintain a stable hinge.",
+    "You want to train the back near failure without systemic or lower-back fatigue (use a chest-supported row)."
   ],
   "common_errors": [
     "Standing up / using momentum",

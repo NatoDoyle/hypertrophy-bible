@@ -4,21 +4,38 @@
   "primary_muscles": [
     "quadriceps"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "lunge",
   "secondary_muscles": [
     "glutes",
     "hamstrings"
   ],
+  "movement_pattern": "lunge",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "unilateral": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Long step, drop the back knee",
     "Torso tall",
     "Push back up through the front foot"
+  ],
+  "execution_steps": [
+    "Stand tall with feet hip-width and hands on your hips.",
+    "Take a long step forward and lower until your back knee nearly touches the floor.",
+    "Keep your torso upright and your front knee tracking over your foot.",
+    "Push through the front foot to return to standing, then repeat on the other leg."
+  ],
+  "good_when": [
+    "You're a beginner building single-leg control with no equipment.",
+    "You want a warm-up or higher-rep quad and glute movement at home.",
+    "You're evening out left/right differences early in training."
+  ],
+  "bad_when": [
+    "You need heavy quad overload for hypertrophy (add load or use a squat).",
+    "Balance problems make free lunging unsafe (hold a support first)."
   ],
   "common_errors": [
     "Short stride",

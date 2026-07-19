@@ -15,14 +15,32 @@
     "sagittal"
   ],
   "resistance_profile": "Loads the triceps in the shortened/mid range; complements overhead (lengthened) work.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Full extension to a controlled deep flexion at the top.",
   "difficulty": "beginner",
   "cues": [
     "Pin the upper arms to the sides",
     "Extend fully, control the return",
     "Keep the wrists neutral"
+  ],
+  "execution_steps": [
+    "Set a cable to the top and grip a straight bar, angled bar, or rope at about shoulder width.",
+    "Pin your upper arms to your sides and hinge slightly forward.",
+    "Extend the elbows fully, driving the bar down until the arms are straight.",
+    "Control the return until the forearms are just above parallel, keeping the elbows pinned."
+  ],
+  "good_when": [
+    "You want an easy-to-learn, joint-friendly triceps isolation.",
+    "Adding high-rep pump work or an end-of-session finisher.",
+    "Complementing overhead (lengthened) triceps work."
+  ],
+  "bad_when": [
+    "You want to emphasize the stretched long head (use an overhead extension).",
+    "No cable station is available.",
+    "You are chasing heavy compound triceps overload (use the close-grip bench press)."
   ],
   "common_errors": [
     "Flaring the elbows out",

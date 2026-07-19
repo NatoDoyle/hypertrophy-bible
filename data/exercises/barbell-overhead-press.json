@@ -20,13 +20,33 @@
     "frontal"
   ],
   "resistance_profile": "Standing vertical press; heavy front-delt and triceps loader.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "high",
   "difficulty": "intermediate",
   "cues": [
     "Brace hard, glutes tight",
     "Press the bar and move the head 'through'",
     "Full lockout overhead"
+  ],
+  "execution_steps": [
+    "Set the bar in a rack at upper-chest height and grip just outside shoulder width.",
+    "Unrack and hold the bar on your front delts with elbows slightly in front and wrists stacked over the forearms.",
+    "Brace your core hard and squeeze your glutes to lock the torso.",
+    "Press the bar straight up, moving your head back slightly so the bar clears your face.",
+    "Once the bar passes your forehead, push your head 'through' and lock out with the bar over mid-foot.",
+    "Lower under control back to the front-delt shelf."
+  ],
+  "good_when": [
+    "You want a heavy, easily progressable primary overhead press.",
+    "You are building overall shoulder and triceps strength and pressing power.",
+    "You brace well and want a standing, full-body pressing stimulus."
+  ],
+  "bad_when": [
+    "You have lower-back issues aggravated by standing overhead loading.",
+    "You want a deep front-delt stretch (dumbbells provide more range).",
+    "Limited overhead mobility forces a painful lumbar arch to reach lockout."
   ],
   "common_errors": [
     "Excessive lower-back arch",

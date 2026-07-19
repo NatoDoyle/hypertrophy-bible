@@ -1,23 +1,64 @@
 {
   "id": "dumbbell-lateral-raise",
   "name": "Dumbbell Lateral Raise",
-  "aliases": ["side raise", "lateral raise"],
-  "primary_muscles": ["side-delts"],
-  "secondary_muscles": ["upper-back"],
+  "aliases": [
+    "side raise",
+    "lateral raise"
+  ],
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
   "movement_pattern": "isolation-shoulder-abduction",
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "push",
-  "plane": ["frontal"],
+  "plane": [
+    "frontal"
+  ],
   "resistance_profile": "With dumbbells, tension is lowest at the bottom and highest near horizontal; cables load the bottom (lengthened) portion better.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "low",
   "rom_notes": "Raise to roughly shoulder height; the very top adds little tension. Control the lowering phase.",
   "difficulty": "beginner",
-  "cues": ["Lead with the elbows, not the hands", "Slight forward lean loads the side delt more", "Lower slowly under control"],
-  "common_errors": ["Swinging with momentum", "Shrugging the traps to lift", "Going too heavy and shortening the range"],
-  "progressions": ["Add reps then load (double progression)", "Switch to a cable for better lengthened tension"],
-  "regressions": ["Cable lateral raise", "Machine lateral raise"],
-  "citations": ["schoenfeld-2010-mechanisms"]
+  "cues": [
+    "Lead with the elbows, not the hands",
+    "Slight forward lean loads the side delt more",
+    "Lower slowly under control"
+  ],
+  "execution_steps": [
+    "Stand tall with a dumbbell in each hand resting at your sides.",
+    "Lean forward very slightly and keep a soft bend in both elbows.",
+    "Raise the dumbbells out to the sides, leading with your elbows, up to about shoulder height.",
+    "Pause briefly at the top, then lower slowly under control."
+  ],
+  "good_when": [
+    "You only have dumbbells (home or minimal-equipment gym).",
+    "You are learning the movement and want a simple, accessible starting option."
+  ],
+  "bad_when": [
+    "You want strong tension in the stretched position — a cable loads the bottom range better.",
+    "You tend to swing the weight up with momentum instead of controlling it."
+  ],
+  "common_errors": [
+    "Swinging with momentum",
+    "Shrugging the traps to lift",
+    "Going too heavy and shortening the range"
+  ],
+  "progressions": [
+    "Add reps then load (double progression)",
+    "Switch to a cable for better lengthened tension"
+  ],
+  "regressions": [
+    "Cable lateral raise",
+    "Machine lateral raise"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
 }

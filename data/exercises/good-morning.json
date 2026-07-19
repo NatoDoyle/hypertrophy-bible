@@ -16,13 +16,29 @@
     "sagittal"
   ],
   "resistance_profile": "Barbell hip hinge loading the hamstrings in the stretch; technique-demanding.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "high",
   "difficulty": "advanced",
   "cues": [
     "Bar on the back, soft knees",
     "Hinge back to a strong hamstring stretch",
     "Neutral spine throughout"
+  ],
+  "execution_steps": [
+    "Set a barbell across your upper back as for a squat, feet hip- to shoulder-width, knees soft.",
+    "Brace your core hard and push your hips back, hinging your torso toward parallel with the floor.",
+    "Lower until you feel a strong hamstring stretch while holding a neutral spine.",
+    "Drive your hips forward to return to standing."
+  ],
+  "good_when": [
+    "You want a heavy hamstring and glute hinge that also trains spinal-erector bracing.",
+    "You already have solid hinge technique and want a squat-pattern accessory."
+  ],
+  "bad_when": [
+    "You are a beginner or have any lower-back issue (high technical and spinal demand).",
+    "You want to isolate the hamstrings with minimal spinal loading (use a leg curl)."
   ],
   "common_errors": [
     "Rounding the back",

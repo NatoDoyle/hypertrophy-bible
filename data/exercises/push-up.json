@@ -16,13 +16,30 @@
     "transverse"
   ],
   "resistance_profile": "Bodyweight horizontal press; add load (vest/plate) or elevate feet to progress.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Rigid plank body",
     "Lower the chest to just off the floor",
     "Full lockout"
+  ],
+  "execution_steps": [
+    "Set your hands slightly wider than shoulder-width with your body in a straight plank from head to heels.",
+    "Brace your core and glutes so your hips do not sag.",
+    "Bend your elbows to about 45 degrees from the torso and lower your chest to just above the floor.",
+    "Press back up to full arm extension, keeping your body rigid throughout."
+  ],
+  "good_when": [
+    "You have no equipment and want a solid chest and pressing builder anywhere.",
+    "You are a beginner building baseline pressing strength.",
+    "You want a joint-friendly warm-up or a high-rep finisher."
+  ],
+  "bad_when": [
+    "Bodyweight is too easy to drive progress (add a vest or switch to loaded pressing).",
+    "You cannot yet hold a rigid plank (regress to incline or knee push-ups)."
   ],
   "common_errors": [
     "Sagging hips",

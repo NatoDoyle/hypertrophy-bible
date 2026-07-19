@@ -12,13 +12,29 @@
     "sagittal"
   ],
   "resistance_profile": "Isolates shoulder extension (lats) with a stretch overhead.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Fixed slightly-bent elbows",
     "Pull the bar to the thighs via the lats",
     "Stretch overhead"
+  ],
+  "execution_steps": [
+    "Stand facing a high pulley with a straight bar, arms extended overhead and elbows fixed at a slight bend.",
+    "Hinge slightly forward and brace your core.",
+    "Keeping the elbows locked, drive the bar down in an arc to your thighs using the lats.",
+    "Squeeze the lats at the bottom, then return under control to the overhead stretch."
+  ],
+  "good_when": [
+    "You want to isolate the lats and groove the elbow-down pull before pulldowns.",
+    "You want a constant-tension lat finisher that avoids biceps involvement."
+  ],
+  "bad_when": [
+    "You want a primary back-mass builder, where a pulldown or row loads more muscle.",
+    "You want to lift heavy for strength, since isolation limits useful load."
   ],
   "common_errors": [
     "Bending the elbows (triceps)",

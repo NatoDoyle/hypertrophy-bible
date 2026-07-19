@@ -1,23 +1,64 @@
 {
   "id": "overhead-cable-triceps-extension",
   "name": "Overhead Cable Triceps Extension",
-  "aliases": ["overhead triceps extension", "cable overhead extension"],
-  "primary_muscles": ["triceps"],
+  "aliases": [
+    "overhead triceps extension",
+    "cable overhead extension"
+  ],
+  "primary_muscles": [
+    "triceps"
+  ],
   "secondary_muscles": [],
   "movement_pattern": "isolation-elbow-extension",
   "equipment": "cable",
   "mechanic": "isolation",
   "force": "push",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Overhead position places the long head of the triceps under load at long muscle length — a lengthened-biased choice.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "low",
   "rom_notes": "Let the elbows flex fully overhead into a deep stretch, then extend without flaring the elbows.",
   "difficulty": "beginner",
-  "cues": ["Keep the upper arms fixed and high", "Reach into a full overhead stretch", "Extend fully but do not lock out aggressively"],
-  "common_errors": ["Dropping the elbows / making it a pressdown", "Cutting the stretch short", "Flaring elbows wide"],
-  "progressions": ["Add load", "Pause in the stretched position"],
-  "regressions": ["EZ-bar overhead extension", "Cable pressdown"],
-  "citations": ["maeo-2023-triceps-overhead"]
+  "cues": [
+    "Keep the upper arms fixed and high",
+    "Reach into a full overhead stretch",
+    "Extend fully but do not lock out aggressively"
+  ],
+  "execution_steps": [
+    "Set a cable to about head height and grip the rope, facing away from the stack.",
+    "Step forward into a staggered stance with the rope behind your head and upper arms raised.",
+    "Keep the upper arms fixed and high while letting the elbows flex into a deep overhead stretch.",
+    "Extend the elbows fully forward without flaring, then return under control."
+  ],
+  "good_when": [
+    "You want constant cable tension on the triceps at long muscle length.",
+    "Prioritizing long-head growth with a stretch emphasis.",
+    "You want a smoother stretch stimulus than free-weight overhead work."
+  ],
+  "bad_when": [
+    "No cable station is available.",
+    "Shoulder mobility prevents a comfortable overhead position.",
+    "You want to overload the shortened lockout position (use a pushdown)."
+  ],
+  "common_errors": [
+    "Dropping the elbows / making it a pressdown",
+    "Cutting the stretch short",
+    "Flaring elbows wide"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause in the stretched position"
+  ],
+  "regressions": [
+    "EZ-bar overhead extension",
+    "Cable pressdown"
+  ],
+  "citations": [
+    "maeo-2023-triceps-overhead"
+  ]
 }

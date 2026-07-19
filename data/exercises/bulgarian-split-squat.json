@@ -5,10 +5,10 @@
     "quadriceps",
     "glutes"
   ],
-  "movement_pattern": "lunge",
   "secondary_muscles": [
     "hamstrings"
   ],
+  "movement_pattern": "lunge",
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "push",
@@ -16,14 +16,32 @@
     "sagittal"
   ],
   "resistance_profile": "Rear-foot-elevated single-leg squat with a big glute/quad stretch.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "low",
   "unilateral": true,
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Rear foot elevated",
     "Descend into a deep stretch",
     "Drive through the front heel"
+  ],
+  "execution_steps": [
+    "Stand a stride in front of a bench and rest the top of one foot behind you on it.",
+    "Hold a dumbbell in each hand at your sides.",
+    "Lower straight down until your front thigh reaches a deep stretch, torso leaning slightly forward.",
+    "Drive through the front heel to stand back up without pushing off the rear foot.",
+    "Finish all reps on one leg, then switch."
+  ],
+  "good_when": [
+    "You want a big quad and glute stretch stimulus with modest spinal load.",
+    "You're fixing left/right imbalances or training around a cranky lower back.",
+    "You have only dumbbells at home or in a limited setup."
+  ],
+  "bad_when": [
+    "Poor balance makes it hard to load or reach depth (use a leg press or supported split squat).",
+    "You want maximum absolute load with minimal stabilization demand."
   ],
   "common_errors": [
     "Too short a stance",

@@ -4,18 +4,37 @@
   "primary_muscles": [
     "glutes"
   ],
-  "mechanic": "isolation",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-hip-extension",
   "secondary_muscles": [
     "hamstrings"
   ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "push",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "On your back, feet planted",
     "Drive the hips up, squeeze hard at the top",
     "Lower under control"
+  ],
+  "execution_steps": [
+    "Lie on your back with knees bent and feet flat on the floor, heels close to your glutes.",
+    "Set your feet hip-width apart and rest your arms at your sides for balance.",
+    "Brace your core and press through your heels to lift your hips toward the ceiling.",
+    "Squeeze your glutes hard at the top until your body forms a straight line from knees to shoulders.",
+    "Lower your hips under control back toward the floor without fully relaxing."
+  ],
+  "good_when": [
+    "You are a beginner learning to feel and activate the glutes.",
+    "You have no equipment and want a joint-friendly glute exercise at home.",
+    "You need a low-fatigue activation drill before heavier lower-body work."
+  ],
+  "bad_when": [
+    "Bodyweight no longer challenges the glutes (add load or switch to a hip thrust).",
+    "You want to train the glutes in a stretched position (choose an RDL or deep squat)."
   ],
   "common_errors": [
     "Overarching the back",

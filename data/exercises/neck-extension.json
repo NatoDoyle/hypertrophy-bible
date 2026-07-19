@@ -15,14 +15,33 @@
     "sagittal"
   ],
   "resistance_profile": "Loads cervical extension; light load, slow tempo, pain-free range.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "rom_notes": "Lower the chin toward the chest, extend to a neutral/slightly-back position.",
   "difficulty": "intermediate",
   "cues": [
     "Very light load, slow tempo",
     "Controlled, pain-free range",
     "Brace the trunk"
+  ],
+  "execution_steps": [
+    "Lie face-down on a bench with your head and neck past the edge, or set up a neck harness.",
+    "Hold a light plate against the back of your head (or load the harness lightly).",
+    "Lower your chin toward your chest under control to a gentle, pain-free stretch.",
+    "Extend your head back to a neutral or slightly-back position using your neck extensors.",
+    "Pause briefly, then lower slowly to the start and repeat."
+  ],
+  "good_when": [
+    "Strengthening the posterior neck for contact sports and whiplash resilience.",
+    "Balancing heavy neck flexion or shrug work for a more even neck.",
+    "You want direct, load-adjustable training of the neck extensors."
+  ],
+  "bad_when": [
+    "You have any cervical pain, acute strain, or recent neck injury.",
+    "You are a novice training alone without guidance on light load and slow tempo.",
+    "Dizziness, headaches, or pinching occur at end-range extension."
   ],
   "common_errors": [
     "Excessive load or speed",

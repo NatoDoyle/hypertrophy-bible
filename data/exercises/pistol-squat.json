@@ -4,21 +4,39 @@
   "primary_muscles": [
     "quadriceps"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "squat",
   "secondary_muscles": [
     "glutes"
   ],
+  "movement_pattern": "squat",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "low",
   "unilateral": true,
+  "cns_cost": "moderate",
   "difficulty": "advanced",
   "cues": [
     "One leg, other leg extended forward",
     "Sit all the way down under control",
     "Drive up without falling back"
+  ],
+  "execution_steps": [
+    "Stand on one leg with the other extended straight out in front of you.",
+    "Hold your arms forward for balance.",
+    "Sit all the way down on the working leg under control, keeping the free leg off the floor.",
+    "Drive through your whole foot to stand back up without falling backward.",
+    "Complete your reps, then switch legs."
+  ],
+  "good_when": [
+    "You want an advanced single-leg quad challenge with no equipment.",
+    "You're building unilateral strength, balance, and mobility together.",
+    "You're progressing bodyweight training now that regular squats are too easy."
+  ],
+  "bad_when": [
+    "You lack the mobility or balance yet (regress to box pistols or hold a support).",
+    "You need to load the quads heavily for hypertrophy — external load is hard to add."
   ],
   "common_errors": [
     "Collapsing at the bottom",

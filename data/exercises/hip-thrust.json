@@ -15,14 +15,33 @@
     "sagittal"
   ],
   "resistance_profile": "Peak glute tension in the shortened (top) position; a strong contraction-biased glute builder.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "rom_notes": "Lower under control, drive to full hip extension with a hard glute squeeze.",
   "difficulty": "beginner",
   "cues": [
     "Chin tucked, ribs down",
     "Drive through the heels to full lockout",
     "Squeeze the glutes at the top, no lumbar hyperextension"
+  ],
+  "execution_steps": [
+    "Sit on the floor with your upper back against a bench and roll a padded barbell over your hips.",
+    "Set your feet flat and shoulder-width so your shins are vertical at the top.",
+    "Tuck your chin, brace your core and keep your ribs down.",
+    "Drive through your heels to lift the bar until your hips reach full lockout.",
+    "Squeeze your glutes hard at the top without over-arching your lower back.",
+    "Lower under control back toward the floor and repeat."
+  ],
+  "good_when": [
+    "You want maximal glute overload with a strong peak contraction.",
+    "You want a glute-focused compound that spares the lower back relative to squats.",
+    "You are progressing from the glute bridge and want a fuller range of motion."
+  ],
+  "bad_when": [
+    "You lack a bench or padded bar and setup is impractical (choose the floor glute bridge).",
+    "You want a stretch-biased glute exercise (choose an RDL or deep squat)."
   ],
   "common_errors": [
     "Overarching the lower back at the top",

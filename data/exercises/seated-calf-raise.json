@@ -12,14 +12,32 @@
     "sagittal"
   ],
   "resistance_profile": "Bent-knee position biases the soleus; loaded through a full stretch.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Full stretch to full plantarflexion under the knee pad.",
   "difficulty": "beginner",
   "cues": [
     "Bent knee (~90 deg) targets the soleus",
     "Deep stretch, controlled contraction",
     "Pause at the bottom"
+  ],
+  "execution_steps": [
+    "Sit at the machine with the balls of your feet on the platform and knees under the pad at about 90 degrees",
+    "Adjust the knee pad so it sits snugly on your lower thighs",
+    "Release the lock and lower your heels for a full stretch",
+    "Press up through the balls of your feet to full plantarflexion",
+    "Pause at the bottom, then lift and lower slowly"
+  ],
+  "good_when": [
+    "You want to bias the soleus with the bent-knee position",
+    "Adding calf volume that fatigues the knee-flexed muscle differently than standing work",
+    "Seated stability lets you focus on a full, controlled range"
+  ],
+  "bad_when": [
+    "You want to emphasize the gastrocnemius (use a straight-leg standing or leg-press raise)",
+    "No seated calf machine is available"
   ],
   "common_errors": [
     "Half reps",

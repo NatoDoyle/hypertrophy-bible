@@ -16,14 +16,31 @@
     "transverse"
   ],
   "resistance_profile": "Fixed path lets you train the chest hard and safely to near failure.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Allow a comfortable stretch at the chest, press to a controlled (not slammed) lockout.",
   "difficulty": "beginner",
   "cues": [
     "Shoulder blades set back and down",
     "Press with the chest, not just the arms",
     "Controlled stretch at the bottom"
+  ],
+  "execution_steps": [
+    "Adjust the seat so the handles line up with the middle of your chest.",
+    "Set your shoulder blades back and down against the pad and grip the handles.",
+    "Press the handles forward until your arms are nearly straight, without slamming the lockout.",
+    "Lower under control to a comfortable stretch at the chest and repeat."
+  ],
+  "good_when": [
+    "You are a beginner or training alone and want to press hard toward failure safely.",
+    "You want a stable, low-fatigue chest option to add volume.",
+    "You want to isolate the chest without balancing free weights."
+  ],
+  "bad_when": [
+    "You want to develop stabilizer strength and a natural bar path (use free weights).",
+    "Only a fixed machine that does not fit your body is available."
   ],
   "common_errors": [
     "Half reps",

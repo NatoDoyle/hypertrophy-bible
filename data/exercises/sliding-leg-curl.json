@@ -1,28 +1,47 @@
 {
   "id": "sliding-leg-curl",
   "name": "Sliding Leg Curl",
-  "aliases": ["slick-floor bridge curl", "towel leg curl"],
+  "aliases": [
+    "slick-floor bridge curl",
+    "towel leg curl"
+  ],
   "primary_muscles": [
     "hamstrings"
   ],
   "secondary_muscles": [
     "glutes"
   ],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-knee-flexion",
   "plane": [
     "sagittal"
   ],
   "resistance_profile": "Bodyweight leverage rises as the legs extend, loading the hamstrings hardest near full extension (long muscle length).",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Lie on your back, heels on a towel or sliders, hips bridged up",
     "Slide your heels away until your legs are almost straight",
     "Pull your heels back toward you while keeping the hips high"
+  ],
+  "execution_steps": [
+    "Lie on your back with heels on sliders (or a towel on a smooth floor), knees bent and hips bridged up.",
+    "Keeping your hips high, slide your heels away until your legs are almost straight.",
+    "Pull your heels back toward your glutes while maintaining the bridge.",
+    "Repeat without letting your hips drop to the floor."
+  ],
+  "good_when": [
+    "You want a knee-flexion hamstring curl with no machine, such as at home.",
+    "You want a lighter regression that builds toward Nordic curls."
+  ],
+  "bad_when": [
+    "Your hips drop and you lose tension (shorten the range or hold a bridge instead).",
+    "You need heavy progressive loading (a machine leg curl adds weight easily)."
   ],
   "common_errors": [
     "Letting the hips drop to the floor mid-rep",
@@ -36,5 +55,7 @@
     "Glute bridge (hold, no slide)",
     "Shorter slide-out range"
   ],
-  "citations": ["schoenfeld-2017-volume-dose-response"]
+  "citations": [
+    "schoenfeld-2017-volume-dose-response"
+  ]
 }

@@ -12,13 +12,31 @@
     "transverse"
   ],
   "resistance_profile": "Constant cable tension through adduction; set pulley height to bias upper/lower chest.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Soft fixed elbows",
     "Bring the hands together, squeeze",
     "Control back to a stretch"
+  ],
+  "execution_steps": [
+    "Set both pulleys high and select a light-to-moderate weight, then grab a handle in each hand.",
+    "Step forward into a staggered stance with a slight forward lean and a soft, fixed bend in your elbows.",
+    "Open your arms out to a comfortable chest stretch, keeping the elbows bent and steady.",
+    "Sweep your hands down and together in front of you and squeeze the chest hard at the finish.",
+    "Control the handles back out to the stretch and repeat."
+  ],
+  "good_when": [
+    "You want constant tension and a strong peak-contraction squeeze on the chest.",
+    "You are adding isolation volume after your main presses.",
+    "You want to bias upper or lower chest by changing pulley height."
+  ],
+  "bad_when": [
+    "You want to build maximal pressing strength or load heavy (use a barbell or dumbbell press).",
+    "No cable stack is available."
   ],
   "common_errors": [
     "Turning it into a press",

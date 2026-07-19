@@ -4,19 +4,36 @@
   "primary_muscles": [
     "chest"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "barbell",
-  "movement_pattern": "horizontal-push",
   "secondary_muscles": [
     "front-delts",
     "triceps"
   ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Bench at ~30°",
     "Bar to the upper chest",
     "Drive up and slightly back"
+  ],
+  "execution_steps": [
+    "Set an adjustable bench to about 30 degrees and lie back with your eyes under the bar.",
+    "Pinch your shoulder blades down and back, plant your feet, and unrack the bar over your upper chest.",
+    "Lower the bar under control to your upper chest near the collarbone.",
+    "Press back up and slightly back over the shoulders to lockout without bouncing."
+  ],
+  "good_when": [
+    "You want to emphasize the upper (clavicular) chest with a heavy barbell.",
+    "You want a progressable pressing lift for upper-chest strength."
+  ],
+  "bad_when": [
+    "The bench angle is too steep and the front delts take over (lower the incline).",
+    "Your shoulders do not tolerate a fixed bar path (use incline dumbbells)."
   ],
   "common_errors": [
     "Bench too steep (shoulders take over)",
