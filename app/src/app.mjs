@@ -434,6 +434,13 @@ export function createApp(store, config = {}) {
       equipment: e.equipment,
       primary_muscles: (e.primary_muscles ?? []).map((m) => muscleById.get(m)?.name ?? m),
       secondary_muscles: (e.secondary_muscles ?? []).map((m) => muscleById.get(m)?.name ?? m),
+      // The rich per-exercise metadata the user asked for (present on all newly
+      // authored exercises; older entries may omit some — the client renders only
+      // what's here). loading_bias/cns_cost are short labels; the rest are lists.
+      execution_steps: e.execution_steps ?? [],
+      good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],
+      loading_bias: e.loading_bias ?? null, cns_cost: e.cns_cost ?? null,
+      difficulty: e.difficulty ?? null,
     });
   });
 

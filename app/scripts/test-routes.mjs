@@ -156,6 +156,14 @@ try {
   const rAfter = await store.getUser(rUser);
   ok("#D3 saving a custom edit clears the stale plan_rationale (and marks custom)", rAfter.plan_rationale == null && rAfter.program.custom === true);
 
+  // #6-C: the exercise-detail route surfaces the rich metadata (step-by-step,
+  // good/bad-pick, loading bias, CNS cost) the library expansion added.
+  const kbSwing = await (await app.request("/api/exercise/kettlebell-swing")).json();
+  ok("exercise detail includes step-by-step execution + good/bad-pick + bias/cns",
+    Array.isArray(kbSwing.execution_steps) && kbSwing.execution_steps.length > 0 &&
+    Array.isArray(kbSwing.good_when) && Array.isArray(kbSwing.bad_when) &&
+    kbSwing.loading_bias === "mid-range" && kbSwing.cns_cost === "moderate");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
