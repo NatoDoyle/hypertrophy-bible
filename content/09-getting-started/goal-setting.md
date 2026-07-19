@@ -7,7 +7,7 @@
 - Keep an outcome goal for **direction only**, and give it a **realistic timeline** — muscle and fat change over months. **[Grade D]**
 - Make goals **specific and measurable**: "train 3×/week for 8 weeks", not "get fitter". **[Grade D]**
 - **Revisit goals every 8–12 weeks.** Adjust what isn't working instead of quitting. **[Grade D]**
-- Expect roughly **0.25–0.5 kg of muscle per month** as a realistic ceiling for a natural beginner — plan around that, not the internet's promises. **[Grade C]**
+- Expect roughly **0.5–1 kg (1–2 lb) of muscle per month** as a realistic year-one ceiling for a natural beginner (and less as you advance) — plan around that, not the internet's promises. **[Grade C]**
 
 ## Outcome goals vs process goals
 
@@ -31,7 +31,7 @@ A simple structure: pick one training process goal ("3 sessions a week"), one pr
 Impatience quietly kills more beginners' progress than anything else, because the expectations were never realistic to begin with. Some honest anchors:
 
 - **Visible muscle:** noticeable change usually takes **2–4 months** of consistent training, and meaningful change **6–12 months**.
-- **Muscle gain rate:** a natural beginner might gain around **0.25–0.5 kg of muscle per month** at best — and it slows as you get more advanced.
+- **Muscle gain rate:** a natural beginner might gain around **0.5–1 kg (1–2 lb) of muscle per month** at best in the first year — and it slows as you get more advanced.
 - **Strength:** often moves faster and earlier than size, which is why tracking your lifts is so motivating.
 - **Fat loss:** a sustainable rate is roughly **0.5–1% of bodyweight per week**; faster tends to cost you muscle and adherence.
 
