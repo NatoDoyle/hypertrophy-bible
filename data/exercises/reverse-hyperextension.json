@@ -10,7 +10,7 @@
   ],
   "movement_pattern": "isolation-hip-extension",
   "equipment": "machine",
-  "mechanic": "compound",
+  "mechanic": "isolation",
   "resistance_profile": "Torso is fixed while the legs swing up behind the body; resistance peaks at the top where the erectors and glutes are fully contracted, with little spinal compression.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
