@@ -44,7 +44,11 @@ function openLearn(slug) { learnSlug = slug || null; tab = "learn"; render(); }
 // Wire any [data-learn="slug"] element on the current screen to open that page.
 function wireLearnLinks() { app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn)); }
 // A small inline "?" that opens a learn page — decodes jargon in place.
-const helpDot = (slug, label = "?") => `<button class="help" data-learn="${slug}" aria-label="Explain">${label}</button>`;
+// The accessible name must MATCH the visible text (WCAG 2.5.3): a hard-coded
+// aria-label="Explain" hid descriptive labels like "what's RIR?" from screen
+// readers and broke voice control ("tap what's RIR"). Only the bare "?" default
+// needs a spoken name; a descriptive label speaks for itself.
+const helpDot = (slug, label = "?") => `<button class="help" data-learn="${slug}"${label === "?" ? ' aria-label="Explain this term"' : ""}>${label}</button>`;
 
 const api = async (path, opts = {}) => {
   const headers = { "content-type": "application/json", ...(uid ? { "X-HB-User": uid } : {}), ...(opts.headers || {}) };
@@ -211,11 +215,12 @@ function renderOnboarding() {
   if (step.stepper) {
     const st = step.stepper;
     const v = answers[step.key] ?? st.def;
-    body = `<div class="stepper"><button data-d="-1">–</button><div class="val" id="sv">${v}${st.unit || ""}</div><button data-d="1">+</button></div>
+    const noun = step.key === "days_per_week" ? "days" : "minutes";
+    body = `<div class="stepper"><button data-d="-1" aria-label="fewer ${noun}">–</button><div class="val" id="sv" aria-live="polite">${v}${st.unit || ""}</div><button data-d="1" aria-label="more ${noun}">+</button></div>
       <p class="muted center">${st.hint}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.multi) {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
-    body = step.multi.map((o, i) => `<button class="choice${sel.has(JSON.stringify(o[1])) ? " sel" : ""}" data-i="${i}">${esc(o[0])}</button>`).join("")
+    body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
       + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
@@ -241,7 +246,9 @@ function renderOnboarding() {
       const cur = answers[step.key].map((x) => JSON.stringify(x));
       const idx = cur.indexOf(k);
       if (idx >= 0) answers[step.key].splice(idx, 1); else answers[step.key].push(val);
-      b.classList.toggle("sel"); saveOnb();
+      b.classList.toggle("sel");
+      b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
+      saveOnb();
     });
     $("#next").onclick = advance;
   } else {
@@ -403,7 +410,7 @@ function drawEdit(critique) {
       <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets} × ${esc(e.rep_range)} reps</span></div>
       <button class="tapchip" data-act="dec" aria-label="fewer sets">−</button><button class="tapchip" data-act="inc" aria-label="more sets">+</button>
       <button class="tapchip" data-act="swap">swap</button>
-      <button class="tapchip ${pendingRm === si + "-" + ei ? "danger" : ""}" data-act="rm">${pendingRm === si + "-" + ei ? "Remove?" : "✕"}</button></div>`).join("")}
+      <button class="tapchip ${pendingRm === si + "-" + ei ? "danger" : ""}" data-act="rm" aria-label="${pendingRm === si + "-" + ei ? "confirm remove exercise" : "remove exercise"}">${pendingRm === si + "-" + ei ? "Remove?" : "✕"}</button></div>`).join("")}
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Edit &amp; review</h1>
@@ -570,7 +577,7 @@ function renderCheckin() {
   const vals = { sleep_quality: 3, energy: 3, stress: 3, mood: 3 };
   const draw = () => {
     const row = ([key, label, anchors]) => `<div class="ckrow"><span class="cklabel">${label} <span class="muted" style="font-weight:400">${anchors}</span></span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
-      `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}">${n}</button>`).join("")}</div></div>`;
+      `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}" aria-pressed="${vals[key] === n}" aria-label="${label} ${n} of 5">${n}</button>`).join("")}</div></div>`;
     app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Tap 1 to 5 for each. This just tunes today; it's never a score or a judgment.</p>
       <div class="card">${fields.map(row).join("")}</div>
       <button class="btn" id="submitck">Save</button>
@@ -739,7 +746,7 @@ function renderPlayer(resting = 0) {
     <div class="card">
       ${weightStepper(w, e.equipment === "bodyweight", null)}
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
-      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>
+      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
     </div>
@@ -825,7 +832,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
-      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}">–</button><div class="val">${rir}</div><button data-rir="1" data-i="${idx}">+</button></div>` : ""}
+      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -1107,10 +1114,14 @@ async function renderCoach() {
     <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
       <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>`;
   const sel = new Set();
-  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}">${d}</button>`).join(" ");
+  const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
   $("#days").querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
     const i = +b.dataset.day;
-    if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; } else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; }
+    // This picker never re-renders, so a screen reader gets no feedback from the
+    // colour change alone — mirror the state into aria-pressed AND announce it.
+    if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; b.setAttribute("aria-pressed", "false"); say(`${DAYNAMES[i]} removed`); }
+    else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; b.setAttribute("aria-pressed", "true"); say(`${DAYNAMES[i]} added`); }
   });
   $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
   $("#pause").onclick = async () => {
