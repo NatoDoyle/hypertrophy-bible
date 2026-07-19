@@ -81,6 +81,22 @@ These are real failures from previous iterations. Each is now a standing check.
    SW + caches first; (b) any NEW asset an existing asset imports (e.g. an ESM module) MUST be
    added to the SW `SHELL` precache list *and* `VERSION` bumped, or offline users get a broken
    import.
+8. **The generated `kb-data.mjs` bundle drifted from its source JSON.** A wave committed the
+   source `data/**.json` but not the regenerated `app/src/kb-data.mjs`; prod was correct (the
+   deploy runs `build-data`) but the committed repo was inconsistent, so `npm start` (no build)
+   would serve stale data. → **Standing check:** any change under `data/` must be followed by
+   `npm run build-data` and the regenerated `kb-data.mjs` committed in the SAME wave.
+9. **The audit's premise was wrong — again — and so were some of its numbers.** #10 claimed
+   `weight_kg=0` "zeroes volume"; it doesn't (`isHardSet` counts bodyweight work sets). The Enes
+   citation finding cited "~52 sets tested" — not in the abstract. → verify BOTH the audit's code
+   premise AND any scientific numbers it quotes against the primary source before writing them
+   into the KB; write to what the source actually says, not what the audit asserted.
+10. **A fix can be physiologically bounded — then LABEL the remainder, don't force it.** The
+   specialization cap holds *unrelated* muscles at maintenance, but a synergist of the priority
+   lifts (triceps under a chest priority) picks up secondary volume no cap can remove. The honest
+   move was to relabel the rationale ("carried above maintenance by secondary work"), not to
+   distort the plan chasing a number the body won't allow. → when a metric can't be hit without
+   lying about the training, make the *explanation* honest instead.
 
 ## Guardrails (never traded away for a metric)
 
