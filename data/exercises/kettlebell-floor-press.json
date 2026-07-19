@@ -1,0 +1,56 @@
+{
+  "id": "kettlebell-floor-press",
+  "name": "Kettlebell Floor Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "triceps",
+    "front-delts"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "The floor stops the upper arm and removes the bottom stretch, keeping tension in the mid-range; the offset kettlebell mass adds a stability demand on the chest and shoulder.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Keep the wrist stacked straight over the forearm",
+    "Touch the triceps to the floor, don't bounce",
+    "Drive each bell up and slightly back over the shoulder"
+  ],
+  "execution_steps": [
+    "Lie on your back on the floor with a kettlebell beside each shoulder, knees bent or legs straight.",
+    "Roll toward each bell, grip the handle, and bring the kettlebells to the racked position at the shoulders.",
+    "Press the kettlebells up over the chest until the arms are extended, letting each bell settle over the wrist.",
+    "Lower under control until the backs of the upper arms lightly touch the floor.",
+    "Pause briefly on the floor, then press back up; finish by safely lowering the bells to the floor."
+  ],
+  "good_when": [
+    "You only have kettlebells or train at home",
+    "You want a shoulder-friendly press with a limited, pain-free range",
+    "Pressing without a bench or a spotter"
+  ],
+  "bad_when": [
+    "You want a full loaded chest stretch",
+    "You need small load increments — kettlebell jumps are large",
+    "You want maximal chest-building range of motion"
+  ],
+  "common_errors": [
+    "Bouncing the elbows off the floor",
+    "Letting the wrist bend back under the bell",
+    "Flaring the elbows out to 90 degrees"
+  ],
+  "progressions": [
+    "Use heavier kettlebells",
+    "Progress to a dumbbell or barbell bench press for full range"
+  ],
+  "regressions": [
+    "Use lighter kettlebells",
+    "Floor press with dumbbells for an easier grip"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "cable-pull-through",
+  "name": "Cable Pull-Through",
+  "primary_muscles": [
+    "hamstrings",
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "spinal-erectors"
+  ],
+  "movement_pattern": "hinge",
+  "equipment": "cable",
+  "mechanic": "compound",
+  "resistance_profile": "A low-pulley cable gives fairly constant horizontal tension through the hinge, with a strong hamstring stretch at the bottom and a peak glute contraction at lockout.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Hips go back, not down — it's a hinge, not a squat",
+    "Let the rope pull you into a hamstring stretch",
+    "Finish with a glute squeeze, ribs down"
+  ],
+  "execution_steps": [
+    "Attach a rope to a low cable pulley, then straddle the cable facing away from the stack with the rope passed between your legs and an end in each hand.",
+    "Step forward to load tension, set your feet about shoulder-width with soft knees, and hinge at the hips letting the rope travel back and down between your legs.",
+    "Keep a flat back and reach the hips back until you feel a strong hamstring stretch.",
+    "Drive the hips forward to stand tall, squeezing the glutes at the top without leaning back."
+  ],
+  "good_when": [
+    "You want to learn or groove the hip hinge with constant, self-limiting tension",
+    "You want lower-back-friendly posterior-chain work (load is horizontal, not spinal)",
+    "You want continuous tension that a barbell cannot provide"
+  ],
+  "bad_when": [
+    "You want heavy maximal loading (the cable stack caps the load)",
+    "The gym's cable station is occupied",
+    "You specifically want a lengthened-biased stretch overload"
+  ],
+  "common_errors": [
+    "Squatting instead of hinging",
+    "Over-extending or leaning back at the top",
+    "Pulling the rope with the arms instead of driving the hips"
+  ],
+  "progressions": [
+    "Add load",
+    "Progress to Romanian deadlifts"
+  ],
+  "regressions": [
+    "Lighter weight",
+    "Bodyweight hip hinge or hip thrust"
+  ]
+}

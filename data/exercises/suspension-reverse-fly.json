@@ -1,0 +1,54 @@
+{
+  "id": "suspension-reverse-fly",
+  "name": "Suspension Reverse Fly",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "resistance_profile": "Bodyweight horizontal abduction on suspension straps; load is greatest at the bottom stretch (arms forward, torso most horizontal) and eases as you open the arms — a lengthened-biased profile scaled by foot position.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Body stays a rigid plank — don't let the hips sag.",
+    "Open the arms into a wide T, not up toward your face.",
+    "Lead with the pinkies and control the stretch on the way back."
+  ],
+  "execution_steps": [
+    "Set suspension straps to mid-length and grasp a handle in each hand, palms facing each other.",
+    "Walk the feet forward and lean back with the arms extended straight in front, body straight from head to heels.",
+    "Brace the core and set a small, fixed bend in the elbows.",
+    "Pull your body up by opening the arms out to a wide 'T', leading with the pinkies until the hands are in line with the shoulders.",
+    "Lower slowly back to the extended, leaning-away stretch under full control."
+  ],
+  "good_when": [
+    "You want a scalable, lengthened-biased bodyweight rear-delt option.",
+    "You train with a suspension trainer at home or outdoors.",
+    "You want to combine rear-delt work with whole-body core bracing."
+  ],
+  "bad_when": [
+    "The strap anchor or handles are unstable and you cannot control the descent.",
+    "You need precise progressive loading — adjusting by foot angle is coarse."
+  ],
+  "common_errors": [
+    "Bending the elbows so it becomes a row.",
+    "Letting the hips drop out of the plank.",
+    "Rushing the eccentric and losing the stretch."
+  ],
+  "progressions": [
+    "Walk the feet further forward to make the body more horizontal and harder.",
+    "Slow the eccentric to 3-4 seconds."
+  ],
+  "regressions": [
+    "Walk the feet back to stand more upright.",
+    "Shorten the range and keep the torso higher."
+  ]
+}

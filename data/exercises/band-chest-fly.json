@@ -1,0 +1,55 @@
+{
+  "id": "band-chest-fly",
+  "name": "Band Chest Fly",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Accommodating band resistance rises as the band stretches, so it is hardest at peak contraction when the hands meet and easiest at the stretched position.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Step out to pre-tension the band before the first rep",
+    "Lead with the hands and squeeze at the finish",
+    "Keep the elbows fixed — don't press"
+  ],
+  "execution_steps": [
+    "Anchor a resistance band at chest height behind you, or run it across your upper back, holding an end in each hand.",
+    "Step forward into a staggered stance to remove slack, arms out to the sides with a slight elbow bend.",
+    "Brace the core and keep the elbows soft and fixed throughout.",
+    "Sweep the hands together in front of the chest in a wide arc, squeezing the pecs at the finish.",
+    "Control the band back out to the stretched position and repeat."
+  ],
+  "good_when": [
+    "Training at home or travelling with minimal equipment",
+    "You want constant tension and a strong peak-contraction squeeze",
+    "You need shoulder-friendly chest isolation with accommodating resistance"
+  ],
+  "bad_when": [
+    "You want heavy absolute loading for the chest",
+    "You want maximal tension in the stretched position",
+    "No suitable anchor point is available"
+  ],
+  "common_errors": [
+    "Letting the band snap back uncontrolled",
+    "Bending the elbows into a press",
+    "Standing too close so there is no tension at the start"
+  ],
+  "progressions": [
+    "Use a thicker or shorter band for more tension",
+    "Add a pause at peak contraction"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Anchor higher for a low-to-high fly with less resistance"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "band-pallof-press",
+  "name": "Band Pallof Press",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [
+    "front-delts"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Anti-rotation: the band pulls you toward a twist and you brace to resist it. Band tension and the anti-rotation demand are greatest with the arms pressed fully out.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Brace before you press",
+    "Keep hips and shoulders square to the front",
+    "Press straight out and resist the twist"
+  ],
+  "execution_steps": [
+    "Anchor a band at chest height and stand side-on, holding the loop with both hands at your sternum.",
+    "Step away from the anchor until the band is taut, feet shoulder-width, abs braced.",
+    "Press your hands straight out from your chest without letting your torso rotate toward the anchor.",
+    "Hold briefly at full extension, then return to your chest under control.",
+    "Finish the reps, then turn around and repeat facing the other way."
+  ],
+  "good_when": [
+    "You train at home or travel with only bands",
+    "You want to teach anti-rotation bracing"
+  ],
+  "bad_when": [
+    "You want to load the abs heavily for hypertrophy (bands cap the tension)",
+    "You have no sturdy anchor point"
+  ],
+  "common_errors": [
+    "Letting the torso rotate toward the anchor",
+    "Pressing with the arms while the core stays slack"
+  ],
+  "progressions": [
+    "Step further from the anchor or use a stronger band",
+    "Half-kneeling or tall-kneeling variation"
+  ],
+  "regressions": [
+    "Step closer to the anchor for less tension",
+    "Hold the loop closer to the chest (shorter lever)"
+  ]
+}

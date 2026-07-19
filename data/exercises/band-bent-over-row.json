@@ -1,0 +1,56 @@
+{
+  "id": "band-bent-over-row",
+  "name": "Band Bent-Over Row",
+  "primary_muscles": [
+    "upper-back",
+    "lats"
+  ],
+  "secondary_muscles": [
+    "rear-delts",
+    "biceps"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "band",
+  "mechanic": "compound",
+  "resistance_profile": "Ascending band tension — resistance peaks at the top of the row as the band stretches, with little load at the bottom stretch.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Hinge over and keep the back flat",
+    "Drive the elbows back and behind you, not out wide",
+    "Squeeze the shoulder blades together at the top"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a resistance band with feet hip-width, holding a handle or the band in each hand.",
+    "Hinge at the hips to a flat-back, bent-over position with a slight knee bend and let the arms hang straight down.",
+    "Row both hands toward your lower ribs, driving the elbows back and behind the torso.",
+    "Squeeze the shoulder blades together at the top of the pull.",
+    "Lower under control until the arms are fully extended and the band tension eases, then repeat."
+  ],
+  "good_when": [
+    "Home or travel training with no free weights available",
+    "A joint-friendly rowing option that stays easy on the lower back at light loads",
+    "Adding upper-back volume or a high-rep pump finisher"
+  ],
+  "bad_when": [
+    "You can progressively overload with free weights or a machine (bands cap the usable load)",
+    "You want maximal mid-back stimulus at the stretch (band tension is lowest there)"
+  ],
+  "common_errors": [
+    "Standing up and using momentum to swing the weight up",
+    "Rounding the lower back in the hinge",
+    "Pulling the hands to the belly instead of driving the elbows back"
+  ],
+  "progressions": [
+    "Use a heavier band or double the band up",
+    "Add a pause and a slow negative at the top"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Perform it seated with the band looped around the feet for more support"
+  ]
+}

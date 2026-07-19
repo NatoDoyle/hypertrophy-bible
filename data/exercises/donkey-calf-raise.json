@@ -1,0 +1,50 @@
+{
+  "id": "donkey-calf-raise",
+  "name": "Donkey Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "resistance_profile": "Hip-flexed, bent-over position places the gastrocnemius on greater stretch; hardest at the bottom.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Hinge at the hips and keep the back flat",
+    "Chase a deep stretch, then a full contraction",
+    "Keep the knees straight to hold tension on the gastrocnemius"
+  ],
+  "execution_steps": [
+    "Bend forward at the hips to roughly 90 degrees and support your upper body on the machine pad.",
+    "Place the balls of your feet on the platform with heels free, and settle the load pad across your hips.",
+    "Let your heels sink below the platform into a full calf stretch.",
+    "Press up onto your toes to full plantarflexion, keeping the knees nearly straight.",
+    "Pause at the top, then lower slowly back to the stretch."
+  ],
+  "good_when": [
+    "You want maximal gastrocnemius stretch under load",
+    "You've plateaued on upright standing calf raises and want a fresh stimulus"
+  ],
+  "bad_when": [
+    "You have lower-back issues aggravated by the hip-flexed, loaded position",
+    "No donkey machine or suitable hip-loading setup is available"
+  ],
+  "common_errors": [
+    "Rounding the lower back under the load",
+    "Bouncing out of the bottom instead of stretching"
+  ],
+  "progressions": [
+    "Add load to the hip pad",
+    "Slow the eccentric and pause in the stretch"
+  ],
+  "regressions": [
+    "Standing calf raise",
+    "Bodyweight calf raise"
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "dumbbell-curtsy-lunge",
+  "name": "Dumbbell Curtsy Lunge",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "quadriceps",
+    "hamstrings"
+  ],
+  "movement_pattern": "lunge",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "resistance_profile": "Crossover lunge that loads the glute medius in a lengthened, adducted position at the bottom; hardest through the mid-range drive back to standing.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Sit straight down, don't lean out over the front leg",
+    "Keep the front shin vertical and the hips square",
+    "Drive through the front heel to stand tall"
+  ],
+  "execution_steps": [
+    "Stand tall holding dumbbells at your sides (or one at the chest), feet hip-width.",
+    "Step one foot back and across behind the other, like a curtsy, keeping the front shin vertical.",
+    "Bend both knees to lower straight down until the front thigh is near parallel.",
+    "Drive through the front heel to stand, returning the rear foot to the start.",
+    "Keep the hips square throughout, completing the reps on one side or alternating."
+  ],
+  "good_when": [
+    "You want to emphasize the glute medius and add frontal-plane variety",
+    "You want single-leg hypertrophy with dumbbells only",
+    "You want to train hip stability under load"
+  ],
+  "bad_when": [
+    "The crossover position bothers your knees",
+    "Your balance or coordination isn't ready (regress first)",
+    "You want to load very heavy"
+  ],
+  "common_errors": [
+    "Letting the front knee cave inward",
+    "Twisting the hips instead of keeping them square",
+    "Reaching the back foot too far and losing balance"
+  ],
+  "progressions": [
+    "Use heavier dumbbells",
+    "Add a slow eccentric or a small deficit"
+  ],
+  "regressions": [
+    "Do it with bodyweight",
+    "Switch to a reverse or standard lunge while building coordination"
+  ]
+}

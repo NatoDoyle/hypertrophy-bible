@@ -1,0 +1,55 @@
+{
+  "id": "dumbbell-front-raise",
+  "name": "Dumbbell Front Raise",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "With dumbbells the front delt is barely loaded at the bottom and works hardest as the arm approaches horizontal, biasing the shortened (top) portion.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Lift with the shoulder, not by leaning back",
+    "Stop around shoulder height",
+    "Lower slowly, resisting all the way down"
+  ],
+  "execution_steps": [
+    "Stand holding a dumbbell in each hand in front of the thighs, palms facing you.",
+    "Brace the trunk and keep a slight bend in the elbows.",
+    "Raise the dumbbells forward and up to about shoulder height, thumbs up or neutral.",
+    "Pause briefly at the top without swinging.",
+    "Lower under control back to the thighs and repeat."
+  ],
+  "good_when": [
+    "The front delt needs direct isolation on top of pressing",
+    "Adding pump or finisher volume for the shoulders",
+    "You want to raise one arm at a time to focus each side"
+  ],
+  "bad_when": [
+    "Your front delts already get heavy pressing volume",
+    "You cannot avoid swinging the weight up",
+    "Raising to the front aggravates shoulder impingement"
+  ],
+  "common_errors": [
+    "Swinging with the hips and momentum",
+    "Going too heavy and shortening the range",
+    "Shrugging the traps to help lift"
+  ],
+  "progressions": [
+    "Add reps then load (double progression)",
+    "Switch to a cable for constant tension"
+  ],
+  "regressions": [
+    "Alternate arms to lighten each rep",
+    "Use lighter dumbbells and slow the tempo"
+  ]
+}

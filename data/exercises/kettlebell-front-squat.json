@@ -1,0 +1,55 @@
+{
+  "id": "kettlebell-front-squat",
+  "name": "Kettlebell Front Rack Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "upper-back"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Front-loaded squat that keeps the torso upright and loads the quads deep in the bottom stretch.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Elbows high, torso tall",
+    "Sit straight down between the knees",
+    "Bells pinned to the forearms, brace hard"
+  ],
+  "execution_steps": [
+    "Clean two kettlebells to the front rack so the bells rest on the outside of the forearms with elbows tucked in front of the ribs.",
+    "Set your feet about shoulder-width, toes slightly out, and brace your core.",
+    "Keeping the torso tall and elbows up, sit straight down between your knees to full depth.",
+    "Feel the stretch at the bottom, then drive through the whole foot to stand.",
+    "Keep the bells pinned to the forearms throughout, then lower them under control after the set."
+  ],
+  "good_when": [
+    "You want an upright, quad-biased squat without a barbell",
+    "Training with kettlebells at home or in a small space",
+    "You want added core and upper-back demand alongside quad work"
+  ],
+  "bad_when": [
+    "You lack the wrist and shoulder mobility for a comfortable front rack",
+    "You need loads heavier than your available kettlebells allow"
+  ],
+  "common_errors": [
+    "Elbows dropping so the torso folds forward",
+    "Letting the bells pull you onto your toes",
+    "Cutting depth"
+  ],
+  "progressions": [
+    "Use heavier kettlebells or add reps",
+    "Add a pause in the bottom position"
+  ],
+  "regressions": [
+    "Use a single kettlebell in the goblet position",
+    "Reduce depth to a comfortable range"
+  ]
+}

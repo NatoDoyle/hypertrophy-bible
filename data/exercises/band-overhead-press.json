@@ -1,0 +1,56 @@
+{
+  "id": "band-overhead-press",
+  "name": "Band Overhead Press",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "band",
+  "mechanic": "compound",
+  "resistance_profile": "Band tension climbs as you press, so the lockout (shortened position) is the hardest point — an ascending resistance curve with little load at the bottom.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Stand tall and brace before pressing",
+    "Drive all the way to a locked-out top",
+    "Resist the band on the way down, do not let it snap back"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a resistance band with feet shoulder-width apart.",
+    "Hold a handle or the band in each hand at shoulder height, palms facing forward.",
+    "Brace the trunk, then press both hands overhead until the elbows lock out.",
+    "Squeeze the delts at the top where the band tension is highest.",
+    "Lower under control to shoulder height and repeat."
+  ],
+  "good_when": [
+    "Training at home, travelling, or warming up the shoulders",
+    "Joints feel better with light load at the stretch and more at the top",
+    "High-rep pump work with minimal joint stress"
+  ],
+  "bad_when": [
+    "You need heavy overload for strength progression",
+    "You want the delt loaded hardest at the stretch",
+    "The band is too weak to challenge your target reps"
+  ],
+  "common_errors": [
+    "Letting the band yank the arms down fast",
+    "Overarching the lower back to press",
+    "Using a band far too light to reach failure"
+  ],
+  "progressions": [
+    "Use a thicker band or double it up",
+    "Add reps, then add a pause at lockout"
+  ],
+  "regressions": [
+    "Single-arm band press",
+    "Seated band press with back support"
+  ]
+}

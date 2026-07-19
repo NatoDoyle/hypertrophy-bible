@@ -1,0 +1,56 @@
+{
+  "id": "t-bar-row",
+  "name": "T-Bar Row",
+  "primary_muscles": [
+    "lats",
+    "upper-back"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "rear-delts",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "other",
+  "mechanic": "compound",
+  "resistance_profile": "A close neutral grip on a landmine/T-bar lets you pull heavy through a long arc with the elbows tucked, emphasizing lat and mid-back thickness through the mid-range.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Hinge hard, flat back, chest proud",
+    "Pull the handle to the belly, elbows tight",
+    "Control the stretch — don't drop the weight"
+  ],
+  "execution_steps": [
+    "Load one end of a barbell in a landmine (or use a dedicated T-bar row station) and straddle the bar.",
+    "Attach a close-grip V-handle under the bar and hinge to a flat-back bent-over position with the chest up.",
+    "Lift the weight to arm's length off the floor as your stretched starting position.",
+    "Row the handle to your lower chest or upper abdomen, driving the elbows back and squeezing the mid-back.",
+    "Lower under control to a full stretch, keeping the hips hinged, and repeat."
+  ],
+  "good_when": [
+    "You want to load back thickness heavy with a supported neutral grip.",
+    "You want a long-arc row that keeps the elbows tight to the torso."
+  ],
+  "bad_when": [
+    "You have a lower back that dislikes loaded bent-over holds.",
+    "You want a fully chest-supported option with zero spinal load."
+  ],
+  "common_errors": [
+    "Standing up with the hips to jerk the weight",
+    "Rounding the lower back at the bottom",
+    "Using too little range and half-repping"
+  ],
+  "progressions": [
+    "Add plates or reps, or pause at the top contraction.",
+    "Use a wider grip attachment to shift emphasis onto the upper back."
+  ],
+  "regressions": [
+    "Reduce load or elevate the plates to shorten the range.",
+    "Switch to a chest-supported T-bar or machine row to remove lower-back load."
+  ]
+}

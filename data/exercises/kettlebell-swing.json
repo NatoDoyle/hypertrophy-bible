@@ -1,0 +1,56 @@
+{
+  "id": "kettlebell-swing",
+  "name": "Kettlebell Swing",
+  "primary_muscles": [
+    "hamstrings",
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "spinal-erectors",
+    "quadriceps"
+  ],
+  "movement_pattern": "hinge",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Ballistic hip hinge; the bell's momentum drives the posterior chain hardest through the mid-range hip extension, with a stretch load on the hamstrings as the hips reverse at the bottom.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Hips snap, arms stay relaxed",
+    "The bell floats — don't lift it with the shoulders",
+    "Flat back, chest proud through the hinge"
+  ],
+  "execution_steps": [
+    "Stand with feet about shoulder-width apart and the kettlebell on the floor roughly a foot in front of you.",
+    "Hinge at the hips and hike the bell back between your legs like a football snap, keeping the back flat.",
+    "Snap the hips forward explosively, squeezing the glutes so the bell floats up to about chest height on momentum, not arm effort.",
+    "Let the bell fall, absorb it by hinging the hips back again, and flow straight into the next rep."
+  ],
+  "good_when": [
+    "You want a hip hinge that also builds power and conditioning",
+    "Equipment is limited — one kettlebell trains the whole posterior chain",
+    "You want posterior-chain work with less spinal compression than heavy barbell hinges"
+  ],
+  "bad_when": [
+    "You have not yet learned to hinge (default to RDLs first)",
+    "You want slow, controlled tension for pure hypertrophy",
+    "You have acute lower-back pain"
+  ],
+  "common_errors": [
+    "Squatting the bell up and down instead of hinging",
+    "Rounding the lower back at the bottom",
+    "Using the arms and shoulders to lift the bell"
+  ],
+  "progressions": [
+    "Heavier kettlebell",
+    "Single-arm kettlebell swing"
+  ],
+  "regressions": [
+    "Kettlebell hip-hinge drill / kettlebell deadlift",
+    "Dumbbell Romanian deadlift"
+  ]
+}

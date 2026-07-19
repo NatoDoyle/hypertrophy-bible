@@ -1,0 +1,55 @@
+{
+  "id": "incline-dumbbell-front-raise",
+  "name": "Incline Dumbbell Front Raise",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Reclining on an incline bench lets the arms hang behind the torso at the bottom, loading the front delt in a deep stretch and biasing the lengthened position.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Let the arms hang behind you at the bottom for a full stretch",
+    "Raise to shoulder height with a fixed elbow angle",
+    "Control the eccentric back into the stretch"
+  ],
+  "execution_steps": [
+    "Set a bench to a 45-60 degree incline and sit back against it, chest up, a dumbbell in each hand.",
+    "Let the arms hang down and slightly behind the torso so the front delts feel a stretch.",
+    "With a slight elbow bend, raise the dumbbells forward and up to about shoulder height.",
+    "Pause briefly at the top.",
+    "Lower under control back into the stretched position and repeat."
+  ],
+  "good_when": [
+    "You want a loaded stretch the standing raise cannot provide",
+    "Adding lengthened-biased isolation for the front delt",
+    "Building shoulder hypertrophy with lighter, controlled load"
+  ],
+  "bad_when": [
+    "Reaching behind the body aggravates the shoulder",
+    "You only need basic pressing volume",
+    "You cannot control the weight in the stretched position"
+  ],
+  "common_errors": [
+    "Cutting the stretch short at the bottom",
+    "Using momentum from the torso",
+    "Going too heavy and losing control at the stretch"
+  ],
+  "progressions": [
+    "Add reps then load",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Standing dumbbell front raise",
+    "Reduce the incline angle and the load"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "smith-machine-squat",
+  "name": "Smith Machine Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "Fixed vertical bar path lets you set the feet forward and load the quads through a stable, controlled squat.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Feet slightly forward to bias the quads",
+    "Sit straight down with knees tracking over the toes",
+    "Full-foot pressure, drive through the mid-foot"
+  ],
+  "execution_steps": [
+    "Set the bar across your upper traps under the safety hooks and place your feet slightly forward of the bar.",
+    "Unrack by rotating the bar off the hooks, take a breath, and brace your core.",
+    "Sit down and back, bending the knees to lower under control to at least parallel.",
+    "Keep the whole foot planted and drive up through the mid-foot to stand.",
+    "At the top, rotate the bar back onto the hooks to re-rack."
+  ],
+  "good_when": [
+    "You want a quad-biased squat with a stable, guided bar path",
+    "Learning the squat pattern or training without a spotter",
+    "You want to push closer to failure safely"
+  ],
+  "bad_when": [
+    "You want to train balance and free-weight stabilizers",
+    "The fixed vertical path irritates your knees or hips"
+  ],
+  "common_errors": [
+    "Placing the feet too far forward and turning it into a leg press",
+    "Cutting depth above parallel",
+    "Bouncing out of the bottom"
+  ],
+  "progressions": [
+    "Add load",
+    "Add pause reps at the bottom"
+  ],
+  "regressions": [
+    "Squat to a box or to parallel only",
+    "Lower the load and slow the tempo"
+  ]
+}

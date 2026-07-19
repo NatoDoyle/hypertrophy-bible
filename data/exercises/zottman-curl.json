@@ -1,0 +1,53 @@
+{
+  "id": "zottman-curl",
+  "name": "Zottman Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Curl up supinated to load the biceps, rotate to a pronated grip at the top, then lower under control to hammer the brachialis and forearm extensors on the eccentric.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Curl up with palms up, rotate to palms down at the top",
+    "Lower slowly in the pronated grip",
+    "Keep the elbows pinned to your sides throughout"
+  ],
+  "execution_steps": [
+    "Stand tall holding a dumbbell in each hand with palms facing forward and elbows at your sides.",
+    "Curl the dumbbells up with a supinated grip until they reach shoulder height.",
+    "At the top, rotate your wrists so your palms face down into a pronated grip.",
+    "Lower the dumbbells slowly under control in the pronated position to full extension.",
+    "Rotate the palms back to supinated at the bottom and repeat."
+  ],
+  "good_when": [
+    "You want to train the biceps and forearm flexors/extensors in one movement",
+    "Building grip and elbow-flexor balance with minimal equipment",
+    "You want extra eccentric emphasis on the brachialis"
+  ],
+  "bad_when": [
+    "You want to maximize biceps-specific load — the pronated lowering caps the weight",
+    "Wrist rotation under load bothers your elbows or wrists"
+  ],
+  "common_errors": [
+    "Rushing the pronated eccentric that gives the exercise its value",
+    "Swinging the torso to move the weight"
+  ],
+  "progressions": [
+    "Add load in small increments",
+    "Slow the pronated lowering to a 3-4 second count"
+  ],
+  "regressions": [
+    "Use lighter dumbbells",
+    "Perform standard alternating dumbbell curls first"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "wrist-roller",
+  "name": "Wrist Roller",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [
+    "front-delts"
+  ],
+  "movement_pattern": "isolation-wrist",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "resistance_profile": "A weighted rope wound around a bar trains the wrist flexors and extensors through repeated flexion and extension under continuous tension until the weight reaches the top.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Small, quick wrist rotations",
+    "Keep the elbows fixed out in front of you",
+    "Control the descent, do not let it free-fall"
+  ],
+  "execution_steps": [
+    "Hold the roller bar with both hands, palms down, arms extended in front at about shoulder height.",
+    "Wind the rope upward by alternately flexing and extending the wrists to lift the weight to the bar.",
+    "Once the weight reaches the top, reverse the wrist action and unwind it back down under control.",
+    "Keep the elbows relatively still so the wrists do all the work."
+  ],
+  "good_when": [
+    "You want to train wrist flexors and extensors together in a single continuous set",
+    "You want a high time-under-tension grip and forearm finisher"
+  ],
+  "bad_when": [
+    "Shoulder or front-delt fatigue forces you to stop before the forearms are worked",
+    "You need finely tuned progressive overload, since load jumps are hard to control"
+  ],
+  "common_errors": [
+    "Swinging the arms or using the shoulders to lift the weight",
+    "Letting the weight drop instead of unwinding it under control"
+  ],
+  "progressions": [
+    "Add weight to the rope",
+    "Slow the eccentric unwind for more time under tension"
+  ],
+  "regressions": [
+    "Rest the elbows on a rack or bench to remove shoulder fatigue",
+    "Use a lighter weight"
+  ]
+}

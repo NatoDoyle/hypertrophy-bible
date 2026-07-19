@@ -1,0 +1,54 @@
+{
+  "id": "kettlebell-bent-over-reverse-fly",
+  "name": "Kettlebell Bent-Over Reverse Fly",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "Free-weight horizontal abduction against gravity — the moment arm and difficulty peak at the top when the arms reach shoulder height, giving a peak-contraction bias.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lead with the elbows, not the hands.",
+    "Keep the neck long and the gaze down.",
+    "Think about pouring the pinkies up and out."
+  ],
+  "execution_steps": [
+    "Hold a light kettlebell in each hand by the handle and hinge at the hips until the torso is near parallel to the floor.",
+    "Let the arms hang beneath the shoulders with a soft, fixed elbow bend, the bells resting toward the wrists.",
+    "Raise the kettlebells out to the sides in a wide arc, leading with the elbows and pinkies.",
+    "Stop when the upper arms reach shoulder height and briefly squeeze the rear delts.",
+    "Lower under control back to the hanging start without rounding the spine."
+  ],
+  "good_when": [
+    "Kettlebells are your available free weight and you want strict rear-delt isolation.",
+    "You want peak-contraction emphasis to complement cable or stretch-biased work.",
+    "You can hold a stable, braced hip hinge for the set."
+  ],
+  "bad_when": [
+    "You cannot keep a neutral spine in the hinge — use a chest-supported version instead.",
+    "You specifically want a lengthened-biased stimulus (choose the cable fly)."
+  ],
+  "common_errors": [
+    "Using momentum or jerking the torso upward.",
+    "Shrugging or rowing instead of flying out to the sides.",
+    "Rounding the lower back in the hinge."
+  ],
+  "progressions": [
+    "Add reps, then move to a slightly heavier kettlebell.",
+    "Add a top-position pause for extra peak contraction."
+  ],
+  "regressions": [
+    "Support the chest on an incline bench to remove the hinge.",
+    "Reduce the load or switch to dumbbells for an easier grip."
+  ]
+}

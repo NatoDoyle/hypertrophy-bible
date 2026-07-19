@@ -1,0 +1,56 @@
+{
+  "id": "smith-machine-bench-press",
+  "name": "Smith Machine Bench Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "The fixed vertical bar path removes side-to-side balance demand, letting you press heavy and near failure safely; tension is fairly even with the usual mid-range sticking point.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Line the bar up over the lower chest, not the neck",
+    "Shoulder blades pinched and down",
+    "Control the bar to the chest, press to a smooth lockout"
+  ],
+  "execution_steps": [
+    "Set an adjustable bench under the Smith bar so the bar lines up over the lower chest.",
+    "Set the safety stops just below chest level and unrack by rotating the bar off the hooks.",
+    "Pinch the shoulder blades back and down and take a grip slightly wider than shoulder width.",
+    "Lower the bar under control to the lower chest with a slight tuck of the elbows.",
+    "Press the bar back up to a controlled lockout, then re-rack by rotating the hooks at the top."
+  ],
+  "good_when": [
+    "Training to failure without a spotter",
+    "Beginners learning a stable pressing groove",
+    "Adding pressing volume with less stabilization fatigue"
+  ],
+  "bad_when": [
+    "You want to train free-weight stabilizers and balance",
+    "The fixed bar path aggravates your shoulders",
+    "You want barbell-bench carryover for powerlifting"
+  ],
+  "common_errors": [
+    "Setting the bar path too high toward the neck",
+    "Bouncing the bar off the chest",
+    "Forgetting to set the safety stops"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause the bar on the chest each rep"
+  ],
+  "regressions": [
+    "Machine chest press",
+    "Push-up"
+  ]
+}

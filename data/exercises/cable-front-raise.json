@@ -1,0 +1,55 @@
+{
+  "id": "cable-front-raise",
+  "name": "Cable Front Raise",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-flexion",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "resistance_profile": "A low pulley keeps near-constant tension on the front delt through the whole range, unlike dumbbells that unload at the bottom.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the cable running just past the body for constant tension",
+    "Raise to shoulder height, no higher",
+    "Control the lowering phase against the cable"
+  ],
+  "execution_steps": [
+    "Set the pulley to the lowest position and attach a straight bar or rope.",
+    "Stand facing away from the pulley so the cable runs up from behind, and hold the handle in front of the thighs.",
+    "Brace, keep a slight elbow bend, and raise the handle forward to shoulder height.",
+    "Pause at the top, keeping tension on the delt.",
+    "Lower under control, resisting the cable back to the start."
+  ],
+  "good_when": [
+    "You want the constant tension dumbbells cannot give",
+    "Adding controlled isolation volume for the front delt",
+    "You want a smooth resistance curve that is easy to take to failure"
+  ],
+  "bad_when": [
+    "No cable station is free",
+    "Your front delts are already fatigued from pressing",
+    "You specifically want to train the deep-stretch position"
+  ],
+  "common_errors": [
+    "Leaning back to heave the weight up",
+    "Letting the stack pull the arm down fast",
+    "Using the traps to shrug the weight up"
+  ],
+  "progressions": [
+    "Add load or reps (double progression)",
+    "Switch to single-arm for a longer, even-tension range"
+  ],
+  "regressions": [
+    "Reduce the load on the stack",
+    "Use a light dumbbell front raise"
+  ]
+}

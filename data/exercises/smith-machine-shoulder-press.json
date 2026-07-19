@@ -1,0 +1,56 @@
+{
+  "id": "smith-machine-shoulder-press",
+  "name": "Smith Machine Shoulder Press",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "Fixed vertical bar path removes balance demands so you can grind close to failure safely; hardest through the mid-range sticking point.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Line the bench up so the bar tracks over the shoulders",
+    "Keep the wrists stacked over the elbows",
+    "Control the descent, do not bounce off the bottom"
+  ],
+  "execution_steps": [
+    "Set an upright bench inside the Smith machine so the bar path lines up over your collarbone.",
+    "Sit down, take a slightly-wider-than-shoulder grip, and unrack by rotating the hooks off.",
+    "Lower the bar under control to chin or upper-chest height.",
+    "Press straight up along the fixed track until the elbows lock out.",
+    "Finish the set and re-rack by rotating the bar back into the hooks."
+  ],
+  "good_when": [
+    "You want to push a pressing set close to failure without a spotter",
+    "Learning the overhead-press groove",
+    "Isolating the delts with minimal stabiliser fatigue"
+  ],
+  "bad_when": [
+    "You want free-weight stabiliser and core involvement",
+    "The fixed bar path irritates your shoulders",
+    "You are training for barbell overhead-press strength carryover"
+  ],
+  "common_errors": [
+    "Setting the bench too far forward so the bar pulls you",
+    "Half-repping the lockout",
+    "Flaring the ribs and overextending the lower back"
+  ],
+  "progressions": [
+    "Add load or reps (double progression)",
+    "Add a pause at the bottom stretch"
+  ],
+  "regressions": [
+    "Machine shoulder press",
+    "Reduce load and range to a comfortable overhead position"
+  ]
+}

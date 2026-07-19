@@ -1,0 +1,54 @@
+{
+  "id": "band-squat",
+  "name": "Resistance Band Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "squat",
+  "equipment": "band",
+  "mechanic": "compound",
+  "resistance_profile": "Ascending band tension makes the top of the squat hardest, biasing the shortened position.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Stand tall to feel the band tension peak",
+    "Sit down and back with knees over the toes",
+    "Keep the band anchored under your mid-foot"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a long resistance band with both feet, shoulder-width apart.",
+    "Bring the band up and hold the ends at shoulder height in a front-rack style, or loop it over your shoulders.",
+    "Brace your core and sit down and back into a squat until the thighs reach at least parallel.",
+    "Drive through the feet to stand tall, where band tension peaks, and squeeze the quads at the top.",
+    "Control the descent and keep tension on the band throughout."
+  ],
+  "good_when": [
+    "Training at home or travelling with minimal equipment",
+    "You want extra resistance at the top of the squat",
+    "You need a joint-friendly, low-load quad option"
+  ],
+  "bad_when": [
+    "You need heavy loading for a maximal strength or hypertrophy stimulus",
+    "You want the most resistance in the deep, stretched position"
+  ],
+  "common_errors": [
+    "Letting the band slip out from under the feet",
+    "Rushing the top and losing tension",
+    "Using too light a band to actually challenge the quads"
+  ],
+  "progressions": [
+    "Use a thicker band or double up bands",
+    "Slow the tempo or add a pause"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Reduce squat depth"
+  ]
+}

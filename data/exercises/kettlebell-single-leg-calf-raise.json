@@ -1,0 +1,52 @@
+{
+  "id": "kettlebell-single-leg-calf-raise",
+  "name": "Kettlebell Single-Leg Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "Loading one leg with a kettlebell greatly increases per-leg tension; hardest in the deep stretch.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Use light fingertip support only - let the calf do the work",
+    "Full heel drop, then rise all the way onto the toes",
+    "Keep the working knee straight"
+  ],
+  "execution_steps": [
+    "Stand with the ball of one foot on a block or step, heel hanging off, holding a kettlebell in the same-side hand.",
+    "Rest your free hand on a wall or rack for balance.",
+    "Lift the non-working foot so all weight is on the working leg.",
+    "Lower the working heel into a full stretch below the block.",
+    "Drive up onto the toes to full plantarflexion, pause, then lower under control."
+  ],
+  "good_when": [
+    "You want to overload each calf without heavy machines",
+    "You're correcting a side-to-side calf imbalance"
+  ],
+  "bad_when": [
+    "Poor balance limits how hard you can load the calf",
+    "Grip fails before the calf does with a heavy bell"
+  ],
+  "common_errors": [
+    "Pushing through the balance hand to assist the raise",
+    "Cutting the stretch short at the bottom"
+  ],
+  "progressions": [
+    "Increase kettlebell load",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Single-leg bodyweight calf raise",
+    "Dumbbell calf raise"
+  ]
+}

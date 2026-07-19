@@ -1,0 +1,55 @@
+{
+  "id": "band-lat-pulldown",
+  "name": "Band Lat Pulldown",
+  "primary_muscles": [
+    "lats"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "upper-back"
+  ],
+  "movement_pattern": "vertical-pull",
+  "equipment": "band",
+  "mechanic": "compound",
+  "resistance_profile": "Band anchored overhead; tension rises as it stretches, so the pulldown is hardest at the fully contracted bottom position — a shortened-biased vertical pull.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Chest tall, pull the elbows toward the floor",
+    "Lead with the elbows, not the hands",
+    "Reach into a full overhead stretch each rep"
+  ],
+  "execution_steps": [
+    "Anchor a resistance band to a secure point overhead such as a pull-up bar, door anchor, or rack.",
+    "Kneel or sit below the anchor and grip the band with both hands, arms extended overhead under light tension.",
+    "Set your chest tall and pull the band down toward your upper chest, driving the elbows down and back.",
+    "Squeeze the shoulder blades down as the hands reach chest or shoulder level.",
+    "Control the band back to a full overhead stretch and repeat."
+  ],
+  "good_when": [
+    "Training at home or traveling with only a band.",
+    "You want to learn the lat-pulldown pattern and feel the lats before loading a machine.",
+    "You want a joint-friendly warm-up for vertical pulling."
+  ],
+  "bad_when": [
+    "You need heavy progressive overload beyond band tension.",
+    "You have no sturdy overhead anchor point."
+  ],
+  "common_errors": [
+    "Leaning back and turning it into a row",
+    "Bending the elbows early so the biceps take over",
+    "Letting the band snap back instead of controlling the return"
+  ],
+  "progressions": [
+    "Use a thicker band or step further from the anchor for more tension.",
+    "Progress to a weighted lat pulldown or assisted pull-up."
+  ],
+  "regressions": [
+    "Use a lighter band or pull one arm at a time.",
+    "Perform seated with a reduced range if the full stretch is hard to control."
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "band-face-pull",
+  "name": "Band Face Pull",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Ascending band tension with an external-rotation finish; hardest as the hands reach the face and the arms fully abduct and rotate — a peak-contraction bias that complements the more uniform cable version.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Elbows lead high and wide.",
+    "Pull to the forehead, then rotate the knuckles back.",
+    "Keep the traps relaxed and the shoulders down."
+  ],
+  "execution_steps": [
+    "Anchor a resistance band at roughly upper-chest to face height and grasp an end in each hand, stepping back to remove all slack.",
+    "Start with the arms extended toward the anchor, thumbs pointing back, and set a tall, braced torso.",
+    "Pull the band toward your forehead, flaring the elbows high and wide.",
+    "Externally rotate at the top so the knuckles finish beside or just above the ears.",
+    "Reverse slowly, letting the band draw the arms back to full extension while keeping the shoulders down."
+  ],
+  "good_when": [
+    "You want rear-delt plus external-rotation work for shoulder health at home or in warm-ups.",
+    "No cable station is available and you want the face-pull pattern.",
+    "You want a high-rep, low-fatigue accessory to pair with pressing."
+  ],
+  "bad_when": [
+    "You need maximal rear-delt loading for hypertrophy overload.",
+    "The anchor is too low or unstable to keep the elbows high."
+  ],
+  "common_errors": [
+    "Low elbows that turn it into a straight row.",
+    "Skipping the external-rotation portion at the top.",
+    "Anchoring too low so the pull travels downward instead of to the face."
+  ],
+  "progressions": [
+    "Add a 1-2 second external-rotation hold at the top.",
+    "Increase band tension by stepping further from the anchor."
+  ],
+  "regressions": [
+    "Use a lighter band.",
+    "Omit the external rotation and simply pull to the face."
+  ]
+}

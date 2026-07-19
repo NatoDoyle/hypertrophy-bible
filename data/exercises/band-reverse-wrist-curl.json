@@ -1,0 +1,48 @@
+{
+  "id": "band-reverse-wrist-curl",
+  "name": "Band Reverse Wrist Curl",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-wrist",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Elastic band tension rises as the wrist extends, so the wrist extensors work hardest in the fully shortened, contracted position.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Only the wrist moves, the forearm stays down",
+    "Drive the knuckles up as high as possible",
+    "Resist the band on the way down"
+  ],
+  "execution_steps": [
+    "Anchor one end of the band under your foot and take the other end with a palm-down, pronated grip.",
+    "Rest the forearm on your thigh or a bench with the wrist past the edge, knuckles pointing down.",
+    "Extend the wrist upward against the band, lifting the knuckles toward the ceiling.",
+    "Lower slowly back to full flexion while keeping tension on the band."
+  ],
+  "good_when": [
+    "You want to train the often-neglected wrist extensors for elbow and grip health",
+    "You are training at home or traveling with only bands"
+  ],
+  "bad_when": [
+    "You want a stretch-biased extensor exercise, since band tension is lightest at the stretch",
+    "You need heavy load the band cannot supply"
+  ],
+  "common_errors": [
+    "Letting the band snap the wrist back down",
+    "Moving the whole forearm instead of just the wrist"
+  ],
+  "progressions": [
+    "Use a thicker band or shorten the band for more tension",
+    "Add a peak-contraction hold at the top"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Shorten the range of motion"
+  ]
+}

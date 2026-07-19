@@ -1,0 +1,53 @@
+{
+  "id": "neck-bridge",
+  "name": "Neck Bridge (Wrestler's Bridge)",
+  "primary_muscles": [
+    "neck"
+  ],
+  "secondary_muscles": [
+    "upper-back",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "isolation-neck",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "resistance_profile": "Supports bodyweight through the cervical spine; primarily an isometric and rocking hold for the neck extensors and stabilizers with fairly constant load.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "advanced",
+  "cues": [
+    "Build up gradually and keep the hands ready to share the load",
+    "Small, controlled range and never jerk or force it",
+    "Brace the whole body to protect the neck"
+  ],
+  "execution_steps": [
+    "Lie on your back with knees bent and feet flat, close to your hips.",
+    "Place your hands beside your head or on your chest and drive your hips up into a bridge.",
+    "Shift weight onto the crown and back of your head so the neck supports the load.",
+    "Gently rock a few inches forward and back, controlling the motion with the neck.",
+    "Keep the hands ready to assist and never force range, then lower with control to finish."
+  ],
+  "good_when": [
+    "You are an experienced wrestler or grappler needing robust neck strength and endurance",
+    "You want a bodyweight, equipment-free way to load the neck"
+  ],
+  "bad_when": [
+    "You are a beginner or have any neck or cervical spine issues",
+    "You cannot keep the neck pain-free and controlled, given the high injury risk if rushed"
+  ],
+  "common_errors": [
+    "Loading the neck aggressively before it is conditioned",
+    "Rocking too far or too fast"
+  ],
+  "progressions": [
+    "Gradually reduce hand assistance",
+    "Add a slightly larger controlled front-to-back range"
+  ],
+  "regressions": [
+    "Keep the hands firmly planted to offload the neck",
+    "Perform isometric holds only with minimal range"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "smith-machine-calf-raise",
+  "name": "Smith Machine Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "smith-machine",
+  "mechanic": "isolation",
+  "resistance_profile": "Guided bar allows heavy, balanced loading; hardest in the stretched bottom position.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the knees straight to bias the gastrocnemius",
+    "Full stretch at the bottom, full contraction at the top",
+    "Control the descent - no bouncing"
+  ],
+  "execution_steps": [
+    "Set a block or weight plates under the bar, position the bar across your upper traps, and unrack it.",
+    "Place the balls of both feet on the block with heels hanging off, standing tall with knees straight.",
+    "Lower your heels toward the floor until you feel a deep stretch in the calves.",
+    "Drive through the balls of your feet to rise as high onto your toes as possible.",
+    "Pause briefly at the top, then lower under control to the stretch."
+  ],
+  "good_when": [
+    "You want to load the gastrocnemius heavily with balance taken out of the equation",
+    "You lack a dedicated standing calf-raise machine"
+  ],
+  "bad_when": [
+    "The Smith bar's fixed path aggravates your ankles or knees",
+    "You have no block or platform to allow a full heel drop"
+  ],
+  "common_errors": [
+    "Cutting the range short at the bottom",
+    "Bending the knees, which shifts load to the soleus"
+  ],
+  "progressions": [
+    "Add load",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Bodyweight calf raise",
+    "Leg-press calf raise"
+  ]
+}

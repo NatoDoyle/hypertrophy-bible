@@ -1,0 +1,51 @@
+{
+  "id": "band-overhead-triceps-extension",
+  "name": "Band Overhead Triceps Extension",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "The overhead arm position holds the long head under stretch throughout the range while band tension peaks as the elbows lock out overhead. Biases the long head.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the upper arms vertical and by the ears",
+    "Reach tall at lockout",
+    "Control the stretch behind the head"
+  ],
+  "execution_steps": [
+    "Anchor a band low (under both feet or at a low rack pin) and grip the free end(s) with both hands.",
+    "Raise the hands overhead so the upper arms sit alongside the ears, elbows bent and forearms behind the head.",
+    "Extend the elbows to press the band straight overhead until the arms lock out.",
+    "Lower under control back behind the head, keeping the upper arms vertical and still."
+  ],
+  "good_when": [
+    "You want long-head emphasis with no free weights",
+    "Training at home or on the road",
+    "Adding a shoulder-flexed extension variation to your triceps work"
+  ],
+  "bad_when": [
+    "Overhead positions aggravate the shoulders",
+    "You want the heaviest resistance in the stretched (bottom) position"
+  ],
+  "common_errors": [
+    "Letting the elbows flare out wide",
+    "Dropping the upper arms forward as you fatigue",
+    "Overarching the lower back to press up"
+  ],
+  "progressions": [
+    "Increase band thickness",
+    "Add a pause at the deep stretch"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Reduce range of motion at the bottom"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "machine-neck-extension",
+  "name": "Machine Neck Extension (4-Way Neck Machine)",
+  "primary_muscles": [
+    "neck"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-neck",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "resistance_profile": "Guided lever loads cervical extension smoothly; the padded head contact keeps resistance fairly even through the range, peaking mid-range.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Move only the head and keep the torso locked",
+    "Smooth tempo through a pain-free range",
+    "Stop at neutral and do not hyperextend"
+  ],
+  "execution_steps": [
+    "Set the seat height so the padded lever contacts the back of your head.",
+    "Sit tall, brace your torso, and hold the handles.",
+    "Start with the chin drawn slightly toward the chest for a gentle stretch.",
+    "Push the pad back by extending your neck to a neutral position.",
+    "Pause, then return slowly to the start under control."
+  ],
+  "good_when": [
+    "You want stable, easy-to-load neck extension without balancing a plate or harness",
+    "You are a beginner or rehab client who benefits from guided resistance"
+  ],
+  "bad_when": [
+    "The machine's pad or seat cannot fit your head and neck comfortably",
+    "You have acute cervical pain"
+  ],
+  "common_errors": [
+    "Pushing with the torso instead of the neck",
+    "Using too much load and cutting the range short"
+  ],
+  "progressions": [
+    "Add small weight increments",
+    "Add reps or a slower tempo"
+  ],
+  "regressions": [
+    "Reduce the load",
+    "Switch to manual (hand) resistance extension"
+  ]
+}

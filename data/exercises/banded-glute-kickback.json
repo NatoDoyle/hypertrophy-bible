@@ -1,0 +1,54 @@
+{
+  "id": "banded-glute-kickback",
+  "name": "Banded Standing Glute Kickback",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension builds as the hip extends, peaking the glute contraction in the shortened position — a contraction-biased single-leg isolation.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Squeeze the glute to move the leg, don't swing it",
+    "Keep the torso still and the stance leg braced",
+    "Reach full hip extension with no lower-back arch"
+  ],
+  "execution_steps": [
+    "Anchor a loop band low or loop it around both ankles, and hold a rack or wall for balance.",
+    "Take tension on the working leg with a slight hip hinge and a soft stance-leg knee.",
+    "Drive the working leg straight back, extending the hip and squeezing the glute at the top.",
+    "Stop before the lower back arches — the movement comes from the hip, not the spine.",
+    "Control the leg back to the start against the band, then complete the reps and switch sides."
+  ],
+  "good_when": [
+    "You want isolated glute contraction and mind-muscle work",
+    "You only have a band (home or travel)",
+    "You want single-leg work to address side-to-side differences"
+  ],
+  "bad_when": [
+    "You want a heavy mass-driving movement (band load is limited)",
+    "You dislike balancing on one leg for reps"
+  ],
+  "common_errors": [
+    "Arching the lower back to gain more range",
+    "Using momentum instead of a controlled glute squeeze",
+    "Rotating the hips open to cheat the leg backward"
+  ],
+  "progressions": [
+    "Use a thicker band or move it to the ankles",
+    "Add a pause at full extension"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Reduce the range of motion"
+  ]
+}

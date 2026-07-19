@@ -1,0 +1,55 @@
+{
+  "id": "dumbbell-step-up",
+  "name": "Dumbbell Step-Up",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "hamstrings"
+  ],
+  "movement_pattern": "lunge",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "resistance_profile": "Single-leg, concentric-dominant knee extension driving up onto a box; hardest initiating from the bottom.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Drive through the front heel, not the back foot",
+    "Stand tall at the top under control",
+    "Keep the front foot fully on the box"
+  ],
+  "execution_steps": [
+    "Stand facing a knee-height box or bench holding a dumbbell in each hand.",
+    "Place one whole foot flat on the box with the knee bent and the torso leaned slightly forward.",
+    "Drive through the front heel to stand fully on top of the box without pushing off the back foot.",
+    "Control the descent, lowering the trailing foot softly back to the floor.",
+    "Complete all reps on one leg or alternate, keeping the working foot planted on the box."
+  ],
+  "good_when": [
+    "You want a single-leg, concentric-focused quad exercise",
+    "Addressing left-right strength imbalances",
+    "You want knee-friendly loading with an adjustable box height"
+  ],
+  "bad_when": [
+    "Balance limitations force you to cut the range short",
+    "You want a heavy bilateral quad overload"
+  ],
+  "common_errors": [
+    "Pushing off the trailing foot for momentum",
+    "Using too high a box so it becomes glute-dominant and loses quad tension",
+    "Leaning back at the top"
+  ],
+  "progressions": [
+    "Increase the load or the box height",
+    "Add a pause at the top or slow the descent"
+  ],
+  "regressions": [
+    "Lower the box height",
+    "Use bodyweight or hold a support for balance"
+  ]
+}

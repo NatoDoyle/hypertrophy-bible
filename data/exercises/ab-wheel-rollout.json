@@ -1,0 +1,53 @@
+{
+  "id": "ab-wheel-rollout",
+  "name": "Ab Wheel Rollout",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [
+    "lats",
+    "front-delts"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "resistance_profile": "Anti-extension: as you roll out, the lever lengthens and the abs must resist the lumbar spine extending — load peaks at full extension, the deepest stretch.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "advanced",
+  "cues": [
+    "Ribs down, pelvis tucked the whole time",
+    "Roll only as far as you can keep the back flat",
+    "Pull yourself back with the abs, not the hip flexors"
+  ],
+  "execution_steps": [
+    "Kneel on a pad and grip the wheel on the floor under your shoulders with straight arms.",
+    "Brace the abs hard and tuck the pelvis so the lower back is flat, not arched.",
+    "Roll the wheel forward slowly, extending only as far as you can keep the spine from sagging.",
+    "Pause briefly at your end range without letting the lower back arch.",
+    "Pull with the abs to roll the wheel back to the start under control."
+  ],
+  "good_when": [
+    "You want a loaded lengthened stretch for the abs",
+    "You want high-tension anti-extension work with progressive range"
+  ],
+  "bad_when": [
+    "You have a cranky or extension-sensitive lower back",
+    "You can't yet hold a solid braced plank position"
+  ],
+  "common_errors": [
+    "Letting the lower back sag or arch at full extension",
+    "Rolling out further than the abs can control"
+  ],
+  "progressions": [
+    "Roll out to a greater range",
+    "Progress from kneeling to standing rollouts"
+  ],
+  "regressions": [
+    "Limit range with a wall or box as a stop",
+    "Do incline (hands-elevated) or band-assisted rollouts"
+  ]
+}

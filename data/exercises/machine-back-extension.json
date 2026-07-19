@@ -1,0 +1,51 @@
+{
+  "id": "machine-back-extension",
+  "name": "Seated Machine Back Extension",
+  "primary_muscles": [
+    "spinal-erectors"
+  ],
+  "secondary_muscles": [
+    "glutes"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "resistance_profile": "A pad against the upper back provides even, cam-based resistance as the torso extends; the pelvis is strapped to isolate the lumbar erectors.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Drive back with the low back, not the head",
+    "Extend to just past upright — don't slam into hyperextension",
+    "Control the return into the stretch"
+  ],
+  "execution_steps": [
+    "Sit in the machine with the pad across the shoulder blades and the pelvis secured by the thigh or lap restraint.",
+    "Begin flexed forward at the target start angle, gripping the handles.",
+    "Extend the torso backward by driving through the low back until just past upright.",
+    "Pause briefly, then return under control to the flexed start without letting the stack slam."
+  ],
+  "good_when": [
+    "You want isolated, low-skill lumbar erector work",
+    "You want to add erector volume without loading the entire posterior chain"
+  ],
+  "bad_when": [
+    "The machine's fixed start angle forces painful end-range flexion or extension",
+    "You jerk the pad instead of moving smoothly"
+  ],
+  "common_errors": [
+    "Using momentum to fling the pad backward",
+    "Overextending hard at the finish"
+  ],
+  "progressions": [
+    "Add load on the stack",
+    "Add a pause at the contracted position"
+  ],
+  "regressions": [
+    "Reduce the range of motion",
+    "45-degree back extension"
+  ]
+}

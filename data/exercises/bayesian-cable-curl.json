@@ -1,0 +1,53 @@
+{
+  "id": "bayesian-cable-curl",
+  "name": "Bayesian Cable Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "resistance_profile": "Facing away from a low pulley draws the working arm behind the torso, loading the biceps hard in the deep stretched position while the cable keeps constant tension through the full range.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Let the arm travel behind your body at the bottom",
+    "Keep the upper arm still — only the forearm moves",
+    "Control the stretch, do not drop into it"
+  ],
+  "execution_steps": [
+    "Set a cable pulley to its lowest position and attach a single handle.",
+    "Grab the handle with an underhand grip and step forward so you face away from the machine with the cable running behind you.",
+    "Stagger your stance for balance and let the working arm draw back and straight, feeling a deep stretch in the biceps.",
+    "Keeping the upper arm fixed, curl the handle forward and up toward your shoulder.",
+    "Squeeze at the top, then slowly let the arm travel back behind the body into the stretch."
+  ],
+  "good_when": [
+    "You want maximal loaded stretch on the biceps",
+    "You want constant cable tension through the whole range",
+    "Isolating one arm at a time with a strong mind-muscle focus"
+  ],
+  "bad_when": [
+    "No low pulley or cable station is available",
+    "You want a heavy bilateral mass builder"
+  ],
+  "common_errors": [
+    "Letting the elbow drift forward, which kills the stretch",
+    "Using the shoulder or torso to swing the weight up"
+  ],
+  "progressions": [
+    "Increase the stack load",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Reduce the load",
+    "Use a standing front cable curl instead"
+  ]
+}

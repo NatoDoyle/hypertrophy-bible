@@ -1,0 +1,53 @@
+{
+  "id": "smith-machine-drag-curl",
+  "name": "Smith Machine Drag Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "smith-machine",
+  "mechanic": "isolation",
+  "resistance_profile": "The fixed vertical bar path lets you drag the bar up the torso with the elbows travelling back, holding tension on the biceps through the contracted range and emphasizing the long head.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Drag the bar up your shirt, keeping it in contact with the body",
+    "Let the elbows slide back, never forward",
+    "Squeeze at the top before reversing"
+  ],
+  "execution_steps": [
+    "Set the Smith bar to roughly hip height and grip it shoulder-width with palms facing up.",
+    "Stand close so the bar rests against your thighs, chest up and shoulders back.",
+    "Curl by dragging the bar straight up along your torso, letting your elbows slide backward behind your body.",
+    "Stop when the bar reaches your lower chest and squeeze the biceps hard.",
+    "Lower the bar back down the same path under control until the arms are fully extended."
+  ],
+  "good_when": [
+    "You want to remove swinging with a fixed bar path",
+    "Emphasizing the long head with elbows-back mechanics",
+    "You struggle to keep a free-barbell drag-curl path honest"
+  ],
+  "bad_when": [
+    "You want a full-ROM loaded stretch on the biceps",
+    "The fixed bar path irritates your wrists or elbows"
+  ],
+  "common_errors": [
+    "Pushing the elbows forward and turning it into a normal curl",
+    "Using leg drive to start the bar moving"
+  ],
+  "progressions": [
+    "Add load in small increments",
+    "Add a pause in the top contracted position"
+  ],
+  "regressions": [
+    "Reduce the load",
+    "Shorten the range and focus on the squeeze"
+  ]
+}

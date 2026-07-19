@@ -1,0 +1,53 @@
+{
+  "id": "jefferson-curl",
+  "name": "Dumbbell Jefferson Curl",
+  "primary_muscles": [
+    "spinal-erectors"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Loads the erectors eccentrically through full segmental spinal flexion; tension is highest at the fully rounded, deeply stretched bottom position.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Move slowly, one spinal segment at a time",
+    "Keep the weight light and dragging close to the legs",
+    "Restack the spine from the bottom up"
+  ],
+  "execution_steps": [
+    "Stand on a bench or box holding a light dumbbell in both hands, feet together and legs nearly straight.",
+    "Tuck the chin and slowly roll down one vertebra at a time, letting the spine flex segmentally.",
+    "Let the dumbbell travel along the front of the legs until you reach a full but comfortable stretch.",
+    "Reverse the motion, restacking the spine from the bottom up until you are standing tall."
+  ],
+  "good_when": [
+    "You want to train the erectors through a full flexion range to build tissue tolerance",
+    "You have healthy spinal ROM and want a slow, controlled mobility-strength movement"
+  ],
+  "bad_when": [
+    "You have an acute disc injury or pain with loaded spinal flexion",
+    "You cannot control the load slowly — this is a light, deliberate lift, not a heavy one"
+  ],
+  "common_errors": [
+    "Using too much load and losing segmental control",
+    "Bouncing at the bottom instead of owning the stretch",
+    "Hinging only at the hips rather than flexing the spine"
+  ],
+  "progressions": [
+    "Add small load increments",
+    "Increase range by standing on a taller box"
+  ],
+  "regressions": [
+    "Reduce range with a partial roll-down",
+    "Unloaded bodyweight roll-down"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "standing-band-leg-curl",
+  "name": "Standing Band Leg Curl",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "calves"
+  ],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension rises through the curl and peaks at full knee flexion — a shortened-biased knee-flexion movement that complements stretch-loaded hamstring work.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the thigh still — only the knee moves",
+    "Squeeze the hamstring hard at the top",
+    "Control the band back down, don't let it snap you"
+  ],
+  "execution_steps": [
+    "Anchor one end of a loop band to a low point (a rack upright or a closed door) and loop the other end around your working ankle.",
+    "Stand facing the anchor holding a rack or wall for balance, with light tension already on the band and the working foot slightly forward.",
+    "Keeping your thigh vertical and hips still, curl your heel up toward your glute against the band.",
+    "Squeeze at the top, then lower under control to full knee extension and repeat before switching legs."
+  ],
+  "good_when": [
+    "Training at home or travelling with only bands",
+    "You want contracted-position hamstring work to complement RDLs",
+    "You want high-rep pump or rehab work that is easy on the joints"
+  ],
+  "bad_when": [
+    "You need heavy, precise progressive overload",
+    "You have a leg-curl machine and want maximal loading",
+    "You want a lengthened-biased stimulus (the band is lightest at the stretch)"
+  ],
+  "common_errors": [
+    "Swinging the hip to help curl the weight up",
+    "Letting the band yank the leg back down",
+    "Standing too close so there is no tension at the bottom"
+  ],
+  "progressions": [
+    "Thicker or shorter band for more tension",
+    "Add a pause and a slow eccentric at peak contraction"
+  ],
+  "regressions": [
+    "Lighter band",
+    "Reduce the range to a comfortable, pain-free arc"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "dumbbell-fly",
+  "name": "Dumbbell Fly",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Peak tension deep in the stretched position at the bottom of the arc; tension falls off as the dumbbells come together over the chest.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Fixed soft elbow bend — hinge only at the shoulder",
+    "Feel the stretch, don't chase extra depth",
+    "Squeeze the pecs to draw the dumbbells together"
+  ],
+  "execution_steps": [
+    "Lie flat on a bench holding a dumbbell in each hand pressed above the chest, palms facing each other.",
+    "Set a slight, fixed bend in the elbows and keep it constant throughout the set.",
+    "Lower the dumbbells out to the sides in a wide arc until you feel a stretch across the chest, upper arms roughly level with the bench.",
+    "Reverse the arc and bring the dumbbells back up and together over the chest, squeezing the pecs.",
+    "Stop just short of the dumbbells touching to keep tension on the chest, then repeat."
+  ],
+  "good_when": [
+    "You want a deep loaded stretch on the chest",
+    "You want chest isolation with minimal triceps involvement",
+    "Adding a stretch-biased accessory after pressing work"
+  ],
+  "bad_when": [
+    "You have impingement-prone shoulders at end range",
+    "You only have heavy dumbbells and can't control the stretched position",
+    "You want to move maximal load for the chest"
+  ],
+  "common_errors": [
+    "Bending and re-straightening the elbows, turning it into a press",
+    "Lowering too far and stressing the shoulder",
+    "Using momentum to fling the weights back up"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause and control the stretched position each rep"
+  ],
+  "regressions": [
+    "Pec deck",
+    "Cable crossover"
+  ]
+}
