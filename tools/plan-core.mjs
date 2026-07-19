@@ -128,6 +128,18 @@ function contraExcluded(ex, injuries, contraindications) {
   return false;
 }
 
+// The exercises a given profile can actually perform — the SAME equipment +
+// injury-contraindication filter the generator applies. The plan editor's swap /
+// add pickers use this so they never offer a lift the generator deliberately
+// excluded: an unavailable-equipment one (a dead end for a novice) or a
+// contraindicated one (an injury risk the generator removed for safety).
+export function accessibleExercises(profile, kb) {
+  const { exercises, contraindications } = kb;
+  const equip = new Set(profile?.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
+  const injuries = profile?.injuries ?? [];
+  return exercises.filter((e) => equip.has(e.equipment) && !contraExcluded(e, injuries, contraindications));
+}
+
 export function generatePlan(profile, kb, opts = {}) {
   const { exercises, muscles, contraindications } = kb;
   const experience = profile.training_status ?? "intermediate";
@@ -532,7 +544,7 @@ export function generatePlan(profile, kb, opts = {}) {
 // Critique any program (generated OR user-built) against the KB: per-muscle
 // weekly volume vs MEV/MRV, missing major muscles, push/pull balance, and
 // compound-before-isolation order. Reuses the SAME volume model as the tracker.
-export function critiquePlan(program, kb) {
+export function critiquePlan(program, kb, { experience = "intermediate" } = {}) {
   const { exercises, muscles } = kb;
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
@@ -555,7 +567,18 @@ export function critiquePlan(program, kb) {
     if (!lm) continue;
     const grade = lm.evidence_grade || "C";
     if (r.status === "over-MRV") add("warn", `${name(m)}: ${r.sets} hard sets/wk is above MRV (~${lm.mrv.max}) — likely more than you can recover from. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
-    else if (r.status === "below-MEV") add("warn", `${name(m)}: ${r.sets} hard sets/wk is below MEV (~${lm.mev.min}) — probably too little to grow it. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+    else if (r.status === "below-MEV") {
+      // A BEGINNER is deliberately built at ~MEV under a session-quality cap the
+      // generator cannot exceed, so most muscles sit a little under MEV BY DESIGN.
+      // Flagging that as a red "worth fixing" contradicts the app's own "your plan
+      // is ready 🎉" and demoralizes the most fragile cohort — so for beginners a
+      // modest shortfall is a gentle suggestion (info), and only a SEVERE one
+      // (< 0.6×MEV, mirroring the generator's own under-target threshold) is a warn.
+      // Intermediate/advanced genuinely need the volume, so below-MEV stays a warn.
+      const severe = r.sets < lm.mev.min * 0.6;
+      const soft = experience === "beginner" && !severe;
+      add(soft ? "info" : "warn", `${name(m)}: ${r.sets} hard sets/wk is below MEV (~${lm.mev.min}) — ${soft ? "a little under the ideal, which is normal on a starter plan; you'll add more as you get more days or time" : "probably too little to grow it"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+    }
   }
   // major muscles with no volume
   const MAJOR = ["chest", "upper-back", "lats", "quadriceps", "hamstrings", "glutes", "side-delts"];
