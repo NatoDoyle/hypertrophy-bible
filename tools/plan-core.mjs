@@ -173,7 +173,13 @@ export function generatePlan(profile, kb, opts = {}) {
   const scheme = repScheme(goal);
 
   const muscleById = new Map(muscles.map((m) => [m.id, m]));
-  const avail = exercises.filter((e) => equip.has(e.equipment) && !contraExcluded(e, injuries, contraindications));
+  // Loaded carries (suitcase/bottoms-up) are a time-and-distance movement — there is
+  // no honest "3×6–10 reps" for them, so the rep-based generator would prescribe a
+  // nonsensical set/rep count. They stay in the library (searchable, swappable,
+  // addable with their real execution cues) but never auto-fill a hypertrophy slot.
+  // Every muscle a carry serves (abs, forearms) keeps other options, so excluding
+  // them never starves the coverage invariant.
+  const avail = exercises.filter((e) => equip.has(e.equipment) && e.movement_pattern !== "carry" && !contraExcluded(e, injuries, contraindications));
 
   // 1) split
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
