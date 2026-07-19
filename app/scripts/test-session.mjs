@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered } from "../public/session-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -155,6 +155,20 @@ check("pathological: OLD non-adjacent pair with UNEQUAL sets still drops nothing
   assert.equal(owed("calf"), 0);
   assert.equal(owed("plank"), 0); // the between-exercise survived
   assert.equal(owed("legext"), 0); // and the longer member's remainder was finished
+});
+check("offline queue: two tabs flushing the same item never drop an UNdelivered workout", () => {
+  // The data-loss bug: two tabs both flush on reconnect; position-based slice(1)
+  // could drop item B that no tab delivered. filter-by-id can only remove the
+  // delivered item. Trace: queue [A,B]; tab2 delivers A and removes it; tab1 (which
+  // also delivered A) re-reads [B] and removes id 'a' → B survives.
+  const A = { id: "a", path: "/api/session", body: "{}" };
+  const B = { id: "b", path: "/api/session", body: "{}" };
+  let queue = [A, B];
+  queue = dropDelivered(queue, "a"); // tab2 after delivering A
+  queue = dropDelivered(queue, "a"); // tab1 after delivering A, re-reading the queue
+  assert.deepEqual(queue.map((x) => x.id), ["b"]); // B (undelivered) preserved
+  // and delivering B removes exactly B, leaving the queue empty
+  assert.deepEqual(dropDelivered(queue, "b"), []);
 });
 check("warm-up sets never count toward a target", () => {
   const logged = [{ exercise: "dip", set_type: "warmup" }, { exercise: "dip", set_type: "work" }];

@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered } from "/session-core.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -74,7 +74,8 @@ const DONATE_URL = "";
 const QKEY = "hb_queue";
 const getQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } };
 const setQueue = (q) => localStorage.setItem(QKEY, JSON.stringify(q));
-let flushing = false; // guard against re-entrancy (load + 'online', or two tabs)
+const genQueueId = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+let flushing = false; // guard against re-entrancy within THIS tab (load + 'online')
 async function flushQueue() {
   if (flushing) return;
   flushing = true;
@@ -83,6 +84,9 @@ async function flushQueue() {
       const q = getQueue();
       if (!q.length) break;
       const item = q[0];
+      // Legacy items (queued before items carried an id) get one assigned in place,
+      // so the identity-based removal below is always safe.
+      if (!item.id) { item.id = genQueueId(); q[0] = item; try { setQueue(q); } catch {} }
       // The queue is device-local, so the current user always owns it. Rebinding
       // heals items whose account switched (a restore) after they were queued —
       // they land on the account instead of a stale/deleted user_id.
@@ -91,10 +95,14 @@ async function flushQueue() {
       try { ok = (await fetch(item.path, { method: "POST", headers: { "content-type": "application/json" }, body })).ok; }
       catch { break; } // offline again — keep everything for next time
       if (!ok) break;   // server/HTTP error — retry later rather than drop the workout
-      // Re-read before dropping the head: an item queued during the POST is preserved.
-      // If storage fails here, stop — the item was already delivered, and every write
-      // it could duplicate on the next flush is idempotent server-side.
-      try { setQueue(getQueue().slice(1)); } catch { break; }
+      // Remove ONLY the item we just delivered, BY IDENTITY — never by position.
+      // `flushing` guards re-entry within this tab but NOT across tabs (it's a
+      // per-realm boolean), so on reconnect a PWA + a browser tab can both flush.
+      // slice(1) removed "whatever is at the head now", which could be an item a
+      // second tab had already shifted — silently dropping an UNdelivered workout.
+      // filter-by-id can only ever remove the one we delivered; server writes are
+      // idempotent (session_id / date dedup), so a double delivery is harmless.
+      try { setQueue(dropDelivered(getQueue(), item.id)); } catch { break; }
     }
   } finally { flushing = false; }
 }
@@ -108,7 +116,7 @@ async function postOrQueue(path, bodyObj) {
   } catch {
     // Queueing itself can fail (storage full / private mode). Report it honestly —
     // callers holding irreplaceable data (finish()) keep their copy and retry.
-    try { setQueue([...getQueue(), { path, body }]); return { ok: false, queued: true }; }
+    try { setQueue([...getQueue(), { id: genQueueId(), path, body }]); return { ok: false, queued: true }; }
     catch { return { ok: false, queued: false }; }
   }
 }
