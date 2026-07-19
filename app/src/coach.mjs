@@ -2,7 +2,7 @@
 // confirms and taps Done. Reuses the KB's derive-core engine for all derivations.
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
-  bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect,
+  bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -303,6 +303,16 @@ export function progressReport(user, sessions, bodyweights, customEx = []) {
     .sort((a, b) => b.sets - a.sets);
   const stalls = stallDetect(sessions, index);
   const stalledIds = new Set(stalls.map((x) => x.exercise));
+  // ADAPTIVE volume-response signal (#2 foundation): map stalled lifts → their
+  // primary muscles, then let volumeResponse turn "current volume vs landmarks +
+  // stalled?" into honest, MEV↔MRV-bounded per-muscle advice. Coaching only — the
+  // user sees it and decides; the plan is never silently auto-changed. Only
+  // meaningful with a few weeks of data (stallDetect needs 4 weeks), so it stays
+  // quiet for new users beyond the below-MEV nudge.
+  const stalledMuscleIds = new Set(stalls.flatMap((x) => index.get(x.exercise)?.primary ?? []));
+  const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds)
+    .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
+    .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
   // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
   const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
   const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
@@ -311,5 +321,5 @@ export function progressReport(user, sessions, bodyweights, customEx = []) {
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, stalls, bodyweight_trend: trend, energy_balance: energy };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy };
 }

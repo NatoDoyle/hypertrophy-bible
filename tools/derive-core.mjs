@@ -90,6 +90,47 @@ export function volumeVsLandmarks(weekVolume, muscleIndex) {
   return out;
 }
 
+// ADAPTIVE VOLUME RESPONSE — the foundation of the self-learning plan. For each
+// trained muscle it combines the user's CURRENT weekly volume (vs the KB MEV/MAV/MRV
+// landmarks) with whether a lift for that muscle has STALLED, into an honest,
+// data-driven "do you need more/less volume here?" signal. Two hard safety rails:
+// (1) it is COACHING ONLY — the caller surfaces it as advice and never auto-applies
+// it silently; (2) every suggestion is bounded by the recoverable range — it never
+// pushes a target above MAV.max, and once a muscle is stalled AT its ceiling it says
+// "change/deload", not "add more", so volume can never run away.
+// `weekVolume` is { muscleId: sets } (effective sets); `stalledMuscleIds` is the set
+// of muscle ids whose primary lift stallDetect flagged. Returns one entry per muscle.
+export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new Set()) {
+  const out = [];
+  for (const [m, sets] of Object.entries(weekVolume)) {
+    const lm = muscleIndex.get(m);
+    if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
+    const mevMin = lm.mev.min, mavMax = lm.mav.max, mrvMax = lm.mrv.max;
+    const stalled = stalledMuscleIds.has(m);
+    let signal, advice;
+    if (sets < mevMin) {
+      signal = "add";
+      advice = `only ~${sets} sets/wk — below the ~${mevMin} it needs to grow. Add sets.`;
+    } else if (sets > mrvMax) {
+      signal = "reduce";
+      advice = `~${sets} sets/wk is above your recoverable ceiling (~${mrvMax}) — trim a set or two.`;
+    } else if (stalled && sets < mavMax) {
+      signal = "add";
+      advice = `progress has stalled and you're at ~${sets} of a possible ${mavMax} productive sets — try adding ~2 sets here.`;
+    } else if (stalled) {
+      signal = "change";
+      advice = `stalled near your recoverable ceiling (~${mrvMax}) — a deload or a different exercise will help more than piling on volume.`;
+    } else {
+      signal = "hold";
+      advice = `~${sets} sets/wk, progressing in a productive range — hold here.`;
+    }
+    out.push({ muscle: m, sets, signal, advice });
+  }
+  // Surface the actionable ones first (add/reduce/change before hold).
+  const rank = { reduce: 0, change: 1, add: 2, hold: 3 };
+  return out.sort((a, b) => (rank[a.signal] - rank[b.signal]) || (b.sets - a.sets));
+}
+
 // Bodyweight trend via least-squares regression (kg/week). Daily weight is noise;
 // the slope of the trend is the signal — and doubles as the energy-balance sensor.
 export function bodyweightTrend(series) {
