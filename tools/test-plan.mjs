@@ -173,6 +173,22 @@ ok("specialization: non-priority muscles run at labelled maintenance with no bel
   specP.rationale.volume_by_muscle["quadriceps"].projected_status === "maintenance" &&
   specP.rationale.warnings.filter((w) => w.code === "below-mev").length === 0);
 ok("specialization: still never over MRV", specP.rationale.warnings.filter((w) => w.code === "over-mrv").length === 0);
+// #1: the block's promise is to HOLD non-priority muscles at maintenance and free
+// recovery for the priorities. A muscle UNRELATED to the priorities (quads, when
+// the priorities are side-delts+chest) must actually sit near its maintenance dose,
+// NOT be quietly grown into MEV/growth range as it was before (target 6 -> proj 10).
+const specQuad = specP.rationale.volume_by_muscle["quadriceps"];
+ok("#1 a non-synergist maintenance muscle is HELD below its growth threshold (MEV)",
+  specQuad.projected_sets < muscleById.get("quadriceps").landmarks.mev.min);
+ok("#1 a held maintenance muscle stays within ~1.5 sets of its maintenance target",
+  specQuad.projected_sets <= specQuad.target_sets + 1.5);
+// A synergist of the priority lifts (e.g. triceps under a chest priority) will pick
+// up unavoidable SECONDARY volume and overshoot — that's physiology, not a bug — but
+// its rationale must then say so HONESTLY, not keep claiming "holds what you've built".
+const overshootSyn = Object.entries(specP.rationale.volume_by_muscle)
+  .find(([m, r]) => r.maintenance && r.projected_sets >= (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity))?.[1];
+ok("#1 an overshooting synergist gets an honest 'secondary work' reason, not a false maintenance claim",
+  !overshootSyn || (/secondary work/.test(overshootSyn.reasons[0]) && !/holds what you've built/.test(overshootSyn.reasons[0])));
 // #2/#4: an under-target warning for an ALREADY-priority muscle must not tell the
 // user to "mark it a priority muscle" (they already did / it's a specialization
 // target). It should point at the real levers (more days / longer sessions).

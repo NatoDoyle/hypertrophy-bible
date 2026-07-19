@@ -181,6 +181,13 @@ export function generatePlan(profile, kb, opts = {}) {
   const freq = {};
   for (const spec of sessionSpecs) for (const m of ARCH[spec.arch]) freq[m] = (freq[m] ?? 0) + 1;
 
+  // A non-priority muscle inside a specialization block is HELD at its maintenance
+  // dose: the block's whole mechanism is to free recovery by NOT growing everything
+  // else. Direct allocation to such a muscle is capped at its (maintenance) target
+  // so the plan can't quietly grow it past what the "holds what you've built"
+  // rationale promises. Priority muscles and non-specialization plans are untouched.
+  const holdMaint = (m) => specialization && priority.size > 0 && !priority.has(m) && !!volumeRationale[m]?.maintenance;
+
   // pools per muscle (filtered + ranked), and a rotation counter for variety
   const compoundPool = {}, isoPool = {}, rot = {};
   for (const m of muscles) {
@@ -230,7 +237,14 @@ export function generatePlan(profile, kb, opts = {}) {
       if (placed.has(ex.id) || !room()) return false;
       const iso = ex.mechanic === "isolation";
       const s = iso ? (priority.has(forMuscle) ? scheme.priorityIso : scheme.isolation) : scheme.compound;
-      const setN = clamp(Math.min(sets, EX_SET_CAP, setBudget - setsUsed), 1, 10);
+      // Held-at-maintenance muscles never receive more direct volume than their
+      // (maintenance) target still has room for — so a full compoundSets can't blow
+      // a small maintenance dose past its ceiling. `credited` is effective volume
+      // (primary 1.0 + secondary 0.5), so this counts incidental secondary work too.
+      const want = holdMaint(forMuscle)
+        ? Math.min(sets, Math.max(1, Math.ceil(Math.ceil((targets[forMuscle] ?? 0) / Math.max(1, freq[forMuscle] ?? 1)) - (credited[forMuscle] ?? 0))))
+        : sets;
+      const setN = clamp(Math.min(want, EX_SET_CAP, setBudget - setsUsed), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       items.push({ exercise: ex.id, sets: setN, rep_range: s[0], rir: s[1] });
       for (const m of ex.primary_muscles ?? []) credited[m] = (credited[m] ?? 0) + setN;
@@ -451,7 +465,19 @@ export function generatePlan(profile, kb, opts = {}) {
     // A maintenance muscle (specialization block) is INTENTIONALLY low — its status
     // is "maintenance" and it earns no growth warnings; warning that a muscle we're
     // deliberately only holding is "below MEV" would contradict the block's whole point.
-    if (r.maintenance) { r.projected_status = proj > 0 ? "maintenance" : "not-reached"; continue; }
+    if (r.maintenance) {
+      r.projected_status = proj > 0 ? "maintenance" : "not-reached";
+      // Honesty: a maintenance muscle that is ALSO a synergist of the priority lifts
+      // picks up unavoidable secondary volume and can sit above pure maintenance (you
+      // can't press for a priority chest without working triceps/front-delts). When
+      // that lands it at/above MEV, say so — don't keep claiming "~target sets, holds
+      // what you've built" when the plan is really giving it growth-range volume.
+      const mev = muscleById.get(m)?.landmarks?.mev?.min;
+      if (mev != null && proj >= mev) {
+        r.reasons = [`~${proj} sets/wk — carried above pure maintenance by secondary work from your priority lifts (unavoidable, and fine); the recovery cost still falls mostly on the priorities`];
+      }
+      continue;
+    }
     if (f === 0) {
       // Muscle not directly trained this split — it may still get secondary credit;
       // warn when even that indirect volume leaves it under MEV (so it won't grow).
