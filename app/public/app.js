@@ -758,9 +758,11 @@ function renderPlayer(resting = 0) {
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
     ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="swap">🔄 Swap this exercise</button>` : ""}
+    ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
   if ($("#swap")) $("#swap").onclick = () => renderSwap();
+  if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
 
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
@@ -970,6 +972,38 @@ async function renderSwap() {
     say(`Swapped to ${name}.`);
     renderPlayer(0);
   });
+}
+
+// "Do this later" (mid-workout reorder): the machine's busy, so push the current
+// UNSTARTED exercise to the end of the queue and move on. Only reachable at set 0
+// of a non-superset lift with a later exercise to land on (guarded in the player).
+// sess.weights/reps/rir are keyed by ARRAY INDEX, so moving an item must REMAP those
+// caches or the steppers would show the wrong defaults. Logged sets are keyed by
+// exercise id, so they stay valid — no data is ever at risk here.
+function deferCurrentExercise() {
+  const i = sess.i, last = sess.ex.length - 1;
+  if (i >= last) return; // nothing to move it ahead of
+  const [moved] = sess.ex.splice(i, 1);
+  sess.ex.push(moved);
+  // Shift index-keyed caches to follow their exercises: keys < i unchanged, key i
+  // moves to the new last slot, keys > i shift down by one.
+  const remap = (cache) => {
+    const out = {};
+    for (const [k, v] of Object.entries(cache || {})) {
+      const idx = +k;
+      if (idx < i) out[idx] = v;
+      else if (idx === i) out[last] = v;
+      else out[idx - 1] = v;
+    }
+    return out;
+  };
+  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.rir = remap(sess.rir);
+  // sess.i stays put — it now points at the exercise that was next (still unstarted,
+  // so set 0 is correct); the deferred lift waits at the end.
+  sess.set = 0;
+  saveSess();
+  say(`Moved ${moved.name} to the end — you'll come back to it.`);
+  renderPlayer(0);
 }
 
 async function finish() {
