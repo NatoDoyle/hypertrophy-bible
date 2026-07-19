@@ -757,8 +757,10 @@ function renderPlayer(resting = 0) {
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
+    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="swap">🔄 Swap this exercise</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
+  if ($("#swap")) $("#swap").onclick = () => renderSwap();
 
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
@@ -918,6 +920,56 @@ function renderExerciseSheet(ex, d) {
     <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Find a form video</a>
     <button class="btn" id="back">Back to workout</button>`;
   $("#back").onclick = () => renderPlayer(0);
+}
+
+// Mid-workout swap: the machine's taken, or you just want a different lift today.
+// Only reachable before any set of the current exercise is logged (guarded in the
+// player), so the swap is clean — we replace this slot's exercise, keep its sets/
+// reps/RIR target, and reset the weight (a fresh lift you pick a weight for). It's
+// a TEMPORARY, session-only change — the saved plan is untouched.
+async function renderSwap() {
+  const cur = sess.ex[sess.i];
+  app.innerHTML = `<h1>Swap exercise</h1><p class="muted">Loading alternatives…</p>`;
+  let all = [];
+  try { all = await api(`/api/exercises`); } catch {}
+  const inSession = new Set(sess.ex.map((x) => x.exercise));
+  // Same primary muscle(s), the user's own equipment (the endpoint is already
+  // equipment + injury filtered), not the current lift, not already in the session.
+  const curMuscles = new Set(cur.primary_muscles ?? []);
+  const alts = all.filter((x) => x.id !== cur.exercise && !inSession.has(x.id)
+    && (x.primary_muscles ?? []).some((m) => curMuscles.has(m)));
+  if (!alts.length) {
+    app.innerHTML = `<h1>Swap exercise</h1>
+      <div class="card"><p>No alternative for the same muscle with your equipment right now.</p>
+      <p class="muted">You can keep going with ${esc(cur.name)}, or end the workout.</p></div>
+      <button class="btn" id="back">Back to ${esc(cur.name)}</button>`;
+    $("#back").onclick = () => renderPlayer(0);
+    return;
+  }
+  const rows = alts.slice(0, 20).map((x) => `<button class="choice" data-swap="${esc(x.id)}" data-name="${esc(x.name)}">${esc(x.name)} <span class="muted">${esc(friendlyMuscles(x.primary_muscles))}</span></button>`).join("");
+  app.innerHTML = `<h1>Swap ${esc(cur.name)}</h1>
+    <p class="muted">Pick a replacement that trains the same muscle. Just for today — your saved plan doesn't change.</p>
+    ${rows}
+    <button class="btn ghost" id="back">Keep ${esc(cur.name)}</button>`;
+  $("#back").onclick = () => renderPlayer(0);
+  app.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
+    const id = b.dataset.swap, name = b.dataset.name;
+    const chosen = alts.find((x) => x.id === id);
+    // Replace the slot in place: keep the prescription (sets/rep_range/rir), swap the
+    // exercise + its display fields, and treat it as a fresh lift (no suggested_kg,
+    // so the player prompts for a starting weight). Reset this slot's cached inputs.
+    sess.ex[sess.i] = {
+      ...cur, exercise: id, name,
+      primary_muscles: chosen?.primary_muscles ?? [],
+      equipment: chosen?.equipment ?? null,
+      suggested_kg: null, cue: null, unilateral: false, lengthened_bias: false,
+      superset_with: undefined, superset_with_name: undefined,
+    };
+    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.rir[sess.i];
+    saveSess();
+    say(`Swapped to ${name}.`);
+    renderPlayer(0);
+  });
 }
 
 async function finish() {
