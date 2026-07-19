@@ -91,7 +91,21 @@ These are real failures from previous iterations. Each is now a standing check.
    citation finding cited "~52 sets tested" — not in the abstract. → verify BOTH the audit's code
    premise AND any scientific numbers it quotes against the primary source before writing them
    into the KB; write to what the source actually says, not what the audit asserted.
-10. **A fix can be physiologically bounded — then LABEL the remainder, don't force it.** The
+10. **A derived status must never contradict the user's own direct input.** A low-readiness
+   check-in on an already-short session fell through a `length > 3` gate and told the user
+   "you're in your normal range" — fabricating a status against the sleep/energy/stress they
+   just reported, and teaching them the check-in is fake. → **Standing lens:** whenever the app
+   shows a status derived from user input (readiness, streak, PR), prove it can never render a
+   value that contradicts what the user directly told it. Branch on the meaning, not on whether
+   the downstream action happens to apply.
+11. **A per-tab/per-realm guard does not serialize across tabs.** The offline queue's `flushing`
+   boolean lived in one tab's JS realm, so two tabs both flushed on reconnect and a
+   position-based `slice(1)` dropped an undelivered workout. → **Standing rule:** never mutate
+   shared client storage (localStorage) by POSITION under possible concurrency — remove by a
+   stable identity (stamp an id at write). Lens C also caught this AND a security comment that
+   overclaimed its own protection: review the last wave's code *and its comments* — a comment
+   that promises a guarantee the code doesn't provide is worse than none.
+12. **A fix can be physiologically bounded — then LABEL the remainder, don't force it.** The
    specialization cap holds *unrelated* muscles at maintenance, but a synergist of the priority
    lifts (triceps under a chest priority) picks up secondary volume no cap can remove. The honest
    move was to relabel the rationale ("carried above maintenance by secondary work"), not to
