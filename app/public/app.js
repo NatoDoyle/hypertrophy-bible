@@ -120,7 +120,7 @@ const STEPS = [
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
-  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Side delts", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Quads", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
   { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
@@ -456,9 +456,13 @@ function renderCustomExercise(si) {
     app.querySelectorAll("[data-mech]").forEach((b) => b.onclick = () => { st.mechanic = b.dataset.mech; draw(); });
     $("#cx-save").onclick = async () => {
       if (!st.name.trim()) { $("#cx-msg").textContent = "Give it a name first."; return; }
+      // One exercise per tap: the server append is non-idempotent (each call mints a
+      // fresh id), so a double-tap would create two copies of the same lift. Disable
+      // while in flight; re-enable only on a failure the user can retry.
+      const btn = $("#cx-save"); btn.disabled = true;
       let r; try { r = await api(`/api/exercise/custom`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: { name: st.name.trim(), primary_muscles: [st.muscle], equipment: st.equipment, mechanic: st.mechanic } }) }); }
-      catch { $("#cx-msg").textContent = "📴 You're offline — try again when connected."; return; }
-      if (r.error) { $("#cx-msg").textContent = r.error; return; }
+      catch { $("#cx-msg").textContent = "📴 You're offline — try again when connected."; btn.disabled = false; return; }
+      if (r.error) { $("#cx-msg").textContent = r.error; btn.disabled = false; return; }
       allExercises = await api(`/api/exercises`);
       editState.sessions[si].exercises.push({ exercise: r.exercise.id, sets: 3, rep_range: "8-12" });
       drawEdit(null);
