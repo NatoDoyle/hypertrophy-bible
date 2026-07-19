@@ -1,0 +1,55 @@
+{
+  "id": "smith-machine-romanian-deadlift",
+  "name": "Smith Machine Romanian Deadlift",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "hinge",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "The fixed bar path loads the hamstrings hardest in the stretched bottom position while removing balance demands, letting you safely push the loaded stretch.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Hips back, bar glued to the thighs",
+    "Flat back — chase the stretch, not the floor",
+    "Stand tall and squeeze, don't hyperextend"
+  ],
+  "execution_steps": [
+    "Set the Smith bar to about mid-thigh height, load it, then grip it shoulder-width and unrack, standing so the bar rests against your thighs.",
+    "Soften the knees and push your hips straight back, letting the bar slide down the fixed path close to your legs.",
+    "Lower until you feel a strong hamstring stretch, keeping a flat back and the bar tracking the legs.",
+    "Drive your hips forward to stand tall, squeeze the glutes at the top, and re-rack after the set."
+  ],
+  "good_when": [
+    "You are new to hinging and want the stability of a fixed bar path",
+    "You want to overload the stretched position without balance limiting you",
+    "You train alone and want a safe way to push heavier RDLs"
+  ],
+  "bad_when": [
+    "You want to train balance and stabilizers (use a free barbell)",
+    "The fixed vertical path fights your natural hinge groove",
+    "You already have the skill for free-weight RDLs and want maximal transfer"
+  ],
+  "common_errors": [
+    "Bending the knees into a squat",
+    "Rounding the lower back to go deeper",
+    "Standing too far from the bar so it drifts off the legs"
+  ],
+  "progressions": [
+    "Add load, then progress to a free-barbell Romanian deadlift",
+    "Pause in the stretched position"
+  ],
+  "regressions": [
+    "Lighter load or shorter range",
+    "Dumbbell Romanian deadlift"
+  ]
+}

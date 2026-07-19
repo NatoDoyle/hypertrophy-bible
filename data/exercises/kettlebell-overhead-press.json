@@ -1,0 +1,56 @@
+{
+  "id": "kettlebell-overhead-press",
+  "name": "Kettlebell Overhead Press",
+  "primary_muscles": [
+    "front-delts"
+  ],
+  "secondary_muscles": [
+    "side-delts",
+    "triceps"
+  ],
+  "movement_pattern": "vertical-push",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Single-arm strict press with the bell resting on the back of the forearm; the offset load demands rack stability and challenges the delt hardest through the mid-range sticking point.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Keep the wrist straight and the bell on the forearm, not in the hand",
+    "Brace the whole trunk before pressing",
+    "Press the bell back so it finishes over the shoulder"
+  ],
+  "execution_steps": [
+    "Clean or curl a kettlebell into the rack position: bell resting on the back of the forearm, wrist straight, elbow tucked to the ribs.",
+    "Stand tall, brace the abs and glutes, and set the shoulder blade down.",
+    "Press the bell straight up, letting the wrist rotate so the palm faces forward at the top.",
+    "Finish with the biceps by the ear and the bell stacked over the shoulder and mid-foot.",
+    "Lower under control back to the rack position and reset before the next rep."
+  ],
+  "good_when": [
+    "Training at home or travelling with a single kettlebell",
+    "You want to fix a strength imbalance between sides",
+    "You want core and shoulder stability trained alongside pressing"
+  ],
+  "bad_when": [
+    "You are chasing maximum front-delt load and have barbells available",
+    "Wrist or elbow pain in the kettlebell rack position",
+    "You cannot yet stabilise an offset overhead load"
+  ],
+  "common_errors": [
+    "Letting the wrist bend back under the bell",
+    "Leaning away from the bell to cheat it up",
+    "Flaring the ribs and overarching the lower back"
+  ],
+  "progressions": [
+    "Add load or reps (double progression)",
+    "Progress toward a double-kettlebell press"
+  ],
+  "regressions": [
+    "Kettlebell push press using leg drive",
+    "Two-hand dumbbell or machine shoulder press"
+  ]
+}

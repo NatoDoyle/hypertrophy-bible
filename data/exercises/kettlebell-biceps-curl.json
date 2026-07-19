@@ -1,0 +1,52 @@
+{
+  "id": "kettlebell-biceps-curl",
+  "name": "Kettlebell Biceps Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "The bell's mass hangs below and behind the hand, shifting the load line and keeping the grip and forearm heavily involved through the mid-range.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the wrist firm so the bell stays off the forearm",
+    "Elbows glued to your sides",
+    "Control the bell on the descent"
+  ],
+  "execution_steps": [
+    "Hold a kettlebell in each hand by the handle so the bells hang and the weight sits behind the wrist.",
+    "Stand tall with elbows tucked to your sides and palms facing forward.",
+    "Curl the kettlebells toward your shoulders, keeping the wrists firm so the bells do not crash into your forearms.",
+    "Pause briefly at the top, then lower under control to full elbow extension."
+  ],
+  "good_when": [
+    "Training in a kettlebell-only or minimalist setup",
+    "You want extra grip and forearm involvement",
+    "You want a slightly different resistance feel than dumbbells"
+  ],
+  "bad_when": [
+    "The offset bell bangs your forearm and disrupts the set",
+    "You want a clean, even resistance curve"
+  ],
+  "common_errors": [
+    "Letting the bell bang the wrist or forearm at the top",
+    "Swinging the bells up with hip drive"
+  ],
+  "progressions": [
+    "Move to a heavier bell",
+    "Curl one arm at a time to increase load per side"
+  ],
+  "regressions": [
+    "Use a lighter bell",
+    "Perform seated on a bench to remove momentum"
+  ]
+}

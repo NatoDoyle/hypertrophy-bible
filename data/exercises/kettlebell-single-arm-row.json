@@ -1,0 +1,57 @@
+{
+  "id": "kettlebell-single-arm-row",
+  "name": "Kettlebell Single-Arm Row",
+  "primary_muscles": [
+    "lats",
+    "upper-back"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "rear-delts",
+    "forearms"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Supported unilateral row; the offset kettlebell hangs below the hand for a deep stretch at the bottom and a strong mid-range contraction, hardest through the mid-pull.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Brace on the bench, keep a flat back",
+    "Lead with the elbow to the hip",
+    "Full stretch at the bottom, no torso twist"
+  ],
+  "execution_steps": [
+    "Place one knee and the same-side hand on a flat bench with your back flat and roughly parallel to the floor.",
+    "Let the kettlebell hang from the free hand directly below the shoulder, arm long and shoulder blade reaching forward.",
+    "Drive the elbow up and back toward the hip, leading with the elbow and pulling the shoulder blade toward the spine.",
+    "Bring the kettlebell to the lower ribs or hip without twisting the torso.",
+    "Lower under control to a full stretch, letting the shoulder blade protract before the next rep."
+  ],
+  "good_when": [
+    "Training at home or with minimal equipment (a single kettlebell).",
+    "You want a supported, lower-back-friendly way to row heavy.",
+    "You want a deep stretch and a thicker-handle grip challenge."
+  ],
+  "bad_when": [
+    "You need to load beyond your single heaviest kettlebell.",
+    "You want a bilateral movement to save time."
+  ],
+  "common_errors": [
+    "Twisting the torso to heave the weight up",
+    "Shrugging the shoulder toward the ear instead of rowing",
+    "Cutting the range short at the bottom stretch"
+  ],
+  "progressions": [
+    "Add load or reps, or pause at the top for a peak contraction.",
+    "Progress to a heavier bell or add a 1.5-rep at the top."
+  ],
+  "regressions": [
+    "Use a lighter bell or shorten the range slightly.",
+    "Perform standing with a staggered stance and the free hand braced on the thigh."
+  ]
+}

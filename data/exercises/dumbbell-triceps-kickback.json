@@ -1,0 +1,51 @@
+{
+  "id": "dumbbell-triceps-kickback",
+  "name": "Dumbbell Triceps Kickback",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "With the upper arm held parallel to the floor, resistance torque peaks as the elbow reaches full extension — a strong peak-contraction / shortened stimulus.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the upper arm still and parallel to the floor",
+    "Squeeze at full lockout",
+    "Control the return, don't swing"
+  ],
+  "execution_steps": [
+    "Hinge at the hips with a flat back, supporting the non-working hand on a bench, and hold a dumbbell in the working hand.",
+    "Raise the upper arm until it is parallel to the floor and pinned to your side, elbow bent to about 90 degrees.",
+    "Extend the elbow to straighten the arm behind you, squeezing the triceps at the top.",
+    "Lower the dumbbell under control back to 90 degrees without dropping the upper arm."
+  ],
+  "good_when": [
+    "You want a peak-contraction finisher for the triceps",
+    "Only dumbbells are available",
+    "Building the mind-muscle connection with light, controlled reps"
+  ],
+  "bad_when": [
+    "You want to load the stretched position of the triceps",
+    "You cannot hold a stable braced hinge position"
+  ],
+  "common_errors": [
+    "Dropping the upper arm and turning it into a row",
+    "Using momentum to swing the weight up",
+    "Not fully extending the elbow"
+  ],
+  "progressions": [
+    "Add load or slow the eccentric",
+    "Hold the contracted position for a beat"
+  ],
+  "regressions": [
+    "Use a lighter dumbbell",
+    "Switch to a cable or band kickback for smoother resistance"
+  ]
+}

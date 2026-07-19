@@ -1,0 +1,49 @@
+{
+  "id": "dead-bug",
+  "name": "Dead Bug",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "resistance_profile": "Anti-extension: the abs isometrically keep the lower back pinned to the floor while the opposite arm and leg lower and lengthen the lever.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Lower back glued to the floor the whole time",
+    "Move the opposite arm and leg together, slowly",
+    "Exhale and brace as the limbs lower"
+  ],
+  "execution_steps": [
+    "Lie on your back with arms reaching straight up and hips and knees bent to 90 degrees.",
+    "Press your lower back flat into the floor by bracing the abs and tucking the pelvis.",
+    "Slowly lower one arm overhead and the opposite leg toward the floor, keeping the back flat.",
+    "Return to the start and repeat with the other arm and leg, alternating."
+  ],
+  "good_when": [
+    "You're learning to brace and keep a neutral spine",
+    "You want a lower-back-friendly beginner core exercise"
+  ],
+  "bad_when": [
+    "You need heavy loading for ab hypertrophy",
+    "You can't yet keep the lower back flat even with limbs bent"
+  ],
+  "common_errors": [
+    "Letting the lower back arch off the floor",
+    "Rushing the reps or holding the breath"
+  ],
+  "progressions": [
+    "Lower the limbs closer to the floor with a slower tempo",
+    "Add a light band or ankle weights"
+  ],
+  "regressions": [
+    "Move only the legs, or only the arms",
+    "Reduce how far the limbs lower"
+  ]
+}

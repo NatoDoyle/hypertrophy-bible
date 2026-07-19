@@ -1,0 +1,51 @@
+{
+  "id": "kettlebell-overhead-triceps-extension",
+  "name": "Kettlebell Overhead Triceps Extension",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "Free-weight resistance is hardest at the bottom where the elbows are fully flexed and the long head is stretched behind the head — a lengthened-biased stimulus.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Cup the horns and keep the wrists stacked",
+    "Lower slowly into the stretch",
+    "Keep the elbows pointing forward, not flaring"
+  ],
+  "execution_steps": [
+    "Hold a single kettlebell by the horns with both hands, palms up, cupping the bell.",
+    "Press it overhead so the arms are straight and the upper arms frame the head.",
+    "Bend the elbows to lower the bell behind the head under control until you feel a stretch in the triceps.",
+    "Extend the elbows to return the bell overhead, keeping the upper arms still and vertical."
+  ],
+  "good_when": [
+    "You want a lengthened-biased long-head builder with a kettlebell",
+    "Kettlebells are your primary equipment",
+    "You prefer the bell's offset load hanging behind the head for a deeper stretch"
+  ],
+  "bad_when": [
+    "Overhead loading bothers the shoulders or elbows",
+    "You lack the shoulder mobility to keep the upper arms vertical"
+  ],
+  "common_errors": [
+    "Flaring the elbows wide at the bottom",
+    "Letting the upper arms drift forward",
+    "Bouncing out of the stretch"
+  ],
+  "progressions": [
+    "Use a heavier kettlebell",
+    "Add a pause in the stretched position"
+  ],
+  "regressions": [
+    "Use a lighter bell or a single dumbbell",
+    "Perform seated with back support"
+  ]
+}

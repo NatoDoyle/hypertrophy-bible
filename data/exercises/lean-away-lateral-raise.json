@@ -1,0 +1,54 @@
+{
+  "id": "lean-away-lateral-raise",
+  "name": "Lean-Away Dumbbell Lateral Raise",
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Holding a support and leaning away tilts the torso so the dumbbell's torque stays high at the bottom, shifting peak tension into the lengthened / stretched portion of the range.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lean away and let the arm hang across the body",
+    "Lead with the elbow to shoulder height",
+    "Control the descent into a full stretch"
+  ],
+  "execution_steps": [
+    "Grab a squat rack or sturdy upright with one hand and hold a dumbbell in the other, that arm hanging down.",
+    "Step your feet close to the upright and lean your torso away so the working arm hangs slightly across the body's midline.",
+    "With a small bend in the elbow, raise the dumbbell out to the side up to about shoulder height.",
+    "Pause briefly at the top, keeping the trap down.",
+    "Lower slowly all the way into the stretch, feeling the side delt lengthen, then repeat.",
+    "Finish all reps on one side, then switch arms."
+  ],
+  "good_when": [
+    "You want to emphasise the stretched, lengthened position of the side delt",
+    "You only have dumbbells but want a stretch-biased raise"
+  ],
+  "bad_when": [
+    "No stable upright is available to lean from",
+    "The deep bottom stretch irritates the shoulder"
+  ],
+  "common_errors": [
+    "Not leaning enough, losing the bottom-range tension",
+    "Swinging the dumbbell with body momentum",
+    "Shrugging the traps at the top"
+  ],
+  "progressions": [
+    "Add reps, then load",
+    "Increase the lean to deepen the bottom stretch"
+  ],
+  "regressions": [
+    "Stand upright for a standard dumbbell lateral raise",
+    "Reduce the range or the load"
+  ]
+}

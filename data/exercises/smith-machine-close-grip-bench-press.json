@@ -1,0 +1,54 @@
+{
+  "id": "smith-machine-close-grip-bench-press",
+  "name": "Smith Machine Close-Grip Bench Press",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [
+    "chest",
+    "front-delts"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "The fixed vertical bar path lets you keep the elbows tucked and bias the triceps through the press, with the triceps working hardest from the mid-range through lockout.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Keep the elbows tucked, not flared",
+    "Lower to the lower chest, not the neck",
+    "Press to a hard lockout"
+  ],
+  "execution_steps": [
+    "Set a flat bench under the Smith bar and grip slightly narrower than shoulder width.",
+    "Unrack the bar and hold it over the lower chest with the elbows tucked toward the ribs.",
+    "Lower the bar to the lower chest, keeping the elbows close to the body.",
+    "Press straight up along the fixed path to lockout, driving through the triceps."
+  ],
+  "good_when": [
+    "You want to overload the triceps with a press but keep the bar path stable",
+    "Training alone and want the safety of the Smith catches",
+    "You struggle to groove a straight bar path with a free barbell"
+  ],
+  "bad_when": [
+    "The fixed path irritates your wrists, elbows or shoulders",
+    "You want the stabiliser demand of a free barbell"
+  ],
+  "common_errors": [
+    "Gripping too narrow and straining the wrists",
+    "Flaring the elbows and shifting load to the shoulders",
+    "Bouncing the bar off the chest"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause on the chest before pressing"
+  ],
+  "regressions": [
+    "Reduce load",
+    "Use a machine chest press or close-grip push-up"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "machine-crunch",
+  "name": "Machine Crunch",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "resistance_profile": "Fixed-path spinal flexion against a selectorized stack — even, easily progressible resistance through the crunch, ideal for adding load.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Round the spine to crunch, don't just hinge at the hips",
+    "Drive the ribs toward the pelvis",
+    "Control the return and resist the stack"
+  ],
+  "execution_steps": [
+    "Set the seat and pad so the movement pivots at your mid-torso, and select a load.",
+    "Sit tall, hook under the pads or grab the handles, and brace the abs.",
+    "Crunch by flexing the spine, driving your ribs toward your pelvis.",
+    "Squeeze at full flexion for a moment.",
+    "Return under control to a slight stretch without letting the stack yank you back."
+  ],
+  "good_when": [
+    "You're a beginner who wants easy, safe progressive overload for the abs",
+    "You want to load spinal flexion without a cable setup"
+  ],
+  "bad_when": [
+    "The machine's pivot doesn't line up with your spine",
+    "You only have free weights or bands available"
+  ],
+  "common_errors": [
+    "Pulling with the arms or hip flexors instead of flexing the spine",
+    "Using momentum to fling through reps"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause and squeeze at full flexion"
+  ],
+  "regressions": [
+    "Reduce load",
+    "Weighted crunch on the floor"
+  ]
+}

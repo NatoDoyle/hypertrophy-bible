@@ -1,0 +1,51 @@
+{
+  "id": "band-triceps-pushdown",
+  "name": "Band Triceps Pushdown",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension climbs as the elbows extend, so the triceps work hardest at lockout — a peak-contraction / shortened-range emphasis that complements overhead (stretch) work.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the upper arms pinned and motionless",
+    "Drive the knuckles toward the floor",
+    "Resist the band on the way up"
+  ],
+  "execution_steps": [
+    "Anchor a resistance band overhead (door anchor or rack pin) and grasp the ends or a handle with a neutral or pronated grip.",
+    "Stand tall, pin the upper arms to your sides, and start with the elbows bent to about 90 degrees.",
+    "Extend the elbows to press the band down until the arms are straight, squeezing the triceps at the bottom.",
+    "Control the band back up to the start without letting the elbows drift forward or the upper arms move."
+  ],
+  "good_when": [
+    "Training at home or travelling with minimal equipment",
+    "You want joint-friendly shortened-range triceps work with low joint stress",
+    "Finishing a session with high-rep pump work"
+  ],
+  "bad_when": [
+    "You need heavy loading of the stretched position",
+    "The band's ascending resistance under-loads the bottom of the range you want to emphasise"
+  ],
+  "common_errors": [
+    "Letting the elbows flare or drift forward",
+    "Using torso lean to push the band down",
+    "Cutting the range short at the top"
+  ],
+  "progressions": [
+    "Use a thicker or shorter band for more tension",
+    "Add a pause and squeeze at full extension"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Perform one arm at a time to manage load"
+  ]
+}

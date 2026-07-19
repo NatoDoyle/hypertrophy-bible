@@ -1,0 +1,57 @@
+{
+  "id": "smith-machine-row",
+  "name": "Smith Machine Bent-Over Row",
+  "primary_muscles": [
+    "lats",
+    "upper-back"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "rear-delts",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "smith-machine",
+  "mechanic": "compound",
+  "resistance_profile": "The fixed vertical bar path removes balance demands, letting you chase heavy mid-range back tension in a consistent groove.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Flat back, chest over the bar",
+    "Row to the lower ribs, elbows back",
+    "Hold the hinge — don't stand up to lift"
+  ],
+  "execution_steps": [
+    "Set the Smith bar at about mid-shin height and load the weight.",
+    "Stand over the bar, hinge to a flat-back bent-over position, and take a shoulder-width overhand grip.",
+    "Unrack by rotating the bar, then row it to the lower ribs, driving the elbows up and back.",
+    "Squeeze the shoulder blades together at the top without standing up.",
+    "Lower along the fixed path to a full stretch, then re-rack after the set."
+  ],
+  "good_when": [
+    "You want to row heavy without fighting for balance.",
+    "You want a fixed groove to focus purely on back contraction.",
+    "You are learning bent-over rowing and want extra stability."
+  ],
+  "bad_when": [
+    "You want to train real-world stabilizers and free-weight balance.",
+    "The fixed vertical path irritates your shoulders or lower back."
+  ],
+  "common_errors": [
+    "Using the legs and standing up to heave the bar",
+    "Rowing too high toward the chest and shrugging",
+    "Rounding the lower back under load"
+  ],
+  "progressions": [
+    "Add load or reps, or pause each rep at the top.",
+    "Slow the eccentric or add a dead-stop on the pins each rep."
+  ],
+  "regressions": [
+    "Reduce load or raise the bar start height to shorten the range.",
+    "Switch to a chest-supported machine row if the hinge bothers your back."
+  ]
+}

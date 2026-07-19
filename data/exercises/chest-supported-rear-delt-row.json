@@ -1,0 +1,55 @@
+{
+  "id": "chest-supported-rear-delt-row",
+  "name": "Chest-Supported Rear Delt Row",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back",
+    "biceps"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "resistance_profile": "Chest-supported vertical row with high, flared elbows; steady gravitational load through a horizontal-abduction-biased pull, strongest near the contracted top.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Elbows high and wide — drive them toward the ceiling.",
+    "Lead with the elbows; the hands just hold on.",
+    "Pull to the line of your shoulders, not toward your hips."
+  ],
+  "execution_steps": [
+    "Set an incline bench to about 30-45 degrees and lie chest-down with a dumbbell in each hand hanging straight below the shoulders.",
+    "Start with the arms extended and the shoulder blades relaxed forward.",
+    "Row the dumbbells up and out with the elbows flared to roughly 75-90 degrees from the torso — a wide, high path.",
+    "Pull until the upper arms are in line with the shoulders and squeeze the rear delts and mid-back.",
+    "Lower under control to a full stretch and repeat without heaving off the bench."
+  ],
+  "good_when": [
+    "You want to load the rear delts heavier than a fly allows while staying strict.",
+    "You want combined rear-delt and mid-back development in one movement.",
+    "You want a lower-back-friendly, chest-supported pull."
+  ],
+  "bad_when": [
+    "You keep the elbows low, which turns it into a lat/upper-back row.",
+    "You want pure single-joint isolation — choose a rear-delt fly instead."
+  ],
+  "common_errors": [
+    "Tucking the elbows so the lats take over.",
+    "Heaving the chest off the bench for momentum.",
+    "Loading so heavy the biceps curl the weight up."
+  ],
+  "progressions": [
+    "Add load once strict, high-elbow form holds.",
+    "Add a peak-contraction pause at the top of each rep."
+  ],
+  "regressions": [
+    "Reduce the load or raise the bench angle.",
+    "Switch to a bent-over dumbbell rear delt fly."
+  ]
+}

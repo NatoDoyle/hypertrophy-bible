@@ -1,0 +1,48 @@
+{
+  "id": "plate-pinch-hold",
+  "name": "Plate Pinch Hold",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-other",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "resistance_profile": "Pinching smooth weight plates between the thumb and fingers loads the thumb adductors and forearm flexors isometrically, training pinch grip that curls miss.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Squeeze through the whole thumb and fingertips",
+    "Keep the wrist neutral and the plates vertical",
+    "Hold until just before the grip gives out"
+  ],
+  "execution_steps": [
+    "Stand two smooth-sided weight plates together with the smooth faces pointing out.",
+    "Pinch them between your thumb on one side and fingers on the other, keeping the wrist neutral.",
+    "Lift the plates off the rack or floor and hold them at your side for time.",
+    "Set them down under control just before the grip fails, then switch hands or rest."
+  ],
+  "good_when": [
+    "You want to train pinch grip and thumb strength that crush-grip work neglects",
+    "You want a simple, loadable grip finisher using only plates"
+  ],
+  "bad_when": [
+    "Only rubber-coated or handled plates are available, making the pinch too easy",
+    "You have thumb or wrist joint pain"
+  ],
+  "common_errors": [
+    "Resting the plates against the leg to cheat the hold",
+    "Letting the plates tilt so they slip apart"
+  ],
+  "progressions": [
+    "Add a plate or use heavier plates",
+    "Increase the hold time"
+  ],
+  "regressions": [
+    "Pinch a single lighter plate",
+    "Reduce the hold time"
+  ]
+}

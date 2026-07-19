@@ -1,0 +1,49 @@
+{
+  "id": "band-standing-calf-raise",
+  "name": "Banded Standing Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension rises as you come up onto the toes, making it hardest at peak contraction.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Take up band slack before your first rep",
+    "Drive to full height and squeeze the top",
+    "Keep the knees straight for the gastrocnemius"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a resistance band with the balls of both feet, feet hip-width apart.",
+    "Hold an end of the band in each hand and raise your hands to shoulder height to take up the slack.",
+    "Stand tall with knees straight and light tension already on the band.",
+    "Rise onto the balls of your feet to full plantarflexion against the band.",
+    "Squeeze hard at the top, then lower your heels under control."
+  ],
+  "good_when": [
+    "You train at home or while travelling and want a joint-friendly calf stimulus",
+    "You want extra resistance at peak contraction to complement stretch-biased machine work"
+  ],
+  "bad_when": [
+    "You need heavy overload - bands cap out quickly for strong calves",
+    "The band gives too little tension at the stretched bottom to challenge you there"
+  ],
+  "common_errors": [
+    "Letting the band go slack and losing tension",
+    "Short reps that never reach full plantarflexion"
+  ],
+  "progressions": [
+    "Use a thicker band or double it up",
+    "Progress to a single-leg banded raise"
+  ],
+  "regressions": [
+    "Bodyweight calf raise"
+  ]
+}

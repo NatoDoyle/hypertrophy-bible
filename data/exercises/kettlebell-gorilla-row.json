@@ -1,0 +1,56 @@
+{
+  "id": "kettlebell-gorilla-row",
+  "name": "Kettlebell Gorilla Row",
+  "primary_muscles": [
+    "lats",
+    "upper-back"
+  ],
+  "secondary_muscles": [
+    "biceps",
+    "rear-delts",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "horizontal-pull",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Two kettlebells between the feet in a hinge; pressing down on the resting bell keeps you braced while the other side rows, holding constant mid-range tension on the back.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Push down hard on the resting bell to stay braced",
+    "Flat back, hips quiet",
+    "Row elbow to hip, then control it down"
+  ],
+  "execution_steps": [
+    "Set two kettlebells on the floor between your feet with a roughly shoulder-width stance.",
+    "Hinge at the hips into a flat-back bent-over position and grip both bells.",
+    "Brace one arm down against its bell to stay rigid while you row the other bell to the hip, elbow driving back.",
+    "Lower that bell under control while continuing to press down on the opposite bell.",
+    "Alternate arms each rep, keeping the hips still and the spine neutral throughout."
+  ],
+  "good_when": [
+    "You want a self-supported bilateral back builder using two kettlebells.",
+    "You want to train grip, back, and hinge stability in one movement."
+  ],
+  "bad_when": [
+    "You have a cranky lower back that dislikes loaded hinge holds.",
+    "You only have a single kettlebell available."
+  ],
+  "common_errors": [
+    "Rounding the lower back in the hinge",
+    "Bouncing the hips up to help each pull",
+    "Letting the torso rotate toward the working side"
+  ],
+  "progressions": [
+    "Add load or reps, or pause each rep at the top.",
+    "Row both bells simultaneously for a heavier bilateral pull."
+  ],
+  "regressions": [
+    "Use lighter bells or raise them on blocks to reduce range and hinge demand.",
+    "Work with a taller hip angle to lessen lower-back load."
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "barbell-upright-row",
+  "name": "Barbell Upright Row",
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back",
+    "biceps"
+  ],
+  "movement_pattern": "vertical-pull",
+  "equipment": "barbell",
+  "mechanic": "compound",
+  "resistance_profile": "Standing compound pull; torque on the delts is greatest through the mid-range as the elbows travel out and up toward shoulder height.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lead with the elbows and keep them above the wrists",
+    "Pull only to shoulder height, not to the chin",
+    "Use a wider grip to favour the side delts over the traps"
+  ],
+  "execution_steps": [
+    "Grip a loaded barbell with an overhand grip slightly wider than shoulder-width, arms hanging straight, the bar resting against the thighs.",
+    "Stand tall with a braced core and let the shoulders relax down.",
+    "Lead with the elbows and pull the bar up along the body, keeping the elbows higher than the wrists.",
+    "Stop when the upper arms reach about shoulder height (elbows roughly level with the shoulders).",
+    "Lower the bar under control back to the thighs and repeat."
+  ],
+  "good_when": [
+    "You want a compound movement that trains the side delts and upper traps together",
+    "You want to load the side delts heavier than isolation raises allow"
+  ],
+  "bad_when": [
+    "You have a history of shoulder impingement or the movement pinches",
+    "You cannot keep the elbows leading and the wrists take over"
+  ],
+  "common_errors": [
+    "Pulling too high toward the chin and pinching the shoulder",
+    "Using a narrow grip that shifts the work to the traps",
+    "Heaving with the lower back and momentum"
+  ],
+  "progressions": [
+    "Add load in small increments",
+    "Pause at the top for a peak-contraction hold"
+  ],
+  "regressions": [
+    "Switch to a cable or dumbbells for a friendlier bar path",
+    "Reduce the range and pull only to lower-chest height"
+  ]
+}

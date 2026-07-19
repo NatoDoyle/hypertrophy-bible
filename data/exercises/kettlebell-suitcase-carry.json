@@ -1,0 +1,53 @@
+{
+  "id": "kettlebell-suitcase-carry",
+  "name": "Kettlebell Suitcase Carry",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [
+    "forearms",
+    "upper-back",
+    "spinal-erectors"
+  ],
+  "movement_pattern": "carry",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Anti-lateral-flexion: a load in one hand tries to bend you toward it, and the opposite-side obliques and QL isometrically brace to keep you upright as you walk.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "beginner",
+  "cues": [
+    "Stand tall, shoulders level",
+    "Don't lean toward or away from the weight",
+    "Brace as if bracing for a punch"
+  ],
+  "execution_steps": [
+    "Set a kettlebell at your side and deadlift it up to a straight-arm hang.",
+    "Stand tall: ribs down, shoulders level, abs braced.",
+    "Walk in a straight line with controlled steps, not letting the weight pull you sideways.",
+    "Cover the set distance or time, then set the bell down and repeat on the other side."
+  ],
+  "good_when": [
+    "You want to train the obliques against real load with minimal setup",
+    "You want carryover to bracing and posture"
+  ],
+  "bad_when": [
+    "You have no space to walk",
+    "Grip fails long before the abs are challenged"
+  ],
+  "common_errors": [
+    "Leaning or hiking toward or away from the bell",
+    "Letting the loaded shoulder shrug or round forward"
+  ],
+  "progressions": [
+    "Add load",
+    "Increase distance or time under load"
+  ],
+  "regressions": [
+    "Lighter bell",
+    "Shorter distance or a stationary hold"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "band-neck-extension",
+  "name": "Band-Resisted Neck Extension",
+  "primary_muscles": [
+    "neck"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-neck",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension rises as the head extends back, so it is hardest near full extension (peak contraction) and lightest at the stretch.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Nod the head back through a smooth arc",
+    "Keep the shoulders down and the torso still",
+    "Stop at neutral rather than cranking the neck back"
+  ],
+  "execution_steps": [
+    "Anchor a light band in front of you at about head height, or loop it and hold the free end.",
+    "Place the band across your forehead and face the anchor in a tall, braced stance.",
+    "Let the band draw your chin down toward your chest to a gentle stretch.",
+    "Drive your head back, extending the neck to a neutral or slightly-back position against the band.",
+    "Pause, then lower the chin back to the start slowly."
+  ],
+  "good_when": [
+    "You want to train the posterior neck extensors without a head harness",
+    "You are building neck size and strength for contact sports or postural work"
+  ],
+  "bad_when": [
+    "You want maximal loading, since band resistance is capped and lightest at the stretch",
+    "You have acute neck pain or known cervical pathology"
+  ],
+  "common_errors": [
+    "Leaning the whole torso back instead of extending the neck",
+    "Forcing a painful end-range position"
+  ],
+  "progressions": [
+    "Step back to increase band tension",
+    "Add reps or move to a heavier band"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Switch to manual (hand) resistance"
+  ]
+}

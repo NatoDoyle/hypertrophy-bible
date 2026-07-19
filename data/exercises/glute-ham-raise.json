@@ -1,0 +1,55 @@
+{
+  "id": "glute-ham-raise",
+  "name": "Glute-Ham Raise",
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "calves"
+  ],
+  "movement_pattern": "isolation-knee-flexion",
+  "equipment": "machine",
+  "mechanic": "isolation",
+  "resistance_profile": "Bodyweight leverage is greatest with the torso near horizontal, loading the hamstrings hardest at long muscle length; it pairs knee flexion with hip extension so the hamstrings work across both joints at once.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "advanced",
+  "cues": [
+    "Stay rigid from knees to head — no hip sag",
+    "Lower slowly and fight the descent",
+    "Curl the heels toward you and finish tall"
+  ],
+  "execution_steps": [
+    "Set the foot plate so your ankles sit snugly under the rollers and your thighs rest on the pad with your knees just behind its edge.",
+    "Start kneeling upright with your torso tall, hips fully extended, and core braced.",
+    "Lower under control by letting your knees straighten, hinging the whole body forward until your torso is roughly parallel to the floor.",
+    "Drive your feet into the plate and curl your knees to raise the torso back to upright, finishing with a glute squeeze."
+  ],
+  "good_when": [
+    "You want a hard, progressable hamstring exercise that trains both knee flexion and hip extension",
+    "You have a glute-ham developer (GHD) available",
+    "You want a stronger eccentric stimulus than machine leg curls provide"
+  ],
+  "bad_when": [
+    "You are a beginner who cannot yet control the descent",
+    "You have no GHD or glute-ham bench",
+    "Loaded knee flexion under bodyweight aggravates cranky knees"
+  ],
+  "common_errors": [
+    "Bending only at the hips instead of controlling knee extension",
+    "Dropping fast and giving up the eccentric",
+    "Cutting the range short at the top"
+  ],
+  "progressions": [
+    "Add load by holding a plate to the chest or behind the head",
+    "Slow the eccentric and pause near the horizontal position"
+  ],
+  "regressions": [
+    "Band-assisted glute-ham raise",
+    "Lying or seated leg curl"
+  ]
+}

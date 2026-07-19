@@ -1,0 +1,51 @@
+{
+  "id": "tate-press",
+  "name": "Tate Press (Dumbbell Elbows-Out Extension)",
+  "primary_muscles": [
+    "triceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Lying with the elbows flared out, the dumbbells travel down to the chest and back up, loading the triceps hardest through the mid-range. Often used to bias the medial/lateral heads and build lockout strength.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Point the elbows out and keep the upper arms vertical",
+    "Slide the dumbbells down the chest, not toward the face",
+    "Press to a firm lockout"
+  ],
+  "execution_steps": [
+    "Lie on a flat bench holding two dumbbells over the chest, palms facing your feet, arms straight.",
+    "Flare the elbows out and lower the dumbbells by bending the elbows so the plates travel down toward the upper chest.",
+    "Keep the upper arms roughly vertical as the dumbbells descend along the chest.",
+    "Extend the elbows to press the dumbbells back to straight arms, squeezing the triceps at lockout."
+  ],
+  "good_when": [
+    "You want a lockout-strength and medial/lateral-head builder",
+    "Skullcrushers bother your elbows and you want an alternative path",
+    "Adding variety to dumbbell triceps work"
+  ],
+  "bad_when": [
+    "The elbows-out position aggravates your elbow joints",
+    "You are new to lying triceps work and lack control"
+  ],
+  "common_errors": [
+    "Letting the upper arms drift and turning it into a press",
+    "Lowering too fast and losing control near the chest",
+    "Using too heavy a load and compromising the path"
+  ],
+  "progressions": [
+    "Add load gradually",
+    "Add a pause at the bottom"
+  ],
+  "regressions": [
+    "Use lighter dumbbells",
+    "Switch to a cable pushdown or pressdown"
+  ]
+}

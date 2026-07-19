@@ -1,0 +1,54 @@
+{
+  "id": "band-pull-apart",
+  "name": "Band Pull-Apart",
+  "primary_muscles": [
+    "rear-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-other",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Ascending band tension in the transverse plane — resistance peaks at full horizontal abduction (arms spread wide), so it is hardest at peak contraction.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Lead with the pinkies and let the thumbs rotate down.",
+    "Keep the hands at chest height — don't let them drift up into a shrug.",
+    "Stretch the band across your chest, not up toward your neck."
+  ],
+  "execution_steps": [
+    "Hold a light resistance band with both hands at shoulder width, arms extended straight in front at chest height.",
+    "Set a small, fixed bend in the elbows and brace the torso so you don't lean back.",
+    "Pull the band apart by driving the hands out and back, leading with the pinkies, until the arms are roughly in line with the torso.",
+    "Squeeze the rear delts and draw the shoulder blades together for a brief hold at the fully-spread position.",
+    "Return under control to the start, resisting the band the whole way, and keep tension throughout."
+  ],
+  "good_when": [
+    "You need a joint-friendly rear-delt and upper-back movement for warm-ups or high-rep finishers.",
+    "You train at home or while travelling and want a portable staple.",
+    "You want to reinforce scapular retraction and posture between heavier pulls."
+  ],
+  "bad_when": [
+    "You need heavy, progressively overloaded rear-delt work — band tension caps out quickly.",
+    "The only band available is so strong that you shrug or lean to move it."
+  ],
+  "common_errors": [
+    "Bending and re-extending the elbows to cheat the band apart.",
+    "Shrugging the traps to finish the rep.",
+    "Leaning the torso back to add momentum."
+  ],
+  "progressions": [
+    "Use a thicker or shorter band, or shorten your grip, for more tension.",
+    "Add a 2-second hold at the fully-apart position."
+  ],
+  "regressions": [
+    "Use a lighter band or a wider grip.",
+    "Perform it seated to remove any torso momentum."
+  ]
+}

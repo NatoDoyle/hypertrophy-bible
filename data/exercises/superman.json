@@ -1,0 +1,52 @@
+{
+  "id": "superman",
+  "name": "Superman",
+  "primary_muscles": [
+    "spinal-erectors"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "resistance_profile": "Bodyweight spinal extension from the floor; hardest at the top where the erectors are fully shortened under peak contraction.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Reach long through the fingertips and toes",
+    "Lift with the low back and glutes, not by cranking the neck",
+    "Pause and squeeze at the top"
+  ],
+  "execution_steps": [
+    "Lie face down with the arms extended overhead and the legs straight.",
+    "Brace lightly and simultaneously lift the arms, chest, and legs off the floor.",
+    "Squeeze the low back and glutes at the top and hold briefly.",
+    "Lower everything back to the floor under control and repeat."
+  ],
+  "good_when": [
+    "You want a no-equipment way to train the erectors directly",
+    "You need a gentle entry point for low-back strengthening"
+  ],
+  "bad_when": [
+    "You have pain with end-range lumbar extension",
+    "You need meaningful progressive overload — bodyweight resistance caps out quickly"
+  ],
+  "common_errors": [
+    "Overextending and straining the neck",
+    "Bouncing off the floor with momentum"
+  ],
+  "progressions": [
+    "Add isometric holds at the top",
+    "Hold a light plate or wear ankle weights"
+  ],
+  "regressions": [
+    "Alternate lifting only the upper body or only the legs",
+    "Bird-dog"
+  ]
+}

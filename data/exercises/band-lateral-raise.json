@@ -1,0 +1,53 @@
+{
+  "id": "band-lateral-raise",
+  "name": "Band Lateral Raise",
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Elastic tension rises as the band stretches, so it is easiest at the bottom and hardest near the top (shortened / peak-contraction) — the opposite of a cable's near-constant pull.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Lead with the elbows, not the hands",
+    "Keep the traps down as you raise",
+    "Fight the band on the way down"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a light resistance band with feet hip-width apart, holding an end or handle in each hand at your sides.",
+    "Set a tall chest, soft knees, and a slight bend in the elbows so tension is on the band.",
+    "Lead with the elbows and raise both arms out to the sides until the hands reach roughly shoulder height.",
+    "Pause briefly at the top without shrugging the traps.",
+    "Lower under control against the band's pull, reset tension at the bottom, and repeat for reps."
+  ],
+  "good_when": [
+    "Training at home or travelling with minimal equipment",
+    "You want a joint-friendly warm-up or a high-rep burnout for the side delts"
+  ],
+  "bad_when": [
+    "You want to load the stretched bottom position hard (a cable or lean-away raise is better)",
+    "You need precise, repeatable load increments to track progress"
+  ],
+  "common_errors": [
+    "Using a band so heavy that momentum takes over",
+    "Shrugging the shoulders to reach the top",
+    "Letting the band snap the arms back down"
+  ],
+  "progressions": [
+    "Move to a heavier or shorter band, or step wider to add tension",
+    "Add reps, then switch to cable lateral raises for a loaded stretch"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Perform single-arm or shorten the range to a comfortable height"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "barbell-standing-calf-raise",
+  "name": "Barbell Standing Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "barbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Free barbell on the back loads the gastrocnemius through a full stretch; balance caps the usable load.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Brace the core and keep the bar stable",
+    "Full stretch at the bottom, full rise at the top",
+    "Keep the knees straight for the gastrocnemius"
+  ],
+  "execution_steps": [
+    "Set a barbell across your upper back as for a squat and step the balls of your feet onto a block or plate.",
+    "Stand tall with heels hanging off the edge and knees straight.",
+    "Lower your heels below the block into a full calf stretch.",
+    "Rise onto the balls of your feet to full plantarflexion.",
+    "Pause at the top, then lower under control."
+  ],
+  "good_when": [
+    "You have a barbell but no calf machine",
+    "You want a standing gastrocnemius exercise you can load progressively"
+  ],
+  "bad_when": [
+    "Balancing the bar limits you before your calves are challenged",
+    "You lack a rack or block to set up safely"
+  ],
+  "common_errors": [
+    "Bouncing to keep balance instead of controlling the rep",
+    "Short range of motion at both ends"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause in the stretched position"
+  ],
+  "regressions": [
+    "Smith machine calf raise",
+    "Dumbbell calf raise"
+  ]
+}

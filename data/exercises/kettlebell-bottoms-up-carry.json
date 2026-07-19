@@ -1,0 +1,53 @@
+{
+  "id": "kettlebell-bottoms-up-carry",
+  "name": "Kettlebell Bottoms-Up Carry",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "abs"
+  ],
+  "movement_pattern": "carry",
+  "equipment": "kettlebell",
+  "mechanic": "compound",
+  "resistance_profile": "Holding a kettlebell upside-down forces the wrist flexors and grip to work isometrically to keep the bell balanced above the handle while you walk.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "low",
+  "unilateral": true,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Crush the handle",
+    "Wrist straight and stacked under the bell",
+    "Ribs down, walk tall"
+  ],
+  "execution_steps": [
+    "Clean or curl a kettlebell to the rack position and balance it so the bell sits directly above the handle.",
+    "Grip the handle hard and keep the wrist straight and stacked under the bell.",
+    "Brace the core and walk a set distance, keeping the bell balanced and vertical.",
+    "Set it down, switch hands, and repeat on the other side."
+  ],
+  "good_when": [
+    "You want to build crushing grip strength and wrist stability",
+    "You want a forearm drill that also challenges shoulder stability and the core"
+  ],
+  "bad_when": [
+    "You have no clear floor space to walk",
+    "Wrist or shoulder pain makes the unstable load risky"
+  ],
+  "common_errors": [
+    "Letting the wrist bend so the bell tips over",
+    "Holding the handle with a loose grip",
+    "Leaning away from the load"
+  ],
+  "progressions": [
+    "Use a heavier kettlebell",
+    "Carry for a longer distance or time"
+  ],
+  "regressions": [
+    "Perform a stationary bottoms-up hold instead of walking",
+    "Use a lighter kettlebell"
+  ]
+}

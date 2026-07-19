@@ -1,0 +1,54 @@
+{
+  "id": "kettlebell-lateral-raise",
+  "name": "Kettlebell Lateral Raise",
+  "primary_muscles": [
+    "side-delts"
+  ],
+  "secondary_muscles": [
+    "upper-back",
+    "forearms"
+  ],
+  "movement_pattern": "isolation-shoulder-abduction",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "Free-weight torque peaks around horizontal; the kettlebell's mass hangs offset below the hand, adding a rotational and grip demand and a slightly harder feel near the top.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Lead with the elbow and let the bell hang",
+    "Slight forward lean to load the side delt",
+    "Control the bell — do not let it swing"
+  ],
+  "execution_steps": [
+    "Hold a kettlebell in each hand (or a single bell for single-arm work) with the bells hanging outside your thighs, arms at your sides.",
+    "Stand tall with a slight forward lean, soft knees, and a small bend in the elbows.",
+    "Lead with the elbows and raise the bells out to the sides to about shoulder height, letting each kettlebell rotate naturally against the forearm.",
+    "Pause briefly at the top without shrugging the traps.",
+    "Lower slowly under control back to the start and repeat."
+  ],
+  "good_when": [
+    "Kettlebells are the only free weights available",
+    "You want extra grip and forearm demand alongside side-delt work"
+  ],
+  "bad_when": [
+    "The offset load aggravates the wrist or grip fails before the delts",
+    "You want the cleanest, most stable line of pull (a machine or cable is better)"
+  ],
+  "common_errors": [
+    "Swinging the bells up with momentum",
+    "Shrugging the traps to finish the rep",
+    "Letting the wrist collapse under the offset load"
+  ],
+  "progressions": [
+    "Add reps, then move to a heavier kettlebell",
+    "Slow the lowering (eccentric) tempo"
+  ],
+  "regressions": [
+    "Switch to a dumbbell for a more stable load",
+    "Perform single-arm to halve the total load"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "band-neck-flexion",
+  "name": "Band-Resisted Neck Flexion",
+  "primary_muscles": [
+    "neck"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-neck",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band tension rises as the head flexes forward, so it is hardest near chin-to-chest (peak contraction) and easiest at the stretch.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Move only the head and keep the torso still",
+    "Slow, smooth tempo with no jerking",
+    "Full but pain-free range"
+  ],
+  "execution_steps": [
+    "Anchor a light band at about head height behind you, or loop it and hold the free end behind your head.",
+    "Set the band across the back of your head and take a tall, braced stance facing away from the anchor.",
+    "Let the band gently draw your head into slight extension to start.",
+    "Flex your neck, tucking your chin toward your chest against the band.",
+    "Pause briefly at the top, then return slowly to the start under control."
+  ],
+  "good_when": [
+    "You want joint-friendly, easily scalable neck flexion without balancing a plate on your face",
+    "You are a beginner or a contact-sport athlete adding neck volume with minimal equipment"
+  ],
+  "bad_when": [
+    "You need heavy overload, since band tension is limited and lightest at the stretch",
+    "The band tends to slip off the head or dig into the face"
+  ],
+  "common_errors": [
+    "Using the whole trunk to yank the head down",
+    "Snapping through reps instead of controlling them"
+  ],
+  "progressions": [
+    "Step further from the anchor to increase band tension",
+    "Use a thicker band or add reps"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Switch to manual (hand) resistance"
+  ]
+}

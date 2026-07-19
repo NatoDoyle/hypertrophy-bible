@@ -1,0 +1,56 @@
+{
+  "id": "band-chest-press",
+  "name": "Band Chest Press",
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "band",
+  "mechanic": "compound",
+  "resistance_profile": "Accommodating band resistance increases toward lockout, making the press hardest at full extension and easiest near the chest.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Step out to load the band before pressing",
+    "Drive the hands forward and together",
+    "Keep the ribs down — don't arch to cheat the rep"
+  ],
+  "execution_steps": [
+    "Anchor a band behind you at upper-back height, or loop it across your back and hold an end in each hand.",
+    "Step forward into a staggered stance with the hands at chest level and elbows bent.",
+    "Brace the core and set the shoulder blades back and down.",
+    "Press the hands forward and slightly together until the arms are extended, squeezing the chest.",
+    "Control the hands back to the chest against the band's pull and repeat."
+  ],
+  "good_when": [
+    "Home or travel training with only bands",
+    "Rebuilding pressing capacity in a shoulder-friendly way",
+    "You want a scalable pressing stimulus with no spotter"
+  ],
+  "bad_when": [
+    "You want to press heavy for low reps",
+    "You want maximal load in the stretched chest position",
+    "No suitable anchor is available"
+  ],
+  "common_errors": [
+    "Letting the hands drift too low, turning it into a downward push",
+    "Shrugging the shoulders up toward the ears",
+    "Starting with too little band tension"
+  ],
+  "progressions": [
+    "Use a stronger or shorter band",
+    "Add reps or a slow eccentric"
+  ],
+  "regressions": [
+    "Use a lighter band",
+    "Press one arm at a time for more control"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "id": "lying-lateral-neck-flexion",
+  "name": "Lying Lateral Neck Flexion (Side Neck Raise)",
+  "primary_muscles": [
+    "neck"
+  ],
+  "secondary_muscles": [
+    "upper-back"
+  ],
+  "movement_pattern": "isolation-neck",
+  "equipment": "other",
+  "mechanic": "isolation",
+  "resistance_profile": "Gravity loads cervical lateral flexion; torque peaks with the head near horizontal (mid-range) and eases at the top and bottom.",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Ear toward the shoulder in a pure side-bend",
+    "Very light load and slow tempo",
+    "Keep the movement in the neck, not the torso"
+  ],
+  "execution_steps": [
+    "Lie on your side on a bench with your head and neck hanging off the end.",
+    "Optionally hold a light plate against the top side of your head with a towel for padding.",
+    "Lower your head toward the floor into a gentle lateral stretch.",
+    "Side-bend your neck, raising your ear up toward your shoulder.",
+    "Pause at the top, then lower slowly under control.",
+    "Complete all reps, then switch sides."
+  ],
+  "good_when": [
+    "You want to train the often-neglected lateral neck flexors in the frontal plane",
+    "You are a combat or contact-sport athlete needing neck strength in all directions"
+  ],
+  "bad_when": [
+    "You have any cervical pain or instability",
+    "You cannot control the head weight through a slow tempo"
+  ],
+  "common_errors": [
+    "Rotating or flexing the head instead of side-bending",
+    "Using too much load and losing control"
+  ],
+  "progressions": [
+    "Add a light plate held against the head",
+    "Add reps"
+  ],
+  "regressions": [
+    "Perform bodyweight only with no plate",
+    "Use seated manual (hand) resistance"
+  ]
+}

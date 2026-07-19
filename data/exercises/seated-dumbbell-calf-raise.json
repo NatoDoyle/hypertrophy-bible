@@ -1,0 +1,50 @@
+{
+  "id": "seated-dumbbell-calf-raise",
+  "name": "Seated Dumbbell Calf Raise",
+  "primary_muscles": [
+    "calves"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Bent-knee seated position biases the soleus; dumbbells on the knees load a full stretch, hardest at the bottom.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the knee bent about 90 degrees to target the soleus",
+    "Deep stretch at the bottom, full squeeze at the top",
+    "Pad the knees if the dumbbells are uncomfortable"
+  ],
+  "execution_steps": [
+    "Sit on a bench with the balls of your feet on a block or plate, heels hanging off, knees bent about 90 degrees.",
+    "Rest a dumbbell on top of each knee (or one dumbbell across both), holding them in place with your hands.",
+    "Lower your heels toward the floor into a deep calf stretch.",
+    "Press through the balls of your feet to raise your heels as high as possible.",
+    "Squeeze the top, then lower slowly to the stretch."
+  ],
+  "good_when": [
+    "You want to train the soleus but have no seated calf machine",
+    "You train at home with only dumbbells"
+  ],
+  "bad_when": [
+    "The dumbbells dig into your knees uncomfortably even with padding",
+    "You need heavy soleus overload beyond what balancing dumbbells allows"
+  ],
+  "common_errors": [
+    "Half reps that skip the stretch",
+    "Straightening the knees, which shifts work to the gastrocnemius"
+  ],
+  "progressions": [
+    "Use heavier dumbbells",
+    "Add a pause at the bottom stretch"
+  ],
+  "regressions": [
+    "Seated calf raise",
+    "Bodyweight calf raise"
+  ]
+}

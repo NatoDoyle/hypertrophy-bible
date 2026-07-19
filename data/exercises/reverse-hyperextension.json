@@ -1,0 +1,52 @@
+{
+  "id": "reverse-hyperextension",
+  "name": "Reverse Hyperextension",
+  "primary_muscles": [
+    "spinal-erectors",
+    "glutes"
+  ],
+  "secondary_muscles": [
+    "hamstrings"
+  ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "resistance_profile": "Torso is fixed while the legs swing up behind the body; resistance peaks at the top where the erectors and glutes are fully contracted, with little spinal compression.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "moderate",
+  "difficulty": "intermediate",
+  "cues": [
+    "Drive the heels up using the glutes and low back",
+    "Stop at a straight line — don't crank past neutral",
+    "Control the swing on the way down"
+  ],
+  "execution_steps": [
+    "Lie face down on the reverse-hyper pad or a high bench with the hips at the edge and the torso supported.",
+    "Grip the handles and let the legs hang down with a slight bend in the knees.",
+    "Squeeze the glutes and low back to raise the legs until the body forms a straight line.",
+    "Pause briefly at the top, then lower under control without letting the legs swing freely."
+  ],
+  "good_when": [
+    "You want posterior-chain and low-back work with minimal axial loading",
+    "You want to add erector and glute volume while sparing the spine from compression"
+  ],
+  "bad_when": [
+    "You rely on momentum to swing the legs rather than muscular control",
+    "You aggressively hyperextend at the top with existing lumbar issues"
+  ],
+  "common_errors": [
+    "Swinging the legs with momentum",
+    "Overextending the lumbar spine at the top"
+  ],
+  "progressions": [
+    "Add load via machine plates or an ankle band",
+    "Add a pause at the top"
+  ],
+  "regressions": [
+    "Reduce the range of motion",
+    "45-degree back extension"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "banded-lateral-walk",
+  "name": "Banded Lateral Walk",
+  "primary_muscles": [
+    "glutes"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-hip-abduction",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Loop-band tension rises as the hip abducts, so the glute medius works hardest in the shortened, abducted position — a contraction-biased isolation.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Stay low in the quarter-squat for the whole set",
+    "Keep constant tension — don't let the band go slack",
+    "Toes forward, drive the knee out rather than up"
+  ],
+  "execution_steps": [
+    "Place a loop band around both legs, just above the knees, or around the ankles to make it harder.",
+    "Drop into an athletic quarter-squat with feet hip-width, chest up and tension already on the band.",
+    "Step one foot out to the side against the band, keeping the toes pointed forward.",
+    "Bring the trailing foot in only part-way so band tension stays constant, then continue stepping.",
+    "Walk a set number of steps one direction, then reverse to work the other side."
+  ],
+  "good_when": [
+    "You want to target the glute medius and hip stability",
+    "You need a warm-up or activation drill before squats and hinges",
+    "You only have a band (home or travel)"
+  ],
+  "bad_when": [
+    "You want a primary driver of glute-max mass",
+    "You need heavy, precisely progressable load"
+  ],
+  "common_errors": [
+    "Standing up tall between steps and losing band tension",
+    "Letting the knees cave inward",
+    "Rushing or bouncing the steps instead of controlling each one"
+  ],
+  "progressions": [
+    "Use a thicker band or move it down to the ankles",
+    "Increase step distance and squat depth"
+  ],
+  "regressions": [
+    "Use a lighter band or place it above the knees",
+    "Reduce the number of steps"
+  ]
+}

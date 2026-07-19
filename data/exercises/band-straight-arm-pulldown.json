@@ -1,0 +1,55 @@
+{
+  "id": "band-straight-arm-pulldown",
+  "name": "Band Straight-Arm Pulldown",
+  "primary_muscles": [
+    "lats"
+  ],
+  "secondary_muscles": [
+    "triceps",
+    "rear-delts"
+  ],
+  "movement_pattern": "isolation-shoulder-extension",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Band anchored overhead; with near-straight arms the lats extend the shoulder against tension that peaks at the bottom, biasing the shortened, fully contracted position.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Hold a fixed slight elbow bend throughout",
+    "Draw the hands to the thighs using the armpits",
+    "Squeeze the lats at the bottom"
+  ],
+  "execution_steps": [
+    "Anchor a band overhead and stand facing it, holding the band with both hands and a slight forward lean.",
+    "Set a small fixed bend in the elbows and keep it locked there for the whole set.",
+    "Keeping the arms nearly straight, pull the band down in an arc to the front of the thighs using the lats.",
+    "Squeeze the lats hard at the bottom with the hands beside the hips.",
+    "Let the arms rise back overhead under control to a full lat stretch."
+  ],
+  "good_when": [
+    "You want to isolate the lats with minimal elbow-flexor involvement.",
+    "Training at home with only a band.",
+    "You want a strong peak contraction to finish off back work."
+  ],
+  "bad_when": [
+    "You want a heavy compound back builder.",
+    "You cannot keep the elbows from bending as you fatigue."
+  ],
+  "common_errors": [
+    "Bending the elbows and turning it into a triceps pushdown",
+    "Using torso momentum to move the band",
+    "Cutting the overhead stretch short"
+  ],
+  "progressions": [
+    "Use a thicker band or add a pause at the bottom contraction.",
+    "Progress to a cable straight-arm pulldown for more constant tension."
+  ],
+  "regressions": [
+    "Use a lighter band or work one arm at a time.",
+    "Reduce the range slightly if the overhead stretch is uncomfortable."
+  ]
+}

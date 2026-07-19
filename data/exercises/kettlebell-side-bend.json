@@ -1,0 +1,53 @@
+{
+  "id": "kettlebell-side-bend",
+  "name": "Kettlebell Side Bend",
+  "primary_muscles": [
+    "abs"
+  ],
+  "secondary_muscles": [
+    "spinal-erectors",
+    "forearms"
+  ],
+  "movement_pattern": "isolation-spinal-flexion",
+  "equipment": "kettlebell",
+  "mechanic": "isolation",
+  "resistance_profile": "Dynamic lateral flexion — the obliques and QL on the side away from the weight are loaded in a deep stretch at the bottom, then shorten to bend you back upright.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "moderate",
+  "unilateral": true,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Bend straight sideways, don't rotate or lean forward",
+    "Slide the bell down the outside of the thigh",
+    "Control the stretch, then crunch the side back up"
+  ],
+  "execution_steps": [
+    "Stand tall holding a kettlebell in one hand at your side, feet hip-width.",
+    "Keep the hips square and facing forward — no twisting or leaning forward or back.",
+    "Lower the bell down the side of your leg by bending only sideways at the waist.",
+    "Feel a stretch through the top-side obliques, then contract to bend back up to tall and slightly past.",
+    "Complete the reps, then switch the bell to the other hand."
+  ],
+  "good_when": [
+    "You want to load the obliques through a full lateral-flexion range",
+    "You want a lengthened-biased oblique exercise"
+  ],
+  "bad_when": [
+    "Your lower back dislikes side-bending under load",
+    "You can't keep the movement purely in the frontal plane"
+  ],
+  "common_errors": [
+    "Rotating or hinging forward instead of pure side bending",
+    "Using too heavy a bell and cutting the range short"
+  ],
+  "progressions": [
+    "Add load",
+    "Pause at the bottom stretch"
+  ],
+  "regressions": [
+    "Lighter bell",
+    "Bodyweight or hand-behind-head side bend"
+  ]
+}

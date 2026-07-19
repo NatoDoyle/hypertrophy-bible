@@ -209,12 +209,19 @@ export function generatePlan(profile, kb, opts = {}) {
     // ONLY when nothing easier trains the muscle (honest > empty).
     const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
     const userLvl = diffRank[experience] ?? 1;
+    // A BEGINNER never gets an advanced exercise, even as a last resort — the whole
+    // reason this is a hard gate (day-one lifters were getting pistol squats and
+    // sissy squats). So a beginner's fallback ceiling is intermediate; if that
+    // leaves an ISOLATION pool empty for some muscle, the compound pool still trains
+    // it (and the coverage invariant holds). Intermediate/advanced can fall back to
+    // advanced as before so a muscle is never left with an empty pool for them.
+    const ceil = userLvl === 0 ? 1 : 2;
     const gate = (pool) => {
-      for (let lvl = userLvl; lvl <= 2; lvl++) {
+      for (let lvl = userLvl; lvl <= ceil; lvl++) {
         const ok = pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= lvl);
         if (ok.length) return ok;
       }
-      return pool;
+      return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
     };
     compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while

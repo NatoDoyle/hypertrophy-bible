@@ -1,0 +1,52 @@
+{
+  "id": "sissy-squat",
+  "name": "Sissy Squat",
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-knee-extension",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "resistance_profile": "Bodyweight quad isolation with peak tension in the deep, knee-forward stretched position.",
+  "loading_bias": "lengthened",
+  "lengthened_bias": true,
+  "stability": "low",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "advanced",
+  "cues": [
+    "Keep a straight line from knee to shoulder",
+    "Let the knees travel forward and lean back to counterbalance",
+    "Feel the work in the quads, not the knee joint"
+  ],
+  "execution_steps": [
+    "Stand tall, feet hip-width, holding a rack or pole for balance, and rise onto the balls of your feet.",
+    "Squeeze the glutes to keep your hips and torso in one straight line (hips extended).",
+    "Bend only at the knees, letting them travel forward as you lean your torso back to counterbalance.",
+    "Lower until you feel a deep stretch across the quads, keeping the knee-to-shoulder line straight.",
+    "Drive through the front of the thighs to extend the knees back to the standing start."
+  ],
+  "good_when": [
+    "You want a knee-flexion-biased quad stretch without a machine",
+    "Training at home or with minimal equipment",
+    "Adding a lengthened-biased quad finisher"
+  ],
+  "bad_when": [
+    "You have cranky or injured knees, since patellar load is high",
+    "You need heavy progressive overload, which is hard to add",
+    "You lack the balance or quad strength for the unsupported version"
+  ],
+  "common_errors": [
+    "Breaking at the hips instead of keeping them extended",
+    "Going deeper than the knees can currently tolerate"
+  ],
+  "progressions": [
+    "Hold a plate on the chest for added load",
+    "Reduce hand support and progress toward unassisted reps"
+  ],
+  "regressions": [
+    "Hold a solid support and assist with the arms",
+    "Limit the range to a comfortable knee angle"
+  ]
+}

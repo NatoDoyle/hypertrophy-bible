@@ -1,0 +1,52 @@
+{
+  "id": "band-biceps-curl",
+  "name": "Band Biceps Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "band",
+  "mechanic": "isolation",
+  "resistance_profile": "Elastic tension climbs as the band stretches, so it is hardest near full flexion — an ascending, peak-contraction-biased curl that fills the band-only gap.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Keep the elbows pinned to your ribs",
+    "Fight the band on the way down instead of letting it snap back",
+    "Stand tall, no leaning back to help the lift"
+  ],
+  "execution_steps": [
+    "Stand on the middle of a resistance band with feet shoulder-width apart, holding a handle or the band in each hand with palms facing forward.",
+    "Pin your elbows to your sides and let the arms hang so there is light tension in the band at the bottom.",
+    "Curl your hands toward your shoulders, supinating slightly, until the band tension peaks near the top.",
+    "Squeeze the biceps hard at full flexion, then lower under control until the arms are fully extended and tension eases."
+  ],
+  "good_when": [
+    "Training at home or while traveling with minimal equipment",
+    "You want strong tension in the peak-contracted position",
+    "High-rep pump or rehab work that is easy on the joints"
+  ],
+  "bad_when": [
+    "You need heavy, precisely quantifiable load to drive progression",
+    "You want maximal stretch tension at the bottom of the curl"
+  ],
+  "common_errors": [
+    "Letting the band recoil the arms down with no eccentric control",
+    "Standing on too little band so there is no tension at the bottom"
+  ],
+  "progressions": [
+    "Use a thicker band or choke up on it for more tension",
+    "Add a second band or widen your stance to increase resistance"
+  ],
+  "regressions": [
+    "Switch to a lighter band",
+    "Perform seated to remove body English"
+  ]
+}

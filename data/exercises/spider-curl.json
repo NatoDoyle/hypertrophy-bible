@@ -1,0 +1,52 @@
+{
+  "id": "spider-curl",
+  "name": "Spider Curl",
+  "primary_muscles": [
+    "biceps"
+  ],
+  "secondary_muscles": [
+    "forearms"
+  ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "resistance_profile": "Lying chest-down on an incline bench with the arms hanging vertically, the load line is hardest as the forearm approaches horizontal — a strict, peak-contraction-biased curl with no body English.",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "stability": "high",
+  "unilateral": false,
+  "cns_cost": "low",
+  "difficulty": "intermediate",
+  "cues": [
+    "Keep the upper arms hanging straight down and still",
+    "Supinate and squeeze at the very top",
+    "Do not let the shoulders shrug the weight up"
+  ],
+  "execution_steps": [
+    "Set an incline bench to about 45 degrees and lie chest-down on it with your feet braced.",
+    "Let your arms hang straight down from the shoulders holding a dumbbell in each hand, palms forward.",
+    "Keeping the upper arms vertical and still, curl the dumbbells up toward your shoulders, supinating as you go.",
+    "Squeeze hard at the top where tension peaks, then lower under control to a full hang."
+  ],
+  "good_when": [
+    "You want strict biceps work with zero momentum",
+    "Emphasizing the peak-contracted / short-head position",
+    "Chest support keeps the lower back out of it"
+  ],
+  "bad_when": [
+    "You want a deep loaded stretch at the bottom",
+    "No suitable incline bench is available"
+  ],
+  "common_errors": [
+    "Swinging the upper arms instead of isolating the elbow",
+    "Cutting the range short at the top and bottom"
+  ],
+  "progressions": [
+    "Add load via double progression",
+    "Add a peak-contraction hold at the top"
+  ],
+  "regressions": [
+    "Use lighter dumbbells",
+    "Perform a seated dumbbell curl instead"
+  ]
+}

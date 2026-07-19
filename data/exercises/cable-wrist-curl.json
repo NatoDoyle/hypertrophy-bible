@@ -1,0 +1,48 @@
+{
+  "id": "cable-wrist-curl",
+  "name": "Cable Wrist Curl",
+  "primary_muscles": [
+    "forearms"
+  ],
+  "secondary_muscles": [],
+  "movement_pattern": "isolation-wrist",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "resistance_profile": "A low-pulley cable keeps constant tension on the wrist flexors from full stretch to full contraction, unlike free weights that unload near the top.",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "stability": "moderate",
+  "cns_cost": "low",
+  "difficulty": "beginner",
+  "cues": [
+    "Anchor the forearm so only the wrist moves",
+    "Full stretch at the bottom",
+    "Pause and squeeze at the top"
+  ],
+  "execution_steps": [
+    "Set the cable to the lowest pulley and take the handle with an underhand, palm-up grip.",
+    "Rest the forearm along your thigh or a bench with the wrist just past the edge, palm up.",
+    "Let the cable pull the hand into wrist extension for a full stretch at the bottom.",
+    "Curl the handle up by flexing the wrist, squeeze, then lower under control."
+  ],
+  "good_when": [
+    "You want constant tension on the wrist flexors through the whole range",
+    "You want a joint-friendly forearm option that keeps load on the stretch"
+  ],
+  "bad_when": [
+    "No cable station is available",
+    "You are chasing maximal absolute load for the flexors"
+  ],
+  "common_errors": [
+    "Lifting the forearm off its support",
+    "Cutting the range short at the bottom"
+  ],
+  "progressions": [
+    "Increase the stack weight",
+    "Add a pause at full stretch"
+  ],
+  "regressions": [
+    "Reduce the weight",
+    "Support the forearm fully on a bench"
+  ]
+}
