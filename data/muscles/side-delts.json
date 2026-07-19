@@ -12,7 +12,7 @@
     "mrv": { "min": 24, "max": 26 },
     "evidence_grade": "C",
     "citations": ["schoenfeld-2017-volume-dose-response", "baz-valle-2022-volume-review", "enes-2024-volume-progression"],
-    "notes": "Receives little effective indirect work, tolerates high direct volume, and is a common priority for width. The 24-26 MRV is extrapolated beyond the volumes actually tested in the cited dose-response work; Enes 2024 suggests hypertrophy gains largely plateau by ~20 sets/wk, so treat this ceiling as an untested upper-bound estimate."
+    "notes": "Receives little effective indirect work, tolerates high direct volume, and is a common priority for width. The 24-26 MRV is a model-based upper-bound estimate, not a directly measured ceiling — high-volume dose-response data are sparse. The cited Enes 2024 set-progression trial is on the lower limb (quadriceps), not this muscle, and even there found no significant hypertrophy difference between constant and progressively higher-volume training (only a possible small benefit at higher volumes, held with low certainty). Treat this ceiling as uncertain and individual."
   },
   "frequency_notes": "Responds well to high frequency (2-4x/week) of lateral raise variations.",
   "training_notes": "Lateral raises (dumbbell and cable) are the staple. The top of the raise adds little tension; cables/lean-away variations load the lengthened position better.",

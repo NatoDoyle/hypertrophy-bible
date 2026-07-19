@@ -28,14 +28,26 @@ const weekOrdinal = (dateOrKey) => {
 
 // Weeks-consistent streak: consecutive trained weeks, forgiving one missed week,
 // with grace for the current (in-progress) week. Rest days never threaten it.
-export function weeksConsistent(sessions, now) {
+// A pause (injury/illness) makes every week from its start date onward NEUTRAL —
+// those weeks neither extend nor break the streak and never spend the one
+// forgiveness token — so the streak FREEZES at its pre-pause value instead of
+// silently collapsing. This is rail #1 made literally true: the app tells a paused
+// user "your streak is safe", and now it is (before, weeksConsistent never saw the
+// pause, so any layoff > ~2 weeks reset an injured user to "0 weeks strong" — the
+// exact demotivation the rail exists to prevent). `paused` is user.paused:
+// { from: "YYYY-MM-DD", reason } or falsy; a legacy pause with no date neutralizes
+// only the current week.
+export function weeksConsistent(sessions, now, paused = null) {
   const trained = new Set(sessions.filter((s) => s.date).map((s) => weekOrdinal(s.date)));
   if (!trained.size) return 0;
   const cur = weekOrdinal(now);
+  const pauseStartWeek = paused ? (paused.from ? weekOrdinal(paused.from) : cur) : Infinity;
+  const inPause = (w) => w >= pauseStartWeek; // the walk only ever visits w <= cur
   let w = trained.has(cur) ? cur : cur - 1; // grace: not training THIS week yet doesn't break it
   let streak = 0, forgiven = false;
   while (w > 0) {
     if (trained.has(w)) { streak++; w--; }
+    else if (inPause(w)) { w--; } // injured/ill week — neutral: no penalty, no forgiveness spent
     else if (!forgiven && trained.has(w - 1)) { forgiven = true; w--; } // bridge a single miss
     else break;
   }
@@ -90,7 +102,7 @@ export function weeklySummary(sessions, now) {
 // The whole adherence payload for the app.
 export function adherenceReport(user, sessions, now = new Date().toISOString()) {
   const paused = !!user.paused;
-  const streak = weeksConsistent(sessions, now);
+  const streak = weeksConsistent(sessions, now, user.paused || null);
   return {
     streak_weeks: streak,
     ...xpAndLevel(sessions),

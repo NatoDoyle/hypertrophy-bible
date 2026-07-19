@@ -65,6 +65,22 @@ These are real failures from previous iterations. Each is now a standing check.
    rationale. → **Standing lens:** audit the code the *last* wave introduced.
 4. **Only the beginner end was ever audited.** Goal #2 covers novice → Mr. Olympia; every audit
    until now scored only the novice end. → **Standing dimension:** elite/advanced.
+5. **The app *prescribed* something it couldn't *execute*.** The plan cued a superset; the player
+   could only run exercises sequentially. A feature isn't shipped when the plan mentions it —
+   only when the surface the user touches actually carries it out. → **Standing lens:** for every
+   coaching instruction the plan emits (superset, unilateral, deload, stretch-focus), confirm the
+   *player* honours it, not just the plan JSON.
+6. **A UX reorder was actually load-bearing correctness.** Superset pairs are *not* adjacent in
+   the session (the engine appends the bonus isolation, then a stable sort can leave an exercise
+   between them). "Pull the pair together" looked cosmetic but prevented the between-exercise from
+   being silently dropped by the post-station advance. → verifying the *structural premise* in the
+   engine (lens 2 used well) turned a nicety into a data-loss guard.
+7. **The service worker served STALE code during live testing.** `sw.js` is stale-while-revalidate,
+   so the first reload after an edit runs the *old* cached asset; a live test "failed" that the
+   fix had already cured. → **Standing checks:** (a) when browser-testing a fresh edit, clear the
+   SW + caches first; (b) any NEW asset an existing asset imports (e.g. an ESM module) MUST be
+   added to the SW `SHELL` precache list *and* `VERSION` bumped, or offline users get a broken
+   import.
 
 ## Guardrails (never traded away for a metric)
 
