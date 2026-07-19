@@ -15,13 +15,30 @@
     "sagittal"
   ],
   "resistance_profile": "Beginner-friendly squat holding a dumbbell at the chest.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Hold the dumbbell at the chest",
     "Sit down to depth",
     "Elbows inside the knees at the bottom"
+  ],
+  "execution_steps": [
+    "Hold one dumbbell or kettlebell vertically against your chest with both hands.",
+    "Stand with feet shoulder-width and toes slightly out.",
+    "Sit straight down to full depth, letting your elbows pass inside your knees.",
+    "Drive through your whole foot to stand tall, keeping the weight at your chest."
+  ],
+  "good_when": [
+    "It's a beginner's first loaded squat — the front load coaches an upright torso.",
+    "You want warm-ups or higher-rep quad work with a single dumbbell.",
+    "You're training at home with limited equipment."
+  ],
+  "bad_when": [
+    "You need heavy overload — the load is capped by what you can hold at your chest.",
+    "You're advanced and chasing maximal quad tension (use a barbell or hack squat)."
   ],
   "common_errors": [
     "Heels rising",

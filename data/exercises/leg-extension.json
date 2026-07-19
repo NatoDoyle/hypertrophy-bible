@@ -12,14 +12,31 @@
     "sagittal"
   ],
   "resistance_profile": "Peak tension near lockout; isolates the quads (rectus femoris best with the hip extended).",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Full knee extension to a controlled deep flexion.",
   "difficulty": "beginner",
   "cues": [
     "Sit tall; keep hips down",
     "Extend fully, squeeze the quads",
     "Control the return"
+  ],
+  "execution_steps": [
+    "Adjust the seat so your knees line up with the machine's pivot, and set the ankle pad on your lower shins.",
+    "Sit tall, hold the handles, and keep your hips pressed down in the seat.",
+    "Extend your knees until your legs are straight, squeezing the quads at the top.",
+    "Lower under control to a deep bend without letting the weight crash down."
+  ],
+  "good_when": [
+    "You want to isolate the quads (including the rectus femoris) with no fatigue elsewhere.",
+    "You want to add quad volume without loading the back or hips.",
+    "You want a pre-exhaust or a finisher after compound work."
+  ],
+  "bad_when": [
+    "You want a compound stimulus for overall leg mass and strength.",
+    "Knee pain flares with resisted end-range extension."
   ],
   "common_errors": [
     "Using momentum / swinging",

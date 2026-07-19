@@ -12,14 +12,33 @@
     "frontal"
   ],
   "resistance_profile": "Anti-lateral-flexion core hold: resist gravity pulling the hips toward the floor — trains the obliques and lateral core to brace. A no-equipment rotation/anti-rotation option.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "moderate",
   "unilateral": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Stack the feet and hips in a straight line",
     "Lift the hips and brace the side of your core",
     "Do both sides"
+  ],
+  "execution_steps": [
+    "Lie on your side with your forearm on the floor and your elbow under your shoulder.",
+    "Stack your feet and legs and line your body up straight.",
+    "Lift your hips off the floor so your body forms a straight line from head to feet.",
+    "Brace the side of your core and hold for time, keeping your hips from sagging.",
+    "Repeat on the other side for equal time."
+  ],
+  "good_when": [
+    "You want to train the obliques and lateral core with no equipment.",
+    "You're a beginner building anti-lateral-flexion stability.",
+    "You need a low-back-friendly side-core option."
+  ],
+  "bad_when": [
+    "You want direct ab growth (use loaded crunches).",
+    "The bottom shoulder is painful under load (regress or pick another core drill).",
+    "You want dynamic rotation (use a woodchop)."
   ],
   "common_errors": [
     "Letting the hips sag toward the floor",

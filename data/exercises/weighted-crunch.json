@@ -12,13 +12,31 @@
     "sagittal"
   ],
   "resistance_profile": "Loaded spinal flexion; hold a plate or dumbbell to progress.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Flex the spine, ribs toward pelvis",
     "Hold weight on the chest",
     "Control back"
+  ],
+  "execution_steps": [
+    "Lie on your back with your knees bent and feet flat on the floor.",
+    "Hold a plate or dumbbell against your chest.",
+    "Crunch up by flexing your spine, curling your ribs toward your pelvis.",
+    "Squeeze the abs at the top, then lower slowly under control."
+  ],
+  "good_when": [
+    "You want to add resistance to crunches for ab growth without a cable machine.",
+    "You've outgrown bodyweight crunches and need progressive load.",
+    "You want a simple, low-skill ab isolation."
+  ],
+  "bad_when": [
+    "You have a cable available and want smoother constant tension (use a cable crunch).",
+    "You pull with your hip flexors instead of crunching the spine.",
+    "You want anti-rotation or bracing work (use a plank or Pallof press)."
   ],
   "common_errors": [
     "Hip-flexing instead of crunching",

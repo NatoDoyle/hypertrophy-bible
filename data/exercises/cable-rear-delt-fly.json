@@ -4,20 +4,39 @@
   "primary_muscles": [
     "rear-delts"
   ],
-  "mechanic": "isolation",
-  "force": "pull",
-  "equipment": "cable",
-  "movement_pattern": "isolation-other",
-  "plane": ["transverse"],
   "secondary_muscles": [
     "upper-back"
   ],
+  "movement_pattern": "isolation-other",
+  "equipment": "cable",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Cross-body cables at shoulder height",
     "Pull out and back, thumbs down",
     "Constant tension through the range"
+  ],
+  "execution_steps": [
+    "Set both cable pulleys to shoulder height and stand in the middle, grabbing the left handle with your right hand and the right handle with your left so the cables cross in front of you.",
+    "Step back to load tension, arms extended across your body with a slight, fixed bend in the elbows.",
+    "Pull both handles out and back in a wide arc, rotating your thumbs down, until your arms are out to your sides.",
+    "Squeeze your rear delts briefly, then control the handles back across your body into the stretch."
+  ],
+  "good_when": [
+    "You want constant tension on the rear delts through the whole range.",
+    "You specifically want a stretch-loaded (lengthened) rear-delt option from the cross-body position.",
+    "A cable station is free and you want a stable, easy-to-control isolation."
+  ],
+  "bad_when": [
+    "You are training at home or the cables are occupied with no stack available.",
+    "You want to load heavy — rear-delt flys stay honest only at light-to-moderate loads."
   ],
   "common_errors": [
     "Rowing with the arms",

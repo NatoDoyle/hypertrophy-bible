@@ -15,13 +15,31 @@
     "sagittal"
   ],
   "resistance_profile": "Floor-based hip extension with peak glute tension at the top.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Drive through the heels",
     "Full hip extension, squeeze",
     "Ribs down, no lumbar arch"
+  ],
+  "execution_steps": [
+    "Sit on the floor and roll a loaded, padded barbell over your hips.",
+    "Lie back with knees bent and feet flat, heels a few inches from your glutes.",
+    "Grip the bar to keep it steady, brace your core and tuck your ribs down.",
+    "Drive through your heels to lift the bar until your hips reach full extension.",
+    "Squeeze your glutes at the top without arching your lower back, then lower under control."
+  ],
+  "good_when": [
+    "You want to load the glutes heavily but don't have a bench for hip thrusts.",
+    "You have outgrown the bodyweight bridge and need progressive overload.",
+    "You want a floor-based hip-extension option that keeps tension on the glutes."
+  ],
+  "bad_when": [
+    "You have a bench available and want a fuller range of motion (choose the hip thrust).",
+    "You want a lengthened-biased glute stimulus (choose an RDL or Bulgarian split squat)."
   ],
   "common_errors": [
     "Overarching the lower back",

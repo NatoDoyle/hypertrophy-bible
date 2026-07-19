@@ -19,14 +19,32 @@
     "sagittal"
   ],
   "resistance_profile": "Trains the erectors (and hips) through a loaded hinge; add load held at the chest.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Hinge to a full stretch, extend to a neutral (not hyperextended) torso.",
   "difficulty": "beginner",
   "cues": [
     "Hinge from the hips",
     "Extend to neutral — don't crank into hyperextension",
     "Control the descent"
+  ],
+  "execution_steps": [
+    "Set the pad just below your hip crease and lock your feet under the ankle pads.",
+    "Cross your arms on your chest (or hold a plate against it) with your torso straight, in line with your legs.",
+    "Hinge at the hips and lower your torso down until you feel a stretch through the hamstrings and lower back.",
+    "Squeeze your glutes and erectors to raise your torso back up to neutral — in line with your legs, not arched past it.",
+    "Pause briefly at the top, then control the descent into the next rep."
+  ],
+  "good_when": [
+    "You want to train the erectors and hips with almost no spinal compression (no bar on your back).",
+    "You're a beginner building lower-back strength and hinge endurance.",
+    "You need low-fatigue posterior-chain accessory work after heavy deadlifts or squats."
+  ],
+  "bad_when": [
+    "You want to load the pattern heavily for maximal strength — an RDL or deadlift scales far better.",
+    "No 45-degree bench or GHD is available."
   ],
   "common_errors": [
     "Yanking up into lumbar hyperextension",

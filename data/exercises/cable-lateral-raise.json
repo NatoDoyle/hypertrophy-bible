@@ -15,14 +15,30 @@
     "frontal"
   ],
   "resistance_profile": "Cable keeps tension on the side delt through the bottom (lengthened) range, unlike dumbbells.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "low",
   "rom_notes": "Raise to ~shoulder height from a cross-body stretched start.",
   "difficulty": "beginner",
   "cues": [
     "Cable from the low pulley, across the body",
     "Lead with the elbow",
     "Control the lowering into the stretch"
+  ],
+  "execution_steps": [
+    "Set the pulley to its lowest position and attach a single handle.",
+    "Stand side-on to the stack so the cable crosses in front of your body, and grab the handle with your outside hand.",
+    "Keep a slight bend in the elbow and raise your arm out to the side, leading with the elbow, up to shoulder height.",
+    "Lower slowly, letting the arm travel back across toward the opposite hip to load the stretch."
+  ],
+  "good_when": [
+    "You want constant tension that includes the stretched (bottom) part of the range the side delt.",
+    "The side delts are a lagging muscle you want to prioritize."
+  ],
+  "bad_when": [
+    "No cable station is free — a dumbbell or machine raise is a fine substitute.",
+    "You want the simplest possible setup for a very first workout."
   ],
   "common_errors": [
     "Swinging / using momentum",

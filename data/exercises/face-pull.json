@@ -13,13 +13,30 @@
     "transverse"
   ],
   "resistance_profile": "High-cable horizontal abduction/external rotation for rear delts and mid-traps.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Pull to the face, elbows high",
     "Externally rotate at the end",
     "Light-to-moderate load"
+  ],
+  "execution_steps": [
+    "Set a cable pulley to just above head height and attach a rope.",
+    "Grab the rope with both hands, thumbs pointing back toward you, and step away until the cable is taut.",
+    "Pull the rope toward your face, driving your elbows high and out to the sides.",
+    "At the end, externally rotate so your knuckles face behind you, then return under control to the stretch."
+  ],
+  "good_when": [
+    "You want to train rear delts and mid-traps together for shoulder health and posture.",
+    "You want a high-rep, joint-friendly accessory to finish a session.",
+    "You want external-rotation work built into a rear-delt movement."
+  ],
+  "bad_when": [
+    "You want maximal rear-delt isolation — a reverse fly hits them more directly.",
+    "No cable or band is available."
   ],
   "common_errors": [
     "Going too heavy / using the back",

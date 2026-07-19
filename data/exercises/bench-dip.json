@@ -4,19 +4,38 @@
   "primary_muscles": [
     "triceps"
   ],
-  "mechanic": "isolation",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-elbow-extension",
   "secondary_muscles": [
     "chest",
     "front-delts"
   ],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "push",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Hands on a bench behind you",
     "Lower until the elbows reach ~90°",
     "Press up, keeping elbows tucked"
+  ],
+  "execution_steps": [
+    "Sit on the edge of a bench and grip the edge just outside your hips.",
+    "Slide your hips forward off the bench with legs extended in front and weight on your hands.",
+    "Bend the elbows straight back, lowering your hips until the elbows reach about 90 degrees.",
+    "Press through the heels of your hands back to full elbow extension, keeping elbows tucked."
+  ],
+  "good_when": [
+    "You want a bodyweight triceps builder needing nothing but a bench.",
+    "Training at home or traveling with minimal equipment.",
+    "Finishing an arm session with higher-rep bodyweight work."
+  ],
+  "bad_when": [
+    "You have cranky shoulders, since the behind-the-body position loads them at end range.",
+    "You want to train the long head in a deep overhead stretch (use an overhead extension).",
+    "You need precise small-increment progressive overload."
   ],
   "common_errors": [
     "Shrugging into the shoulders",

@@ -16,14 +16,33 @@
     "sagittal"
   ],
   "resistance_profile": "Loads cervical flexion; use very light load and a slow tempo.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "rom_notes": "Lower the head to a gentle stretch, curl the chin toward the chest.",
   "difficulty": "intermediate",
   "cues": [
     "Very light load, slow controlled tempo",
     "Full but pain-free range",
     "Support the head with a towel/plate"
+  ],
+  "execution_steps": [
+    "Lie face-up on a bench with your head and neck extending just past the edge.",
+    "Rest a light plate wrapped in a towel on your forehead and hold it lightly in place.",
+    "Lower your head back under control to a gentle, pain-free stretch.",
+    "Curl your chin toward your chest, raising the plate smoothly with your neck flexors.",
+    "Pause briefly at the top, then lower slowly to the start and repeat."
+  ],
+  "good_when": [
+    "Building neck size and flexion strength for contact or combat sports.",
+    "Balancing out posterior neck (extension) work for even development.",
+    "You want direct sagittal-plane neck training with adjustable load."
+  ],
+  "bad_when": [
+    "You have any cervical pain, disc issue, or recent neck injury.",
+    "You are a total beginner training unsupervised with no coaching on tempo/load.",
+    "Headaches, dizziness, or nausea show up with loaded neck flexion."
   ],
   "common_errors": [
     "Using heavy load or jerky reps",

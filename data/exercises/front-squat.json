@@ -15,13 +15,32 @@
     "sagittal"
   ],
   "resistance_profile": "Upright torso shifts emphasis to the quads through a deep range.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "high",
   "difficulty": "advanced",
   "cues": [
     "Elbows high, upright torso",
     "Sit down between the hips",
     "Deep but controlled"
+  ],
+  "execution_steps": [
+    "Set the bar in the rack and hold it across the front of your shoulders with elbows high (cross-arm or clean grip).",
+    "Unrack, step back, and set feet shoulder-width with toes slightly out.",
+    "Brace hard and sit straight down, keeping your torso upright and elbows lifted.",
+    "Descend to at least parallel, then drive up through your whole foot to stand.",
+    "Re-brace at the top and repeat, then rack after your last rep."
+  ],
+  "good_when": [
+    "You want a squat that biases the quads with a more upright torso.",
+    "You want to reduce lower-back shear versus the back squat while still loading heavy.",
+    "You have the wrist and shoulder mobility to hold a solid front rack."
+  ],
+  "bad_when": [
+    "You're a beginner still learning to squat (the front rack adds complexity).",
+    "Wrist or shoulder mobility prevents a stable rack position.",
+    "You want the absolute most axial load — the back squat allows more."
   ],
   "common_errors": [
     "Elbows dropping",

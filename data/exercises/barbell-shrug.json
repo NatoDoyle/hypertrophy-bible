@@ -12,13 +12,29 @@
     "frontal"
   ],
   "resistance_profile": "Scapular elevation for the upper traps; full shrug range, no rolling.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Shrug straight up to the ears",
     "Pause at the top",
     "Control down to a stretch"
+  ],
+  "execution_steps": [
+    "Deadlift or unrack the bar to standing, hands just outside your hips, arms straight.",
+    "Stand tall with shoulders relaxed down and core braced.",
+    "Shrug the shoulders straight up toward your ears.",
+    "Pause briefly at the top, then lower under control to a full stretch without rolling the shoulders."
+  ],
+  "good_when": [
+    "You want to directly build the upper traps with heavy absolute load.",
+    "You can already handle a loaded bar and want a simple movement to progressively overload."
+  ],
+  "bad_when": [
+    "You want a longer range and bigger stretch on the traps (dumbbells allow more range).",
+    "Grip strength fails before the traps are challenged (use straps or a machine)."
   ],
   "common_errors": [
     "Rolling the shoulders",

@@ -4,16 +4,33 @@
   "primary_muscles": [
     "lats"
   ],
+  "movement_pattern": "isolation-shoulder-extension",
+  "equipment": "cable",
   "mechanic": "isolation",
   "force": "pull",
-  "equipment": "cable",
-  "movement_pattern": "isolation-shoulder-extension",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "High pulley, arms nearly straight",
     "Pull down and back with the lats",
     "Full stretch at the top"
+  ],
+  "execution_steps": [
+    "Set the pulley to the highest position, attach a straight or rope handle, grip it with arms nearly straight, and step back to create tension.",
+    "Hinge slightly at the hips, brace your core, and let the handle draw your arms up and overhead into a full lat stretch.",
+    "Keeping the elbows locked at a soft, fixed angle, drive the handle down toward your thighs using the lats.",
+    "Squeeze the lats at the bottom, then return under control to the overhead stretch."
+  ],
+  "good_when": [
+    "You want a lat isolation with constant cable tension that loads the stretched position.",
+    "You want to pre-exhaust or finish the lats without loading the biceps or lower back.",
+    "You need light, joint-friendly loads for higher-rep work."
+  ],
+  "bad_when": [
+    "You have limited time and need one movement to build overall back mass (pick a pulldown or row).",
+    "You want to move heavy loads for strength, since isolation caps the useful weight."
   ],
   "common_errors": [
     "Bending the elbows",

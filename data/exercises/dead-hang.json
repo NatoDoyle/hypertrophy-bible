@@ -4,15 +4,34 @@
   "primary_muscles": [
     "forearms"
   ],
-  "mechanic": "isolation",
-  "equipment": "bodyweight",
   "movement_pattern": "other",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
   "force": "static",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Hang from a bar, full grip",
     "Shoulders active, not fully slumped",
     "Hold for time"
+  ],
+  "execution_steps": [
+    "Set a pull-up bar within reach when your arms are fully extended overhead (stand on a box if needed).",
+    "Grip the bar with both hands, palms facing away, about shoulder-width apart.",
+    "Step or lift your feet off so you hang with straight arms, keeping your shoulders slightly engaged rather than fully slumped.",
+    "Hold for time with a tight grip, and stop the set when your grip begins to slip."
+  ],
+  "good_when": [
+    "You want to build grip strength and endurance with minimal setup.",
+    "You need better grip carryover to deadlifts, rows, and pull-ups.",
+    "You want a low-fatigue finisher that is easy to progress by time or thicker bar."
+  ],
+  "bad_when": [
+    "Your main goal is forearm muscle size, where loaded dynamic wrist work grows the flexors and extensors more directly.",
+    "You have shoulder or elbow issues aggravated by a dead hang.",
+    "You want to train the wrist extensors specifically, which a hang does not target."
   ],
   "common_errors": [
     "Letting the grip go loose",

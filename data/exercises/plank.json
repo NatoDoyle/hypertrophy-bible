@@ -12,13 +12,31 @@
     "sagittal"
   ],
   "resistance_profile": "Anti-extension core stability hold; trains bracing more than growth.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Rigid straight line",
     "Brace the abs and glutes",
     "Add load/time to progress"
+  ],
+  "execution_steps": [
+    "Set your forearms on the floor directly under your shoulders, elbows bent about 90 degrees.",
+    "Extend your legs behind you and rise onto your toes.",
+    "Form one rigid straight line from head to heels, with no sagging or piking at the hips.",
+    "Brace your abs and squeeze your glutes, breathe steadily, and hold for time."
+  ],
+  "good_when": [
+    "You're a beginner learning to brace and stabilize the core.",
+    "You want a no-equipment core exercise you can do anywhere.",
+    "You need a low-back-friendly anti-extension drill."
+  ],
+  "bad_when": [
+    "You're chasing ab muscle growth (use loaded crunches or leg raises).",
+    "You can already hold 60-plus seconds easily (progress to a weighted or harder variation).",
+    "You want to train rotation or the lateral core (use a side plank or Pallof press)."
   ],
   "common_errors": [
     "Sagging or piking hips",

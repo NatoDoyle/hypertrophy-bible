@@ -15,13 +15,31 @@
     "sagittal"
   ],
   "resistance_profile": "Pronated-grip curl emphasizing the brachioradialis and forearm extensors.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Overhand grip",
     "Elbows fixed",
     "Controlled tempo"
+  ],
+  "execution_steps": [
+    "Stand holding a barbell with an overhand (pronated) grip, hands about shoulder-width, arms hanging straight.",
+    "Pin your elbows to your sides and keep your wrists firm and straight.",
+    "Curl the bar up by bending only at the elbows, without swinging.",
+    "Squeeze at the top, then lower under control to full arm extension."
+  ],
+  "good_when": [
+    "You want to build the brachioradialis and forearm extensors along with the elbow flexors.",
+    "You want thicker-looking forearms and upper-arm balance.",
+    "You want a curl variation that also challenges grip."
+  ],
+  "bad_when": [
+    "Your priority is peak biceps development, where a supinated curl loads them more.",
+    "The pronated grip causes wrist pain, where an EZ-bar or hammer curl is kinder.",
+    "You need to move heavy loads, since the weaker pronated grip limits the weight."
   ],
   "common_errors": [
     "Swinging",

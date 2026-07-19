@@ -4,19 +4,38 @@
   "primary_muscles": [
     "glutes"
   ],
-  "mechanic": "isolation",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-hip-extension",
   "secondary_muscles": [
     "hamstrings"
   ],
+  "movement_pattern": "isolation-hip-extension",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "push",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
   "unilateral": true,
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Upper back on a bench, one foot planted",
     "Drive the hip up, squeeze the glute",
     "Full lockout, control down"
+  ],
+  "execution_steps": [
+    "Rest your upper back against a bench and plant one foot flat on the floor.",
+    "Lift the other leg off the floor, keeping the knee bent or extended.",
+    "Brace your core and keep your hips level, ribs down.",
+    "Drive through the planted heel to lift your hips to full lockout.",
+    "Squeeze the working glute at the top, then lower under control."
+  ],
+  "good_when": [
+    "You want to add load to bodyweight glute training without a barbell.",
+    "You need to fix side-to-side strength imbalances in the glutes.",
+    "You train at home and want a harder progression than the two-leg bridge."
+  ],
+  "bad_when": [
+    "You are a beginner still learning the basic bridge (start two-legged).",
+    "You want to move maximal absolute load (choose the barbell hip thrust)."
   ],
   "common_errors": [
     "Arching the lower back",

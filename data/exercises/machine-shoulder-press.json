@@ -4,20 +4,39 @@
   "primary_muscles": [
     "front-delts"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "machine",
-  "movement_pattern": "vertical-push",
   "secondary_muscles": [
     "side-delts",
     "triceps"
   ],
+  "movement_pattern": "vertical-push",
+  "equipment": "machine",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "uniform",
+  "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Grips at shoulder height",
     "Press up smoothly, don't lock hard",
     "Control the negative"
+  ],
+  "execution_steps": [
+    "Adjust the seat so the handles sit at about shoulder height.",
+    "Sit back with your torso against the pad and grip the handles.",
+    "Press up smoothly until your arms are nearly extended, without slamming into a hard lockout.",
+    "Lower under control back to shoulder level."
+  ],
+  "good_when": [
+    "You are a beginner or want a guided, low-skill overhead press.",
+    "You want to train close to failure safely without a spotter.",
+    "You are finishing shoulders after heavier free-weight pressing."
+  ],
+  "bad_when": [
+    "You want to train stabilizers and real-world overhead control.",
+    "The machine's fixed path does not fit your limb lengths comfortably.",
+    "You want a deep stretch under load (dumbbells go deeper)."
   ],
   "common_errors": [
     "Half reps",

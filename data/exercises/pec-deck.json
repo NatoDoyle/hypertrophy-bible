@@ -12,13 +12,29 @@
     "transverse"
   ],
   "resistance_profile": "Machine adduction with a stable path; good stretch on the outer chest.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Slight elbow bend, fixed",
     "Stretch the chest, then adduct",
     "Control the return"
+  ],
+  "execution_steps": [
+    "Set the seat height so the handles or pads sit at about chest height.",
+    "Sit back with your shoulder blades down and place your forearms on the pads (or grip the handles) with a slight, fixed elbow bend.",
+    "Let your arms open to a comfortable chest stretch under control.",
+    "Squeeze the pads together in front of your chest, then return slowly to the stretch."
+  ],
+  "good_when": [
+    "You want a stable, easy-to-learn chest isolation with a loaded stretch.",
+    "You are adding fly volume without needing to stabilize free weights."
+  ],
+  "bad_when": [
+    "You want to build pressing strength or overload heavily (press instead).",
+    "The machine does not fit your frame, forcing the shoulder into an awkward stretch."
   ],
   "common_errors": [
     "Bouncing out of the stretch",

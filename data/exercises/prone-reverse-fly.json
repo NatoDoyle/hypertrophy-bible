@@ -4,19 +4,39 @@
   "primary_muscles": [
     "rear-delts"
   ],
-  "mechanic": "isolation",
-  "force": "pull",
-  "equipment": "bodyweight",
-  "movement_pattern": "isolation-other",
-  "plane": ["transverse"],
   "secondary_muscles": [
     "upper-back"
   ],
+  "movement_pattern": "isolation-other",
+  "equipment": "bodyweight",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Face down on a bench or floor",
     "Raise the arms out and back, thumbs up",
     "Squeeze the rear delts"
+  ],
+  "execution_steps": [
+    "Lie face down on a flat bench (or the floor) with your arms hanging toward the ground.",
+    "Optionally hold light dumbbells and keep a slight, fixed bend in your elbows.",
+    "Raise your arms out to your sides in a wide arc, thumbs up, until they reach shoulder height.",
+    "Squeeze your rear delts at the top, then lower slowly back to the start."
+  ],
+  "good_when": [
+    "You are training at home with little or no equipment.",
+    "You want a beginner-friendly way to groove the rear-delt fly pattern.",
+    "You want chest support that removes momentum and lower-back involvement."
+  ],
+  "bad_when": [
+    "You need meaningful load — bodyweight or light dumbbells cap resistance quickly.",
+    "You want tension in the stretched position — gravity unloads the bottom of the range entirely."
   ],
   "common_errors": [
     "Shrugging",

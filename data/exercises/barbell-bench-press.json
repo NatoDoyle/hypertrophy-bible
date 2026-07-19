@@ -1,23 +1,68 @@
 {
   "id": "barbell-bench-press",
   "name": "Barbell Bench Press",
-  "aliases": ["flat bench press", "bench"],
-  "primary_muscles": ["chest"],
-  "secondary_muscles": ["front-delts", "triceps"],
+  "aliases": [
+    "flat bench press",
+    "bench"
+  ],
+  "primary_muscles": [
+    "chest"
+  ],
+  "secondary_muscles": [
+    "front-delts",
+    "triceps"
+  ],
   "movement_pattern": "horizontal-push",
   "equipment": "barbell",
   "mechanic": "compound",
   "force": "push",
-  "plane": ["sagittal", "transverse"],
+  "plane": [
+    "sagittal",
+    "transverse"
+  ],
   "resistance_profile": "Hardest off the chest (bottom), easing near lockout; moderate lengthened loading of the chest.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "high",
   "rom_notes": "Touch the chest with control; a slight arch keeps the shoulders safe without shortening chest ROM excessively.",
   "difficulty": "intermediate",
-  "cues": ["Retract and depress the shoulder blades", "Lower to the lower chest with control", "Drive the bar back over the shoulders"],
-  "common_errors": ["Bouncing off the chest", "Flaring elbows to 90 degrees", "Half-range lockout-only reps"],
-  "progressions": ["Double progression on load", "Pause reps on the chest"],
-  "regressions": ["Dumbbell bench press", "Machine chest press", "Push-up"],
-  "citations": ["schoenfeld-2017-load-meta"]
+  "cues": [
+    "Retract and depress the shoulder blades",
+    "Lower to the lower chest with control",
+    "Drive the bar back over the shoulders"
+  ],
+  "execution_steps": [
+    "Lie back on a flat bench with your eyes under the bar, plant your feet flat, and pinch your shoulder blades back and down.",
+    "Grip the bar slightly wider than shoulder-width and unrack it to arm's length over your chest.",
+    "Lower the bar under control to your lower chest, keeping elbows about 45-75 degrees from your torso.",
+    "Touch the chest lightly without bouncing, then press the bar back up and slightly toward your face to lockout."
+  ],
+  "good_when": [
+    "You want a primary heavy chest and pressing builder you can progressively overload.",
+    "You are training pressing strength alongside size.",
+    "You have a spotter or safety pins so you can push close to failure."
+  ],
+  "bad_when": [
+    "Cranky shoulders flare up on a fixed bar path (dumbbells or a machine let each arm move more freely).",
+    "You are a beginner training alone with no spotter or safety rails."
+  ],
+  "common_errors": [
+    "Bouncing off the chest",
+    "Flaring elbows to 90 degrees",
+    "Half-range lockout-only reps"
+  ],
+  "progressions": [
+    "Double progression on load",
+    "Pause reps on the chest"
+  ],
+  "regressions": [
+    "Dumbbell bench press",
+    "Machine chest press",
+    "Push-up"
+  ],
+  "citations": [
+    "schoenfeld-2017-load-meta"
+  ]
 }

@@ -16,13 +16,29 @@
     "sagittal"
   ],
   "resistance_profile": "Full overhead stretch at the bottom; strong lat loader.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Start from a full hang/stretch",
     "Drive elbows down and in",
     "Chest to the bar"
+  ],
+  "execution_steps": [
+    "Grip the bar slightly wider than shoulder width, palms facing away, and hang with arms fully extended.",
+    "Set your shoulders down and brace your core to stop swinging.",
+    "Drive your elbows down and in, pulling your chest toward the bar.",
+    "Lower under control back to a full dead hang."
+  ],
+  "good_when": [
+    "You want a highly effective, equipment-light lat and back builder.",
+    "You can control your bodyweight and want to add loaded progression over time."
+  ],
+  "bad_when": [
+    "You cannot yet complete strict reps, so start with assisted pull-ups or a lat pulldown.",
+    "You need precise, small load increments, which a machine makes easier to micro-load."
   ],
   "common_errors": [
     "Half reps",

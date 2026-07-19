@@ -12,13 +12,31 @@
     "sagittal"
   ],
   "resistance_profile": "Straight-leg plantarflexion on the leg press; heavy-loadable gastrocnemius work.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Balls of the feet on the platform",
     "Full stretch to full plantarflexion",
     "Pause at the bottom"
+  ],
+  "execution_steps": [
+    "Sit in the leg press and place the balls of your feet low on the platform, heels off the edge",
+    "Extend your legs nearly straight and release the safety catches",
+    "Let the platform push your toes back into a full ankle stretch",
+    "Press through the balls of your feet to full plantarflexion",
+    "Pause at the bottom stretch, then move under control"
+  ],
+  "good_when": [
+    "You want heavy, spine-free loading for the gastrocnemius",
+    "A standing calf machine is unavailable",
+    "Balance or stability limits standing variations"
+  ],
+  "bad_when": [
+    "You want to target the soleus (bent-knee seated raise is better)",
+    "No leg press is available"
   ],
   "common_errors": [
     "Bouncing",

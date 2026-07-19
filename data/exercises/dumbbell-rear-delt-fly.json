@@ -4,19 +4,38 @@
   "primary_muscles": [
     "rear-delts"
   ],
-  "mechanic": "isolation",
-  "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-other",
-  "plane": ["transverse"],
   "secondary_muscles": [
     "upper-back"
   ],
+  "movement_pattern": "isolation-other",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "plane": [
+    "transverse"
+  ],
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Hinge over, slight elbow bend",
     "Lead with the pinkies, out and back",
     "Squeeze the rear delts, don't shrug"
+  ],
+  "execution_steps": [
+    "Hold a dumbbell in each hand and hinge forward at the hips until your torso is roughly parallel to the floor.",
+    "Let the dumbbells hang under your shoulders with a slight, fixed bend in your elbows.",
+    "Raise the dumbbells out to your sides in a wide arc, leading with your pinkies, until your arms reach shoulder height.",
+    "Squeeze your rear delts at the top, then lower under control without shrugging or swinging."
+  ],
+  "good_when": [
+    "You only have dumbbells and want to directly isolate the rear delts.",
+    "You want a simple accessory to bolt onto a pull day or shoulder day."
+  ],
+  "bad_when": [
+    "You cannot keep your torso still — a chest-supported or cable version holds tension more consistently.",
+    "You want load in the stretched position — the dumbbells go nearly weightless at the bottom."
   ],
   "common_errors": [
     "Using momentum",

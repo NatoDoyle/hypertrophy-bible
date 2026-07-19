@@ -12,13 +12,30 @@
     "sagittal"
   ],
   "resistance_profile": "Prone knee flexion; complements hip-hinge hamstring work.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Hips down on the pad",
     "Full curl and controlled return",
     "No hip lifting"
+  ],
+  "execution_steps": [
+    "Lie face-down on the machine with the ankle pad resting just above your heels.",
+    "Grip the handles and press your hips down into the pad.",
+    "Curl your heels toward your glutes as far as they will go.",
+    "Lower under control back to straight legs."
+  ],
+  "good_when": [
+    "You want to isolate knee-flexion hamstring function to complement hip-hinge work.",
+    "You want a simple, stable movement with low fatigue cost.",
+    "You want to bias the shortened, peak-contraction end of the curl."
+  ],
+  "bad_when": [
+    "You want lengthened-biased hamstring loading (a seated curl or RDL keeps the hip flexed).",
+    "Your hips keep popping off the pad (a seated curl positions you better)."
   ],
   "common_errors": [
     "Jerking the weight",

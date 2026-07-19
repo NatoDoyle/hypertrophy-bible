@@ -12,13 +12,29 @@
     "sagittal"
   ],
   "resistance_profile": "Arm-forward position loads the short head hard in the stretched bottom.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Upper arms flat on the pad",
     "Full stretch at the bottom",
     "Don't fully relax at the bottom under heavy load"
+  ],
+  "execution_steps": [
+    "Sit at the preacher bench and rest the backs of your upper arms flat on the angled pad.",
+    "Grip the bar or handles underhand and let the arms extend toward the bottom.",
+    "Curl up until your forearms are near vertical, keeping the elbows down on the pad.",
+    "Lower under control to a near-full stretch, staying in control at the bottom under heavy load."
+  ],
+  "good_when": [
+    "You want a stretched-position emphasis with the arms braced against a pad.",
+    "You want to remove momentum and body english entirely."
+  ],
+  "bad_when": [
+    "Fully relaxing at the stretched bottom bothers your elbows under heavy load.",
+    "You want constant tension at the top (the contracted position unloads on a preacher)."
   ],
   "common_errors": [
     "Bouncing out of the stretch",

@@ -1,23 +1,67 @@
 {
   "id": "romanian-deadlift",
   "name": "Romanian Deadlift",
-  "aliases": ["RDL", "stiff-legged deadlift"],
-  "primary_muscles": ["hamstrings"],
-  "secondary_muscles": ["glutes", "spinal-erectors"],
+  "aliases": [
+    "RDL",
+    "stiff-legged deadlift"
+  ],
+  "primary_muscles": [
+    "hamstrings"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "spinal-erectors"
+  ],
   "movement_pattern": "hinge",
   "equipment": "barbell",
   "mechanic": "compound",
   "force": "pull",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Tension peaks at the stretched (bottom) position with hips flexed — strong lengthened loading of the hamstrings.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "high",
   "rom_notes": "Lower until you feel a strong hamstring stretch without lumbar rounding; range is set by hamstring flexibility, not the floor.",
   "difficulty": "intermediate",
-  "cues": ["Push the hips back, minimal knee bend", "Keep the bar close, dragging up the legs", "Neutral spine throughout"],
-  "common_errors": ["Turning it into a squat", "Rounding the lower back to reach the floor", "Bouncing out of the bottom"],
-  "progressions": ["Add load", "Add a pause in the stretched position", "Deficit RDL for more range"],
-  "regressions": ["Dumbbell RDL", "Seated or lying leg curl", "45-degree back extension"],
-  "citations": ["pedrosa-2022-lengthened-partials"]
+  "cues": [
+    "Push the hips back, minimal knee bend",
+    "Keep the bar close, dragging up the legs",
+    "Neutral spine throughout"
+  ],
+  "execution_steps": [
+    "Stand holding a barbell at your thighs, feet hip-width, knees softly bent.",
+    "Push your hips back, keeping the bar dragging close along your legs.",
+    "Lower until you feel a strong hamstring stretch without rounding your back.",
+    "Drive your hips forward to lockout, squeezing your glutes."
+  ],
+  "good_when": [
+    "You want a heavily loadable, stretch-biased hamstring builder.",
+    "You want to train hamstrings, glutes, and erectors together in one lift."
+  ],
+  "bad_when": [
+    "You need a low-fatigue isolation option (use a leg curl).",
+    "You lack the hip mobility or back control to hinge without rounding (start with the dumbbell RDL)."
+  ],
+  "common_errors": [
+    "Turning it into a squat",
+    "Rounding the lower back to reach the floor",
+    "Bouncing out of the bottom"
+  ],
+  "progressions": [
+    "Add load",
+    "Add a pause in the stretched position",
+    "Deficit RDL for more range"
+  ],
+  "regressions": [
+    "Dumbbell RDL",
+    "Seated or lying leg curl",
+    "45-degree back extension"
+  ],
+  "citations": [
+    "pedrosa-2022-lengthened-partials"
+  ]
 }

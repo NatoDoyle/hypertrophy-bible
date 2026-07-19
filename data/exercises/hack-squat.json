@@ -15,13 +15,31 @@
     "sagittal"
   ],
   "resistance_profile": "Machine squat loading the quads deep with a supported back.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "high",
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Feet placed for a deep knee bend",
     "Descend to a full stretch",
     "Don't lock out hard"
+  ],
+  "execution_steps": [
+    "Set the shoulder pads and step onto the platform with feet shoulder-width.",
+    "Place your back flat against the pad and release the safety handles.",
+    "Lower under control into a deep knee bend until you feel a full quad stretch.",
+    "Drive through your whole foot to press back up without slamming into lockout.",
+    "Re-engage the safeties after your final rep."
+  ],
+  "good_when": [
+    "You want heavy quad overload with your back fully supported.",
+    "You want to train quads hard without balance or spinal-loading demands.",
+    "You want to push close to failure safely on a fixed path."
+  ],
+  "bad_when": [
+    "You have no machine access.",
+    "You specifically want free-weight stability and core involvement."
   ],
   "common_errors": [
     "Half range",

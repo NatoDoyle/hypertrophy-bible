@@ -4,20 +4,37 @@
   "primary_muscles": [
     "lats"
   ],
-  "mechanic": "isolation",
-  "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-shoulder-extension",
   "secondary_muscles": [
     "chest"
   ],
+  "movement_pattern": "isolation-shoulder-extension",
+  "equipment": "dumbbell",
+  "mechanic": "isolation",
+  "force": "pull",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Lie across a bench, one dumbbell overhead",
     "Lower back into a deep lat stretch",
     "Pull the elbows over, driving with the lats"
+  ],
+  "execution_steps": [
+    "Lie across a flat bench with only your upper back supported, feet planted and hips slightly below the bench.",
+    "Hold one dumbbell overhead with both hands, elbows slightly bent and fixed.",
+    "Lower the dumbbell back and down until you feel a deep stretch across the lats.",
+    "Pull it back over your chest by driving the elbows toward your hips with the lats."
+  ],
+  "good_when": [
+    "You want a free-weight lat isolation that heavily loads the stretched position.",
+    "You only have dumbbells and a bench.",
+    "You want a stretch-focused finisher for back or chest day."
+  ],
+  "bad_when": [
+    "Shoulder mobility limits make the deep overhead stretch painful.",
+    "You want constant tension throughout, since a cable pullover holds tension better near the top."
   ],
   "common_errors": [
     "Bending the elbows to press",

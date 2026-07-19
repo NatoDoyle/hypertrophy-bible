@@ -16,13 +16,31 @@
     "sagittal"
   ],
   "resistance_profile": "Heavy compound triceps loader; shoulder-width grip.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Grip ~shoulder width",
     "Tuck the elbows",
     "Touch the lower chest"
+  ],
+  "execution_steps": [
+    "Lie on a flat bench and grip the barbell about shoulder-width apart.",
+    "Unrack and hold the bar over your chest with wrists stacked over the elbows.",
+    "Lower the bar to your lower chest, keeping the elbows tucked toward your sides.",
+    "Press back up to lockout, driving hard through the triceps."
+  ],
+  "good_when": [
+    "You want to overload the triceps with heavy compound barbell loading.",
+    "Building pressing strength that carries over to the flat bench press.",
+    "You respond well to free-weight work over machines."
+  ],
+  "bad_when": [
+    "Your wrists or elbows get irritated by a fixed narrow-ish grip.",
+    "You want a lengthened-biased triceps stimulus (choose an overhead extension).",
+    "Only dumbbells or cables are available."
   ],
   "common_errors": [
     "Grip too narrow (wrist strain)",

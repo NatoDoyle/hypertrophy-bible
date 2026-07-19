@@ -4,16 +4,33 @@
   "primary_muscles": [
     "biceps"
   ],
+  "movement_pattern": "isolation-elbow-flexion",
+  "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "loading_bias": "shortened",
+  "lengthened_bias": false,
   "unilateral": true,
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-elbow-flexion",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Elbow braced on the inner thigh",
     "Curl with a hard peak squeeze",
     "Slow negative"
+  ],
+  "execution_steps": [
+    "Sit on a bench, lean forward, and brace the back of your working upper arm against your inner thigh.",
+    "Let the dumbbell hang straight down with the arm fully extended.",
+    "Curl the dumbbell up toward your shoulder, squeezing the biceps hard at the top.",
+    "Lower slowly back to a full stretch without letting the elbow move."
+  ],
+  "good_when": [
+    "You want a strict single-arm movement with a strong peak contraction.",
+    "You struggle to feel the biceps working and need to remove momentum."
+  ],
+  "bad_when": [
+    "You want to move heavy loads for overall mass (use a barbell or dumbbell curl).",
+    "You want a stretch-position emphasis (use an incline curl)."
   ],
   "common_errors": [
     "Swinging",

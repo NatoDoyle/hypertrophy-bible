@@ -4,19 +4,38 @@
   "primary_muscles": [
     "triceps"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "horizontal-push",
   "secondary_muscles": [
     "chest",
     "front-delts"
   ],
+  "movement_pattern": "horizontal-push",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
     "Hands together under the chest",
     "Elbows tucked close",
     "Full range, chest to hands"
+  ],
+  "execution_steps": [
+    "Start in a plank with hands together under your chest, index fingers and thumbs forming a diamond.",
+    "Brace your core and hold your body in a straight line from head to heels.",
+    "Lower your chest toward your hands with the elbows tucked close to your ribs.",
+    "Press back up to full elbow extension."
+  ],
+  "good_when": [
+    "You want a no-equipment triceps and chest builder.",
+    "Training at home or using it as a superset finisher.",
+    "Building toward harder pushing progressions."
+  ],
+  "bad_when": [
+    "Your wrists do not tolerate the close, loaded hand position.",
+    "You need heavy loading for strength, since bodyweight caps the stimulus.",
+    "You want isolated triceps work without chest and shoulder involvement."
   ],
   "common_errors": [
     "Elbows flaring wide",

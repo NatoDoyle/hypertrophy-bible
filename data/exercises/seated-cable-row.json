@@ -17,14 +17,30 @@
     "transverse"
   ],
   "resistance_profile": "Even tension with a strong stretch at full reach; stable enough to train hard.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "rom_notes": "Allow the shoulder blades to protract and arms to extend fully forward, then row to the torso.",
   "difficulty": "beginner",
   "cues": [
     "Stretch forward at the front",
     "Row to the lower ribs, drive the elbows back",
     "Minimal torso swing"
+  ],
+  "execution_steps": [
+    "Sit at the cable station with feet on the platform and knees slightly bent.",
+    "Grab the handle and sit tall with arms extended, feeling a stretch at the front.",
+    "Row the handle to your lower ribs, driving the elbows back.",
+    "Squeeze the shoulder blades, then return under control to a full stretch with minimal torso swing."
+  ],
+  "good_when": [
+    "You want smooth constant tension and a strong stretch to train the back near failure.",
+    "You want a stable row that's easy to progressively overload without lower-back strain."
+  ],
+  "bad_when": [
+    "You want to train the hinge and lower-back stabilization (use a barbell row).",
+    "Only free weights are available, with no cable stack."
   ],
   "common_errors": [
     "Heaving with the lower back",

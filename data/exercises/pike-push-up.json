@@ -4,19 +4,38 @@
   "primary_muscles": [
     "front-delts"
   ],
-  "mechanic": "compound",
-  "force": "push",
-  "equipment": "bodyweight",
-  "movement_pattern": "vertical-push",
   "secondary_muscles": [
     "side-delts",
     "triceps"
   ],
+  "movement_pattern": "vertical-push",
+  "equipment": "bodyweight",
+  "mechanic": "compound",
+  "force": "push",
+  "loading_bias": "mid-range",
+  "lengthened_bias": false,
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Hips high, body in an inverted V",
     "Lower the crown of the head toward the floor",
     "Press back up"
+  ],
+  "execution_steps": [
+    "Start in a push-up position, then walk your feet in and raise your hips into an inverted-V pike.",
+    "Set your hands slightly wider than your shoulders, keep your legs straight, and stack your shoulders over your hands.",
+    "Bend your elbows to lower the crown of your head toward the floor between your hands.",
+    "Press back up to full arm extension, keeping your hips high throughout."
+  ],
+  "good_when": [
+    "You are training shoulders at home or with no equipment.",
+    "You are building toward a handstand push-up.",
+    "You want a bodyweight vertical press for the front delts."
+  ],
+  "bad_when": [
+    "You need to add external load to keep progressing.",
+    "Wrist or shoulder mobility makes the inverted position painful.",
+    "You want precise, isolated front-delt loading (a machine or dumbbell press is easier to load)."
   ],
   "common_errors": [
     "Hips dropping (turns into a push-up)",

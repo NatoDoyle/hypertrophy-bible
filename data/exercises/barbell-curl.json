@@ -15,13 +15,30 @@
     "sagittal"
   ],
   "resistance_profile": "Heavy bilateral elbow flexion; the classic biceps mass builder.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Elbows pinned to the sides",
     "Curl without swinging",
     "Control the eccentric"
+  ],
+  "execution_steps": [
+    "Stand tall holding a barbell with an underhand (palms-up) grip, hands about shoulder-width, arms hanging straight.",
+    "Pin your elbows to your sides and brace your core so the torso stays still.",
+    "Curl the bar up toward your shoulders by bending only at the elbows.",
+    "Squeeze the biceps at the top without letting the elbows drift forward.",
+    "Lower the bar under control back to a full arm extension."
+  ],
+  "good_when": [
+    "You want a simple, heavy bilateral lift to build overall biceps mass.",
+    "You can add small load increments with a standard or EZ bar for steady progression."
+  ],
+  "bad_when": [
+    "A fixed straight-bar grip irritates your wrists or elbows (use an EZ-bar or dumbbells).",
+    "You specifically want to load the stretched position (use an incline or preacher curl)."
   ],
   "common_errors": [
     "Swinging / using the back",

@@ -12,13 +12,29 @@
     "frontal"
   ],
   "resistance_profile": "Guided abduction; very stable, easy to take to failure safely.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Lead with the elbows into the pads",
     "Full but controlled range",
     "No body english"
+  ],
+  "execution_steps": [
+    "Adjust the seat so your shoulders line up with the machine's pivot points.",
+    "Sit upright, place your forearms or elbows against the pads, and grip the handles.",
+    "Drive your elbows up and out to about shoulder height.",
+    "Lower under control back to the start without letting the weight stack crash down."
+  ],
+  "good_when": [
+    "You want to train close to failure safely without having to balance free weights.",
+    "A novice who wants a stable, guided path with minimal setup."
+  ],
+  "bad_when": [
+    "You want lengthened-biased loading — a cable keeps tension through the stretch.",
+    "No lateral raise machine is available at your gym."
   ],
   "common_errors": [
     "Using momentum",

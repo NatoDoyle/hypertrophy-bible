@@ -4,16 +4,34 @@
   "primary_muscles": [
     "triceps"
   ],
+  "movement_pattern": "isolation-elbow-extension",
+  "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "push",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-elbow-extension",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "One dumbbell overhead, elbows tucked",
     "Lower behind the head into a deep stretch",
     "Extend fully"
+  ],
+  "execution_steps": [
+    "Sit or stand holding one dumbbell with both hands and press it overhead.",
+    "Keep the upper arms vertical with the elbows pointing forward and close together.",
+    "Lower the dumbbell behind your head into a deep stretch, keeping the elbows fixed.",
+    "Extend the arms fully overhead back to lockout."
+  ],
+  "good_when": [
+    "You want to load the triceps long head at long muscle length.",
+    "Adding a stretch-biased movement to complement pushdowns.",
+    "Only dumbbells are available."
+  ],
+  "bad_when": [
+    "Limited shoulder mobility prevents a comfortable overhead position.",
+    "You want maximal loading, since overhead balance limits the weight versus a cable.",
+    "The deep stretched position aggravates your elbows."
   ],
   "common_errors": [
     "Flaring the elbows wide",

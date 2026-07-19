@@ -5,10 +5,10 @@
     "quadriceps",
     "glutes"
   ],
-  "movement_pattern": "lunge",
   "secondary_muscles": [
     "hamstrings"
   ],
+  "movement_pattern": "lunge",
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "push",
@@ -16,14 +16,32 @@
     "sagittal"
   ],
   "resistance_profile": "Dynamic single-leg loading for quads and glutes.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "low",
   "unilateral": true,
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Long strides",
     "Drop the back knee toward the floor",
     "Drive up through the front heel"
+  ],
+  "execution_steps": [
+    "Stand tall holding a dumbbell in each hand at your sides.",
+    "Step forward into a long stride and drop your back knee toward the floor.",
+    "Keep your torso upright and your front knee tracking over your foot.",
+    "Drive through the front heel to bring the rear foot forward into the next stride.",
+    "Continue alternating legs across the floor for the target reps."
+  ],
+  "good_when": [
+    "You want a dynamic single-leg movement that hits quads and glutes.",
+    "You're adding unilateral work and some conditioning to a leg day.",
+    "You're evening out left/right strength differences under load."
+  ],
+  "bad_when": [
+    "You have limited space or balance issues (use split squats or lunges in place).",
+    "You want a stable platform for maximal quad overload (use leg press or hack squat)."
   ],
   "common_errors": [
     "Short choppy steps",

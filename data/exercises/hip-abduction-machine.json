@@ -12,13 +12,31 @@
     "frontal"
   ],
   "resistance_profile": "Isolates the gluteus medius/minimus via hip abduction.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "high",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Sit tall",
     "Push the knees out fully",
     "Control the return"
+  ],
+  "execution_steps": [
+    "Sit in the machine with your back against the pad and set the resistance.",
+    "Place the outside of your knees against the pads and sit tall.",
+    "Push your knees outward against the pads as far as comfortable.",
+    "Pause and squeeze the outer glutes at the end of the movement.",
+    "Return your knees slowly under control without letting the weight slam."
+  ],
+  "good_when": [
+    "You want to directly target the gluteus medius/minimus (upper and outer glutes).",
+    "You want a low-fatigue, easy-to-learn accessory to round out glute training.",
+    "You are building hip stability with controlled abduction."
+  ],
+  "bad_when": [
+    "You want maximal glute size and strength (choose hip thrusts or squats).",
+    "You are short on time and need one compound lift rather than an isolation accessory."
   ],
   "common_errors": [
     "Using momentum",

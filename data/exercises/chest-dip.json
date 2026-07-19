@@ -16,13 +16,29 @@
     "sagittal"
   ],
   "resistance_profile": "Deep stretch on the lower chest at the bottom; lean forward to bias the chest.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "intermediate",
   "cues": [
     "Lean the torso forward",
     "Descend to a comfortable deep stretch",
     "Don't flare/over-shrug"
+  ],
+  "execution_steps": [
+    "Grip parallel bars and press up to a supported start position with your arms straight.",
+    "Lean your torso forward and let your feet drift slightly behind you to bias the chest.",
+    "Bend your elbows and lower under control to a comfortable deep stretch across the lower chest.",
+    "Press back up, keeping the forward lean, until your elbows are nearly straight."
+  ],
+  "good_when": [
+    "You want a loaded stretch on the lower chest with a big bodyweight compound.",
+    "You can add weight with a belt or vest to keep progressing."
+  ],
+  "bad_when": [
+    "You have shoulder pain or limited mobility at deep ranges.",
+    "You cannot yet support your bodyweight (regress to a machine press or push-up)."
   ],
   "common_errors": [
     "Going too deep for the shoulder",

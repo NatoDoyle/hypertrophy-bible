@@ -4,21 +4,38 @@
   "primary_muscles": [
     "hamstrings"
   ],
-  "mechanic": "compound",
-  "force": "pull",
-  "equipment": "dumbbell",
-  "movement_pattern": "hinge",
   "secondary_muscles": [
     "glutes",
     "spinal-erectors"
   ],
+  "movement_pattern": "hinge",
+  "equipment": "dumbbell",
+  "mechanic": "compound",
+  "force": "pull",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Soft knees, push the hips back",
     "Dumbbells travel close to the legs",
     "Feel the hamstring stretch, then drive the hips forward"
+  ],
+  "execution_steps": [
+    "Stand holding a dumbbell in each hand in front of your thighs, feet hip-width, knees softly bent.",
+    "Push your hips straight back, letting the dumbbells slide down close along your legs.",
+    "Lower until you feel a strong stretch in your hamstrings while keeping your back flat.",
+    "Drive your hips forward to stand tall, squeezing your glutes at the top."
+  ],
+  "good_when": [
+    "You want a stretch-biased hamstring hinge without loading a barbell across your spine.",
+    "You train at home or only have dumbbells available.",
+    "You are still learning the hinge and want lighter, more controllable loading."
+  ],
+  "bad_when": [
+    "Grip or dumbbell weight becomes the limiter before your hamstrings do (switch to a barbell RDL).",
+    "You want maximal loading for pure strength work."
   ],
   "common_errors": [
     "Rounding the lower back",

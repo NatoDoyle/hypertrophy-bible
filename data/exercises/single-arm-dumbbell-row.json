@@ -20,14 +20,30 @@
     "transverse"
   ],
   "resistance_profile": "Supported unilateral row through a long range; easy to train hard.",
+  "loading_bias": "mid-range",
   "lengthened_bias": false,
   "stability": "high",
   "unilateral": true,
+  "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [
     "Support on a bench",
     "Full stretch forward, row to the hip",
     "No torso twisting"
+  ],
+  "execution_steps": [
+    "Place one knee and the same-side hand on a bench, back flat and roughly parallel to the floor.",
+    "Hold a dumbbell in the other hand, arm hanging straight down in a full stretch.",
+    "Row the dumbbell up toward your hip, driving the elbow back without twisting the torso.",
+    "Squeeze the lat and upper back, then lower under control to the full stretch."
+  ],
+  "good_when": [
+    "You want a supported, beginner-friendly row that spares the lower back.",
+    "You want to train each side independently to fix strength imbalances.",
+    "You only have dumbbells and a bench."
+  ],
+  "bad_when": [
+    "You want to load both sides at once for time efficiency, where a barbell or machine row is faster."
   ],
   "common_errors": [
     "Twisting to heave the weight",

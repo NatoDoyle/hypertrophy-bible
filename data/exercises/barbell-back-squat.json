@@ -1,23 +1,70 @@
 {
   "id": "barbell-back-squat",
   "name": "Barbell Back Squat",
-  "aliases": ["back squat", "high-bar squat"],
-  "primary_muscles": ["quadriceps"],
-  "secondary_muscles": ["glutes", "spinal-erectors", "hamstrings"],
+  "aliases": [
+    "back squat",
+    "high-bar squat"
+  ],
+  "primary_muscles": [
+    "quadriceps"
+  ],
+  "secondary_muscles": [
+    "glutes",
+    "spinal-erectors",
+    "hamstrings"
+  ],
   "movement_pattern": "squat",
   "equipment": "barbell",
   "mechanic": "compound",
   "force": "push",
-  "plane": ["sagittal"],
+  "plane": [
+    "sagittal"
+  ],
   "resistance_profile": "Hardest near the bottom (deep knee/hip flexion), loading the quads at long length.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
   "unilateral": false,
+  "cns_cost": "high",
   "rom_notes": "Squat to at least parallel; deeper increases quad and glute stretch if mobility allows.",
   "difficulty": "intermediate",
-  "cues": ["Brace the core before descending", "Sit between the hips, knees track over toes", "Drive the floor away out of the hole"],
-  "common_errors": ["Cutting depth short", "Heels rising / knees caving", "Losing the brace and rounding under load"],
-  "progressions": ["Add load via double progression", "Pause reps in the bottom"],
-  "regressions": ["Goblet squat", "Leg press", "Hack squat"],
-  "citations": ["schoenfeld-2010-mechanisms"]
+  "cues": [
+    "Brace the core before descending",
+    "Sit between the hips, knees track over toes",
+    "Drive the floor away out of the hole"
+  ],
+  "execution_steps": [
+    "Set the bar across your upper traps in the rack, grip just outside your shoulders, and unrack by standing up and stepping back.",
+    "Stand feet shoulder-width with toes slightly out; take a big breath and brace your core hard.",
+    "Sit down and back, letting your knees track over your toes, until your thighs reach at least parallel.",
+    "Drive through your whole foot to stand back up, holding the brace until you lock out.",
+    "Re-breathe at the top and repeat, then rack the bar after your final rep."
+  ],
+  "good_when": [
+    "You want one heavy driver for overall quad and lower-body mass.",
+    "You have a barbell and rack and want to progress with measurable load over time.",
+    "Building lower-body strength alongside size is a goal."
+  ],
+  "bad_when": [
+    "You're a total novice who hasn't grooved the squat pattern yet (start with goblet squat or leg press).",
+    "Lower-back or mobility limits stop you from reaching a safe depth.",
+    "You're training alone to failure without a rack or safety pins."
+  ],
+  "common_errors": [
+    "Cutting depth short",
+    "Heels rising / knees caving",
+    "Losing the brace and rounding under load"
+  ],
+  "progressions": [
+    "Add load via double progression",
+    "Pause reps in the bottom"
+  ],
+  "regressions": [
+    "Goblet squat",
+    "Leg press",
+    "Hack squat"
+  ],
+  "citations": [
+    "schoenfeld-2010-mechanisms"
+  ]
 }

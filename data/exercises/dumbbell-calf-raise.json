@@ -4,16 +4,34 @@
   "primary_muscles": [
     "calves"
   ],
+  "movement_pattern": "isolation-plantarflexion",
+  "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "push",
-  "equipment": "dumbbell",
-  "movement_pattern": "isolation-plantarflexion",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Hold a dumbbell, ball of the foot on a step",
     "Full stretch at the bottom, tall squeeze at the top",
     "Pause a beat at each end"
+  ],
+  "execution_steps": [
+    "Hold a dumbbell in one hand, balls of the feet on a step with heels off the edge",
+    "Steady yourself with the free hand on a rail or wall",
+    "Lower your heels below the step for a full stretch",
+    "Press up onto your toes as high as you can and squeeze",
+    "Pause a beat at the top and bottom of each rep"
+  ],
+  "good_when": [
+    "You need more load than bodyweight but have no calf machine",
+    "Training calves at home with dumbbells",
+    "Doing single-leg work to add resistance progressively"
+  ],
+  "bad_when": [
+    "You need heavy loading (grip and balance limit the dumbbell weight)",
+    "You want to bias the soleus specifically (seated calf raise is better)"
   ],
   "common_errors": [
     "Bouncing out of the bottom",

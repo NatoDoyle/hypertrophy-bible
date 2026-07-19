@@ -12,14 +12,32 @@
     "sagittal"
   ],
   "resistance_profile": "Loads spinal flexion with progressive resistance — trains the rectus abdominis for growth.",
+  "loading_bias": "shortened",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "rom_notes": "Flex the spine to crunch the ribs toward the pelvis; control back to a stretch.",
   "difficulty": "beginner",
   "cues": [
     "Round the spine (crunch), don't hip-hinge",
     "Fixed hips; move only the trunk",
     "Control the eccentric"
+  ],
+  "execution_steps": [
+    "Attach a rope to a high pulley, kneel facing the stack, and hold the rope ends beside your head.",
+    "Set your hips back slightly and keep them fixed in place for the entire set.",
+    "Crunch by rounding your spine, driving your ribs down toward your pelvis.",
+    "Squeeze the abs hard at the bottom, then let the weight slowly pull you back up to a stretch."
+  ],
+  "good_when": [
+    "You want to load the abs with progressive resistance for growth by adding weight over time.",
+    "You already do bodyweight crunches easily and need more resistance.",
+    "You have a cable stack and want a joint-friendly ab isolation."
+  ],
+  "bad_when": [
+    "No cable machine is available (use a weighted crunch instead).",
+    "You want to train anti-rotation or bracing (use a plank or Pallof press).",
+    "You keep turning it into a hip-hinge and can't feel the abs (a lying crunch may be easier to learn on)."
   ],
   "common_errors": [
     "Turning it into a hip-flexor pull",

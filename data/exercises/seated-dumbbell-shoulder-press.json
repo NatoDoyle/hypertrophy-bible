@@ -21,14 +21,33 @@
     "sagittal"
   ],
   "resistance_profile": "Presses the front delt through a full overhead range; dumbbells allow a deep stretch.",
+  "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",
+  "cns_cost": "moderate",
   "rom_notes": "Lower to ear level (deep stretch), press to a controlled overhead lockout.",
   "difficulty": "intermediate",
   "cues": [
     "Brace, ribs down",
     "Lower under control to a full stretch",
     "Press up and slightly together"
+  ],
+  "execution_steps": [
+    "Set an upright bench and sit with the dumbbells resting on your thighs.",
+    "Kick the dumbbells up to shoulder height, palms facing forward, and set your back against the pad.",
+    "Brace your core and keep your ribs down.",
+    "Press the dumbbells up and slightly together to a controlled overhead lockout.",
+    "Lower under control to about ear level for a full stretch."
+  ],
+  "good_when": [
+    "You want a deep front-delt stretch and full overhead range.",
+    "You are building shoulder size with a supported, back-friendly setup.",
+    "You want more range of motion than a barbell or machine allows."
+  ],
+  "bad_when": [
+    "You are chasing maximal load (a barbell allows heavier pressing).",
+    "Getting heavy dumbbells into position is difficult without a spotter.",
+    "You need a fully fixed path for stability (use a machine)."
   ],
   "common_errors": [
     "Half-range top reps",

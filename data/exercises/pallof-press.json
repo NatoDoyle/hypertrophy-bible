@@ -12,13 +12,32 @@
     "transverse"
   ],
   "resistance_profile": "Anti-rotation core exercise: the cable pulls you into a twist and you resist it — trains the obliques and deep core to brace against rotation.",
+  "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "moderate",
+  "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
     "Stand side-on to the cable, hands at your chest",
     "Press straight out and resist the twist",
     "Brace the abs; don't let your torso rotate"
+  ],
+  "execution_steps": [
+    "Set a cable to about chest height and stand side-on to the stack.",
+    "Hold the handle with both hands at your chest, then step away to put tension on the cable.",
+    "Brace your abs and press the handle straight out in front of your chest.",
+    "Resist the cable's pull to twist you, keeping your torso square and still.",
+    "Return the handle to your chest under control, finish your reps, then face the other way."
+  ],
+  "good_when": [
+    "You want to train the core to resist rotation (anti-rotation stability).",
+    "You're a beginner building a braced, stable trunk.",
+    "You want a low-back-friendly core exercise with easy load progression."
+  ],
+  "bad_when": [
+    "You're after direct ab growth or visible size (use crunches or leg raises).",
+    "No cable or resistance band is available.",
+    "You want dynamic rotational power (use a woodchop)."
   ],
   "common_errors": [
     "Letting the torso rotate toward the cable",
