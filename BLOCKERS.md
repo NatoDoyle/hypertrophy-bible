@@ -73,6 +73,20 @@ I have no access to how elite prep actually runs week-to-week.
 sanity-check the advanced features (mesocycle/deload/specialisation logic) once I build them.
 Without it I'll build strictly to what the literature supports and label the uncertainty.
 
+### 6b. Merge/delete security-model decision *(a design call, not code I should make alone)*
+**Why:** `/api/auth/merge` is the only route that permanently **deletes** a user (the anonymous
+`from` row, after moving its data). Under the bare-UUID possession model, its auth (a `to`-bound
+grant + the from-user being anonymous + an X-HB-User consistency check) does **not** stop an
+attacker who already *knows* an anonymous victim's UUID — they can delete that anonymous row.
+Reading/writing that user is already possible under the possession model; deletion is the only
+added power. It's a narrow, accepted residual risk today (noted honestly in the code comment),
+**not** a silent hole.
+**What I need — your call on ONE:** (a) accept it as-is (bare-UUID model, low stakes: anonymous
+accounts, no PII, recoverable by re-logging); (b) have me stop *deleting* the `from` row on merge
+(keep it orphaned/tombstoned instead — cheap, removes the destructive primitive entirely); or
+(c) move to a real per-device signed token so possession is non-forgeable (bigger change). I lean
+(b) — say the word and I'll ship it.
+
 ---
 
 ## ⚪ Optional
