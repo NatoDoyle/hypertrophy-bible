@@ -173,6 +173,17 @@ ok("specialization: non-priority muscles run at labelled maintenance with no bel
   specP.rationale.volume_by_muscle["quadriceps"].projected_status === "maintenance" &&
   specP.rationale.warnings.filter((w) => w.code === "below-mev").length === 0);
 ok("specialization: still never over MRV", specP.rationale.warnings.filter((w) => w.code === "over-mrv").length === 0);
+// #2/#4: an under-target warning for an ALREADY-priority muscle must not tell the
+// user to "mark it a priority muscle" (they already did / it's a specialization
+// target). It should point at the real levers (more days / longer sessions).
+const priorityUnderTarget = specP.rationale.warnings.filter((w) => w.code === "under-target" && specP.rationale.volume_by_muscle[w.muscle]?.is_priority);
+ok("#2/#4 a priority muscle's under-target warning never says 'mark it a priority'",
+  priorityUnderTarget.every((w) => !/marking it a priority/.test(w.message)));
+// and a NON-priority under-target warning keeps the (valid) 'mark it a priority' lever
+const tightUnder = generatePlan({ user_id: "tu", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 40, priority_muscles: ["side-delts"] }, kb)
+  .rationale.warnings.filter((w) => w.code === "under-target");
+ok("#2/#4 a non-priority under-target warning still offers the 'mark it a priority' lever",
+  tightUnder.filter((w) => w.muscle !== "side-delts").every((w) => /marking it a priority/.test(w.message)));
 
 const tightP = generatePlan({ user_id: "tb", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 40 }, kb);
 ok("supersets: pairs are mutual, in-session, and non-competing (or absent)",

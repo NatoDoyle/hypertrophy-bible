@@ -122,6 +122,19 @@ check("progressionByExercise ignores unreliable high-rep sets (no fake strength 
   assert.equal(p.last_e1rm, 49.5);     // still the real 45x3
 });
 
+check("#3 progressionByExercise excludes the deload week (no fabricated regression)", () => {
+  // A real +8% block that ENDS on a purposely-eased deload week. The trend must
+  // read the last WORKING week (108), not the lighter deload (100) — else the
+  // Progress screen shows a strength LOSS on the recovery week.
+  const wk = (n, kg, extra = {}) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [{ exercise: "bench", set_type: "work", weight_kg: kg, reps: 5, ...extra }] });
+  const block = [wk(0, 100), wk(1, 103), wk(2, 105), wk(3, 108), wk(4, 100, { deload: true })];
+  const p = progressionByExercise(block, exIndex).find((x) => x.exercise === "bench");
+  assert.equal(p.weeks, 4);                    // the deload week is not counted
+  assert.ok(p.change_pct > 0, `expected a gain, got ${p.change_pct}%`); // real progress, never a fake loss
+  // last reflects the top working week (108x5), not the eased 100x5
+  assert.equal(p.last_e1rm, estimate1RM(108, 5).e1rm);
+});
+
 check("countsForE1RM gates warmups, high reps, and junk", () => {
   assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: 5 }), true);
   assert.equal(countsForE1RM({ set_type: "work", weight_kg: 100, reps: RELIABLE_1RM_REPS }), true);
