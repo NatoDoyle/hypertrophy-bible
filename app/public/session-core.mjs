@@ -44,6 +44,15 @@ export function nextUnfinishedIndex(logged, ex, from) {
   return -1;
 }
 
+// Remove exactly the offline-queue item that was just delivered, BY IDENTITY.
+// Position-based removal (queue.slice(1)) drops the WRONG item when two tabs flush
+// concurrently on reconnect — a second tab can shift the head between this tab's
+// read and write, silently dropping an UNdelivered workout. filter-by-id can only
+// ever remove the item we actually delivered, so no logged workout is ever lost;
+// server writes are idempotent (session_id / date dedup) so a double delivery is
+// harmless. (Pure helper; the offline queue lives in app.js.)
+export const dropDelivered = (queue, id) => queue.filter((x) => x.id !== id);
+
 // Given a superset pair (indices L<P) and the log, the current 0-indexed round and
 // how many rounds are paired (the shorter member's set count). round >= paired
 // means the paired work is done and any remainder is finished the normal way.
