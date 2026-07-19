@@ -14,7 +14,7 @@
 1. **Target effort** — prescribe "3×8 @ 2 RIR" rather than a fixed weight, so the load self-adjusts to how you feel that day.
 2. **Autoregulate progression** — lower target RIR across a block (e.g. 3 → 0–1) and add load as strength rises (see [Progression](../03-programming/periodization-and-progression.md)).
 
-**Calibration.** Beginners (and many intermediates) chronically stop too early, over-estimating how many reps they have left. Periodically taking a **safe isolation exercise to genuine failure** recalibrates your internal gauge so your RIR calls mean something.
+**Calibration.** Beginners (and many intermediates) chronically stop too early, under-estimating how many reps they actually have left (i.e. thinking failure is closer than it is). Periodically taking a **safe isolation exercise to genuine failure** recalibrates your internal gauge so your RIR calls mean something.
 
 ## The Evidence
 

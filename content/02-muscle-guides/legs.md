@@ -4,7 +4,7 @@
 
 **Quick recommendations**
 - Squat/leg-press **to depth** and add **leg extensions** for the quads. **[Grade B]**
-- Train hamstrings with **both** a hip hinge (RDL) *and* a knee-flexion curl. **[Grade B]**
+- Train hamstrings with **both** a hip hinge (RDL) *and* a knee-flexion curl — prefer **seated** curls for the longer-length stretch. **[Grade C]** *(the seated-vs-lying length advantage itself is Grade B — Maeo 2021; combining both functions is an anatomy-based rationale, hence C.)*
 - Let compound work cover most **glute** volume; add hip thrusts/abduction if prioritizing. **[Grade C]**
 - Train **calves** directly, frequently, with a deep stretch and pause. **[Grade C]**
 
