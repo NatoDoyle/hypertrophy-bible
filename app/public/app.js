@@ -652,6 +652,21 @@ function startWeightDefault(e) {
 }
 function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
 
+// The weight control. For a bodyweight move carrying no added load, a "0 kg"
+// stepper reads as broken to a novice ("do I type my bodyweight? is 0 wrong?"), so
+// show that it's just them — with an opt-in to add load for weighted pull-ups/dips.
+// `idx` tags the member index inside a superset station; omit it in the single
+// player. The value stored is always the ADDED weight (0 = pure bodyweight), which
+// is exactly what e1RM/volume expect, so nothing downstream changes.
+function weightStepper(w, isBodyweight, idx) {
+  const di = idx == null ? "" : ` data-i="${idx}"`;
+  if (isBodyweight && w === 0) {
+    return `<div class="stepper"><label>Weight</label><div class="val" style="font-size:1.05rem;font-weight:700">Bodyweight <span class="muted" style="font-weight:400">(just you)</span></div><button class="wt-add" data-w="${wInc()}"${di} aria-label="add weight">+ add weight</button></div>`;
+  }
+  const tag = isBodyweight ? "+" : "", suffix = isBodyweight ? " added" : "";
+  return `<div class="stepper"><label>Weight</label><button data-w="-${wInc()}"${di} aria-label="less weight">–</button><div class="val">${tag}${w} ${unitLabel()}${suffix}</div><button data-w="${wInc()}"${di} aria-label="more weight">+</button></div>`;
+}
+
 // ---------- Superset helpers ----------
 // Pure session logic (superset ordering + banked-set progress) lives in
 // session-core.mjs so it can be unit-tested in Node. These thin wrappers bind the
@@ -714,7 +729,7 @@ function renderPlayer(resting = 0) {
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
-      <div class="stepper"><label>Weight</label><button data-w="-${wInc()}" aria-label="less weight">–</button><div class="val">${w} ${unitLabel()}</div><button data-w="${wInc()}" aria-label="more weight">+</button></div>
+      ${weightStepper(w, e.equipment === "bodyweight", null)}
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1">–</button><div class="val">${rir}</div><button data-rir="1">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
@@ -797,9 +812,10 @@ function renderSupersetStation(L, P, resting = 0) {
     return `<div class="card">
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
+      ${m.unilateral ? `<div class="cue">↔️ <b>One side at a time</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
-      <div class="stepper"><label>Weight</label><button data-w="-${wInc()}" data-i="${idx}" aria-label="less weight">–</button><div class="val">${w} ${unitLabel()}</div><button data-w="${wInc()}" data-i="${idx}" aria-label="more weight">+</button></div>
+      ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}">–</button><div class="val">${rir}</div><button data-rir="1" data-i="${idx}">+</button></div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
@@ -808,6 +824,7 @@ function renderSupersetStation(L, P, resting = 0) {
 
   app.innerHTML = `<div class="exhead"><h1>🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span></div>
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
+    ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
     <button class="btn" id="doner">Done — round ${round + 1} of ${paired}</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
