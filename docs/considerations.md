@@ -14,16 +14,19 @@ Everything below should be taken under consideration for implementation. Once it
 
 ## Responses / plan (Claude)
 
-- **#3 Expand the exercise library — IN PROGRESS (you chose this first).** Extended the
-  exercise schema with the metadata you asked for, all optional so nothing breaks while I
-  backfill + author: `loading_bias` (lengthened / shortened / mid-range / uniform — the richer
-  version of the old lengthened/shortened boolean), `execution_steps` (step-by-step how-to),
-  `good_when` / `bad_when` (when it's a good vs bad pick), `cns_cost` (low/moderate/high systemic
-  fatigue). Equipment already supports barbell/dumbbell/machine/cable/smith-machine/bodyweight/
-  band/kettlebell. Added a consistency gate so `lengthened_bias` (engine) and `loading_bias`
-  (reader) can never disagree. Next: author new exercises + backfill existing 93 in
-  accuracy-verified batches (target ~150-200), covering every muscle × equipment, then re-enable
-  band/kettlebell in onboarding once they have real pools.
+- **#3 Expand the exercise library — DONE (this is what you chose first).** Library grew
+  **93 → 171 exercises**, each new one with the full metadata you asked for: `loading_bias`
+  (lengthened/shortened/mid-range/uniform), `execution_steps` (step-by-step how-to),
+  `good_when`/`bad_when`, `cns_cost`, primary/secondary muscles, progressions/regressions.
+  Authored via a 16-agent-per-muscle workflow, each exercise **adversarially accuracy-checked**
+  by an independent reviewer (67 approved / 3 corrected / 16 dropped). New equipment (was ZERO of
+  each): **21 band, 14 kettlebell, 8 smith-machine**. Band now covers 15/16 muscles, kettlebell
+  14/16. The rich data is surfaced in the "how do I do this?" sheet (numbered steps, fact chips,
+  good/bad-pick), and band+kettlebell are re-enabled in onboarding ("Home gym", "Bands &
+  bodyweight" options) — verified those bundles generate viable plans. STILL TODO for #3 later:
+  backfill the older 93 exercises with the new rich fields (they work fine without, the sheet
+  renders only what's present), and keep growing toward "every exercise" (kettlebell/band variants
+  of more lifts, smith-machine coverage).
 - **#5 Fix the plans — QUEUED after #3, per your sequencing.** I diagnosed concrete issues to fix:
   1-set filler exercises (budget/coverage artifacts), uneven sessions within a rotation (a
   beginner day had 4 exercises vs 7), bodyweight moves picked even with a full gym, and redundant
