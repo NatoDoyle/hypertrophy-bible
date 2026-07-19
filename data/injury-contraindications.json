@@ -9,14 +9,14 @@
     },
     "knee": {
       "exclude_patterns": [],
-      "caution_patterns": ["lunge"],
-      "note": "Deep loaded knee flexion; prefer machine and controlled-range leg work.",
+      "caution_patterns": ["lunge", "squat", "isolation-knee-extension"],
+      "note": "Loaded knee flexion (squats, lunges) and full-range knee extension are the classic patellofemoral/knee aggravators. At mild you keep everything (just train in a pain-free range and prefer machine/controlled ranges); at moderate/severe these are pulled and direct quad work is minimised in favour of hamstring, hip and calf work while the knee settles.",
       "evidence_grade": "D"
     },
     "shoulder": {
       "exclude_patterns": ["vertical-push"],
-      "caution_patterns": ["horizontal-push"],
-      "note": "Overhead and heavy pressing stress an irritated shoulder; prefer neutral-grip machine work in a pain-free range.",
+      "caution_patterns": ["horizontal-push", "isolation-shoulder-abduction"],
+      "note": "Overhead pressing and the lateral-raise abduction arc are the classic irritated-shoulder aggravators (impingement / painful arc). Overhead pressing is avoided at any severity; at moderate/severe, hard horizontal pressing and lateral raises are pulled too — prefer neutral-grip machine work and pulls in a pain-free range.",
       "evidence_grade": "D"
     },
     "elbow": {

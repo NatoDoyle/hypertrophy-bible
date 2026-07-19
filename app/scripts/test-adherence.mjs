@@ -19,6 +19,23 @@ ok("no sessions -> streak 0", weeksConsistent([], "2026-01-21") === 0);
 const acrossYear = ["2023-12-11", "2023-12-18", "2024-01-01", "2024-01-08"].map((d) => sess(d));
 ok("streak survives the year boundary (no phantom-week token burn)", weeksConsistent(acrossYear, "2024-01-08") === 4);
 
+// #19 (CRITICAL rail): an injury/illness pause must FREEZE the streak, not reset it.
+// `three` builds a 3-week streak ending W04 (2026-01-19). The user then gets injured
+// and pauses from W05 (2026-01-26); "now" is ~5 weeks into the pause (2026-02-23).
+const injuredNow = "2026-02-23";
+ok("WITHOUT a pause, a 5-week layoff correctly resets the streak (control)",
+  weeksConsistent(three, injuredNow) === 0);
+ok("#19 a pause freezes the streak at its pre-pause value (injured user stays 'safe')",
+  weeksConsistent(three, injuredNow, { from: "2026-01-26" }) === 3);
+ok("#19 adherenceReport threads user.paused so the reported streak survives the pause",
+  adherenceReport({ paused: { from: "2026-01-26" } }, three, injuredNow).streak_weeks === 3);
+ok("#19 a legacy dateless pause neutralizes only the current week (safe minimal fallback)",
+  weeksConsistent(three, injuredNow, true) === 0);
+ok("#19 a pause never RETROACTIVELY bridges a real gap before it (no free streak)",
+  // trained W02 only (2026-01-05), missed W03+, pause starts W06 (2026-02-02): the
+  // W03/W04/W05 gap is BEFORE the pause and still breaks — streak counts just W02.
+  weeksConsistent([sess("2026-01-05")], injuredNow, { from: "2026-02-02" }) === 0);
+
 // XP + level: 3 sessions × (100 + 3 hard sets ×5) = 3×115 = 345 -> level 1
 const xl = xpAndLevel(three);
 ok("xp = 100/session + 5/hard-set", xl.xp === 345);

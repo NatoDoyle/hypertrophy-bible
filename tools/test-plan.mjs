@@ -66,6 +66,20 @@ const inj = generatePlan({ ...profile, user_id: "test-inj", injuries: [{ region:
 const injPatterns = new Set(inj.program.sessions.flatMap((s) => s.exercises).map((e) => exercises.find((x) => x.id === e.exercise).movement_pattern));
 ok("shoulder injury excludes overhead pressing (no vertical-push)", !injPatterns.has("vertical-push"));
 ok("shoulder injury (moderate) also cautions horizontal-push", !injPatterns.has("horizontal-push"));
+// #11: moderate/severe injuries must pull the region's OWN named aggravators, not
+// just leave them in. A knee-pain user was still handed barbell back squats + full-
+// ROM leg extensions; a shoulder-pain user still got the painful-arc lateral raise.
+const kneeInj = generatePlan({ ...profile, user_id: "test-knee", injuries: [{ region: "knee", severity: "moderate" }] }, kb);
+const kneePatterns = new Set(kneeInj.program.sessions.flatMap((s) => s.exercises).map((e) => exercises.find((x) => x.id === e.exercise).movement_pattern));
+ok("#11 moderate knee pulls loaded knee flexion (no squat/lunge/knee-extension patterns)",
+  !kneePatterns.has("squat") && !kneePatterns.has("lunge") && !kneePatterns.has("isolation-knee-extension"));
+ok("#11 knee-injured plan still builds full sessions (graceful, trains around the knee)",
+  kneeInj.program.sessions.length === profile.days_per_week && kneeInj.program.sessions.every((s) => s.exercises.length > 0));
+ok("#11 MILD knee keeps its options (caution only bites at moderate/severe)",
+  new Set(generatePlan({ ...profile, user_id: "test-knee-mild", injuries: [{ region: "knee", severity: "mild" }] }, kb)
+    .program.sessions.flatMap((s) => s.exercises).map((e) => exercises.find((x) => x.id === e.exercise).movement_pattern)).has("squat"));
+ok("#11 moderate shoulder pulls the lateral-raise abduction arc",
+  !injPatterns.has("isolation-shoulder-abduction"));
 
 // --- difficulty is a HARD gate: a beginner is never prescribed an advanced
 //     exercise while an easier one trains the muscle; intermediates never get an
