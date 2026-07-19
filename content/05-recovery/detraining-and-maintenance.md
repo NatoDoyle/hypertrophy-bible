@@ -4,7 +4,7 @@
 
 **Quick recommendations**
 - To **maintain** muscle when time is short, cut volume/frequency hard but **keep training with meaningful load**. **[Grade B]**
-- A **minimal maintenance dose** (roughly a third of your usual volume, even ~1×/week per muscle) holds muscle for weeks–months. **[Grade B]**
+- A **minimal maintenance dose** (roughly a third of your usual volume, even ~1×/week per muscle) holds muscle for weeks–months. **[Grade C]** *(the direct evidence is for strength/performance; the exact "~1/3 volume" figure for muscle size is an informed extrapolation — see The Evidence)*
 - Don't panic over a **short break** — meaningful muscle loss takes weeks, and regain is fast (see [Muscle Memory](../00-foundations/satellite-cells-and-muscle-memory.md)). **[Grade C]**
 - Use the **maintenance-volume (MV)** landmark in the [muscle data](../../data/muscles/) as your "hold" target. **[Grade C]**
 
