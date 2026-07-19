@@ -64,6 +64,22 @@ const oneSetCompoundGrid = ["beginner", "intermediate", "advanced"].flatMap((st)
   .filter((e) => e.sets === 1 && exMechanic[e.exercise] === "compound");
 ok("no COMPOUND is ever prescribed at 1 set (across the whole profile grid)", oneSetCompoundGrid.length === 0);
 
+// --- #5 quality: prefer progressively-loadable exercises when a full gym is available.
+// A full-gym lifter should not be handed non-loadable bodyweight compounds (bodyweight
+// lunge/squat, inverted row, single-leg RDL) when a loaded version of the same job
+// exists — those cap out and can't be overloaded. Loadable bodyweight (chin-up, dip)
+// is exempt, and bodyweight-only users are unaffected (tested separately).
+// Scoped to intermediate/advanced: they can handle the loaded versions, so a
+// capped bodyweight lift is never the right pick for them. (A BEGINNER may still
+// correctly get a beginner-difficulty bodyweight lift like single-leg RDL when the
+// loaded alternatives are intermediate+ — the difficulty gate rightly outranks the
+// loadable-preference there.)
+const fullGymGrid = ["intermediate", "advanced"].map((st) =>
+  generatePlan({ user_id: `bw-${st}`, training_status: st, primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] }, kb));
+const cappedBodyweight = new Set(["bodyweight-lunge", "bodyweight-squat", "inverted-row", "single-leg-romanian-deadlift"]);
+const cappedBwLeaks = fullGymGrid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => cappedBodyweight.has(e.exercise));
+ok("#5 an int/adv full-gym plan doesn't use capped bodyweight lifts when loaded versions exist", cappedBwLeaks.length === 0);
+
 // --- determinism ---
 ok("same profile → byte-identical program", JSON.stringify(generatePlan(profile, kb).program) === JSON.stringify(p.program));
 
