@@ -374,7 +374,7 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const [sessions, bodyweights] = await Promise.all([store.listSessions(id), store.listBodyweights(id)]);
-    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || []));
+    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString()));
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).

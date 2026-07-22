@@ -681,7 +681,7 @@ const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort l
 function startSession(templateSession) {
   sess = {
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
-    deload: templateSession.block?.phase === "deload", // sets logged today are planned-easy
+    deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
     logged: [], weights: {}, reps: {}, rir: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
     // after a reload, the server's ON CONFLICT dedupe sees the SAME id and the
@@ -1210,7 +1210,7 @@ async function renderProgress() {
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
     <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
-    <p class="muted">How many hard sets each muscle got this week, and whether that's in the range that builds muscle.</p>
+    <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${adaptiveCard}
