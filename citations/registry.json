@@ -1726,6 +1726,41 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38274324/"
+    },
+    {
+      "key": "refalo-2025-deficit-protein-meta",
+      "authors": [
+        "Refalo MC",
+        "Trexler ET",
+        "Helms ER"
+      ],
+      "year": 2025,
+      "title": "Effect of Dietary Protein on Fat-Free Mass in Energy Restricted, Resistance-Trained Individuals: An Updated Systematic Review With Meta-Regression",
+      "source": "Strength and Conditioning Journal",
+      "doi": "10.1519/SSC.0000000000000888",
+      "study_type": "meta-analysis",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://api.crossref.org/works/10.1519/SSC.0000000000000888"
+    },
+    {
+      "key": "singer-2024-rest-meta",
+      "authors": [
+        "Singer A",
+        "Wolf M",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy",
+      "source": "Frontiers in Sports and Active Living",
+      "volume": "6",
+      "pages": "1429789",
+      "doi": "10.3389/fspor.2024.1429789",
+      "pmid": "39205815",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39205815/"
     }
   ]
 }
