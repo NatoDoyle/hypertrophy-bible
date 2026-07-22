@@ -253,7 +253,7 @@ try {
   ok("#21 local_date round-trips through the session whitelist", ldStored?.local_date === "2026-07-23");
 
   // #23: push subscribe/unsubscribe round-trip through the real routes
-  const pushSub = { endpoint: "https://push.example.com/route-test", keys: { p256dh: "pk", auth: "ak" } };
+  const pushSub = { endpoint: "https://fcm.googleapis.com/fcm/send/route-test", keys: { p256dh: "pk", auth: "ak" } };
   const subRes = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: pushSub });
   ok("#23 push subscribe stores the subscription", subRes.status === 200 && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint && s.user_id === ldUser));
   const badSub = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: { endpoint: "http://insecure" } });

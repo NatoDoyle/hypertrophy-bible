@@ -6,7 +6,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, shouldPush, runPushSweep, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, shouldPush, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS } from "../src/push.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -50,6 +50,23 @@ const vapid = { privateJwk, publicKeyB64u: b64u(rawPub), subject: "mailto:test@t
   ok("a network error keeps the subscription (retry tomorrow)", rNet.ok === false && rNet.gone === false);
 }
 
+// --- #25 endpoint host allowlist (SSRF guard on the outbound sweep) ---
+for (const good of [
+  "https://updates.push.services.mozilla.com/wpush/v2/abc",
+  "https://fcm.googleapis.com/fcm/send/xyz",
+  "https://android.googleapis.com/gcm/send/xyz",
+  "https://foo.notify.windows.com/w/?token=x",
+  "https://web.push.apple.com/abc",
+]) ok(`allows real push host: ${new URL(good).hostname}`, isAllowedPushEndpoint(good) === true);
+for (const bad of [
+  "https://169.254.169.254/latest/meta-data/",       // cloud metadata
+  "https://attacker.example.com/collect",              // arbitrary host
+  "http://fcm.googleapis.com/fcm/send/x",              // not https
+  "https://fcm.googleapis.com.attacker.example/x",     // suffix-spoof attempt
+  "https://evil-push.services.mozilla.com.attacker/x", // lookalike
+  "not-a-url",
+]) ok(`rejects non-push endpoint: ${bad.slice(0, 40)}`, isAllowedPushEndpoint(bad) === false);
+
 // --- shouldPush decision table ---
 ok("trained yesterday -> no push", shouldPush({ lastSessionAt: daysAgo(1), now: NOW }) === false);
 ok(`lapse of ${PUSH_MIN_LAPSE_DAYS}d -> push`, shouldPush({ lastSessionAt: daysAgo(2), now: NOW }) === true);
@@ -69,16 +86,16 @@ try {
   await store.addSession("lapsed", { session_id: "l1", date: daysAgo(4), sets: [] });
   await store.addSession("fresh", { session_id: "f1", date: daysAgo(1), sets: [] });
   await store.addSession("pausedu", { session_id: "p1", date: daysAgo(4), sets: [] });
-  for (const [u, ep] of [["lapsed", "https://p.example/l"], ["fresh", "https://p.example/f"], ["pausedu", "https://p.example/p"], ["ghost-user", "https://p.example/g"]])
+  for (const [u, ep] of [["lapsed", "https://updates.push.services.mozilla.com/wpush/v2/l"], ["fresh", "https://updates.push.services.mozilla.com/wpush/v2/f"], ["pausedu", "https://updates.push.services.mozilla.com/wpush/v2/p"], ["ghost-user", "https://updates.push.services.mozilla.com/wpush/v2/g"]])
     await store.savePushSubscription(u, { endpoint: ep, keys: { p256dh: "k", auth: "a" } });
 
   const hits = [];
   const fakeFetch = async (url) => { hits.push(url); return url.endsWith("/l") ? { ok: true, status: 201 } : { ok: false, status: 410 }; };
   const r = await runPushSweep(store, vapid, NOW, fakeFetch);
-  ok("sweep pushes ONLY the lapsed opted-in user", hits.length === 1 && hits[0] === "https://p.example/l" && r.sent === 1);
+  ok("sweep pushes ONLY the lapsed opted-in user", hits.length === 1 && hits[0] === "https://updates.push.services.mozilla.com/wpush/v2/l" && r.sent === 1);
   ok("a subscription whose user is gone is pruned without a send", r.pruned >= 1 && !(await store.listPushSubscriptions()).some((s) => s.user_id === "ghost-user"));
   const again = await runPushSweep(store, vapid, new Date(NOW).getTime(), async (url) => { hits.push(url); return { ok: false, status: 410 }; });
-  ok("a 410 on send prunes that subscription", again.pruned === 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://p.example/l"));
+  ok("a 410 on send prunes that subscription", again.pruned === 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://updates.push.services.mozilla.com/wpush/v2/l"));
 
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
