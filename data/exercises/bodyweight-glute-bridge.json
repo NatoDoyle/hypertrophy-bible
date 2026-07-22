@@ -11,6 +11,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Tension peaks at the top with the hips locked out and glutes fully shortened; there is little load on the glutes near the floor.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "cns_cost": "low",

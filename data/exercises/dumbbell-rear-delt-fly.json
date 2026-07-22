@@ -14,6 +14,7 @@
   "plane": [
     "transverse"
   ],
+  "resistance_profile": "Hardest at the top of the arc with arms out at shoulder height; the dumbbells go nearly weightless in the bottom (stretched) position.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "cns_cost": "low",

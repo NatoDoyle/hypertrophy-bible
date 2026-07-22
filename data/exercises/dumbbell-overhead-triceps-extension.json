@@ -8,6 +8,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Peak tension deep in the stretch behind the head, where the dumbbell's moment arm about the elbow is longest; eases to almost nothing at lockout as the weight stacks over the joint.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

@@ -8,6 +8,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Tension peaks in the deep stretch with the heels dropped below the step; the load eases off toward the top squeeze as you rise onto the toes and the ankle's moment arm shortens.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

@@ -11,6 +11,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Hardest at the midpoint with the forearm horizontal, where the dumbbell's moment arm is longest; tension eases at the bottom and the top.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "low",

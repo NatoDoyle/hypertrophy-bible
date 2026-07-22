@@ -8,6 +8,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Heaviest at the bottom, where the dumbbell rolls to the fingertips and the wrist flexors are fully stretched; easier as the wrist curls up.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

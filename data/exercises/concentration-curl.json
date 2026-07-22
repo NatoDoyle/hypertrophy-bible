@@ -8,6 +8,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Hardest through the top half of the curl — the forward-leaning, thigh-braced upper arm keeps the dumbbell's moment arm long as you squeeze toward the shoulder, while the straight-down bottom hang sits nearly unloaded.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "unilateral": true,

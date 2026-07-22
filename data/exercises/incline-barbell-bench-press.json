@@ -12,6 +12,7 @@
   "equipment": "barbell",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest off the upper chest (bottom), easing near lockout; moderate lengthened loading of the chest, with the incline aligning force along the upper (clavicular) fibers.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "moderate",

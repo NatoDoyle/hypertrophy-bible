@@ -12,6 +12,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Hardest in the bottom half with the elbows bent, where the elbow moment arm is longest; easing to almost nothing at lockout.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "low",

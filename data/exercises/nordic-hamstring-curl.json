@@ -8,6 +8,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Demand climbs as the torso lowers toward horizontal — bodyweight's lever arm about the knee is longest right where the hamstrings are most stretched; strong lengthened loading.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "moderate",

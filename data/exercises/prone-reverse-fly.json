@@ -14,6 +14,7 @@
   "plane": [
     "transverse"
   ],
+  "resistance_profile": "Tension peaks with the arms out at shoulder height, where gravity's moment arm is longest; the hanging (stretched) bottom position is almost unloaded.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "cns_cost": "low",

@@ -8,6 +8,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Load is constant but the traps are weakest at the top squeeze, so the fully shortened position is the sticking point; lower to a full stretch each rep.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "cns_cost": "low",

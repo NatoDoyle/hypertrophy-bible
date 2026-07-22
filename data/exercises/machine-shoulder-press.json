@@ -12,6 +12,7 @@
   "equipment": "machine",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "The machine's cam and lever geometry keep tension fairly even from shoulder level to near lockout, smoothing out the sticking point a free-weight press has just off the shoulders.",
   "loading_bias": "uniform",
   "lengthened_bias": false,
   "stability": "high",

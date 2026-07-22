@@ -12,6 +12,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest in the deep bottom position with the front knee and hip flexed — strong lengthened loading of the quads; easy near standing.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "unilateral": true,

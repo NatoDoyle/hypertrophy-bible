@@ -14,6 +14,7 @@
   "equipment": "barbell",
   "mechanic": "compound",
   "force": "pull",
+  "resistance_profile": "Hardest breaking the bar off the floor with hips flexed — strong lengthened loading of the glutes and hamstrings — easing as you approach lockout.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",

@@ -8,6 +8,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Tension peaks at the bottom with heels dropped below the step and the calves in a deep stretch — strong lengthened loading.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

@@ -11,6 +11,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "push",
+  "resistance_profile": "Tension peaks at full lockout with the glute completely contracted; load falls away as the hips drop toward the floor.",
   "loading_bias": "shortened",
   "lengthened_bias": false,
   "unilateral": true,
