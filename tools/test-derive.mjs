@@ -167,6 +167,28 @@ check("stallDetect flags a lift flat for 4+ weeks, ignores progress and deloads"
   assert.equal(stallDetect(withDeload, exIndex).length, 0);
 });
 
+check("#19 stallDetect sees pump-band (12-20 rep) lifts via the LOAD path — Epley is guesswork past 12 reps", () => {
+  const hw = (n, kg, reps, extra = {}) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [{ exercise: "laterals", set_type: "work", weight_kg: kg, reps, ...extra }] });
+  // same 10 kg dumbbell for 4 weeks of 15-rep laterals -> a real plateau the e1RM path was blind to
+  const flat = [hw(0, 10, 15), hw(1, 10, 16), hw(2, 10, 15), hw(3, 10, 17)];
+  const s = stallDetect(flat, exIndex);
+  assert.equal(s.length, 1);
+  assert.equal(s[0].basis, "load");
+  assert.equal(s[0].best_load_kg, 10);
+  // load creeping up -> NOT stalled
+  const rising = [hw(0, 8, 15), hw(1, 9, 15), hw(2, 10, 15), hw(3, 11, 15)];
+  assert.equal(stallDetect(rising, exIndex).length, 0);
+  // deload-flagged high-rep sets stay out of the load path too
+  const withDeload = [hw(0, 8, 15), hw(1, 5, 15, { deload: true }), hw(2, 9, 15), hw(3, 10, 15), hw(4, 11, 15)];
+  assert.equal(stallDetect(withDeload, exIndex).length, 0);
+  // an exercise with BOTH heavy and pump work is judged by the e1RM path only (no double flag)
+  const mixed = [0, 1, 2, 3].map((n) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [
+    { exercise: "bench", set_type: "work", weight_kg: 100 + n * 2.5, reps: 5 },
+    { exercise: "bench", set_type: "work", weight_kg: 60, reps: 18 },
+  ] }));
+  assert.equal(stallDetect(mixed, exIndex).length, 0);
+});
+
 check("progressionByExercise: est-1RM rises across the log", () => {
   const sessions = [
     { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },

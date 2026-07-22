@@ -131,6 +131,72 @@ check("#16 waveRir never pushes a compound's near edge toward failure and passes
   assert.equal(waveRir(undefined, 2), undefined); // no band -> untouched
 });
 
+check("#19 a layoff-comeback session is flagged so its eased weights stay out of e1RM/stall trends", () => {
+  const now = "2026-06-01T10:00:00Z";
+  const day = (n) => new Date(+new Date(now) - n * 86400000).toISOString();
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const mkSession = (n) => ({ session_id: "s" + n, date: day(n), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+  const backAfterLayoff = buildToday({ profile: { training_status: "beginner", days_per_week: 3 }, program: prog }, [mkSession(15)], null, [], now);
+  assert.equal(backAfterLayoff.comeback, true);  // 15 days off -> the 0.88x ease is a deload of its own
+  const regular = buildToday({ profile: { training_status: "beginner", days_per_week: 3 }, program: prog }, [mkSession(2)], null, [], now);
+  assert.equal(regular.comeback, false);
+});
+
+check("#19 autoregulation measures compliance against the PRESCRIBED band, not a hardcoded 3", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const sessions = [{ session_id: "s1", date: day(3), sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 3 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 3 },
+  ] }];
+  // week-1 / deload prescription "3-4": logging 3 RIR is COMPLIANCE -> hold the load
+  const eased = suggestWeight(sessions, "barbell-bench-press", "6-10", undefined, day(0), "3-4");
+  assert.equal(eased.suggested_kg, 100);
+  // same log against the default band -> the historical bump still fires
+  const dflt = suggestWeight(sessions, "barbell-bench-press", "6-10", undefined, day(0));
+  assert.ok(dflt.suggested_kg > 100);
+  // sandbagging even the eased band (5 in the tank vs "3-4") -> bump
+  const sandbag = [{ session_id: "s2", date: day(3), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 5 }] }];
+  assert.ok(suggestWeight(sandbag, "barbell-bench-press", "6-10", undefined, day(0), "3-4").suggested_kg > 100);
+});
+
+check("#19 Progress samples an honest reference week: deload and in-progress weeks don't trigger 'add sets'", () => {
+  // fixed Wednesday "now" so the current ISO week is knowable
+  const now = "2026-06-10T10:00:00Z"; // Wed of ISO week 2026-W24
+  const user = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const full = (dates, extra = {}) => dates.map((d, i) => ({ session_id: "f" + d, date: d, sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, ...extra },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, ...extra },
+  ] }));
+  // W23 (Jun 1-7): a full training week. W24 (Jun 8-14): deload-flagged sets.
+  const sessions = [...full(["2026-06-01", "2026-06-03", "2026-06-05"]), ...full(["2026-06-08"], { deload: true })];
+  const rep = progressReport(user, sessions, [], [], now);
+  assert.equal(rep.latest_week, "2026-W23"); // the deload week is skipped
+  assert.ok(rep.volume_note && /deload/i.test(rep.volume_note));
+  // in-progress week (no deload): one Monday session in W24 with a full W23 behind it
+  const inProg = [...full(["2026-06-01", "2026-06-03", "2026-06-05"]), ...full(["2026-06-08"])];
+  const rep2 = progressReport(user, inProg, [], [], now);
+  assert.equal(rep2.latest_week, "2026-W23");
+  assert.ok(rep2.volume_note && /in progress/i.test(rep2.volume_note));
+  // a lone first week is still shown (no earlier week to fall back to)
+  const lone = full(["2026-06-08", "2026-06-10"]);
+  assert.equal(progressReport(user, lone, [], [], now).latest_week, "2026-W24");
+});
+
+check("#19 specialization maintenance muscles read 'holding steady', never 'add volume'", () => {
+  const now = "2026-06-10T10:00:00Z";
+  const user = { profile: { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4 },
+    plan_rationale: { volume_by_muscle: { chest: { maintenance: true, target_sets: 6 } } } };
+  // one maintenance-dose chest session in a past full week -> below MEV on raw numbers
+  const sessions = [{ session_id: "m1", date: "2026-06-02", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 },
+  ] }];
+  const rep = progressReport(user, sessions, [], [], now);
+  const chest = rep.volumeByMuscle.find((v) => v.id === "chest");
+  assert.equal(chest.status, "maintenance"); // the client's s-maint legend finally has a producer
+  assert.ok(!rep.adaptive.some((a) => a.muscle === "chest" && a.signal === "add"));
+});
+
 check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {
   const start = "2026-01-05T00:00:00Z";
   const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();

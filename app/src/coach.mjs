@@ -3,7 +3,7 @@
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust,
+  deriveVolumeAdjust, isoWeekKey,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -65,7 +65,7 @@ const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels eas
 // Double progression: hit the top of the range on every set last time -> add load;
 // otherwise keep the load and aim to add reps. First time -> no suggestion (user picks).
 // `now` (ISO) enables layoff-aware deloading so the "I eased your weights" copy is true.
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null) {
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null) {
   const last = lastSetsForExercise(sessions, exId);
   const { max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -79,12 +79,17 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     const eased = Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4;
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
   }
-  // RIR autoregulation (only when effort was logged): lots left in the tank -> go up.
+  // RIR autoregulation (only when effort was logged): MORE left in the tank than
+  // the prescription asked for -> go up. The threshold is relative to the
+  // prescribed band's top (default 2 -> bump at 3, the historical behavior):
+  // a week-1 lifter told "3-4 RIR" who complies at 3.5 is following the eased
+  // wave, not sandbagging — bumping their load would undo the easy week.
   const rirs = last.sets.map((s) => s.rir).filter((r) => typeof r === "number");
   if (rirs.length) {
+    const bandTop = (() => { const m = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); return m ? +m[2] : 2; })();
     const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
-    if (avgRir >= 3) {
-      const inc = loadIncrement(exId, byId) * (avgRir >= 4 ? 2 : 1);
+    if (avgRir >= bandTop + 1) {
+      const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
     if (avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
@@ -233,7 +238,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   }
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
-    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now);
+    // The rir band shown to the user IS the prescription the autoregulation
+    // measures compliance against — compute it first and pass it through.
+    const rirBand = block?.phase === "deload" ? "3-4" : block ? waveRir(ex.rir ?? "1-3", block.week) : ex.rir ?? "1-3";
+    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand);
     // Apply the mesocycle wave: sets scale with the block week — but never below 2
     // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
     // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
@@ -256,7 +264,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       name: name(ex.exercise),
       sets,
       rep_range: ex.rep_range,
-      rir: block?.phase === "deload" ? "3-4" : block ? waveRir(ex.rir ?? "1-3", block.week) : ex.rir ?? "1-3",
+      rir: rirBand,
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
@@ -267,7 +275,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       ...(ex.superset_with ? { superset_with: ex.superset_with, superset_with_name: name(ex.superset_with) } : {}),
     };
   });
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block };
+  // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
+  // client tags this session's sets `deload` so the eased weights never enter
+  // the e1RM/stall trends as a fabricated ~12% strength loss.
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block, comeback: layoffDays >= COMEBACK_GAP_DAYS };
 }
 
 // The Today card state machine: one decision only.
@@ -354,13 +365,40 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = []) {
   return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds);
 }
 
-export function progressReport(user, sessions, bodyweights, customEx = []) {
+export function progressReport(user, sessions, bodyweights, customEx = [], now = null) {
   const { index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
-  const latest = weeks[weeks.length - 1];
+  // Pick the REFERENCE week honestly: the raw latest ISO week understates
+  // volume when it's a deload (halved by design) or still in progress (it's
+  // Tuesday), and "add sets" advice off an understated week contradicts the
+  // mesocycle. Walk back from the latest week, skipping deload-dominant weeks
+  // and the current in-progress week (when an earlier full week exists).
+  const deloadFrac = {};
+  for (const s of sessions) {
+    const wk = isoWeekKey(s.date);
+    for (const set of s.sets ?? []) {
+      if ((set.set_type ?? "work") === "warmup") continue;
+      (deloadFrac[wk] ??= { d: 0, t: 0 }).t++;
+      if (set.deload) deloadFrac[wk].d++;
+    }
+  }
+  const isDeloadWeek = (wk) => (deloadFrac[wk]?.t ?? 0) > 0 && deloadFrac[wk].d / deloadFrac[wk].t > 0.5;
+  const nowWeek = now ? isoWeekKey(now) : null;
+  let latest = weeks[weeks.length - 1] ?? null;
+  let volume_note = null;
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    const wk = weeks[i];
+    if (isDeloadWeek(wk) && i > 0) { volume_note = "Skipping your deload week — its volume is intentionally low."; continue; }
+    if (wk === nowWeek && i > 0) { volume_note = "Showing your last full week — this week is still in progress."; continue; }
+    latest = wk; break;
+  }
   const volume = latest ? volumeVsLandmarks(weekly[latest], muscleIndex) : {};
-  const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: v.status }))
+  // Specialization honesty: a muscle the plan deliberately holds at its
+  // maintenance dose is "holding steady", not "add volume" — the client's
+  // s-maint status/legend exist for exactly this (they were never emitted).
+  const maintIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.maintenance).map(([id]) => id));
+  const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : v.status }))
     .sort((a, b) => b.sets - a.sets);
   const stalls = stallDetect(sessions, index);
   const stalledIds = new Set(stalls.map((x) => x.exercise));
@@ -373,6 +411,7 @@ export function progressReport(user, sessions, bodyweights, customEx = []) {
   const stalledMuscleIds = new Set(stalls.flatMap((x) => index.get(x.exercise)?.primary ?? []));
   const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds)
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
+    .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
     .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
   // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
   const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
@@ -382,5 +421,5 @@ export function progressReport(user, sessions, bodyweights, customEx = []) {
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy };
 }

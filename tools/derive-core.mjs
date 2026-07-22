@@ -259,30 +259,47 @@ export function progressionByExercise(sessions, exIndex) {
 // is planned recovery, not a plateau).
 export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } = {}) {
   const byEx = {};
+  const byExLoad = {}; // high-rep (pump-band) work: > RELIABLE_1RM_REPS, where Epley is guesswork — track best LOAD instead
   for (const s of sessions) {
     const wk = isoWeekKey(s.date);
     for (const set of s.sets ?? []) {
-      if (!countsForE1RM(set) || set.deload) continue;
-      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
-      byEx[set.exercise] ??= {};
-      byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+      if (set.deload) continue;
+      if (countsForE1RM(set)) {
+        const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+        byEx[set.exercise] ??= {};
+        byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+        // The plan itself prescribes 12-20 (pump band) — without this path a
+        // lateral-raise plateau was invisible to every progression surface.
+        byExLoad[set.exercise] ??= {};
+        byExLoad[set.exercise][wk] = Math.max(byExLoad[set.exercise][wk] ?? 0, set.weight_kg);
+      }
     }
   }
-  const out = [];
-  for (const [ex, weekMap] of Object.entries(byEx)) {
+  // Stalled = the recent window sits inside the noise band AND shows NO net
+  // progress across it (the latest week is not meaningfully above the earliest).
+  // This flags the textbook plateau (identical numbers every week: latest ==
+  // earliest) and shallow declines, while still exempting genuine slow progress
+  // (latest clearly above earliest). Two earlier versions each missed one end:
+  // `< hi + 0.01` was a tautology (flagged everyone); `< hi - 0.01` missed the
+  // dead-flat plateau (latest ties the max). Compare ends, not to the max.
+  const flatWindow = (weekMap) => {
     const weeks = Object.keys(weekMap).sort();
-    if (weeks.length < minWeeks) continue;
+    if (weeks.length < minWeeks) return null;
     const recent = weeks.slice(-minWeeks).map((w) => weekMap[w]);
     const hi = Math.max(...recent), lo = Math.min(...recent);
-    // Stalled = the recent window sits inside the noise band AND shows NO net
-    // progress across it (the latest week is not meaningfully above the earliest).
-    // This flags the textbook plateau (identical numbers every week: latest ==
-    // earliest) and shallow declines, while still exempting genuine slow progress
-    // (latest clearly above earliest). Two earlier versions each missed one end:
-    // `< hi + 0.01` was a tautology (flagged everyone); `< hi - 0.01` missed the
-    // dead-flat plateau (latest ties the max). Compare ends, not to the max.
     const flat = hi > 0 && ((hi - lo) / hi) * 100 <= noisePct && recent[recent.length - 1] <= recent[0] + 0.01;
-    if (flat) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
+    return flat ? hi : null;
+  };
+  const out = [];
+  for (const [ex, weekMap] of Object.entries(byEx)) {
+    const hi = flatWindow(weekMap);
+    if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
+  }
+  for (const [ex, weekMap] of Object.entries(byExLoad)) {
+    if (byEx[ex]) continue; // the e1RM path already judges this exercise — don't double-flag
+    const hi = flatWindow(weekMap);
+    if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_load_kg: hi, basis: "load" });
   }
   return out;
 }
