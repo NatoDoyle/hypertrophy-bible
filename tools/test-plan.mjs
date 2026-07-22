@@ -106,6 +106,67 @@ ok("#8-1 no plan nags to add direct neck work when neck was never prioritised", 
 const neckPri = generatePlan({ user_id: "neck-pri", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["neck"] }, kb);
 ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan can't fit it)", (neckPri.rationale.warnings ?? []).some((w) => w.muscle === "neck"));
 
+// --- #14 pro-informed programming invariants (Wave 14: audited against current
+// Olympia-tier splits — Lunsford PPL×2 / Dauda body-part canon).
+{
+  const exMeta = Object.fromEntries(exercises.map((e) => [e.id, e]));
+  const FULLG = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const grid = ["beginner", "intermediate", "advanced"].flatMap((st) =>
+    [2, 3, 4, 5, 6].map((days) =>
+      generatePlan({ user_id: `pro-${st}-${days}`, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: FULLG }, kb)));
+  // (a) no 1-set scatter: every prescription is >= 2 sets (maintenance micro-doses
+  // only exist under specialization, which this grid doesn't use)
+  const oneSets = grid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => e.sets < 2);
+  ok("#14a no default plan prescribes a 1-set exercise (scatter) anywhere", oneSets.length === 0);
+  // (b) weekly variety: no exercise appears in 3+ sessions of one week
+  const overUsed = grid.flatMap((pl) => {
+    const cnt = {};
+    for (const s of pl.program.sessions) for (const e of s.exercises) cnt[e.exercise] = (cnt[e.exercise] ?? 0) + 1;
+    return Object.entries(cnt).filter(([, n]) => n > 2);
+  });
+  ok("#14b no exercise is programmed in 3+ sessions of the same week", overUsed.length === 0);
+  // (c) per-session pattern cap: never 3 compounds of the same raw movement pattern
+  const patternStacks = grid.flatMap((pl) => pl.program.sessions.filter((s) => {
+    const cnt = {};
+    for (const e of s.exercises) { const x = exMeta[e.exercise]; if (x?.mechanic === "compound") cnt[x.movement_pattern] = (cnt[x.movement_pattern] ?? 0) + 1; }
+    return Object.values(cnt).some((n) => n > 2);
+  }));
+  ok("#14c no session stacks 3+ compounds of the same movement pattern (e.g. triple hinge)", patternStacks.length === 0);
+  // (d) direct arm + delt work for int/adv: curls, triceps isolation, and lateral-raise
+  // family appear somewhere in the week — compound credit alone never covers them
+  const iaGrid = grid.filter((pl) => pl.meta.generated_from.training_status !== "beginner" && pl.meta.generated_from.days_per_week >= 3);
+  const missingDirect = iaGrid.filter((pl) => {
+    const isoFor = (m) => pl.program.sessions.flatMap((s) => s.exercises).some((e) => { const x = exMeta[e.exercise]; return x?.mechanic === "isolation" && (x.primary_muscles ?? []).includes(m); });
+    return !(isoFor("biceps") && isoFor("triceps") && isoFor("side-delts"));
+  });
+  ok("#14d int/adv weeks include DIRECT biceps + triceps + side-delt isolation work", missingDirect.length === 0);
+  // (e) weekly knee-flexion: hinges don't train the hamstrings' short head — every
+  // int/adv full-gym week includes a leg-curl-pattern exercise. Scoped to >=4 days:
+  // a 3-day 60-min full-body (48 quality sets across 11 muscles) is the one shape
+  // where forcing a leg curl would displace a dose the week needs more — canonical
+  // full-body templates treat it as optional there too. (The 4b slot-preference
+  // still places one whenever hamstring residual exists.)
+  const kfGrid = iaGrid.filter((pl) => pl.meta.generated_from.days_per_week >= 4);
+  const missingKF = kfGrid.filter((pl) => !pl.program.sessions.flatMap((s) => s.exercises).some((e) => exMeta[e.exercise]?.movement_pattern === "isolation-knee-flexion"));
+  ok("#14e int/adv weeks (4+ days) include >=1 knee-flexion (leg-curl pattern) exercise", missingKF.length === 0);
+  // (f) heavy-first ordering: within a session, exercise tier (high-CNS compound ->
+  // compound -> isolation) never goes backwards
+  const tier = (id) => { const x = exMeta[id]; if (!x) return 9; if (x.mechanic === "isolation") return 3; return x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2; };
+  const misordered = grid.flatMap((pl) => pl.program.sessions.filter((s) => {
+    for (let i = 1; i < s.exercises.length; i++) if (tier(s.exercises[i].exercise) < tier(s.exercises[i - 1].exercise)) return true;
+    return false;
+  }));
+  ok("#14f sessions read heaviest-first (high-CNS compounds -> compounds -> isolations)", misordered.length === 0);
+  // (g) pump band: small-muscle isolations (laterals/calves/abs/forearms) run 12-20
+  const wrongBand = grid.flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises)).filter((e) => {
+    const x = exMeta[e.exercise];
+    if (!x || x.mechanic !== "isolation") return false;
+    const pump = (x.primary_muscles ?? []).every((m) => ["side-delts", "rear-delts", "calves", "abs", "forearms", "neck"].includes(m));
+    return pump && e.rep_range !== "12-20";
+  });
+  ok("#14g small-muscle isolation work runs the 12-20 pump band", wrongBand.length === 0);
+}
+
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +
 // a deadlift is already a hard day; a 3rd heavy barbell lift over-taxes recovery.
 const exCns = Object.fromEntries(exercises.map((e) => [e.id, e.cns_cost]));
