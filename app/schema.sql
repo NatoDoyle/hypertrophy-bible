@@ -56,3 +56,15 @@ CREATE TABLE IF NOT EXISTS magic_links (
 );
 CREATE INDEX IF NOT EXISTS idx_magic_links_rlkey ON magic_links(rl_key);
 CREATE INDEX IF NOT EXISTS idx_magic_links_ip ON magic_links(ip);
+
+-- Web Push subscriptions (device reminders). The endpoint URL is the identity
+-- (unguessable, one per browser registration); keys are stored for future
+-- payload encryption but unused by the empty-push v1.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint   TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL,
+  p256dh     TEXT,
+  auth       TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);

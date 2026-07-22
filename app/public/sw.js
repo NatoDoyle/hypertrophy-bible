@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v51";
+const VERSION = "hb-shell-v52";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -31,4 +31,23 @@ self.addEventListener("fetch", (e) => {
       return cached || (await refresh) || new Response("Offline", { status: 503 });
     })
   );
+});
+
+// --- Web Push device reminders (#4). Empty-payload pushes: the notification
+// copy is static (no user data transits the push service) and tapping it
+// opens (or focuses) the app on the Today screen.
+self.addEventListener("push", (e) => {
+  e.waitUntil(self.registration.showNotification("The Hypertrophy Bible", {
+    body: "Your next session is ready — it adjusts to wherever you're at today.",
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    tag: "hb-reminder", // one reminder at a time — a new one replaces the old
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    const w = wins.find((x) => x.url.includes(self.registration.scope));
+    return w ? w.focus() : self.clients.openWindow("/");
+  }));
 });

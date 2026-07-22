@@ -17,6 +17,9 @@ routes = [
 #   npx wrangler secret put RESEND_API_KEY
 [vars]
 MAIL_FROM = "The Hypertrophy Bible <hello@hypertrophybible.com>"
+# Web Push VAPID public key (raw P-256, base64url — safe to publish; the
+# private half is a secret: npx wrangler secret put VAPID_PRIVATE_JWK)
+VAPID_PUBLIC_KEY = "BEZ6ZmrGhbwa6F_luGpHIELORw6Xj58yoB7A7dquHBuiiuC7Xje1XXOugI6s6cz-h1SXdd8QKsD2GLXQqLFzffE"
 
 # Daily comeback-nudge sweep (worker.mjs `scheduled`): 16:00 UTC lands late
 # morning in the Americas / evening in Europe — when a "train today?" note is

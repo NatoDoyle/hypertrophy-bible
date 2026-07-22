@@ -252,6 +252,15 @@ try {
   const ldStored = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-1");
   ok("#21 local_date round-trips through the session whitelist", ldStored?.local_date === "2026-07-23");
 
+  // #23: push subscribe/unsubscribe round-trip through the real routes
+  const pushSub = { endpoint: "https://push.example.com/route-test", keys: { p256dh: "pk", auth: "ak" } };
+  const subRes = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: pushSub });
+  ok("#23 push subscribe stores the subscription", subRes.status === 200 && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint && s.user_id === ldUser));
+  const badSub = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: { endpoint: "http://insecure" } });
+  ok("#23 a non-https endpoint is rejected", badSub.status === 400);
+  await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint });
+  ok("#23 unsubscribe removes it", !(await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
+
   // #21: resuming a pause archives the window (the streak's neutral weeks survive)
   await json("POST", "/api/pause", { user_id: ldUser, on: true });
   await json("POST", "/api/pause", { user_id: ldUser, on: false });

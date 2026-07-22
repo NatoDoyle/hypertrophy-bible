@@ -13,7 +13,7 @@ const store = createFileStore(join(dir, ".data", "store.json"));
 // No RESEND_API_KEY locally -> the sender logs the magic link instead of mailing.
 const sendEmail = createEmailSender({ apiKey: process.env.RESEND_API_KEY, from: process.env.MAIL_FROM });
 // exposeDevLink: surface the magic link in the API response for local testing only.
-const app = createApp(store, { sendEmail, exposeDevLink: !process.env.RESEND_API_KEY });
+const app = createApp(store, { sendEmail, exposeDevLink: !process.env.RESEND_API_KEY, vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null });
 
 // Static frontend (API routes are registered first, so they win).
 app.get("/", serveStatic({ path: "./public/index.html" }));
