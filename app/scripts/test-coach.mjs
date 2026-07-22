@@ -1,7 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram } from "../src/kb.mjs";
-import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust } from "../src/coach.mjs";
+import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir } from "../src/coach.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -107,6 +107,28 @@ check("mesocycle: sets ramp 70%->peak across weeks 1-5, deload halves week 6, th
   const deload = buildToday(u, [], null, [], day(35));
   assert.equal(deload.block.phase, "deload");
   assert.equal(deload.exercises[0].rir, "3-4"); // comfortably shy of failure
+});
+
+check("#16 mesocycle wave creeps EFFORT like the KB table: W1 eased, W2-3 plan band, W4-5 tightened, deload 3-4", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+      { exercise: "barbell-bench-press", sets: 4, rep_range: "6-10", rir: "1-3" },
+      { exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "12-20", rir: "0-1" },
+    ] }] } };
+  const rirAt = (n) => buildToday(u, [], null, [], day(n)).exercises.map((e) => e.rir);
+  assert.deepEqual(rirAt(0), ["2-3", "1-2"]);  // wk1: one extra rep in the tank (KB: ~2-3 RIR)
+  assert.deepEqual(rirAt(14), ["1-3", "0-1"]); // wk3: the plan's own band
+  assert.deepEqual(rirAt(28), ["1-2", "0-1"]); // wk5 peak: far edge pulled in; compounds never cross 1 RIR
+  assert.deepEqual(rirAt(35), ["3-4", "3-4"]); // wk6 deload: comfortable
+});
+
+check("#16 waveRir never pushes a compound's near edge toward failure and passes junk through", () => {
+  assert.equal(waveRir("2-3", 1), "3-4");   // strength compounds ease too
+  assert.equal(waveRir("2-3", 5), "2-3");   // already a 1-wide band: peak leaves it alone
+  assert.equal(waveRir("0-1", 4), "0-1");   // isolations already at the KB edge
+  assert.equal(waveRir(undefined, 2), undefined); // no band -> untouched
 });
 
 check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {

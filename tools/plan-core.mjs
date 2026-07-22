@@ -64,7 +64,10 @@ const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 // practical time/joint-stress choice, NOT a fiber-type responsiveness claim
 // (the KB grades muscle-specific rep-range claims as weak). Matches how every
 // current top-level program runs laterals/rear-delts/calves/abs/forearms.
-const PUMP_MUSCLES = new Set(["side-delts", "rear-delts", "calves", "abs", "forearms", "neck"]);
+// ("neck" was removed as inert: no session archetype trains it, so the entry
+// could never fire — a dead entry reads like live behavior. Test #8-1 covers
+// the real neck path: the plan warns a neck-priority user to add direct work.)
+const PUMP_MUSCLES = new Set(["side-delts", "rear-delts", "calves", "abs", "forearms"]);
 
 // Muscles whose PRIMARY movement is an isolation (KB muscle guides): the
 // shoulders guide names lateral raises the side-delt priority — pressing
