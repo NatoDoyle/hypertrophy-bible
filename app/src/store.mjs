@@ -115,6 +115,14 @@ export function createFileStore(path) {
       flush();
       return db.accounts[email];
     },
+    // Comeback-nudge sweep: every email-bound user with their latest session
+    // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
+    async listAccountLastSessions() {
+      return Object.values(db.accounts).map((a) => ({
+        email: a.email, user_id: a.user_id,
+        last_date: (db.sessions[a.user_id] ?? []).reduce((m, s) => (s.date && (!m || s.date > m) ? s.date : m), null),
+      }));
+    },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
     async getMagicLink(tokenHash) { return db.magic_links[tokenHash] ?? null; },
     // Atomic single-use flip: returns true only if THIS call consumed the link

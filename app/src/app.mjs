@@ -300,7 +300,19 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const sessions = await store.listSessions(id);
-    return c.json(adherenceReport(user, sessions));
+    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true });
+  });
+
+  // Reminders opt-out (#4 nudges): a hard switch the comeback-email sweep
+  // respects unconditionally. Lives on the profile so it survives merges.
+  app.post("/api/reminders", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.profile = { ...(u.profile ?? {}), reminders_off: b.off === true };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ reminders_off: updated.profile.reminders_off === true });
   });
 
   // Safety rail: pause suspends all streak pressure with zero penalty (illness/injury).

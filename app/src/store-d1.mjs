@@ -123,6 +123,14 @@ export function createD1Store(db) {
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
     },
+    // Comeback-nudge sweep: every email-bound user with their latest session
+    // date (null when they've never logged one). Parity with the file store.
+    async listAccountLastSessions() {
+      const { results } = await db
+        .prepare("SELECT a.email, a.user_id, MAX(s.date) AS last_date FROM accounts a LEFT JOIN sessions s ON s.user_id = a.user_id GROUP BY a.email, a.user_id")
+        .all();
+      return results.map((r) => ({ email: r.email, user_id: r.user_id, last_date: r.last_date ?? null }));
+    },
     async saveAccount(email, user_id, verified_at) {
       await db
         .prepare("INSERT INTO accounts (email, user_id, verified_at) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, verified_at = excluded.verified_at")
