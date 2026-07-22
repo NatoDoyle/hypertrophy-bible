@@ -307,6 +307,25 @@ export function createApp(store, config = {}) {
     return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true });
   });
 
+  // --- Web Push device reminders (#4): subscribe/unsubscribe + the public key.
+  // The endpoint URL is the subscription's identity (unguessable); subscribing
+  // requires possession of the user_id, unsubscribing knowledge of the endpoint.
+  app.get("/api/push/key", (c) => c.json({ key: config.vapidPublicKey ?? null }));
+  app.post("/api/push/subscribe", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (!b.subscription?.endpoint || !/^https:\/\//.test(b.subscription.endpoint)) return c.json({ error: "bad-subscription" }, 400);
+    await store.savePushSubscription(b.user_id, b.subscription);
+    return c.json({ subscribed: true });
+  });
+  app.post("/api/push/unsubscribe", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.endpoint) return c.json({ error: "missing endpoint" }, 400);
+    await store.deletePushSubscription(b.endpoint);
+    return c.json({ subscribed: false });
+  });
+
   // Reminders opt-out (#4 nudges): a hard switch the comeback-email sweep
   // respects unconditionally. Lives on the profile so it survives merges.
   app.post("/api/reminders", async (c) => {

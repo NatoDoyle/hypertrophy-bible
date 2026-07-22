@@ -123,6 +123,25 @@ export function createD1Store(db) {
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
     },
+    // --- Web Push subscriptions (device reminders) — parity with the file store ---
+    async savePushSubscription(user_id, sub) {
+      await db
+        .prepare("INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth")
+        .bind(sub.endpoint, user_id, sub.keys?.p256dh ?? null, sub.keys?.auth ?? null, Date.now())
+        .run();
+      return { endpoint: sub.endpoint, user_id };
+    },
+    async deletePushSubscription(endpoint) {
+      await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run();
+    },
+    async listPushSubscriptions() {
+      const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();
+      return results;
+    },
+    async latestSessionDate(user_id) {
+      const row = await db.prepare("SELECT MAX(date) AS d FROM sessions WHERE user_id = ?").bind(user_id).first();
+      return row?.d ?? null;
+    },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Parity with the file store.
     async listAccountLastSessions() {

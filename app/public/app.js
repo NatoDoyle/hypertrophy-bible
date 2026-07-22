@@ -1378,7 +1378,12 @@ async function renderCoach() {
       ? `<div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays safely backed up either way." : "If you drift away, I'll email your account at most two gentle notes per break — never while you're paused."}</p>
       <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
       : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
-      <button class="btn secondary" id="nudges-acct">Create my account</button></div>`}`;
+      <button class="btn secondary" id="nudges-acct">Create my account</button></div>`}
+    ${("serviceWorker" in navigator && "PushManager" in window)
+      ? `<div class="card"><p class="muted">${localStorage.getItem("hb_push") === "1" ? "Device reminders are on — a quiet nudge when a session's waiting, never while paused." : "Or get a reminder right on this device — no email needed. One gentle nudge when a session's waiting; stops while you're paused and after ~3 weeks."}</p>
+      <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
+      <p class="muted" id="pushmsg"></p></div>`
+      : ""}`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
@@ -1410,6 +1415,30 @@ async function renderCoach() {
   };
   const acctBtn = $("#nudges-acct");
   if (acctBtn) acctBtn.onclick = () => { tab = "me"; render(); };
+  const pushBtn = $("#pushbtn");
+  if (pushBtn) pushBtn.onclick = async () => {
+    const msg = (t) => { $("#pushmsg").textContent = t; };
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (localStorage.getItem("hb_push") === "1") {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {}); await sub.unsubscribe(); }
+        localStorage.removeItem("hb_push");
+        say("Device reminders turned off."); await renderCoach(); $("#pushbtn")?.focus(); return;
+      }
+      const { key } = await api("/api/push/key");
+      if (!key) { msg("Device reminders aren't available right now."); return; }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { msg("No problem — you can enable notifications any time in your browser settings."); return; }
+      // base64url -> Uint8Array for applicationServerKey
+      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/"));
+      const appKey = new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON() }) });
+      localStorage.setItem("hb_push", "1");
+      say("Device reminders on."); await renderCoach(); $("#pushbtn")?.focus();
+    } catch { msg("📴 Couldn't set up device reminders — try again when you're online."); }
+  };
 }
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------

@@ -115,6 +115,18 @@ export function createFileStore(path) {
       flush();
       return db.accounts[email];
     },
+    // --- Web Push subscriptions (device reminders) ---
+    async savePushSubscription(user_id, sub) {
+      db.push_subscriptions ??= {};
+      db.push_subscriptions[sub.endpoint] = { endpoint: sub.endpoint, user_id, p256dh: sub.keys?.p256dh ?? null, auth: sub.keys?.auth ?? null, created_at: db.push_subscriptions[sub.endpoint]?.created_at ?? Date.now() };
+      flush();
+      return db.push_subscriptions[sub.endpoint];
+    },
+    async deletePushSubscription(endpoint) { if (db.push_subscriptions?.[endpoint]) { delete db.push_subscriptions[endpoint]; flush(); } },
+    async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
+    async latestSessionDate(user_id) {
+      return (db.sessions[user_id] ?? []).reduce((m, s) => (s.date && (!m || s.date > m) ? s.date : m), null);
+    },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
     async listAccountLastSessions() {
