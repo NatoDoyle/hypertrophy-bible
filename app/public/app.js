@@ -75,6 +75,11 @@ const DONATE_URL = "";
 // ---------- Offline write queue ----------
 // Logging must never be lost to a dead gym basement signal: failed POSTs wait
 // in localStorage and sync when the connection returns.
+// The user's LOCAL calendar day (YYYY-MM-DD) — for "today"-scoped UX flags like
+// the check-in dismissal. toISOString() is UTC: east of UTC it re-nagged the same
+// morning, west of UTC it suppressed the NEXT day's check-in. (Server-facing dates
+// keep ISO/UTC — this is only for what "today" means to the person holding the phone.)
+const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const QKEY = "hb_queue";
 const getQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } };
 const setQueue = (q) => localStorage.setItem(QKEY, JSON.stringify(q));
@@ -450,8 +455,15 @@ function drawEdit(critique) {
         const pool = poolFor(ex.exercise);
         if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; }
         // Never a silent dead button: with your equipment this may be the only lift
-        // for the muscle — say so instead of repainting an identical screen.
-        else { say("No alternative trains this muscle with your equipment."); alertBar(`${exName(ex.exercise)} is the only lift for this muscle with your equipment — use “+ Add exercise” (or create your own) instead.`); }
+        // for the muscle — say so. The notice must be shown AFTER the repaint
+        // (drawEdit rebuilds app.innerHTML, which would destroy it), so repaint
+        // first, then attach the alert to the fresh DOM and stop.
+        else {
+          say("No alternative trains this muscle with your equipment.");
+          drawEdit(critique);
+          alertBar(`${exName(ex.exercise)} is the only lift for this muscle with your equipment — use “+ Add exercise” (or create your own) instead.`);
+          return;
+        }
       }
     }
     drawEdit(critique);
@@ -560,7 +572,7 @@ async function renderToday() {
   // "Skip today" and a finished workout both dismiss the offer FOR THE DAY —
   // re-asking after either makes "optional" feel like a nag (and post-workout the
   // check-in can't tune anything anyway).
-  const ckDismissed = localStorage.getItem("hb_ck_dismissed") === new Date().toISOString().slice(0, 10);
+  const ckDismissed = localStorage.getItem("hb_ck_dismissed") === localDay();
   const readinessCard = s.readiness == null
     ? (ckDismissed ? "" : `<div class="card"><b>How are you feeling today?</b>
         <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
@@ -617,7 +629,7 @@ function renderCheckin() {
     $("#skipck").onclick = () => {
       // Honour the word "Skip TODAY": remember for the day so returning to the
       // Today tab doesn't immediately re-ask — optional must never nag.
-      try { localStorage.setItem("hb_ck_dismissed", new Date().toISOString().slice(0, 10)); } catch {}
+      try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
       tab = "today"; render();
     };
   };
@@ -995,6 +1007,7 @@ function renderExerciseSheet(ex, d) {
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
     ${chips ? `<p>${chips}</p>` : ""}
+    ${d?.resistance_profile ? `<p class="muted">📈 <b>Where it's hardest:</b> ${esc(d.resistance_profile)}</p>` : ""}
     ${steps ? `<h2>Step by step</h2>${steps}` : ""}
     ${cues ? `<h2>Coaching cues</h2>${cues}` : (!steps ? `<p class="muted">No cues on file for this one.</p>` : "")}
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
@@ -1119,7 +1132,7 @@ async function finish() {
   clearSess();
   // Today's training is done, so the check-in can no longer tune anything —
   // don't re-offer it when Recap routes back to Today.
-  try { localStorage.setItem("hb_ck_dismissed", new Date().toISOString().slice(0, 10)); } catch {}
+  try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
 }
@@ -1290,9 +1303,13 @@ function renderMe() {
     // is a lie for those. Name the risk explicitly before erasing.
     const queued = getQueue().length;
     const inProgress = sess?.logged?.length ?? 0;
-    const atRisk = queued || inProgress;
-    const warn = atRisk
-      ? `⚠️ You have ${queued ? "a logged workout that hasn't reached the server yet (offline)" : "an in-progress workout"} on this device. Resetting DELETES it permanently — it is NOT in any backup. Erase anyway?`
+    // Name every risk that actually applies, in honest terms — the queue can hold
+    // workouts AND bodyweight weigh-ins, so "a logged workout" would sometimes lie.
+    const risks = [];
+    if (inProgress) risks.push("an in-progress workout");
+    if (queued) risks.push("unsynced training data that hasn't reached the server yet");
+    const warn = risks.length
+      ? `⚠️ You have ${risks.join(" and ")} on this device. Resetting DELETES ${risks.length > 1 ? "them" : "it"} permanently — ${risks.length > 1 ? "they are" : "it is"} NOT in any backup. Erase anyway?`
       : "Erase this device's link to your data and start over? If you've backed up to an email, that stays safe and you can restore it.";
     if (confirm(warn)) {
       // clearSess() first: localStorage.clear() alone leaves the in-memory `sess`

@@ -469,6 +469,10 @@ export function createApp(store, config = {}) {
       good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],
       loading_bias: e.loading_bias ?? null, cns_cost: e.cns_cost ?? null,
       difficulty: e.difficulty ?? null,
+      // Where in the ROM the lift is hardest and why — the sheet renders it as a
+      // one-line coaching note. (This whitelist has silently dropped a field
+      // before; test-routes asserts the contract.)
+      resistance_profile: e.resistance_profile ?? null,
     });
   });
 

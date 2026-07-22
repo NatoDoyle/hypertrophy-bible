@@ -122,6 +122,28 @@ These are real failures from previous iterations. Each is now a standing check.
    code. Two of the four diagnosed plan issues were real (1-set filler, bodyweight-when-loaded) and
    got fixed; two were not, and were deliberately left alone.
 
+## Token discipline (the loop must be affordable to keep running)
+
+Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
+wiped mid-flight by usage limits — while confirmed yield per audit had converged to 2–10 defects
+and every confirmed finding was re-verified inline by the main loop before fixing anyway. Rules:
+
+1. **Inline verification by default.** Finder agents return candidates; the main loop verifies
+   each by reading the code before fixing — no verify-agent fan-out for code-groundable claims.
+   At most ONE skeptic agent, only for domain-judgment claims (exercise science, evidence grades)
+   where an independent perspective genuinely adds signal. (Iteration-13 proof: 4 candidates
+   verified inline in a handful of tool calls; the 8 planned verify agents would have cost ~10×.)
+2. **Effort caps in workflows.** Agents never inherit session effort: finders `effort:'high'`;
+   mechanical stages (grep sweeps, test runs) `effort:'low'` and/or `model:'haiku'`.
+3. **Diff-scoped audits.** Lens-C audits read `git diff <last-audited>..HEAD`, not whole
+   surfaces. Full-surface sweeps only for surfaces never audited before.
+4. **Fan-out caps.** ≤4 finders per audit, ≤5 candidates each, one workflow per iteration.
+5. **Small data tasks go inline.** Short-text authoring (≲30 items) is done in the main loop —
+   the 29-line resistance_profile backfill cost 1.07M tokens via 33 agents; inline is ~10× cheaper.
+6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
+   completed agents replay free from cache. A relaunch re-buys everything.
+7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+
 ## Guardrails (never traded away for a metric)
 
 - **Never fabricate a citation.** PubMed + Crossref verified, or it doesn't ship
