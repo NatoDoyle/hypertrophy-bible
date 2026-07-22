@@ -52,10 +52,13 @@ const REP_SCHEMES = {
 };
 const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 
-// Small muscles that respond well to (and are universally trained with) higher-rep
-// "pump" isolation work — short moment arms, low axial cost, fast recovery. Every
-// current top-level program (Olympia-tier splits and evidence-based templates
-// alike) runs laterals/rear-delts/calves/abs/forearms in the 12-20 zone.
+// Small muscles whose isolation work runs higher-rep "pump" ranges in practice.
+// This is the KB's own guidance (intensity page: hypertrophy is load-flexible
+// ~5-30 reps near failure; "isolation and machine work often going a bit higher,
+// ~12-20... very light high reps for small muscles and finishing work") — a
+// practical time/joint-stress choice, NOT a fiber-type responsiveness claim
+// (the KB grades muscle-specific rep-range claims as weak). Matches how every
+// current top-level program runs laterals/rear-delts/calves/abs/forearms.
 const PUMP_MUSCLES = new Set(["side-delts", "rear-delts", "calves", "abs", "forearms", "neck"]);
 
 // Muscles trained ISOLATION-FIRST in practice: nobody's primary side-delt lift is
@@ -506,7 +509,7 @@ export function generatePlan(profile, kb, opts = {}) {
         for (const m of order) {
           if (!DIRECT_ISO.has(m) || (isoCredited[m] ?? 0) >= 2 || perTarget(m) < 3 || holdMaint(m) || !room()) continue;
           const ex = pickFrom(isoPool[m], m);
-          if (ex) add(ex, Math.min(3, Math.max(2, perTarget(m) - Math.floor(credited[m] ?? 0))), m, ["direct work — compound assistance doesn't replace it", ex.lengthened_bias ? "lengthened-biased" : "isolation for " + m]);
+          if (ex) add(ex, Math.min(3, Math.max(2, perTarget(m) - Math.floor(credited[m] ?? 0))), m, ["dedicated isolation — focused, full-range sets of its own", ex.lengthened_bias ? "lengthened-biased" : "isolation for " + m]);
         }
         // (b) WEEKLY KNEE-FLEXION for hamstrings: hip hinges leave the short head
         //     of the biceps femoris untrained (it only crosses the knee) — leg
@@ -603,16 +606,19 @@ export function generatePlan(profile, kb, opts = {}) {
     // systemic work first while you're fresh — high-CNS compounds (squats,
     // deadlifts), then the remaining compounds, then isolations. Every credible
     // program orders the big lift first; the engine was burying deadlifts
-    // mid-session behind whatever pass happened to place first. The app's own
-    // critique checks compound-before-isolation; this keeps that and sharpens it.
+    // mid-session behind whatever pass happened to place first. Within each tier,
+    // PRIORITY-muscle exercises lead (KB exercise-order page: do priority work
+    // early while fresh — Grade D, effects modest, so we honour it without
+    // breaking compound-before-isolation, which the app's own critique checks).
     items.sort((a, b) => {
-      const tier = (it) => {
+      const key = (it) => {
         const x = exById.get(it.exercise);
-        if (!x) return 9;
-        if (x.mechanic === "isolation") return 3;
-        return x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
+        if (!x) return 99;
+        const tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
+        const pri = (x.primary_muscles ?? []).some((m) => priority.has(m)) ? 0 : 1;
+        return tier * 2 + pri;
       };
-      return tier(a) - tier(b);
+      return key(a) - key(b);
     });
     return { name: spec.name, exercises: items };
   });
