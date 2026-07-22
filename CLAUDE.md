@@ -8,7 +8,7 @@ Two synchronized deliverables in one repo:
 1. **The knowledge base** — an evidence-based, fully-cited hypertrophy KB. Prose in `content/` (ten pillars) mirrored as machine-readable JSON in `data/` (validated against `data/schemas/`). Every substantive claim carries a real web-verified citation (PMID/DOI) and an A–D evidence grade.
 2. **The coaching app** (`app/`) — a no-build vanilla-JS PWA + a Hono API that turns the KB into one screen a day. Runs from **one codebase** on Node locally (file store) and Cloudflare Workers + D1 in production.
 
-The north star and the self-improvement process live in `docs/improvement-loop.md`; authoring rules in `STYLE.md`.
+The north star and the self-improvement process live in `docs/improvement-loop.md` — including its **Token discipline** section (inline verification over verify-agent fan-outs, effort caps, diff-scoped audits), which governs how agent workflows are run in this repo; authoring rules in `STYLE.md`.
 
 ## Commands
 

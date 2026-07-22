@@ -176,6 +176,10 @@ try {
     Array.isArray(kbSwing.execution_steps) && kbSwing.execution_steps.length > 0 &&
     Array.isArray(kbSwing.good_when) && Array.isArray(kbSwing.bad_when) &&
     kbSwing.loading_bias === "mid-range" && kbSwing.cns_cost === "moderate");
+  // #13-2 resistance_profile must survive the route whitelist (100% data coverage
+  // shipped in Wave 12 was unreachable by the client until this contract existed).
+  ok("#13-2 exercise detail carries resistance_profile through the whitelist",
+    typeof kbSwing.resistance_profile === "string" && kbSwing.resistance_profile.length > 10);
 
   // #2 AUTO-TUNE: a lift that stalls across a block bumps that muscle's volume in the
   // NEXT block (bounded to MEV↔MRV), driven by the user's own logged response.
