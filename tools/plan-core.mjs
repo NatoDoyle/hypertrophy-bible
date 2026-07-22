@@ -444,13 +444,21 @@ export function generatePlan(profile, kb, opts = {}) {
     // identical curl+raise days with no squat, hinge, or press. Each priority gets
     // ONE exercise of ≤3 sets here (the 4b residual pass tops it up later), and the
     // whole pass stops at half the budget so pattern coverage below can still run.
+    // Under a SPECIALIZATION block the priority muscle takes a SECOND exercise in
+    // this pass (still inside priorityBudget): the block's contract is that
+    // maintenance-dosed muscles freed the budget to pay for the priority, but the
+    // first-serve/staple passes were filling all 8 exercise slots (wrist curls
+    // included) before the priority could double — chest specialization was
+    // delivering 8 of a 22-set target with budget left unused.
     const priorityBudget = Math.max(compoundSets + 1, Math.ceil(setBudget / 2));
-    for (const m of order) {
-      if (!priority.has(m) || setsUsed >= priorityBudget || (credited[m] ?? 0) >= perTarget(m)) continue;
-      const pool = poolFor(m);
-      if (!pool.length) continue;
-      const ex = pickFrom(pool, m);
-      if (ex) add(ex, Math.min(perTarget(m), 3, EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+    for (const round of specialization ? [0, 1] : [0]) {
+      for (const m of order) {
+        if (!priority.has(m) || setsUsed >= priorityBudget || (credited[m] ?? 0) >= perTarget(m)) continue;
+        const pool = poolFor(m);
+        if (!pool.length) continue;
+        const ex = pickFrom(pool, m);
+        if (ex) add(ex, Math.min(perTarget(m), 3, EX_SET_CAP), m, ["priority muscle — served first", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+      }
     }
 
     // 4a¼) WEEKLY COVERAGE FLOOR: before this session doubles up on big muscles,
@@ -460,7 +468,13 @@ export function generatePlan(profile, kb, opts = {}) {
     // PLACE_ORDER), and specialization-maintenance muscles were dropping to zero
     // rather than their maintenance floor. Runs BEFORE pattern-coverage doubling.
     for (const m of order) {
-      if (weekServed.has(m) || (credited[m] ?? 0) >= perTarget(m) || !room()) continue;
+      // (direct[m] > 0): a muscle already holding direct sets THIS session (the
+      // 4a0 priority pass, or a compound placed for a neighbour) is served — the
+      // floor exists for muscles with NOTHING, and `order` is priority-first, so
+      // without this check a priority arm just served by 4a0 took a SECOND
+      // isolation labeled "weekly coverage" while chest/lats/glutes had zero
+      // (beginner 2-day arm-priority weeks shipped with one compound total).
+      if (weekServed.has(m) || (direct[m] ?? 0) > 0 || (credited[m] ?? 0) >= perTarget(m) || !room()) continue;
       const pool = poolFor(m);
       if (!pool.length) continue;
       const ex = pickFrom(pool, m);
@@ -578,8 +592,14 @@ export function generatePlan(profile, kb, opts = {}) {
     for (const m of order) {
       for (let k = 0; k < 2; k++) {
         const residual = perTarget(m) - (credited[m] ?? 0);
-        if (residual < 1 || !room()) break;
+        // topUp GROWS an existing exercise — it needs set budget, not an exercise
+        // slot, so it must not sit behind room()'s 8-exercise cap (the staple
+        // passes routinely fill a session to exactly 8 with sets to spare, which
+        // was silently disabling every top-up: chest specialization delivered 8
+        // of a 22-set target while sessions left 4 budgeted sets unused).
+        if (residual < 1 || setsUsed >= setBudget) break;
         if (topUp(m, residual)) continue;
+        if (!room()) break; // adding a NEW exercise still needs a free slot
         if (!isoPool[m].length) break;
         // While the week still lacks knee-flexion work, a hamstring isolation slot
         // is a LEG-CURL slot — the hinge work already placed covers everything but

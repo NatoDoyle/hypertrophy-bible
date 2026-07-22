@@ -200,6 +200,27 @@ ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan ca
   ok("#14i no session gives any muscle more than 10 direct sets (KB session-quality window)", [...grid, ...prioGrid].every((pl) => directDose(pl).every((n) => n <= 10)));
   const tightCap = generatePlan({ user_id: "cap-knob", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: FULLG }, kb, { perMuscleSessionCap: 6 });
   ok("#14i the perMuscleSessionCap knob actually binds (a declared cap must be enforced)", directDose(tightCap).every((n) => n <= 6));
+
+  // --- #15 Wave-15: coverage-floor and top-up delivery invariants ---
+  // (a) the coverage floor serves UNSERVED muscles — a priority muscle already
+  // served this session must not double-dip it. The regression: beginner 2-day
+  // arm-priority weeks shipped a session with ONE compound and four arm
+  // isolations; glutes projected 1 set vs a 4-set MEV.
+  const armPri = generatePlan({ user_id: "w15-arm-pri", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 90, available_equipment: FULLG, priority_muscles: ["biceps", "triceps"] }, kb);
+  ok("#15a arm-priority beginner sessions still carry >=2 compounds each (no isolation takeover)",
+    armPri.program.sessions.every((s) => s.exercises.filter((e) => exMeta[e.exercise]?.mechanic === "compound").length >= 2));
+  ok("#15a arm-priority beginner week still serves glutes at >= MEV",
+    armPri.rationale.volume_by_muscle.glutes.projected_sets >= muscleById.get("glutes").landmarks.mev.min);
+  ok("#15a the priority muscles themselves stay fully served",
+    ["biceps", "triceps"].every((m) => armPri.rationale.volume_by_muscle[m].projected_sets >= armPri.rationale.volume_by_muscle[m].target_sets - 1));
+  // (b) specialization actually DELIVERS: top-up must not sit behind the
+  // 8-exercise cap (it grows existing lifts, needing set budget only), and the
+  // priority muscle may take a second exercise before coverage passes fill the
+  // slots. The regression: chest spec delivered 8 of a 22-set target while
+  // sessions left 4 budgeted sets unused.
+  const chestSpec = generatePlan({ user_id: "w15-chest-spec", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 90, available_equipment: FULLG, priority_muscles: ["chest"], specialization: true }, kb);
+  ok("#15b chest specialization delivers >= 12 weekly sets toward its ceiling (was 8)",
+    chestSpec.rationale.volume_by_muscle.chest.projected_sets >= 12);
 }
 
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +

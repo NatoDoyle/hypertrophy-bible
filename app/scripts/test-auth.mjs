@@ -87,6 +87,17 @@ try {
   ok("first claim binds userA", firstConsumed.user_id === "userA");
   ok("second claim of same email ADOPTS userA (no clobber)", secondConsumed.user_id === "userA");
   ok("account still points at the first claimant", (await store.getAccountByEmail("dup@t.com")).user_id === "userA");
+  // #15: the adopted claim IS a restore from userB's side — reporting "claim"
+  // suppressed the merge grant + merge offer, stranding userB's synced workouts
+  // on an unreachable anonymous user forever.
+  ok("first claim (bound its own user) stays purpose 'claim'", firstConsumed.purpose === "claim");
+  ok("second claim (adopted a DIFFERENT user) reports purpose 'restore' so the merge path opens", secondConsumed.purpose === "restore");
+  // two claim links minted while unbound, both consumed by the SAME user:
+  // the second adopts its own binding — nothing to merge, stays a claim
+  const sameA = await requestMagicLink(store, { email: "dup2@t.com", anonUserId: "userA" });
+  const sameB = await requestMagicLink(store, { email: "dup2@t.com", anonUserId: "userA" });
+  await consumeMagicLink(store, { token: sameA.token });
+  ok("duplicate claim by the SAME user stays purpose 'claim' (nothing to merge)", (await consumeMagicLink(store, { token: sameB.token })).purpose === "claim");
 
   // --- merge-on-restore (store level) ---
   await store.saveUser("acct-user", { profile: {} });

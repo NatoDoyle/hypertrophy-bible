@@ -101,5 +101,12 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
   // markMagicLinkUsed returns false and we bail — the link is truly single-use.
   if (!(await store.markMagicLinkUsed(link.token_hash))) return { error: "used" };
   await store.saveAccount(link.email, boundUserId, new Date(now).toISOString());
-  return { user_id: boundUserId, email: link.email, purpose: link.purpose };
+  // Return the EFFECTIVE purpose: a claim that adopted an EARLIER binding (a
+  // different user than this link's own) IS a restore from the caller's side —
+  // their device holds its own anonymous user whose synced workouts would be
+  // stranded on switch. Reporting "claim" here suppressed the merge grant and
+  // the merge offer in verify.html, silently abandoning that data. A claim that
+  // bound its own user stays a claim (nothing to merge).
+  const purpose = link.purpose === "claim" && boundUserId !== link.user_id ? "restore" : link.purpose;
+  return { user_id: boundUserId, email: link.email, purpose };
 }

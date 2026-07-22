@@ -122,6 +122,19 @@ These are real failures from previous iterations. Each is now a standing check.
    code. Two of the four diagnosed plan issues were real (1-set filler, bodyweight-when-loaded) and
    got fixed; two were not, and were deliberately left alone.
 
+14. **A declared-but-unused tunable is a silent contradiction.** `perMuscleSessionCap` sat in
+   `plan-core.mjs` with a sensible default for three waves, reading like a working guard — while
+   advanced sessions stacked 12 direct glute sets. Two halves to the lesson: (a) **grep every
+   tunable/option for a live use site** — a knob that binds nothing actively hides the gap it
+   names; (b) **enforce an invariant at the point of mutation, not in the target arithmetic** —
+   the 12-set day had legal per-muscle target math; the overshoot accumulated through
+   cross-credit side-paths (squat/hinge variants each placed for a *different* muscle, all
+   crediting glutes as primary), so capping `perTarget` alone could never have fixed it. Bonus
+   Lesson-13 confirmation: two of the audit's four candidate contradictions were falsified before
+   fixing — one by the KB's own template data (the variety cap "forbidding" a 3×/week lift the
+   beginner template never actually programs), one by reading the KB's permissive language
+   closely ("can... sometimes should" is not a prescription).
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
