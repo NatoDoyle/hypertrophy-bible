@@ -106,8 +106,12 @@ ok("#8-1 no plan nags to add direct neck work when neck was never prioritised", 
 const neckPri = generatePlan({ user_id: "neck-pri", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["neck"] }, kb);
 ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan can't fit it)", (neckPri.rationale.warnings ?? []).some((w) => w.muscle === "neck"));
 
-// --- #14 pro-informed programming invariants (Wave 14: audited against current
-// Olympia-tier splits — Lunsford PPL×2 / Dauda body-part canon).
+// --- #14 programming-quality invariants. Each is anchored to a KB evidence page
+// (see the comments in plan-core.mjs); provenance: Wave 14 cross-checked the
+// engine's output against current Olympia-tier splits, then Waves 14c/14d
+// re-audited every rule against the KB itself — the science is the authority,
+// elite practice only ever corroborates (the KB grades elite comparisons a
+// contaminated benchmark: genetics + PEDs).
 {
   const exMeta = Object.fromEntries(exercises.map((e) => [e.id, e]));
   const FULLG = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
@@ -132,14 +136,16 @@ ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan ca
     return Object.values(cnt).some((n) => n > 2);
   }));
   ok("#14c no session stacks 3+ compounds of the same movement pattern (e.g. triple hinge)", patternStacks.length === 0);
-  // (d) direct arm + delt work for int/adv: curls, triceps isolation, and lateral-raise
-  // family appear somewhere in the week — compound credit alone never covers them
-  const iaGrid = grid.filter((pl) => pl.meta.generated_from.training_status !== "beginner" && pl.meta.generated_from.days_per_week >= 3);
+  // (d) direct arm + delt work at EVERY training status (3+ days): curls, triceps
+  // isolation, and lateral-raise family appear somewhere in the week — compound
+  // credit alone never covers them. Beginners included (Wave 14d: the KB's own
+  // beginner template programs curls/extensions/laterals, and the engine does too).
+  const iaGrid = grid.filter((pl) => pl.meta.generated_from.days_per_week >= 3);
   const missingDirect = iaGrid.filter((pl) => {
     const isoFor = (m) => pl.program.sessions.flatMap((s) => s.exercises).some((e) => { const x = exMeta[e.exercise]; return x?.mechanic === "isolation" && (x.primary_muscles ?? []).includes(m); });
     return !(isoFor("biceps") && isoFor("triceps") && isoFor("side-delts"));
   });
-  ok("#14d int/adv weeks include DIRECT biceps + triceps + side-delt isolation work", missingDirect.length === 0);
+  ok("#14d every 3+-day week includes DIRECT biceps + triceps + side-delt isolation work", missingDirect.length === 0);
   // (e) weekly knee-flexion: hinges don't train the hamstrings' short head — every
   // int/adv full-gym week includes a leg-curl-pattern exercise. Scoped to >=4 days:
   // a 3-day 60-min full-body (48 quality sets across 11 muscles) is the one shape
@@ -165,6 +171,35 @@ ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan ca
     return pump && e.rep_range !== "12-20";
   });
   ok("#14g small-muscle isolation work runs the 12-20 pump band", wrongBand.length === 0);
+  // (h) isolation RIR follows the KB (proximity-to-failure, Grade B): 0-1 on
+  // isolation/machine work for every growth goal — failure there is safe and
+  // cheap. Wave 14d: the engine ran isolations at 0-2 while its own priority
+  // isolations and all five KB program templates said 0-1. Strength keeps a
+  // deliberate reserve on accessories.
+  const growthGoals = ["hypertrophy", "recomposition", "fat-loss"].flatMap((goal) =>
+    ["beginner", "advanced"].map((st) =>
+      generatePlan({ user_id: `rir-${goal}-${st}`, training_status: st, primary_goal: goal, days_per_week: 4, session_length_min: 60, available_equipment: FULLG }, kb)));
+  const wrongRir = [...grid, ...growthGoals].flatMap((pl) => pl.program.sessions.flatMap((s) => s.exercises))
+    .filter((e) => exMeta[e.exercise]?.mechanic === "isolation" && e.rir !== "0-1");
+  ok("#14h isolation work is prescribed at 0-1 RIR on every growth goal (KB Grade B)", wrongRir.length === 0);
+  const strengthPlan = generatePlan({ user_id: "rir-strength", training_status: "intermediate", primary_goal: "strength", days_per_week: 4, session_length_min: 60, available_equipment: FULLG }, kb);
+  ok("#14h strength keeps an RIR reserve on isolations (fatigue budget goes to the heavy lifts)", strengthPlan.program.sessions.flatMap((s) => s.exercises).every((e) => exMeta[e.exercise]?.mechanic !== "isolation" || e.rir !== "0-1"));
+  // (i) per-muscle SESSION-QUALITY cap (KB frequency page, Grade C: ~6-10 hard
+  // sets per muscle per session before quality drops — "add a day rather than
+  // cramming"). Wave 14d: opts.perMuscleSessionCap was declared and never
+  // enforced; advanced Lower days stacked 12 direct glute sets via cross-credit
+  // (squat/hinge variants each placed for a different muscle). Checked on every
+  // dose path — add, top-up, and superset rescue — including priority profiles.
+  const directDose = (pl) => pl.program.sessions.flatMap((s) => {
+    const d = {};
+    for (const e of s.exercises) for (const m of exMeta[e.exercise]?.primary_muscles ?? []) d[m] = (d[m] ?? 0) + e.sets;
+    return Object.values(d);
+  });
+  const prioGrid = [["chest"], ["side-delts"], ["biceps", "triceps"]].map((pm) =>
+    generatePlan({ user_id: `cap-${pm.join("-")}`, training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90, available_equipment: FULLG, priority_muscles: pm }, kb));
+  ok("#14i no session gives any muscle more than 10 direct sets (KB session-quality window)", [...grid, ...prioGrid].every((pl) => directDose(pl).every((n) => n <= 10)));
+  const tightCap = generatePlan({ user_id: "cap-knob", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: FULLG }, kb, { perMuscleSessionCap: 6 });
+  ok("#14i the perMuscleSessionCap knob actually binds (a declared cap must be enforced)", directDose(tightCap).every((n) => n <= 6));
 }
 
 // --- #1 cns_cost-aware: no session stacks more than 2 high-CNS COMPOUNDS. Squat +
