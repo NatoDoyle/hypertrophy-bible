@@ -206,6 +206,11 @@ function renderOnboarding() {
       if (r.sent === false) { $("#rmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendrestore").disabled = false; return; }
       $("#rmsg").innerHTML = "If that email has a backup, a restore link is on its way — it works once and expires in 30 minutes."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+      // Typos are the common failure here (a wrong-but-valid email still shows the
+      // hedged success line) — always leave a way to correct and resend in place,
+      // never a permanently dead button.
+      $("#sendrestore").disabled = false;
+      $("#sendrestore").textContent = "Resend / use a different email";
     };
     return;
   }
@@ -283,13 +288,17 @@ async function submitOnboarding() {
     specialization: priority.length ? answers.specialization === true : false,
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
-  localStorage.setItem("hb_units", profile.units); // remember display preference
+  // NOTE: the display-unit preference (hb_units) is written only on the SUCCESS
+  // paths below — flipping it before the API call meant a failed save showed
+  // "Your settings weren't changed" while the whole app had already switched
+  // kg↔lb, contradicting both the copy and the server profile.
   // Settings edit: same wizard, but the profile updates the EXISTING user and the
   // plan regenerates — never a new identity.
   if (settingsMode) {
     let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile }) }); } catch { r = {}; }
     if (r.program) {
       settingsMode = false;
+      localStorage.setItem("hb_units", profile.units); // saved server-side — now the display can follow
       localStorage.setItem("hb_program", r.program.name);
       return renderPlanExplain(false); // show the regenerated plan immediately
     }
@@ -306,6 +315,7 @@ async function submitOnboarding() {
   catch { res = {}; }
   if (res.user_id) {
     uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name);
+    localStorage.setItem("hb_units", profile.units); // remember display preference (only once onboarding actually succeeded)
     localStorage.removeItem(ONB_KEY); // answers safely handed off; stop persisting them
     return renderPlanExplain(true);
   }
@@ -436,7 +446,13 @@ function drawEdit(critique) {
       pendingRm = null; // any other action cancels a pending removal
       if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
       else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
-      else if (act === "swap") { const pool = poolFor(ex.exercise); if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; } }
+      else if (act === "swap") {
+        const pool = poolFor(ex.exercise);
+        if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; }
+        // Never a silent dead button: with your equipment this may be the only lift
+        // for the muscle — say so instead of repainting an identical screen.
+        else { say("No alternative trains this muscle with your equipment."); alertBar(`${exName(ex.exercise)} is the only lift for this muscle with your equipment — use “+ Add exercise” (or create your own) instead.`); }
+      }
     }
     drawEdit(critique);
   });
@@ -541,10 +557,14 @@ async function renderToday() {
     ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
   const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b>${e.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""}${e.superset_with_name ? ` · <b>🔗 superset with ${esc(e.superset_with_name)}</b>` : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
+  // "Skip today" and a finished workout both dismiss the offer FOR THE DAY —
+  // re-asking after either makes "optional" feel like a nag (and post-workout the
+  // check-in can't tune anything anyway).
+  const ckDismissed = localStorage.getItem("hb_ck_dismissed") === new Date().toISOString().slice(0, 10);
   const readinessCard = s.readiness == null
-    ? `<div class="card"><b>How are you feeling today?</b>
+    ? (ckDismissed ? "" : `<div class="card"><b>How are you feeling today?</b>
         <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
-        <button class="btn secondary" id="checkin">Quick check-in</button></div>`
+        <button class="btn secondary" id="checkin">Quick check-in</button></div>`)
     : (s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "");
   // A brand-new lifter's very first session gets a reassuring walkthrough up top.
   const firstTimer = s.day_number === 1
@@ -564,7 +584,7 @@ async function renderToday() {
       <button class="btn" id="start">Start workout</button></div>
     <h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`;
   $("#start").onclick = () => startSession(s);
-  if (s.readiness == null) $("#checkin").onclick = renderCheckin;
+  if ($("#checkin")) $("#checkin").onclick = renderCheckin;
   wireLearnLinks();
   if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
 }
@@ -594,7 +614,12 @@ function renderCheckin() {
       catch { say("Offline — check-in skipped."); pendingNotice = "📴 Offline — today\u2019s check-in was skipped (it only tunes today\u2019s session)."; } // never queued: a stale one would lie tomorrow
       tab = "today"; render();
     };
-    $("#skipck").onclick = () => { tab = "today"; render(); };
+    $("#skipck").onclick = () => {
+      // Honour the word "Skip TODAY": remember for the day so returning to the
+      // Today tab doesn't immediately re-ask — optional must never nag.
+      try { localStorage.setItem("hb_ck_dismissed", new Date().toISOString().slice(0, 10)); } catch {}
+      tab = "today"; render();
+    };
   };
   draw();
 }
@@ -685,8 +710,11 @@ function weightStepper(w, isBodyweight, idx) {
     return `<div class="stepper"><label>Weight</label><div class="val" style="font-size:1.05rem;font-weight:700">Bodyweight <span class="muted" style="font-weight:400">(just you)</span></div><button class="wt-add" data-w="${wInc()}"${di} aria-label="add weight">+ add weight</button></div>`;
   }
   const tag = isBodyweight ? "+" : "", suffix = isBodyweight ? " added" : "";
-  return `<div class="stepper"><label>Weight</label><button data-w="-${wInc()}"${di} aria-label="less weight">–</button><div class="val">${tag}${w} ${unitLabel()}${suffix}</div><button data-w="${wInc()}"${di} aria-label="more weight">+</button></div>`;
+  return `<div class="stepper"><label>Weight</label><button data-w="-${wInc()}"${di} aria-label="less weight">–</button><div class="val" aria-live="polite">${tag}${w} ${unitLabel()}${suffix}</div><button data-w="${wInc()}"${di} aria-label="more weight">+</button></div>`;
 }
+// Update the value display beside a tapped stepper button IN PLACE — the aria-live
+// region announces it, and the button stays in the DOM so focus survives the tap.
+function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".val"); if (v) v.textContent = text; }
 
 // ---------- Superset helpers ----------
 // Pure session logic (superset ordering + banked-set progress) lives in
@@ -763,7 +791,7 @@ function renderPlayer(resting = 0) {
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
       ${weightStepper(w, e.equipment === "bodyweight", null)}
-      <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
+      <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
@@ -776,9 +804,21 @@ function renderPlayer(resting = 0) {
   if ($("#swap")) $("#swap").onclick = () => renderSwap();
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
 
-  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; sess.weights[sess.i] = Math.max(0, Math.round((sess.weights[sess.i] + +b.dataset.w) * 4) / 4); saveSess(); renderPlayer(); });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); renderPlayer(); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); renderPlayer(); });
+  // In-place stepper updates: a full repaint on every tap destroys the tapped
+  // button (dumping keyboard/screen-reader focus) and never announces the new
+  // value. Update the adjacent aria-live .val instead; only re-render when the
+  // stepper changes SHAPE (bodyweight "+ add weight" ↔ loaded −/+ stepper).
+  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
+    quitPending = false;
+    const was = sess.weights[sess.i];
+    sess.weights[sess.i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
+    saveSess();
+    const bw = e.equipment === "bodyweight";
+    if (bw && (was === 0 || sess.weights[sess.i] === 0)) return renderPlayer();
+    setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
+  });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[sess.i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[sess.i]); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -793,7 +833,9 @@ function renderPlayer(resting = 0) {
   };
   $("#done").onclick = () => {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(w), reps, ...(rirOn() ? { rir } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
+    // Read the CURRENT sess values, not the render-time consts — the steppers now
+    // update in place without re-rendering, so the consts can be stale.
+    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -853,7 +895,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
-      <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
+      <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
@@ -864,11 +906,23 @@ function renderSupersetStation(L, P, resting = 0) {
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
     <button class="btn" id="doner">Done — round ${round + 1} of ${paired}</button>
+    <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
-  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.weights[i] = Math.max(0, Math.round((sess.weights[i] + +b.dataset.w) * 4) / 4); saveSess(); renderSupersetStation(L, P, 0); });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); renderSupersetStation(L, P, 0); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); renderSupersetStation(L, P, 0); });
+  // In-place stepper updates (same rationale as the single-exercise player): keep
+  // the tapped button alive for focus, let aria-live announce; re-render only when
+  // a bodyweight stepper changes shape. #doner reads sess.* at click time already.
+  app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
+    quitPending = false;
+    const i = +b.dataset.i, was = sess.weights[i];
+    sess.weights[i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
+    saveSess();
+    const bw = sess.ex[i].equipment === "bodyweight";
+    if (bw && (was === 0 || sess.weights[i] === 0)) return renderSupersetStation(L, P, 0);
+    setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
+  });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[i]); });
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -896,6 +950,22 @@ function renderSupersetStation(L, P, resting = 0) {
     // A rest only when the next move is this pair's own remainder (it follows the
     // last round); moving on to a fresh exercise starts clean, like any handoff.
     renderPlayer(nx === L || nx === P ? 60 : 0);
+  };
+  $("#unlink").onclick = () => {
+    // The busy-machine escape hatch: a superset needs TWO stations free at once —
+    // the most likely place to get stuck. Unlinking clears the pairing on both
+    // members so they fall through to the ordinary single-exercise path, which has
+    // the full toolkit (swap, defer, own rest timers). Safe at any round: progress
+    // is derived from banked sets per exercise, so each member resumes exactly
+    // where it left off. Session-only — the saved plan is untouched.
+    quitPending = false;
+    for (const idx of [L, P]) { const m = sess.ex[idx]; m.superset_with = undefined; m.superset_with_name = undefined; }
+    // Land on the first member still owing sets (both may be mid-way through).
+    const target = loggedWorkSets(sess.logged, sess.ex[L].exercise) < sess.ex[L].sets ? L : P;
+    sess.i = target; sess.set = loggedSetCount(sess.ex[target].exercise);
+    saveSess();
+    say("Unlinked — do them one at a time. Take a normal rest between sets.");
+    renderPlayer(0);
   };
   $("#quitr").onclick = () => {
     if (!quitPending) { quitPending = true; return renderSupersetStation(L, P, 0); }
@@ -955,7 +1025,7 @@ async function renderSwap() {
   if (!alts.length) {
     app.innerHTML = `<h1>Swap exercise</h1>
       <div class="card"><p>No alternative for the same muscle with your equipment right now.</p>
-      <p class="muted">You can keep going with ${esc(cur.name)}, or end the workout.</p></div>
+      <p class="muted">Keep going with ${esc(cur.name)}${sess.i < sess.ex.length - 1 ? " — or push it to the end of the workout with “⤵️ Do this later” and move on" : ""}.</p></div>
       <button class="btn" id="back">Back to ${esc(cur.name)}</button>`;
     $("#back").onclick = () => renderPlayer(0);
     return;
@@ -1047,6 +1117,9 @@ async function finish() {
   }
   // Accepted or safely queued — now it's safe to drop the in-progress copy.
   clearSess();
+  // Today's training is done, so the check-in can no longer tune anything —
+  // don't re-offer it when Recap routes back to Today.
+  try { localStorage.setItem("hb_ck_dismissed", new Date().toISOString().slice(0, 10)); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
   renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
 }
@@ -1134,7 +1207,10 @@ async function renderProgress() {
     </div>`;
   wireLearnLinks();
   $("#logbw").onclick = async () => {
-    const val = parseFloat($("#bw").value); if (!val) return;
+    const val = parseFloat($("#bw").value);
+    // Never a silent dead button: an empty/non-numeric field must say why nothing
+    // happened, or the tap reads as broken.
+    if (!val || val <= 0) { say("Type your weight first."); $("#bw").placeholder = `type a number first (${unitLabel()})`; $("#bw").focus(); return; }
     const kg = toKg(val);
     // Send today's date at log time so an offline weigh-in keeps its real date and
     // a replayed POST replaces the same-day row instead of duplicating it.
@@ -1208,7 +1284,21 @@ function renderMe() {
     };
   }
   $("#reset").onclick = () => {
-    if (confirm("Erase this device's link to your data and start over? If you've backed up to an email, that stays safe and you can restore it.")) {
+    // Never destroy unsaved training silently: a workout still in the offline
+    // queue (never reached the server) or an in-progress session's banked sets
+    // would be gone forever — the generic "backed-up data stays safe" reassurance
+    // is a lie for those. Name the risk explicitly before erasing.
+    const queued = getQueue().length;
+    const inProgress = sess?.logged?.length ?? 0;
+    const atRisk = queued || inProgress;
+    const warn = atRisk
+      ? `⚠️ You have ${queued ? "a logged workout that hasn't reached the server yet (offline)" : "an in-progress workout"} on this device. Resetting DELETES it permanently — it is NOT in any backup. Erase anyway?`
+      : "Erase this device's link to your data and start over? If you've backed up to an email, that stays safe and you can restore it.";
+    if (confirm(warn)) {
+      // clearSess() first: localStorage.clear() alone leaves the in-memory `sess`
+      // alive, and the next identity's Today would offer to "resume" (and post!)
+      // the previous user's half-done workout.
+      clearSess();
       localStorage.clear(); uid = null; onbStep = 0; onbStarted = false; for (const k in answers) delete answers[k]; render();
     }
   };
@@ -1295,11 +1385,19 @@ async function renderLearnPage(slug) {
   catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that guide.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
   const pg = LEARN_PAGES[slug];
   if (!pg) { learnSlug = null; return renderLearn(); }
-  app.innerHTML = `<button class="btn ghost" id="learnback">‹ All topics</button>
+  // Mid-workout help ("what's RIR?", starting-weight guide) lands here with a live
+  // session running. The way back must be one obvious tap — not "find the Today
+  // tab, then find Resume" while standing at a bench between sets.
+  const workoutBack = sess ? `<button class="btn" id="backToWorkout">◀ Back to workout</button>` : "";
+  app.innerHTML = `${workoutBack}<button class="btn ghost" id="learnback">‹ All topics</button>
     <h1>${esc(pg.title)}</h1>
     ${pg.tldr ? `<div class="card tldr"><b>In short</b> ${pg.tldr}</div>` : ""}
     <div class="learn">${pg.html}</div>
+    ${workoutBack ? `<button class="btn" id="backToWorkout2">◀ Back to workout</button>` : ""}
     <button class="btn ghost" id="learnback2">‹ Back to all topics</button>`;
+  const backToPlayer = () => { tab = "today"; learnSlug = null; nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab)); renderPlayer(0); };
+  if ($("#backToWorkout")) $("#backToWorkout").onclick = backToPlayer;
+  if ($("#backToWorkout2")) $("#backToWorkout2").onclick = backToPlayer;
   $("#learnback").onclick = renderLearn;
   $("#learnback2").onclick = renderLearn;
   wireLearnLinks(); // in-page cross-links between pages
