@@ -1187,7 +1187,9 @@ async function renderProgress() {
       <div class="bar"><i style="width:${pct}%;background:var(--accent)"></i></div></div>
       <span class="status ${statusClass(m.status)}">${statusLabel(m.status)}</span></div>`;
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;
-  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  // Load-basis rows (pump-band lifts, 12-20 reps) chart the top-set weight —
+  // an e1RM there would be guesswork, but the dumbbell you hold is not.
+  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>

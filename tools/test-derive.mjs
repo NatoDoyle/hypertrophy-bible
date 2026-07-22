@@ -189,6 +189,23 @@ check("#19 stallDetect sees pump-band (12-20 rep) lifts via the LOAD path — Ep
   assert.equal(stallDetect(mixed, exIndex).length, 0);
 });
 
+check("#20 progressionByExercise charts pump-band lifts by top-set LOAD (they never charted at all)", () => {
+  const hw = (n, kg) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [{ exercise: "laterals", set_type: "work", weight_kg: kg, reps: 15 }] });
+  const rows = progressionByExercise([hw(0, 8), hw(1, 9), hw(2, 10)], exIndex);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].basis, "load");
+  assert.equal(rows[0].first_load_kg, 8);
+  assert.equal(rows[0].last_load_kg, 10);
+  assert.equal(rows[0].change_pct, 25);
+  // heavy data present -> the e1RM entry covers the exercise; no duplicate load row
+  const mixed = [0, 1].map((n) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "bench", set_type: "work", weight_kg: 60, reps: 18 },
+  ] }));
+  assert.equal(progressionByExercise(mixed, exIndex).length, 1);
+  assert.equal(progressionByExercise(mixed, exIndex)[0].basis, undefined);
+});
+
 check("progressionByExercise: est-1RM rises across the log", () => {
   const sessions = [
     { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },
