@@ -182,6 +182,25 @@ check("#8-2 a defer that lands on an already-finished exercise never logs a phan
   assert.equal(loggedWorkSets(logged, "B"), 2); // B stayed at exactly 2 — no phantom 3rd set
   assert.equal(owed("C"), 0); assert.equal(owed("M"), 0); // and everything else finished cleanly
 });
+check("#UX-6 mid-station unlink: both ex-members finish exactly, nothing lost or doubled", () => {
+  // The busy-machine escape hatch: after 1 of 2 paired rounds, the user unlinks
+  // (superset_with cleared on both). The ordinary path must then resume each
+  // member from its banked count and finish the session with exact set totals.
+  const exs = [ex("A", 2, "B"), ex("B", 2, "A"), ex("C", 2)];
+  const logged = [];
+  const bank = (id) => logged.push({ exercise: id, set_type: "work" });
+  bank("A"); bank("B"); // one paired round
+  // unlink (what the station's Unlink button does)
+  for (const m of exs) { if (m.superset_with) { delete m.superset_with; } }
+  // land on the first member still owing sets — A (1 of 2 banked)
+  let cursor = loggedWorkSets(logged, "A") < 2 ? 0 : 1;
+  assert.equal(exs[cursor].exercise, "A");
+  assert.equal(loggedWorkSets(logged, exs[cursor].exercise), 1); // resumes at set 2, not set 1
+  // ordinary progression to the end
+  let guard = 0;
+  while (cursor >= 0) { if (++guard > 100) throw new Error("loop"); bank(exs[cursor].exercise); cursor = nextUnfinishedIndex(logged, exs, -1); }
+  for (const m of exs) assert.equal(loggedWorkSets(logged, m.exercise), m.sets); // exact totals: 2/2/2
+});
 check("offline queue: two tabs flushing the same item never drop an UNdelivered workout", () => {
   // The data-loss bug: two tabs both flush on reconnect; position-based slice(1)
   // could drop item B that no tab delivered. filter-by-id can only remove the
