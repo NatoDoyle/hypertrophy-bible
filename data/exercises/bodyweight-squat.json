@@ -11,6 +11,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest in the hole at full depth where the quads are most stretched; near-effortless in the top half.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

@@ -12,6 +12,7 @@
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "pull",
+  "resistance_profile": "Tension peaks at the stretched (bottom) position with hips flexed — strong lengthened loading of the hamstrings.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",

@@ -8,6 +8,7 @@
   "equipment": "cable",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "The high cable pulls hardest in the overhead position, loading the lats at full stretch; tension stays on but eases as the handle reaches the thighs.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",

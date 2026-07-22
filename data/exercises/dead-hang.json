@@ -8,6 +8,7 @@
   "equipment": "bodyweight",
   "mechanic": "isolation",
   "force": "static",
+  "resistance_profile": "Static hold, so grip tension is even for the whole hang — bodyweight loads the finger flexors at one fixed length rather than through a range.",
   "loading_bias": "uniform",
   "lengthened_bias": false,
   "cns_cost": "low",

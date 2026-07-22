@@ -13,6 +13,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "pull",
+  "resistance_profile": "Bodyweight leverage makes the pull hardest through the mid-range toward the bar; elevate the feet or add a plate to progress.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "low",

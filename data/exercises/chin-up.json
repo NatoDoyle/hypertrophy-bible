@@ -12,6 +12,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "pull",
+  "resistance_profile": "Full bodyweight loads the fully stretched lats and biceps in the dead hang — strong lengthened loading at the bottom of every rep.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "moderate",

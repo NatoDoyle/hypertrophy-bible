@@ -11,6 +11,7 @@
   "equipment": "dumbbell",
   "mechanic": "isolation",
   "force": "pull",
+  "resistance_profile": "Peak tension in the deep overhead stretch, where the dumbbell's moment arm on the lats is longest; tension falls off as it comes over the chest.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",

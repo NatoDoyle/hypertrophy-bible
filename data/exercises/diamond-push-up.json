@@ -12,6 +12,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest pressing out of the bottom with the chest at the hands, easing toward lockout; the tucked elbows keep the triceps loaded through the middle of the press.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "low",

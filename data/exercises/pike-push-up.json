@@ -12,6 +12,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest with the head near the floor (bottom), easing as the arms extend; elevate the feet to shift more bodyweight onto the shoulders.",
   "loading_bias": "mid-range",
   "lengthened_bias": false,
   "cns_cost": "moderate",

@@ -11,6 +11,7 @@
   "equipment": "bodyweight",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest deep in the bottom, where the knee is fully bent and bodyweight leverage on the quads is greatest — strong lengthened loading.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "low",

@@ -12,6 +12,7 @@
   "equipment": "dumbbell",
   "mechanic": "compound",
   "force": "push",
+  "resistance_profile": "Hardest in the deep stretch at the bottom, where the dumbbells drop below chest level for a longer range than a barbell; eases near lockout.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "stability": "moderate",

@@ -14,6 +14,7 @@
   "plane": [
     "transverse"
   ],
+  "resistance_profile": "Cross-body cables keep peak tension on the rear delts in the stretched position across the chest, where dumbbells would go slack.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",
