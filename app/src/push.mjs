@@ -8,6 +8,26 @@
 // and reminders_off are never pushed, and the window is bounded (a lapsed user
 // stops getting daily pushes after ~3 weeks — the email path owns the long tail).
 
+// Push endpoints only ever originate from a browser's push service. Restricting
+// stored endpoints to these hosts stops a subscriber from registering an
+// arbitrary URL and turning the daily server-side sweep into an SSRF / outbound-
+// request cannon (the Worker POSTs to every stored endpoint once a day). Suffix
+// match on the host, https only. Checked at subscribe AND at send (defense in
+// depth for any row that predates the check).
+const PUSH_HOST_SUFFIXES = [
+  ".push.services.mozilla.com",   // Firefox
+  ".googleapis.com",              // Chrome/Android (fcm/android.googleapis.com)
+  ".notify.windows.com",          // Edge/Windows (WNS)
+  ".push.apple.com",              // Safari (web/api.push.apple.com)
+];
+export function isAllowedPushEndpoint(endpoint) {
+  let u;
+  try { u = new URL(endpoint); } catch { return false; }
+  if (u.protocol !== "https:") return false;
+  const host = u.hostname.toLowerCase();
+  return PUSH_HOST_SUFFIXES.some((s) => host === s.slice(1) || host.endsWith(s));
+}
+
 const te = new TextEncoder();
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const b64uJson = (obj) => b64u(te.encode(JSON.stringify(obj)));
@@ -69,6 +89,8 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         now,
       });
       if (!hit) continue;
+      // Never POST to a non-push-service host, even if an old row slipped one in.
+      if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
       const res = await sendEmptyPush(sub, vapid, fetchFn);
       if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
       if (res.ok) sent++;

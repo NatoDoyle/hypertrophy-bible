@@ -7,6 +7,7 @@ import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
+import { isAllowedPushEndpoint } from "./push.mjs";
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -315,7 +316,7 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
-    if (!b.subscription?.endpoint || !/^https:\/\//.test(b.subscription.endpoint)) return c.json({ error: "bad-subscription" }, 400);
+    if (!b.subscription?.endpoint || !isAllowedPushEndpoint(b.subscription.endpoint)) return c.json({ error: "bad-subscription" }, 400);
     await store.savePushSubscription(b.user_id, b.subscription);
     return c.json({ subscribed: true });
   });
