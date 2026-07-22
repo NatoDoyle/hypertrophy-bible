@@ -1354,7 +1354,10 @@ async function renderCoach() {
       <p class="muted" id="calmsg"></p></div>
     <h2>Injury or illness?</h2>
     <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
-      <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>`;
+      <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>
+    <h2>Reminders</h2>
+    <div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays backed up either way." : "If your progress is backed up to an email and you drift away, I'll send at most two gentle notes per break — never while you're paused."}</p>
+      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
@@ -1369,6 +1372,10 @@ async function renderCoach() {
   $("#pause").onclick = async () => {
     try { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); }
     catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
+  };
+  $("#nudges").onclick = async () => {
+    try { await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) }); renderCoach(); }
+    catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
   };
 }
 

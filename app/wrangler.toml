@@ -18,6 +18,12 @@ routes = [
 [vars]
 MAIL_FROM = "The Hypertrophy Bible <hello@hypertrophybible.com>"
 
+# Daily comeback-nudge sweep (worker.mjs `scheduled`): 16:00 UTC lands late
+# morning in the Americas / evening in Europe — when a "train today?" note is
+# actionable. At most 2 emails per lapse per user; pause/opt-out respected.
+[triggers]
+crons = ["0 16 * * *"]
+
 # Frontend: everything in ./public is served straight from Cloudflare's edge.
 # The Worker (main) only runs for routes the assets don't match — i.e. /api/*.
 [assets]
