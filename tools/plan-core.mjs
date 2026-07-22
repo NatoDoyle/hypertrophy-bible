@@ -44,11 +44,16 @@ const SPLIT_NAME = (names) => {
 // place bigger / compound-driven muscles first within a session
 const PLACE_ORDER = ["quadriceps", "chest", "upper-back", "lats", "hamstrings", "glutes", "front-delts", "side-delts", "triceps", "biceps", "rear-delts", "spinal-erectors", "calves", "abs", "forearms", "neck"];
 
+// RIR: isolations run 0-1 across all growth goals — the KB's proximity-to-failure
+// page (Grade B): "take isolation and machine work to 0-1 RIR (where failure is
+// safe and cheap)"; heavy compounds keep 1-3 to protect technique and recovery.
+// Strength keeps a deliberate extra reserve on accessories (fatigue budget goes
+// to the heavy lifts, where the goal lives).
 const REP_SCHEMES = {
-  hypertrophy: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-2"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-2"] },
-  recomposition: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-2"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-2"] },
+  hypertrophy: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
+  recomposition: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
   strength: { compound: ["3-6", "2-3"], isolation: ["6-10", "1-3"], priorityIso: ["8-12", "1-2"], pumpIso: ["10-15", "1-2"] },
-  "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-2"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-2"] },
+  "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-1"] },
 };
 const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 
@@ -61,19 +66,22 @@ const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 // current top-level program runs laterals/rear-delts/calves/abs/forearms.
 const PUMP_MUSCLES = new Set(["side-delts", "rear-delts", "calves", "abs", "forearms", "neck"]);
 
-// Muscles trained ISOLATION-FIRST in practice: nobody's primary side-delt lift is
-// an upright row (laterals dominate every real program, pressing covers the front
-// delts), and arm slots are CURL/EXTENSION slots — the arm compounds (chin-ups,
-// dips, close-grip pressing) enter the plan through the lats/chest slots they
-// actually belong to. The engine placing a compound first here was spending the
-// biceps budget on a third vertical pull and calling the arms trained.
+// Muscles whose PRIMARY movement is an isolation (KB muscle guides): the
+// shoulders guide names lateral raises the side-delt priority — pressing
+// already covers the front delts — and the arms guide's best picks are curl
+// and extension variants, with the arm compounds (chin-ups, dips, close-grip
+// pressing) entering the plan through the lats/chest slots they actually
+// belong to. The engine placing a compound first here was spending the biceps
+// budget on a third vertical pull and calling the arms trained.
 const ISO_FIRST = new Set(["side-delts", "biceps", "triceps"]);
 
-// Muscles that get DIRECT isolation work in every serious program even when
-// compound secondary/primary credit already "covers" their volume on paper —
-// chin-ups do not replace curls, close-grip pressing does not replace pushdowns,
-// presses do not replace laterals. (Matches pro practice across every current
-// top-level split: dedicated arm + delt finishing work.)
+// Muscles that get DIRECT isolation work even when compound secondary/primary
+// credit already "covers" their volume on paper — the KB arms guide: growth
+// follows volume (Grade A) and the compounds-only evidence for arms is mixed,
+// so these muscles get focused, full-range sets of their own. Chin-ups do not
+// replace curls, close-grip pressing does not replace pushdowns, presses do
+// not replace laterals. (Current top-level splits corroborate: dedicated arm +
+// delt finishing work.)
 const DIRECT_ISO = new Set(["biceps", "triceps", "side-delts"]);
 
 // Movement-pattern FAMILY of a pattern — shared by the coverage pass (serve every
@@ -335,6 +343,7 @@ export function generatePlan(profile, kb, opts = {}) {
   const outSessions = sessionSpecs.map((spec, sIdx) => {
     const mset = ARCH[spec.arch];
     const credited = {};      // effective sets credited to each muscle THIS session
+    const direct = {};        // DIRECT primary sets per muscle this session (KB session-quality cap)
     const isoCredited = {};   // DIRECT isolation sets per muscle this session (arm/delt floor)
     const famCount = {};      // compound movement-pattern families this session (cap: 2 per family)
     const placed = new Set(); // exercise ids already in this session
@@ -346,16 +355,18 @@ export function generatePlan(profile, kb, opts = {}) {
       if (placed.has(ex.id) || !room()) return false;
       // Weekly variety cap: the same lift in a 3rd session is a programming smell
       // (the engine was prescribing upright-rows and close-grip benches 3×/week).
-      // Twice a week is normal for staples; a 3rd exposure adds repetition, not
-      // stimulus — every real program varies the accessory on the next day.
+      // KB variation page (Grade C): keep a stable core of 2-4 exercises per
+      // muscle and vary the rest — twice a week is a staple, a 3rd exposure adds
+      // repetition, not coverage; the dose itself is practice-based [D].
       // Selection loops prefer un-capped candidates, so this is a backstop.
       if ((weekUseCount[ex.id] ?? 0) >= 2) return false;
       // Per-session movement-PATTERN cap for COMPOUNDS: a 3rd hinge (or squat,
       // lunge, horizontal-press…) variant in ONE session is redundant fatigue — an
       // advanced leg day was generating good-morning + deadlift + RDL + single-leg
-      // RDL back to back. Capped at the RAW pattern (not the famOf family) so a
-      // back day still runs 2 rows AND 2 vertical pulls — exactly how every real
-      // pull day is built.
+      // RDL back to back. KB exercise-selection page (Grade C): cover a muscle's
+      // functions with 2-4 DIFFERENT exercises — a 3rd copy of one pattern adds
+      // fatigue, not a new angle. Capped at the RAW pattern (not the famOf
+      // family) so a back day still runs 2 rows AND 2 vertical pulls.
       if (ex.mechanic === "compound" && (famCount[ex.movement_pattern] ?? 0) >= 2) return false;
       // No more than 2 maximal-systemic-fatigue (high cns_cost) COMPOUNDS per
       // session: squat + a deadlift is already a hard day, and a 3rd heavy barbell
@@ -366,9 +377,9 @@ export function generatePlan(profile, kb, opts = {}) {
       // lower-CNS work. Isolations are never high-CNS, so this only touches compounds.
       if (ex.cns_cost === "high" && ex.mechanic === "compound" && highCns >= 2) return false;
       const iso = ex.mechanic === "isolation";
-      // Rep band: priority isolations highest, small-muscle "pump" isolations 12-20
-      // (laterals/rear-delts/calves/abs run higher reps in every real program),
-      // other isolations 10-15, compounds heavy.
+      // Rep band: priority isolations highest, small-muscle "pump" isolations
+      // 12-20 (the KB intensity page's own isolation band), other isolations
+      // 10-15, compounds heavy.
       const s = iso ? (priority.has(forMuscle) ? scheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? scheme.pumpIso : scheme.isolation) : scheme.compound;
       // Held-at-maintenance muscles never receive more direct volume than their
       // (maintenance) target still has room for — so a full compoundSets can't blow
@@ -377,15 +388,22 @@ export function generatePlan(profile, kb, opts = {}) {
       const want = holdMaint(forMuscle)
         ? Math.min(sets, Math.max(1, Math.ceil(Math.ceil((targets[forMuscle] ?? 0) / Math.max(1, freq[forMuscle] ?? 1)) - (credited[forMuscle] ?? 0))))
         : sets;
-      // No 1-set EXERCISES, compound or isolation: nobody does a single set of
-      // anything — a 1-set curl or lateral raise is scatter, not a dose. (The old
-      // rule only covered compounds; advanced plans were ending in four different
-      // 1-set isolation scraps. Real programs concentrate: fewer exercises, 2-5
-      // sets each.) Residual top-ups grow an EXISTING exercise instead. The one
+      // PER-MUSCLE SESSION-QUALITY CAP (KB frequency page, Grade C: "roughly 6-10
+      // hard sets in a single session is about as much as most people can do for
+      // one muscle before per-set quality drops... add a day rather than
+      // cramming"). Direct primary sets per muscle are capped at perSessionCap
+      // (default 10) — bounding CROSS-CREDIT too: an advanced Lower day was
+      // stacking 12 direct glute sets via squat/hinge variants each placed for a
+      // different muscle, every one crediting glutes as a primary.
+      const headroom = Math.min(setBudget - setsUsed, ...(ex.primary_muscles ?? []).map((m) => perSessionCap - (direct[m] ?? 0)));
+      // No 1-set EXERCISES, compound or isolation: a 1-set curl or lateral raise
+      // is scatter, not a dose — multi-set superiority is Grade A (volume page,
+      // Krieger 2010), so the engine concentrates: fewer exercises, 2-5 sets
+      // each. Residual top-ups grow an EXISTING exercise instead. The one
       // exception: a held-at-maintenance muscle, where a deliberate 1-set
       // micro-dose IS the prescription (KB: maintenance volume can be that low).
-      if (!holdMaint(forMuscle) && Math.min(want, setBudget - setsUsed) < 2) return false;
-      const setN = clamp(Math.min(want, EX_SET_CAP, setBudget - setsUsed), 1, 10);
+      if (Math.min(want, headroom) < (holdMaint(forMuscle) ? 1 : 2)) return false;
+      const setN = clamp(Math.min(want, EX_SET_CAP, headroom), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       weekUseCount[ex.id] = (weekUseCount[ex.id] ?? 0) + 1;
       if (ex.mechanic === "compound") famCount[ex.movement_pattern] = (famCount[ex.movement_pattern] ?? 0) + 1;
@@ -393,12 +411,16 @@ export function generatePlan(profile, kb, opts = {}) {
       if (ex.movement_pattern === "isolation-knee-flexion") weekKneeFlexion = true;
       items.push({ exercise: ex.id, sets: setN, rep_range: s[0], rir: s[1] });
       if (ex.cns_cost === "high") highCns++;
-      for (const m of ex.primary_muscles ?? []) credited[m] = (credited[m] ?? 0) + setN;
+      for (const m of ex.primary_muscles ?? []) { credited[m] = (credited[m] ?? 0) + setN; direct[m] = (direct[m] ?? 0) + setN; }
       for (const m of ex.secondary_muscles ?? []) credited[m] = (credited[m] ?? 0) + setN * 0.5;
       exerciseChoices.push({ exercise: ex.id, for_muscle: forMuscle, session: spec.name, sets: setN, rep_range: s[0], rir: s[1], why, difficulty: ex.difficulty, citations: ex.citations ?? [] });
       return true;
     };
-    const perTarget = (m) => Math.ceil((targets[m] ?? 0) / Math.max(1, freq[m] ?? 1));
+    // Per-session share of the weekly target, capped at the session-quality window
+    // (perSessionCap): when weekly target / frequency exceeds what one session can
+    // deliver at quality, the under-target warning says so — the KB's answer is
+    // "add a day rather than cramming" (frequency page), not a 13-set session.
+    const perTarget = (m) => Math.min(perSessionCap, Math.ceil((targets[m] ?? 0) / Math.max(1, freq[m] ?? 1)));
     // muscles this session trains, priority ones first so they win contested budget
     const order = [...PLACE_ORDER].filter((m) => mset.includes(m)).sort((a, b) => (priority.has(b) ? 1 : 0) - (priority.has(a) ? 1 : 0));
     // ISO_FIRST muscles draw from their isolation pool first (laterals before
@@ -497,9 +519,10 @@ export function generatePlan(profile, kb, opts = {}) {
       }
       // 4a¾) STAPLE FINISHERS — placed BETWEEN coverage (pass 0) and compound
       // doubling (pass 1): a leg curl or a set of curls beats a second chest
-      // compound for the remaining budget, which is exactly how every real
-      // program allocates. (When these ran after doubling, intermediates' tighter
-      // budgets were spent before the staples could ever fire.)
+      // compound for the remaining budget — an uncovered function (KB: knee
+      // flexion, direct arm work) is worth more than a redundant pattern's
+      // diminishing returns. (When these ran after doubling, intermediates'
+      // tighter budgets were spent before the staples could ever fire.)
       // (a) DIRECT arm/delt isolation: chin-ups don't replace curls, close-grip
       //     pressing doesn't replace pushdowns, presses don't replace laterals.
       //     When a DIRECT_ISO muscle this session trains has a meaningful target
@@ -526,9 +549,10 @@ export function generatePlan(profile, kb, opts = {}) {
     // only then add a new exercise (up to 2 per muscle), never a 1-set orphan.
     const topUp = (m, residual) => {
       // Grow the PRIMARY lift first — residual volume belongs to the compound (a
-      // 3-4 set dose, the way every real program runs its main lift), and only
-      // then to an isolation. No isolation balloons past 4 sets: 5×10-15 shrugs
-      // next to a 2-set row is programming upside-down.
+      // 3-4 set dose; concentrated doses on a stable core lift are what the KB's
+      // double-progression model progresses, Grade B), and only then to an
+      // isolation. No isolation balloons past 4 sets: 5×10-15 shrugs next to a
+      // 2-set row is programming upside-down.
       const tiers = [
         { mech: "compound", cap: compoundSets },
         { mech: "isolation", cap: 4 },
@@ -537,10 +561,12 @@ export function generatePlan(profile, kb, opts = {}) {
         for (const it of items) {
           const x = exById.get(it.exercise);
           if (!x || x.mechanic !== mech || it.superset_with || !(x.primary_muscles ?? []).includes(m)) continue;
-          const grow = Math.min(round(residual), cap - it.sets, setBudget - setsUsed);
+          // growth is bounded by every primary muscle's session-cap headroom, not
+          // just the topped-up muscle's — same cross-credit rule as add()
+          const grow = Math.min(round(residual), cap - it.sets, setBudget - setsUsed, ...(x.primary_muscles ?? []).map((mm) => perSessionCap - (direct[mm] ?? 0)));
           if (grow < 1) continue;
           it.sets += grow; setsUsed += grow;
-          for (const mm of x.primary_muscles ?? []) { credited[mm] = (credited[mm] ?? 0) + grow; if (mech === "isolation") isoCredited[mm] = (isoCredited[mm] ?? 0) + grow; }
+          for (const mm of x.primary_muscles ?? []) { credited[mm] = (credited[mm] ?? 0) + grow; direct[mm] = (direct[mm] ?? 0) + grow; if (mech === "isolation") isoCredited[mm] = (isoCredited[mm] ?? 0) + grow; }
           for (const mm of x.secondary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + grow * 0.5;
           const ch = exerciseChoices.find((c) => c.session === spec.name && c.exercise === it.exercise);
           if (ch) ch.sets = it.sets;
@@ -581,6 +607,7 @@ export function generatePlan(profile, kb, opts = {}) {
         for (let t = 0; t < isoPool[m].length; t++) {
           const cand = isoPool[m][(rot[m] + t) % isoPool[m].length];
           if (placed.has(cand.id) || (weekUseCount[cand.id] ?? 0) >= 2) continue; // same weekly-variety cap as everywhere
+          if ((cand.primary_muscles ?? []).some((mm) => (direct[mm] ?? 0) + 2 > perSessionCap)) continue; // session-quality cap holds on the rescue path too
           const candMuscles = new Set([...(cand.primary_muscles ?? []), ...(cand.secondary_muscles ?? [])]);
           const partner = isoItems.find((it) => {
             const p = exById.get(it.exercise);
@@ -594,7 +621,7 @@ export function generatePlan(profile, kb, opts = {}) {
           const sch = priority.has(m) ? scheme.priorityIso : PUMP_MUSCLES.has(m) ? scheme.pumpIso : scheme.isolation; // same band logic as add()
           items.push({ exercise: cand.id, sets: sN, rep_range: sch[0], rir: sch[1], superset_with: partner.exercise });
           partner.superset_with = cand.id;
-          for (const mm of cand.primary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + sN;
+          for (const mm of cand.primary_muscles ?? []) { credited[mm] = (credited[mm] ?? 0) + sN; direct[mm] = (direct[mm] ?? 0) + sN; }
           for (const mm of cand.secondary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + sN * 0.5;
           exerciseChoices.push({ exercise: cand.id, for_muscle: m, session: spec.name, sets: sN, rep_range: sch[0], rir: sch[1], why: ["superset — fits extra volume into your session length", "paired with " + partner.exercise], difficulty: cand.difficulty, citations: cand.citations ?? [] });
           break outer; // at most ONE rescue pair per session — an accent, not the meal
@@ -604,9 +631,10 @@ export function generatePlan(profile, kb, opts = {}) {
     for (const c of exerciseChoices) if (c.session === spec.name) weekServed.add(c.for_muscle);
     // Emit in the order you should LIFT it (stable within each tier): the heaviest
     // systemic work first while you're fresh — high-CNS compounds (squats,
-    // deadlifts), then the remaining compounds, then isolations. Every credible
-    // program orders the big lift first; the engine was burying deadlifts
-    // mid-session behind whatever pass happened to place first. Within each tier,
+    // deadlifts), then the remaining compounds, then isolations (KB exercise-order
+    // page: hardest and most fatiguing first, isolation later — Grade D,
+    // practice-based). The engine was burying deadlifts mid-session behind
+    // whatever pass happened to place first. Within each tier,
     // PRIORITY-muscle exercises lead (KB exercise-order page: do priority work
     // early while fresh — Grade D, effects modest, so we honour it without
     // breaking compound-before-isolation, which the app's own critique checks).
