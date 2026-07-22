@@ -1686,6 +1686,46 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30747900/"
+    },
+    {
+      "key": "pelland-2026-dose-response",
+      "authors": [
+        "Pelland JC",
+        "Remmert JF",
+        "Robinson ZP",
+        "Hinson SR",
+        "Zourdos MC"
+      ],
+      "year": 2026,
+      "title": "The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains",
+      "source": "Sports Medicine",
+      "volume": "56",
+      "issue": "2",
+      "pages": "481-505",
+      "doi": "10.1007/s40279-025-02344-w",
+      "pmid": "41343037",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
+    },
+    {
+      "key": "coleman-2024-deload-rct",
+      "authors": [
+        "Coleman M",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations",
+      "source": "PeerJ",
+      "volume": "12",
+      "pages": "e16777",
+      "doi": "10.7717/peerj.16777",
+      "pmid": "38274324",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38274324/"
     }
   ]
 }

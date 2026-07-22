@@ -33,6 +33,19 @@ export function createApp(store, config = {}) {
   app.post("/api/onboard", async (c) => {
     const { profile } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
+    // Per-IP throttle: this is the only unauthenticated route that both burns
+    // plan-engine CPU and writes a fresh users row per call, so an unthrottled
+    // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
+    // the same magic_links rate-limit buckets (marker rows: used=1, a purpose
+    // consume never accepts — they can only ever be counted). Real devices
+    // onboard once; 10/hr absorbs a shared gym IP, and the cap itself bounds
+    // the marker rows the throttle writes.
+    const onboardIp = c.req.header("CF-Connecting-IP") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    if (onboardIp) {
+      const now = Date.now();
+      if ((await store.countRecentLinks("onboard:" + onboardIp, now - 60 * 60 * 1000)) >= 10) return c.json({ error: "rate-limited" }, 429);
+      await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: "onboard:" + onboardIp, ip: onboardIp, user_id: "onboard-marker", purpose: "onboard-marker", expires_at: now, used: 1, created_at: now });
+    }
     const user_id = crypto.randomUUID();
     profile.user_id = user_id;
     profile.units ??= "metric";

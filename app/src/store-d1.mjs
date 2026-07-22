@@ -58,11 +58,12 @@ export function createD1Store(db) {
       // One weigh-in per user per day: clear any existing same-day row first, so a
       // replayed offline log (lost response on flaky gym wifi) replaces instead of
       // duplicating and skewing the bodyweight trend. (No unique column needed.)
-      await db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date = ?").bind(id, entry.date ?? null).run();
-      await db
-        .prepare("INSERT INTO bodyweights (user_id, date, data) VALUES (?, ?, ?)")
-        .bind(id, entry.date ?? null, JSON.stringify(entry))
-        .run();
+      // batch = one implicit transaction: a Worker death between a lone DELETE
+      // and INSERT would erase the day's existing weigh-in without replacing it.
+      await db.batch([
+        db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date = ?").bind(id, entry.date ?? null),
+        db.prepare("INSERT INTO bodyweights (user_id, date, data) VALUES (?, ?, ?)").bind(id, entry.date ?? null, JSON.stringify(entry)),
+      ]);
       return entry;
     },
     async listCheckins(id) {
@@ -95,26 +96,32 @@ export function createD1Store(db) {
         db.prepare("SELECT data FROM users WHERE id = ?").bind(fromId).first(),
         db.prepare("SELECT data FROM users WHERE id = ?").bind(toId).first(),
       ]);
+      // Every statement in ONE db.batch = one implicit transaction. As seven
+      // sequential awaits, a Worker death mid-sequence left a half-merged
+      // account (sessions moved, checkins orphaned, or the from-user deleted
+      // early) with the single-use grant already burnt — no retry possible.
+      const stmts = [];
       if (fromRow && toRow) {
         const fromU = JSON.parse(fromRow.data), toU = JSON.parse(toRow.data);
         if (fromU.custom_exercises?.length) {
           toU.custom_exercises = toU.custom_exercises || [];
           const have = new Set(toU.custom_exercises.map((x) => x.id));
           for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { toU.custom_exercises.push(ex); have.add(ex.id); }
-          await db.prepare("UPDATE users SET data = ? WHERE id = ?").bind(JSON.stringify(toU), toId).run();
+          stmts.push(db.prepare("UPDATE users SET data = ? WHERE id = ?").bind(JSON.stringify(toU), toId));
         }
       }
-      const s = await db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      const sIdx = stmts.push(db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId)) - 1;
       // One weigh-in per day survives the merge: drop from-rows whose date the
       // target already has (keep the target's), THEN move the rest.
-      await db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date IN (SELECT date FROM bodyweights WHERE user_id = ?)").bind(fromId, toId).run();
-      const b = await db.prepare("UPDATE bodyweights SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
+      stmts.push(db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date IN (SELECT date FROM bodyweights WHERE user_id = ?)").bind(fromId, toId));
+      const bIdx = stmts.push(db.prepare("UPDATE bodyweights SET user_id = ? WHERE user_id = ?").bind(toId, fromId)) - 1;
       // checkins share a (user_id, date) PK → move what doesn't collide, keeping
       // the target's same-day row, then drop any leftover from-user rows.
-      await db.prepare("UPDATE OR IGNORE checkins SET user_id = ? WHERE user_id = ?").bind(toId, fromId).run();
-      await db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(fromId).run();
-      await db.prepare("DELETE FROM users WHERE id = ?").bind(fromId).run();
-      return { sessions: s.meta?.changes ?? 0, bodyweights: b.meta?.changes ?? 0 };
+      stmts.push(db.prepare("UPDATE OR IGNORE checkins SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
+      stmts.push(db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(fromId));
+      stmts.push(db.prepare("DELETE FROM users WHERE id = ?").bind(fromId));
+      const results = await db.batch(stmts);
+      return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
     },
     async saveAccount(email, user_id, verified_at) {
       await db

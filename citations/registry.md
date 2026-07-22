@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**89** verified references.
+**91** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -63,6 +63,14 @@ Carvalho L & et al. (2022). Muscle hypertrophy and strength gains after resistan
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1139/apnm-2021-0515](https://doi.org/10.1139/apnm-2021-0515) · PMID: [35015560](https://pubmed.ncbi.nlm.nih.gov/35015560/)
+
+### coleman-2024-deload-rct
+Coleman M & et al. (2024). Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations.
+
+*PeerJ*, 12, e16777.
+
+- Type: RCT · Population: trained
+- DOI: [10.7717/peerj.16777](https://doi.org/10.7717/peerj.16777) · PMID: [38274324](https://pubmed.ncbi.nlm.nih.gov/38274324/)
 
 ### craven-2022-sleep-performance
 Craven J & et al. (2022). Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review.
@@ -221,7 +229,7 @@ Jakubowski JS et al. (2020). Supplementation with the Leucine Metabolite beta-hy
 
 *Nutrients*, 12(5), 1523.
 
-- Type: meta-analysis · Population: trained-and-untrained
+- Type: meta-analysis · Population: mixed
 - DOI: [10.3390/nu12051523](https://doi.org/10.3390/nu12051523) · PMID: [32456217](https://pubmed.ncbi.nlm.nih.gov/32456217/)
 
 ### kassiano-2023-rom-review
@@ -391,6 +399,14 @@ Pedrosa GF & et al. (2022). Partial range of motion training elicits favorable i
 
 - Type: RCT · Population: untrained
 - DOI: [10.1080/17461391.2021.1927199](https://doi.org/10.1080/17461391.2021.1927199) · PMID: [33977835](https://pubmed.ncbi.nlm.nih.gov/33977835/)
+
+### pelland-2026-dose-response
+Pelland JC et al. (2026). The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains.
+
+*Sports Medicine*, 56(2), 481-505.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-025-02344-w](https://doi.org/10.1007/s40279-025-02344-w) · PMID: [41343037](https://pubmed.ncbi.nlm.nih.gov/41343037/)
 
 ### peos-2021-diet-break
 Peos JJ & et al. (2021). A 1-week diet break improves muscle endurance during an intermittent dieting regime in adult athletes.

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
+import { requestMagicLink } from "../src/auth.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -197,6 +198,42 @@ try {
   const atAfter = await store.getUser(atUser);
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
   ok("#2 the new block's chest target increased from the adaptive bump", atAfter.plan_rationale?.volume_by_muscle?.chest?.target_sets > chestBefore);
+
+  // --- Wave 15: onboard throttle + claim-turned-restore merge chain ---
+
+  // #15: /api/onboard is the only unauthenticated route that writes a row per
+  // call — per-IP cap of 10/hr (requests without an IP header stay unthrottled,
+  // which is why every onboard above still worked).
+  const obProfile = { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] };
+  let last = null;
+  for (let i = 0; i < 11; i++) {
+    last = await app.request("/api/onboard", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.9" }, body: JSON.stringify({ profile: obProfile }) });
+    if (i < 10 && last.status !== 200) break;
+  }
+  ok("#15 the 11th onboard from one IP inside an hour is rate-limited 429", last.status === 429);
+  const otherIp = await app.request("/api/onboard", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.10" }, body: JSON.stringify({ profile: obProfile }) });
+  ok("#15 a different IP is not caught by that bucket", otherIp.status === 200);
+
+  // #15: a claim that ADOPTS an earlier binding is a restore from the caller's
+  // side — the consume route must mint the merge grant so the second device's
+  // already-synced workouts can follow instead of being stranded.
+  const devP = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+  const devQ = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+  await json("POST", "/api/session", { user_id: devQ, session_id: "q-1", date: dayAgo(1), sets: [{ exercise: "push-up", set_type: "work", reps: 12 }] });
+  const linkP = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devP });
+  const linkQ = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devQ });
+  const firstDev = await json("POST", "/api/auth/consume", { token: linkP.token });
+  ok("#15 first claim consume: purpose 'claim', no merge grant", firstDev.data.purpose === "claim" && !firstDev.data.merge_grant);
+  const secondDev = await json("POST", "/api/auth/consume", { token: linkQ.token });
+  ok("#15 adopted claim consume: purpose 'restore' + a merge grant, bound to the first user",
+    secondDev.data.purpose === "restore" && !!secondDev.data.merge_grant && secondDev.data.user_id === devP);
+  const mergeRes = await app.request("/api/auth/merge", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-User": devQ },
+    body: JSON.stringify({ grant: secondDev.data.merge_grant, from_user_id: devQ, to_user_id: devP }),
+  });
+  const mergeData = await mergeRes.json();
+  ok("#15 the grant merges the second device's workouts into the account (nothing stranded)",
+    mergeRes.status === 200 && mergeData.merged === true && mergeData.sessions === 1);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
