@@ -5,8 +5,10 @@
 //     you" on the pause card — this module is that promise);
 //   - reminders_off is a hard opt-out (Coach tab toggle);
 //   - one email per stage per lapse, tracked against the exact session the lapse
-//     started from, so a sweep re-run (cron retry, overlapping invocations) can
-//     never double-send;
+//     started from and CLAIMED (compare-and-swap, precondition inside the
+//     mutator) BEFORE sending — overlapping sweeps race on the write, not the
+//     send, and a crash between claim and send costs one nudge, never a
+//     duplicate; a failed send releases the claim so the next sweep retries;
 //   - training again resets the state naturally (the lapse anchor changes).
 // Pure decision + injectable store/sender, so the whole thing unit-tests on the
 // file store and the Workers cron handler stays a two-liner.
@@ -39,13 +41,37 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       now,
     });
     if (!hit) continue;
-    const res = await sendComeback({ email, stage: hit.stage, days: hit.days });
-    if (res && res.ok === false) continue; // a failed send is retried by the next sweep, not marked sent
-    await store.updateUser(user_id, (u) => {
-      u.nudge = { for_session_at: last_date, stage: hit.stage, at: new Date(now).toISOString() };
-      return u;
-    });
-    sent++;
+    // CLAIM first (CAS — the precondition lives INSIDE the mutator, per the
+    // store contract): if a concurrent sweep already recorded this stage, the
+    // mutator sees it on re-read and we lose the race without sending.
+    let claimed = false, prev = null;
+    try {
+      await store.updateUser(user_id, (u) => {
+        claimed = false; prev = u.nudge ?? null; // reset per CAS attempt — the mutator may re-run on fresh data
+        const already = u.nudge?.for_session_at === last_date && (u.nudge.stage ?? 0) >= hit.stage;
+        if (already) return u;
+        claimed = true;
+        u.nudge = { for_session_at: last_date, stage: hit.stage, at: new Date(now).toISOString() };
+        return u;
+      });
+      if (!claimed) continue;
+      let res;
+      try { res = await sendComeback({ email, stage: hit.stage, days: hit.days }); }
+      catch { res = { ok: false }; }
+      if (res && res.ok === false) {
+        // release the claim (best effort) so tomorrow's sweep retries — only if
+        // it is still OUR claim; a crash here costs one nudge, never a duplicate
+        await store.updateUser(user_id, (u) => {
+          if (u.nudge?.for_session_at === last_date && u.nudge.stage === hit.stage) u.nudge = prev;
+          return u;
+        });
+        continue;
+      }
+      sent++;
+    } catch {
+      // one user's store failure (e.g. a D1 write-conflict throw) must never
+      // abort the rest of the sweep
+    }
   }
   return { checked, sent };
 }
