@@ -213,6 +213,12 @@ try {
   ok("#15 the 11th onboard from one IP inside an hour is rate-limited 429", last.status === 429);
   const otherIp = await app.request("/api/onboard", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.10" }, body: JSON.stringify({ profile: obProfile }) });
   ok("#15 a different IP is not caught by that bucket", otherIp.status === 200);
+  // #18: onboard throttle markers must NOT consume the AUTH per-IP magic-link
+  // budget — 10 markers were eating half of MAX_LINKS_PER_IP (20) for everyone
+  // behind the same gym NAT.
+  await store.saveUser("nat-user", { profile: {} });
+  const natLink = await requestMagicLink(store, { email: "natuser@t.com", anonUserId: "nat-user", ip: "203.0.113.9" });
+  ok("#18 an auth link from the throttled onboard IP is NOT rate-limited (separate budgets)", !natLink.error && !!natLink.token);
 
   // #15: a claim that ADOPTS an earlier binding is a restore from the caller's
   // side — the consume route must mint the merge grant so the second device's

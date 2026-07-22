@@ -44,7 +44,11 @@ export function createApp(store, config = {}) {
     if (onboardIp) {
       const now = Date.now();
       if ((await store.countRecentLinks("onboard:" + onboardIp, now - 60 * 60 * 1000)) >= 10) return c.json({ error: "rate-limited" }, 429);
-      await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: "onboard:" + onboardIp, ip: onboardIp, user_id: "onboard-marker", purpose: "onboard-marker", expires_at: now, used: 1, created_at: now });
+      // ip stays NULL: countRecentByIp (the AUTH per-IP cap) counts every row
+      // matching the ip column with no purpose filter, so storing the IP here
+      // made onboard markers eat half the magic-link budget of a shared gym
+      // NAT. The onboard count reads the rl_key bucket, which carries the IP.
+      await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: "onboard:" + onboardIp, ip: null, user_id: "onboard-marker", purpose: "onboard-marker", expires_at: now, used: 1, created_at: now });
     }
     const user_id = crypto.randomUUID();
     profile.user_id = user_id;

@@ -554,7 +554,9 @@ async function renderToday() {
   try { [data, adh] = await Promise.all([api(`/api/today`), api(`/api/adherence`)]); }
   catch {
     app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
-      <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p></div>`;
+      <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p>
+      <button class="btn" id="retry-today">Try again</button></div>`;
+    $("#retry-today").onclick = () => renderToday();
     return;
   }
   const s = data.session;
@@ -586,8 +588,11 @@ async function renderToday() {
     : "";
   // The mesocycle position (intermediate/advanced only): where this week sits in
   // the build → peak → deload wave, in one glance.
+  // Friendly phase labels (never the raw token) + a tap-to-learn on the jargon,
+  // matching the helpDot-on-jargon pattern everywhere else in the app.
+  const PHASE_LABEL = { build: "building up", peak: "peak week", deload: "easy week (deload)" };
   const blockCard = s.block
-    ? `<div class="card"><b>${s.block.phase === "deload" ? "🌊" : s.block.phase === "peak" ? "⛰️" : "📈"} Week ${s.block.week} of ${s.block.of} — ${s.block.phase}</b>
+    ? `<div class="card"><b>${s.block.phase === "deload" ? "🌊" : s.block.phase === "peak" ? "⛰️" : "📈"} Week ${s.block.week} of ${s.block.of} — ${PHASE_LABEL[s.block.phase] ?? s.block.phase}</b> ${helpDot("deloads-and-rest-days", "ⓘ why weeks differ")}
         <p class="muted">${esc(s.block.note)}</p></div>`
     : "";
   app.innerHTML = `<h1>Today</h1>${header}${firstTimer}${blockCard}${readinessCard}
@@ -1171,7 +1176,9 @@ async function renderProgress() {
   try { p = await api(`/api/progress`); }
   catch {
     app.innerHTML = `<h1>Progress</h1><div class="card"><p>📴 You're offline.</p>
-      <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p></div>`;
+      <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p>
+      <button class="btn" id="retry-prog">Try again</button></div>`;
+    $("#retry-prog").onclick = () => renderProgress();
     return;
   }
   const vol = (p.volumeByMuscle || []).map((m) => {
@@ -1334,7 +1341,12 @@ function downloadTrainingCalendar(days, time) {
 }
 async function renderCoach() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let a; try { a = await api(`/api/adherence`); } catch { app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your streak and XP are safe — they'll show as soon as you reconnect.</p></div>`; return; }
+  let a; try { a = await api(`/api/adherence`); } catch {
+    app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your streak and XP are safe — they'll show as soon as you reconnect.</p>
+      <button class="btn" id="retry-coach">Try again</button></div>`;
+    $("#retry-coach").onclick = () => renderCoach();
+    return;
+  }
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
@@ -1356,8 +1368,11 @@ async function renderCoach() {
     <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
       <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>
     <h2>Reminders</h2>
-    <div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays backed up either way." : "If your progress is backed up to an email and you drift away, I'll send at most two gentle notes per break — never while you're paused."}</p>
-      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`;
+    ${localStorage.getItem("hb_email")
+      ? `<div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays safely backed up either way." : "If you drift away, I'll email your account at most two gentle notes per break — never while you're paused."}</p>
+      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
+      : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
+      <button class="btn secondary" id="nudges-acct">Create my account</button></div>`}`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
@@ -1369,14 +1384,26 @@ async function renderCoach() {
     else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; b.setAttribute("aria-pressed", "true"); say(`${DAYNAMES[i]} added`); }
   });
   $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
+  // Toggles announce + restore focus: renderCoach() replaces the whole screen,
+  // which destroys the tapped button (focus drops to body) — the same reason the
+  // day-picker chips above announce via say() instead of relying on colour.
   $("#pause").onclick = async () => {
-    try { await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) }); renderCoach(); }
-    catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
+    try {
+      await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) });
+      say(paused ? "Resumed. Welcome back." : "Paused — heal up. Your streak is safe.");
+      await renderCoach(); $("#pause")?.focus();
+    } catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
   };
-  $("#nudges").onclick = async () => {
-    try { await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) }); renderCoach(); }
-    catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
+  const nudgeBtn = $("#nudges");
+  if (nudgeBtn) nudgeBtn.onclick = async () => {
+    try {
+      await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) });
+      say(a.reminders_off ? "Reminders turned on." : "Reminders turned off.");
+      await renderCoach(); $("#nudges")?.focus();
+    } catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
   };
+  const acctBtn = $("#nudges-acct");
+  if (acctBtn) acctBtn.onclick = () => { tab = "me"; render(); };
 }
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
