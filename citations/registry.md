@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**91** verified references.
+**93** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -456,6 +456,14 @@ Refalo MC & et al. (2024). Similar muscle hypertrophy following eight weeks of r
 - Type: RCT · Population: trained
 - DOI: [10.1080/02640414.2024.2321021](https://doi.org/10.1080/02640414.2024.2321021) · PMID: [38393985](https://pubmed.ncbi.nlm.nih.gov/38393985/)
 
+### refalo-2025-deficit-protein-meta
+Refalo MC et al. (2025). Effect of Dietary Protein on Fat-Free Mass in Energy Restricted, Resistance-Trained Individuals: An Updated Systematic Review With Meta-Regression.
+
+*Strength and Conditioning Journal*.
+
+- Type: meta-analysis · Population: trained
+- DOI: [10.1519/SSC.0000000000000888](https://doi.org/10.1519/SSC.0000000000000888)
+
 ### rhim-2020-citrulline
 Rhim HC & et al. (2020). Effect of citrulline on post-exercise rating of perceived exertion, muscle soreness, and blood lactate levels: A systematic review and meta-analysis.
 
@@ -631,6 +639,14 @@ Schumann M & et al. (2022). Compatibility of Concurrent Aerobic and Strength Tra
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-021-01587-7](https://doi.org/10.1007/s40279-021-01587-7) · PMID: [34757594](https://pubmed.ncbi.nlm.nih.gov/34757594/)
+
+### singer-2024-rest-meta
+Singer A et al. (2024). Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy.
+
+*Frontiers in Sports and Active Living*, 6, 1429789.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.3389/fspor.2024.1429789](https://doi.org/10.3389/fspor.2024.1429789) · PMID: [39205815](https://pubmed.ncbi.nlm.nih.gov/39205815/)
 
 ### slater-2019-energy-surplus
 Slater GJ & et al. (2019). Is an Energy Surplus Required to Maximize Skeletal Muscle Hypertrophy Associated with Resistance Training?.
