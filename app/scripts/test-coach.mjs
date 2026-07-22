@@ -109,6 +109,19 @@ check("mesocycle: sets ramp 70%->peak across weeks 1-5, deload halves week 6, th
   assert.equal(deload.exercises[0].rir, "3-4"); // comfortably shy of failure
 });
 
+check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {
+  const start = "2026-01-05T00:00:00Z";
+  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+      { exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" },
+      { exercise: "dumbbell-lateral-raise", sets: 2, rep_range: "12-20" },
+    ] }] } };
+  const setsAt = (n) => buildToday(u, [], null, [], day(n)).exercises.map((e) => e.sets);
+  assert.deepEqual(setsAt(0), [3, 2]);  // wk1 (0.7): 4→3, but 2 stays 2 — never 1
+  assert.deepEqual(setsAt(35), [2, 2]); // wk6 deload (0.5): 4→2 halves, 2 floors at 2
+});
+
 check("#8-3 high-readiness never invites a back-off set during a deload week", () => {
   const start = "2026-01-05T00:00:00Z";
   const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();

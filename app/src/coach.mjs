@@ -216,9 +216,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now);
-    // Apply the mesocycle wave: sets scale with the block week (never below 1);
-    // on a deload the suggested load also eases ~10% so effort genuinely drops.
-    const sets = block ? Math.max(1, Math.round(ex.sets * block.setScale)) : ex.sets;
+    // Apply the mesocycle wave: sets scale with the block week — but never below 2
+    // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
+    // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
+    // plan engine's own no-1-set rule holds through the wave; week-1 users were
+    // seeing five 1-set entries). Deload recovery still lands via the halved big
+    // lifts, the ~10% load ease below, and RIR 3-4.
+    const sets = block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale)) : ex.sets;
     // Deload load must ease from last week's ACTUAL weight, not the progressed
     // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
     // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
