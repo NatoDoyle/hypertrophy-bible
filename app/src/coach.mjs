@@ -122,7 +122,7 @@ export function blockPhase(now, blockStart, experience) {
     week, of: BLOCK_WEEKS, phase,
     setScale: BLOCK_SET_SCALE[week - 1],
     note: phase === "deload"
-      ? `Deload week — about half the sets, a little lighter, and stop 3–4 reps shy of failure. Recovery is where the growth you've built this block shows up.`
+      ? `Deload week — the big lifts drop to about half their sets, loads ease off, and you stop 3–4 reps shy of failure. Recovery is where the growth you've built this block shows up.`
       : phase === "peak"
         ? `Week ${week} of ${BLOCK_WEEKS} — peak volume. Push your sets hard (1–2 in the tank); the deload is coming.`
         : `Week ${week} of ${BLOCK_WEEKS} — building. Volume ramps up each week toward your peak.`,
