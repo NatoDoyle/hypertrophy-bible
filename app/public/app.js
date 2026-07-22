@@ -59,6 +59,14 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // Screen-reader announcement for deliberate events only (the old whole-app
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
+
+// PWA / push capability. On iOS, Web Push exists ONLY for a home-screen-installed
+// app — `PushManager` is absent in a normal Safari tab, so the reminders card
+// would silently vanish for every iPhone user in the browser. Detect that case
+// to show an "Add to Home Screen" hint instead of nothing.
+const isStandalone = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS 13+ masquerades as Mac
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window;
 let pendingNotice = null; // a one-shot notice for the NEXT screen (survives re-render)
 // Inline failure notice: never a silent dead button.
 function alertBar(msg) {
@@ -1379,11 +1387,13 @@ async function renderCoach() {
       <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
       : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
       <button class="btn secondary" id="nudges-acct">Create my account</button></div>`}
-    ${("serviceWorker" in navigator && "PushManager" in window)
+    ${pushSupported()
       ? `<div class="card"><p class="muted">${localStorage.getItem("hb_push") === "1" ? "Device reminders are on — a quiet nudge when a session's waiting, never while paused." : "Or get a reminder right on this device — no email needed. One gentle nudge when a session's waiting; stops while you're paused and after ~3 weeks."}</p>
       <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
       <p class="muted" id="pushmsg"></p></div>`
-      : ""}`;
+      : isIOS() && !isStandalone()
+        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the Share button <b>⎋</b> in Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
+        : ""}`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
