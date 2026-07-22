@@ -125,8 +125,26 @@ export function blockPhase(now, blockStart, experience) {
       ? `Deload week — the big lifts drop to about half their sets, loads ease off, and you stop 3–4 reps shy of failure. Recovery is where the growth you've built this block shows up.`
       : phase === "peak"
         ? `Week ${week} of ${BLOCK_WEEKS} — peak volume. Push your sets hard (1–2 in the tank); the deload is coming.`
-        : `Week ${week} of ${BLOCK_WEEKS} — building. Volume ramps up each week toward your peak.`,
+        : week === 1
+          ? `Week 1 of ${BLOCK_WEEKS} — building. Start comfortably: an extra rep in the tank this week; volume and effort both ramp from here.`
+          : `Week ${week} of ${BLOCK_WEEKS} — building. Volume and effort ramp up each week toward your peak.`,
   };
+}
+
+// The KB wave creeps EFFORT alongside volume (volume-progression-and-deloads.md:
+// W1 ~2-3 RIR → build weeks creep toward ~0-1 → peak "hard, near failure" →
+// deload 3-4). Derived from the PLAN's own band so every goal and exercise
+// class keeps its identity: week 1 backs off by one rep; weeks 4-5 pull the far
+// edge to within one rep of the near edge. The near edge itself never moves —
+// the proximity-to-failure page keeps heavy compounds shy of failure (Grade C),
+// so a "1-3" compound peaks at "1-2", never "0-x". Deload is handled separately.
+export function waveRir(band, week) {
+  const m = /^(\d+)-(\d+)$/.exec(band ?? "");
+  if (!m) return band;
+  const lo = +m[1], hi = +m[2];
+  if (week === 1) return `${lo + 1}-${Math.min(hi + 1, lo + 2)}`;
+  if (week >= 4 && hi > lo + 1) return `${lo}-${lo + 1}`;
+  return band;
 }
 
 // Immediate same-day readiness from an optional check-in (1-5 fields; stress
@@ -238,7 +256,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       name: name(ex.exercise),
       sets,
       rep_range: ex.rep_range,
-      rir: block?.phase === "deload" ? "3-4" : ex.rir ?? "1-3",
+      rir: block?.phase === "deload" ? "3-4" : block ? waveRir(ex.rir ?? "1-3", block.week) : ex.rir ?? "1-3",
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
