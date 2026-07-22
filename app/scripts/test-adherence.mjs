@@ -74,5 +74,33 @@ const rep = adherenceReport({ paused: null }, three, "2026-01-21");
 ok("adherenceReport bundles streak + level + status", rep.streak_weeks === 3 && rep.level >= 1 && rep.status.state === "on-track");
 ok("paused user -> report reflects the safety rail", adherenceReport({ paused: { from: "2026-01-20" } }, three, "2026-01-21").status.state === "paused");
 
+
+// --- #21: resuming from a pause must not retroactively break the streak ---
+{
+  // 10 consecutive trained weeks (W02..W11 of 2026), then a 4-week pause, then resume + train
+  const weeks10 = Array.from({ length: 10 }, (_, i) => sess(new Date(Date.UTC(2026, 0, 5 + i * 7)).toISOString().slice(0, 10)));
+  const pauseFrom = "2026-03-16"; // W12
+  const resumedTrain = sess("2026-04-13"); // W16 — back in the gym
+  const now = "2026-04-15";
+  ok("#21 streak is frozen WHILE paused", weeksConsistent(weeks10, now, { from: pauseFrom }, []) === 10);
+  ok("#21 the OLD bug: resume with no archive collapsed the streak", weeksConsistent([...weeks10, resumedTrain], now, null, []) <= 2);
+  ok("#21 resume with the window ARCHIVED keeps the streak and grows it",
+    weeksConsistent([...weeks10, resumedTrain], now, null, [{ from: pauseFrom, to: "2026-04-12" }]) === 11);
+  ok("#21 adherenceReport wires user.pause_history through",
+    adherenceReport({ paused: null, pause_history: [{ from: pauseFrom, to: "2026-04-12" }], profile: {} }, [...weeks10, resumedTrain], now).streak_weeks === 11);
+}
+
+// --- #21: sessions bank to the user's LOCAL calendar week when the client sends one ---
+{
+  // Sunday 20:00 UTC = Monday 09:00 in UTC+13 — the user experienced Monday.
+  const utcSunday = { date: "2026-01-25T20:00:00Z", local_date: "2026-01-26", sets: [{ set_type: "work", weight_kg: 100, reps: 8 }] };
+  const now = "2026-01-27T20:00:00Z"; // Tuesday UTC (still the user's Monday week either way)
+  ok("#21 local_date banks the session to the week the user experienced (streak on-track, not at-risk)",
+    adherenceStatus([utcSunday], now, false).state === "on-track");
+  const utcOnly = { ...utcSunday }; delete utcOnly.local_date;
+  ok("#21 without local_date the same session still counts by UTC date (backward compatible)",
+    adherenceStatus([utcOnly], now, false).state === "at-risk"); // the documented bug for legacy sessions — fixed only when the client stamps local_date
+}
+
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

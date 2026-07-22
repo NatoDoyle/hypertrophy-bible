@@ -55,7 +55,7 @@ export function perMuscleWeeklyVolume(sessions, exIndex, opts = {}) {
   const secondaryWeight = opts.secondaryWeight ?? 0.5;
   const weeks = {};
   for (const s of sessions) {
-    const wk = isoWeekKey(s.date);
+    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
     weeks[wk] ??= {};
     for (const set of s.sets ?? []) {
       if (!isHardSet(set, opts)) continue;
@@ -222,7 +222,7 @@ export function progressionByExercise(sessions, exIndex) {
   const byEx = {};
   const byExLoad = {}; // pump-band lifts (reps > RELIABLE_1RM_REPS): track weekly best LOAD, same as stallDetect
   for (const s of sessions) {
-    const wk = isoWeekKey(s.date);
+    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
     for (const set of s.sets ?? []) {
       // Reliable rep ranges only — otherwise a light high-rep back-off set shows
       // up as a strength GAIN, and this screen contradicts the session recap.
@@ -245,8 +245,12 @@ export function progressionByExercise(sessions, exIndex) {
     }
   }
   const out = [];
+  // Basis by MAJORITY of weeks, not all-time existence: one grinding 12-rep set
+  // (the BOTTOM of the plan's own 12-20 band) used to route an exercise into the
+  // e1RM path forever, hiding its entire load history — the exact "never charted
+  // at all" bug this path exists to fix. Ties go to e1RM (the stronger signal).
   for (const [ex, weekMap] of Object.entries(byExLoad)) {
-    if (byEx[ex]) continue; // heavy data exists — the e1RM entry below covers it
+    if (Object.keys(byEx[ex] ?? {}).length >= Object.keys(weekMap).length) continue; // e1RM covers it
     const weeks = Object.keys(weekMap).sort();
     const first = weekMap[weeks[0]], last = weekMap[weeks[weeks.length - 1]];
     out.push({
@@ -256,6 +260,7 @@ export function progressionByExercise(sessions, exIndex) {
     });
   }
   for (const [ex, weekMap] of Object.entries(byEx)) {
+    if (Object.keys(byExLoad[ex] ?? {}).length > Object.keys(weekMap).length) continue; // the load row above covers it
     const weeks = Object.keys(weekMap).sort();
     const first = weekMap[weeks[0]], last = weekMap[weeks[weeks.length - 1]];
     out.push({
@@ -279,7 +284,7 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
   const byEx = {};
   const byExLoad = {}; // high-rep (pump-band) work: > RELIABLE_1RM_REPS, where Epley is guesswork — track best LOAD instead
   for (const s of sessions) {
-    const wk = isoWeekKey(s.date);
+    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
     for (const set of s.sets ?? []) {
       if (set.deload) continue;
       if (countsForE1RM(set)) {
@@ -315,7 +320,9 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
     if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
   }
   for (const [ex, weekMap] of Object.entries(byExLoad)) {
-    if (byEx[ex]) continue; // the e1RM path already judges this exercise — don't double-flag
+    // Majority-of-weeks rule (mirrors progressionByExercise): a single reliable
+    // low-rep week must not blind the load path to a 4-week pump plateau.
+    if (Object.keys(byEx[ex] ?? {}).length >= Object.keys(weekMap).length) continue;
     const hi = flatWindow(weekMap);
     if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_load_kg: hi, basis: "load" });
   }

@@ -323,7 +323,14 @@ export function createApp(store, config = {}) {
   app.post("/api/pause", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     const paused = b.on ? { from: new Date().toISOString().slice(0, 10), reason: b.reason ?? null } : null;
-    const updated = await store.updateUser(b.user_id, (u) => { u.paused = paused; return u; }); // CAS: won't clobber a concurrent write (#20)
+    const updated = await store.updateUser(b.user_id, (u) => { // CAS: won't clobber a concurrent write (#20)
+      // Resuming ARCHIVES the window instead of erasing it: the streak walker
+      // must treat those weeks as neutral forever, or "your streak is safe"
+      // collapses to ~1 the moment the user comes back (rail #1 broken exactly
+      // when it mattered). Capped so the blob can't grow unboundedly.
+      if (!b.on && u.paused) u.pause_history = [...(u.pause_history ?? []), { from: u.paused.from ?? null, to: new Date().toISOString().slice(0, 10) }].slice(-24);
+      u.paused = paused; return u;
+    });
     if (!updated) return c.json({ error: "unknown user" }, 404);
     return c.json({ paused: !!updated.paused });
   });
@@ -347,6 +354,11 @@ export function createApp(store, config = {}) {
       session_id: body.session_id ?? crypto.randomUUID(),
       user_id: id,
       date: body.date ?? new Date().toISOString(),
+      // The device's LOCAL calendar day — streak/volume weeks bank to the day
+      // the user experienced, not the UTC instant (a Monday-morning session in
+      // UTC+12 must not land in last week). Whitelisted explicitly (the deload
+      // lesson below: a dropped field silently disables its whole pipeline).
+      ...(body.local_date ? { local_date: String(body.local_date).slice(0, 10) } : {}),
       program_ref: user.program.id,
       session_name: body.session_name ?? null,
       sets: (body.sets ?? []).map((s) => ({

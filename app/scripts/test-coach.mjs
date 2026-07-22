@@ -197,6 +197,31 @@ check("#19 specialization maintenance muscles read 'holding steady', never 'add 
   assert.ok(!rep.adaptive.some((a) => a.muscle === "chest" && a.signal === "add"));
 });
 
+check("#21 the session AFTER a comeback does not re-fire the layoff ease (deload-tagged sessions still count as training)", () => {
+  const now = "2026-06-20T10:00:00Z";
+  const day = (n) => new Date(+new Date(now) - n * 86400000).toISOString();
+  const sessions = [
+    { session_id: "pre", date: day(18), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] },
+    { session_id: "cb", date: day(3), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 88, reps: 8, deload: true }] },
+  ];
+  const sug = suggestWeight(sessions, "barbell-bench-press", "6-10", undefined, now);
+  assert.equal(sug.layoff_days, undefined); // trained 3 days ago — NOT a layoff
+  assert.ok(!/It's been/.test(sug.note));   // no false "It's been 18 days" copy
+  assert.equal(sug.last_kg, 100);           // progression anchor stays on the non-deload session
+});
+
+check("#21 an all-deload recent history shows the NEWEST week with an honest note (never the oldest)", () => {
+  const now = "2026-06-17T10:00:00Z";
+  const user = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const dl = (d) => ({ session_id: "d" + d, date: d, sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 90, reps: 8, deload: true },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 90, reps: 8, deload: true },
+  ] });
+  const rep = progressReport(user, [dl("2026-06-01"), dl("2026-06-08")], [], [], now);
+  assert.equal(rep.latest_week, "2026-W24"); // the NEWER deload week, not W23
+  assert.ok(/deload/i.test(rep.volume_note) && !/Skipping/i.test(rep.volume_note)); // honest: we're SHOWING a deload, not skipping one
+});
+
 check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {
   const start = "2026-01-05T00:00:00Z";
   const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
