@@ -215,7 +215,11 @@ try {
   ok("#15 a different IP is not caught by that bucket", otherIp.status === 200);
   // #18: onboard throttle markers must NOT consume the AUTH per-IP magic-link
   // budget — 10 markers were eating half of MAX_LINKS_PER_IP (20) for everyone
-  // behind the same gym NAT.
+  // behind the same gym NAT. #21 made this test DISCRIMINATING: the old version
+  // (10 markers vs a 20-link cap, then one auth request) passed even with the
+  // bug reinstated — assert the markers carry no IP at all.
+  ok("#18 onboard markers store NO ip — they can never count toward the auth per-IP cap",
+    (await store.countRecentByIp("203.0.113.9", 0)) === 0);
   await store.saveUser("nat-user", { profile: {} });
   const natLink = await requestMagicLink(store, { email: "natuser@t.com", anonUserId: "nat-user", ip: "203.0.113.9" });
   ok("#18 an auth link from the throttled onboard IP is NOT rate-limited (separate budgets)", !natLink.error && !!natLink.token);
@@ -240,6 +244,19 @@ try {
   const mergeData = await mergeRes.json();
   ok("#15 the grant merges the second device's workouts into the account (nothing stranded)",
     mergeRes.status === 200 && mergeData.merged === true && mergeData.sessions === 1);
+
+  // #21: local_date must round-trip through the /api/session whitelist (the
+  // deload-flag lesson: a silently dropped field disables its whole pipeline).
+  const ldUser = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+  await json("POST", "/api/session", { user_id: ldUser, session_id: "ld-1", date: dayAgo(0), local_date: "2026-07-23", sets: [{ exercise: "push-up", set_type: "work", reps: 10 }] });
+  const ldStored = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-1");
+  ok("#21 local_date round-trips through the session whitelist", ldStored?.local_date === "2026-07-23");
+
+  // #21: resuming a pause archives the window (the streak's neutral weeks survive)
+  await json("POST", "/api/pause", { user_id: ldUser, on: true });
+  await json("POST", "/api/pause", { user_id: ldUser, on: false });
+  const ldAfter = await store.getUser(ldUser);
+  ok("#21 pause resume archives the window into pause_history", Array.isArray(ldAfter.pause_history) && ldAfter.pause_history.length === 1 && !!ldAfter.pause_history[0].to);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

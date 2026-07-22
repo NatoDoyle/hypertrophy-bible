@@ -54,6 +54,19 @@ function lastSetsForExercise(sessions, exId) {
   return null;
 }
 
+// The most recent date this exercise was trained AT ALL — deload/comeback
+// sessions included, because a comeback session is still training. Layoff
+// detection must anchor here: anchoring on the last NON-deload session made the
+// session after a comeback re-fire the ease from the pre-layoff date with false
+// "It's been N days" copy, and those re-eased sets logged untagged into the
+// e1RM trend (the exact fabricated strength loss the tagging exists to prevent).
+function lastAnyDateForExercise(sessions, exId) {
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    if ((sessions[i].sets ?? []).some((s) => s.exercise === exId && (s.set_type ?? "work") === "work")) return sessions[i].date ?? null;
+  }
+  return null;
+}
+
 // A gap this long since an exercise was last trained triggers a deload on return —
 // coming back heavier than you left is how people get hurt after a layoff.
 // EXPORTED because the adherence engine's "welcome back — I've eased your weights"
@@ -74,7 +87,10 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const base = { last_kg: lastWeight, last_reps: last.sets.map((s) => s.reps) };
   // Layoff deload: if it's been a while, ease the load and suppress the progression
   // bump — overrides everything below so a comeback never loads heavier than before.
-  const layoffDays = now && last.date ? Math.round((+new Date(now) - +new Date(last.date)) / 86400000) : 0;
+  // Measured from the last time the exercise was trained AT ALL (comeback/deload
+  // sessions count as training); the progression ANCHOR stays on non-deload sets.
+  const lastAny = lastAnyDateForExercise(sessions, exId);
+  const layoffDays = now && lastAny ? Math.round((+new Date(now) - +new Date(lastAny)) / 86400000) : 0;
   if (layoffDays >= COMEBACK_GAP_DAYS) {
     const eased = Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4;
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
@@ -376,7 +392,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // and the current in-progress week (when an earlier full week exists).
   const deloadFrac = {};
   for (const s of sessions) {
-    const wk = isoWeekKey(s.date);
+    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
     for (const set of s.sets ?? []) {
       if ((set.set_type ?? "work") === "warmup") continue;
       (deloadFrac[wk] ??= { d: 0, t: 0 }).t++;
@@ -385,13 +401,28 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   }
   const isDeloadWeek = (wk) => (deloadFrac[wk]?.t ?? 0) > 0 && deloadFrac[wk].d / deloadFrac[wk].t > 0.5;
   const nowWeek = now ? isoWeekKey(now) : null;
-  let latest = weeks[weeks.length - 1] ?? null;
-  let volume_note = null;
-  for (let i = weeks.length - 1; i >= 0; i--) {
-    const wk = weeks[i];
-    if (isDeloadWeek(wk) && i > 0) { volume_note = "Skipping your deload week — its volume is intentionally low."; continue; }
-    if (wk === nowWeek && i > 0) { volume_note = "Showing your last full week — this week is still in progress."; continue; }
-    latest = wk; break;
+  // Prefer the newest CLEAN, FULL week; fall back to the newest clean week
+  // (in-progress is better than nothing), then to the newest week of all with
+  // an honest note — never the oldest (the old walk accepted index 0
+  // unconditionally, so an all-deload history showed the EARLIEST deload week
+  // under a note claiming deloads were skipped).
+  const clean = weeks.filter((w) => !isDeloadWeek(w));
+  const full = clean.filter((w) => w !== nowWeek);
+  const newest = weeks[weeks.length - 1] ?? null;
+  let latest = null, volume_note = null;
+  if (full.length) {
+    latest = full[full.length - 1];
+    if (latest !== newest) {
+      const reasons = [];
+      if (weeks.slice(weeks.indexOf(latest) + 1).some(isDeloadWeek)) reasons.push("your deload week is skipped (its volume is intentionally low)");
+      if (newest === nowWeek && !isDeloadWeek(newest)) reasons.push("this week is still in progress");
+      if (reasons.length) volume_note = `Showing your last full week — ${reasons.join("; ")}.`;
+    }
+  } else if (clean.length) {
+    latest = clean[clean.length - 1];
+  } else if (newest) {
+    latest = newest;
+    volume_note = "Your recent weeks are deloads — volume is intentionally low, exactly as planned.";
   }
   const volume = latest ? volumeVsLandmarks(weekly[latest], muscleIndex) : {};
   // Specialization honesty: a muscle the plan deliberately holds at its

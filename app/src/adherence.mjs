@@ -37,12 +37,19 @@ const weekOrdinal = (dateOrKey) => {
 // exact demotivation the rail exists to prevent). `paused` is user.paused:
 // { from: "YYYY-MM-DD", reason } or falsy; a legacy pause with no date neutralizes
 // only the current week.
-export function weeksConsistent(sessions, now, paused = null) {
-  const trained = new Set(sessions.filter((s) => s.date).map((s) => weekOrdinal(s.date)));
+export function weeksConsistent(sessions, now, paused = null, pauseHistory = []) {
+  // local_date (the device's calendar day, when the client sent one) banks the
+  // session to the week the USER experienced — a Monday-morning session in
+  // UTC+12 is Monday, not the previous ISO week's Sunday.
+  const trained = new Set(sessions.filter((s) => s.local_date || s.date).map((s) => weekOrdinal(s.local_date ?? s.date)));
   if (!trained.size) return 0;
   const cur = weekOrdinal(now);
   const pauseStartWeek = paused ? (paused.from ? weekOrdinal(paused.from) : cur) : Infinity;
-  const inPause = (w) => w >= pauseStartWeek; // the walk only ever visits w <= cur
+  // ARCHIVED pause windows stay neutral forever: resuming used to null the
+  // record, retroactively turning the frozen weeks into misses and collapsing
+  // the streak the pause card promised was safe.
+  const windows = (pauseHistory ?? []).filter((p) => p?.from && p?.to).map((p) => [weekOrdinal(p.from), weekOrdinal(p.to)]);
+  const inPause = (w) => w >= pauseStartWeek || windows.some(([a, b]) => w >= a && w <= b); // the walk only ever visits w <= cur
   let w = trained.has(cur) ? cur : cur - 1; // grace: not training THIS week yet doesn't break it
   let streak = 0, forgiven = false;
   while (w > 0) {
@@ -87,14 +94,14 @@ export function adherenceStatus(sessions, now, paused) {
   // Same threshold AND same rounding as suggestWeight's layoff deload, so this
   // message is only ever shown when the weights really are eased.
   if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
-  const trainedThisWeek = sessions.some((s) => s.date && weekOrdinal(s.date) === weekOrdinal(now));
+  const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(s.local_date ?? s.date) === weekOrdinal(now));
   if (!trainedThisWeek) return { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
   return { state: "on-track", message: "On track this week. Nice." };
 }
 
 export function weeklySummary(sessions, now) {
   const cur = weekOrdinal(now);
-  const wk = sessions.filter((s) => s.date && weekOrdinal(s.date) === cur);
+  const wk = sessions.filter((s) => (s.local_date || s.date) && weekOrdinal(s.local_date ?? s.date) === cur);
   const hardSets = wk.reduce((a, s) => a + (s.sets ?? []).filter((set) => isHardSet(set)).length, 0);
   return { sessions: wk.length, hard_sets: hardSets };
 }
@@ -102,7 +109,7 @@ export function weeklySummary(sessions, now) {
 // The whole adherence payload for the app.
 export function adherenceReport(user, sessions, now = new Date().toISOString()) {
   const paused = !!user.paused;
-  const streak = weeksConsistent(sessions, now, user.paused || null);
+  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || []);
   return {
     streak_weeks: streak,
     ...xpAndLevel(sessions),

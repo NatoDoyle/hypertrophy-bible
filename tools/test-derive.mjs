@@ -206,6 +206,24 @@ check("#20 progressionByExercise charts pump-band lifts by top-set LOAD (they ne
   assert.equal(progressionByExercise(mixed, exIndex)[0].basis, undefined);
 });
 
+check("#21 one grinding 12-rep week must not hide a pump lift's load history (majority-of-weeks basis)", () => {
+  // week 0: a single 12-rep top set (the BOTTOM of the 12-20 band -> routes to e1RM);
+  // weeks 1-4: dead-flat 10 kg pump work. The all-time suppression made both the
+  // stall and the chart row vanish — the exact bug Wave 20 claimed to fix.
+  const w = (n, sets) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets });
+  const sessions = [
+    w(0, [{ exercise: "laterals", set_type: "work", weight_kg: 10, reps: 12 }]),
+    ...[1, 2, 3, 4].map((n) => w(n, [{ exercise: "laterals", set_type: "work", weight_kg: 10, reps: 15 + (n % 2) }])),
+  ];
+  const stalls = stallDetect(sessions, exIndex);
+  assert.equal(stalls.length, 1);
+  assert.equal(stalls[0].basis, "load");
+  const rows = progressionByExercise(sessions, exIndex);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].basis, "load");
+  assert.equal(rows[0].weeks, 4); // the 4 pump weeks chart; the lone e1RM week defers
+});
+
 check("progressionByExercise: est-1RM rises across the log", () => {
   const sessions = [
     { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },

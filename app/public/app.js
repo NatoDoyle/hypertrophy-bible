@@ -689,6 +689,10 @@ function startSession(templateSession) {
     session_id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     units: unitPref(), // weights below are stored in DISPLAY units — stamp which
     startedAt: new Date().toISOString(),
+    // The device's LOCAL calendar day: streak/volume weeks bank to the day the
+    // user experienced — a Monday-morning session in UTC+12 is Monday, not the
+    // previous ISO week's Sunday (en-CA formats as YYYY-MM-DD).
+    localDate: new Date().toLocaleDateString("en-CA"),
   };
   saveSess();
   renderPlayer();
@@ -1121,7 +1125,7 @@ async function finish() {
   const session_id = sess.session_id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   // Date the workout by when it was DONE, not when the save finally lands — a
   // Tuesday session rescued on Thursday belongs to Tuesday's week.
-  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), user_id: uid, session_name: sess.name, sets: sess.logged };
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged };
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one
