@@ -135,6 +135,14 @@ These are real failures from previous iterations. Each is now a standing check.
    beginner template never actually programs), one by reading the KB's permissive language
    closely ("can... sometimes should" is not a prescription).
 
+15. **A status with full client styling and zero producers is dead UI that reads as shipped.**
+   The Progress legend explained the `s-maint` "holding steady" status — styled, labelled,
+   documented — but nothing ever emitted `"maintenance"`, so specialization users were told to
+   "add volume" to muscles their plan deliberately holds at MV (contradicting the plan, lesson
+   10's sibling). → **Standing lens:** for every status/enum a surface can render, grep for the
+   producer; for every producer, grep for the renderer (the same check that caught `volume_note`
+   needing a display line in the same wave it was added).
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice

@@ -220,6 +220,7 @@ export function classifyEnergyBalance(trend, goal) {
 // Progression per exercise: best est-1RM per week and the change across the log.
 export function progressionByExercise(sessions, exIndex) {
   const byEx = {};
+  const byExLoad = {}; // pump-band lifts (reps > RELIABLE_1RM_REPS): track weekly best LOAD, same as stallDetect
   for (const s of sessions) {
     const wk = isoWeekKey(s.date);
     for (const set of s.sets ?? []) {
@@ -230,13 +231,30 @@ export function progressionByExercise(sessions, exIndex) {
       // strength LOSS, shown precisely when the coach copy says growth shows up.
       // (Mirrors stallDetect and suggestWeight, which both already exclude deloads —
       // this was the one "deload-aware progression" sibling the guard missed.)
-      if (!countsForE1RM(set) || set.deload) continue;
-      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
-      byEx[set.exercise] ??= {};
-      byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+      if (set.deload) continue;
+      if (countsForE1RM(set)) {
+        const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+        byEx[set.exercise] ??= {};
+        byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+        // Without this path, a lifter's laterals/calves (the plan's own 12-20
+        // band) never chart at all — "Your lifts" showed only the heavy work.
+        byExLoad[set.exercise] ??= {};
+        byExLoad[set.exercise][wk] = Math.max(byExLoad[set.exercise][wk] ?? 0, set.weight_kg);
+      }
     }
   }
   const out = [];
+  for (const [ex, weekMap] of Object.entries(byExLoad)) {
+    if (byEx[ex]) continue; // heavy data exists — the e1RM entry below covers it
+    const weeks = Object.keys(weekMap).sort();
+    const first = weekMap[weeks[0]], last = weekMap[weeks[weeks.length - 1]];
+    out.push({
+      exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks: weeks.length,
+      first_load_kg: first, last_load_kg: last, basis: "load",
+      change_pct: first ? Math.round(((last - first) / first) * 10000) / 100 : 0,
+    });
+  }
   for (const [ex, weekMap] of Object.entries(byEx)) {
     const weeks = Object.keys(weekMap).sort();
     const first = weekMap[weeks[0]], last = weekMap[weeks[weeks.length - 1]];
