@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v59";
+const VERSION = "hb-shell-v60";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -27,6 +27,12 @@ self.addEventListener("fetch", (e) => {
       const refresh = fetch(e.request)
         .then((res) => { if (res.ok) cache.put(e.request, res.clone()); return res; })
         .catch(() => null);
+      // Hold the background revalidation with waitUntil, or the browser can kill
+      // the SW the moment the cached response is returned — before cache.put
+      // finishes — so the "updates land one load later" self-heal never completes
+      // and a stale asset persists across reloads. (On the no-cache path we await
+      // refresh anyway, so this only matters when serving from cache.)
+      e.waitUntil(refresh);
       // Serve cache instantly when we have it; otherwise wait for the network.
       return cached || (await refresh) || new Response("Offline", { status: 503 });
     })
