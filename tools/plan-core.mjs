@@ -736,6 +736,17 @@ export function generatePlan(profile, kb, opts = {}) {
 
   // 6) closed-loop self-check on the FINAL (trimmed) plan → rationale + warnings.
   const warnings = [];
+  // Honesty on a frequency override: chooseSplit clamps to 2-6 sessions (a
+  // productive hypertrophy program needs >=2, and the split table tops out at
+  // 6), so a request for 1 or 7 days/week is delivered as 2 or 6. The onboarding
+  // UI already bounds the stepper to 2-6, but a direct API caller can send 1/7 —
+  // tell them their frequency was adjusted rather than silently changing it.
+  const reqDays = profile.days_per_week;
+  if (Number.isFinite(reqDays) && reqDays !== sessionSpecs.length) {
+    warnings.push({ code: "frequency-adjusted", message: reqDays < sessionSpecs.length
+      ? `You asked for ${reqDays} day${reqDays === 1 ? "" : "s"}/week; a productive program needs at least ${sessionSpecs.length} sessions, so this plan schedules ${sessionSpecs.length} — do them whenever you can.`
+      : `You asked for ${reqDays} days/week; this plan covers everything well in ${sessionSpecs.length}, so the extra day is yours to rest or repeat a favourite session.` });
+  }
   const weekVol = projectWeek();
   const vsLm = volumeVsLandmarks(weekVol, muscleIndex);
   for (const [m, r] of Object.entries(volumeRationale)) {
