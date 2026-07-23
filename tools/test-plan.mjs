@@ -201,6 +201,15 @@ ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan ca
   const tightCap = generatePlan({ user_id: "cap-knob", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: FULLG }, kb, { perMuscleSessionCap: 6 });
   ok("#14i the perMuscleSessionCap knob actually binds (a declared cap must be enforced)", directDose(tightCap).every((n) => n <= 6));
 
+  // --- #37 a frequency override is surfaced, never silent ---
+  const freq1 = generatePlan({ user_id: "freq-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 1, session_length_min: 60, available_equipment: FULLG }, kb);
+  ok("#37 days_per_week=1 delivers 2 sessions WITH a frequency-adjusted warning (never silent)",
+    freq1.program.sessions.length === 2 && (freq1.rationale.warnings ?? []).some((w) => w.code === "frequency-adjusted"));
+  const freq7 = generatePlan({ user_id: "freq-7", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 7, session_length_min: 60, available_equipment: FULLG }, kb);
+  ok("#37 days_per_week=7 clamps to 6 WITH a frequency-adjusted warning", (freq7.rationale.warnings ?? []).some((w) => w.code === "frequency-adjusted"));
+  const freq4 = generatePlan({ user_id: "freq-4", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULLG }, kb);
+  ok("#37 an in-range frequency (4) emits NO frequency-adjusted warning", !(freq4.rationale.warnings ?? []).some((w) => w.code === "frequency-adjusted"));
+
   // --- #15 Wave-15: coverage-floor and top-up delivery invariants ---
   // (a) the coverage floor serves UNSERVED muscles — a priority muscle already
   // served this session must not double-dip it. The regression: beginner 2-day
