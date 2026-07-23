@@ -44,6 +44,9 @@ check("estimate1RM Epley + single-rep", () => {
   assert.equal(estimate1RM(100, 1).e1rm, 100);
   assert.equal(estimate1RM(100, 5).confidence, "high");
   assert.equal(estimate1RM(100, 20).confidence, "low");
+  // #29: the "high" band ends at 6 — a 10-rep Epley estimate is a 33% extrapolation, only "moderate"
+  assert.equal(estimate1RM(100, 6).confidence, "high");
+  assert.equal(estimate1RM(100, 10).confidence, "moderate");
 });
 
 check("isHardSet gates warmups and sub-threshold effort", () => {
@@ -109,6 +112,10 @@ check("classifyEnergyBalance from weight trend + goal (no calories)", () => {
   const losing = { pct_per_week: -0.4 };
   assert.equal(classifyEnergyBalance(losing, "hypertrophy").matchesGoal, false); // wrong way for muscle gain
   assert.equal(classifyEnergyBalance(losing, "fat-loss").matchesGoal, true);
+  // #29: at exactly the 0.1%/wk boundary, direction and advice must agree (were >/>= split)
+  const edge = classifyEnergyBalance({ pct_per_week: 0.1 }, "hypertrophy");
+  assert.equal(edge.direction, "surplus");
+  assert.equal(edge.matchesGoal, true); // "lean-gain on target" — never "maintenance" + on-target
   assert.equal(classifyEnergyBalance({ pct_per_week: 0.0 }, "recomposition").direction, "maintenance");
 });
 

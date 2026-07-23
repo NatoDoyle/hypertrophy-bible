@@ -9,7 +9,10 @@
 export function estimate1RM(weightKg, reps) {
   if (reps <= 0 || weightKg <= 0) return { e1rm: 0, confidence: "none" };
   const e1rm = reps === 1 ? weightKg : weightKg * (1 + reps / 30);
-  const confidence = reps <= 10 ? "high" : reps <= 15 ? "moderate" : "low";
+  // Epley's error grows past ~5-6 reps (at 10 reps the estimate is already a 33%
+  // extrapolation above the load lifted), so the "high" band is honest only up to
+  // ~6. Labels only — e1rm values and countsForE1RM (RELIABLE_1RM_REPS=12) unchanged.
+  const confidence = reps <= 6 ? "high" : reps <= 10 ? "moderate" : "low";
   return { e1rm: Math.round(e1rm * 100) / 100, confidence };
 }
 
@@ -198,9 +201,13 @@ export function bodyweightTrend(series) {
 export function classifyEnergyBalance(trend, goal) {
   if (!trend) return { direction: "unknown", note: "need >=3 bodyweight points" };
   const pct = trend.pct_per_week;
+  // Boundaries are INCLUSIVE and match the goal-branch thresholds below (which
+  // treat pct===0.1 as on-target lean-gain): a hair over 0.1%/wk is a small
+  // surplus, so `direction` must not say "maintenance" while the advice says
+  // "lean-gain on target" — the two fields were computed with `>` vs `>=`.
   let direction;
-  if (pct > 0.1) direction = "surplus";
-  else if (pct < -0.1) direction = "deficit";
+  if (pct >= 0.1) direction = "surplus";
+  else if (pct <= -0.1) direction = "deficit";
   else direction = "maintenance";
 
   const wantsGain = goal === "hypertrophy" || goal === "strength";
