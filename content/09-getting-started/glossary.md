@@ -53,6 +53,7 @@
 | Term | What it means |
 |---|---|
 | **Volume** | How much work you do, usually counted as **hard sets per muscle per week**. |
+| **Effective sets (why you might see a half)** | A set counts as **1 for the main muscle** it trains and **½ for each assisting muscle**. Bench press is a chest exercise, but your triceps and front delts help — so one hard bench set is 1 set for chest and ½ a set each for triceps and front delts. That's why a muscle's weekly total can land on a half (e.g. 9.5): it's adding up full sets from direct work and half-sets from assistance. |
 | **Frequency** | How often you train a muscle across the week, e.g. "chest twice a week." |
 | **Mesocycle** | A training block of roughly 4–8 weeks that builds up and then eases off before you repeat. |
 | **Deload** | A planned easy week (lighter weights or fewer sets) that lets accumulated fatigue clear so you come back fresh. |
