@@ -25,7 +25,7 @@
   "lengthened_bias": false,
   "stability": "moderate",
   "unilateral": false,
-  "cns_cost": "high",
+  "cns_cost": "moderate",
   "rom_notes": "Touch the chest with control; a slight arch keeps the shoulders safe without shortening chest ROM excessively.",
   "difficulty": "intermediate",
   "cues": [
