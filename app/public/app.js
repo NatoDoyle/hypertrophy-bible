@@ -654,8 +654,14 @@ async function renderToday() {
       <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
       <div style="flex:1"><b${x.done ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.sub}</span></div>
       ${x.done ? `<span class="chip" aria-label="${x.label} done">done</span>` : `<button class="btn ${x.key === firstUndone?.key ? "" : "secondary"}" data-step="${x.key}" style="width:auto;padding:10px 16px">${x.cta}</button>`}</div>`;
-  const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}
-      ${firstUndone ? `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone.key === "checkin" ? "Start your morning here." : firstUndone.key === "workout" ? "You're checked in — time to train." : "Great work today — just log your calories to finish."}</p>` : `<p class="muted" style="margin-top:8px;text-align:center">🎉 All done today. See you tomorrow.</p>`}</div>`;
+  // When calories is the next step, drop an inline quick-log right here so the
+  // evening entry is one tap — no trip to another tab (considerations #6: "very
+  // quick and straightforward"). The Fuel tab stays for the target + macros.
+  const calorieQuickLog = firstUndone?.key === "calories"
+    ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="hub-kcal" type="number" inputmode="numeric" placeholder="today's total calories" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;font-size:1.05rem"><button class="btn" id="hub-log" style="width:auto;padding:11px 18px">Log</button></div>
+       <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
+    : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : "You're checked in — time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
+  const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${firstTimer}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
@@ -667,6 +673,12 @@ async function renderToday() {
     else { tab = "fuel"; render(); } // calories: the Fuel tab logs it with target context
   });
   if ($("#checkin")) $("#checkin").onclick = renderCheckin;
+  if ($("#hub-log")) $("#hub-log").onclick = async () => {
+    const kcal = parseFloat($("#hub-kcal").value);
+    if (!Number.isFinite(kcal) || kcal <= 0) { $("#hub-kcal").focus(); return; }
+    try { await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal }) }); say("Calories logged. Day complete."); renderToday(); }
+    catch { alertBar("📴 Couldn't log — try again when connected."); }
+  };
   wireLearnLinks();
   if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
 }
