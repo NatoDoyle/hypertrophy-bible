@@ -1432,7 +1432,7 @@ async function renderCoach() {
       const reg = await navigator.serviceWorker.ready;
       if (localStorage.getItem("hb_push") === "1") {
         const sub = await reg.pushManager.getSubscription();
-        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {}); await sub.unsubscribe(); }
+        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
         localStorage.removeItem("hb_push");
         say("Device reminders turned off."); await renderCoach(); $("#pushbtn")?.focus(); return;
       }
