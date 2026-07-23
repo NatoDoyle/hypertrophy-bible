@@ -303,6 +303,25 @@ try {
   const badKcal = await json("POST", "/api/nutrition/log", { user_id: nUser, kcal: -5 });
   ok("#43 a nonsense intake is rejected", badKcal.status === 400);
 
+  // --- Wave 46: daily-flow status (#6) + morning check-in captures weight ---
+  const dUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const DAY = "2026-07-23";
+  const todayFor = async () => (await (await app.request(`/api/today?d=${DAY}`, { headers: { "X-HB-User": dUser } })).json()).daily;
+  const d0 = await todayFor();
+  ok("#46 a fresh day shows nothing done yet", d0.checked_in === false && d0.weight_logged === false && d0.workout_logged === false && d0.calories_logged === false);
+  // morning check-in WITH weight in one call
+  const ck = await json("POST", "/api/checkin", { user_id: dUser, date: DAY, sleep_quality: 4, energy: 4, stress: 2, motivation: 5, weight_kg: 84 });
+  ok("#46 the check-in logs weight in the same step", ck.data.weight_logged === true);
+  const d1 = await todayFor();
+  ok("#46 daily status reflects the morning check-in (checked-in + weight)", d1.checked_in === true && d1.weight_logged === true);
+  // workout logged today
+  await json("POST", "/api/session", { user_id: dUser, session_id: "d-1", date: DAY + "T18:00:00Z", local_date: DAY, sets: [{ exercise: "push-up", set_type: "work", reps: 12 }] });
+  ok("#46 daily status reflects the workout", (await todayFor()).workout_logged === true);
+  // calories logged today
+  await json("POST", "/api/nutrition/log", { user_id: dUser, date: DAY, kcal: 2400 });
+  const d3 = await todayFor();
+  ok("#46 daily status reflects the evening calories — all three done", d3.checked_in && d3.workout_logged && d3.calories_logged);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
