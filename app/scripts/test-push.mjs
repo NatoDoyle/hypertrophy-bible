@@ -64,6 +64,8 @@ for (const bad of [
   "http://fcm.googleapis.com/fcm/send/x",              // not https
   "https://fcm.googleapis.com.attacker.example/x",     // suffix-spoof attempt
   "https://evil-push.services.mozilla.com.attacker/x", // lookalike
+  "https://storage.googleapis.com/attacker-bucket/o",  // #29: generic Google API host, NOT a push service
+  "https://www.googleapis.com/upload/x",               // #29: same umbrella, must be rejected
   "not-a-url",
 ]) ok(`rejects non-push endpoint: ${bad.slice(0, 40)}`, isAllowedPushEndpoint(bad) === false);
 
