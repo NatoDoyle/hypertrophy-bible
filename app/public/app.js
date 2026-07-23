@@ -1318,15 +1318,12 @@ async function renderProgress() {
         <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable. In order: 1) check sleep and food first, 2) swap the exercise for a cousin (same muscle, new angle) in the plan editor, 3) push those sets a rep closer to failure. ${""}</p>
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
-  // Adaptive volume-response coaching (#2 foundation): the plan reading your own
-  // logged data and suggesting where to add, ease, or change volume — bounded to
-  // your recoverable range. Advice only; you decide, and you can act via the plan
-  // editor. Quiet until there's enough data to say something actionable.
-  const SIGNAL_ICON = { add: "➕", reduce: "➖", change: "🔄" };
-  const adaptiveCard = (p.adaptive || []).length
-    ? `<h2>What to adjust ${helpDot("glossary", "?")}</h2>
-       <p class="muted">Based on how your logged sets are actually progressing — tune these in the plan editor. Suggestions, not orders.</p>
-       <div class="card">${p.adaptive.map((a) => `<div class="row"><div style="flex:1"><b>${SIGNAL_ICON[a.signal] || "•"} ${esc(cap(friendlyMuscle(a.muscle)))}</b><br><span class="muted" style="font-size:.9rem">${esc(a.advice)}</span></div></div>`).join("")}</div>`
+  // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your
+  // logged data (volume ± per muscle, bounded to your recoverable range) — you
+  // don't act on suggestions, the algorithm just does it and tells you at the
+  // start of the new block. A quiet one-liner here so you know it's happening.
+  const autoAdaptNote = p.sessions_logged >= 4
+    ? `<p class="muted" style="font-size:.85rem;text-align:center">📈 Your plan retunes itself each block from all of this — you don't have to adjust anything.</p>`
     : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
@@ -1337,7 +1334,7 @@ async function renderProgress() {
     <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
-    ${adaptiveCard}
+    ${autoAdaptNote}
     ${stallCard}
     <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
     <p class="muted">The most you could likely lift for one rep, estimated from your sets. Watch the trend, not the exact number.</p>
