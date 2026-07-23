@@ -50,9 +50,6 @@ If any bullet in the first list applies, you are not near your ceiling — you h
 - **The curve's exact shape is individual.** "Decelerating, never flat" is well-supported in direction; the rate and endpoint for any one person are unknown and set largely by genetics.
 - **"Near your limit" is a judgment, not a test.** The checklist here is coaching heuristic — its value is ruling out the fixable causes (inconsistency, recovery, specialization) before blaming genetics, not delivering a verdict.
 
-## Backing Data
-None — this page synthesizes the linked evidence pillars rather than defining its own data.
-
 ## Common mistakes
 
 - **Blaming genetics after months, not years.** A ceiling is something you approach over a training career, not a single block.
@@ -68,6 +65,9 @@ None — this page synthesizes the linked evidence pillars rather than defining 
 - [Genetics & Anthropometry](genetics-and-anthropometry.md) — the limits and variation genetics set.
 - [Enhanced vs Natural](enhanced-vs-natural.md) — why enhanced physiques aren't a fair yardstick, plus the FFMI heuristic.
 - [Breaking Advanced Plateaus](../07-tracking/breaking-advanced-plateaus.md) — pulling the right levers when progress is slow.
+
+## Backing Data
+None — this page synthesizes the linked evidence pillars rather than defining its own data.
 
 ## References
 This page is a synthesis of the evidence pillars it links to (Stimulus–Fatigue–Adaptation, Training Status, Genetics & Anthropometry, Enhanced vs Natural); the FFMI ~25 heuristic and its survey basis are cited on [Enhanced vs Natural](enhanced-vs-natural.md).
