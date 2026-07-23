@@ -239,6 +239,10 @@ export function createApp(store, config = {}) {
     if (error) return error;
     const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
     const nowISO = new Date().toISOString();
+    // The user's LOCAL calendar day (client passes ?d=YYYY-MM-DD; a date is not a
+    // credential so it's fine in the query, unlike user_id). Drives the daily-flow
+    // done-state so "logged today" matches the day the user is actually living.
+    const clientDay = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : nowISO.slice(0, 10); })();
     // NEW MESOCYCLE -> rotate the accessories. Compounds keep their ranking so
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
@@ -288,9 +292,20 @@ export function createApp(store, config = {}) {
         if (updated) user = updated;
       }
     }
-    const today = nowISO.slice(0, 10);
-    const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === today));
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO) });
+    const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === clientDay));
+    // Daily-flow status (considerations #6): the three things a user does across a
+    // day — morning check-in (incl. weight), the workout, and evening calories — so
+    // the Today hub can show, at a glance, what's done and what's next.
+    const [bodyweights, nutrition] = await Promise.all([store.listBodyweights(id), store.listNutritionLog(id)]);
+    const onDay = (d) => (d || "").slice(0, 10) === clientDay;
+    const daily = {
+      day: clientDay,
+      checked_in: checkins.some((ck) => onDay(ck.date)),
+      weight_logged: bodyweights.some((b) => onDay(b.date)),
+      workout_logged: sessions.some((s) => onDay(s.local_date ?? s.date)),
+      calories_logged: nutrition.some((e) => onDay(e.date)),
+    };
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO), daily });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
@@ -299,10 +314,18 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
-    const checkin = { user_id: b.user_id, date: b.date || new Date().toISOString().slice(0, 10), source: "manual" };
-    for (const k of ["sleep_quality", "energy", "stress", "mood"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
+    const day = (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) ? b.date : new Date().toISOString().slice(0, 10);
+    const checkin = { user_id: b.user_id, date: day, source: "manual" };
+    for (const k of ["sleep_quality", "energy", "stress", "mood", "motivation"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
     await store.addCheckin(b.user_id, checkin);
-    return c.json({ ok: true, readiness: dailyReadiness(checkin) });
+    // The morning check-in is also where weight is logged (considerations #6 — one
+    // morning flow, not a separate trip to Progress). Weight is optional.
+    let weight_logged = false;
+    if (Number.isFinite(Number(b.weight_kg)) && Number(b.weight_kg) > 0) {
+      await store.addBodyweight(b.user_id, { date: day, kg: Number(b.weight_kg) });
+      weight_logged = true;
+    }
+    return c.json({ ok: true, readiness: dailyReadiness(checkin), weight_logged });
   });
 
   // Adherence & gamification: streak, XP/level, milestones, motivational state.
