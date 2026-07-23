@@ -49,7 +49,7 @@ The engines are **pure, fs-free, `Date.now`/`Math.random`-free** so they run ide
 
 | Pure core (`tools/`) | Binder (`app/src/`) | Does |
 |---|---|---|
-| `derive-core.mjs` | `coach.mjs` | Per-muscle weekly volume vs KB MV/MEV/MAV/MRV landmarks, est-1RM progression, stall detection, energy balance from bodyweight trend (no calorie counting), readiness, the adaptive volume-response signal |
+| `derive-core.mjs` | `coach.mjs` | Per-muscle weekly volume vs KB MV/MEV/MAV/MRV landmarks, est-1RM progression, stall detection, energy balance from bodyweight trend, PLUS an explicit calorie/macro tracker (nutrition-core.mjs: TDEE, adaptive maintenance from logged intake+weight, protein/fat/carb targets — the Fuel tab), readiness, the adaptive volume-response signal |
 | `plan-core.mjs` (`generatePlan`) | `planner.mjs` (`generateUserPlan`) | Deterministic generative plan engine: split → per-muscle set targets from landmarks → equipment/injury-filtered exercise pools → ranked allocation within a session budget → MRV trim → self-check → `critiquePlan` |
 
 The generated program is byte-compatible with `data/schemas/program-template.schema.json`, so `buildToday`/`suggestWeight` in `coach.mjs` consume it unchanged. `plan-core.mjs` is **deterministic** — a byte-identical-output test guards it; never introduce `Date.now`/`Math.random` into the generative path.

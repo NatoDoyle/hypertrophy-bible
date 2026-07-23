@@ -220,5 +220,17 @@ check("warm-up sets never count toward a target", () => {
   assert.equal(loggedWorkSets(logged, "dip"), 1);
 });
 
+check("#45 optional ramp-up logging: any number of warm-ups leave work progress + the cursor untouched", () => {
+  // 3 ramp-up sets then 1 work set of a 3-set lift: work count = 1, so the player
+  // still shows set 2 next and the exercise is not done.
+  const ex = [{ exercise: "squat", sets: 3 }, { exercise: "bench", sets: 3 }];
+  const logged = [
+    { exercise: "squat", set_type: "warmup" }, { exercise: "squat", set_type: "warmup" },
+    { exercise: "squat", set_type: "warmup" }, { exercise: "squat", set_type: "work" },
+  ];
+  assert.equal(loggedWorkSets(logged, "squat"), 1);          // 3 warm-ups ignored; 1 work set counts
+  assert.equal(nextUnfinishedIndex(logged, ex, -1), 0);      // squat still the first unfinished lift — not advanced past
+});
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
