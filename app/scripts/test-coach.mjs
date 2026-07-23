@@ -360,6 +360,18 @@ check("computeVolumeAdjust recovery gate (Increment A): under-recovery holds the
   assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).chest, 2);
 });
 
+check("computeVolumeAdjust individualized patience (Increment B): a slow responder's own rhythm isn't a stall", () => {
+  const wkDate = (i) => { const d = new Date(Date.UTC(2026, 0, 5)); d.setUTCDate(d.getUTCDate() + i * 7); return d.toISOString().slice(0, 10); };
+  // 12 chest sets/wk (room below MAV.max); bench PRs only every ~5 weeks (slow but real), then 4 flat weeks.
+  const week = (i, kg) => ({ local_date: wkDate(i), sets: Array.from({ length: 12 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: kg, reps: 8 })) });
+  const full = []; for (let i = 0; i < 15; i++) full.push(week(i, 100 + Math.floor(i / 5) * 10));
+  // personal cadence ~5wk → the stall window stretches to ~8 → the recent 4-week flat is NOT a plateau → no bump
+  assert.equal(computeVolumeAdjust({}, full).chest, undefined);
+  // the SAME recent flat weeks WITHOUT the track record (cadence unknown → default 4-week window) DO read as a
+  // stall → bump. This is the whole point of Increment B: identical recent data, different verdict by history.
+  assert.equal(computeVolumeAdjust({}, full.slice(9)).chest, 2);
+});
+
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
   const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };

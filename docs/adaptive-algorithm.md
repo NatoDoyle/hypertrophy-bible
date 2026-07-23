@@ -93,12 +93,16 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
   headroom gain sets, ceiling-bound ones ease; accumulates across blocks, clamped
   MEV↔MRV (`deriveVolumeAdjust` / `computeVolumeAdjust`). Advisory "what to adjust" card
   removed (Wave 53) — the plan just does it.
-- **[next · Increment A] Recovery- & energy-aware volume tune** — never *add* volume to a
-  stalled muscle when the athlete is under-recovered (low block-average readiness) or in
-  an energy deficit; hold instead, because the stall is then a recovery/fuel problem.
-- **[Increment B] Individualized adaptation cadence** — learn each user's inter-PR
-  interval and scale the stall window / patience to it (the user's "different intervals"
-  point).
+- **[done · Increment A] Recovery- & energy-aware volume tune** — the tune won't *add*
+  volume to a stalled muscle when the athlete is under-recovered (low block-average
+  readiness) or in an energy deficit; it holds instead, because the stall is then a
+  recovery/fuel problem (`recoverySignal`, `deriveVolumeAdjust` context).
+- **[done · Increment B] Individualized adaptation cadence** — the stall window scales to
+  each user's demonstrated inter-PR interval (`progressionCadence` → `adaptiveStallWindow`),
+  so a slow-but-real responder isn't judged plateaued on a fixed 4-week clock and their
+  program isn't churned before it pays off. Bounded to only ever *stretch* patience past
+  the reliable-signal minimum, never shrink it. Directly answers the "people progress at
+  different intervals" constraint.
 - **[Increment C] Effort-aware lever** — when a stall coincides with RIR consistently
   above target, prescribe effort/intensity, not volume.
 - **[far vision] Cross-user learning** — aggregate (privacy-preserving) response data to
