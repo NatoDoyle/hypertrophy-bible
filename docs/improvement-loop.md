@@ -142,6 +142,19 @@ These are real failures from previous iterations. Each is now a standing check.
    10's sibling). → **Standing lens:** for every status/enum a surface can render, grep for the
    producer; for every producer, grep for the renderer (the same check that caught `volume_note`
    needing a display line in the same wave it was added).
+16. **A new field added to one code path must be carried through — and validated at — every
+   consumer.** The iteration-25 audit found three variants of the same shape in one burst of new
+   code: (a) `local_date` (Wave 21) was stored with only `slice(0,10)`, so a malformed value
+   became an `"NaN-WNaN"` week key that sorts after every real week and hijacked the reference-week
+   logic while dropping the session from the streak; (b) the per-session `comeback` flag (Wave 19)
+   didn't cover the per-*exercise* layoff ease, so a rotated-back accessory logged a fabricated
+   strength drop; (c) `push_subscriptions` (Wave 23) was added to the schema but not to
+   `reassignUserData`, so a merge orphaned it. → **Standing lens when adding a field:** (1) validate
+   it at the trust boundary (a client-supplied value is hostile until parsed — auth here is
+   possession-of-UUID, so *any* client can post), and provide a fallback for bad data already
+   stored; (2) grep every consumer of the surrounding record (`git grep` the sibling fields) and
+   confirm the new one is handled — merges, sweeps, week-banking, and every derived view, not just
+   the happy path that introduced it.
 
 ## Token discipline (the loop must be affordable to keep running)
 
