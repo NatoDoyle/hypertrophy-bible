@@ -101,6 +101,28 @@ tell the loop what to fix next. **Needs your call** — it's a values decision, 
 replies to a magic-link email, it goes nowhere. Set up forwarding (Cloudflare Email Routing is
 free) if you want to be reachable.
 
+### 9. Cross-user learning — "form our own conclusions from our own data" (the algorithm's far vision)
+**Why it's blocked (data scale + a values call, not code).** The adaptive algorithm now learns
+*each individual* — their recovery, their energy state, their progression cadence — and tunes
+their plan within the KB's evidence-based bounds (see `docs/adaptive-algorithm.md`, Increments A/B,
+shipped). The next tier you described — aggregating across users to *refine the priors themselves*
+(the volume landmarks, the response models) and form our own conclusions — needs two things I
+can't conjure:
+- **(a) Enough users, logging enough data.** A conclusion that revises a Grade-A landmark has to
+  clear the same bar as the science it challenges — adequate n, confound control, held-out
+  validation. Early, noisy data from a handful of users would *overfit*, and silently overriding
+  published evidence is exactly the trap the KB's own "reading the evidence" stance forbids. This
+  unblocks itself only as the userbase grows.
+- **(b) Your values call on data aggregation.** Today there is deliberately **zero telemetry** (no
+  ads, no data selling — see item 7). Cross-user learning means collecting and aggregating training
+  data across people. That's a product/privacy decision only you can make: opt-in? anonymised/
+  differential-privacy aggregates only? self-hosted? **Tell me the guardrails and I'll design the
+  aggregation + the statistical rigor to match.**
+
+Until both exist, the honest position holds: **the KB landmarks stay the priors; per-user signals
+move each plan *within* the recoverable range, never outside it.** Nothing here blocks the current
+loop — the per-user algorithm is live and improving.
+
 ---
 
 ## Done
