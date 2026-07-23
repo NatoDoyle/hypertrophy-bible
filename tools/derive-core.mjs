@@ -152,14 +152,22 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
 // clamped to its own MEV↔MRV range so volume can never run away. Below-MEV is NOT a
 // response signal (it's a plan-fit/time constraint, surfaced as a warning), so it
 // never drives an adjustment. `prevAdjust` is the accumulated map so far (or {}).
-export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledMuscleIds = new Set()) {
+// `context` (Increment A) carries a recovery/energy read: `{ underRecovered,
+// inDeficit }`. A stall while persistently under-recovered or in an energy deficit
+// is a recovery/fuel problem, not a volume one — adding sets you can't recover makes
+// it worse — so the "add volume" response is SUPPRESSED then (the muscle holds).
+// Easing (over-ceiling, stalled-at-ceiling) always still fires: pulling back is safe
+// regardless of recovery. Absent context → permissive (add allowed), so existing
+// callers/behaviour are unchanged. See docs/adaptive-algorithm.md.
+export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledMuscleIds = new Set(), context = {}) {
   const out = { ...(prevAdjust || {}) };
+  const canAdd = !(context.underRecovered || context.inDeficit);
   for (const [m, sets] of Object.entries(weekVolume || {})) {
     const lm = muscleIndex.get(m);
     if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
     let step = 0;
-    if (sets > lm.mrv.max) step = -2;                                  // over the ceiling → ease
-    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? 2 : -2; // stalled: add if room, else ease/deload
+    if (sets > lm.mrv.max) step = -2;                                              // over the ceiling → ease
+    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (canAdd ? 2 : 0) : -2; // stalled: add if room AND recovered, else hold/ease
     // not stalled and within range → progressing fine → hold (no change)
     const prev = prevAdjust?.[m] ?? 0;
     const range = lm.mrv.max - lm.mev.min;
@@ -167,6 +175,32 @@ export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledM
     if (next === 0) delete out[m]; else out[m] = next;
   }
   return out;
+}
+
+// Block-level recovery read for the auto-tune. Manual check-ins score 1-5 on
+// sleep_quality/energy/mood/motivation and stress (inverted, so a calm 1 → 5). The
+// block AVERAGE sitting below the neutral midpoint — with enough check-ins that it's
+// a real trend, not one bad night — means recovery, not volume, is the limiter.
+// Energy deficit is read from the bodyweight trend (a precomputed classifyEnergyBalance
+// object). Both gate "add volume" in deriveVolumeAdjust. Pure: everything is passed in
+// as data (no fs, no Date.now). Absent/insufficient data → not-under-recovered (the
+// tune stays as capable as before; recovery only ever RESTRAINS adding, never forces).
+export function recoverySignal(checkins = [], energyBalance = null, { minCheckins = 4, lowThreshold = 2.6 } = {}) {
+  const scores = [];
+  for (const c of checkins || []) {
+    const parts = [];
+    if (typeof c.sleep_quality === "number") parts.push(c.sleep_quality);
+    if (typeof c.energy === "number") parts.push(c.energy);
+    if (typeof c.mood === "number") parts.push(c.mood);
+    if (typeof c.motivation === "number") parts.push(c.motivation);
+    if (typeof c.stress === "number") parts.push(6 - c.stress); // low stress = high recovery
+    if (parts.length) scores.push(parts.reduce((a, b) => a + b, 0) / parts.length);
+  }
+  const n = scores.length;
+  const avgReadiness = n ? Math.round((scores.reduce((a, b) => a + b, 0) / n) * 100) / 100 : null;
+  const underRecovered = n >= minCheckins && avgReadiness != null && avgReadiness <= lowThreshold;
+  const inDeficit = energyBalance?.direction === "deficit";
+  return { underRecovered, inDeficit, avgReadiness, n };
 }
 
 // Bodyweight trend via least-squares regression (kg/week). Daily weight is noise;

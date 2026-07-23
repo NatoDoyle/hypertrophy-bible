@@ -237,7 +237,7 @@ export function createApp(store, config = {}) {
   app.get("/api/today", async (c) => {
     let { id, user, error } = await requireUser(c);
     if (error) return error;
-    const [sessions, checkins] = await Promise.all([store.listSessions(id), store.listCheckins(id)]);
+    const [sessions, checkins, bodyweights] = await Promise.all([store.listSessions(id), store.listCheckins(id), store.listBodyweights(id)]);
     const nowISO = new Date().toISOString();
     // The user's LOCAL calendar day (client passes ?d=YYYY-MM-DD; a date is not a
     // credential so it's fine in the query, unlike user_id). Drives the daily-flow
@@ -267,9 +267,12 @@ export function createApp(store, config = {}) {
           // in would spuriously bump their target, which then lands once specialization
           // ends. So freeze the tune during a spec block (carry the prior forward).
           const prevAdjust = u.plan_meta?.volume_adjust ?? {};
+          // Recovery-/energy-aware context (Increment A): the tune won't ADD volume to
+          // a stalled muscle while the athlete is persistently under-recovered or in an
+          // energy deficit — that stall needs recovery/fuel, not more sets.
           const volumeAdjust = u.profile?.specialization
             ? prevAdjust
-            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || []);
+            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins, bodyweights, goal: u.profile?.primary_goal });
           // What CHANGED this block — so the new-block coach note announces the actual
           // adjustment, not the whole accumulated total re-announced every block.
           const tunedThisBlock = {
@@ -296,7 +299,7 @@ export function createApp(store, config = {}) {
     // Daily-flow status (considerations #6): the three things a user does across a
     // day — morning check-in (incl. weight), the workout, and evening calories — so
     // the Today hub can show, at a glance, what's done and what's next.
-    const [bodyweights, nutrition] = await Promise.all([store.listBodyweights(id), store.listNutritionLog(id)]);
+    const nutrition = await store.listNutritionLog(id); // bodyweights already fetched above (block-boundary recovery context)
     const onDay = (d) => (d || "").slice(0, 10) === clientDay;
     const daily = {
       day: clientDay,
