@@ -864,7 +864,7 @@ function renderPlayer(resting = 0) {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
+    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() });
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -961,7 +961,7 @@ function renderSupersetStation(L, P, resting = 0) {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
     for (const idx of [L, P]) { // both members of the round, banked together
       const m = sess.ex[idx];
-      sess.logged.push({ exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...(sess.deload ? { deload: true } : {}), completed_at: new Date().toISOString() });
+      sess.logged.push({ exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() });
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
     if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
@@ -1392,7 +1392,7 @@ async function renderCoach() {
       <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
       <p class="muted" id="pushmsg"></p></div>`
       : isIOS() && !isStandalone()
-        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the Share button <b>⎋</b> in Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
+        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
         : ""}`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
