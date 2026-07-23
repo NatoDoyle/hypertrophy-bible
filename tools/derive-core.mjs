@@ -38,6 +38,15 @@ export function isoWeekKey(dateStr) {
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
+// A session's week key, preferring the device's local calendar day but falling
+// back to the UTC `date` if local_date is malformed (an "NaN-WNaN" key sorts
+// after every real ISO week and would hijack the "latest week" logic — and a
+// bad string can arrive from any client, since auth is possession-of-UUID).
+export const sessionWeekKey = (s) => {
+  const k = isoWeekKey(s.local_date ?? s.date);
+  return k.includes("NaN") ? isoWeekKey(s.date) : k;
+};
+
 // Is a set a "hard working set" that counts toward hypertrophy volume?
 // Warm-ups never count. If effort is logged, it must be near failure (RPE>=gate / RIR<=4).
 // If effort is NOT logged, a work set counts (we don't penalize missing data).
@@ -55,7 +64,7 @@ export function perMuscleWeeklyVolume(sessions, exIndex, opts = {}) {
   const secondaryWeight = opts.secondaryWeight ?? 0.5;
   const weeks = {};
   for (const s of sessions) {
-    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
+    const wk = sessionWeekKey(s);
     weeks[wk] ??= {};
     for (const set of s.sets ?? []) {
       if (!isHardSet(set, opts)) continue;
@@ -222,7 +231,7 @@ export function progressionByExercise(sessions, exIndex) {
   const byEx = {};
   const byExLoad = {}; // pump-band lifts (reps > RELIABLE_1RM_REPS): track weekly best LOAD, same as stallDetect
   for (const s of sessions) {
-    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
+    const wk = sessionWeekKey(s);
     for (const set of s.sets ?? []) {
       // Reliable rep ranges only — otherwise a light high-rep back-off set shows
       // up as a strength GAIN, and this screen contradicts the session recap.
@@ -284,7 +293,7 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
   const byEx = {};
   const byExLoad = {}; // high-rep (pump-band) work: > RELIABLE_1RM_REPS, where Epley is guesswork — track best LOAD instead
   for (const s of sessions) {
-    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
+    const wk = sessionWeekKey(s);
     for (const set of s.sets ?? []) {
       if (set.deload) continue;
       if (countsForE1RM(set)) {

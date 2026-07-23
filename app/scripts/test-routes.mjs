@@ -259,6 +259,11 @@ try {
   await json("POST", "/api/session", { user_id: ldUser, session_id: "ld-1", date: dayAgo(0), local_date: "2026-07-23", sets: [{ exercise: "push-up", set_type: "work", reps: 10 }] });
   const ldStored = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-1");
   ok("#21 local_date round-trips through the session whitelist", ldStored?.local_date === "2026-07-23");
+  // #27: a malformed local_date is dropped at the door (never stored as an
+  // "NaN-WNaN"-producing value that would hijack the latest-week logic).
+  await json("POST", "/api/session", { user_id: ldUser, session_id: "ld-bad", date: dayAgo(0), local_date: "2026-13-45", sets: [{ exercise: "push-up", set_type: "work", reps: 8 }] });
+  const ldBad = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-bad");
+  ok("#27 a malformed local_date is rejected at the door (session still saved, field omitted)", ldBad && ldBad.local_date === undefined);
 
   // #23: push subscribe/unsubscribe round-trip through the real routes
   const pushSub = { endpoint: "https://fcm.googleapis.com/fcm/send/route-test", keys: { p256dh: "pk", auth: "ak" } };

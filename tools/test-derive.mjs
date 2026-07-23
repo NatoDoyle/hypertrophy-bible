@@ -9,6 +9,7 @@ import {
   RELIABLE_1RM_REPS,
   stallDetect,
   isoWeekKey,
+  sessionWeekKey,
   isHardSet,
   perMuscleWeeklyVolume,
   volumeVsLandmarks,
@@ -109,6 +110,13 @@ check("classifyEnergyBalance from weight trend + goal (no calories)", () => {
   assert.equal(classifyEnergyBalance(losing, "hypertrophy").matchesGoal, false); // wrong way for muscle gain
   assert.equal(classifyEnergyBalance(losing, "fat-loss").matchesGoal, true);
   assert.equal(classifyEnergyBalance({ pct_per_week: 0.0 }, "recomposition").direction, "maintenance");
+});
+
+check("#27 sessionWeekKey uses local_date but falls back to UTC date on a malformed one", () => {
+  assert.equal(sessionWeekKey({ local_date: "2026-07-20", date: "2026-07-19T23:00:00Z" }), isoWeekKey("2026-07-20"));
+  assert.equal(sessionWeekKey({ local_date: "20/07/2026", date: "2026-07-19T23:00:00Z" }), isoWeekKey("2026-07-19T23:00:00Z")); // bad -> UTC fallback, never "NaN-WNaN"
+  assert.ok(!sessionWeekKey({ local_date: "garbage", date: "2026-07-19T23:00:00Z" }).includes("NaN"));
+  assert.equal(sessionWeekKey({ date: "2026-07-19T23:00:00Z" }), isoWeekKey("2026-07-19T23:00:00Z")); // no local_date at all
 });
 
 check("progressionByExercise ignores unreliable high-rep sets (no fake strength gains)", () => {

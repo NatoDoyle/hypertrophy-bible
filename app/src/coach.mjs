@@ -3,7 +3,7 @@
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, isoWeekKey,
+  deriveVolumeAdjust, isoWeekKey, sessionWeekKey,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -288,6 +288,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       equipment: e?.equipment ?? null,
       suggested_kg,
       suggestion_note: sug.note,
+      // Per-exercise layoff ease (this lift returned after >=12 days even though
+      // the session isn't a whole-session comeback — e.g. a rotated-back
+      // accessory): its sets are planned-easy and must be deload-tagged too, or
+      // the 0.88x ease logs as a fabricated ~12% strength drop. buildToday's
+      // session-level `comeback` covers the whole-session case; this covers the rest.
+      ...(sug.layoff_days != null ? { eased: true } : {}),
       ...(ex.superset_with ? { superset_with: ex.superset_with, superset_with_name: name(ex.superset_with) } : {}),
     };
   });
@@ -392,7 +398,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // and the current in-progress week (when an earlier full week exists).
   const deloadFrac = {};
   for (const s of sessions) {
-    const wk = isoWeekKey(s.local_date ?? s.date); // the user's calendar day when the client sent one (UTC-week banking bug)
+    const wk = sessionWeekKey(s); // local calendar day, malformed local_date -> UTC fallback
     for (const set of s.sets ?? []) {
       if ((set.set_type ?? "work") === "warmup") continue;
       (deloadFrac[wk] ??= { d: 0, t: 0 }).t++;

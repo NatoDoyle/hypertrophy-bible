@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isHardSet } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isHardSet, sessionWeekKey } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -41,7 +41,7 @@ export function weeksConsistent(sessions, now, paused = null, pauseHistory = [])
   // local_date (the device's calendar day, when the client sent one) banks the
   // session to the week the USER experienced — a Monday-morning session in
   // UTC+12 is Monday, not the previous ISO week's Sunday.
-  const trained = new Set(sessions.filter((s) => s.local_date || s.date).map((s) => weekOrdinal(s.local_date ?? s.date)));
+  const trained = new Set(sessions.filter((s) => s.local_date || s.date).map((s) => weekOrdinal(sessionWeekKey(s))));
   if (!trained.size) return 0;
   const cur = weekOrdinal(now);
   const pauseStartWeek = paused ? (paused.from ? weekOrdinal(paused.from) : cur) : Infinity;
@@ -55,7 +55,7 @@ export function weeksConsistent(sessions, now, paused = null, pauseHistory = [])
   while (w > 0) {
     if (trained.has(w)) { streak++; w--; }
     else if (inPause(w)) { w--; } // injured/ill week — neutral: no penalty, no forgiveness spent
-    else if (!forgiven && trained.has(w - 1)) { forgiven = true; w--; } // bridge a single miss
+    else if (!forgiven && (trained.has(w - 1) || inPause(w - 1))) { forgiven = true; w--; } // bridge a single miss — a paused predecessor counts as trained-equivalent, so a miss right after a pause can't collapse the pre-pause streak
     else break;
   }
   return streak;
@@ -94,14 +94,14 @@ export function adherenceStatus(sessions, now, paused) {
   // Same threshold AND same rounding as suggestWeight's layoff deload, so this
   // message is only ever shown when the weights really are eased.
   if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
-  const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(s.local_date ?? s.date) === weekOrdinal(now));
+  const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === weekOrdinal(now));
   if (!trainedThisWeek) return { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
   return { state: "on-track", message: "On track this week. Nice." };
 }
 
 export function weeklySummary(sessions, now) {
   const cur = weekOrdinal(now);
-  const wk = sessions.filter((s) => (s.local_date || s.date) && weekOrdinal(s.local_date ?? s.date) === cur);
+  const wk = sessions.filter((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === cur);
   const hardSets = wk.reduce((a, s) => a + (s.sets ?? []).filter((set) => isHardSet(set)).length, 0);
   return { sessions: wk.length, hard_sets: hardSets };
 }

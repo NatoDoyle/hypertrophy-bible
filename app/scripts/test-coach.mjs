@@ -222,6 +222,26 @@ check("#21 an all-deload recent history shows the NEWEST week with an honest not
   assert.ok(/deload/i.test(rep.volume_note) && !/Skipping/i.test(rep.volume_note)); // honest: we're SHOWING a deload, not skipping one
 });
 
+check("#27 a per-exercise layoff (one lift back after 12+ days, session not a whole-session comeback) is tagged eased", () => {
+  const now = "2026-06-20T10:00:00Z";
+  const day = (n) => new Date(+new Date(now) - n * 86400000).toISOString();
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [
+    { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" },
+    { exercise: "barbell-back-squat", sets: 3, rep_range: "6-10", rir: "1-3" },
+  ] }] };
+  // squat trained 2 days ago (continuous); bench last done 20 days ago (rotated back)
+  const sessions = [
+    { session_id: "s1", date: day(20), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] },
+    { session_id: "s2", date: day(2), sets: [{ exercise: "barbell-back-squat", set_type: "work", weight_kg: 140, reps: 8 }] },
+  ];
+  const today = buildToday({ profile: { training_status: "beginner", days_per_week: 3 }, program: prog }, sessions, null, [], now);
+  assert.equal(today.comeback, false); // the SESSION isn't a comeback (squat trained 2 days ago)
+  const bench = today.exercises.find((e) => e.exercise === "barbell-bench-press");
+  const squat = today.exercises.find((e) => e.exercise === "barbell-back-squat");
+  assert.equal(bench.eased, true);       // the rotated-back bench IS eased per-exercise
+  assert.equal(squat.eased, undefined);  // the continuous squat is not
+});
+
 check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {
   const start = "2026-01-05T00:00:00Z";
   const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();

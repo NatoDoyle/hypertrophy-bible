@@ -88,6 +88,19 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
     weeksConsistent([...weeks10, resumedTrain], now, null, [{ from: pauseFrom, to: "2026-04-12" }]) === 11);
   ok("#21 adherenceReport wires user.pause_history through",
     adherenceReport({ paused: null, pause_history: [{ from: pauseFrom, to: "2026-04-12" }], profile: {} }, [...weeks10, resumedTrain], now).streak_weeks === 11);
+  // #27: a single missed week IMMEDIATELY after a pause window must still bridge —
+  // the pre-pause streak was collapsing to 1 (the bridge only checked trained.has).
+  const missAfterPause = sess("2026-04-27"); // W18 trained; W17 (right after the W12-16 pause) missed
+  ok("#27 a miss right after a pause bridges, keeping the pre-pause streak",
+    weeksConsistent([...weeks10, missAfterPause], "2026-04-29", null, [{ from: pauseFrom, to: "2026-04-19" }]) === 11);
+}
+
+// --- #27: malformed local_date never breaks streak banking (UTC fallback) ---
+{
+  const good = { date: "2026-02-02T12:00:00Z", local_date: "2026-02-02", sets: [{ set_type: "work", weight_kg: 100, reps: 8 }] };
+  const bad = { date: "2026-02-09T12:00:00Z", local_date: "2026-13-45", sets: [{ set_type: "work", weight_kg: 100, reps: 8 }] }; // format-shaped but not a real date -> NaN week key -> UTC fallback
+  ok("#27 a session with a malformed local_date still counts (falls back to its UTC date)",
+    weeksConsistent([good, bad], "2026-02-10") === 2);
 }
 
 // --- #21: sessions bank to the user's LOCAL calendar week when the client sends one ---

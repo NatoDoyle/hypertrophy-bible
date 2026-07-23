@@ -9,6 +9,10 @@ import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs
 import { adherenceReport } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 
+// A client-supplied local calendar day is trusted only if it's a real
+// YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
+const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
+
 export function createApp(store, config = {}) {
   const app = new Hono();
   const sendEmail = config.sendEmail ?? (async () => ({ dev: true }));
@@ -382,7 +386,11 @@ export function createApp(store, config = {}) {
       // the user experienced, not the UTC instant (a Monday-morning session in
       // UTC+12 must not land in last week). Whitelisted explicitly (the deload
       // lesson below: a dropped field silently disables its whole pipeline).
-      ...(body.local_date ? { local_date: String(body.local_date).slice(0, 10) } : {}),
+      // VALIDATED at the door: only a real YYYY-MM-DD is stored, else omitted so
+      // the engines fall back to `date` — an unparseable local_date makes an
+      // "NaN-WNaN" week key that sorts after every real week and hijacks the
+      // "latest week" logic (and any client can post, auth being possession).
+      ...(validLocalDate(body.local_date) ? { local_date: String(body.local_date).slice(0, 10) } : {}),
       program_ref: user.program.id,
       session_name: body.session_name ?? null,
       sets: (body.sets ?? []).map((s) => ({
