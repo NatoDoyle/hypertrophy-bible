@@ -60,6 +60,25 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
 
+// Rest-readiness self-check (considerations #7): between sets, teach people to
+// gauge their OWN recovery — the KB's rest-periods thesis is "rest by readiness,
+// not a stopwatch". Optional prompts, not mandatory ticking; the "I'm ready"
+// button is always live. Ticking all three just nudges the button. The countdown
+// stays as a soft guide alongside.
+const REST_CUES = [["breath", "🫁 Breath back to normal"], ["hr", "❤️ Heart rate settled"], ["mind", "🎯 Head in it — ready to push"]];
+const restReadiness = () => `<div class="card" style="text-align:left;margin-top:14px">
+    <p class="muted" style="margin:0 0 6px">Start your next set when you can tick these — rest by readiness, not the clock ${helpDot("rest-periods", "why")}:</p>
+    ${REST_CUES.map(([k, label]) => `<button class="restcue" data-cue="${k}" role="checkbox" aria-checked="false" style="display:flex;align-items:center;width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;margin:5px 0;font-size:1rem;text-align:left"><span class="cuebox" aria-hidden="true" style="margin-right:10px">⬜</span>${label}</button>`).join("")}</div>`;
+const wireRestCues = () => {
+  const cues = [...app.querySelectorAll("[data-cue]")];
+  cues.forEach((b) => b.onclick = () => {
+    const on = b.getAttribute("aria-checked") !== "true";
+    b.setAttribute("aria-checked", String(on));
+    b.querySelector(".cuebox").textContent = on ? "✅" : "⬜";
+    if (cues.every((c) => c.getAttribute("aria-checked") === "true")) { const s = $("#skip"); if (s) { s.textContent = "I'm ready — go 💪"; say("Recovered — ready for your next set."); } }
+  });
+};
+
 // PWA / push capability. On iOS, Web Push exists ONLY for a home-screen-installed
 // app — `PushManager` is absent in a normal Safari tab, so the reminders card
 // would silently vanish for every iPhone user in the browser. Detect that case
@@ -841,11 +860,13 @@ function renderPlayer(resting = 0) {
   if (resting > 0) {
     app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
       <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
-      <button class="btn" id="skip">I'm ready</button></div>`;
+      ${restReadiness()}
+      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
+    wireRestCues(); wireLearnLinks();
     // Announce rest ONCE at the start (the per-second #t is not aria-live, or it
     // would spam a screen reader every tick) and move focus to the only action,
     // so a keyboard/SR user knows a timer is running and where they are.
-    say(`Resting ${resting} seconds — next up, set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
+    say(`Resting about ${resting} seconds — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
     $("#skip").focus();
     let left = resting;
     restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next set."); renderPlayer(0); } }, 1000);
@@ -977,8 +998,10 @@ function renderSupersetStation(L, P, resting = 0) {
     quitPending = false;
     app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
       <p class="muted">Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}</p>
-      <button class="btn" id="skip">I'm ready</button></div>`;
-    say(`Resting ${resting} seconds — next up, round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
+      ${restReadiness()}
+      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
+    wireRestCues(); wireLearnLinks();
+    say(`Resting about ${resting} seconds — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
     $("#skip").focus();
     let left = resting;
     restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next round."); renderSupersetStation(L, P, 0); } }, 1000);
