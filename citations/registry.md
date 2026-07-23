@@ -2,11 +2,19 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**93** verified references.
+**95** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
 ---
+
+### attarieh-2025-biceps-shoulder-angle
+Attarieh P et al. (2025). Comparison Between Shoulder Flexed and Extended Positions in Elbow Flexion Resistance Training on Regional Hypertrophy and Maximum Strength: Preacher versus Bayesian Cable Curls.
+
+*European Journal of Sport Science*, 25(4), e12279.
+
+- Type: RCT · Population: recreational
+- DOI: [10.1002/ejsc.12279](https://doi.org/10.1002/ejsc.12279) · PMID: [40082069](https://pubmed.ncbi.nlm.nih.gov/40082069/)
 
 ### baz-valle-2021-counting-sets
 Baz-Valle E & et al. (2021). Total Number of Sets as a Training Volume Quantification Method for Muscle Hypertrophy: A Systematic Review.
@@ -279,6 +287,14 @@ Krzysztofik M & et al. (2019). Maximizing Muscle Hypertrophy: A Systematic Revie
 
 - Type: systematic-review · Population: mixed
 - DOI: [10.3390/ijerph16244897](https://doi.org/10.3390/ijerph16244897) · PMID: [31817252](https://pubmed.ncbi.nlm.nih.gov/31817252/)
+
+### larsen-2026-biceps-shoulder-angle
+Larsen S et al. (2026). The effects of shoulder extension angle on elbow flexor hypertrophy in the cable curl exercise.
+
+*Frontiers in Physiology*, 17, 1750722.
+
+- Type: RCT · Population: untrained
+- DOI: [10.3389/fphys.2026.1750722](https://doi.org/10.3389/fphys.2026.1750722) · PMID: [41988507](https://pubmed.ncbi.nlm.nih.gov/41988507/)
 
 ### lasevicius-2018-intensities-volume-load
 Lasevicius T & et al. (2018). Effects of different intensities of resistance training with equated volume load on muscle strength and hypertrophy.

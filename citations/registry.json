@@ -1761,6 +1761,47 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39205815/"
+    },
+    {
+      "key": "attarieh-2025-biceps-shoulder-angle",
+      "authors": [
+        "Attarieh P",
+        "Nunes JP",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Comparison Between Shoulder Flexed and Extended Positions in Elbow Flexion Resistance Training on Regional Hypertrophy and Maximum Strength: Preacher versus Bayesian Cable Curls",
+      "source": "European Journal of Sport Science",
+      "volume": "25",
+      "issue": "4",
+      "pages": "e12279",
+      "doi": "10.1002/ejsc.12279",
+      "pmid": "40082069",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40082069/"
+    },
+    {
+      "key": "larsen-2026-biceps-shoulder-angle",
+      "authors": [
+        "Larsen S",
+        "Sandvik Kristiansen B",
+        "Swinton PA",
+        "Wolf M",
+        "et al."
+      ],
+      "year": 2026,
+      "title": "The effects of shoulder extension angle on elbow flexor hypertrophy in the cable curl exercise",
+      "source": "Frontiers in Physiology",
+      "volume": "17",
+      "pages": "1750722",
+      "doi": "10.3389/fphys.2026.1750722",
+      "pmid": "41988507",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41988507/"
     }
   ]
 }
