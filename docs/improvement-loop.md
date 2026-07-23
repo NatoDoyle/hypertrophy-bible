@@ -166,6 +166,15 @@ These are real failures from previous iterations. Each is now a standing check.
    inputs — KB currency as new research lands, prod-smoke of live issues; (2) net-new goal-serving
    features when a real gap exists; or (3) surfacing the human-blocked item (`BLOCKERS.md`) that gates
    the next real gain. A slower heartbeat in a swept codebase is correct pacing, not stopping.
+18. **A state-changing command chained behind a check in an `&&` sequence silently no-ops when the
+   check "fails".** Wave 53 bundled `grep -c … && sed -i … sw.js && …` in one `&&` chain; the `grep -c`
+   correctly returned 0 (no dangling refs) which is exit code 1, so the chain stopped *before* the
+   `sed` that bumps the SW version ran. The app.js change shipped with the SW still on the old version
+   (the exact `public/`-asset-without-SW-bump invariant CLAUDE.md forbids), needing a follow-up wave to
+   repair. → **Standing rule:** never gate a required mutation (version bump, migration, write) behind a
+   `grep`/`test`/`diff` in an `&&` chain — those exit non-zero as a normal *answer*, not an error. Run
+   mutations as their own statements, and after shipping a `public/` asset verify the invariant directly
+   (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end.
 
 ## Token discipline (the loop must be affordable to keep running)
 
