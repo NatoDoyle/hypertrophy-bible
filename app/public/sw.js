@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v61";
+const VERSION = "hb-shell-v62";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {

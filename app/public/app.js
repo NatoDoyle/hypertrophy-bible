@@ -905,7 +905,14 @@ function renderPlayer(resting = 0) {
       // fully logged (e.g. a superset partner completed during its station), so the
       // player can never land back on a done move and log a phantom extra set.
       const nx = nextExerciseIndex(sess.i);
-      if (nx < 0) sess.complete = true; else sess.i = nx;
+      // Recompute the set cursor from what's already BANKED on the next exercise
+      // (every other advance site does this — 808/1008/1025/1152). Without it, an
+      // advance onto a partially-completed lift — reachable after Unlink or a
+      // deferred "do this later" — showed "set 1 of 2" with an empty dot even
+      // though a set was already banked, inviting a confused extra set. Banked
+      // integrity was never at risk (the self-heal above caps totals); this only
+      // corrects the displayed counter.
+      if (nx < 0) sess.complete = true; else { sess.i = nx; sess.set = loggedSetCount(sess.ex[nx].exercise); }
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
