@@ -302,6 +302,12 @@ try {
     afterLog.data.logged === true && afterLog.data.logged_days >= 10 && afterLog.data.nutrition.tdee_basis === "logged");
   const badKcal = await json("POST", "/api/nutrition/log", { user_id: nUser, kcal: -5 });
   ok("#43 a nonsense intake is rejected", badKcal.status === 400);
+  // #51: GET /api/nutrition?d= returns today's logged total (intake-vs-target loop)
+  await json("POST", "/api/nutrition/log", { user_id: nUser, date: "2026-06-30", kcal: 2650, protein_g: 175 });
+  const withToday = await (await app.request("/api/nutrition?d=2026-06-30", { headers: { "X-HB-User": nUser } })).json();
+  ok("#51 GET /api/nutrition returns today's logged intake for the given day", withToday.today && withToday.today.kcal === 2650 && withToday.today.protein_g === 175);
+  const noToday = await (await app.request("/api/nutrition?d=2020-01-01", { headers: { "X-HB-User": nUser } })).json();
+  ok("#51 a day with nothing logged returns no today total", !noToday.today);
 
   // --- Wave 46: daily-flow status (#6) + morning check-in captures weight ---
   const dUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;

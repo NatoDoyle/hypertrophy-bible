@@ -1375,7 +1375,7 @@ const fld = (id, label, val, ph, extra = "") => `<label for="${id}" class="muted
 let fuelEdit = false;
 async function renderFuel() {
   app.innerHTML = `<h1>Fuel</h1><p class="muted">Loading…</p>`;
-  let n; try { n = await api("/api/nutrition"); } catch {
+  let n; try { n = await api("/api/nutrition?d=" + localDay()); } catch {
     app.innerHTML = `<h1>Fuel</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your targets load when you reconnect.</p><button class="btn" id="rf">Try again</button></div>`;
     $("#rf").onclick = () => renderFuel(); return;
   }
@@ -1418,9 +1418,20 @@ async function renderFuel() {
   }
   // --- targets + daily log ---
   const goalTxt = t.weekly_change_kg > 0 ? `gaining ~${t.weekly_change_kg} kg/week` : t.weekly_change_kg < 0 ? `losing ~${Math.abs(t.weekly_change_kg)} kg/week` : "holding your weight";
+  // Today's logged intake vs target (closes the tracker loop): a progress bar +
+  // remaining, so a glance shows how the day is tracking.
+  const eaten = n.today?.kcal || 0;
+  const pct = Math.min(100, Math.round((eaten / t.calorie_target) * 100));
+  const remain = t.calorie_target - eaten;
+  const todayCard = eaten > 0
+    ? `<div class="card"><div class="row"><b>Today so far</b><span class="muted">${eaten} / ${t.calorie_target} kcal</span></div>
+        <div class="bar" style="margin:8px 0 4px"><i style="width:${pct}%;background:${remain < -100 ? "var(--warn)" : "var(--accent)"}"></i></div>
+        <p class="muted" style="font-size:.85rem">${remain >= 0 ? `${remain} kcal left today` : `${Math.abs(remain)} kcal over — no drama, it evens out`}${n.today?.protein_g ? ` · ${n.today.protein_g} / ${t.protein_g} g protein` : ""}</p></div>`
+    : "";
   app.innerHTML = `<h1>Fuel</h1>
     <div class="card center"><div class="big">${t.calorie_target} <span class="muted" style="font-size:1rem">kcal/day</span></div>
       <p class="muted">Target for ${goalTxt}. ${t.tdee_basis === "logged" ? "Dialled in from your logs." : "Starting estimate."}</p></div>
+    ${todayCard}
     <h2>Daily macros ${helpDot("protein", "?")}</h2>
     <div class="card"><div class="row"><div style="flex:1"><b>🥩 Protein</b><br><span class="muted">${t.protein_g} g (${t.protein_per_kg} g/kg — the priority)</span></div></div>
       <div class="row"><div style="flex:1"><b>🍚 Carbs</b><br><span class="muted">${t.carbs_g} g — fuel your training</span></div></div>

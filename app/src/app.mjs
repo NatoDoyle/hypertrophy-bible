@@ -502,7 +502,11 @@ export function createApp(store, config = {}) {
     if (error) return error;
     const { profile, history } = await nutritionInputs(user, id);
     const plan = nutritionPlan(profile, history);
-    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: history.filter((h) => h.kcal).length });
+    // Today's logged intake (client passes ?d= its local day) so the Fuel tab can
+    // show progress AGAINST the target — closing the tracker loop.
+    const day = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date().toISOString().slice(0, 10); })();
+    const todayLog = (await store.listNutritionLog(id)).find((e) => (e.date || "").slice(0, 10) === day) || null;
+    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: history.filter((h) => h.kcal).length, today: todayLog && { kcal: todayLog.kcal, protein_g: todayLog.protein_g } });
   });
 
   app.post("/api/nutrition/log", async (c) => {
