@@ -67,6 +67,13 @@ const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
 const isStandalone = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS 13+ masquerades as Mac
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window;
+
+// Android/desktop Chrome fires beforeinstallprompt (only when installable and not
+// yet installed); we stash the event to trigger the native install on a user tap.
+// iOS has no such event — Wave 24's manual "Add to Home Screen" hint covers it.
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstallPrompt = e; });
+window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; });
 let pendingNotice = null; // a one-shot notice for the NEXT screen (survives re-render)
 // Inline failure notice: never a silent dead button.
 function alertBar(msg) {
@@ -1417,7 +1424,11 @@ async function renderCoach() {
       <p class="muted" id="pushmsg"></p></div>`
       : isIOS() && !isStandalone()
         ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
-        : ""}`;
+        : ""}
+    ${deferredInstallPrompt && !isStandalone()
+      ? `<div class="card"><p class="muted">Put the app on your home screen — it opens full-screen in one tap, works offline, and makes it far easier to keep the habit.</p>
+      <button class="btn secondary" id="installbtn">Install the app</button><p class="muted" id="installmsg"></p></div>`
+      : ""}`;
   const sel = new Set();
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
@@ -1449,6 +1460,15 @@ async function renderCoach() {
   };
   const acctBtn = $("#nudges-acct");
   if (acctBtn) acctBtn.onclick = () => { tab = "me"; render(); };
+  const installBtn = $("#installbtn");
+  if (installBtn) installBtn.onclick = async () => {
+    if (!deferredInstallPrompt) { $("#installmsg").textContent = "Your browser's menu has an “Install app” option."; return; }
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice.catch(() => ({ outcome: "dismissed" }));
+    deferredInstallPrompt = null; // the event is single-use
+    if (outcome === "accepted") { say("Installing the app."); renderCoach(); }
+    else $("#installmsg").textContent = "No problem — you can install any time from here.";
+  };
   const pushBtn = $("#pushbtn");
   if (pushBtn) pushBtn.onclick = async () => {
     const msg = (t) => { $("#pushmsg").textContent = t; };
