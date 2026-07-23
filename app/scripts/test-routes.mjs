@@ -230,6 +230,10 @@ try {
   const devP = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
   const devQ = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
   await json("POST", "/api/session", { user_id: devQ, session_id: "q-1", date: dayAgo(1), sets: [{ exercise: "push-up", set_type: "work", reps: 12 }] });
+  // devQ (the merged-away device) also has a push subscription + a custom exercise —
+  // both must survive the merge onto devP (#26: push subs follow; CAS custom-ex merge).
+  await json("POST", "/api/push/subscribe", { user_id: devQ, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/merge26", keys: { p256dh: "x", auth: "y" } } });
+  await store.updateUser(devQ, (u) => { u.custom_exercises = [{ id: "custom-x", name: "My Move" }]; return u; });
   const linkP = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devP });
   const linkQ = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devQ });
   const firstDev = await json("POST", "/api/auth/consume", { token: linkP.token });
@@ -244,6 +248,10 @@ try {
   const mergeData = await mergeRes.json();
   ok("#15 the grant merges the second device's workouts into the account (nothing stranded)",
     mergeRes.status === 200 && mergeData.merged === true && mergeData.sessions === 1);
+  ok("#26 the merged-away device's push subscription now belongs to the surviving user",
+    (await store.listPushSubscriptions()).some((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge26" && s.user_id === devP));
+  ok("#26 the custom exercise survived the CAS merge onto the surviving user",
+    ((await store.getUser(devP)).custom_exercises ?? []).some((x) => x.id === "custom-x"));
 
   // #21: local_date must round-trip through the /api/session whitelist (the
   // deload-flag lesson: a silently dropped field disables its whole pipeline).

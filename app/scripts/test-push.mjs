@@ -97,6 +97,22 @@ try {
   const again = await runPushSweep(store, vapid, new Date(NOW).getTime(), async (url) => { hits.push(url); return { ok: false, status: 410 }; });
   ok("a 410 on send prunes that subscription", again.pruned === 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://updates.push.services.mozilla.com/wpush/v2/l"));
 
+  // #26 scoped unsubscribe: another user's user_id can't delete your subscription
+  await store.saveUser("owner", { profile: {} });
+  await store.savePushSubscription("owner", { endpoint: "https://fcm.googleapis.com/fcm/send/owned", keys: {} });
+  await store.deletePushSubscription("https://fcm.googleapis.com/fcm/send/owned", "attacker");
+  ok("#26 unsubscribe with a mismatched user_id is a no-op", (await store.listPushSubscriptions()).some((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/owned"));
+  await store.deletePushSubscription("https://fcm.googleapis.com/fcm/send/owned", "owner");
+  ok("#26 unsubscribe with the owning user_id removes it", !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/owned"));
+
+  // #26 merge moves push subscriptions to the surviving user (not orphaned -> pruned)
+  await store.saveUser("mfrom", { profile: {} });
+  await store.saveUser("mto", { profile: {} });
+  await store.savePushSubscription("mfrom", { endpoint: "https://fcm.googleapis.com/fcm/send/merge", keys: {} });
+  await store.reassignUserData("mfrom", "mto");
+  const moved = (await store.listPushSubscriptions()).find((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge");
+  ok("#26 a merged-away device's push subscription follows to the surviving user", moved && moved.user_id === "mto");
+
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

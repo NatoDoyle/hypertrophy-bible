@@ -100,16 +100,23 @@ export function createD1Store(db) {
       // sequential awaits, a Worker death mid-sequence left a half-merged
       // account (sessions moved, checkins orphaned, or the from-user deleted
       // early) with the single-use grant already burnt — no retry possible.
-      const stmts = [];
+      // The to-user's custom_exercises merge goes through the CAS updateUser
+      // (its precondition is inside the mutator) BEFORE the batch — a raw
+      // `UPDATE users SET data` in the batch has no compare-and-swap and would
+      // clobber a concurrent write to the surviving user. The id-dedup merge is
+      // idempotent, so a CAS retry is safe.
       if (fromRow && toRow) {
-        const fromU = JSON.parse(fromRow.data), toU = JSON.parse(toRow.data);
+        const fromU = JSON.parse(fromRow.data);
         if (fromU.custom_exercises?.length) {
-          toU.custom_exercises = toU.custom_exercises || [];
-          const have = new Set(toU.custom_exercises.map((x) => x.id));
-          for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { toU.custom_exercises.push(ex); have.add(ex.id); }
-          stmts.push(db.prepare("UPDATE users SET data = ? WHERE id = ?").bind(JSON.stringify(toU), toId));
+          await this.updateUser(toId, (u) => {
+            u.custom_exercises = u.custom_exercises || [];
+            const have = new Set(u.custom_exercises.map((x) => x.id));
+            for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { u.custom_exercises.push(ex); have.add(ex.id); }
+            return u;
+          });
         }
       }
+      const stmts = [];
       const sIdx = stmts.push(db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId)) - 1;
       // One weigh-in per day survives the merge: drop from-rows whose date the
       // target already has (keep the target's), THEN move the rest.
@@ -119,6 +126,10 @@ export function createD1Store(db) {
       // the target's same-day row, then drop any leftover from-user rows.
       stmts.push(db.prepare("UPDATE OR IGNORE checkins SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
       stmts.push(db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(fromId));
+      // Push subscriptions follow the user (endpoint is globally unique, so no
+      // collision) — otherwise the merged-away device's reminders orphan onto a
+      // deleted user and the sweep prunes them, silently killing reminders.
+      stmts.push(db.prepare("UPDATE push_subscriptions SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
       stmts.push(db.prepare("DELETE FROM users WHERE id = ?").bind(fromId));
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
@@ -131,8 +142,11 @@ export function createD1Store(db) {
         .run();
       return { endpoint: sub.endpoint, user_id };
     },
-    async deletePushSubscription(endpoint) {
-      await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run();
+    // userId scopes the delete to its owner (route callers); the internal sweep
+    // passes null to prune unconditionally. Parity with the file store.
+    async deletePushSubscription(endpoint, userId = null) {
+      if (userId == null) { await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run(); }
+      else { await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?").bind(endpoint, userId).run(); }
     },
     async listPushSubscriptions() {
       const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();

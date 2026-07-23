@@ -323,7 +323,11 @@ export function createApp(store, config = {}) {
   app.post("/api/push/unsubscribe", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.endpoint) return c.json({ error: "missing endpoint" }, 400);
-    await store.deletePushSubscription(b.endpoint);
+    // Scope the delete to the caller's own user_id: the endpoint is possession-
+    // based, but if one leaks (a log, a shared device) an attacker must ALSO
+    // hold the matching user_id to kill a victim's reminders. Missing user_id
+    // -> the delete matches nothing (a no-op), never someone else's row.
+    await store.deletePushSubscription(b.endpoint, b.user_id ?? null);
     return c.json({ subscribed: false });
   });
 

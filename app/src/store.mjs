@@ -100,6 +100,10 @@ export function createFileStore(path) {
         const dates = new Set(dst.map((c) => c.date));
         for (const c of db.checkins[fromId]) if (!dates.has(c.date)) dst.push(c);
       }
+      // Push subscriptions follow the user, or the merged-away device's reminders
+      // are orphaned onto a deleted user and the daily sweep prunes them — the
+      // restoring device silently loses reminders while its UI still shows them on.
+      for (const ep of Object.keys(db.push_subscriptions ?? {})) if (db.push_subscriptions[ep].user_id === fromId) db.push_subscriptions[ep].user_id = toId;
       delete db.sessions[fromId];
       delete db.bodyweights[fromId];
       delete db.checkins[fromId];
@@ -122,7 +126,12 @@ export function createFileStore(path) {
       flush();
       return db.push_subscriptions[sub.endpoint];
     },
-    async deletePushSubscription(endpoint) { if (db.push_subscriptions?.[endpoint]) { delete db.push_subscriptions[endpoint]; flush(); } },
+    // userId scopes the delete to its owner (route callers); the internal sweep
+    // passes null to prune unconditionally. A userId that doesn't match is a no-op.
+    async deletePushSubscription(endpoint, userId = null) {
+      const row = db.push_subscriptions?.[endpoint];
+      if (row && (userId == null || row.user_id === userId)) { delete db.push_subscriptions[endpoint]; flush(); }
+    },
     async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
     async latestSessionDate(user_id) {
       return (db.sessions[user_id] ?? []).reduce((m, s) => (s.date && (!m || s.date > m) ? s.date : m), null);
