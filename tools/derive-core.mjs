@@ -389,7 +389,13 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
 // falls back to the KB default). Pure; deload sets excluded (planned easy weeks aren't
 // plateaus). Gaps are in PRESENT training weeks, matching how stallDetect slices its
 // window — a missed week isn't a training week. See docs/adaptive-algorithm.md.
-export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps = 2 } = {}) {
+// `minGaps` = how many demonstrated improvement INTERVALS are needed before we trust a
+// personal cadence. One real PR interval is already strong evidence a lifter is slow, and
+// because the window only ever STRETCHES patience (never shrinks below the floor), acting
+// on a single interval is low-risk and recognises a slow responder a full PR-cycle sooner
+// — the sim (scripts/sim-adaptive.mjs) showed a 6-week responder was otherwise bumped
+// twice before the rhythm locked. Zero intervals (a brand-new/flat history) still → null.
+export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps = 1 } = {}) {
   const byEx = {};      // reliable-rep e1RM, weekly best
   const byExLoad = {};  // pump-band (high-rep) load, weekly best — Epley is guesswork there
   for (const s of sessions) {
