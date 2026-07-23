@@ -68,3 +68,11 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+-- Nutrition daily intake log (calories + macros). One row per user per day.
+CREATE TABLE IF NOT EXISTS nutrition_logs (
+  user_id TEXT NOT NULL,
+  date    TEXT NOT NULL,
+  data    TEXT NOT NULL,
+  PRIMARY KEY (user_id, date)
+);
