@@ -31,6 +31,14 @@ Work top to bottom. Most advanced stalls resolve in the first three rows.
 
 **Deloads and specialization earn their place mechanistically.** If accumulated fatigue is masking adaptation, a deload reveals it; if total recoverable volume is the constraint, specializing one muscle while maintaining the others reallocates recovery to where you want growth. Both are reasoned from fatigue and volume principles rather than head-to-head plateau trials. **[Grade D]**
 
+## Key Uncertainties & Nuance
+- **The lever *order* is unvalidated.** No trial has compared "volume first vs exercise-change first" for breaking a plateau; the sequence is a payoff-ranked heuristic, not a measured algorithm. Its worth is in changing **one thing at a time**, whatever the order.
+- **"Plateau" is partly a measurement problem.** Near the ceiling the true signal (a few percent a year) is smaller than week-to-week noise, so some diagnosed plateaus are just slow progress read at too short a timescale.
+- **Individual response varies.** The muscle that responds to added volume for one lifter responds to an exercise swap for another; treat each lever as a hypothesis to test on yourself, not a guarantee.
+
+## Backing Data
+None — this page synthesizes the linked evidence pillars rather than defining its own data.
+
 ## Common mistakes
 
 - **Overhauling everything at once.** Changing volume, exercises, and diet together tells you nothing about what actually worked. One variable at a time.
@@ -48,3 +56,6 @@ Work top to bottom. Most advanced stalls resolve in the first three rows.
 - [Variation & Specialization](../03-programming/variation-and-specialization.md) — bringing up a lagging muscle.
 - [Stimulus, Fatigue & Adaptation](../00-foundations/stimulus-fatigue-adaptation.md) — why advanced gains are slow.
 - [Reaching Your Genetic Ceiling](../06-individualization/reaching-your-genetic-ceiling.md) — making peace with the pace near your limit.
+
+## References
+This page is a synthesis of the evidence pillars it links to (Volume, Deloads & Rest Days, Variation & Specialization, Stimulus–Fatigue–Adaptation); its graded claims are supported by the primary citations on those pages.

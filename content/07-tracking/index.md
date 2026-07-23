@@ -13,6 +13,7 @@ into a feedback loop — and defines the metrics the future app will log and act
 | [RPE & RIR in Practice](rpe-rir-in-practice.md) | Using reps-in-reserve to gauge effort and autoregulate; accuracy and calibration | ✅ |
 | [Assessing Progress](assessing-progress.md) | Realistic rates of gain; separating muscle from fat and water | ✅ |
 | [Logging & Plateaus](logging-and-plateaus.md) | Keeping a usable log; diagnosing and fixing plateaus | ✅ |
+| [Breaking Advanced Plateaus](breaking-advanced-plateaus.md) | The advanced lever order — volume → effort → deload → recovery → specialize → swap | ✅ |
 
 ## The one-paragraph model
 
