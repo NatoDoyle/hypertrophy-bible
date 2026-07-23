@@ -203,7 +203,7 @@ function renderOnboarding() {
       <p class="muted">Free · no ads · no account needed</p>
       <button class="btn ghost" id="restore">Already have progress saved? Restore it</button>
       <div id="restorebox" hidden style="margin-top:6px">
-        <input id="remail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"
+        <input id="remail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your restore link" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
         <button class="btn secondary" id="sendrestore">Email me a restore link</button>
         <p class="muted" id="rmsg"></p></div></div>`;
@@ -498,19 +498,31 @@ function renderAddExercise(si) {
 function renderCustomExercise(si) {
   const muscles = [...new Set(allExercises.flatMap((e) => e.primary_muscles))].sort();
   const st = { name: "", muscle: muscles[0], equipment: "dumbbell", mechanic: "isolation" };
-  const chip = (val, cur, attr) => `<button class="chip" data-${attr}="${val}" style="${cur === val ? "background:var(--accent);color:#06210f;border-color:var(--accent)" : ""}">${attr === "m" ? titleCase(val) : val}</button>`;
+  // aria-pressed carries the selected state to a screen reader (colour alone is
+  // invisible to it) — same fix as the Coach day-picker. Selecting updates the
+  // group's chips IN PLACE (aria-pressed + style) and announces, instead of a
+  // full redraw that would drop focus off the tapped chip.
+  const chip = (val, cur, attr) => `<button class="chip" role="switch" aria-pressed="${cur === val}" data-${attr}="${val}" style="${cur === val ? "background:var(--accent);color:#06210f;border-color:var(--accent)" : ""}">${attr === "m" ? titleCase(val) : val}</button>`;
   const draw = () => {
     app.innerHTML = `<h1>New exercise</h1><div class="card">
+      <label for="cx-name" class="muted">Exercise name</label>
       <input id="cx-name" placeholder="Exercise name" value="${esc(st.name)}" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin-bottom:12px">
-      <p class="muted">Primary muscle</p><div style="margin-bottom:12px">${muscles.map((m) => chip(m, st.muscle, "m")).join(" ")}</div>
-      <p class="muted">Equipment</p><div style="margin-bottom:12px">${["barbell", "dumbbell", "machine", "cable", "bodyweight", "other"].map((e) => chip(e, st.equipment, "e")).join(" ")}</div>
-      <p class="muted">Type</p><div>${["compound", "isolation"].map((mm) => chip(mm, st.mechanic, "mech")).join(" ")}</div></div>
+      <p class="muted" id="cx-mlbl">Primary muscle</p><div role="group" aria-labelledby="cx-mlbl" style="margin-bottom:12px">${muscles.map((m) => chip(m, st.muscle, "m")).join(" ")}</div>
+      <p class="muted" id="cx-elbl">Equipment</p><div role="group" aria-labelledby="cx-elbl" style="margin-bottom:12px">${["barbell", "dumbbell", "machine", "cable", "bodyweight", "other"].map((e) => chip(e, st.equipment, "e")).join(" ")}</div>
+      <p class="muted" id="cx-tlbl">Type</p><div role="group" aria-labelledby="cx-tlbl">${["compound", "isolation"].map((mm) => chip(mm, st.mechanic, "mech")).join(" ")}</div></div>
       <button class="btn" id="cx-save">Add to my library</button>
       <button class="btn ghost" id="cx-cancel">Cancel</button><p class="muted" id="cx-msg"></p>`;
     $("#cx-name").oninput = (e) => { st.name = e.target.value; };
-    app.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => { st.muscle = b.dataset.m; draw(); });
-    app.querySelectorAll("[data-e]").forEach((b) => b.onclick = () => { st.equipment = b.dataset.e; draw(); });
-    app.querySelectorAll("[data-mech]").forEach((b) => b.onclick = () => { st.mechanic = b.dataset.mech; draw(); });
+    // Reflect a group's selection onto its chips in place (aria-pressed + colour).
+    const paint = (attr, sel) => app.querySelectorAll(`[data-${attr}]`).forEach((b) => {
+      const on = b.dataset[attr] === sel;
+      b.setAttribute("aria-pressed", String(on));
+      b.style.background = on ? "var(--accent)" : ""; b.style.color = on ? "#06210f" : ""; b.style.borderColor = on ? "var(--accent)" : "";
+    });
+    const wire = (attr, set, label) => app.querySelectorAll(`[data-${attr}]`).forEach((b) => b.onclick = () => { set(b.dataset[attr]); paint(attr, b.dataset[attr]); say(`${label} ${titleCase(b.dataset[attr])} selected`); });
+    wire("m", (v) => st.muscle = v, "Primary muscle");
+    wire("e", (v) => st.equipment = v, "Equipment");
+    wire("mech", (v) => st.mechanic = v, "Type");
     $("#cx-save").onclick = async () => {
       if (!st.name.trim()) { $("#cx-msg").textContent = "Give it a name first."; return; }
       // One exercise per tap: the server append is non-idempotent (each call mints a
@@ -800,6 +812,11 @@ function renderPlayer(resting = 0) {
     app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
       <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
       <button class="btn" id="skip">I'm ready</button></div>`;
+    // Announce rest ONCE at the start (the per-second #t is not aria-live, or it
+    // would spam a screen reader every tick) and move focus to the only action,
+    // so a keyboard/SR user knows a timer is running and where they are.
+    say(`Resting ${resting} seconds — next up, set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
+    $("#skip").focus();
     let left = resting;
     restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next set."); renderPlayer(0); } }, 1000);
     $("#skip").onclick = () => { stopRestTimer(); renderPlayer(0); };
@@ -807,7 +824,7 @@ function renderPlayer(resting = 0) {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
-  app.innerHTML = `<div class="exhead"><h1>${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
+  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
@@ -830,6 +847,11 @@ function renderPlayer(resting = 0) {
     ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
+  // Each set replaces the whole screen; without this, focus falls to <body> and
+  // a keyboard user must re-Tab past every cue and stepper to reach Done. Land
+  // focus on the exercise heading (tabindex=-1) so they resume at the top of the
+  // new screen, and the heading name is announced to a screen reader.
+  $("#ex-head")?.focus();
   if ($("#swap")) $("#swap").onclick = () => renderSwap();
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
 
@@ -905,6 +927,8 @@ function renderSupersetStation(L, P, resting = 0) {
     app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
       <p class="muted">Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}</p>
       <button class="btn" id="skip">I'm ready</button></div>`;
+    say(`Resting ${resting} seconds — next up, round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
+    $("#skip").focus();
     let left = resting;
     restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next round."); renderSupersetStation(L, P, 0); } }, 1000);
     $("#skip").onclick = () => { stopRestTimer(); renderSupersetStation(L, P, 0); };
@@ -1268,7 +1292,7 @@ function renderMe() {
         <p class="muted" style="margin-top:8px">Your progress is saved to this account. On any other device, open the app, tap "Restore", and enter this email to pick up where you left off. No password — sign-in links come to your inbox.</p></div>`
     : `<div class="card"><p class="muted">Create your account</p>
         <p>One email — <b>no password, ever</b>. It keeps your progress safe if you lose this phone, and syncs it to any other device.</p>
-        <input id="bemail" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"
+        <input id="bemail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your account" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:8px 0 4px">
         <button class="btn" id="sendlink">Create my account</button>
         <p class="muted" id="bmsg"></p></div>`;
