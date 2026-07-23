@@ -1394,6 +1394,7 @@ async function renderFuel() {
       const g = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
       const weight = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck");
       if (!weight) { $("#f-msg").textContent = "Enter your bodyweight to start."; return; }
+      if (bf && (bf < 2 || bf >= 60)) { $("#f-msg").textContent = "That body fat % looks off — enter a value between about 3 and 55."; return; }
       if (!bf && !(waist && neck)) { $("#f-msg").textContent = "Add your body fat %, or your waist + neck so I can estimate it."; return; }
       try {
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
