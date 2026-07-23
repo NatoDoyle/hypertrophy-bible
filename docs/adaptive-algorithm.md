@@ -103,8 +103,15 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
   program isn't churned before it pays off. Bounded to only ever *stretch* patience past
   the reliable-signal minimum, never shrink it. Directly answers the "people progress at
   different intervals" constraint.
-- **[Increment C] Effort-aware lever** — when a stall coincides with RIR consistently
-  above target, prescribe effort/intensity, not volume.
+- **[deferred · Increment C] Effort-aware lever** — the idea: when a stall coincides with
+  effort consistently *below* target (leaving too many reps in reserve), prescribe
+  effort/intensity, not volume. Both available signals were evaluated and **neither clears
+  the bar yet**: explicit RIR logging is off by default (niche), and the rep-drop-off proxy
+  (`proximityFromRepDropoff`) is *ambiguous in the direction this needs* — "no drop-off"
+  reads identically for "trained too easy" and for a disciplined trainee who correctly stops
+  ~2 reps short (10/10/10 on purpose). Gating a volume increase on that would wrongly
+  withhold volume a well-executing lifter actually needs. Revisit if RIR adoption rises or a
+  cleaner effort signal appears.
 - **[far vision] Cross-user learning** — aggregate (privacy-preserving) response data to
   refine the priors themselves, under the honesty guardrail above.
 
