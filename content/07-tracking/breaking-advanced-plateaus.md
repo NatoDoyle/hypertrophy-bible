@@ -36,9 +36,6 @@ Work top to bottom. Most advanced stalls resolve in the first three rows.
 - **"Plateau" is partly a measurement problem.** Near the ceiling the true signal (a few percent a year) is smaller than week-to-week noise, so some diagnosed plateaus are just slow progress read at too short a timescale.
 - **Individual response varies.** The muscle that responds to added volume for one lifter responds to an exercise swap for another; treat each lever as a hypothesis to test on yourself, not a guarantee.
 
-## Backing Data
-None — this page synthesizes the linked evidence pillars rather than defining its own data.
-
 ## Common mistakes
 
 - **Overhauling everything at once.** Changing volume, exercises, and diet together tells you nothing about what actually worked. One variable at a time.
@@ -56,6 +53,9 @@ None — this page synthesizes the linked evidence pillars rather than defining 
 - [Variation & Specialization](../03-programming/variation-and-specialization.md) — bringing up a lagging muscle.
 - [Stimulus, Fatigue & Adaptation](../00-foundations/stimulus-fatigue-adaptation.md) — why advanced gains are slow.
 - [Reaching Your Genetic Ceiling](../06-individualization/reaching-your-genetic-ceiling.md) — making peace with the pace near your limit.
+
+## Backing Data
+None — this page synthesizes the linked evidence pillars rather than defining its own data.
 
 ## References
 This page is a synthesis of the evidence pillars it links to (Volume, Deloads & Rest Days, Variation & Specialization, Stimulus–Fatigue–Adaptation); its graded claims are supported by the primary citations on those pages.
