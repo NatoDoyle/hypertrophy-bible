@@ -16,6 +16,7 @@ generator adjusts on.
 | [Genetics & Anthropometry](genetics-and-anthropometry.md) | Responders vs non-responders, muscle shape, proportions and exercise fit | ✅ |
 | [Returning Lifters & Special Populations](returning-lifters-and-special-populations.md) | Muscle memory, comeback ramps, medical considerations | ✅ |
 | [Enhanced vs Natural (and Hormones)](enhanced-vs-natural.md) | PEDs vs natural potential, realistic expectations, hormone myths | ✅ |
+| [Reaching Your Genetic Ceiling](reaching-your-genetic-ceiling.md) | The decelerating gain curve, the FFMI heuristic, and how to tell if you're actually near your limit | ✅ |
 
 ## The one-paragraph model
 
