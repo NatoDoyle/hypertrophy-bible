@@ -16,6 +16,8 @@ import {
   volumeResponse,
   deriveVolumeAdjust,
   recoverySignal,
+  progressionCadence,
+  adaptiveStallWindow,
   bodyweightTrend,
   classifyEnergyBalance,
   progressionByExercise,
@@ -362,6 +364,26 @@ check("recoverySignal: block-average readiness + energy deficit gate the tune", 
   assert.equal(rNone.underRecovered, false);
   assert.equal(rNone.inDeficit, false);
   assert.equal(rNone.avgReadiness, null);
+});
+
+check("progressionCadence learns the personal rhythm; adaptiveStallWindow scales patience (Increment B)", () => {
+  const wkDate = (i) => { const d = new Date(Date.UTC(2026, 0, 5)); d.setUTCDate(d.getUTCDate() + i * 7); return d.toISOString().slice(0, 10); };
+  const bench = (i, kg) => ({ local_date: wkDate(i), sets: [{ exercise: "bench", set_type: "work", weight_kg: kg, reps: 8 }] });
+  // FAST responder: a real PR every week → cadence 1
+  const fast = [0, 1, 2, 3, 4].map((i) => bench(i, 100 + i * 5));
+  assert.equal(progressionCadence(fast, new Map()), 1);
+  // SLOW responder: steps up only every 5th week → cadence 5
+  const slow = [];
+  for (let i = 0; i < 15; i++) slow.push(bench(i, 100 + Math.floor(i / 5) * 10));
+  assert.equal(progressionCadence(slow, new Map()), 5);
+  // too little of a track record → null (caller falls back to the KB default)
+  assert.equal(progressionCadence([bench(0, 100), bench(1, 100)], new Map()), null);
+  // window scaling: null → floor(4); fast(1) → 4 (floored — never LESS patient than the reliable minimum);
+  // slow(5) → 8 (round 5×1.5); a huge cadence is ceilinged at 10 (even a dead lift warrants a look)
+  assert.equal(adaptiveStallWindow(null), 4);
+  assert.equal(adaptiveStallWindow(1), 4);
+  assert.equal(adaptiveStallWindow(5), 8);
+  assert.equal(adaptiveStallWindow(20), 10);
 });
 
 console.log(`\n${passed} test(s) passed.`);

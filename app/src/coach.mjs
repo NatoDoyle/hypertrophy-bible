@@ -3,7 +3,7 @@
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, recoverySignal, isoWeekKey, sessionWeekKey,
+  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -383,7 +383,11 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   const recent = weeks.slice(-6);
   const peak = {};
   for (const wk of recent) for (const [m, sets] of Object.entries(weekly[wk] ?? {})) peak[m] = Math.max(peak[m] ?? 0, sets);
-  const stalledMuscleIds = new Set(stallDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
+  // Individualized patience (Increment B): judge "stalled" against THIS person's own
+  // demonstrated progression cadence, not a fixed 4 weeks — a slow-but-real responder
+  // isn't plateaued at week 4 if their history shows they PR on a ~6-week rhythm.
+  const window = adaptiveStallWindow(progressionCadence(sessions, index));
+  const stalledMuscleIds = new Set(stallDetect(sessions, index, { minWeeks: window }).flatMap((x) => index.get(x.exercise)?.primary ?? []));
   // Recovery-/energy-aware gate (Increment A, docs/adaptive-algorithm.md): a stall
   // under persistent under-recovery or an energy deficit is a recovery/fuel problem —
   // adding volume there worsens it — so suppress the "add" response (easing still
@@ -446,7 +450,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   const maintIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.maintenance).map(([id]) => id));
   const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : v.status }))
     .sort((a, b) => b.sets - a.sets);
-  const stalls = stallDetect(sessions, index);
+  // Individualized patience (Increment B): the plateau surface uses the SAME personal
+  // stall window as the auto-tune, so a slow responder isn't told they've plateaued at
+  // 4 weeks when that's just their normal rhythm.
+  const stalls = stallDetect(sessions, index, { minWeeks: adaptiveStallWindow(progressionCadence(sessions, index)) });
   const stalledIds = new Set(stalls.map((x) => x.exercise));
   // ADAPTIVE volume-response signal (#2 foundation): map stalled lifts → their
   // primary muscles, then let volumeResponse turn "current volume vs landmarks +

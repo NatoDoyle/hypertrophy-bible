@@ -379,6 +379,63 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
   return out;
 }
 
+// The individual's demonstrated progression CADENCE: the typical number of training
+// weeks between meaningful improvements on their own lifts. People progress at wildly
+// different rates — some PR every fortnight, others over months of consistency — so a
+// fixed "4 flat weeks = stalled" churns a slow-but-real responder's program before it
+// pays off, and destroys the very consistency that was about to work. This LEARNS the
+// personal rhythm from logged data so the stall window can scale to it (see
+// adaptiveStallWindow). Returns null until there's a real track record (then the caller
+// falls back to the KB default). Pure; deload sets excluded (planned easy weeks aren't
+// plateaus). Gaps are in PRESENT training weeks, matching how stallDetect slices its
+// window — a missed week isn't a training week. See docs/adaptive-algorithm.md.
+export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps = 2 } = {}) {
+  const byEx = {};      // reliable-rep e1RM, weekly best
+  const byExLoad = {};  // pump-band (high-rep) load, weekly best — Epley is guesswork there
+  for (const s of sessions) {
+    const wk = sessionWeekKey(s);
+    for (const set of s.sets ?? []) {
+      if (set.deload) continue;
+      if (countsForE1RM(set)) {
+        const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+        (byEx[set.exercise] ??= {})[wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
+      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+        (byExLoad[set.exercise] ??= {})[wk] = Math.max(byExLoad[set.exercise][wk] ?? 0, set.weight_kg);
+      }
+    }
+  }
+  const gaps = [];
+  const collect = (weekMap) => {
+    const weeks = Object.keys(weekMap).sort();
+    if (weeks.length < 2) return;
+    let lastBest = weekMap[weeks[0]], lastImproveIdx = 0;
+    for (let i = 1; i < weeks.length; i++) {
+      if (weekMap[weeks[i]] > lastBest * (1 + noisePct / 100)) { // a real improvement beyond the noise band
+        gaps.push(i - lastImproveIdx);                           // training weeks since the last improvement
+        lastBest = weekMap[weeks[i]]; lastImproveIdx = i;
+      }
+    }
+  };
+  for (const m of Object.values(byEx)) collect(m);
+  for (const m of Object.values(byExLoad)) collect(m);
+  if (gaps.length < minGaps) return null;
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2; // median gap (robust to outliers)
+}
+
+// Turn a personal progression cadence into the stall window — how many FLAT training
+// weeks count as a plateau for THIS person. Bounded so it can never get LESS patient
+// than the KB default (floor): a false "stalled" churns a program that's actually
+// working, which is the costlier error, so we only ever STRETCH patience for a
+// demonstrated slow responder, never shrink it below the reliable-signal minimum. And
+// never past a ceiling (even a slow responder's truly dead lift warrants a look). Null
+// cadence (too little data) → the default. Pure.
+export function adaptiveStallWindow(cadence, { floor = 4, ceiling = 10, factor = 1.5 } = {}) {
+  if (cadence == null || !(cadence > 0)) return floor;
+  return Math.max(floor, Math.min(ceiling, Math.round(cadence * factor)));
+}
+
 // Rest times derived from set timestamps (never asked). Returns avg seconds per exercise.
 export function restTimes(session) {
   const byEx = {};
