@@ -578,7 +578,7 @@ async function renderToday() {
   discardPending = false;
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let data, adh;
-  try { [data, adh] = await Promise.all([api(`/api/today`), api(`/api/adherence`)]); }
+  try { [data, adh] = await Promise.all([api(`/api/today?d=${localDay()}`), api(`/api/adherence`)]); }
   catch {
     app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p>
@@ -601,12 +601,9 @@ async function renderToday() {
   // "Skip today" and a finished workout both dismiss the offer FOR THE DAY —
   // re-asking after either makes "optional" feel like a nag (and post-workout the
   // check-in can't tune anything anyway).
-  const ckDismissed = localStorage.getItem("hb_ck_dismissed") === localDay();
-  const readinessCard = s.readiness == null
-    ? (ckDismissed ? "" : `<div class="card"><b>How are you feeling today?</b>
-        <p class="muted">A 15-second check-in lets me tune today's session. Optional.</p>
-        <button class="btn secondary" id="checkin">Quick check-in</button></div>`)
-    : (s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "");
+  // The check-in offer now lives in the daily-flow hub above; here we only surface
+  // the coach's readiness note once a check-in exists (so it's not shown twice).
+  const readinessCard = s.readiness != null && s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "";
   // A brand-new lifter's very first session gets a reassuring walkthrough up top.
   const firstTimer = s.day_number === 1
     ? `<div class="card"><b>👋 First workout? You've got this.</b>
@@ -622,12 +619,34 @@ async function renderToday() {
     ? `<div class="card"><b>${s.block.phase === "deload" ? "🌊" : s.block.phase === "peak" ? "⛰️" : "📈"} Week ${s.block.week} of ${s.block.of} — ${PHASE_LABEL[s.block.phase] ?? s.block.phase}</b> ${helpDot("deloads-and-rest-days", "ⓘ why weeks differ")}
         <p class="muted">${esc(s.block.note)}</p></div>`
     : "";
-  app.innerHTML = `<h1>Today</h1>${header}${firstTimer}${blockCard}${readinessCard}
-    <div class="card"><div class="big">${esc(s.name)}</div>
-      <p class="muted">${esc(s.program_name)} · day ${s.day_number} · ${s.exercises.length} exercises</p>
-      <button class="btn" id="start">Start workout</button></div>
-    <h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`;
-  $("#start").onclick = () => startSession(s);
+  // --- The daily flow (considerations #6): one obvious sequence — morning
+  // check-in (weight + how you feel) → the workout → tonight's calories. Each
+  // step shows done ✓ or is the highlighted next action; the first unfinished
+  // step is the call to action so it's always clear what to do right now.
+  const dy = data.daily || {};
+  const workoutDone = dy.workout_logged;
+  const steps = [
+    { key: "checkin", icon: "☀️", label: "Morning check-in", sub: "Weight + how you're feeling", done: dy.checked_in, cta: "Check in" },
+    { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
+    { key: "calories", icon: "🌙", label: "Tonight's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
+  ];
+  const firstUndone = steps.find((x) => !x.done);
+  const stepRow = (x) => `<div class="row" ${x.key === firstUndone?.key ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
+      <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
+      <div style="flex:1"><b${x.done ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.sub}</span></div>
+      ${x.done ? `<span class="chip" aria-label="${x.label} done">done</span>` : `<button class="btn ${x.key === firstUndone?.key ? "" : "secondary"}" data-step="${x.key}" style="width:auto;padding:10px 16px">${x.cta}</button>`}</div>`;
+  const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}
+      ${firstUndone ? `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone.key === "checkin" ? "Start your morning here." : firstUndone.key === "workout" ? "You're checked in — time to train." : "Great work today — just log your calories to finish."}</p>` : `<p class="muted" style="margin-top:8px;text-align:center">🎉 All done today. See you tomorrow.</p>`}</div>`;
+
+  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${firstTimer}${blockCard}${readinessCard}
+    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
+  // daily-flow actions
+  app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
+    const k = b.dataset.step;
+    if (k === "checkin") renderCheckin();
+    else if (k === "workout") startSession(s);
+    else { tab = "fuel"; render(); } // calories: the Fuel tab logs it with target context
+  });
   if ($("#checkin")) $("#checkin").onclick = renderCheckin;
   wireLearnLinks();
   if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
@@ -641,20 +660,24 @@ function renderCheckin() {
   const fields = [
     ["sleep_quality", "Sleep quality", "1 = awful · 5 = great"],
     ["energy", "Energy", "1 = drained · 5 = full of beans"],
+    ["motivation", "Motivation", "1 = flat · 5 = fired up"],
     ["stress", "Stress", "1 = calm · 5 = maxed out"],
     ["mood", "Mood", "1 = low · 5 = great"],
   ];
-  const vals = { sleep_quality: 3, energy: 3, stress: 3, mood: 3 };
+  const vals = { sleep_quality: 3, energy: 3, motivation: 3, stress: 3, mood: 3 };
   const draw = () => {
     const row = ([key, label, anchors]) => `<div class="ckrow"><span class="cklabel">${label} <span class="muted" style="font-weight:400">${anchors}</span></span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
       `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}" aria-pressed="${vals[key] === n}" aria-label="${label} ${n} of 5">${n}</button>`).join("")}</div></div>`;
-    app.innerHTML = `<h1>Quick check-in</h1><p class="muted">Tap 1 to 5 for each. This just tunes today; it's never a score or a judgment.</p>
+    app.innerHTML = `<h1>Morning check-in</h1><p class="muted">Your weight and how you're feeling. 15 seconds — it tunes today's session and tracks your trend, never a score or judgment.</p>
+      <div class="card"><label for="ck-weight" class="muted">Bodyweight (${unitLabel()}, optional)</label>
+        <input id="ck-weight" type="number" inputmode="decimal" placeholder="weigh in first thing" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 4px"></div>
       <div class="card">${fields.map(row).join("")}</div>
       <button class="btn" id="submitck">Save</button>
       <button class="btn ghost" id="skipck">Skip today</button>`;
     app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
     $("#submitck").onclick = async () => {
-      try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals }) }); say("Check-in saved."); }
+      const wv = parseFloat($("#ck-weight").value); const weight_kg = Number.isFinite(wv) && wv > 0 ? toKg(wv) : undefined;
+      try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals, ...(weight_kg ? { weight_kg } : {}) }) }); say(weight_kg ? "Check-in and weight saved." : "Check-in saved."); }
       catch { say("Offline — check-in skipped."); pendingNotice = "📴 Offline — today\u2019s check-in was skipped (it only tunes today\u2019s session)."; } // never queued: a stale one would lie tomorrow
       tab = "today"; render();
     };
