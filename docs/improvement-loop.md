@@ -155,6 +155,17 @@ These are real failures from previous iterations. Each is now a standing check.
    stored; (2) grep every consumer of the surrounding record (`git grep` the sibling fields) and
    confirm the new one is handled — merges, sweeps, week-banking, and every derived view, not just
    the happy path that introduced it.
+17. **Audit yield decays; adapt the cadence to codebase maturity instead of auditing on a fixed
+   clock.** After a burst of aggressive multi-lens audits (iterations 15–39), findings converged to
+   *polish, self-churn, and clean lenses* — including a clean sweep of the highest-risk surface
+   (session-core crash-safety). Two tells that a surface is swept: (a) the same lens returns nothing
+   twice running, and (b) a growing share of "findings" are regressions the *current* burst just
+   introduced, not pre-existing defects. When both hold, re-auditing swept code is negative-yield
+   churn. → **Standing rule:** when audits stop finding pre-existing correctness/data-loss/security
+   defects, STOP the fixed-cadence sweeps and shift the loop to (1) work genuinely gated on new
+   inputs — KB currency as new research lands, prod-smoke of live issues; (2) net-new goal-serving
+   features when a real gap exists; or (3) surfacing the human-blocked item (`BLOCKERS.md`) that gates
+   the next real gain. A slower heartbeat in a swept codebase is correct pacing, not stopping.
 
 ## Token discipline (the loop must be affordable to keep running)
 
