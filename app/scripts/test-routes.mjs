@@ -199,6 +199,22 @@ try {
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
   ok("#2 the new block's chest target increased from the adaptive bump", atAfter.plan_rationale?.volume_by_muscle?.chest?.target_sets > chestBefore);
 
+  // Increment A (recovery-aware tune) through the SAME door the client uses: the
+  // identical stall, but logged under persistent under-recovery, must NOT bump volume.
+  // Guards the block-boundary wiring (check-ins + hoisted bodyweights threaded into the
+  // tune) — a stall you can't recover is a recovery problem, not a volume one.
+  const rgUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: rgUser, session_id: `rg-${w}`, date: dayAgo(35 - w * 7),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+  // 5 low daily check-ins across the block → block-average readiness ~2/5 → under-recovered
+  for (let d = 0; d < 5; d++) await json("POST", "/api/checkin", { user_id: rgUser, date: dayAgo(30 - d * 6).slice(0, 10), sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 });
+  await store.updateUser(rgUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": rgUser } });
+  const rgAfter = await store.getUser(rgUser);
+  ok("#A under-recovery suppresses the volume bump through /api/today (recovery-aware tune wired at the block boundary)", (rgAfter.plan_meta?.volume_adjust?.chest ?? 0) === 0);
+
   // --- Wave 15: onboard throttle + claim-turned-restore merge chain ---
 
   // #15: /api/onboard is the only unauthenticated route that writes a row per
