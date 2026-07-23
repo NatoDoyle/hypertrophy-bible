@@ -14,17 +14,26 @@
 // request cannon (the Worker POSTs to every stored endpoint once a day). Suffix
 // match on the host, https only. Checked at subscribe AND at send (defense in
 // depth for any row that predates the check).
+// Suffixes are only used where the suffix is ITSELF push-specific. Google's
+// push hosts live under the generic *.googleapis.com umbrella (which also covers
+// storage./sheets./www.googleapis.com etc.), so those are matched as EXACT hosts
+// — a `.googleapis.com` suffix would have admitted every Google API endpoint,
+// defeating the SSRF containment this allowlist exists to provide.
 const PUSH_HOST_SUFFIXES = [
   ".push.services.mozilla.com",   // Firefox
-  ".googleapis.com",              // Chrome/Android (fcm/android.googleapis.com)
   ".notify.windows.com",          // Edge/Windows (WNS)
   ".push.apple.com",              // Safari (web/api.push.apple.com)
 ];
+const PUSH_HOST_EXACT = new Set([
+  "fcm.googleapis.com",           // Chrome/Android (FCM HTTP v1 + legacy)
+  "android.googleapis.com",       // Chrome/Android (legacy GCM)
+]);
 export function isAllowedPushEndpoint(endpoint) {
   let u;
   try { u = new URL(endpoint); } catch { return false; }
   if (u.protocol !== "https:") return false;
   const host = u.hostname.toLowerCase();
+  if (PUSH_HOST_EXACT.has(host)) return true;
   return PUSH_HOST_SUFFIXES.some((s) => host === s.slice(1) || host.endsWith(s));
 }
 
