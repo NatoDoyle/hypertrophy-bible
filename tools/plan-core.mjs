@@ -151,9 +151,29 @@ export function chooseSplit({ days_per_week, training_status }) {
 // top-tier and progress fine — never penalized. Other bodyweight moves (lunges,
 // inverted rows, single-leg RDLs) cap out once you can do them for reps.
 const LOADABLE_BODYWEIGHT = /pull-up|chin-up|dip|muscle-up/;
-function rankPool(pool, { experience, seed, blockJitter = 0 }) {
+// Equipment-quality preference (goal-aware). For HYPERTROPHY, machines and cables
+// give stable, guided, near-constant resistance you can push closer to failure
+// with less stabilizer + systemic fatigue — more effective tension per unit of
+// fatigue (KB exercise-selection: "stable enough to train near failure", load the
+// muscle through its range). This is a MILD preference, not "machines grow more
+// muscle" (free weights are broadly equivalent at matched effort/volume); it's
+// kept smaller than the lengthened-bias bonus (−2) so lengthened loading stays the
+// top hypertrophy signal, and below one difficulty step (3) so it never overrides
+// the difficulty gate. Bands rank lowest for hypertrophy — ascending resistance is
+// lightest exactly where the muscle is lengthened, the opposite of the goal. For a
+// STRENGTH goal, specificity flips the ladder toward the barbell/free weights.
+const EQUIP_TIER_HYPERTROPHY = { machine: -1.4, cable: -1.1, dumbbell: -0.5, kettlebell: -0.4, barbell: -0.2, band: 0.2, bodyweight: 0 };
+const EQUIP_TIER_STRENGTH = { barbell: -1.2, dumbbell: -0.5, kettlebell: -0.3, machine: -0.2, cable: -0.2, band: 0, bodyweight: 0 };
+// Systemic-fatigue preference (hypertrophy-oriented goals): for the same role,
+// favour the option that buys its tension with less whole-body fatigue. Small, so
+// it refines ties without burying a great high-CNS lift; works WITH the ≤2
+// high-CNS-per-session cap. Strength embraces heavy systemic work, so it opts out.
+const CNS_PENALTY = { high: 0.6, moderate: 0.25, low: 0 };
+function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy" }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
+  const equipTier = goal === "strength" ? EQUIP_TIER_STRENGTH : EQUIP_TIER_HYPERTROPHY;
+  const fatigueAware = goal !== "strength";
   // Only prefer loaded exercises when the pool actually offers one — a
   // bodyweight-only user's ranking is left completely unchanged.
   const hasLoaded = pool.some((e) => e.equipment !== "bodyweight");
@@ -174,6 +194,10 @@ function rankPool(pool, { experience, seed, blockJitter = 0 }) {
       // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
       // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
       if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
+      // #1/#5: prefer stable, low-fatigue equipment (machines/cables) for growth —
+      // more effective tension per unit of systemic fatigue; barbell for strength.
+      score += equipTier[e.equipment] ?? 0;
+      if (fatigueAware) score += CNS_PENALTY[e.cns_cost] ?? 0;
       score += (((seed ^ hashStr(e.id)) + blockJitter * 2654435761) % 100) / 1000; // deterministic jitter; blockJitter rotates ties each mesocycle
       return { e, score };
     })
@@ -308,7 +332,7 @@ export function generatePlan(profile, kb, opts = {}) {
       }
       return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
     };
-    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed });
+    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal });
     // Progressive-overload guard: a loaded user never rotates onto a non-loadable
     // bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already
     // sorts these last, but the block-rotation counter still periodically lands on
@@ -322,7 +346,7 @@ export function generatePlan(profile, kb, opts = {}) {
     }
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
     // compounds keep their ranking so double-progression baselines survive blocks.
-    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, blockJitter: blockIndex });
+    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, blockJitter: blockIndex, goal });
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
