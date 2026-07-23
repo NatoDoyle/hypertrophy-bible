@@ -280,6 +280,29 @@ try {
   const ldAfter = await store.getUser(ldUser);
   ok("#21 pause resume archives the window into pause_history", Array.isArray(ldAfter.pause_history) && ldAfter.pause_history.length === 1 && !!ldAfter.pause_history[0].to);
 
+  // --- Wave 43: nutrition targets + logging ---
+  const nUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+  // no stats yet -> no plan
+  const nEmpty = await json("GET", "/api/nutrition", null); // GET needs the header
+  const nEmptyH = await app.request("/api/nutrition", { headers: { "X-HB-User": nUser } });
+  ok("#43 nutrition needs stats before it can compute", (await nEmptyH.json()).needs_stats === true);
+  // provide weight + BF% + set profile
+  await json("POST", "/api/bodyweight", { user_id: nUser, kg: 85 });
+  const setP = await json("POST", "/api/nutrition/profile", { user_id: nUser, bf_pct: 15, height_cm: 178, activity: "moderate" });
+  ok("#43 setting stats yields a full target set (TDEE, calories, protein/fat/carbs)",
+    setP.data.nutrition && setP.data.nutrition.tdee > 0 && setP.data.nutrition.calorie_target > 0 && setP.data.nutrition.protein_g > 0 && setP.data.nutrition.tdee_basis === "estimated");
+  // log ~2 weeks of intake with a slight weight drop -> adaptive basis kicks in
+  for (let d = 0; d < 12; d++) {
+    const day = new Date(Date.UTC(2026, 5, 1 + d)).toISOString().slice(0, 10);
+    await json("POST", "/api/bodyweight", { user_id: nUser, kg: 85 - d * 0.03, date: day });
+    await json("POST", "/api/nutrition/log", { user_id: nUser, date: day, kcal: 2800 });
+  }
+  const afterLog = await json("POST", "/api/nutrition/log", { user_id: nUser, date: "2026-06-13", kcal: 2800 });
+  ok("#43 the daily intake log accumulates and re-derives maintenance from data",
+    afterLog.data.logged === true && afterLog.data.logged_days >= 10 && afterLog.data.nutrition.tdee_basis === "logged");
+  const badKcal = await json("POST", "/api/nutrition/log", { user_id: nUser, kcal: -5 });
+  ok("#43 a nonsense intake is rejected", badKcal.status === 400);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

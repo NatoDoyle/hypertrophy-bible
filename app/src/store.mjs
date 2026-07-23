@@ -59,6 +59,16 @@ export function createFileStore(path) {
       flush();
       return entry;
     },
+    // --- nutrition daily intake log (kcal + macros), one row per day ---
+    async listNutritionLog(id) { return byDate(db.nutrition_logs?.[id]); },
+    async addNutritionLog(id, entry) {
+      db.nutrition_logs ??= {};
+      const arr = (db.nutrition_logs[id] ??= []);
+      const i = arr.findIndex((e) => e.date === entry.date); // one per day: replace
+      if (i >= 0) arr[i] = entry; else arr.push(entry);
+      flush();
+      return entry;
+    },
 
     // --- passwordless email backup ---
     async getAccountByEmail(email) { return db.accounts[email] ?? null; },
@@ -104,6 +114,13 @@ export function createFileStore(path) {
       // are orphaned onto a deleted user and the daily sweep prunes them — the
       // restoring device silently loses reminders while its UI still shows them on.
       for (const ep of Object.keys(db.push_subscriptions ?? {})) if (db.push_subscriptions[ep].user_id === fromId) db.push_subscriptions[ep].user_id = toId;
+      // nutrition logs follow the user, keeping the target's row on a same-day clash
+      if (db.nutrition_logs?.[fromId]?.length) {
+        const dst = (db.nutrition_logs[toId] ??= []);
+        const dates = new Set(dst.map((e) => e.date));
+        for (const e of db.nutrition_logs[fromId]) if (!dates.has(e.date)) dst.push(e);
+      }
+      delete db.nutrition_logs?.[fromId];
       delete db.sessions[fromId];
       delete db.bodyweights[fromId];
       delete db.checkins[fromId];

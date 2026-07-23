@@ -8,6 +8,7 @@ import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
+import { nutritionPlan, navyBodyFat } from "../../tools/nutrition-core.mjs";
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
@@ -431,6 +432,68 @@ export function createApp(store, config = {}) {
     const bw = (await store.listBodyweights(user_id)).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
     const trend = bodyweightTrend(bw);
     return c.json({ count: bw.length, trend, energy_balance: classifyEnergyBalance(trend, user.profile.primary_goal) });
+  });
+
+  // --- Nutrition: calorie/macro targets + adaptive TDEE (considerations #4).
+  // Assemble the stats the engine needs from the user doc + logs; compute BF% via
+  // the Navy formula when tape measures are given and no BF% is set directly.
+  const nutritionInputs = async (user, id) => {
+    const n = user.nutrition ?? {};
+    const bw = await store.listBodyweights(id);
+    const weight_kg = bw.length ? bw[bw.length - 1].kg : n.weight_kg;
+    const bf_pct = n.bf_pct ?? navyBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, neck_cm: n.neck_cm, waist_cm: n.waist_cm, hip_cm: n.hip_cm });
+    const profile = { weight_kg, bf_pct, sex: user.profile?.sex, goal: user.profile?.primary_goal, training_status: user.profile?.training_status, activity: n.activity ?? "moderate", unit: "kg" };
+    // adaptive TDEE history: pair the daily intake log with the day's bodyweight
+    const wByDate = new Map(bw.map((b) => [b.date, b.kg]));
+    const history = (await store.listNutritionLog(id)).map((e) => ({ date: e.date, kcal: e.kcal, weight_kg: wByDate.get(e.date) }));
+    return { profile, history };
+  };
+
+  app.post("/api/nutrition/profile", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.nutrition = {
+        ...(u.nutrition ?? {}),
+        ...(num(b.height_cm) ? { height_cm: num(b.height_cm) } : {}),
+        ...(num(b.neck_cm) ? { neck_cm: num(b.neck_cm) } : {}),
+        ...(num(b.waist_cm) ? { waist_cm: num(b.waist_cm) } : {}),
+        ...(num(b.hip_cm) ? { hip_cm: num(b.hip_cm) } : {}),
+        ...(b.bf_pct != null && num(b.bf_pct) ? { bf_pct: num(b.bf_pct) } : {}),
+        ...(num(b.weight_kg) ? { weight_kg: num(b.weight_kg) } : {}),
+        ...(typeof b.activity === "string" ? { activity: b.activity } : {}),
+      };
+      return u;
+    });
+    const { profile, history } = await nutritionInputs(updated, b.user_id);
+    return c.json({ nutrition: nutritionPlan(profile, history), profile });
+  });
+
+  app.get("/api/nutrition", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    const { profile, history } = await nutritionInputs(user, id);
+    const plan = nutritionPlan(profile, history);
+    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: history.filter((h) => h.kcal).length });
+  });
+
+  app.post("/api/nutrition/log", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (!Number.isFinite(Number(b.kcal)) || Number(b.kcal) <= 0) return c.json({ error: "bad-kcal" }, 400);
+    const round = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : undefined);
+    await store.addNutritionLog(b.user_id, {
+      date: (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : new Date().toISOString().slice(0, 10)),
+      kcal: Math.round(Number(b.kcal)),
+      ...(round(b.protein_g) != null ? { protein_g: round(b.protein_g) } : {}),
+      ...(round(b.carbs_g) != null ? { carbs_g: round(b.carbs_g) } : {}),
+      ...(round(b.fat_g) != null ? { fat_g: round(b.fat_g) } : {}),
+    });
+    const { profile, history } = await nutritionInputs(user, b.user_id);
+    return c.json({ logged: true, nutrition: nutritionPlan(profile, history), logged_days: history.filter((h) => h.kcal).length });
   });
 
   // Request a magic link to back up (claim) or restore progress. We always

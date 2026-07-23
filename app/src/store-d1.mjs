@@ -78,6 +78,18 @@ export function createD1Store(db) {
         .run();
       return entry;
     },
+    // --- nutrition daily intake log (kcal + macros), one row per day (parity) ---
+    async listNutritionLog(id) {
+      const { results } = await db.prepare("SELECT data FROM nutrition_logs WHERE user_id = ? ORDER BY date ASC").bind(id).all();
+      return results.map((r) => JSON.parse(r.data));
+    },
+    async addNutritionLog(id, entry) {
+      await db
+        .prepare("INSERT INTO nutrition_logs (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
+        .bind(id, entry.date, JSON.stringify(entry))
+        .run();
+      return entry;
+    },
 
     // --- passwordless email backup ---
     async getAccountByEmail(email) {
@@ -126,6 +138,9 @@ export function createD1Store(db) {
       // the target's same-day row, then drop any leftover from-user rows.
       stmts.push(db.prepare("UPDATE OR IGNORE checkins SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
       stmts.push(db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(fromId));
+      // nutrition logs follow the user (same (user_id,date) PK collision handling as checkins)
+      stmts.push(db.prepare("UPDATE OR IGNORE nutrition_logs SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
+      stmts.push(db.prepare("DELETE FROM nutrition_logs WHERE user_id = ?").bind(fromId));
       // Push subscriptions follow the user (endpoint is globally unique, so no
       // collision) — otherwise the merged-away device's reminders orphan onto a
       // deleted user and the sweep prunes them, silently killing reminders.

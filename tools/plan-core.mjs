@@ -205,6 +205,17 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
     .map((x) => x.e);
 }
 function hashStr(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+// Cyclically shift the top `k` of a quality-ranked pool by `shift` (the block
+// index) — mesocycle accessory variation that only ever swaps among the best
+// options, never drifting to a worse one. shift 0 (default block) is a no-op, so
+// the byte-identical determinism guarantee holds. Rest of the pool stays put.
+function rotateTopK(arr, shift, k = 3) {
+  const n = Math.min(k, arr.length);
+  if (n <= 1) return arr;
+  const s = (((shift | 0) % n) + n) % n;
+  if (s === 0) return arr;
+  return [...arr.slice(s, n), ...arr.slice(0, s), ...arr.slice(n)];
+}
 
 function contraExcluded(ex, injuries, contraindications) {
   if (!injuries?.length || !contraindications) return false;
@@ -346,7 +357,14 @@ export function generatePlan(profile, kb, opts = {}) {
     }
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
     // compounds keep their ranking so double-progression baselines survive blocks.
-    isoPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, blockJitter: blockIndex, goal });
+    // Accessories: rank by quality (lengthened → equipment → low-fatigue), then
+    // CYCLE the top few each mesocycle for variation (KB: rotate accessories every
+    // block or two). Rotating only within the top band keeps every rotated option
+    // high-quality — and since the equipment tier (Wave 41) now separates options
+    // by more than a score-jitter could flip, an explicit top-K rotation is what
+    // actually varies them (jitter alone left the single best-equipment move
+    // pinned every block). Compounds keep their stable ranking (double-progression).
+    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal }), blockIndex);
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
