@@ -848,6 +848,7 @@ function renderPlayer(resting = 0) {
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
       <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
+      ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
     ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="swap">🔄 Swap this exercise</button>` : ""}
@@ -861,6 +862,19 @@ function renderPlayer(resting = 0) {
   $("#ex-head")?.focus();
   if ($("#swap")) $("#swap").onclick = () => renderSwap();
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
+  // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
+  // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
+  // derivation (loggedWorkSets/isHardSet/countsForE1RM all gate on "work"), so it
+  // never advances the work-set cursor, counts toward volume, or moves e1RM — it's
+  // purely a record. Adjust the steppers to your warm-up load first, then tap.
+  if ($("#warmup")) $("#warmup").onclick = () => {
+    quitPending = false;
+    sess.logged.push({ exercise: e.exercise, set_type: "warmup", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], completed_at: new Date().toISOString() });
+    saveSess();
+    const n = sess.logged.filter((l) => l.exercise === e.exercise && l.set_type === "warmup").length;
+    say(`Warm-up set logged.`);
+    $("#warmup").textContent = `＋ Warm-up logged ✓ (${n}) — add another?`;
+  };
 
   // In-place stepper updates: a full repaint on every tap destroys the tapped
   // button (dumping keyboard/screen-reader focus) and never announces the new
