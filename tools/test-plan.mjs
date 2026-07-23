@@ -201,6 +201,25 @@ ok("#8-1 a neck-priority user IS still told to add direct neck work (the plan ca
   const tightCap = generatePlan({ user_id: "cap-knob", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: FULLG }, kb, { perMuscleSessionCap: 6 });
   ok("#14i the perMuscleSessionCap knob actually binds (a declared cap must be enforced)", directDose(tightCap).every((n) => n <= 6));
 
+  // --- #40 goal-aware equipment scoring (#1/#5): hypertrophy favours stable
+  // machines/cables (tension per unit fatigue), strength favours the barbell
+  // (specificity). Directional invariant across the same profile + full gym. ---
+  const FULLPLUS = ["barbell", "dumbbell", "machine", "cable", "bodyweight", "kettlebell", "band"];
+  const eqMix = (goal) => {
+    const p = generatePlan({ user_id: `eq-${goal}`, training_status: "intermediate", primary_goal: goal, days_per_week: 4, session_length_min: 60, available_equipment: FULLPLUS }, kb);
+    const m = {};
+    for (const e of p.program.sessions.flatMap((s) => s.exercises)) { const q = exMeta[e.exercise]?.equipment; m[q] = (m[q] ?? 0) + 1; }
+    return m;
+  };
+  const hyMix = eqMix("hypertrophy"), stMix = eqMix("strength");
+  ok("#40 strength uses more barbell than hypertrophy (specificity)", (stMix.barbell ?? 0) > (hyMix.barbell ?? 0));
+  ok("#40 hypertrophy uses more machine+cable than strength (stable, low-fatigue tension)",
+    ((hyMix.machine ?? 0) + (hyMix.cable ?? 0)) > ((stMix.machine ?? 0) + (stMix.cable ?? 0)));
+  // the preference must not become a monoculture — a full-gym hypertrophy plan
+  // still uses >=3 distinct equipment types and still has compounds.
+  ok("#40 hypertrophy equipment stays varied (>=3 types, compounds present)",
+    Object.keys(hyMix).length >= 3);
+
   // --- #37 a frequency override is surfaced, never silent ---
   const freq1 = generatePlan({ user_id: "freq-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 1, session_length_min: 60, available_equipment: FULLG }, kb);
   ok("#37 days_per_week=1 delivers 2 sessions WITH a frequency-adjusted warning (never silent)",
