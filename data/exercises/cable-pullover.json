@@ -1,41 +1,47 @@
 {
   "id": "cable-pullover",
-  "name": "Cable Straight-Arm Pullover",
+  "name": "Lying Cable Pullover",
   "primary_muscles": [
     "lats"
+  ],
+  "secondary_muscles": [
+    "chest",
+    "triceps"
   ],
   "movement_pattern": "isolation-shoulder-extension",
   "equipment": "cable",
   "mechanic": "isolation",
   "force": "pull",
-  "resistance_profile": "The high cable pulls hardest in the overhead position, loading the lats at full stretch; tension stays on but eases as the handle reaches the thighs.",
+  "resistance_profile": "Lying with a low pulley behind your head, the cable pulls hardest with the arms overhead and behind you — loading the lats (and the sternal chest) deep in the stretch; tension eases as the arms arc over the chest.",
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
-    "High pulley, arms nearly straight",
-    "Pull down and back with the lats",
-    "Full stretch at the top"
+    "Lie on a flat bench, low pulley behind your head",
+    "Arms nearly straight, arc up and over",
+    "Deep stretch overhead, don't flare the ribs"
   ],
   "execution_steps": [
-    "Set the pulley to the highest position, attach a straight or rope handle, grip it with arms nearly straight, and step back to create tension.",
-    "Hinge slightly at the hips, brace your core, and let the handle draw your arms up and overhead into a full lat stretch.",
-    "Keeping the elbows locked at a soft, fixed angle, drive the handle down toward your thighs using the lats.",
-    "Squeeze the lats at the bottom, then return under control to the overhead stretch."
+    "Set a low pulley behind the head of a flat bench, attach a straight or rope handle, and lie back holding it with arms nearly straight overhead.",
+    "Let the cable draw your arms back and overhead into a deep stretch across the lats and chest, keeping the ribs down and core braced.",
+    "Keeping the elbows locked at a soft, fixed angle, arc the handle over your chest toward your hips using the lats.",
+    "Control the return to the overhead stretch; the loaded stretch behind the head is the point of the exercise."
   ],
   "good_when": [
-    "You want a lat isolation with constant cable tension that loads the stretched position.",
-    "You want to pre-exhaust or finish the lats without loading the biceps or lower back.",
+    "You want a lat isolation that loads the deep overhead stretch with constant cable tension.",
+    "You want to pre-exhaust or finish the lats (with some sternal-chest involvement) without loading the biceps or lower back.",
     "You need light, joint-friendly loads for higher-rep work."
   ],
   "bad_when": [
     "You have limited time and need one movement to build overall back mass (pick a pulldown or row).",
-    "You want to move heavy loads for strength, since isolation caps the useful weight."
+    "You want to move heavy loads for strength, since isolation caps the useful weight.",
+    "No flat bench is free — the standing straight-arm pulldown is the upright alternative."
   ],
   "common_errors": [
-    "Bending the elbows",
-    "Using the triceps"
+    "Bending the elbows to turn it into a pressdown",
+    "Flaring the ribs / overarching to reach further",
+    "Using the triceps to push the handle down"
   ],
   "progressions": [
     "Add load"
