@@ -109,6 +109,10 @@ export function nutritionPlan(profile, history = []) {
   const base = baseTDEE({ weight_kg, bf_pct, activity });
   const adaptive = adaptiveTDEE(history, { unit });
   const tdee = adaptive ?? base;
+  // Degenerate stats (e.g. an impossible body-fat %) make TDEE uncomputable —
+  // return null so the caller re-prompts for stats instead of surfacing a plan
+  // full of nulls ("~null kcal/day").
+  if (tdee == null) return null;
   const weekly_change_kg = recommendedWeeklyChange({ weight_kg, goal, training_status });
   const calories = calorieTarget({ tdee, weekly_change_kg, unit });
   const macros = macroTargets({ calories, weight_kg, goal });

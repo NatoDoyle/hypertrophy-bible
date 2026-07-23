@@ -477,6 +477,9 @@ export function createApp(store, config = {}) {
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
     const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
+    // Body fat only within a plausible human range (a fat-fingered 100 makes TDEE
+    // uncomputable and used to surface a "~null kcal/day" plan).
+    const bf = (v) => (Number.isFinite(Number(v)) && Number(v) >= 2 && Number(v) < 60 ? Number(v) : undefined);
     const updated = await store.updateUser(b.user_id, (u) => {
       u.nutrition = {
         ...(u.nutrition ?? {}),
@@ -484,7 +487,7 @@ export function createApp(store, config = {}) {
         ...(num(b.neck_cm) ? { neck_cm: num(b.neck_cm) } : {}),
         ...(num(b.waist_cm) ? { waist_cm: num(b.waist_cm) } : {}),
         ...(num(b.hip_cm) ? { hip_cm: num(b.hip_cm) } : {}),
-        ...(b.bf_pct != null && num(b.bf_pct) ? { bf_pct: num(b.bf_pct) } : {}),
+        ...(bf(b.bf_pct) != null ? { bf_pct: bf(b.bf_pct) } : {}),
         ...(num(b.weight_kg) ? { weight_kg: num(b.weight_kg) } : {}),
         ...(typeof b.activity === "string" ? { activity: b.activity } : {}),
       };

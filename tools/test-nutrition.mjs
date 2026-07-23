@@ -57,6 +57,8 @@ ok("nutritionPlan returns a full target set", planEst.calorie_target > 0 && plan
 const planLogged = nutritionPlan({ weight_kg: 85, bf_pct: 15, sex: "male", goal: "hypertrophy", training_status: "intermediate" }, hist);
 ok("nutritionPlan switches to the LOGGED basis once enough data exists", planLogged.tdee_basis === "logged");
 ok("nutritionPlan returns null on incomplete stats", nutritionPlan({ weight_kg: 85 }) === null);
+ok("#49 an impossible body-fat % yields no plan (never a '~null kcal/day' plan)", nutritionPlan({ weight_kg: 80, bf_pct: 100, sex: "male" }) === null);
+ok("#49 a plausible high body-fat still computes a real plan", nutritionPlan({ weight_kg: 120, bf_pct: 45, sex: "male" })?.calorie_target > 0);
 
 console.log(`\n${pass} nutrition test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
