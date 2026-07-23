@@ -345,6 +345,21 @@ check("computeVolumeAdjust samples PEAK block volume, not the deload week (ease 
   assert.equal(adj.chest, 4, `stalled at ceiling should EASE +6→+4, got ${adj.chest}`);
 });
 
+check("computeVolumeAdjust recovery gate (Increment A): under-recovery holds the bump the tune would otherwise make", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  // chest (bench primary) stalled at 12 working sets/wk — room below MAV.max — flat e1RM 5 weeks.
+  const sessions = [wk(35, 12), wk(28, 12), wk(21, 12), wk(14, 12), wk(7, 12)];
+  // no recovery context → the tune ADDS volume to the stalled-with-room muscle (+2 from +2 → +4)
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions).chest, 4);
+  // 5 low check-ins (avg readiness ~2/5) → under-recovered → the add is SUPPRESSED, holds at +2
+  const lowCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 }));
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { checkins: lowCheckins }).chest, 2);
+  // losing bodyweight on a gain goal → energy deficit → likewise holds (stall needs fuel, not sets)
+  const bwDown = Array.from({ length: 6 }, (_, i) => ({ date: `2026-06-0${i + 1}`, kg: 85 - i * 0.3 }));
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).chest, 2);
+});
+
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
   const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };

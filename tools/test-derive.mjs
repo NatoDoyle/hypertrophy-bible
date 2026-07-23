@@ -15,6 +15,7 @@ import {
   volumeVsLandmarks,
   volumeResponse,
   deriveVolumeAdjust,
+  recoverySignal,
   bodyweightTrend,
   classifyEnergyBalance,
   progressionByExercise,
@@ -327,6 +328,40 @@ check("deriveVolumeAdjust accumulates ±2 from stalls, bounded to MEV↔MRV, ign
   assert.equal(adj.chest, 14); // clamped, doesn't run away
   // a delta returning to 0 is dropped from the map
   assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 26 }, mIndex, new Set()).chest, undefined);
+});
+
+check("deriveVolumeAdjust recovery gate (Increment A): under-recovery/deficit suppress ADDING, never easing", () => {
+  const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
+  const stalledRoom = new Set(["chest"]);
+  // baseline: stalled with headroom → +2
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, mIndex, stalledRoom).chest, 4);
+  // under-recovered → the +2 add is SUPPRESSED; the prior adjustment holds (no bump)
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, mIndex, stalledRoom, { underRecovered: true }).chest, 2);
+  // energy deficit → likewise suppresses the add (a stall while cutting isn't a volume problem)
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, mIndex, stalledRoom, { inDeficit: true }).chest, 2);
+  // easing is ALWAYS safe: over-ceiling still eases even under-recovered
+  assert.equal(deriveVolumeAdjust({}, { chest: 26 }, mIndex, new Set(), { underRecovered: true }).chest, -2);
+  // stalled AT the ceiling still eases under-recovered (pull back, don't hold high volume)
+  assert.equal(deriveVolumeAdjust({ chest: 4 }, { chest: 22 }, mIndex, stalledRoom, { underRecovered: true }).chest, 2);
+});
+
+check("recoverySignal: block-average readiness + energy deficit gate the tune", () => {
+  const lowCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 }));
+  const rLow = recoverySignal(lowCheckins, { direction: "surplus" });
+  assert.equal(rLow.underRecovered, true); // 5 check-ins averaging ~2 → under-recovered
+  assert.equal(rLow.inDeficit, false);
+  // good recovery, enough check-ins → not under-recovered
+  const goodCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 4, energy: 4, stress: 2, mood: 4, motivation: 4 }));
+  assert.equal(recoverySignal(goodCheckins, null).underRecovered, false);
+  // too few check-ins → never flags under-recovered (one bad night isn't a trend)
+  assert.equal(recoverySignal(lowCheckins.slice(0, 2), null).underRecovered, false);
+  // deficit is read from the energy-balance direction
+  assert.equal(recoverySignal([], { direction: "deficit" }).inDeficit, true);
+  // no data at all → permissive (the tune stays as capable as before)
+  const rNone = recoverySignal([], null);
+  assert.equal(rNone.underRecovered, false);
+  assert.equal(rNone.inDeficit, false);
+  assert.equal(rNone.avgReadiness, null);
 });
 
 console.log(`\n${passed} test(s) passed.`);

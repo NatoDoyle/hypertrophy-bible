@@ -3,7 +3,7 @@
 import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, isoWeekKey, sessionWeekKey,
+  deriveVolumeAdjust, recoverySignal, isoWeekKey, sessionWeekKey,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -370,7 +370,7 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
 // is generated with volumeAdjust applied — a muscle that keeps stalling gets more
 // volume over time, one at its ceiling gets eased, all bounded to MEV↔MRV. Pure
 // derive-core does the math; this just resolves the muscle index + stalled muscles.
-export function computeVolumeAdjust(prevAdjust, sessions, customEx = []) {
+export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context = {}) {
   const { index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
@@ -384,7 +384,16 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = []) {
   const peak = {};
   for (const wk of recent) for (const [m, sets] of Object.entries(weekly[wk] ?? {})) peak[m] = Math.max(peak[m] ?? 0, sets);
   const stalledMuscleIds = new Set(stallDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
-  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds);
+  // Recovery-/energy-aware gate (Increment A, docs/adaptive-algorithm.md): a stall
+  // under persistent under-recovery or an energy deficit is a recovery/fuel problem —
+  // adding volume there worsens it — so suppress the "add" response (easing still
+  // fires). Energy balance is read from the bodyweight trend; readiness from the daily
+  // check-ins. Both default to permissive when the data isn't there.
+  const { checkins = [], bodyweights = [], goal = null } = context;
+  const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
+  const energyBalance = classifyEnergyBalance(bodyweightTrend(bwSeries), goal);
+  const recovery = recoverySignal(checkins, energyBalance);
+  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, recovery);
 }
 
 export function progressReport(user, sessions, bodyweights, customEx = [], now = null) {
