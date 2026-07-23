@@ -1296,6 +1296,83 @@ async function renderProgress() {
   };
 }
 
+// ---------- Fuel (nutrition: calorie/macro targets + daily intake log) ----------
+const fld = (id, label, val, ph, extra = "") => `<label for="${id}" class="muted">${label}</label>
+  <input id="${id}" type="number" inputmode="decimal" value="${val ?? ""}" placeholder="${ph}" ${extra}
+    style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 10px">`;
+let fuelEdit = false;
+async function renderFuel() {
+  app.innerHTML = `<h1>Fuel</h1><p class="muted">Loading…</p>`;
+  let n; try { n = await api("/api/nutrition"); } catch {
+    app.innerHTML = `<h1>Fuel</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your targets load when you reconnect.</p><button class="btn" id="rf">Try again</button></div>`;
+    $("#rf").onclick = () => renderFuel(); return;
+  }
+  const t = n.nutrition;
+  // --- stats form (first run, or "edit stats") ---
+  if (!t || fuelEdit) {
+    app.innerHTML = `<h1>Fuel</h1>
+      <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
+        ${fld("f-weight", "Bodyweight (kg)", n.nutrition?.tdee ? "" : "", "e.g. 82")}
+        ${fld("f-height", "Height (cm)", "", "e.g. 178")}
+        ${fld("f-bf", "Body fat % (estimate is fine)", "", "e.g. 18")}
+        <p class="muted" style="margin:2px 0 8px">…or leave body fat blank and add these two and I'll estimate it:</p>
+        ${fld("f-waist", "Waist (cm, at the navel)", "", "optional")}
+        ${fld("f-neck", "Neck (cm)", "", "optional")}
+        <label for="f-act" class="muted">Daily activity (outside training)</label>
+        <select id="f-act" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 12px">
+          <option value="sedentary">Mostly sitting (desk job)</option>
+          <option value="light">Lightly active (some walking)</option>
+          <option value="moderate" selected>Moderately active (on your feet a fair bit)</option>
+          <option value="active">Very active (physical job)</option>
+        </select>
+        <button class="btn" id="f-save">Set my targets</button>
+        ${t ? `<button class="btn ghost" id="f-cancel">Cancel</button>` : ""}
+        <p class="muted" id="f-msg"></p></div>`;
+    wireLearnLinks();
+    if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
+    $("#f-save").onclick = async () => {
+      const g = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
+      const weight = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck");
+      if (!weight) { $("#f-msg").textContent = "Enter your bodyweight to start."; return; }
+      if (!bf && !(waist && neck)) { $("#f-msg").textContent = "Add your body fat %, or your waist + neck so I can estimate it."; return; }
+      try {
+        await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, activity: $("#f-act").value }) });
+        fuelEdit = false; say("Targets set."); renderFuel();
+      } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
+    };
+    return;
+  }
+  // --- targets + daily log ---
+  const goalTxt = t.weekly_change_kg > 0 ? `gaining ~${t.weekly_change_kg} kg/week` : t.weekly_change_kg < 0 ? `losing ~${Math.abs(t.weekly_change_kg)} kg/week` : "holding your weight";
+  app.innerHTML = `<h1>Fuel</h1>
+    <div class="card center"><div class="big">${t.calorie_target} <span class="muted" style="font-size:1rem">kcal/day</span></div>
+      <p class="muted">Target for ${goalTxt}. ${t.tdee_basis === "logged" ? "Dialled in from your logs." : "Starting estimate."}</p></div>
+    <h2>Daily macros ${helpDot("protein", "?")}</h2>
+    <div class="card"><div class="row"><div style="flex:1"><b>🥩 Protein</b><br><span class="muted">${t.protein_g} g (${t.protein_per_kg} g/kg — the priority)</span></div></div>
+      <div class="row"><div style="flex:1"><b>🍚 Carbs</b><br><span class="muted">${t.carbs_g} g — fuel your training</span></div></div>
+      <div class="row"><div style="flex:1"><b>🥑 Fat</b><br><span class="muted">${t.fat_g} g</span></div></div></div>
+    <h2>Log today's intake</h2>
+    <div class="card"><p class="muted">Log what you ate (a rough daily total is fine). After ~2 weeks I re-estimate your real maintenance from your food + weight — no formula beats your own data.</p>
+      ${fld("f-kcal", "Calories eaten today", "", "e.g. 2600")}
+      ${fld("f-protein", "Protein (g, optional)", "", "e.g. 180")}
+      <button class="btn" id="f-log">Log today</button><p class="muted" id="f-logmsg">${n.logged_days ? `${n.logged_days} day${n.logged_days === 1 ? "" : "s"} logged.` : ""}</p></div>
+    <div class="card"><p class="muted">Maintenance estimate: <b>${t.tdee}</b> kcal (${t.tdee_basis}). ${esc(t.note)}</p></div>
+    <button class="btn ghost" id="f-editstats">Edit my stats</button>`;
+  wireLearnLinks();
+  $("#f-editstats").onclick = () => { fuelEdit = true; renderFuel(); };
+  $("#f-log").onclick = async () => {
+    const kcal = parseFloat($("#f-kcal").value); const protein = parseFloat($("#f-protein").value);
+    if (!Number.isFinite(kcal) || kcal <= 0) { $("#f-logmsg").textContent = "Enter today's calories."; return; }
+    try {
+      const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
+      say("Logged."); $("#f-logmsg").textContent = `Logged — ${r.logged_days} day${r.logged_days === 1 ? "" : "s"} in. ${r.nutrition.tdee_basis === "logged" ? "Targets updated from your data." : ""}`;
+      $("#f-kcal").value = ""; $("#f-protein").value = "";
+      if (r.nutrition.tdee_basis === "logged") renderFuel();
+    } catch { $("#f-logmsg").textContent = "📴 Couldn't log — try again when connected."; }
+  };
+}
+
 // ---------- Me ----------
 function renderMe() {
   const email = localStorage.getItem("hb_email");
@@ -1562,6 +1639,7 @@ function render() {
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "today") renderToday();
   else if (tab === "progress") renderProgress();
+  else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();
   else if (tab === "learn") { learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
