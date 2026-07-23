@@ -49,8 +49,9 @@ The engines are **pure, fs-free, `Date.now`/`Math.random`-free** so they run ide
 
 | Pure core (`tools/`) | Binder (`app/src/`) | Does |
 |---|---|---|
-| `derive-core.mjs` | `coach.mjs` | Per-muscle weekly volume vs KB MV/MEV/MAV/MRV landmarks, est-1RM progression, stall detection, energy balance from bodyweight trend, PLUS an explicit calorie/macro tracker (nutrition-core.mjs: TDEE, adaptive maintenance from logged intake+weight, protein/fat/carb targets — the Fuel tab), readiness, the adaptive volume-response signal |
-| `plan-core.mjs` (`generatePlan`) | `planner.mjs` (`generateUserPlan`) | Deterministic generative plan engine: split → per-muscle set targets from landmarks → equipment/injury-filtered exercise pools → ranked allocation within a session budget → MRV trim → self-check → `critiquePlan` |
+| `derive-core.mjs` | `coach.mjs` | Per-muscle weekly volume vs KB MV/MEV/MAV/MRV landmarks, est-1RM progression, stall detection, energy balance from bodyweight trend, readiness, the adaptive volume-response signal |
+| `plan-core.mjs` (`generatePlan`) | `planner.mjs` (`generateUserPlan`) | Deterministic generative plan engine: split → per-muscle set targets from landmarks → equipment/injury-filtered exercise pools → ranked allocation within a session budget → MRV trim → self-check → `critiquePlan`. Exercise ranking is goal-aware: lengthened-bias (top signal) → equipment quality (machines/cables for hypertrophy, barbell for strength) → low systemic fatigue |
+| `nutrition-core.mjs` | consumed directly by `app.mjs` (`/api/nutrition*`) | The calorie/macro tracker (the **Fuel** tab): Navy BF% → Katch-McArdle base TDEE → adaptive maintenance re-derived from logged intake vs weight change → weekly weight-change goal → daily calorie + protein/fat/carb targets. Protein grounded in the KB (≈1.8 g/kg baseline above the 1.6 plateau, 2.2 in a deficit) |
 
 The generated program is byte-compatible with `data/schemas/program-template.schema.json`, so `buildToday`/`suggestWeight` in `coach.mjs` consume it unchanged. `plan-core.mjs` is **deterministic** — a byte-identical-output test guards it; never introduce `Date.now`/`Math.random` into the generative path.
 
