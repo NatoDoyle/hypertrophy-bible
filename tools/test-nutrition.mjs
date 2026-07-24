@@ -2,7 +2,7 @@
 // computed values (weight 85.9 kg, BF% 15, male, intermediate) so the port is
 // faithful, plus the KB-grounded macro/rate logic. Zero deps; no Date.now.
 import assert from "node:assert/strict";
-import { navyBodyFat, baseTDEE, adaptiveTDEE, recommendedWeeklyChange, calorieTarget, macroTargets, nutritionPlan } from "./nutrition-core.mjs";
+import { navyBodyFat, bmiBodyFat, baseTDEE, adaptiveTDEE, recommendedWeeklyChange, calorieTarget, macroTargets, nutritionPlan } from "./nutrition-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -81,6 +81,16 @@ ok("nutritionPlan never emits a NaN plan from a hostile activity field", (() => 
 const extreme = nutritionPlan({ weight_kg: 160, bf_pct: 50, sex: "male", goal: "fat-loss", training_status: "intermediate" });
 ok("nutritionPlan keeps macros ≤ the calorie target even when the floor binds",
   extreme && extreme.carbs_g >= 0 && (extreme.protein_g * 4 + extreme.fat_g * 9 + extreme.carbs_g * 4) <= extreme.calorie_target);
+
+// --- Wave 87: BMI-based BF% fallback so the Fuel plan works from weight+height alone ---
+const bmiM = bmiBodyFat({ weight_kg: 80, height_cm: 180, sex: "male" });   // BMI ~24.7
+const bmiF = bmiBodyFat({ weight_kg: 65, height_cm: 165, sex: "female" }); // BMI ~23.9
+ok("bmiBodyFat gives a plausible rough estimate (women read higher than men at equal BMI)",
+  bmiM > 12 && bmiM < 28 && bmiF > 22 && bmiF < 38 && bmiF > bmiM);
+ok("bmiBodyFat guards degenerate input",
+  bmiBodyFat({ weight_kg: 0, height_cm: 180 }) === null && bmiBodyFat({ weight_kg: 80, height_cm: 0 }) === null && bmiBodyFat({ weight_kg: 80, height_cm: 400 }) === null);
+ok("nutritionPlan works from weight+height ALONE via the BMI fallback (Fuel wall removed)",
+  (() => { const bf = bmiBodyFat({ weight_kg: 80, height_cm: 180, sex: "male" }); return nutritionPlan({ weight_kg: 80, bf_pct: bf, sex: "male", goal: "hypertrophy" })?.calorie_target > 0; })());
 
 console.log(`\n${pass} nutrition test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
