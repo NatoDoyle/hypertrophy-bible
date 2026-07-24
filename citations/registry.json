@@ -566,6 +566,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28615996/"
     },
     {
+      "key": "ashtary-larky-2025-creatine-meta",
+      "authors": [
+        "Ashtary-Larky D",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "22",
+      "issue": "sup1",
+      "pages": "2586523",
+      "doi": "10.1080/15502783.2025.2586523",
+      "pmid": "41433021",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41433021/"
+    },
+    {
       "key": "krieger-2010-single-multiple-sets",
       "authors": [
         "Krieger JW"
