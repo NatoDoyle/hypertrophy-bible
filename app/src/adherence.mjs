@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isHardSet, sessionWeekKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -63,10 +63,19 @@ export function weeksConsistent(sessions, now, paused = null, pauseHistory = [])
 
 export function xpAndLevel(sessions) {
   // 100 XP per session + 5 per hard set — engagement tied to real training.
-  const xp = sessions.reduce((a, s) => a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5, 0);
+  const base = (sessions ?? []).reduce((a, s) => a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5, 0);
+  // Bonus XP for personal records — the peak reward, so beating a best actually PAYS. Replay
+  // PR detection in chronological order: each session is judged only against what came before
+  // it (a PR is beating your PRIOR best), so the bonus banked exactly matches what that
+  // session's recap celebrated at the time. Beginners PR often — an intentional early windfall
+  // when adherence matters most.
+  const chron = [...(sessions ?? [])].sort((a, b) => ((a.local_date ?? a.date ?? "") < (b.local_date ?? b.date ?? "") ? -1 : 1));
+  let prBonus = 0;
+  for (let i = 0; i < chron.length; i++) prBonus += detectPersonalRecords(chron[i], chron.slice(0, i)).length * PR_XP;
+  const xp = base + prBonus;
   const level = Math.floor(xp / 500) + 1;           // ~a level every ~5 sessions
   const into = xp - (level - 1) * 500;
-  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into };
+  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into, pr_xp: prBonus };
 }
 
 const MILESTONES = [
