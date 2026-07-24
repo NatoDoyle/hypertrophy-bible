@@ -176,6 +176,19 @@ These are real failures from previous iterations. Each is now a standing check.
    mutations as their own statements, and after shipping a `public/` asset verify the invariant directly
    (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end.
 
+18b. **`npm run deploy` ships the WORKING TREE, not `main` — never let it run from an unmerged
+   branch.** Reconciling a cloud PR: a `git merge` (no conflicts) auto-committed, then a follow-up
+   `git add -A && git commit --no-edit` aborted (nothing to say / empty message), breaking the `&&`
+   chain — so `git push`, `gh pr merge`, and `git checkout main` all silently skipped, yet a later
+   `; … && npm run deploy` still ran and pushed the branch's working tree (with an *uncommitted* SW
+   bump) straight to prod. Result: prod briefly ran code that wasn't on `main` — the repo/prod drift
+   CLAUDE.md forbids, arrived at from the opposite direction (prod ahead of main, not behind). →
+   **Standing rule:** deploy ONLY after the PR is merged and you are on a freshly-pulled `main`
+   (`git checkout main && git pull` as its own step, then `npm run deploy`). Don't chain a deploy
+   after git steps that can no-op. If a deploy ran from a branch, re-deploy from clean `main` once
+   merged (idempotent) so prod == main. And never `commit --no-edit` right after a conflict-free
+   merge — the merge already committed; a second commit with nothing new aborts and breaks the chain.
+
 19. **A pure core's docstring states an input contract the BINDER must actually honor — a
    comment is not enforcement.** The recovery gate (`recoverySignal`) averages the check-ins
    it's handed, and its comment literally says "The block AVERAGE" — but the `/api/today`
