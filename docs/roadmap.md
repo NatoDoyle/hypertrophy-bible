@@ -105,8 +105,13 @@ multi-user infra).
    energy-balance, sleep, weak-point, plateaus…), expanding the registry well past 99.
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the 7 guides into region-by-region
    authoritative treatments (`back.md` as exemplar), feeding the app's exercise engine.
-8. **[Goal 1] Breadth pages** — menopause/HRT, plant-based, recomposition, fiber-type,
-   pregnancy/postpartum, tendinopathy; expand supplement data (vitamin D, omega-3, EAAs, debunks).
+8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
+   muscle+bone through the transition; Zhao 2025 BMD meta + Radaelli 2025 muscle; HRT framed as a
+   medical decision). Verified NOT gaps (already covered — don't rebuild): recomposition
+   (`building-muscle-in-a-deficit.md` covers it fully), plant-based (protein.md has the core
+   guidance), tendon adaptation (`connective-tissue-adaptation.md`). Still genuinely missing:
+   pregnancy/postpartum, fiber-type × rep-range. Also expand supplement data (vitamin D, omega-3,
+   EAAs, debunks).
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — block/undulating options, a taper/peak
