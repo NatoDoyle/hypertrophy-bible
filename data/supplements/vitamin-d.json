@@ -1,0 +1,12 @@
+{
+  "id": "vitamin-d",
+  "name": "Vitamin D",
+  "tier": "modest",
+  "summary": "Fix a deficiency, don't chase a boost. Correcting low vitamin D can help muscle strength (especially lower-body) and general health; supplementing when you're already replete does little for performance.",
+  "effect": "In deficient or insufficient athletes, supplementation improves lower-limb strength; little-to-no effect on upper-limb strength or explosive power, and no clear ergogenic benefit once levels are already adequate.",
+  "dosing": "Typically 1000-2000 IU/day to reach and maintain sufficiency; if you suspect deficiency, test 25(OH)D and dose to your level with a clinician. More is not better.",
+  "timing": "Irrelevant to timing; take with a fat-containing meal for absorption.",
+  "safety": "Safe at typical doses; chronic megadoses risk toxicity (hypercalcemia). Test and dose sensibly rather than guessing high.",
+  "evidence_grade": "B",
+  "citations": ["zhang-2019-vitamin-d-strength"]
+}

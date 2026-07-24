@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**100** verified references.
+**102** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -712,6 +712,14 @@ Tagawa R & et al. (2020). Dose-response relationship between protein intake and 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1093/nutrit/nuaa104](https://doi.org/10.1093/nutrit/nuaa104) · PMID: [33300582](https://pubmed.ncbi.nlm.nih.gov/33300582/)
 
+### therdyothin-2025-omega3-mps
+Therdyothin A & et al. (2025). The effects of omega-3 polyunsaturated fatty acids on muscle and whole-body protein synthesis: a systematic review and meta-analysis.
+
+*Nutrition Reviews*, 83(2), e131-e143.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1093/nutrit/nuae055](https://doi.org/10.1093/nutrit/nuae055) · PMID: [38777807](https://pubmed.ncbi.nlm.nih.gov/38777807/)
+
 ### trexler-2015-beta-alanine
 Trexler ET & et al. (2015). International society of sports nutrition position stand: Beta-Alanine.
 
@@ -783,6 +791,14 @@ Wolfe RR (2017). Branched-chain amino acids and muscle protein synthesis in huma
 
 - Type: narrative-review
 - DOI: [10.1186/s12970-017-0184-9](https://doi.org/10.1186/s12970-017-0184-9) · PMID: [28852372](https://pubmed.ncbi.nlm.nih.gov/28852372/)
+
+### zhang-2019-vitamin-d-strength
+Zhang L & et al. (2019). Effect of vitamin D supplementation on upper and lower limb muscle strength and muscle power in athletes: A meta-analysis.
+
+*PLOS ONE*, 14(4), e0215826.
+
+- Type: meta-analysis · Population: trained
+- DOI: [10.1371/journal.pone.0215826](https://doi.org/10.1371/journal.pone.0215826) · PMID: [31039170](https://pubmed.ncbi.nlm.nih.gov/31039170/)
 
 ### zhao-2025-postmenopausal-bmd
 Zhao & et al. (2025). Optimal resistance training parameters for improving bone mineral density in postmenopausal women: a systematic review and meta-analysis.
