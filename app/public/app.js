@@ -1432,8 +1432,18 @@ async function renderProgress() {
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
+  // The wins feed (roadmap #1c): a lookback of the user's personal records — the recap
+  // celebrates a PR in the moment; this is the trophy shelf you can come back to.
+  const prCard = (p.pr_count > 0)
+    ? `<div class="card"><div class="row"><b>🏆 Personal records</b> <span class="chip">${p.pr_count}</span></div>
+        ${(p.personal_records || []).map((r) => {
+          const detail = r.kind === "load" ? `${dispWeight(r.load_kg)} ${unitLabel()} × ${r.reps}` : `${dispWeight(r.e1rm_kg)} ${unitLabel()} est. 1RM`;
+          return `<div class="row"><span style="flex:1">${esc(r.name)}</span><span class="muted" style="font-size:.85rem">${detail}${r.date ? ` · ${esc(String(r.date).slice(0, 10))}` : ""}</span></div>`;
+        }).join("")}</div>`
+    : "";
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
+    ${prCard}
     <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
     <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
     <div class="card">${vol}</div>

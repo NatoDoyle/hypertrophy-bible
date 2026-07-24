@@ -27,6 +27,7 @@ import {
   detectPersonalRecords,
   priorPersonalBests,
   checkSetPR,
+  allPersonalRecords,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -467,6 +468,17 @@ check("checkSetPR: higher-rep LOAD band agrees with detectPersonalRecords too", 
   assert.equal(pr.reps, 15);
   const [sessionPr] = detectPersonalRecords({ session_id: "b", sets: [heavier] }, prior);
   assert.equal(sessionPr.load_kg, pr.load_kg);
+});
+
+check("allPersonalRecords: full history, most-recent-first, judged chronologically", () => {
+  const s1 = { local_date: "2026-03-01", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] };
+  const s2 = { local_date: "2026-03-08", sets: [{ exercise: "bench", set_type: "work", weight_kg: 105, reps: 5 }] }; // PR vs s1
+  const s3 = { local_date: "2026-03-15", sets: [{ exercise: "bench", set_type: "work", weight_kg: 102, reps: 5 }] }; // NOT a PR (< 105)
+  const prs = allPersonalRecords([s2, s3, s1]); // unsorted input on purpose
+  assert.equal(prs.length, 1);            // only s2 beat a prior best; s1 is a first, s3 is below s2
+  assert.equal(prs[0].kind, "e1rm");
+  assert.equal(prs[0].date, "2026-03-08");
+  assert.equal(allPersonalRecords([]).length, 0);
 });
 
 console.log(`\n${passed} test(s) passed.`);
