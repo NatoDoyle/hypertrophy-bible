@@ -5,3 +5,7 @@ npm-debug.log*
 .env
 .env.local
 app/.dev.vars
+# Reference / personal materials dropped in the working tree for Claude to read
+# (copyrighted books, private spreadsheets) — never commit or redistribute these.
+*.pdf
+*.xlsx
