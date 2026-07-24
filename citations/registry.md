@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**99** verified references.
+**100** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -783,6 +783,14 @@ Wolfe RR (2017). Branched-chain amino acids and muscle protein synthesis in huma
 
 - Type: narrative-review
 - DOI: [10.1186/s12970-017-0184-9](https://doi.org/10.1186/s12970-017-0184-9) · PMID: [28852372](https://pubmed.ncbi.nlm.nih.gov/28852372/)
+
+### zhao-2025-postmenopausal-bmd
+Zhao & et al. (2025). Optimal resistance training parameters for improving bone mineral density in postmenopausal women: a systematic review and meta-analysis.
+
+*Journal of Orthopaedic Surgery and Research*, 20, 523.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1186/s13018-025-05890-1](https://doi.org/10.1186/s13018-025-05890-1) · PMID: [40420105](https://pubmed.ncbi.nlm.nih.gov/40420105/)
 
 ### zourdos-2016-rir-rpe-scale
 Zourdos MC & et al. (2016). Novel Resistance Training-Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve.

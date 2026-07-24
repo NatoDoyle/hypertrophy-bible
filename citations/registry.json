@@ -1022,6 +1022,24 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39405023/"
     },
     {
+      "key": "zhao-2025-postmenopausal-bmd",
+      "authors": [
+        "Zhao",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Optimal resistance training parameters for improving bone mineral density in postmenopausal women: a systematic review and meta-analysis.",
+      "source": "Journal of Orthopaedic Surgery and Research",
+      "volume": "20",
+      "pages": "523",
+      "doi": "10.1186/s13018-025-05890-1",
+      "pmid": "40420105",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40420105/"
+    },
+    {
       "key": "ramirez-campillo-2013-spot-reduction",
       "authors": [
         "Ramírez-Campillo R",
