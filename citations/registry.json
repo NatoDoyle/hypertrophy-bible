@@ -603,6 +603,26 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31817252/"
     },
     {
+      "key": "tsartsapakis-2026-advanced-systems",
+      "authors": [
+        "Tsartsapakis I",
+        "Zafeiroudi A",
+        "Kouthouris C"
+      ],
+      "year": 2026,
+      "title": "Effects of Advanced Resistance Training Systems on Muscle Hypertrophy and Strength in Recreationally Trained Adults: A Systematic Review and Meta-Analysis.",
+      "source": "Journal of Functional Morphology and Kinesiology",
+      "volume": "11",
+      "issue": "1",
+      "pages": "80",
+      "doi": "10.3390/jfmk11010080",
+      "pmid": "41718208",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41718208/"
+    },
+    {
       "key": "lasevicius-2018-intensities-volume-load",
       "authors": [
         "Lasevicius T",
