@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**95** verified references.
+**96** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -13,7 +13,7 @@ Attarieh P et al. (2025). Comparison Between Shoulder Flexed and Extended Positi
 
 *European Journal of Sport Science*, 25(4), e12279.
 
-- Type: RCT · Population: recreational
+- Type: RCT · Population: recreationally-active
 - DOI: [10.1002/ejsc.12279](https://doi.org/10.1002/ejsc.12279) · PMID: [40082069](https://pubmed.ncbi.nlm.nih.gov/40082069/)
 
 ### baz-valle-2021-counting-sets
@@ -695,6 +695,14 @@ Trexler ET & et al. (2015). International society of sports nutrition position s
 
 - Type: position-stand
 - DOI: [10.1186/s12970-015-0090-y](https://doi.org/10.1186/s12970-015-0090-y) · PMID: [26175657](https://pubmed.ncbi.nlm.nih.gov/26175657/)
+
+### tsartsapakis-2026-advanced-systems
+Tsartsapakis I et al. (2026). Effects of Advanced Resistance Training Systems on Muscle Hypertrophy and Strength in Recreationally Trained Adults: A Systematic Review and Meta-Analysis.
+
+*Journal of Functional Morphology and Kinesiology*, 11(1), 80.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.3390/jfmk11010080](https://doi.org/10.3390/jfmk11010080) · PMID: [41718208](https://pubmed.ncbi.nlm.nih.gov/41718208/)
 
 ### varovic-2025-muscle-length-regional
 Varović D & et al. (2025). Does Muscle Length Influence Regional Hypertrophy? A Systematic Review and Meta-Analysis.
