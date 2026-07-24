@@ -77,7 +77,7 @@ export function xpAndLevel(sessions) {
   const xp = baseXp + prCount * PR_BONUS_XP;
   const level = Math.floor(xp / 500) + 1;           // ~a level every ~5 sessions
   const into = xp - (level - 1) * 500;
-  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into };
+  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into, pr_count: prCount };
 }
 
 const MILESTONES = [

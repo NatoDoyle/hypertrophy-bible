@@ -1597,7 +1597,7 @@ async function renderCoach() {
       <div class="big">${a.sessions_logged === 0 ? "🌱 Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
       <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
       ${a.sessions_logged === 0 ? "" : `<p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
-      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}</div>
+      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week${a.pr_count ? ` · 🏆 ${a.pr_count} personal record${a.pr_count === 1 ? "" : "s"}` : ""}</p>`}</div>
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
     <h2>Schedule your sessions</h2>

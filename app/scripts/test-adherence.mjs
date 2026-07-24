@@ -59,6 +59,9 @@ function xlLevel(n, hard) { return xpAndLevel(Array.from({ length: n }, () => se
   ok("a session that beats its all-time best earns +50 bonus XP", xpAndLevel(withPr).xp === 260);
   ok("the FIRST-ever session never counts as a PR (nothing prior to beat)",
     xpAndLevel([withPr[1]]).xp === 105);
+  ok("no PR across sessions -> pr_count 0", xpAndLevel(noPr).pr_count === 0);
+  ok("a beaten all-time best -> pr_count 1 (the lookback surface the Coach screen renders)",
+    xpAndLevel(withPr).pr_count === 1);
 }
 
 // milestones
