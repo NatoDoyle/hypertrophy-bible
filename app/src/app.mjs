@@ -8,7 +8,7 @@ import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
-import { nutritionPlan, navyBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
+import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
@@ -506,7 +506,12 @@ export function createApp(store, config = {}) {
     const n = user.nutrition ?? {};
     const bw = await store.listBodyweights(id);
     const weight_kg = bw.length ? bw[bw.length - 1].kg : n.weight_kg;
-    const bf_pct = n.bf_pct ?? navyBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, neck_cm: n.neck_cm, waist_cm: n.waist_cm, hip_cm: n.hip_cm });
+    // BF% fallback chain: a directly-entered value → the Navy tape estimate → a rough
+    // BMI-based estimate from weight+height alone (so the Fuel plan works without ANY tape
+    // measurement; the adaptive TDEE corrects it from logged data within ~2 weeks).
+    const bf_pct = n.bf_pct
+      ?? navyBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, neck_cm: n.neck_cm, waist_cm: n.waist_cm, hip_cm: n.hip_cm })
+      ?? bmiBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, weight_kg });
     const profile = { weight_kg, bf_pct, sex: user.profile?.sex, goal: user.profile?.primary_goal, training_status: user.profile?.training_status, activity: n.activity ?? "moderate", unit: "kg" };
     // adaptive TDEE history: pair the daily intake log with the day's bodyweight
     const wByDate = new Map(bw.map((b) => [b.date, b.kg]));

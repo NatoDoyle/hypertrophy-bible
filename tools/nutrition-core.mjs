@@ -31,6 +31,22 @@ export function navyBodyFat({ sex, height_cm, neck_cm, waist_cm, hip_cm }) {
   return bf > 0 && bf < 75 ? Math.round(bf * 10) / 10 : null;
 }
 
+// --- Rough body-fat % from BMI (Deurenberg 1991), the LAST-RESORT seed so the plan works
+// from weight + height ALONE — no tape measure, no known BF%. Assumes an adult (~30 y): age
+// isn't reliably collected, and BF% only SEEDS the initial estimate — the adaptive-TDEE path
+// re-derives real maintenance from logged food + weight within ~2 weeks, so a coarse start is
+// fine. Far less accurate than the Navy tape or a direct entry (hence last in the fallback
+// chain), and honestly labelled "rough" in the UI. Guarded against degenerate anthropometrics.
+export function bmiBodyFat({ weight_kg, height_cm, sex }) {
+  if (!(weight_kg > 0) || !(height_cm > 0)) return null;
+  const bmi = weight_kg / ((height_cm / 100) ** 2);
+  if (!(bmi > 8 && bmi < 60)) return null; // implausible height/weight → no estimate
+  const AGE = 30; // assumed adult; birth_year isn't collected and BF% is only a starting seed
+  const male = sex !== "female"; // unknown sex → male formula (the app's default elsewhere)
+  const bf = 1.20 * bmi + 0.23 * AGE - (male ? 10.8 : 0) - 5.4;
+  return bf > 3 && bf < 65 ? Math.round(bf * 10) / 10 : null;
+}
+
 // --- Base TDEE (Katch-McArdle RMR × activity), the spreadsheet's formula.
 // RMR = 370 + 21.6 × lean body mass(kg); LBM = weight × (1 − BF%/100). Activity
 // multiplier defaults to ~1.5 ("moderately active" — a lifter with a normal job);
