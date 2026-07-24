@@ -365,6 +365,10 @@ export function createApp(store, config = {}) {
   // days after the user meant it.
   app.post("/api/commitment", async (c) => {
     const b = await c.req.json().catch(() => ({}));
+    // Guard a missing user_id BEFORE the store call: store.updateUser(undefined) returns
+    // null on the file store (→ 404) but THROWS on D1 (an undefined bind param → 500 in
+    // prod). Validate at the door so both stores answer a malformed request identically.
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
     const days = Array.isArray(b.days) ? [...new Set(b.days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : [];
     const updated = await store.updateUser(b.user_id, (u) => {
       u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKey(new Date().toISOString()), days } };
