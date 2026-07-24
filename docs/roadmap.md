@@ -107,13 +107,19 @@ multi-user infra).
    authoritative treatments (`back.md` as exemplar), feeding the app's exercise engine.
 8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
    muscle+bone through the transition; Zhao 2025 BMD meta + Radaelli 2025 muscle; HRT framed as a
-   medical decision). Verified NOT gaps (already covered — don't rebuild): recomposition
-   (`building-muscle-in-a-deficit.md` covers it fully), plant-based (protein.md has the core
-   guidance), tendon adaptation (`connective-tissue-adaptation.md`). Still genuinely missing:
-   pregnancy/postpartum, fiber-type × rep-range. Supplement data: **vitamin D + omega-3 added
-   (Wave 90)** — both honestly graded (vitamin D fixes a deficiency, no ergogenic boost when
-   replete; omega-3 has NO MPS effect in healthy adults per Therdyothin 2025, a health supplement
-   not a muscle-builder). Still to add: EAAs, and debunks (glutamine, ashwagandha, ZMA, tart cherry).
+   medical decision). **Pregnancy & Postpartum Training shipped (Wave 91)** — the honest
+   evidence-based consensus (exercise incl. resistance training is safe/recommended in an
+   *uncomplicated* pregnancy; lowers GDM/hypertensive-disorder + prenatal/postpartum-depression
+   risk) with strong medical-clearance framing, a build→maintain goal shift, trimester
+   modifications, and a pelvic-floor-first postpartum return; 4 dual-verified citations (ACOG 804,
+   2019 Canadian guideline, Davenport 2018 GDM/HTN + depression metas). Verified NOT gaps (already
+   covered — don't rebuild): recomposition (`building-muscle-in-a-deficit.md` covers it fully),
+   plant-based (protein.md has the core guidance), tendon adaptation
+   (`connective-tissue-adaptation.md`). Still genuinely missing: fiber-type × rep-range.
+   Supplement data: **vitamin D + omega-3 added (Wave 90)** — both honestly graded (vitamin D
+   fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect in healthy
+   adults per Therdyothin 2025, a health supplement not a muscle-builder). Still to add: EAAs, and
+   debunks (glutamine, ashwagandha, ZMA, tart cherry).
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — block/undulating options, a taper/peak
