@@ -44,6 +44,23 @@ ok("level starts at 1", xl.level === 1 && xl.xp_to_next === 500 - 345);
 ok("levels up past 500 XP", xlLevel(5, 5) === 2);
 function xlLevel(n, hard) { return xpAndLevel(Array.from({ length: n }, () => sess("2026-01-05", hard))).level; }
 
+// PR bonus XP: a session that beats an all-time-best (the same detectPersonalRecords
+// the recap banner uses) earns PR_BONUS_XP on top of the base 100/session + 5/hard-set rate.
+{
+  const noPr = [
+    { date: "2026-02-01", sets: [{ set_type: "work", exercise: "squat", weight_kg: 100, reps: 5 }] },
+    { date: "2026-02-08", sets: [{ set_type: "work", exercise: "squat", weight_kg: 100, reps: 5 }] },
+  ];
+  const withPr = [
+    { date: "2026-02-01", sets: [{ set_type: "work", exercise: "squat", weight_kg: 100, reps: 5 }] },
+    { date: "2026-02-08", sets: [{ set_type: "work", exercise: "squat", weight_kg: 110, reps: 5 }] },
+  ];
+  ok("no PR across sessions -> base XP only (2 x 105)", xpAndLevel(noPr).xp === 210);
+  ok("a session that beats its all-time best earns +50 bonus XP", xpAndLevel(withPr).xp === 260);
+  ok("the FIRST-ever session never counts as a PR (nothing prior to beat)",
+    xpAndLevel([withPr[1]]).xp === 105);
+}
+
 // milestones
 const ms = milestones(8);
 ok("milestones reached include 8", ms.reached.some((r) => r.at === 8) && ms.latest.at === 8);

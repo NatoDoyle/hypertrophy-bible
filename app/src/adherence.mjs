@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isHardSet, sessionWeekKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isHardSet, sessionWeekKey, detectPersonalRecords } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -61,9 +61,20 @@ export function weeksConsistent(sessions, now, paused = null, pauseHistory = [])
   return streak;
 }
 
+const PR_BONUS_XP = 50; // a real capability moment (beat an all-time best), not just showing up
+
 export function xpAndLevel(sessions) {
-  // 100 XP per session + 5 per hard set — engagement tied to real training.
-  const xp = sessions.reduce((a, s) => a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5, 0);
+  // 100 XP per session + 5 per hard set + PR_BONUS_XP per personal record — `sessions`
+  // arrives chronological (store.listSessions: date ASC, insertion tiebreak), so replaying
+  // detectPersonalRecords against everything logged BEFORE each session reproduces exactly
+  // the PRs the recap banner celebrated for that session, letting the reward agree with the
+  // XP instead of a session that says "🎉 New PR!" earning the same XP as any other.
+  let prCount = 0;
+  const baseXp = sessions.reduce((a, s, i) => {
+    prCount += detectPersonalRecords(s, sessions.slice(0, i)).length;
+    return a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5;
+  }, 0);
+  const xp = baseXp + prCount * PR_BONUS_XP;
   const level = Math.floor(xp / 500) + 1;           // ~a level every ~5 sessions
   const into = xp - (level - 1) * 500;
   return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into };
