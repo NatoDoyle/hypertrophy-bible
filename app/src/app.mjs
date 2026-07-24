@@ -247,6 +247,18 @@ export function createApp(store, config = {}) {
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
     // sacred and never auto-regenerated; beginners don't run blocks.
+    // The adaptive tune's recovery/energy gate must read only the JUST-COMPLETED block,
+    // not the user's whole history. recoverySignal and bodyweightTrend average whatever
+    // they're handed, so feeding the full log turned "block-average readiness" into a
+    // LIFETIME average: an athlete wrecked THIS block but with months of good prior
+    // check-ins never tripped the gate, and a long-past cut kept reading as a current
+    // deficit for months (suppressing volume the recent block had earned). Window to the
+    // block length (6 weeks); a sparse window falls back to permissive — the safe
+    // direction, since the gate only ever RESTRAINS adding, never forces it.
+    const blockWindowStart = new Date(Date.now() - 42 * 86400000).toISOString().slice(0, 10);
+    const inBlockWindow = (d) => (d || "").slice(0, 10) >= blockWindowStart;
+    const recentCheckins = checkins.filter((ck) => inBlockWindow(ck.date));
+    const recentBodyweights = bodyweights.filter((b) => inBlockWindow(b.date));
     const blockStart = user.plan_meta?.block_start;
     if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
       const blockIndex = Math.max(0, Math.floor((Date.now() - +new Date(blockStart)) / (7 * 6 * 86400000)));
@@ -272,7 +284,7 @@ export function createApp(store, config = {}) {
           // energy deficit — that stall needs recovery/fuel, not more sets.
           const volumeAdjust = u.profile?.specialization
             ? prevAdjust
-            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins, bodyweights, goal: u.profile?.primary_goal });
+            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
           // What CHANGED this block — so the new-block coach note announces the actual
           // adjustment, not the whole accumulated total re-announced every block.
           const tunedThisBlock = {
