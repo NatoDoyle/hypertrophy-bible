@@ -1326,7 +1326,7 @@ function renderRecap(recap) {
   const otherWins = (recap.wins || []).filter((w) => typeof w === "string");
   const prBanner = prWins.length
     ? `<div class="card" style="text-align:center;border:1px solid var(--accent)"><div style="font-size:1.6rem" aria-hidden="true">🎉</div>
-        <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>
+        <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>${recap.pr_xp ? ` <span style="color:var(--accent);font-weight:700">+${recap.pr_xp} XP</span>` : ""}
         ${prWins.map((w) => `<p class="muted" style="margin:6px 0">${winHtml(w)}</p>`).join("")}</div>`
     : "";
   const wins = otherWins.map((w) => `<div class="win">${winHtml(w)}</div>`).join("");

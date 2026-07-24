@@ -44,6 +44,13 @@ ok("level starts at 1", xl.level === 1 && xl.xp_to_next === 500 - 345);
 ok("levels up past 500 XP", xlLevel(5, 5) === 2);
 function xlLevel(n, hard) { return xpAndLevel(Array.from({ length: n }, () => sess("2026-01-05", hard))).level; }
 
+// Wave 81 (Goal 4): a personal record earns bonus XP — the peak reward pays.
+const prS1 = { date: "2026-03-01", sets: [{ set_type: "work", exercise: "bench", weight_kg: 100, reps: 5 }] };
+const prS2 = { date: "2026-03-08", sets: [{ set_type: "work", exercise: "bench", weight_kg: 105, reps: 5 }] }; // new e1rm best → PR
+const xpWithPr = xpAndLevel([prS1, prS2]);
+ok("a PR earns +50 bonus XP on top of the base", xpWithPr.xp === 210 + 50 && xpWithPr.pr_xp === 50);
+ok("no PR (identical repeat) earns no bonus XP", xpAndLevel([prS1, { ...prS1, date: "2026-03-15" }]).pr_xp === 0);
+
 // milestones
 const ms = milestones(8);
 ok("milestones reached include 8", ms.reached.some((r) => r.at === 8) && ms.latest.at === 8);
