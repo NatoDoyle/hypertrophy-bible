@@ -44,6 +44,32 @@ ok("level starts at 1", xl.level === 1 && xl.xp_to_next === 500 - 345);
 ok("levels up past 500 XP", xlLevel(5, 5) === 2);
 function xlLevel(n, hard) { return xpAndLevel(Array.from({ length: n }, () => sess("2026-01-05", hard))).level; }
 
+// --- [Roadmap #1a] bonus XP for a PR — xpAndLevel replays detectPersonalRecords over history ---
+{
+  const prSess = (date, weight_kg, reps) => ({ date, sets: [{ exercise: "bench", set_type: "work", weight_kg, reps }] });
+  // session 1: bench 100x5 (e1rm ~116.67, no prior -> no PR). session 2: bench 100x6 (e1rm ~120, beats by >0.5 -> 1 PR).
+  const withPr = [prSess("2026-01-05", 100, 5), prSess("2026-01-12", 100, 6)];
+  const r = xpAndLevel(withPr);
+  ok("a PR earns the bonus XP", r.pr_count === 1 && r.pr_bonus_xp === 50);
+  // base xp: 2 sessions x (100 + 5x1 hard set) = 210; +50 PR bonus = 260
+  ok("PR bonus XP is added on top of the base session/set XP, not instead of it", r.xp === 210 + 50);
+  // matching the prior best (no margin) earns no bonus
+  const noPr = [prSess("2026-01-05", 100, 5), prSess("2026-01-12", 100, 5)];
+  ok("repeating the same performance earns no PR bonus", xpAndLevel(noPr).pr_count === 0 && xpAndLevel(noPr).pr_bonus_xp === 0);
+  // a first-ever performance is not a PR (nothing to beat)
+  ok("a single session's first-ever lift is not a PR", xpAndLevel([prSess("2026-01-05", 100, 5)]).pr_count === 0);
+  // higher-rep hypertrophy work (load PR, not e1rm) earns the bonus too
+  const loadPrSess = (date, weight_kg) => ({ date, sets: [{ exercise: "leg-curl", set_type: "work", weight_kg, reps: 15 }] });
+  const loadPr = [loadPrSess("2026-01-05", 40), loadPrSess("2026-01-12", 45)];
+  ok("a higher-rep LOAD PR also earns the XP bonus (the pump-band gap)", xpAndLevel(loadPr).pr_count === 1);
+  // two different exercises both PR in the same later session -> two bonuses
+  const multi = [
+    { date: "2026-01-05", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }, { exercise: "row", set_type: "work", weight_kg: 60, reps: 5 }] },
+    { date: "2026-01-12", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6 }, { exercise: "row", set_type: "work", weight_kg: 65, reps: 5 }] },
+  ];
+  ok("multiple PRs in one session each earn their own bonus", xpAndLevel(multi).pr_count === 2 && xpAndLevel(multi).pr_bonus_xp === 100);
+}
+
 // milestones
 const ms = milestones(8);
 ok("milestones reached include 8", ms.reached.some((r) => r.at === 8) && ms.latest.at === 8);
