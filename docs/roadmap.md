@@ -46,15 +46,17 @@ multi-user infra).
 ## Build queue (pull from the top)
 
 ### Tier 1 — highest leverage, buildable now
-1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79).* Done: reusable pure
-   `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep hypertrophy
-   work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal record!"
-   banner. Also SHIPPED (Wave 81): bonus XP for a PR — +50 XP per record, surfaced as "+N XP" in
-   the recap banner and banked into the level (`xpAndLevel` replays PRs over history; `PR_XP` is
-   the single source of truth shared by the engine and the recap). **Remaining slices (build
-   next):** (b) an in-*player* PR moment (celebrate mid-session when a set beats a best, not only
-   in the recap); (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
-2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (Wave 81).*
+1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + 81 + this reconcile).* Done:
+   reusable pure `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep
+   hypertrophy work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal
+   record!" banner (Wave 79); bonus XP for a PR — +50 XP per record, surfaced as "+N XP" in the
+   recap banner and banked into the level (Wave 81; `PR_XP` is the single source of truth shared by
+   the engine and the recap); **(b) the in-player PR moment** — `priorPersonalBests`/`checkSetPR`
+   (`derive-core.mjs`) give `buildToday` a `pr_watch` ceiling per exercise, and the live player
+   (`app.js` + `session-core.mjs`'s browser-safe duplicate, cross-tested for agreement) fires a
+   toast the instant a logged set beats it, not only at the end of the session. **Remaining slice:**
+   (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
+2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (commitment device).*
    Done: the weekly "when will you train?" commitment device — `POST /api/commitment` (pinned to
    the current ISO week, `tools/derive-core.mjs`'s `isoWeekKey`/`WEEK_DAY_KEYS`/`weekDayKey`) lets
    a user state which days this week they intend to train; `push.mjs`'s new

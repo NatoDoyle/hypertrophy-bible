@@ -26,11 +26,37 @@ export const countsForE1RM = (set) =>
   typeof set.reps === "number" && set.reps > 0 && set.reps <= RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
+// Higher-rep hypertrophy work (reps > RELIABLE_1RM_REPS, where Epley is guesswork) is
+// tracked by top LOAD instead of estimated 1RM. Module-scoped (not just local to
+// detectPersonalRecords) so priorPersonalBests and detectPersonalRecords can never
+// apply different rules for what counts as "load" work.
+const isLoadSet = (set) =>
+  (set.set_type ?? "work") !== "warmup" &&
+  typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS &&
+  typeof set.weight_kg === "number" && set.weight_kg > 0;
+
 // XP awarded for a single personal record — the peak-achievement bonus on top of the
 // base session/hard-set XP. Lives here (with detectPersonalRecords) as the single source
 // of truth so the gamification engine (xpAndLevel) and the recap's "+N XP" reward can
 // never disagree about what a PR is worth.
 export const PR_XP = 50;
+
+// All-time best e1RM / top LOAD per exercise across a history of sessions. The single
+// ceiling computation both detectPersonalRecords (end-of-session recap) and
+// checkSetPR (live, mid-session) read — so "what's your prior best" can never differ
+// between the two celebration surfaces.
+export function priorPersonalBests(sessions) {
+  const e1rm = {}, load = {};
+  for (const s of sessions) for (const set of s.sets ?? []) {
+    if (countsForE1RM(set)) {
+      const { e1rm: v } = estimate1RM(set.weight_kg, set.reps);
+      if (v > (e1rm[set.exercise] ?? 0)) e1rm[set.exercise] = v;
+    } else if (isLoadSet(set)) {
+      if (set.weight_kg > (load[set.exercise] ?? 0)) load[set.exercise] = set.weight_kg;
+    }
+  }
+  return { e1rm, load };
+}
 
 // Personal records set IN a session — the reward the app celebrates after a workout.
 // Mirrors the est-1RM / load split used everywhere else (countsForE1RM + RELIABLE_1RM_REPS
@@ -47,20 +73,7 @@ export const PR_XP = 50;
 // Warm-ups never count; a deload is intentionally light so it can't out-lift a real best.
 // Pure and deterministic (no Date.now/Math.random).
 export function detectPersonalRecords(session, priorSessions = []) {
-  const isLoadSet = (set) =>
-    (set.set_type ?? "work") !== "warmup" &&
-    typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS &&
-    typeof set.weight_kg === "number" && set.weight_kg > 0;
-  // All-time bests per exercise across the prior history.
-  const priorE1rm = {}, priorLoad = {};
-  for (const s of priorSessions) for (const set of s.sets ?? []) {
-    if (countsForE1RM(set)) {
-      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
-      if (e1rm > (priorE1rm[set.exercise] ?? 0)) priorE1rm[set.exercise] = e1rm;
-    } else if (isLoadSet(set)) {
-      if (set.weight_kg > (priorLoad[set.exercise] ?? 0)) priorLoad[set.exercise] = set.weight_kg;
-    }
-  }
+  const { e1rm: priorE1rm, load: priorLoad } = priorPersonalBests(priorSessions);
   // Best in the just-logged session per exercise.
   const newE1rm = {}, newLoad = {};
   for (const set of session.sets ?? []) {
@@ -87,6 +100,27 @@ export function detectPersonalRecords(session, priorSessions = []) {
     }
   }
   return prs;
+}
+
+// Would logging THIS ONE set, right now, beat the user's prior all-time best for its
+// exercise? The live in-player celebration's source of truth (roadmap #1 slice b) — same
+// rules and thresholds as detectPersonalRecords (countsForE1RM/isLoadSet, the >0.5kg
+// e1rm noise margin), so a mid-session "🎉" can never fire for a set the end-of-session
+// recap wouldn't also celebrate. `priorBests` is priorPersonalBests(sessions-before-today).
+export function checkSetPR(set, priorBests) {
+  if (countsForE1RM(set)) {
+    const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+    const prev = priorBests.e1rm[set.exercise];
+    if (prev != null && e1rm - prev > 0.5) {
+      return { kind: "e1rm", e1rm_kg: e1rm, delta_kg: Math.round((e1rm - prev) * 10) / 10 };
+    }
+    return null;
+  }
+  if (isLoadSet(set)) {
+    const prev = priorBests.load[set.exercise];
+    if (prev != null && set.weight_kg > prev) return { kind: "load", load_kg: set.weight_kg, reps: set.reps };
+  }
+  return null;
 }
 
 // ISO week key "YYYY-Www" for grouping weekly volume.

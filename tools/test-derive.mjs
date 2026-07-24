@@ -25,6 +25,8 @@ import {
   restTimes,
   readinessIndex,
   detectPersonalRecords,
+  priorPersonalBests,
+  checkSetPR,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -422,6 +424,49 @@ check("detectPersonalRecords: warm-ups and deloads never manufacture a PR", () =
   // a deload week is intentionally light and can't out-lift a real best
   const deload = { session_id: "c", sets: [{ exercise: "bench", set_type: "work", weight_kg: 60, reps: 5, deload: true }] };
   assert.equal(detectPersonalRecords(deload, prior).length, 0);
+});
+
+check("priorPersonalBests: the shared ceiling detectPersonalRecords and checkSetPR both read", () => {
+  const prior = [
+    { session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },        // e1rm ~116.67
+    { session_id: "b", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 15 }] },       // load 40
+  ];
+  const { e1rm, load } = priorPersonalBests(prior);
+  assert.ok(Math.abs(e1rm.bench - 116.67) < 0.01);
+  assert.equal(load["leg-curl"], 40);
+  assert.equal(e1rm["leg-curl"], undefined); // never crosses bands
+  assert.equal(load.bench, undefined);
+});
+
+check("checkSetPR: fires for the exact set that would make detectPersonalRecords report a PR", () => {
+  const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]; // e1rm ~116.67
+  const bests = priorPersonalBests(prior);
+  const beat = { exercise: "bench", set_type: "work", weight_kg: 100, reps: 6 }; // e1rm ~120
+  const pr = checkSetPR(beat, bests);
+  assert.equal(pr.kind, "e1rm");
+  assert.ok(pr.delta_kg > 3 && pr.delta_kg < 4);
+  // cross-check: logging this same set as a whole session must agree with detectPersonalRecords
+  const [sessionPr] = detectPersonalRecords({ session_id: "b", sets: [beat] }, prior);
+  assert.equal(sessionPr.kind, pr.kind);
+  assert.ok(Math.abs(sessionPr.delta_kg - pr.delta_kg) < 0.01);
+  // matching (not beating) the prior best is not a PR
+  assert.equal(checkSetPR({ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }, bests), null);
+  // a first-ever exercise (no prior entry) is not a PR
+  assert.equal(checkSetPR({ exercise: "squat", set_type: "work", weight_kg: 100, reps: 5 }, bests), null);
+  // a warm-up never counts, even if heavy enough to beat the prior best
+  assert.equal(checkSetPR({ exercise: "bench", set_type: "warmup", weight_kg: 200, reps: 1 }, bests), null);
+});
+
+check("checkSetPR: higher-rep LOAD band agrees with detectPersonalRecords too", () => {
+  const prior = [{ session_id: "a", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 15 }] }];
+  const bests = priorPersonalBests(prior);
+  const heavier = { exercise: "leg-curl", set_type: "work", weight_kg: 45, reps: 15 };
+  const pr = checkSetPR(heavier, bests);
+  assert.equal(pr.kind, "load");
+  assert.equal(pr.load_kg, 45);
+  assert.equal(pr.reps, 15);
+  const [sessionPr] = detectPersonalRecords({ session_id: "b", sets: [heavier] }, prior);
+  assert.equal(sessionPr.load_kg, pr.load_kg);
 });
 
 console.log(`\n${passed} test(s) passed.`);

@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR } from "/session-core.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -879,6 +879,39 @@ function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".
 const loggedSetCount = (exId) => loggedWorkSets(sess.logged, exId);
 const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, from);
 
+// A brief, self-dismissing toast for the in-player PR moment (roadmap #1 slice b —
+// celebrate mid-session, not only in the end-of-session recap). Appended to <body>,
+// OUTSIDE #app, so it survives the very next full re-render (the rest screen or the
+// next exercise card that follows immediately after the set that earned it).
+function showPrToast(text) {
+  const el = document.createElement("div");
+  el.className = "pr-toast";
+  el.setAttribute("role", "status");
+  el.innerHTML = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// Fires the in-player celebration at most ONCE per exercise per session — the first
+// set that crosses the prior best. A later, even-better set in the same session
+// doesn't re-fire (the recap still shows the session's true best at the end; this
+// is just the in-the-moment spark). Reads `pr_watch` (the exact ceiling buildToday
+// attached to this exercise, computed from the SAME history the server will use at
+// recap time — checkSetPR duplicates the server's rules, cross-tested in
+// scripts/test-session.mjs, so the two surfaces can never disagree).
+function checkAndCelebratePR(exObj, weightKg, reps) {
+  if (!exObj.pr_watch || sess.prCelebrated?.[exObj.exercise]) return;
+  const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch);
+  if (!pr) return;
+  sess.prCelebrated = sess.prCelebrated || {};
+  sess.prCelebrated[exObj.exercise] = true;
+  const detail = pr.kind === "load"
+    ? `new best working weight — ${dispWeight(pr.load_kg)} ${unitLabel()} × ${pr.reps} reps`
+    : `new estimated best single lift — ${dispWeight(pr.e1rm_kg)} ${unitLabel()}`;
+  showPrToast(`🎉 <b>New personal record!</b><br><span class="muted">${esc(exObj.name)}: ${detail}</span>`);
+  say(`New personal record on ${exObj.name}!`);
+}
+
 // The rest countdown's interval id lives at module level so ANY navigation can
 // cancel it — otherwise it fires up to two minutes later and repaints the player
 // over whatever screen the user moved to.
@@ -1017,7 +1050,8 @@ function renderPlayer(resting = 0) {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
-    sess.logged.push({ exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() });
+    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+    sess.logged.push(loggedSet);
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -1040,6 +1074,7 @@ function renderPlayer(resting = 0) {
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
+    checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps); // overrides the say() above if it's a PR — the bigger news
     if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
   };
@@ -1123,11 +1158,15 @@ function renderSupersetStation(L, P, resting = 0) {
   });
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
-    for (const idx of [L, P]) { // both members of the round, banked together
+    const roundSets = []; // both members of the round, banked together
+    for (const idx of [L, P]) {
       const m = sess.ex[idx];
-      sess.logged.push({ exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() });
+      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      sess.logged.push(loggedSet);
+      roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
+    for (const [m, loggedSet] of roundSets) checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps);
     if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of

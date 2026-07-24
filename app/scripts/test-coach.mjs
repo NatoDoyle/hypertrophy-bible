@@ -401,6 +401,24 @@ check("buildToday surfaces unilateral so the card can say 'each side'", () => {
   assert.equal(t.exercises[1].unilateral, false); // always a boolean, never undefined
 });
 
+check("buildToday attaches pr_watch — the exact ceiling sessionRecap will compare the live session against", () => {
+  const noHistory = buildToday(user, []);
+  assert.deepEqual(noHistory.exercises[0].pr_watch, { e1rm_kg: null, load_kg: null }); // nothing to beat yet
+  // program_ref from a DIFFERENT program: doesn't advance today's own rotation index
+  // (buildToday would otherwise open Day B instead of Day A, which may not carry
+  // bench), but priorPersonalBests still reads it since it scans every session handed in.
+  const heavy = { date: "2026-06-01T18:00:00Z", session_id: "a", program_ref: "some-other-program", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 5 }] };
+  const withHistory = buildToday(user, [heavy]);
+  const bench = withHistory.exercises.find((e) => e.exercise === "barbell-bench-press");
+  assert.ok(Math.abs(bench.pr_watch.e1rm_kg - 116.67) < 0.01); // matches estimate1RM(100, 5)
+  assert.equal(bench.pr_watch.load_kg, null); // no >12-rep work logged for it
+  // must agree with what sessionRecap will actually compare the NEXT session against
+  const nextSession = { session_id: "b", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 105, reps: 5 }] };
+  const recap = sessionRecap(user, [heavy], nextSession);
+  const pr = recap.wins.find((w) => w.kind === "pr");
+  assert.ok(pr && Math.abs(pr.e1rm_kg - bench.pr_watch.e1rm_kg - (pr.delta_kg)) < 0.1); // recap's prior implicit in delta_kg matches pr_watch
+});
+
 check("no fake 1RM PR from a light high-rep back-off set (#1 confidence gate)", () => {
   const heavyTriple = { date: "2026-06-01T18:00:00Z", session_id: "a", sets: [
     { exercise: "barbell-bench-press", set_type: "work", weight_kg: 45, reps: 3 }] };
