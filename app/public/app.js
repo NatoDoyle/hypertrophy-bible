@@ -644,23 +644,35 @@ async function renderToday() {
   // step is the call to action so it's always clear what to do right now.
   const dy = data.daily || {};
   const workoutDone = dy.workout_logged;
+  // "Skip today" (and finishing a workout) dismiss the optional check-in for the day so
+  // the hub stops re-asking — an optional step must never nag. The flag is written on
+  // both actions; honour it here (its only reader was lost in the Wave-47 hub rewrite,
+  // so skipping did nothing and the check-in stayed the highlighted next step).
+  const ckDismissed = !dy.checked_in && (() => { try { return localStorage.getItem("hb_ck_dismissed") === localDay(); } catch { return false; } })();
   const steps = [
-    { key: "checkin", icon: "☀️", label: "Morning check-in", sub: "Weight + how you're feeling", done: dy.checked_in, cta: "Check in" },
+    { key: "checkin", icon: "☀️", label: "Morning check-in", sub: "Weight + how you're feeling", done: dy.checked_in, dismissed: ckDismissed, cta: "Check in" },
     { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
     { key: "calories", icon: "🌙", label: "Tonight's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
-  const firstUndone = steps.find((x) => !x.done);
-  const stepRow = (x) => `<div class="row" ${x.key === firstUndone?.key ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
+  const firstUndone = steps.find((x) => !x.done && !x.dismissed);
+  const stepRow = (x) => {
+    const isNext = x.key === firstUndone?.key;
+    const settled = x.done || x.dismissed;
+    const right = x.done
+      ? `<span class="chip" aria-label="${x.label} done">done</span>`
+      : `<button class="btn ${isNext ? "" : "secondary"}" data-step="${x.key}" style="width:auto;padding:10px 16px">${x.cta}</button>`;
+    return `<div class="row" ${isNext ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
       <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
-      <div style="flex:1"><b${x.done ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.sub}</span></div>
-      ${x.done ? `<span class="chip" aria-label="${x.label} done">done</span>` : `<button class="btn ${x.key === firstUndone?.key ? "" : "secondary"}" data-step="${x.key}" style="width:auto;padding:10px 16px">${x.cta}</button>`}</div>`;
+      <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? "Skipped for today" : x.sub}</span></div>
+      ${right}</div>`;
+  };
   // When calories is the next step, drop an inline quick-log right here so the
   // evening entry is one tap — no trip to another tab (considerations #6: "very
   // quick and straightforward"). The Fuel tab stays for the target + macros.
   const calorieQuickLog = firstUndone?.key === "calories"
     ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="hub-kcal" type="number" inputmode="numeric" placeholder="today's total calories" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;font-size:1.05rem"><button class="btn" id="hub-log" style="width:auto;padding:11px 18px">Log</button></div>
        <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
-    : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : "You're checked in — time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
+    : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${firstTimer}${blockCard}${readinessCard}
@@ -676,7 +688,7 @@ async function renderToday() {
   if ($("#hub-log")) $("#hub-log").onclick = async () => {
     const kcal = parseFloat($("#hub-kcal").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#hub-kcal").focus(); return; }
-    try { await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal }) }); say("Calories logged. Day complete."); renderToday(); }
+    try { await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: localDay() }) }); say("Calories logged. Day complete."); renderToday(); }
     catch { alertBar("📴 Couldn't log — try again when connected."); }
   };
   wireLearnLinks();
@@ -708,7 +720,7 @@ function renderCheckin() {
     app.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { vals[b.dataset.k] = +b.dataset.v; draw(); });
     $("#submitck").onclick = async () => {
       const wv = parseFloat($("#ck-weight").value); const weight_kg = Number.isFinite(wv) && wv > 0 ? toKg(wv) : undefined;
-      try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals, ...(weight_kg ? { weight_kg } : {}) }) }); say(weight_kg ? "Check-in and weight saved." : "Check-in saved."); }
+      try { await api("/api/checkin", { method: "POST", body: JSON.stringify({ user_id: uid, ...vals, date: localDay(), ...(weight_kg ? { weight_kg } : {}) }) }); say(weight_kg ? "Check-in and weight saved." : "Check-in saved."); }
       catch { say("Offline — check-in skipped."); pendingNotice = "📴 Offline — today\u2019s check-in was skipped (it only tunes today\u2019s session)."; } // never queued: a stale one would lie tomorrow
       tab = "today"; render();
     };
@@ -1379,14 +1391,18 @@ async function renderFuel() {
   const t = n.nutrition;
   // --- stats form (first run, or "edit stats") ---
   if (!t || fuelEdit) {
+    // The Navy tape estimate needs the hip measure for women — without a hip field a
+    // female user who leaves BF% blank estimates to null and loops on the blank form.
+    const isFemale = n.sex === "female";
     app.innerHTML = `<h1>Fuel</h1>
       <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
-        ${fld("f-weight", "Bodyweight (kg)", n.nutrition?.tdee ? "" : "", "e.g. 82")}
+        ${fld("f-weight", `Bodyweight (${unitLabel()})`, "", unitPref() === "lb" ? "e.g. 180" : "e.g. 82")}
         ${fld("f-height", "Height (cm)", "", "e.g. 178")}
         ${fld("f-bf", "Body fat % (estimate is fine)", "", "e.g. 18")}
-        <p class="muted" style="margin:2px 0 8px">…or leave body fat blank and add these two and I'll estimate it:</p>
+        <p class="muted" style="margin:2px 0 8px">…or leave body fat blank and add ${isFemale ? "these and" : "these two and"} I'll estimate it:</p>
         ${fld("f-waist", "Waist (cm, at the navel)", "", "optional")}
         ${fld("f-neck", "Neck (cm)", "", "optional")}
+        ${isFemale ? fld("f-hip", "Hip (cm, at the widest)", "", "optional") : ""}
         <label for="f-act" class="muted">Daily activity (outside training)</label>
         <select id="f-act" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 12px">
           <option value="sedentary">Mostly sitting (desk job)</option>
@@ -1401,13 +1417,18 @@ async function renderFuel() {
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
     $("#f-save").onclick = async () => {
       const g = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
-      const weight = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck");
+      const weightDisp = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck"), hip = g("#f-hip");
+      // The weight field shows in the user's display unit like every other weight in the
+      // app — convert to kg before it's stored, or an lb entry corrupts the trend + TDEE.
+      const weight = weightDisp != null ? toKg(weightDisp) : undefined;
       if (!weight) { $("#f-msg").textContent = "Enter your bodyweight to start."; return; }
       if (bf && (bf < 2 || bf >= 60)) { $("#f-msg").textContent = "That body fat % looks off — enter a value between about 3 and 55."; return; }
-      if (!bf && !(waist && neck)) { $("#f-msg").textContent = "Add your body fat %, or your waist + neck so I can estimate it."; return; }
+      // Women's tape estimate also needs the hip measure (the Navy formula requires it).
+      const tapeComplete = isFemale ? (waist && neck && hip) : (waist && neck);
+      if (!bf && !tapeComplete) { $("#f-msg").textContent = isFemale ? "Add your body fat %, or your waist + neck + hip so I can estimate it." : "Add your body fat %, or your waist + neck so I can estimate it."; return; }
       try {
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, activity: $("#f-act").value }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
@@ -1446,7 +1467,7 @@ async function renderFuel() {
     const kcal = parseFloat($("#f-kcal").value); const protein = parseFloat($("#f-protein").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#f-logmsg").textContent = "Enter today's calories."; return; }
     try {
-      const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
+      const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: localDay(), ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
       say("Logged."); $("#f-logmsg").textContent = `Logged — ${r.logged_days} day${r.logged_days === 1 ? "" : "s"} in. ${r.nutrition.tdee_basis === "logged" ? "Targets updated from your data." : ""}`;
       $("#f-kcal").value = ""; $("#f-protein").value = "";
       if (r.nutrition.tdee_basis === "logged") renderFuel();
