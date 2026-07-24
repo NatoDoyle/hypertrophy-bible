@@ -592,6 +592,38 @@ function renderResume() {
     else { discardPending = true; renderResume(); }
   };
 }
+// Weekly training-commitment device (Goal 4 — an implementation-intention /
+// commitment-consistency lever, not just a fixed weekly cadence): the user
+// states which days THIS week they intend to train, and the push sweep
+// (server-side) proactively reminds on a committed day they haven't trained
+// yet — not just reactively after they've already gone quiet.
+const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
+function commitmentCard(commitment) {
+  if (commitment && commitment.days?.length) {
+    const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
+    return `<div class="card row"><div style="flex:1"><b>🗓️ This week's plan: ${esc(list)}</b>
+        <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
+      <button class="btn ghost" id="edit-commitment" style="width:auto;padding:8px 14px">Edit</button></div>`;
+  }
+  return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
+    <p class="muted" style="margin:4px 0 8px">A quick reminder lands on the days you say — not just once you've gone quiet.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
+    <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
+}
+function wireCommitmentCard() {
+  const chips = [...app.querySelectorAll("[data-day]")];
+  chips.forEach((b) => b.onclick = () => b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")));
+  if ($("#save-commitment")) $("#save-commitment").onclick = async () => {
+    const days = chips.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.day);
+    if (!days.length) return;
+    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("This week's plan saved."); renderToday(); }
+    catch { alertBar("📴 Couldn't save — try again when connected."); }
+  };
+  if ($("#edit-commitment")) $("#edit-commitment").onclick = () => {
+    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null);
+    wireCommitmentCard();
+  };
+}
 async function renderToday() {
   if (sess) return renderResume();
   discardPending = false;
@@ -674,9 +706,14 @@ async function renderToday() {
        <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
     : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
+  // Skip the ASK on day 1 — a brand-new lifter has enough to take in already
+  // (Goal 3: zero cognitive load); an already-set commitment still shows (e.g.
+  // a returning multi-device user), since that's just a fact, not a decision.
+  const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
 
-  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${firstTimer}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
+  wireCommitmentCard();
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
     const k = b.dataset.step;
