@@ -2015,6 +2015,48 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337464/"
+    },
+    {
+      "key": "iraki-2019-offseason-nutrition",
+      "authors": [
+        "Iraki J",
+        "Fitschen P",
+        "Espinar S",
+        "Helms E"
+      ],
+      "year": 2019,
+      "title": "Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review.",
+      "source": "Sports (Basel)",
+      "volume": "7",
+      "issue": "7",
+      "pages": "154",
+      "doi": "10.3390/sports7070154",
+      "pmid": "31247944",
+      "study_type": "narrative-review",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31247944/"
+    },
+    {
+      "key": "garthe-2013-nutrition-body-comp",
+      "authors": [
+        "Garthe I",
+        "Raastad T",
+        "Refsnes PE",
+        "Sundgot-Borgen J"
+      ],
+      "year": 2013,
+      "title": "Effect of nutritional intervention on body composition and performance in elite athletes.",
+      "source": "European Journal of Sport Science",
+      "volume": "13",
+      "issue": "3",
+      "pages": "295-303",
+      "doi": "10.1080/17461391.2011.643923",
+      "pmid": "23679146",
+      "study_type": "non-RCT-trial",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23679146/"
     }
   ]
 }
