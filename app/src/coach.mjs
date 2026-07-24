@@ -4,6 +4,7 @@ import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
+  detectPersonalRecords,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -33,14 +34,6 @@ function resolveEx(customEx) {
 // All working sets of an exercise from a flat list of sessions, newest last.
 const workingSetsFor = (sessions, exId) =>
   sessions.flatMap((s) => (s.sets ?? []).filter((set) => set.exercise === exId && (set.set_type ?? "work") === "work"));
-
-// Best estimated 1RM for an exercise across the given sessions — reliable sets only.
-// Uses derive-core's countsForE1RM so this and the Progress screen's progression
-// trend can never disagree about what counts as a strength number.
-const bestE1RM = (sessions, exId) =>
-  Math.max(0, ...workingSetsFor(sessions, exId)
-    .filter(countsForE1RM)
-    .map((set) => estimate1RM(set.weight_kg, set.reps).e1rm));
 
 // The most recent session that contained this exercise, with its date (for
 // progression + layoff detection). Returns { sets, date } or null.
@@ -324,19 +317,15 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
     : allSessions.slice(0, -1);
   const wins = [];
 
-  // PRs (estimated 1RM) per exercise in the new session.
-  const seen = new Set();
-  for (const set of newSession.sets ?? []) {
-    if ((set.set_type ?? "work") !== "work" || seen.has(set.exercise)) continue;
-    seen.add(set.exercise);
-    const newBest = bestE1RM([newSession], set.exercise);
-    const priorBest = bestE1RM(prior, set.exercise);
-    // Require a real margin (>0.5 kg) so estimator noise isn't dressed up as a PR.
-    // Structured (not a pre-baked "N kg" string) so the client renders the reward
-    // in the unit the user actually chose — a lb user's PR shouldn't arrive in kg.
-    if (priorBest > 0 && newBest - priorBest > 0.5) {
-      wins.push({ kind: "pr", name: name(set.exercise), e1rm_kg: newBest, delta_kg: Math.round((newBest - priorBest) * 10) / 10 });
-    }
+  // PRs — estimated 1RM for heavy work AND top LOAD for higher-rep hypertrophy work —
+  // from the pure engine (detectPersonalRecords), which mirrors the est-1RM/load split so
+  // a celebrated PR can never disagree with the progression trend, and now catches the
+  // pump-band work the old e1rm-only check silently ignored (a 15-rep leg curl beating its
+  // best weight used to be told nothing). Structured, not a pre-baked "N kg" string, so
+  // the client renders the reward in the unit the user actually chose.
+  for (const pr of detectPersonalRecords(newSession, prior)) {
+    if (pr.kind === "e1rm") wins.push({ kind: "pr", name: name(pr.exercise), e1rm_kg: pr.e1rm_kg, delta_kg: pr.delta_kg });
+    else if (pr.kind === "load") wins.push({ kind: "pr-load", name: name(pr.exercise), load_kg: pr.load_kg, reps: pr.reps });
   }
 
   // Proximity to failure inferred from rep drop-off.

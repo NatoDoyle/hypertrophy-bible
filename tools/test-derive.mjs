@@ -24,6 +24,7 @@ import {
   proximityFromRepDropoff,
   restTimes,
   readinessIndex,
+  detectPersonalRecords,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -384,6 +385,43 @@ check("progressionCadence learns the personal rhythm; adaptiveStallWindow scales
   assert.equal(adaptiveStallWindow(1), 4);
   assert.equal(adaptiveStallWindow(5), 8);
   assert.equal(adaptiveStallWindow(20), 10);
+});
+
+check("detectPersonalRecords: e1rm PR on heavy work, with a noise margin", () => {
+  const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]; // e1rm ~116.67
+  const beat = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6 }] };     // e1rm ~120
+  const [pr] = detectPersonalRecords(beat, prior);
+  assert.equal(pr.kind, "e1rm");
+  assert.equal(pr.exercise, "bench");
+  assert.ok(Math.abs(pr.e1rm_kg - 120) < 0.5 && pr.delta_kg > 3 && pr.delta_kg < 4);
+  // matching the prior best is NOT a PR (no margin)
+  const same = { session_id: "c", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] };
+  assert.equal(detectPersonalRecords(same, prior).length, 0);
+  // a first-ever performance is not a PR (no prior best)
+  assert.equal(detectPersonalRecords(beat, []).length, 0);
+});
+
+check("detectPersonalRecords: HIGHER-REP work gets a LOAD PR (the pump-band gap)", () => {
+  // 15-rep leg curl: Epley is guesswork here, so it's tracked by top LOAD, not e1rm.
+  const prior = [{ session_id: "a", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 15 }] }];
+  const heavier = { session_id: "b", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 45, reps: 15 }] };
+  const [pr] = detectPersonalRecords(heavier, prior);
+  assert.equal(pr.kind, "load");
+  assert.equal(pr.load_kg, 45);
+  assert.equal(pr.prev_kg, 40);
+  assert.equal(pr.reps, 15);
+  // same load again → no PR
+  assert.equal(detectPersonalRecords({ session_id: "c", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 16 }] }, prior).length, 0);
+});
+
+check("detectPersonalRecords: warm-ups and deloads never manufacture a PR", () => {
+  const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }];
+  // a heavy WARM-UP single must not count as a PR
+  const warmup = { session_id: "b", sets: [{ exercise: "bench", set_type: "warmup", weight_kg: 200, reps: 1 }, { exercise: "bench", set_type: "work", weight_kg: 90, reps: 5 }] };
+  assert.equal(detectPersonalRecords(warmup, prior).length, 0);
+  // a deload week is intentionally light and can't out-lift a real best
+  const deload = { session_id: "c", sets: [{ exercise: "bench", set_type: "work", weight_kg: 60, reps: 5, deload: true }] };
+  assert.equal(detectPersonalRecords(deload, prior).length, 0);
 });
 
 console.log(`\n${passed} test(s) passed.`);

@@ -1278,10 +1278,21 @@ async function finish() {
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
   const fmtDelta = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : kg;
-  const winHtml = (w) => typeof w === "string"
-    ? esc(w)
-    : `🏆 ${esc(w.name)}: new estimated best single lift — <b>${dispWeight(w.e1rm_kg)} ${unitLabel()}</b> (up ${fmtDelta(w.delta_kg)} ${unitLabel()}).`;
-  const wins = (recap.wins || []).map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
+  const winHtml = (w) => {
+    if (typeof w === "string") return esc(w);
+    if (w.kind === "pr-load") return `🏆 ${esc(w.name)}: new best working weight — <b>${dispWeight(w.load_kg)} ${unitLabel()}</b> × ${w.reps} reps.`;
+    return `🏆 ${esc(w.name)}: new estimated best single lift — <b>${dispWeight(w.e1rm_kg)} ${unitLabel()}</b> (up ${fmtDelta(w.delta_kg)} ${unitLabel()}).`;
+  };
+  // A personal record is the reward moment — give it a celebratory banner at the top of the
+  // recap; other wins stay as quiet rows below.
+  const prWins = (recap.wins || []).filter((w) => typeof w === "object");
+  const otherWins = (recap.wins || []).filter((w) => typeof w === "string");
+  const prBanner = prWins.length
+    ? `<div class="card" style="text-align:center;border:1px solid var(--accent)"><div style="font-size:1.6rem" aria-hidden="true">🎉</div>
+        <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>
+        ${prWins.map((w) => `<p class="muted" style="margin:6px 0">${winHtml(w)}</p>`).join("")}</div>`
+    : "";
+  const wins = otherWins.map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
   const nudge = !localStorage.getItem("hb_email")
     ? `<div class="card"><b>Keep this progress safe</b>
         <p class="muted">Create your free account with just an email — no password, ever. It protects today's workout if you lose this phone, and syncs to any device.</p>
@@ -1295,7 +1306,7 @@ function renderRecap(recap) {
         <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a></div>`
     : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
-  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${wins}${nudge}${donate}
+  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${wins}${nudge}${donate}
     <button class="btn" id="ok">Done</button>`;
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
