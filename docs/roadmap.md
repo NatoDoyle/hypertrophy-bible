@@ -46,13 +46,18 @@ multi-user infra).
 ## Build queue (pull from the top)
 
 ### Tier 1 — highest leverage, buildable now
-1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79).* Done: reusable pure
-   `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep hypertrophy
-   work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal record!"
-   banner. **Remaining slices (build next):** (a) bonus XP for a PR (adherence.mjs `xpAndLevel` —
-   the engine now supports replaying PRs over history); (b) an in-*player* PR moment (celebrate
-   mid-session when a set beats a best, not only in the recap); (c) a persistent "wins"/PR feed
-   + PR count (a lookback surface — progress-dopamine).
+1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + this iteration).* Done:
+   reusable pure `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep
+   hypertrophy work), wired into the recap with a celebratory "🎉 New personal record!" banner;
+   **(b) an in-player PR moment** — `checkSetPR`/`priorPersonalBests` (`derive-core.mjs`) give
+   `buildToday` a `pr_watch` ceiling per exercise, and the live player (`app.js` +
+   `session-core.mjs`'s browser-safe duplicate, cross-tested for agreement) fires a toast the
+   instant a logged set beats it, not only at the end of the session.
+   **⚠️ (a) bonus XP for a PR has 3+ duplicate open PRs (#150/#151/#152) from earlier hourly
+   loop firings that all raced on the same slice before any merged — a human needs to pick ONE,
+   merge+deploy it, and close the rest. Future iterations: do NOT build (a) again until that's
+   resolved.** Remaining after that: **(c)** a persistent "wins"/PR feed + PR count (a lookback
+   surface — progress-dopamine).
 2. **[Goal 4] Variable rewards + proactive habit reminders.** Surprise "lucky set"/bonus XP on
    top of fixed XP; a weekly "when will you train?" commitment device; push reminders keyed to
    the user's *own* logged training times, not just lapse-reactive.

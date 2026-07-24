@@ -6,7 +6,11 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR } from "../public/session-core.mjs";
+// Node-only import (this test runs under Node, not the browser) — used ONLY to prove
+// the client's checkSetPR duplicate agrees with the server's real engine, never to
+// import it into the shipped client code.
+import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -230,6 +234,53 @@ check("#45 optional ramp-up logging: any number of warm-ups leave work progress 
   ];
   assert.equal(loggedWorkSets(logged, "squat"), 1);          // 3 warm-ups ignored; 1 work set counts
   assert.equal(nextUnfinishedIndex(logged, ex, -1), 0);      // squat still the first unfinished lift — not advanced past
+});
+
+check("checkSetPR: fires for a genuine PR set, using the same margin as the server", () => {
+  const priorBests = { e1rm_kg: 116.67, load_kg: null }; // e1rm from 100kg x5
+  const pr = checkSetPR("bench", 100, 6, "work", priorBests); // e1rm ~120
+  assert.equal(pr.kind, "e1rm");
+  assert.ok(pr.delta_kg > 3 && pr.delta_kg < 4);
+  assert.equal(checkSetPR("bench", 100, 5, "work", priorBests), null); // matching, not beating
+  assert.equal(checkSetPR("bench", 200, 1, "warmup", priorBests), null); // warm-ups never count
+  assert.equal(checkSetPR("squat", 100, 5, "work", { e1rm_kg: null, load_kg: null }), null); // no history yet
+});
+
+check("checkSetPR: higher-rep LOAD band", () => {
+  const priorBests = { e1rm_kg: null, load_kg: 40 };
+  assert.deepEqual(checkSetPR("leg-curl", 45, 15, "work", priorBests), { kind: "load", load_kg: 45, reps: 15 });
+  assert.equal(checkSetPR("leg-curl", 40, 16, "work", priorBests), null); // same load again, not a PR
+});
+
+check("checkSetPR (client) agrees with checkSetPR (server) across a battery of fixtures", () => {
+  // Any drift between the browser copy and tools/derive-core.mjs would let the
+  // in-player celebration and the end-of-session recap silently disagree.
+  const priorSessions = [
+    { session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },
+    { session_id: "b", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 15 }] },
+  ];
+  const bests = priorPersonalBests(priorSessions);
+  const fixtures = [
+    { exercise: "bench", weight_kg: 100, reps: 6, set_type: "work" },   // e1rm PR
+    { exercise: "bench", weight_kg: 100, reps: 5, set_type: "work" },   // matches, not a PR
+    { exercise: "bench", weight_kg: 200, reps: 1, set_type: "warmup" }, // warm-up excluded
+    { exercise: "leg-curl", weight_kg: 45, reps: 15, set_type: "work" },// load PR
+    { exercise: "leg-curl", weight_kg: 35, reps: 15, set_type: "work" },// under prior best
+    { exercise: "squat", weight_kg: 100, reps: 5, set_type: "work" },   // no history at all
+  ];
+  for (const f of fixtures) {
+    const clientPriorBests = { e1rm_kg: bests.e1rm[f.exercise] ?? null, load_kg: bests.load[f.exercise] ?? null };
+    const clientVerdict = checkSetPR(f.exercise, f.weight_kg, f.reps, f.set_type, clientPriorBests);
+    const serverVerdict = checkSetPRServer({ exercise: f.exercise, weight_kg: f.weight_kg, reps: f.reps, set_type: f.set_type }, bests);
+    assert.deepEqual(clientVerdict, serverVerdict, `disagreement on ${JSON.stringify(f)}`);
+    // and whichever fires must agree with what detectPersonalRecords would report if
+    // this set were the session's only set — the actual end-of-session recap check.
+    if (clientVerdict) {
+      const [sessionPr] = detectPersonalRecords({ session_id: "new", sets: [{ exercise: f.exercise, set_type: f.set_type, weight_kg: f.weight_kg, reps: f.reps }] }, priorSessions);
+      assert.ok(sessionPr, `client fired a PR the recap wouldn't celebrate: ${JSON.stringify(f)}`);
+      assert.equal(sessionPr.kind, clientVerdict.kind);
+    }
+  }
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

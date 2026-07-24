@@ -41,6 +41,17 @@ button{font:inherit;color:inherit;cursor:pointer}
 .dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
 .dots i.on{background:var(--accent)}
 
+/* In-player PR celebration — a brief, self-dismissing toast outside #app so it
+   survives the player's next full re-render (rest screen / next exercise card). */
+@keyframes pr-toast-in{from{transform:translateY(-12px);opacity:0}to{transform:translateY(0);opacity:1}}
+.pr-toast{
+  position:fixed;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;z-index:50;
+  max-width:520px;margin:0 auto;background:var(--card);border:1px solid var(--accent);border-radius:14px;
+  padding:14px 16px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.35);
+  animation:pr-toast-in .25s ease-out;
+}
+.pr-toast b{font-size:1.05rem}
+
 /* Session player */
 .exhead{display:flex;justify-content:space-between;align-items:baseline}
 .exhead .num{color:var(--dim);font-size:.85rem}

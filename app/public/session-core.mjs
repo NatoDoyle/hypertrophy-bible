@@ -53,6 +53,36 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // harmless. (Pure helper; the offline queue lives in app.js.)
 export const dropDelivered = (queue, id) => queue.filter((x) => x.id !== id);
 
+// Would logging THIS set, right now, beat the user's prior all-time best for its
+// exercise? Powers the in-player PR celebration (roadmap #1 slice b) — fired the
+// instant a set is banked, not only in the end-of-session recap.
+//
+// This DUPLICATES the rule set in tools/derive-core.mjs's checkSetPR/estimate1RM
+// (RELIABLE_1RM_REPS=12, the >0.5kg e1rm noise margin, strict-greater for load
+// PRs) rather than importing it: this file is served to the browser as a static
+// asset and can't reach outside public/, while derive-core.mjs is a Node/Workers
+// module. A cross-consistency test (test-session.mjs) replays fixtures through
+// BOTH implementations and asserts identical verdicts, so a change to one set of
+// thresholds without the other fails CI instead of silently letting the live
+// celebration and the recap disagree.
+// `priorBests` is the `pr_watch` object buildToday attaches to each exercise:
+// `{ e1rm_kg, load_kg }`, either possibly null (no qualifying history yet).
+const RELIABLE_1RM_REPS = 12;
+export function checkSetPR(exercise, weightKg, reps, setType, priorBests) {
+  if ((setType ?? "work") === "warmup") return null;
+  if (!(typeof reps === "number" && reps > 0 && typeof weightKg === "number" && weightKg > 0)) return null;
+  if (reps <= RELIABLE_1RM_REPS) {
+    const prev = priorBests?.e1rm_kg;
+    if (prev == null) return null;
+    const e1rm = reps === 1 ? weightKg : weightKg * (1 + reps / 30);
+    if (e1rm - prev > 0.5) return { kind: "e1rm", e1rm_kg: Math.round(e1rm * 100) / 100, delta_kg: Math.round((e1rm - prev) * 10) / 10 };
+    return null;
+  }
+  const prev = priorBests?.load_kg;
+  if (prev != null && weightKg > prev) return { kind: "load", load_kg: weightKg, reps };
+  return null;
+}
+
 // Given a superset pair (indices L<P) and the log, the current 0-indexed round and
 // how many rounds are paired (the shorter member's set count). round >= paired
 // means the paired work is done and any remainder is finished the normal way.

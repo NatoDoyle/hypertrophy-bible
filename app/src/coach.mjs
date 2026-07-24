@@ -4,7 +4,7 @@ import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
-  detectPersonalRecords,
+  detectPersonalRecords, priorPersonalBests,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -245,6 +245,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const welcome = `Welcome back — it's been ${layoffDays} days, so I eased today's weights to ramp you in safely. They'll climb again fast.`;
     coach_note = coach_note ? `${welcome} ${coach_note}` : welcome;
   }
+  // The all-time bests BEFORE today, per exercise — the exact ceiling sessionRecap will
+  // compare this session against once it's logged (same `sessions` array, nothing added
+  // yet). Carried onto each exercise below as `pr_watch` so the live player can celebrate
+  // a personal record the moment it happens, not only after the whole session ends.
+  const prBests = priorPersonalBests(sessions);
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     // The rir band shown to the user IS the prescription the autoregulation
@@ -288,6 +293,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // session-level `comeback` covers the whole-session case; this covers the rest.
       ...(sug.layoff_days != null ? { eased: true } : {}),
       ...(ex.superset_with ? { superset_with: ex.superset_with, superset_with_name: name(ex.superset_with) } : {}),
+      pr_watch: { e1rm_kg: prBests.e1rm[ex.exercise] ?? null, load_kg: prBests.load[ex.exercise] ?? null },
     };
   });
   // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
