@@ -21,6 +21,14 @@ check("buildToday: first-timer gets a session with no pre-filled weight", () => 
   assert.ok(today.name && today.day_number === 1);
 });
 
+check("buildToday flags `beginner` from training_status (Goal 3: gates RIR jargon on the set screen)", () => {
+  assert.equal(buildToday(user, []).beginner, true); // fixture user is training_status: "beginner"
+  const intermediateUser = { ...user, profile: { ...user.profile, training_status: "intermediate" } };
+  assert.equal(buildToday(intermediateUser, []).beginner, false);
+  const noProfileUser = { ...user, profile: {} };
+  assert.equal(buildToday(noProfileUser, []).beginner, true); // unset training_status defaults to the plainer copy
+});
+
 check("a normal-readiness check-in is ACKNOWLEDGED, never silent", () => {
   const t = buildToday(user, [], { level: "normal", score: 3 });
   assert.ok(t.coach_note && /checked in/i.test(t.coach_note)); // majority path must confirm receipt
@@ -427,6 +435,7 @@ check("sessionRecap returns derived wins (PR detection)", () => {
   assert.ok(Array.isArray(recap.wins) && recap.wins.length > 0);
   const pr = recap.wins.find((w) => w.kind === "pr"); // structured: client formats in the user's unit
   assert.ok(pr && pr.e1rm_kg > 0 && pr.delta_kg > 0 && pr.name); // new e1RM PR detected
+  assert.equal(recap.pr_xp, 50); // Wave 81: the PR's bonus XP is surfaced in the recap (+50)
 });
 
 check("sessionRecap now celebrates HIGHER-REP work — a load PR (Wave 79, Goal 4)", () => {

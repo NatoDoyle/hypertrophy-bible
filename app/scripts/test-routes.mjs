@@ -389,6 +389,25 @@ try {
   const d3 = await todayFor();
   ok("#46 daily status reflects the evening calories — all three done", d3.checked_in && d3.workout_logged && d3.calories_logged);
 
+  // --- Weekly commitment device (#4 adherence, roadmap item #2) ---
+  const cUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const setCommit = await json("POST", "/api/commitment", { user_id: cUser, days: ["mon", "wed", "fri", "not-a-real-day", "mon"] });
+  ok("#commitment stores only valid, deduped day keys", setCommit.status === 200 && JSON.stringify(setCommit.data.commitment.days) === JSON.stringify(["mon", "wed", "fri"]));
+  ok("#commitment stamps the CURRENT iso week, not a client-supplied one", /^\d{4}-W\d{2}$/.test(setCommit.data.commitment.week));
+  const adh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment round-trips through /api/adherence", JSON.stringify(adh.commitment) === JSON.stringify(setCommit.data.commitment));
+  const unknownCommit = await json("POST", "/api/commitment", { user_id: "no-such-user", days: ["mon"] });
+  ok("#commitment for an unknown user is a clean 404, not a crash", unknownCommit.status === 404);
+  // Wave 82: a MISSING user_id must 404 at the door, not reach store.updateUser(undefined)
+  // (null on the file store → 404, but a THROW on D1 → 500 in prod — a real bug prod-smoke caught).
+  const noUserCommit = await json("POST", "/api/commitment", { days: ["mon"] });
+  ok("#commitment with no user_id is a clean 404 (guarded before the store call)", noUserCommit.status === 404);
+  // A commitment stamped for a PRIOR iso week must read back as unset (never a
+  // stale plan silently lingering into a new week).
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"] }; return u; });
+  const staleAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment from a prior week reads back as unset via /api/adherence", staleAdh.commitment === null);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

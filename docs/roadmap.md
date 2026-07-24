@@ -46,29 +46,39 @@ multi-user infra).
 ## Build queue (pull from the top)
 
 ### Tier 1 — highest leverage, buildable now
-1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + this iteration).* Done:
+1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + 81 + this reconcile).* Done:
    reusable pure `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep
-   hypertrophy work), wired into the recap with a celebratory "🎉 New personal record!" banner;
-   **(b) an in-player PR moment** — `checkSetPR`/`priorPersonalBests` (`derive-core.mjs`) give
-   `buildToday` a `pr_watch` ceiling per exercise, and the live player (`app.js` +
-   `session-core.mjs`'s browser-safe duplicate, cross-tested for agreement) fires a toast the
-   instant a logged set beats it, not only at the end of the session.
-   **⚠️ (a) bonus XP for a PR has 3+ duplicate open PRs (#150/#151/#152) from earlier hourly
-   loop firings that all raced on the same slice before any merged — a human needs to pick ONE,
-   merge+deploy it, and close the rest. Future iterations: do NOT build (a) again until that's
-   resolved.** Remaining after that: **(c)** a persistent "wins"/PR feed + PR count (a lookback
-   surface — progress-dopamine).
-2. **[Goal 4] Variable rewards + proactive habit reminders.** Surprise "lucky set"/bonus XP on
-   top of fixed XP; a weekly "when will you train?" commitment device; push reminders keyed to
-   the user's *own* logged training times, not just lapse-reactive.
+   hypertrophy work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal
+   record!" banner (Wave 79); bonus XP for a PR — +50 XP per record, surfaced as "+N XP" in the
+   recap banner and banked into the level (Wave 81; `PR_XP` is the single source of truth shared by
+   the engine and the recap); **(b) the in-player PR moment** — `priorPersonalBests`/`checkSetPR`
+   (`derive-core.mjs`) give `buildToday` a `pr_watch` ceiling per exercise, and the live player
+   (`app.js` + `session-core.mjs`'s browser-safe duplicate, cross-tested for agreement) fires a
+   toast the instant a logged set beats it, not only at the end of the session. **Remaining slice:**
+   (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
+2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (commitment device).*
+   Done: the weekly "when will you train?" commitment device — `POST /api/commitment` (pinned to
+   the current ISO week, `tools/derive-core.mjs`'s `isoWeekKey`/`WEEK_DAY_KEYS`/`weekDayKey`) lets
+   a user state which days this week they intend to train; `push.mjs`'s new
+   `shouldPushForCommitment` gives the daily push sweep a genuinely *proactive* trigger — a
+   committed day the user hasn't trained yet — independent of `shouldPush`'s lapse-reactive
+   days-since-last-session gate (which alone can't fire the day right after training, exactly
+   when a same-day commitment reminder should); a `Today`-tab card lets the user set/edit the
+   plan and reinforces it once set, suppressed on day 1 (novice-friction). **Remaining slice:**
+   surprise "lucky set"/bonus XP on top of fixed XP.
 3. **[Goal 2 bottom / Goal 3] Inline exercise demos, v0.** Add a `media` field to the exercise
    schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
    171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to
    per-exercise clips over time. (Real footage remains BLOCKERS #1.)
-4. **[Goal 3] Novice-friction quick wins.** Hide the specialization question from beginners;
-   make the workout the day-1 hero over the optional check-in; plain-effort language instead of
-   RIR on the beginner set screen; collapse the Fuel wall to bodyweight+activity with an
-   inferred BF% estimate.
+4. **[Goal 3] Novice-friction quick wins.** *PARTIALLY SHIPPED (Wave 81).* Done: the set screen's
+   "leave about N in the tank" target no longer surfaces the bare "what's RIR?" glossary link to
+   a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term
+   client-side; non-beginners keep it). Also done (Wave 83): the specialization question
+   ("All-in specialization block…") is hidden from beginners — a programming decision a novice
+   can't make, now gated on `training_status !== "beginner"` in the onboarding `showIf`.
+   **Remaining slices:** make the workout the day-1 hero over the optional check-in; collapse the
+   Fuel wall to bodyweight+activity with an inferred BF% estimate; seed the first-set weight to a
+   body-scaled estimate.
 5. **[Goal 1] Citation-coverage gate.** `tools/check-claim-coverage.mjs` in `npm run check`: fail
    when a page with [Grade A]/[Grade B] markers has zero `[^key]` citations (allowlist framework
    pages). Makes "every claim web-verified" measurable and stops regression.

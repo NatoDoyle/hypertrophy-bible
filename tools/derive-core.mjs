@@ -35,6 +35,12 @@ const isLoadSet = (set) =>
   typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
+// XP awarded for a single personal record — the peak-achievement bonus on top of the
+// base session/hard-set XP. Lives here (with detectPersonalRecords) as the single source
+// of truth so the gamification engine (xpAndLevel) and the recap's "+N XP" reward can
+// never disagree about what a PR is worth.
+export const PR_XP = 50;
+
 // All-time best e1RM / top LOAD per exercise across a history of sessions. The single
 // ceiling computation both detectPersonalRecords (end-of-session recap) and
 // checkSetPR (live, mid-session) read — so "what's your prior best" can never differ
@@ -140,6 +146,13 @@ export const sessionWeekKey = (s) => {
   const k = isoWeekKey(s.local_date ?? s.date);
   return k.includes("NaN") ? isoWeekKey(s.date) : k;
 };
+
+// Weekday keys for the weekly training-commitment device (Mon-first, matching
+// isoWeekKey's ISO convention) — the single source of truth so the API's
+// day-name validation and the push sweep's "is today a committed day" check
+// can never disagree on what a valid day key is.
+export const WEEK_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+export const weekDayKey = (dateStr) => WEEK_DAY_KEYS[(new Date(dateStr).getUTCDay() + 6) % 7];
 
 // Is a set a "hard working set" that counts toward hypertrophy volume?
 // Warm-ups never count. If effort is logged, it must be near failure (RPE>=gate / RIR<=4).

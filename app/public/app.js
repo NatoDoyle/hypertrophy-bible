@@ -172,7 +172,7 @@ const STEPS = [
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
-  { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 },
+  { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 && a.training_status !== "beginner" },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
@@ -592,6 +592,38 @@ function renderResume() {
     else { discardPending = true; renderResume(); }
   };
 }
+// Weekly training-commitment device (Goal 4 — an implementation-intention /
+// commitment-consistency lever, not just a fixed weekly cadence): the user
+// states which days THIS week they intend to train, and the push sweep
+// (server-side) proactively reminds on a committed day they haven't trained
+// yet — not just reactively after they've already gone quiet.
+const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
+function commitmentCard(commitment) {
+  if (commitment && commitment.days?.length) {
+    const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
+    return `<div class="card row"><div style="flex:1"><b>🗓️ This week's plan: ${esc(list)}</b>
+        <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
+      <button class="btn ghost" id="edit-commitment" style="width:auto;padding:8px 14px">Edit</button></div>`;
+  }
+  return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
+    <p class="muted" style="margin:4px 0 8px">A quick reminder lands on the days you say — not just once you've gone quiet.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
+    <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
+}
+function wireCommitmentCard() {
+  const chips = [...app.querySelectorAll("[data-day]")];
+  chips.forEach((b) => b.onclick = () => b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")));
+  if ($("#save-commitment")) $("#save-commitment").onclick = async () => {
+    const days = chips.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.day);
+    if (!days.length) return;
+    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("This week's plan saved."); renderToday(); }
+    catch { alertBar("📴 Couldn't save — try again when connected."); }
+  };
+  if ($("#edit-commitment")) $("#edit-commitment").onclick = () => {
+    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null);
+    wireCommitmentCard();
+  };
+}
 async function renderToday() {
   if (sess) return renderResume();
   discardPending = false;
@@ -654,7 +686,11 @@ async function renderToday() {
     { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
     { key: "calories", icon: "🌙", label: "Tonight's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
-  const firstUndone = steps.find((x) => !x.done && !x.dismissed);
+  // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
+  // came to train — an optional survey must never read as the gate before it (Goal 3).
+  const firstUndone = (s.day_number === 1 && !workoutDone)
+    ? steps.find((x) => x.key === "workout")
+    : steps.find((x) => !x.done && !x.dismissed);
   const stepRow = (x) => {
     const isNext = x.key === firstUndone?.key;
     const settled = x.done || x.dismissed;
@@ -674,9 +710,14 @@ async function renderToday() {
        <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
     : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
+  // Skip the ASK on day 1 — a brand-new lifter has enough to take in already
+  // (Goal 3: zero cognitive load); an already-set commitment still shows (e.g.
+  // a returning multi-device user), since that's just a fact, not a decision.
+  const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
 
-  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${firstTimer}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
+  wireCommitmentCard();
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
     const k = b.dataset.step;
@@ -774,6 +815,7 @@ const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort l
 function startSession(templateSession) {
   sess = {
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
+    beginner: templateSession.beginner === true, // plain-effort language on the set screen — no "RIR" jargon for a true novice
     deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
     logged: [], weights: {}, reps: {}, rir: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
@@ -933,7 +975,7 @@ function renderPlayer(resting = 0) {
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
-    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
+    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -1328,7 +1370,7 @@ function renderRecap(recap) {
   const otherWins = (recap.wins || []).filter((w) => typeof w === "string");
   const prBanner = prWins.length
     ? `<div class="card" style="text-align:center;border:1px solid var(--accent)"><div style="font-size:1.6rem" aria-hidden="true">🎉</div>
-        <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>
+        <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>${recap.pr_xp ? ` <span style="color:var(--accent);font-weight:700">+${recap.pr_xp} XP</span>` : ""}
         ${prWins.map((w) => `<p class="muted" style="margin:6px 0">${winHtml(w)}</p>`).join("")}</div>`
     : "";
   const wins = otherWins.map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
