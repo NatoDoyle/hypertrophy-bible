@@ -50,6 +50,7 @@ of muscle to build. Don't rush the early stages; the fundamentals here are what 
 - [Form fundamentals](form-fundamentals.md)
 
 **🔁 Keep going**
+- [What actually matters (in priority order)](what-actually-matters.md) — the few things that build muscle, and what to ignore
 - [Building the training habit](building-the-training-habit.md)
 - [Managing expectations and slow progress](managing-expectations-and-slow-progress.md)
 - [Goal-setting](goal-setting.md)
