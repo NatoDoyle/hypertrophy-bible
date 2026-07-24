@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**98** verified references.
+**99** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -319,6 +319,14 @@ Lixandrão ME & et al. (2018). Magnitude of Muscle Strength and Mass Adaptations
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-017-0795-y](https://doi.org/10.1007/s40279-017-0795-y) · PMID: [29043659](https://pubmed.ncbi.nlm.nih.gov/29043659/)
+
+### lixandrao-2024-volume-nonresponders
+Lixandrão ME & et al. (2024). Higher resistance training volume offsets muscle hypertrophy nonresponsiveness in older individuals.
+
+*Journal of Applied Physiology*, 136(2), 421-429.
+
+- Type: non-RCT-trial · Population: mixed
+- DOI: [10.1152/japplphysiol.00670.2023](https://doi.org/10.1152/japplphysiol.00670.2023) · PMID: [38174375](https://pubmed.ncbi.nlm.nih.gov/38174375/)
 
 ### longland-2016-deficit-protein
 Longland TM & et al. (2016). Higher compared with lower dietary protein during an energy deficit combined with intense exercise promotes greater lean mass gain and fat mass loss: a randomized trial.

@@ -509,6 +509,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15947721/"
     },
     {
+      "key": "lixandrao-2024-volume-nonresponders",
+      "authors": [
+        "Lixandrão ME",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Higher resistance training volume offsets muscle hypertrophy nonresponsiveness in older individuals.",
+      "source": "Journal of Applied Physiology",
+      "volume": "136",
+      "issue": "2",
+      "pages": "421-429",
+      "doi": "10.1152/japplphysiol.00670.2023",
+      "pmid": "38174375",
+      "study_type": "non-RCT-trial",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38174375/"
+    },
+    {
       "key": "kassiano-2023-rom-review",
       "authors": [
         "Kassiano W",
