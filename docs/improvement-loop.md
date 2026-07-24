@@ -229,6 +229,14 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 
 ## State
 
+- **Work queue:** `docs/roadmap.md` — the prioritized build list toward the four goals.
+  **Pull the next build from Tier 1.** The goals are measured against "world's best" and
+  "win Mr. Olympia" and "zero cognitive load" — against that bar this is an **early-stage**
+  project, not a nearly-finished one. A codebase swept of defects is NOT the same as the
+  goals being met. Single-citation currency and cosmetic polish are **not** Tier-1 work — do
+  them only when a genuinely high-value gap surfaces, never as default filler. (Lesson: the
+  loop spent a burst adding one citation per iteration while Goal 4 — the *stated* top
+  priority, adherence — sat at a skeleton. Don't mistake a swept surface for a met goal.)
 - **Blocked on the human:** `BLOCKERS.md` (I add to it; the loop never waits on it).
 - **Live:** https://hypertrophybible.com · repo: github.com/NatoDoyle/hypertrophy-bible
 - **History:** each iteration ships as PR'd waves; see git log.
