@@ -398,6 +398,10 @@ try {
   ok("#commitment round-trips through /api/adherence", JSON.stringify(adh.commitment) === JSON.stringify(setCommit.data.commitment));
   const unknownCommit = await json("POST", "/api/commitment", { user_id: "no-such-user", days: ["mon"] });
   ok("#commitment for an unknown user is a clean 404, not a crash", unknownCommit.status === 404);
+  // Wave 82: a MISSING user_id must 404 at the door, not reach store.updateUser(undefined)
+  // (null on the file store → 404, but a THROW on D1 → 500 in prod — a real bug prod-smoke caught).
+  const noUserCommit = await json("POST", "/api/commitment", { days: ["mon"] });
+  ok("#commitment with no user_id is a clean 404 (guarded before the store call)", noUserCommit.status === 404);
   // A commitment stamped for a PRIOR iso week must read back as unset (never a
   // stale plan silently lingering into a new week).
   await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"] }; return u; });
