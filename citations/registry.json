@@ -1934,6 +1934,87 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41988507/"
+    },
+    {
+      "key": "acog-2020-pregnancy-exercise",
+      "authors": [
+        "ACOG Committee on Obstetric Practice"
+      ],
+      "year": 2020,
+      "title": "Physical Activity and Exercise During Pregnancy and the Postpartum Period: ACOG Committee Opinion, Number 804.",
+      "source": "Obstetrics and Gynecology",
+      "volume": "135",
+      "issue": "4",
+      "pages": "e178-e188",
+      "doi": "10.1097/AOG.0000000000003772",
+      "pmid": "32217980",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32217980/"
+    },
+    {
+      "key": "mottola-2018-pregnancy-guideline",
+      "authors": [
+        "Mottola MF",
+        "Davenport MH",
+        "Ruchat SM",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "2019 Canadian guideline for physical activity throughout pregnancy.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1339-1346",
+      "doi": "10.1136/bjsports-2018-100056",
+      "pmid": "30337460",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337460/"
+    },
+    {
+      "key": "davenport-2018-prenatal-gdm-htn",
+      "authors": [
+        "Davenport MH",
+        "Ruchat SM",
+        "Poitras VJ",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Prenatal exercise for the prevention of gestational diabetes mellitus and hypertensive disorders of pregnancy: a systematic review and meta-analysis.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1367-1375",
+      "doi": "10.1136/bjsports-2018-099355",
+      "pmid": "30337463",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337463/"
+    },
+    {
+      "key": "davenport-2018-prenatal-depression",
+      "authors": [
+        "Davenport MH",
+        "McCurdy AP",
+        "Mottola MF",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Impact of prenatal exercise on both prenatal and postnatal anxiety and depressive symptoms: a systematic review and meta-analysis.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1376-1385",
+      "doi": "10.1136/bjsports-2018-099697",
+      "pmid": "30337464",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337464/"
     }
   ]
 }
