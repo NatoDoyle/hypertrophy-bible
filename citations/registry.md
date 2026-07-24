@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**106** verified references.
+**108** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -13,7 +13,7 @@ ACOG Committee on Obstetric Practice (2020). Physical Activity and Exercise Duri
 
 *Obstetrics and Gynecology*, 135(4), e178-e188.
 
-- Type: guideline · Population: pregnant/postpartum
+- Type: position-stand · Population: mixed
 - DOI: [10.1097/AOG.0000000000003772](https://doi.org/10.1097/AOG.0000000000003772) · PMID: [32217980](https://pubmed.ncbi.nlm.nih.gov/32217980/)
 
 ### ashtary-larky-2025-creatine-meta
@@ -149,7 +149,7 @@ Davenport MH et al. (2018). Impact of prenatal exercise on both prenatal and pos
 
 *British Journal of Sports Medicine*, 52(21), 1376-1385.
 
-- Type: meta-analysis · Population: pregnant/postpartum
+- Type: meta-analysis · Population: mixed
 - DOI: [10.1136/bjsports-2018-099697](https://doi.org/10.1136/bjsports-2018-099697) · PMID: [30337464](https://pubmed.ncbi.nlm.nih.gov/30337464/)
 
 ### davenport-2018-prenatal-gdm-htn
@@ -157,7 +157,7 @@ Davenport MH et al. (2018). Prenatal exercise for the prevention of gestational 
 
 *British Journal of Sports Medicine*, 52(21), 1367-1375.
 
-- Type: meta-analysis · Population: pregnant
+- Type: meta-analysis · Population: mixed
 - DOI: [10.1136/bjsports-2018-099355](https://doi.org/10.1136/bjsports-2018-099355) · PMID: [30337463](https://pubmed.ncbi.nlm.nih.gov/30337463/)
 
 ### egner-2013-muscle-memory
@@ -183,6 +183,14 @@ Fonseca RM & et al. (2014). Changes in exercises are more effective than in load
 
 - Type: RCT · Population: untrained
 - DOI: [10.1519/JSC.0000000000000539](https://doi.org/10.1519/JSC.0000000000000539) · PMID: [24832974](https://pubmed.ncbi.nlm.nih.gov/24832974/)
+
+### garthe-2013-nutrition-body-comp
+Garthe I et al. (2013). Effect of nutritional intervention on body composition and performance in elite athletes.
+
+*European Journal of Sport Science*, 13(3), 295-303.
+
+- Type: non-RCT-trial · Population: trained
+- DOI: [10.1080/17461391.2011.643923](https://doi.org/10.1080/17461391.2011.643923) · PMID: [23679146](https://pubmed.ncbi.nlm.nih.gov/23679146/)
 
 ### grgic-2017-periodization
 Grgic J & et al. (2017). Effects of linear and daily undulating periodized resistance training programs on measures of muscle hypertrophy: a systematic review and meta-analysis.
@@ -263,6 +271,14 @@ Hubal MJ & et al. (2005). Variability in muscle size and strength gain after uni
 
 - Type: cohort · Population: untrained
 - PMID: [15947721](https://pubmed.ncbi.nlm.nih.gov/15947721/)
+
+### iraki-2019-offseason-nutrition
+Iraki J et al. (2019). Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review.
+
+*Sports (Basel)*, 7(7), 154.
+
+- Type: narrative-review · Population: trained
+- DOI: [10.3390/sports7070154](https://doi.org/10.3390/sports7070154) · PMID: [31247944](https://pubmed.ncbi.nlm.nih.gov/31247944/)
 
 ### jakubowski-2020-hmb-meta
 Jakubowski JS et al. (2020). Supplementation with the Leucine Metabolite beta-hydroxy-beta-methylbutyrate (HMB) does not Improve Resistance Exercise-Induced Changes in Body Composition or Strength in Young Subjects: A Systematic Review and Meta-Analysis.
@@ -421,7 +437,7 @@ Mottola MF et al. (2018). 2019 Canadian guideline for physical activity througho
 
 *British Journal of Sports Medicine*, 52(21), 1339-1346.
 
-- Type: guideline · Population: pregnant
+- Type: position-stand · Population: mixed
 - DOI: [10.1136/bjsports-2018-100056](https://doi.org/10.1136/bjsports-2018-100056) · PMID: [30337460](https://pubmed.ncbi.nlm.nih.gov/30337460/)
 
 ### nedeltcheva-2010-sleep-adiposity
