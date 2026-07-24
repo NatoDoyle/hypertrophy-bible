@@ -774,6 +774,7 @@ const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort l
 function startSession(templateSession) {
   sess = {
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
+    beginner: templateSession.beginner === true, // plain-effort language on the set screen — no "RIR" jargon for a true novice
     deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
     logged: [], weights: {}, reps: {}, rir: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
@@ -900,7 +901,7 @@ function renderPlayer(resting = 0) {
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
-    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${helpDot("glossary", "what's RIR?")}</p>
+    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}

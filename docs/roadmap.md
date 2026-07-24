@@ -61,10 +61,12 @@ multi-user infra).
    schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
    171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to
    per-exercise clips over time. (Real footage remains BLOCKERS #1.)
-4. **[Goal 3] Novice-friction quick wins.** Hide the specialization question from beginners;
-   make the workout the day-1 hero over the optional check-in; plain-effort language instead of
-   RIR on the beginner set screen; collapse the Fuel wall to bodyweight+activity with an
-   inferred BF% estimate.
+4. **[Goal 3] Novice-friction quick wins.** *PARTIALLY SHIPPED (Wave 81).* Done: the set screen's
+   "leave about N in the tank" target no longer surfaces the bare "what's RIR?" glossary link to
+   a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term
+   client-side; non-beginners keep it). **Remaining slices:** hide the specialization question
+   from beginners; make the workout the day-1 hero over the optional check-in; collapse the Fuel
+   wall to bodyweight+activity with an inferred BF% estimate.
 5. **[Goal 1] Citation-coverage gate.** `tools/check-claim-coverage.mjs` in `npm run check`: fail
    when a page with [Grade A]/[Grade B] markers has zero `[^key]` citations (allowlist framework
    pages). Makes "every claim web-verified" measurable and stops regression.
