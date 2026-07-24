@@ -49,10 +49,11 @@ multi-user infra).
 1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79).* Done: reusable pure
    `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep hypertrophy
    work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal record!"
-   banner. **Remaining slices (build next):** (a) bonus XP for a PR (adherence.mjs `xpAndLevel` —
-   the engine now supports replaying PRs over history); (b) an in-*player* PR moment (celebrate
-   mid-session when a set beats a best, not only in the recap); (c) a persistent "wins"/PR feed
-   + PR count (a lookback surface — progress-dopamine).
+   banner. Also SHIPPED (Wave 81): bonus XP for a PR — +50 XP per record, surfaced as "+N XP" in
+   the recap banner and banked into the level (`xpAndLevel` replays PRs over history; `PR_XP` is
+   the single source of truth shared by the engine and the recap). **Remaining slices (build
+   next):** (b) an in-*player* PR moment (celebrate mid-session when a set beats a best, not only
+   in the recap); (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
 2. **[Goal 4] Variable rewards + proactive habit reminders.** Surprise "lucky set"/bonus XP on
    top of fixed XP; a weekly "when will you train?" commitment device; push reminders keyed to
    the user's *own* logged training times, not just lapse-reactive.

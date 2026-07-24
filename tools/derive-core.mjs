@@ -26,6 +26,12 @@ export const countsForE1RM = (set) =>
   typeof set.reps === "number" && set.reps > 0 && set.reps <= RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
+// XP awarded for a single personal record — the peak-achievement bonus on top of the
+// base session/hard-set XP. Lives here (with detectPersonalRecords) as the single source
+// of truth so the gamification engine (xpAndLevel) and the recap's "+N XP" reward can
+// never disagree about what a PR is worth.
+export const PR_XP = 50;
+
 // Personal records set IN a session — the reward the app celebrates after a workout.
 // Mirrors the est-1RM / load split used everywhere else (countsForE1RM + RELIABLE_1RM_REPS
 // as the single source of truth) so a celebrated PR can NEVER contradict the progression

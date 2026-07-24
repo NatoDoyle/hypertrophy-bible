@@ -4,7 +4,7 @@ import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
-  detectPersonalRecords,
+  detectPersonalRecords, PR_XP,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -328,7 +328,8 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
   // pump-band work the old e1rm-only check silently ignored (a 15-rep leg curl beating its
   // best weight used to be told nothing). Structured, not a pre-baked "N kg" string, so
   // the client renders the reward in the unit the user actually chose.
-  for (const pr of detectPersonalRecords(newSession, prior)) {
+  const prs = detectPersonalRecords(newSession, prior);
+  for (const pr of prs) {
     if (pr.kind === "e1rm") wins.push({ kind: "pr", name: name(pr.exercise), e1rm_kg: pr.e1rm_kg, delta_kg: pr.delta_kg });
     else if (pr.kind === "load") wins.push({ kind: "pr-load", name: name(pr.exercise), load_kg: pr.load_kg, reps: pr.reps });
   }
@@ -355,7 +356,9 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
   }
 
   if (!wins.length) wins.push("✅ Session logged. Consistency is what builds muscle — see you next time.");
-  return { day_number: allSessions.length, wins };
+  // pr_xp: the bonus XP earned from this session's PRs, so the recap can show the reward
+  // at the moment it lands (the same PR_XP the gamification engine banks into the level).
+  return { day_number: allSessions.length, wins, pr_xp: prs.length * PR_XP };
 }
 
 // The Progress tab payload: everything derived, nothing asked.
