@@ -409,6 +409,7 @@ check("sessionRecap returns derived wins (PR detection)", () => {
   assert.ok(Array.isArray(recap.wins) && recap.wins.length > 0);
   const pr = recap.wins.find((w) => w.kind === "pr"); // structured: client formats in the user's unit
   assert.ok(pr && pr.e1rm_kg > 0 && pr.delta_kg > 0 && pr.name); // new e1RM PR detected
+  assert.equal(recap.pr_xp, 50); // Wave 81: the PR's bonus XP is surfaced in the recap (+50)
 });
 
 check("sessionRecap now celebrates HIGHER-REP work — a load PR (Wave 79, Goal 4)", () => {
