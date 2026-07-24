@@ -2,11 +2,19 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**96** verified references.
+**97** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
 ---
+
+### ashtary-larky-2025-creatine-meta
+Ashtary-Larky D & et al. (2025). Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.
+
+*Journal of the International Society of Sports Nutrition*, 22(sup1), 2586523.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1080/15502783.2025.2586523](https://doi.org/10.1080/15502783.2025.2586523) · PMID: [41433021](https://pubmed.ncbi.nlm.nih.gov/41433021/)
 
 ### attarieh-2025-biceps-shoulder-angle
 Attarieh P et al. (2025). Comparison Between Shoulder Flexed and Extended Positions in Elbow Flexion Resistance Training on Regional Hypertrophy and Maximum Strength: Preacher versus Bayesian Cable Curls.
