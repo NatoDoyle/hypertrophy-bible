@@ -44,6 +44,20 @@ ok("level starts at 1", xl.level === 1 && xl.xp_to_next === 500 - 345);
 ok("levels up past 500 XP", xlLevel(5, 5) === 2);
 function xlLevel(n, hard) { return xpAndLevel(Array.from({ length: n }, () => sess("2026-01-05", hard))).level; }
 
+// PR bonus XP (roadmap #1 slice a): a session that beats a prior best earns 50 bonus
+// XP per PR, replaying detectPersonalRecords over the session's own history — the
+// same engine the recap uses, so the reward and the celebration can never disagree.
+const prSess = (date, weight) => ({ date, sets: [{ set_type: "work", exercise: "squat", weight_kg: weight, reps: 8 }] });
+const withoutPR = [prSess("2026-01-05", 100), prSess("2026-01-12", 100)];
+const withPR = [prSess("2026-01-05", 100), prSess("2026-01-12", 110)];
+ok("a session that sets a PR earns 50 bonus XP over an identical non-PR session",
+  xpAndLevel(withPR).xp === xpAndLevel(withoutPR).xp + 50);
+ok("a first-ever performance (no prior best to beat) is not a PR — no bonus on session 1",
+  xpAndLevel([prSess("2026-01-05", 100)]).xp === 100 + 5);
+ok("two PRs in the plan history each pay out (session 2 AND session 3 both beat their prior)",
+  xpAndLevel([prSess("2026-01-05", 100), prSess("2026-01-12", 110), prSess("2026-01-19", 120)]).xp
+    === (100 + 5) + (100 + 5 + 50) + (100 + 5 + 50));
+
 // milestones
 const ms = milestones(8);
 ok("milestones reached include 8", ms.reached.some((r) => r.at === 8) && ms.latest.at === 8);
