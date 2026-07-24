@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -72,10 +72,16 @@ export function xpAndLevel(sessions) {
   const chron = [...(sessions ?? [])].sort((a, b) => ((a.local_date ?? a.date ?? "") < (b.local_date ?? b.date ?? "") ? -1 : 1));
   let prBonus = 0;
   for (let i = 0; i < chron.length; i++) prBonus += detectPersonalRecords(chron[i], chron.slice(0, i)).length * PR_XP;
-  const xp = base + prBonus;
+  // Lucky-set bonus — a variable-ratio reward layered on top of the fixed schedule
+  // (roadmap #2's remaining slice). Deterministic per session (isLuckySet hashes the
+  // session's own session_id), so this total can never drift from what the live
+  // player toasted or the recap showed.
+  let luckyBonus = 0;
+  for (const s of sessions ?? []) luckyBonus += luckySetsInSession(s).length * LUCKY_SET_XP;
+  const xp = base + prBonus + luckyBonus;
   const level = Math.floor(xp / 500) + 1;           // ~a level every ~5 sessions
   const into = xp - (level - 1) * 500;
-  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into, pr_xp: prBonus };
+  return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into, pr_xp: prBonus, lucky_xp: luckyBonus };
 }
 
 const MILESTONES = [

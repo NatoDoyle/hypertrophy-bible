@@ -28,6 +28,9 @@ import {
   priorPersonalBests,
   checkSetPR,
   allPersonalRecords,
+  isLuckySet,
+  luckySetsInSession,
+  LUCKY_SET_XP,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -479,6 +482,52 @@ check("allPersonalRecords: full history, most-recent-first, judged chronological
   assert.equal(prs[0].kind, "e1rm");
   assert.equal(prs[0].date, "2026-03-08");
   assert.equal(allPersonalRecords([]).length, 0);
+});
+
+check("isLuckySet: deterministic (same inputs -> same verdict, always)", () => {
+  const a = isLuckySet("sess-1", "bench", 3);
+  for (let i = 0; i < 20; i++) assert.equal(isLuckySet("sess-1", "bench", 3), a);
+});
+check("isLuckySet: no session id -> never lucky (legacy/synthetic fixtures stay unaffected)", () => {
+  assert.equal(isLuckySet(null, "bench", 0), false);
+  assert.equal(isLuckySet(undefined, "bench", 0), false);
+  assert.equal(isLuckySet("", "bench", 0), false);
+});
+check("isLuckySet: lands on roughly 1-in-8 hard-set slots across many sessions (variable-ratio, not fixed)", () => {
+  let hits = 0;
+  const trials = 4000;
+  for (let i = 0; i < trials; i++) if (isLuckySet(`sess-${i}`, "bench", 0)) hits++;
+  const rate = hits / trials;
+  assert.ok(rate > 0.08 && rate < 0.17, `expected ~12.5% lucky rate, got ${(rate * 100).toFixed(1)}%`); // loose band: this is a hash, not a true RNG
+  assert.ok(hits > 0 && hits < trials); // never always-lucky, never never-lucky
+});
+check("luckySetsInSession: warm-ups are never lucky (only hard work sets count)", () => {
+  // Brute-force a session_id/exercise pair where index 0 IS lucky, so a false result
+  // would only be possible via the warmup gate, not bad luck.
+  let sid = null;
+  for (let i = 0; i < 1000; i++) if (isLuckySet(`w-${i}`, "bench", 0)) { sid = `w-${i}`; break; }
+  assert.ok(sid, "test setup: could not find a lucky seed");
+  const warmupOnly = { session_id: sid, sets: [{ exercise: "bench", set_type: "warmup", weight_kg: 60, reps: 5 }] };
+  assert.equal(luckySetsInSession(warmupOnly).length, 0);
+  const asWorkSet = { session_id: sid, sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] };
+  assert.equal(luckySetsInSession(asWorkSet).length, 1);
+});
+check("luckySetsInSession: per-exercise hard-set index replays in logged order, matching isLuckySet directly", () => {
+  const sid = "sess-order-check";
+  const sets = [
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "row", set_type: "work", weight_kg: 80, reps: 8 },
+    { exercise: "bench", set_type: "warmup", weight_kg: 40, reps: 5 }, // never lucky, never consumes a bench index
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+  ];
+  const expected = [
+    isLuckySet(sid, "bench", 0), isLuckySet(sid, "bench", 1), isLuckySet(sid, "row", 0), isLuckySet(sid, "bench", 2),
+  ].filter(Boolean).length;
+  assert.equal(luckySetsInSession({ session_id: sid, sets }).length, expected);
+});
+check("LUCKY_SET_XP is a positive flat bonus, smaller than the PR bonus", () => {
+  assert.ok(LUCKY_SET_XP > 0 && LUCKY_SET_XP < 50);
 });
 
 console.log(`\n${passed} test(s) passed.`);

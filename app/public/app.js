@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP } from "/session-core.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -900,9 +900,9 @@ function showPrToast(text) {
 // recap time — checkSetPR duplicates the server's rules, cross-tested in
 // scripts/test-session.mjs, so the two surfaces can never disagree).
 function checkAndCelebratePR(exObj, weightKg, reps) {
-  if (!exObj.pr_watch || sess.prCelebrated?.[exObj.exercise]) return;
+  if (!exObj.pr_watch || sess.prCelebrated?.[exObj.exercise]) return false;
   const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch);
-  if (!pr) return;
+  if (!pr) return false;
   sess.prCelebrated = sess.prCelebrated || {};
   sess.prCelebrated[exObj.exercise] = true;
   const detail = pr.kind === "load"
@@ -910,6 +910,22 @@ function checkAndCelebratePR(exObj, weightKg, reps) {
     : `new estimated best single lift — ${dispWeight(pr.e1rm_kg)} ${unitLabel()}`;
   showPrToast(`🎉 <b>New personal record!</b><br><span class="muted">${esc(exObj.name)}: ${detail}</span>`);
   say(`New personal record on ${exObj.name}!`);
+  return true;
+}
+
+// The in-player half of the lucky-set variable reward (roadmap #2's remaining
+// slice): fires the instant a hard set that happens to be "lucky" is banked, not
+// only in the end-of-session recap. `checkLuckySet` reads the SAME session_id-hashed
+// rule the server replays at recap time (cross-tested in scripts/test-session.mjs),
+// so the live toast and the recap's "+N bonus XP" line can never disagree. Skips
+// the toast when this exact set ALSO just fired a PR celebration — the XP still
+// banks either way, but stacking two toasts on one set dilutes the bigger moment.
+function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
+  if (!checkLuckySet(sess.session_id, sess.logged, loggedSet)) return;
+  sess.luckyXp = (sess.luckyXp || 0) + LUCKY_SET_XP;
+  if (wasPR) return;
+  showPrToast(`🍀 <b>Lucky set!</b> <span style="color:var(--accent);font-weight:700">+${LUCKY_SET_XP} XP</span><br><span class="muted">${esc(exObj.name)}</span>`);
+  say("Lucky set — bonus XP!");
 }
 
 // The rest countdown's interval id lives at module level so ANY navigation can
@@ -1074,7 +1090,8 @@ function renderPlayer(resting = 0) {
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
-    checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps); // overrides the say() above if it's a PR — the bigger news
+    const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps); // overrides the say() above if it's a PR — the bigger news
+    checkAndCelebrateLucky(e, loggedSet, wasPR);
     if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
   };
@@ -1166,7 +1183,7 @@ function renderSupersetStation(L, P, resting = 0) {
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
-    for (const [m, loggedSet] of roundSets) checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps);
+    for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps));
     if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of

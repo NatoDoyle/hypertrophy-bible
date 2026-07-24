@@ -58,7 +58,7 @@ multi-user infra).
    — `allPersonalRecords` (`derive-core.mjs`) replays the full PR history, surfaced on the Progress
    tab as a "🏆 Personal records" card with a count and the recent records (the trophy shelf you
    return to). **✅ ITEM #1 COMPLETE.**
-2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (commitment device).*
+2. **[Goal 4] Variable rewards + proactive habit reminders.** — *SHIPPED (Cloud loop wave).*
    Done: the weekly "when will you train?" commitment device — `POST /api/commitment` (pinned to
    the current ISO week, `tools/derive-core.mjs`'s `isoWeekKey`/`WEEK_DAY_KEYS`/`weekDayKey`) lets
    a user state which days this week they intend to train; `push.mjs`'s new
@@ -66,8 +66,16 @@ multi-user infra).
    committed day the user hasn't trained yet — independent of `shouldPush`'s lapse-reactive
    days-since-last-session gate (which alone can't fire the day right after training, exactly
    when a same-day commitment reminder should); a `Today`-tab card lets the user set/edit the
-   plan and reinforces it once set, suppressed on day 1 (novice-friction). **Remaining slice:**
-   surprise "lucky set"/bonus XP on top of fixed XP.
+   plan and reinforces it once set, suppressed on day 1 (novice-friction). **Lucky-set bonus XP**
+   (the remaining slice): `tools/derive-core.mjs`'s `isLuckySet`/`luckySetsInSession` hash a
+   session's own random `session_id` with the exercise + its hard-set position to decide,
+   deterministically but unpredictably to the user, whether a hard set pays a `LUCKY_SET_XP` (15)
+   bonus on top of the fixed 100/session + 5/hard-set schedule (~1-in-8 hard sets) — the
+   variable-ratio schedule the fully-predictable XP couldn't provide. Fires as an in-player "🍀
+   Lucky set!" toast the instant the set is banked (`session-core.mjs`'s duplicate, cross-tested
+   against the server in `test-session.mjs`, same pattern as the PR toast) and is summed into
+   `xpAndLevel`'s `lucky_xp` + surfaced as a recap win line, so the live celebration, the recap,
+   and the banked XP total can never disagree.
 3. **[Goal 2 bottom / Goal 3] Inline exercise demos, v0.** Add a `media` field to the exercise
    schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
    171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to

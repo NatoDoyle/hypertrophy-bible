@@ -1,6 +1,7 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
 import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
+import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -50,6 +51,21 @@ const prS2 = { date: "2026-03-08", sets: [{ set_type: "work", exercise: "bench",
 const xpWithPr = xpAndLevel([prS1, prS2]);
 ok("a PR earns +50 bonus XP on top of the base", xpWithPr.xp === 210 + 50 && xpWithPr.pr_xp === 50);
 ok("no PR (identical repeat) earns no bonus XP", xpAndLevel([prS1, { ...prS1, date: "2026-03-15" }]).pr_xp === 0);
+
+// Roadmap #2's remaining slice: a "lucky set" variable-ratio bonus on top of the
+// fixed schedule. Brute-force a session_id where the exercise's first hard set is
+// known-lucky so the test doesn't depend on a specific hash implementation detail
+// beyond isLuckySet itself (the single source of truth adherence.mjs also reads).
+let luckySid = null;
+for (let i = 0; i < 1000; i++) if (isLuckySet(`lucky-${i}`, "squat", 0)) { luckySid = `lucky-${i}`; break; }
+const luckySession = { date: "2026-04-01", session_id: luckySid, sets: [{ exercise: "squat", set_type: "work", weight_kg: 100, reps: 5 }] };
+const xlLucky = xpAndLevel([luckySession]);
+ok("a lucky set earns +LUCKY_SET_XP on top of the base 100+5", xlLucky.xp === 105 + LUCKY_SET_XP && xlLucky.lucky_xp === LUCKY_SET_XP);
+// same session_id but no exercise history (no session_id at all) never triggers luck
+ok("without a session_id, no set can ever be lucky (legacy sessions unaffected)",
+  xpAndLevel([{ ...luckySession, session_id: undefined }]).lucky_xp === 0);
+ok("a warm-up set is never lucky even under a known-lucky seed/index",
+  xpAndLevel([{ date: "2026-04-01", session_id: luckySid, sets: [{ exercise: "squat", set_type: "warmup", weight_kg: 100, reps: 5 }] }]).lucky_xp === 0);
 
 // milestones
 const ms = milestones(8);
