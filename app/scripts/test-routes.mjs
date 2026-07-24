@@ -215,6 +215,22 @@ try {
   const rgAfter = await store.getUser(rgUser);
   ok("#A under-recovery suppresses the volume bump through /api/today (recovery-aware tune wired at the block boundary)", (rgAfter.plan_meta?.volume_adjust?.chest ?? 0) === 0);
 
+  // Wave 69 (audit A/B): the recovery gate reads only the CURRENT block, not the whole
+  // history. The same stall, but the only low check-ins are a long-ago rough patch
+  // OUTSIDE the 6-week block window — they must NOT drag a lifetime average down and
+  // suppress the bump the recent (check-in-free) block earned. Before the fix, these
+  // eight old lows made underRecovered=true and held chest at 0.
+  const woUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(35 - w * 7),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+  for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(120 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
+  await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": woUser } });
+  const woAfter = await store.getUser(woUser);
+  ok("#69 old out-of-block check-ins don't suppress the bump (recovery gate windows to the current block)", (woAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
+
   // --- Wave 15: onboard throttle + claim-turned-restore merge chain ---
 
   // #15: /api/onboard is the only unauthenticated route that writes a row per
