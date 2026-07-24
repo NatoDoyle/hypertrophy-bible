@@ -622,6 +622,44 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41433021/"
     },
     {
+      "key": "zhang-2019-vitamin-d-strength",
+      "authors": [
+        "Zhang L",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Effect of vitamin D supplementation on upper and lower limb muscle strength and muscle power in athletes: A meta-analysis.",
+      "source": "PLOS ONE",
+      "volume": "14",
+      "issue": "4",
+      "pages": "e0215826",
+      "doi": "10.1371/journal.pone.0215826",
+      "pmid": "31039170",
+      "study_type": "meta-analysis",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31039170/"
+    },
+    {
+      "key": "therdyothin-2025-omega3-mps",
+      "authors": [
+        "Therdyothin A",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "The effects of omega-3 polyunsaturated fatty acids on muscle and whole-body protein synthesis: a systematic review and meta-analysis.",
+      "source": "Nutrition Reviews",
+      "volume": "83",
+      "issue": "2",
+      "pages": "e131-e143",
+      "doi": "10.1093/nutrit/nuae055",
+      "pmid": "38777807",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38777807/"
+    },
+    {
       "key": "krieger-2010-single-multiple-sets",
       "authors": [
         "Krieger JW"

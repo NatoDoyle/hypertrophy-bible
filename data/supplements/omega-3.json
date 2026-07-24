@@ -1,0 +1,12 @@
+{
+  "id": "omega-3",
+  "name": "Omega-3 (Fish Oil)",
+  "tier": "insufficient",
+  "summary": "Good for general health, not a muscle-builder. Despite the marketing, the best evidence shows no boost to muscle protein synthesis in healthy adults; any muscle benefit is small and mostly for older or clinical populations.",
+  "effect": "A 2025 meta-analysis found no effect on muscle protein synthesis rates in healthy adults; a whole-body protein-synthesis signal likely reflects reduced protein breakdown, with the clearest benefits in inflammatory/clinical or older populations, not trained lifters.",
+  "dosing": "For general cardiovascular/health reasons, ~1-2 g/day combined EPA+DHA. Not required or recommended as a hypertrophy aid.",
+  "timing": "Irrelevant.",
+  "safety": "Generally safe; high doses can mildly thin blood and cause GI upset. Choose third-party-tested products for purity.",
+  "evidence_grade": "B",
+  "citations": ["therdyothin-2025-omega3-mps"]
+}

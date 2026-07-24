@@ -110,8 +110,10 @@ multi-user infra).
    medical decision). Verified NOT gaps (already covered — don't rebuild): recomposition
    (`building-muscle-in-a-deficit.md` covers it fully), plant-based (protein.md has the core
    guidance), tendon adaptation (`connective-tissue-adaptation.md`). Still genuinely missing:
-   pregnancy/postpartum, fiber-type × rep-range. Also expand supplement data (vitamin D, omega-3,
-   EAAs, debunks).
+   pregnancy/postpartum, fiber-type × rep-range. Supplement data: **vitamin D + omega-3 added
+   (Wave 90)** — both honestly graded (vitamin D fixes a deficiency, no ergogenic boost when
+   replete; omega-3 has NO MPS effect in healthy adults per Therdyothin 2025, a health supplement
+   not a muscle-builder). Still to add: EAAs, and debunks (glutamine, ashwagandha, ZMA, tart cherry).
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — block/undulating options, a taper/peak
