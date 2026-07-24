@@ -21,7 +21,7 @@ A caution: while muscle and strength return quickly, **tendons and joints re-ada
 
 ## The Evidence
 
-**Retained myonuclei explain fast regrowth.** In overload models, myonuclei added during growth are **not lost during detraining**[^bruusgaard-2010-myonuclei], and previously-stimulated muscle **regrows faster upon re-exposure**[^egner-2013-muscle-memory] — the cellular basis for muscle memory. **[Grade C]** (These mechanisms are strongest in animal models; the *practical* observation that trained people regain muscle quickly is robust in the gym.) This is why returning-lifter programming should be an accelerated ramp, not a beginner restart.
+**Retained myonuclei — and epigenetic marks — explain fast regrowth.** In overload models, myonuclei added during growth are **not lost during detraining**[^bruusgaard-2010-myonuclei], and previously-stimulated muscle **regrows faster upon re-exposure**[^egner-2013-muscle-memory] — the cellular basis for muscle memory. **[Grade C]** Human evidence now backs the effect directly: across a training → detraining → retraining cycle in young men, **retraining produced greater lean-mass gains than the first training block**, with retained DNA-methylation marks at growth-related genes persisting through the layoff even after muscle size had returned to baseline[^seaborne-2018-epigenetic-memory]. **[Grade C]** So the practical observation — trained people regain muscle quickly — is robust in the gym and no longer inferred from animal models alone. This is why returning-lifter programming should be an accelerated ramp, not a beginner restart.
 
 ## Key Uncertainties & Nuance
 - **Human myonuclear permanence is debated**, but the practical "you regain fast" pattern is reliable regardless of the exact mechanism.
@@ -35,3 +35,4 @@ None.
 ## References
 [^bruusgaard-2010-myonuclei]: Bruusgaard JC, et al. (2010). *Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.* Proceedings of the National Academy of Sciences, 107(34), 15111–15116. DOI: [10.1073/pnas.0913935107](https://doi.org/10.1073/pnas.0913935107). PMID: 20713720.
 [^egner-2013-muscle-memory]: Egner IM, et al. (2013). *A cellular memory mechanism aids overload hypertrophy in muscle long after an episodic exposure to anabolic steroids.* The Journal of Physiology, 591(24), 6221–6230. DOI: [10.1113/jphysiol.2013.264457](https://doi.org/10.1113/jphysiol.2013.264457). PMID: 24167222.
+[^seaborne-2018-epigenetic-memory]: Seaborne RA, et al. (2018). *Human Skeletal Muscle Possesses an Epigenetic Memory of Hypertrophy.* Scientific Reports, 8, 1898. DOI: [10.1038/s41598-018-20287-3](https://doi.org/10.1038/s41598-018-20287-3). PMID: 29382913.
