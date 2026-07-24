@@ -176,6 +176,26 @@ These are real failures from previous iterations. Each is now a standing check.
    mutations as their own statements, and after shipping a `public/` asset verify the invariant directly
    (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end.
 
+19. **A pure core's docstring states an input contract the BINDER must actually honor — a
+   comment is not enforcement.** The recovery gate (`recoverySignal`) averages the check-ins
+   it's handed, and its comment literally says "The block AVERAGE" — but the `/api/today`
+   binder passed the user's ENTIRE check-in and bodyweight history, so "block average" was
+   silently a *lifetime* average: an established lifter wrecked *this* block never tripped the
+   under-recovery gate, and a long-past cut read as a current deficit for months, each
+   defeating the exact Increment-A/B behaviour the code was built for. The pure function was
+   correct in isolation; the binder violated a contract that lived only in prose. → **Standing
+   lens:** when a pure function's doc/comment promises a SCOPED input ("block", "recent", "this
+   week", "last N"), grep its call sites and confirm the binder actually windows the data — a
+   scoping contract stated only in a comment is not enforced, and the pure-core test can't
+   catch it because the test hands it already-scoped fixtures. (Same burst re-confirmed lesson
+   16: the Wave-49 "~null kcal/day" NaN class returned through a NEW unvalidated field —
+   `activity`, whose `ACTIVITY[key] ?? default` lookup resolved an `Object.prototype` key to a
+   function — because the boundary guard `bf_pct` got in Wave 49 was never extended to it.
+   Every new field needs the boundary check, not just the one that first exposed the class.)
+   Meta: this audit — 10 real defects across the nutrition + adaptive-engine code that had
+   shipped since iteration-37 — is lesson 17's positive case in action: yield came from
+   genuinely UN-audited new code, not from re-sweeping surfaces already swept.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
