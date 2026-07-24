@@ -686,7 +686,11 @@ async function renderToday() {
     { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
     { key: "calories", icon: "🌙", label: "Tonight's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
-  const firstUndone = steps.find((x) => !x.done && !x.dismissed);
+  // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
+  // came to train — an optional survey must never read as the gate before it (Goal 3).
+  const firstUndone = (s.day_number === 1 && !workoutDone)
+    ? steps.find((x) => x.key === "workout")
+    : steps.find((x) => !x.done && !x.dismissed);
   const stepRow = (x) => {
     const isNext = x.key === firstUndone?.key;
     const settled = x.done || x.dismissed;
