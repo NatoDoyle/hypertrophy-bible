@@ -266,6 +266,24 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24167222/"
     },
     {
+      "key": "seaborne-2018-epigenetic-memory",
+      "authors": [
+        "Seaborne RA",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Human Skeletal Muscle Possesses an Epigenetic Memory of Hypertrophy.",
+      "source": "Scientific Reports",
+      "volume": "8",
+      "pages": "1898",
+      "doi": "10.1038/s41598-018-20287-3",
+      "pmid": "29382913",
+      "study_type": "non-RCT-trial",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29382913/"
+    },
+    {
       "key": "enes-2024-volume-progression",
       "authors": [
         "Enes A",
