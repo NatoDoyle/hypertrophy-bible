@@ -38,9 +38,15 @@ export function navyBodyFat({ sex, height_cm, neck_cm, waist_cm, hip_cm }) {
 export const ACTIVITY = { sedentary: 1.2, light: 1.375, moderate: 1.5, active: 1.725, very_active: 1.9 };
 export function baseTDEE({ weight_kg, bf_pct, activity = "moderate" }) {
   if (!(weight_kg > 0) || bf_pct == null || bf_pct < 0 || bf_pct >= 100) return null;
+  // The multiplier must be a KNOWN activity level. `ACTIVITY[activity] ?? 1.5` is
+  // unsafe: an inherited Object.prototype key ("toString", "constructor", …) resolves
+  // to a FUNCTION (not nullish), so `rmr * fn` = NaN and every downstream guard that
+  // checks `== null` sails past it — reintroducing the Wave-49 "~null kcal/day" plan
+  // through an unvalidated field (auth is possession-of-UUID; any client can post one).
+  const mult = Object.hasOwn(ACTIVITY, activity) ? ACTIVITY[activity] : 1.5;
   const lbm = weight_kg * (1 - bf_pct / 100);
   const rmr = 370 + 21.6 * lbm;
-  return Math.round(rmr * (ACTIVITY[activity] ?? 1.5));
+  return Math.round(rmr * mult);
 }
 
 // --- Adaptive TDEE from logged data (the spreadsheet's headline trick, and the
@@ -49,14 +55,20 @@ export function baseTDEE({ weight_kg, bf_pct, activity = "moderate" }) {
 // entries: [{ date, kcal, weight_kg }] — needs >=~10 days spanning a real weight
 // trend to be trustworthy; returns null until then so the caller falls back to
 // baseTDEE. `unit` "kg"|"lb" (weights are stored in the user's unit).
-export function adaptiveTDEE(entries, { minDays = 10, unit = "kg" } = {}) {
+export function adaptiveTDEE(entries, { minDays = 10, minSpanDays = 10, unit = "kg" } = {}) {
   const withKcal = (entries ?? []).filter((e) => typeof e.kcal === "number" && e.kcal > 0 && e.date);
   const withWeight = (entries ?? []).filter((e) => typeof e.weight_kg === "number" && e.weight_kg > 0 && e.date)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   if (withKcal.length < minDays || withWeight.length < 2) return null;
   const avgIntake = withKcal.reduce((a, e) => a + e.kcal, 0) / withKcal.length;
   const first = withWeight[0], last = withWeight[withWeight.length - 1];
-  const spanDays = Math.max(1, Math.round((+new Date(last.date) - +new Date(first.date)) / 86400000));
+  const spanDays = Math.round((+new Date(last.date) - +new Date(first.date)) / 86400000);
+  // The weigh-ins must span a real trend, not just two adjacent days. Amortizing a
+  // weight delta over too few days turns ordinary daily water fluctuation (±1–2 kg)
+  // into a huge phantom surplus/deficit — e.g. a 0.5 kg overnight drop over 1 day
+  // reads as burning ~3,850 kcal/day and yields a ~6,000 kcal "maintenance" that
+  // passes the sanity band. Below the span floor, fall back to the formula estimate.
+  if (spanDays < minSpanDays) return null;
   const perKg = unit === "lb" ? KCAL_PER_LB : KCAL_PER_KG;
   const weightChangeEnergy = (last.weight_kg - first.weight_kg) * perKg; // + if gained
   // maintenance = what you ate minus what you banked (gain) / plus what you burned (loss)
@@ -112,10 +124,24 @@ export function nutritionPlan(profile, history = []) {
   // Degenerate stats (e.g. an impossible body-fat %) make TDEE uncomputable —
   // return null so the caller re-prompts for stats instead of surfacing a plan
   // full of nulls ("~null kcal/day").
-  if (tdee == null) return null;
-  const weekly_change_kg = recommendedWeeklyChange({ weight_kg, goal, training_status });
-  const calories = calorieTarget({ tdee, weekly_change_kg, unit });
+  // NaN is not null: a poisoned multiplier (see baseTDEE) makes tdee NaN, which the
+  // `== null` check lets through — guard both so the caller re-prompts for stats.
+  if (tdee == null || !Number.isFinite(tdee)) return null;
+  const perKg = unit === "lb" ? KCAL_PER_LB : KCAL_PER_KG;
+  const weekly_intent_kg = recommendedWeeklyChange({ weight_kg, goal, training_status });
+  let calories = calorieTarget({ tdee, weekly_change_kg: weekly_intent_kg, unit });
   const macros = macroTargets({ calories, weight_kg, goal });
+  // Keep the targets internally consistent. At an extreme bodyweight in a deep
+  // deficit, protein (lean-mass protection) plus essential fat can sum to MORE than
+  // the floored calorie target — an impossible-to-hit prescription. Never show a
+  // calorie target below the macros' own sum: the macros stand and the displayed
+  // calories rise to cover them. Then re-derive the weekly change from the ACTUAL
+  // (calories − maintenance) gap so the shown rate and the shown calories agree
+  // (they already match for normal cases; this only corrects the floored/reconciled
+  // ones, where the pre-floor intent overstated the real deficit).
+  const macroKcal = macros ? macros.protein_g * 4 + macros.fat_g * 9 + macros.carbs_g * 4 : 0;
+  if (macroKcal > calories) calories = macroKcal;
+  const weekly_change_kg = Math.round(((calories - tdee) * 7 / perKg) * 100) / 100;
   return {
     tdee, tdee_basis: adaptive ? "logged" : "estimated", base_tdee_estimate: base,
     weekly_change_kg, calorie_target: calories, ...macros,
