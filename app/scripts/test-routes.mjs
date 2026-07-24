@@ -367,8 +367,11 @@ try {
   const fGet = await (await app.request("/api/nutrition", { headers: { "X-HB-User": fUser } })).json();
   ok("#70 GET /api/nutrition surfaces sex so the stats form can ask for hip", fGet.sex === "female");
   const fUser2 = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "female", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
-  const fProf2 = await json("POST", "/api/nutrition/profile", { user_id: fUser2, weight_kg: 65, height_cm: 165, waist_cm: 74, neck_cm: 32 });
-  ok("#70 a female estimate WITHOUT hip yields no plan (why the hip field is required)", !fProf2.data.nutrition);
+  // Wave 87: a female with weight+height but no hip (so the Navy tape can't run) now STILL
+  // gets a plan via the rough BMI-based BF% fallback — the tape wall no longer blocks the
+  // nutrition half of the app. (Was: "#70 ... yields no plan"; the hip field is now optional.)
+  const fProf2 = await json("POST", "/api/nutrition/profile", { user_id: fUser2, weight_kg: 65, height_cm: 165 });
+  ok("#87 a female with just weight+height gets a plan via the BMI fallback (Fuel wall removed)", fProf2.data.nutrition?.calorie_target > 0);
 
   // --- Wave 46: daily-flow status (#6) + morning check-in captures weight ---
   const dUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;

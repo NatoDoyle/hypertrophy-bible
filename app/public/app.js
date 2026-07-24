@@ -1500,8 +1500,8 @@ async function renderFuel() {
       <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
         ${fld("f-weight", `Bodyweight (${unitLabel()})`, "", unitPref() === "lb" ? "e.g. 180" : "e.g. 82")}
         ${fld("f-height", "Height (cm)", "", "e.g. 178")}
-        ${fld("f-bf", "Body fat % (estimate is fine)", "", "e.g. 18")}
-        <p class="muted" style="margin:2px 0 8px">…or leave body fat blank and add ${isFemale ? "these and" : "these two and"} I'll estimate it:</p>
+        ${fld("f-bf", "Body fat % (optional)", "", "e.g. 18")}
+        <p class="muted" style="margin:2px 0 8px">Weight and height are enough to start. Want a sharper estimate? Add your body fat %, or a tape measure:</p>
         ${fld("f-waist", "Waist (cm, at the navel)", "", "optional")}
         ${fld("f-neck", "Neck (cm)", "", "optional")}
         ${isFemale ? fld("f-hip", "Hip (cm, at the widest)", "", "optional") : ""}
@@ -1524,10 +1524,11 @@ async function renderFuel() {
       // app — convert to kg before it's stored, or an lb entry corrupts the trend + TDEE.
       const weight = weightDisp != null ? toKg(weightDisp) : undefined;
       if (!weight) { $("#f-msg").textContent = "Enter your bodyweight to start."; return; }
+      if (!height) { $("#f-msg").textContent = "Add your height too — with that I can start your targets."; return; }
       if (bf && (bf < 2 || bf >= 60)) { $("#f-msg").textContent = "That body fat % looks off — enter a value between about 3 and 55."; return; }
-      // Women's tape estimate also needs the hip measure (the Navy formula requires it).
-      const tapeComplete = isFemale ? (waist && neck && hip) : (waist && neck);
-      if (!bf && !tapeComplete) { $("#f-msg").textContent = isFemale ? "Add your body fat %, or your waist + neck + hip so I can estimate it." : "Add your body fat %, or your waist + neck so I can estimate it."; return; }
+      // BF% and the tape measures are OPTIONAL refinements — weight + height alone seed a rough
+      // BMI-based estimate the adaptive TDEE later corrects, so no "add BF% or a tape measure"
+      // gate (that wall bounced novices off the whole nutrition half of the app).
       try {
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
         await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value }) });

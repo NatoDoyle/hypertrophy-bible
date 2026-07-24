@@ -77,10 +77,14 @@ multi-user infra).
    a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term
    client-side; non-beginners keep it). Also done (Wave 83): the specialization question
    ("All-in specialization block…") is hidden from beginners — a programming decision a novice
-   can't make, now gated on `training_status !== "beginner"` in the onboarding `showIf`.
-   **Remaining slices:** make the workout the day-1 hero over the optional check-in; collapse the
-   Fuel wall to bodyweight+activity with an inferred BF% estimate; seed the first-set weight to a
-   body-scaled estimate.
+   can't make, now gated on `training_status !== "beginner"` in the onboarding `showIf`. Also done
+   (Wave 84): on day 1 the workout is the highlighted hero, not the optional morning check-in.
+   Also done (Wave 87): the **Fuel tape-measure wall is gone** — `bmiBodyFat` (Deurenberg, a rough
+   BMI-based BF% seed the adaptive TDEE later corrects) is the last fallback in `nutritionInputs`,
+   so the Fuel form works from **weight + height alone**; BF% and tape measures are now optional
+   "sharper estimate" fields. **Remaining slice:** seed the first-set weight to a body-scaled
+   estimate for non-beginners (a body-scaled first guess so the number on screen is a confirm, not
+   a blind guess; keep the safe empty-bar default for true beginners).
 5. **[Goal 1] Citation-coverage gate.** — *SHIPPED.* `tools/check-claim-coverage.mjs` runs in
    `npm run check` and fails the build when a content page makes a [Grade A]/[Grade B] claim but
    carries zero `[^footnote]` citations. Two plain-language getting-started synthesis pages (which
