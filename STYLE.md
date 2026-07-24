@@ -52,6 +52,12 @@ section that **cross-links to the evidence pillars** in place of footnote citati
 §4 permits uncited) — but they do **not** use `[^footnote]` citations or a `## The Evidence`/`##
 References` block. The science pillars (00–08) keep the full template above.
 
+**Claim-coverage gate (`npm run check`).** `tools/check-claim-coverage.mjs` fails the build if any
+content page makes a **`[Grade A]`/`[Grade B]`** claim but carries **zero** `[^footnote]` citations —
+a graded scientific claim must show its evidence. A getting-started page that states a Grade-A/B claim
+by *reference* (linking to the fully-cited evidence pillar, as this variant permits) must be added to
+that tool's short, justified `ALLOWLIST`. Grade-C/D claims are exempt (they can be uncited per §4).
+
 ---
 
 ## 2. Voice & audience

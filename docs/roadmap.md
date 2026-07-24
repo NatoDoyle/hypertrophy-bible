@@ -79,9 +79,12 @@ multi-user infra).
    **Remaining slices:** make the workout the day-1 hero over the optional check-in; collapse the
    Fuel wall to bodyweight+activity with an inferred BF% estimate; seed the first-set weight to a
    body-scaled estimate.
-5. **[Goal 1] Citation-coverage gate.** `tools/check-claim-coverage.mjs` in `npm run check`: fail
-   when a page with [Grade A]/[Grade B] markers has zero `[^key]` citations (allowlist framework
-   pages). Makes "every claim web-verified" measurable and stops regression.
+5. **[Goal 1] Citation-coverage gate.** — *SHIPPED.* `tools/check-claim-coverage.mjs` runs in
+   `npm run check` and fails the build when a content page makes a [Grade A]/[Grade B] claim but
+   carries zero `[^footnote]` citations. Two plain-language getting-started synthesis pages (which
+   cite by reference to their evidence pillars, as STYLE.md §1 permits) are on a short, justified
+   allowlist; Grade C/D claims are exempt. Makes "every claim web-verified" measurable and blocks
+   regression. Documented in STYLE.md §1. (The deeper per-claim proximity check remains Tier-2 #6.)
 
 ### Tier 2 — high value, larger
 6. **[Goal 1] Citation-completeness pass** on the undercited core pages (getting-started pillar,
