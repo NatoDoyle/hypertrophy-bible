@@ -14,6 +14,7 @@ generator adjusts on.
 | [Age](age.md) | Older adults (masters) and adolescents — recovery, volume, joints | ✅ |
 | [Sex Differences & Female Considerations](sex-and-female-considerations.md) | Relative vs absolute gains, the "bulky" myth, menstrual cycle | ✅ |
 | [Menopause & Training](menopause-and-training.md) | Defending muscle and bone through the transition; protein; HRT as a medical decision | ✅ |
+| [Pregnancy & Postpartum Training](pregnancy-and-postpartum-training.md) | Training safely through an uncomplicated pregnancy and the postpartum return; medical clearance first | ✅ |
 | [Genetics & Anthropometry](genetics-and-anthropometry.md) | Responders vs non-responders, muscle shape, proportions and exercise fit | ✅ |
 | [Returning Lifters & Special Populations](returning-lifters-and-special-populations.md) | Muscle memory, comeback ramps, medical considerations | ✅ |
 | [Enhanced vs Natural (and Hormones)](enhanced-vs-natural.md) | PEDs vs natural potential, realistic expectations, hormone myths | ✅ |

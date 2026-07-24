@@ -2,11 +2,19 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**102** verified references.
+**106** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
 ---
+
+### acog-2020-pregnancy-exercise
+ACOG Committee on Obstetric Practice (2020). Physical Activity and Exercise During Pregnancy and the Postpartum Period: ACOG Committee Opinion, Number 804.
+
+*Obstetrics and Gynecology*, 135(4), e178-e188.
+
+- Type: guideline · Population: pregnant/postpartum
+- DOI: [10.1097/AOG.0000000000003772](https://doi.org/10.1097/AOG.0000000000003772) · PMID: [32217980](https://pubmed.ncbi.nlm.nih.gov/32217980/)
 
 ### ashtary-larky-2025-creatine-meta
 Ashtary-Larky D & et al. (2025). Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.
@@ -135,6 +143,22 @@ Damas F & et al. (2018). The development of skeletal muscle hypertrophy through 
 
 - Type: narrative-review
 - DOI: [10.1007/s00421-017-3792-9](https://doi.org/10.1007/s00421-017-3792-9) · PMID: [29282529](https://pubmed.ncbi.nlm.nih.gov/29282529/)
+
+### davenport-2018-prenatal-depression
+Davenport MH et al. (2018). Impact of prenatal exercise on both prenatal and postnatal anxiety and depressive symptoms: a systematic review and meta-analysis.
+
+*British Journal of Sports Medicine*, 52(21), 1376-1385.
+
+- Type: meta-analysis · Population: pregnant/postpartum
+- DOI: [10.1136/bjsports-2018-099697](https://doi.org/10.1136/bjsports-2018-099697) · PMID: [30337464](https://pubmed.ncbi.nlm.nih.gov/30337464/)
+
+### davenport-2018-prenatal-gdm-htn
+Davenport MH et al. (2018). Prenatal exercise for the prevention of gestational diabetes mellitus and hypertensive disorders of pregnancy: a systematic review and meta-analysis.
+
+*British Journal of Sports Medicine*, 52(21), 1367-1375.
+
+- Type: meta-analysis · Population: pregnant
+- DOI: [10.1136/bjsports-2018-099355](https://doi.org/10.1136/bjsports-2018-099355) · PMID: [30337463](https://pubmed.ncbi.nlm.nih.gov/30337463/)
 
 ### egner-2013-muscle-memory
 Egner IM & et al. (2013). A cellular memory mechanism aids overload hypertrophy in muscle long after an episodic exposure to anabolic steroids.
@@ -391,6 +415,14 @@ Morton RW & et al. (2018). A systematic review, meta-analysis and meta-regressio
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1136/bjsports-2017-097608](https://doi.org/10.1136/bjsports-2017-097608) · PMID: [28698222](https://pubmed.ncbi.nlm.nih.gov/28698222/)
+
+### mottola-2018-pregnancy-guideline
+Mottola MF et al. (2018). 2019 Canadian guideline for physical activity throughout pregnancy.
+
+*British Journal of Sports Medicine*, 52(21), 1339-1346.
+
+- Type: guideline · Population: pregnant
+- DOI: [10.1136/bjsports-2018-100056](https://doi.org/10.1136/bjsports-2018-100056) · PMID: [30337460](https://pubmed.ncbi.nlm.nih.gov/30337460/)
 
 ### nedeltcheva-2010-sleep-adiposity
 Nedeltcheva AV & et al. (2010). Insufficient sleep undermines dietary efforts to reduce adiposity.
