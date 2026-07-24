@@ -325,6 +325,25 @@ try {
   const noToday = await (await app.request("/api/nutrition?d=2020-01-01", { headers: { "X-HB-User": nUser } })).json();
   ok("#51 a day with nothing logged returns no today total", !noToday.today);
 
+  // --- Wave 68 (audit): nutrition route hardening through the real HTTP door ---
+  // E: a hostile/unknown activity string must not poison TDEE to NaN (Wave-49 class).
+  const badActUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+  await json("POST", "/api/bodyweight", { user_id: badActUser, kg: 82 });
+  const badAct = await json("POST", "/api/nutrition/profile", { user_id: badActUser, bf_pct: 18, height_cm: 180, activity: "toString" });
+  ok("#68 an Object.prototype activity key can't produce a NaN plan",
+    badAct.data.nutrition && Number.isFinite(badAct.data.nutrition.tdee) && badAct.data.nutrition.calorie_target > 0);
+  // G: a weight typed into the stats form becomes the latest weigh-in, so a stale
+  // logged weight can't silently override the value the user just entered.
+  const wUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+  await json("POST", "/api/bodyweight", { user_id: wUser, kg: 95, date: "2026-01-05" }); // months-old weigh-in
+  const freshP = await json("POST", "/api/nutrition/profile", { user_id: wUser, bf_pct: 18, height_cm: 178, weight_kg: 72 });
+  ok("#68 a freshly-entered stats weight overrides a stale weigh-in (not ignored)",
+    freshP.data.profile.weight_kg === 72 && Math.round(freshP.data.nutrition.protein_g) === Math.round(72 * 1.8));
+  // H: negative / absurd macros are clamped at the door, never stored as negative intake.
+  await json("POST", "/api/nutrition/log", { user_id: wUser, date: "2026-07-01", kcal: 2200, protein_g: -150 });
+  const clamped = await (await app.request("/api/nutrition?d=2026-07-01", { headers: { "X-HB-User": wUser } })).json();
+  ok("#68 a negative macro is clamped to 0, never a negative intake", clamped.today && clamped.today.protein_g === 0);
+
   // --- Wave 46: daily-flow status (#6) + morning check-in captures weight ---
   const dUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
   const DAY = "2026-07-23";

@@ -28,6 +28,13 @@ const at = adaptiveTDEE(hist, { unit: "kg" });
 // than intake: 3000 + (0.5 × 7700)/13 ≈ 3296.
 ok("adaptiveTDEE = avg intake minus stored/lost energy (~3296 for the loss case)", at > 3000 && Math.abs(at - 3296) <= 5);
 ok("adaptiveTDEE returns null below the data threshold", adaptiveTDEE(hist.slice(0, 5)) === null);
+// Wave 68 (audit): weigh-ins spanning too FEW days must not be trusted — a day of
+// water-weight noise would masquerade as a huge maintenance. 10 kcal logs but only
+// two weigh-ins one day apart → fall back to the formula, not a ~6,000 kcal plan.
+const spanBug = [];
+for (let d = 0; d < 10; d++) spanBug.push({ date: `2026-06-${String(d + 1).padStart(2, "0")}`, kcal: 2200 });
+spanBug[8].weight_kg = 80.0; spanBug[9].weight_kg = 79.5; // days 9 & 10 — one day apart
+ok("adaptiveTDEE ignores weigh-ins spanning too few days (water-weight noise)", adaptiveTDEE(spanBug) === null);
 
 // --- recommended weekly change: gain for muscle (slower when advanced), loss for fat-loss, 0 for recomp ---
 ok("lean-gain rate is positive and slows with training age",
@@ -59,6 +66,21 @@ ok("nutritionPlan switches to the LOGGED basis once enough data exists", planLog
 ok("nutritionPlan returns null on incomplete stats", nutritionPlan({ weight_kg: 85 }) === null);
 ok("#49 an impossible body-fat % yields no plan (never a '~null kcal/day' plan)", nutritionPlan({ weight_kg: 80, bf_pct: 100, sex: "male" }) === null);
 ok("#49 a plausible high body-fat still computes a real plan", nutritionPlan({ weight_kg: 120, bf_pct: 45, sex: "male" })?.calorie_target > 0);
+
+// --- Wave 68 (audit): hostile / degenerate inputs must never surface a broken plan ---
+// E: an unknown activity key (incl. inherited Object.prototype names) must fall back
+// to the default multiplier, never resolve to a function and poison TDEE to NaN.
+ok("baseTDEE falls back on an unknown activity key (no NaN from Object.prototype)",
+  Number.isFinite(baseTDEE({ weight_kg: 80, bf_pct: 20, activity: "toString" })));
+ok("nutritionPlan never emits a NaN plan from a hostile activity field", (() => {
+  const p = nutritionPlan({ weight_kg: 80, bf_pct: 20, sex: "male", activity: "constructor" });
+  return p && Number.isFinite(p.tdee) && p.calorie_target > 0;
+})());
+// F: at an extreme bodyweight in a deep deficit the calorie floor binds, but the
+// macros must never sum to MORE than the (reconciled) calorie target.
+const extreme = nutritionPlan({ weight_kg: 160, bf_pct: 50, sex: "male", goal: "fat-loss", training_status: "intermediate" });
+ok("nutritionPlan keeps macros ≤ the calorie target even when the floor binds",
+  extreme && extreme.carbs_g >= 0 && (extreme.protein_g * 4 + extreme.fat_g * 9 + extreme.carbs_g * 4) <= extreme.calorie_target);
 
 console.log(`\n${pass} nutrition test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

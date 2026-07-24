@@ -8,7 +8,7 @@ import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
-import { nutritionPlan, navyBodyFat } from "../../tools/nutrition-core.mjs";
+import { nutritionPlan, navyBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
@@ -492,10 +492,20 @@ export function createApp(store, config = {}) {
         ...(num(b.hip_cm) ? { hip_cm: num(b.hip_cm) } : {}),
         ...(bf(b.bf_pct) != null ? { bf_pct: bf(b.bf_pct) } : {}),
         ...(num(b.weight_kg) ? { weight_kg: num(b.weight_kg) } : {}),
-        ...(typeof b.activity === "string" ? { activity: b.activity } : {}),
+        // Only a KNOWN activity level — an arbitrary string reaches baseTDEE's
+        // multiplier lookup, and an Object.prototype key there poisons TDEE to NaN.
+        ...(typeof b.activity === "string" && Object.hasOwn(ACTIVITY, b.activity) ? { activity: b.activity } : {}),
       };
       return u;
     });
+    // A weight typed into the stats form is a fresh weigh-in — record it as one so it
+    // becomes the LATEST bodyweight the plan reads. Without this, nutritionInputs takes
+    // the most recent logged weigh-in even when it's months stale, and the value the
+    // user just entered is silently ignored (the plan contradicts their own input).
+    if (num(b.weight_kg)) {
+      const day = (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) ? b.date : new Date().toISOString().slice(0, 10);
+      await store.addBodyweight(b.user_id, { date: day, kg: num(b.weight_kg) });
+    }
     const { profile, history } = await nutritionInputs(updated, b.user_id);
     return c.json({ nutrition: nutritionPlan(profile, history), profile });
   });
@@ -517,13 +527,16 @@ export function createApp(store, config = {}) {
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!Number.isFinite(Number(b.kcal)) || Number(b.kcal) <= 0) return c.json({ error: "bad-kcal" }, 400);
-    const round = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : undefined);
+    // Macros are non-negative grams and bounded to a sane day — a client can post any
+    // value (possession-of-UUID auth), and a negative protein_g would render as a
+    // negative intake bar, a huge kcal as an absurd "today so far". Clamp at the door.
+    const macro = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(2000, Math.round(n))) : undefined; };
     await store.addNutritionLog(b.user_id, {
       date: (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : new Date().toISOString().slice(0, 10)),
-      kcal: Math.round(Number(b.kcal)),
-      ...(round(b.protein_g) != null ? { protein_g: round(b.protein_g) } : {}),
-      ...(round(b.carbs_g) != null ? { carbs_g: round(b.carbs_g) } : {}),
-      ...(round(b.fat_g) != null ? { fat_g: round(b.fat_g) } : {}),
+      kcal: Math.min(20000, Math.round(Number(b.kcal))),
+      ...(macro(b.protein_g) != null ? { protein_g: macro(b.protein_g) } : {}),
+      ...(macro(b.carbs_g) != null ? { carbs_g: macro(b.carbs_g) } : {}),
+      ...(macro(b.fat_g) != null ? { fat_g: macro(b.fat_g) } : {}),
     });
     const { profile, history } = await nutritionInputs(user, b.user_id);
     return c.json({ logged: true, nutrition: nutritionPlan(profile, history), logged_days: history.filter((h) => h.kcal).length });
