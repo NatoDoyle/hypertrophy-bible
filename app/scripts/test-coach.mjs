@@ -21,6 +21,14 @@ check("buildToday: first-timer gets a session with no pre-filled weight", () => 
   assert.ok(today.name && today.day_number === 1);
 });
 
+check("buildToday flags `beginner` from training_status (Goal 3: gates RIR jargon on the set screen)", () => {
+  assert.equal(buildToday(user, []).beginner, true); // fixture user is training_status: "beginner"
+  const intermediateUser = { ...user, profile: { ...user.profile, training_status: "intermediate" } };
+  assert.equal(buildToday(intermediateUser, []).beginner, false);
+  const noProfileUser = { ...user, profile: {} };
+  assert.equal(buildToday(noProfileUser, []).beginner, true); // unset training_status defaults to the plainer copy
+});
+
 check("a normal-readiness check-in is ACKNOWLEDGED, never silent", () => {
   const t = buildToday(user, [], { level: "normal", score: 3 });
   assert.ok(t.coach_note && /checked in/i.test(t.coach_note)); // majority path must confirm receipt

@@ -293,7 +293,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
   // client tags this session's sets `deload` so the eased weights never enter
   // the e1RM/stall trends as a fabricated ~12% strength loss.
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block, comeback: layoffDays >= COMEBACK_GAP_DAYS };
+  // beginner: gates plain-effort language on the set screen (Goal 3) — a true
+  // novice sees "leave a couple in the tank", not the "RIR" acronym; someone with
+  // real training history keeps the term. Defaults to beginner (the safe, plainer
+  // default) when training_status is unset.
+  const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner };
 }
 
 // The Today card state machine: one decision only.
