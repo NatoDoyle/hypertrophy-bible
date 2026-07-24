@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**97** verified references.
+**98** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -663,6 +663,14 @@ Schumann M & et al. (2022). Compatibility of Concurrent Aerobic and Strength Tra
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-021-01587-7](https://doi.org/10.1007/s40279-021-01587-7) · PMID: [34757594](https://pubmed.ncbi.nlm.nih.gov/34757594/)
+
+### seaborne-2018-epigenetic-memory
+Seaborne RA & et al. (2018). Human Skeletal Muscle Possesses an Epigenetic Memory of Hypertrophy.
+
+*Scientific Reports*, 8, 1898.
+
+- Type: non-RCT-trial · Population: recreationally-active
+- DOI: [10.1038/s41598-018-20287-3](https://doi.org/10.1038/s41598-018-20287-3) · PMID: [29382913](https://pubmed.ncbi.nlm.nih.gov/29382913/)
 
 ### singer-2024-rest-meta
 Singer A et al. (2024). Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy.
