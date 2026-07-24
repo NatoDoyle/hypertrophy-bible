@@ -123,6 +123,21 @@ export function checkSetPR(set, priorBests) {
   return null;
 }
 
+// The user's full personal-record HISTORY — every PR across all sessions, most-recent
+// first, each stamped with the session's date. Replays detectPersonalRecords
+// chronologically (each session judged only against what came before it), so this lookback
+// feed can never disagree with the per-session recap or the XP bonus. Powers the Progress
+// tab's "wins" surface (roadmap #1c — progress-dopamine). Pure/deterministic.
+export function allPersonalRecords(sessions) {
+  const chron = [...(sessions ?? [])].sort((a, b) => ((a.local_date ?? a.date ?? "") < (b.local_date ?? b.date ?? "") ? -1 : 1));
+  const out = [];
+  for (let i = 0; i < chron.length; i++) {
+    const date = chron[i].local_date ?? chron[i].date ?? null;
+    for (const pr of detectPersonalRecords(chron[i], chron.slice(0, i))) out.push({ ...pr, date });
+  }
+  return out.reverse();
+}
+
 // ISO week key "YYYY-Www" for grouping weekly volume.
 export function isoWeekKey(dateStr) {
   const d = new Date(dateStr);

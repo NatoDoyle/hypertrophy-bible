@@ -4,7 +4,7 @@ import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
-  detectPersonalRecords, priorPersonalBests, PR_XP,
+  detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -404,7 +404,7 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
 }
 
 export function progressReport(user, sessions, bodyweights, customEx = [], now = null) {
-  const { index } = resolveEx(customEx);
+  const { index, name } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
   // Pick the REFERENCE week honestly: the raw latest ISO week understates
@@ -477,5 +477,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy };
+  // Personal-record history (roadmap #1c): the full PR list for a count, plus the most
+  // recent few for a lookback "wins" feed. Structured (weights, not pre-baked strings) so
+  // the client renders in the user's unit.
+  const prHistory = allPersonalRecords(sessions);
+  const personal_records = prHistory.slice(0, 8).map((pr) => ({ ...pr, name: name(pr.exercise) }));
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length };
 }

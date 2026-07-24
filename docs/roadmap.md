@@ -54,8 +54,10 @@ multi-user infra).
    the engine and the recap); **(b) the in-player PR moment** — `priorPersonalBests`/`checkSetPR`
    (`derive-core.mjs`) give `buildToday` a `pr_watch` ceiling per exercise, and the live player
    (`app.js` + `session-core.mjs`'s browser-safe duplicate, cross-tested for agreement) fires a
-   toast the instant a logged set beats it, not only at the end of the session. **Remaining slice:**
-   (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
+   toast the instant a logged set beats it, not only at the end of the session; **(c) the wins feed**
+   — `allPersonalRecords` (`derive-core.mjs`) replays the full PR history, surfaced on the Progress
+   tab as a "🏆 Personal records" card with a count and the recent records (the trophy shelf you
+   return to). **✅ ITEM #1 COMPLETE.**
 2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (commitment device).*
    Done: the weekly "when will you train?" commitment device — `POST /api/commitment` (pinned to
    the current ISO week, `tools/derive-core.mjs`'s `isoWeekKey`/`WEEK_DAY_KEYS`/`weekDayKey`) lets
