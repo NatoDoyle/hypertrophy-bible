@@ -6,11 +6,11 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
-import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords } from "../../tools/derive-core.mjs";
+import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords, isLuckySet as isLuckySetServer, luckySetsInSession } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -281,6 +281,42 @@ check("checkSetPR (client) agrees with checkSetPR (server) across a battery of f
       assert.equal(sessionPr.kind, clientVerdict.kind);
     }
   }
+});
+
+check("isLuckySet (client) agrees with isLuckySet (server) across many session/exercise/index combos", () => {
+  // Any drift between the browser copy and tools/derive-core.mjs would let the
+  // in-player lucky-set toast and the recap/XP total silently disagree.
+  for (let i = 0; i < 200; i++) {
+    for (const exercise of ["bench", "squat", "leg-curl"]) {
+      for (const idx of [0, 1, 5]) {
+        const sid = `sess-${i}`;
+        assert.equal(isLuckySet(sid, exercise, idx), isLuckySetServer(sid, exercise, idx), `disagreement on ${sid}/${exercise}/${idx}`);
+      }
+    }
+  }
+});
+
+check("checkLuckySet (client, live-player order) agrees with luckySetsInSession (server, end-of-session replay)", () => {
+  // Play a session set-by-set through checkLuckySet exactly as app.js does (each hard
+  // set checked the instant it's banked), then replay the same final log through the
+  // server's luckySetsInSession — the two hit-counts, and WHICH sets hit, must match.
+  const sessionId = "cross-check-session";
+  const rawSets = [
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "squat", set_type: "warmup", weight_kg: 60, reps: 5 }, // never lucky
+    { exercise: "squat", set_type: "work", weight_kg: 140, reps: 3 },
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "squat", set_type: "work", weight_kg: 140, reps: 3 },
+  ];
+  const logged = [];
+  const clientHits = [];
+  for (const raw of rawSets) {
+    logged.push(raw);
+    if (checkLuckySet(sessionId, logged, raw)) clientHits.push(raw.exercise);
+  }
+  const serverHits = luckySetsInSession({ session_id: sessionId, sets: rawSets }).map((h) => h.exercise);
+  assert.deepEqual(clientHits, serverHits);
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

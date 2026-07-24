@@ -138,6 +138,47 @@ export function allPersonalRecords(sessions) {
   return out.reverse();
 }
 
+// XP awarded for a "lucky set" — a small bonus that lands on an UNPREDICTABLE
+// subset of hard sets, on top of the fixed 5 XP/hard-set + PR bonuses. A fully
+// predictable reward schedule (100/session + 5/hard-set) is the weakest habit
+// driver there is; a variable-ratio schedule (slot-machine mechanics — you never
+// know which set pays extra) is the strongest, precisely because it can't be
+// anticipated. Lives here as the single source of truth for both the gamification
+// engine (xpAndLevel) and the recap so the reward and its XP total never disagree.
+export const LUCKY_SET_XP = 15;
+// ~1-in-8 (12.5%) of hard sets are lucky — frequent enough to feel real, rare
+// enough to stay a surprise rather than an expectation.
+const LUCKY_SET_ONE_IN = 8;
+
+// Deterministic (no Math.random — this file must stay pure/replayable) yet
+// unpredictable-to-the-user: hashes the session's own random session_id (assigned
+// client-side at session start, never shown to the user) together with the
+// exercise and this set's position among that exercise's hard sets THIS session.
+// Reproducible everywhere (live in-player toast, end-of-session recap, the XP
+// total) without ever storing a "was this lucky" flag, so replays can never drift.
+export function isLuckySet(sessionId, exercise, hardSetIndex) {
+  if (!sessionId) return false; // no session id (e.g. a synthetic/legacy fixture) -> never lucky
+  const key = `${sessionId}|${exercise}|${hardSetIndex}`;
+  let h = 2166136261; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) % LUCKY_SET_ONE_IN === 0;
+}
+
+// Every lucky set logged IN a session — replays isHardSet + isLuckySet over
+// session.sets in array order (the same order they were logged), so the count can
+// never disagree between the live player and the recap/XP engine.
+export function luckySetsInSession(session) {
+  const seen = {};
+  const hits = [];
+  for (const set of session.sets ?? []) {
+    if (!isHardSet(set)) continue;
+    const idx = seen[set.exercise] ?? 0;
+    seen[set.exercise] = idx + 1;
+    if (isLuckySet(session.session_id, set.exercise, idx)) hits.push({ exercise: set.exercise, index: idx });
+  }
+  return hits;
+}
+
 // ISO week key "YYYY-Www" for grouping weekly volume.
 export function isoWeekKey(dateStr) {
   const d = new Date(dateStr);

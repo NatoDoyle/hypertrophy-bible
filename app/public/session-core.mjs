@@ -83,6 +83,39 @@ export function checkSetPR(exercise, weightKg, reps, setType, priorBests) {
   return null;
 }
 
+// Lucky-set XP + hash — DUPLICATES tools/derive-core.mjs's LUCKY_SET_XP/isLuckySet
+// (same reason as checkSetPR above: this file is a static browser asset and can't
+// reach outside public/). A cross-consistency test (test-session.mjs) replays many
+// session_id/exercise/index combinations through BOTH implementations and asserts
+// identical verdicts, so a change to one without the other fails CI instead of
+// silently letting the live toast and the recap/XP total disagree.
+export const LUCKY_SET_XP = 15;
+const LUCKY_SET_ONE_IN = 8;
+export function isLuckySet(sessionId, exercise, hardSetIndex) {
+  if (!sessionId) return false;
+  const key = `${sessionId}|${exercise}|${hardSetIndex}`;
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) % LUCKY_SET_ONE_IN === 0;
+}
+// DUPLICATES tools/derive-core.mjs's isHardSet (same cross-file constraint as above).
+export function isHardSet(set, { hardSetRpe = 7 } = {}) {
+  const type = set.set_type ?? "work";
+  if (type === "warmup") return false;
+  if (typeof set.rpe === "number" && set.rpe < hardSetRpe) return false;
+  if (typeof set.rir === "number" && set.rir > 4) return false;
+  return true;
+}
+// Was the set JUST pushed onto `logged` a lucky set? `logged` already includes it,
+// so its 0-indexed position among that exercise's hard sets this session is
+// (count of hard sets for this exercise so far) - 1 — the same ordering
+// luckySetsInSession replays server-side from the stored session.sets array.
+export function checkLuckySet(sessionId, logged, justLogged) {
+  if (!isHardSet(justLogged)) return false;
+  const idx = logged.filter((l) => l.exercise === justLogged.exercise && isHardSet(l)).length - 1;
+  return isLuckySet(sessionId, justLogged.exercise, idx);
+}
+
 // Given a superset pair (indices L<P) and the log, the current 0-indexed round and
 // how many rounds are paired (the shorter member's set count). round >= paired
 // means the paired work is done and any remainder is finished the normal way.

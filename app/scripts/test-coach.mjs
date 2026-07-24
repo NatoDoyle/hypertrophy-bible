@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { selectProgram } from "../src/kb.mjs";
 import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir } from "../src/coach.mjs";
+import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -446,6 +447,19 @@ check("sessionRecap now celebrates HIGHER-REP work — a load PR (Wave 79, Goal 
   const recap = sessionRecap(user, [s1, s2], s2);
   const pr = recap.wins.find((w) => w.kind === "pr-load");
   assert.ok(pr && pr.load_kg === 45 && pr.reps === 15 && pr.name); // structured, client formats the unit
+});
+
+check("sessionRecap surfaces a lucky-set win + lucky_xp (roadmap #2's remaining slice)", () => {
+  let luckySid = null;
+  for (let i = 0; i < 1000; i++) if (isLuckySet(`lucky-${i}`, "barbell-bench-press", 0)) { luckySid = `lucky-${i}`; break; }
+  const s = { date: "2026-06-01T18:00:00Z", session_id: luckySid, sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] };
+  const recap = sessionRecap(user, [], s);
+  assert.equal(recap.lucky_xp, LUCKY_SET_XP);
+  assert.ok(recap.wins.some((w) => typeof w === "string" && /Lucky set/i.test(w)));
+});
+check("sessionRecap: no lucky_xp when the session isn't seeded to hit (no session_id)", () => {
+  const s = { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] };
+  assert.equal(sessionRecap(user, [], s).lucky_xp, 0);
 });
 
 check("progressReport infers energy balance from bodyweight trend (no calories)", () => {

@@ -4,7 +4,7 @@ import {
   estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
-  detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords,
+  detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
 
@@ -361,10 +361,16 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
     }
   }
 
+  // Lucky sets — the variable-ratio surprise (roadmap #2's remaining slice): unlike the
+  // PR bonus, this can land on ANY session, not just a strength milestone, so a quieter
+  // session still has a shot at a reward.
+  const luckyHits = luckySetsInSession(newSession);
+  if (luckyHits.length) wins.unshift(`🍀 Lucky set${luckyHits.length > 1 ? "s" : ""}! +${luckyHits.length * LUCKY_SET_XP} bonus XP.`);
+
   if (!wins.length) wins.push("✅ Session logged. Consistency is what builds muscle — see you next time.");
-  // pr_xp: the bonus XP earned from this session's PRs, so the recap can show the reward
-  // at the moment it lands (the same PR_XP the gamification engine banks into the level).
-  return { day_number: allSessions.length, wins, pr_xp: prs.length * PR_XP };
+  // pr_xp/lucky_xp: the bonus XP earned this session, so the recap can show the reward
+  // at the moment it lands (the same constants the gamification engine banks into the level).
+  return { day_number: allSessions.length, wins, pr_xp: prs.length * PR_XP, lucky_xp: luckyHits.length * LUCKY_SET_XP };
 }
 
 // The Progress tab payload: everything derived, nothing asked.
