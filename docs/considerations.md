@@ -4,94 +4,103 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented.
 
-1. I think the exercise scoring needs to be audited. The exercises should be scored on it's ability to achieve it's goal. First we need to establish what the goal of each exercise is before we can score it. For all the exercises across the board there are a few goals they share and then there are situational exceptions for example compounds score higher in time restrictive programs. The main metrics that each exercise across the board needs to be scored on is it's ability to generate tension through the intended muscles full range of motion for as little overall systemic fatigue as possible. As far as im aware, correct me if im wrong but biasing the lengthened portion or having most of the load at the lengthened stretched position of the movement is ideal for optimising muscle growth and that the shortened squeeze is less important. this should be reflected in the scoring if it's true.
-2. When generating plans, i'm still getting 1 set exercises. Is this intended and is it optimal?
-3. should ramp up sets be included in the workout tracking?
-4. copy the design and algorithm from this sheet and add it into the app. /Users/nathandoyle/Projects/Hypertrophy Bible/The mental lab.xlsx
+1. the 'what to adjust section' on the 'progress tab' shouldn't exist. Adjustments should be done automatically by the plan algorithm. we need to have a long think about the algoritm but it should be something like this :The algorithm should be looking at everything. sets, reps, rir, exercises, calories, weight, frequency, volume, intensity, mood, sleep, motivation, stress, etc. it should examine how all these variables have been fluctuating over the past however long and how they affect each other and automatically adjust the program to ensure progress continues to be made. Over days, weeks and months of users inputing data the algorithm should learn, adapt and improve the algorithm. our research is the starting point but as we gather our own data we need to form our own conclusions.
+2. test the algorithm using fake but realistic data for 2 different users, 1 slow responder and 1 fast responder. test how the algorithm adjusts for both people over a 4-week, 12-week and 24-week timeline to ensure it's working correctly.
+3. how is volume counted for secondary muscles? for example how much does bench press add to the total volume for triceps?
+4. we currently consider primary and secondary activation for exercises but what about tertiary activation?
+5. most people underestimate how much reps they have left in the tank. In most situations if someone put a gun to their head and said keep going, they would get a lot more. This makes me apprehensive about instructing people to leave 2-3 in reserve. I personally aim for failure on each set because i know even when im trying hard it’s not true failure.  What are your thoughts?
+6. I read a study about how only the last 5 reps of a set matter, have we covered that study in our research?
+7. Read & review the strength pyramid, pure bodybuilding. What do they do better than us and what do we do better than them ?
 
 ---
 
-## Responses / plan (Claude)
+## Responses (Claude) — all seven addressed; here is each answer
 
-- **#3 Expand the exercise library — DONE (this is what you chose first).** Library grew
-  **93 → 171 exercises**, each new one with the full metadata you asked for: `loading_bias`
-  (lengthened/shortened/mid-range/uniform), `execution_steps` (step-by-step how-to),
-  `good_when`/`bad_when`, `cns_cost`, primary/secondary muscles, progressions/regressions.
-  Authored via a 16-agent-per-muscle workflow, each exercise **adversarially accuracy-checked**
-  by an independent reviewer (67 approved / 3 corrected / 16 dropped). New equipment (was ZERO of
-  each): **21 band, 14 kettlebell, 8 smith-machine**. Band now covers 15/16 muscles, kettlebell
-  14/16. The rich data is surfaced in the "how do I do this?" sheet (numbered steps, fact chips,
-  good/bad-pick), and band+kettlebell are re-enabled in onboarding ("Home gym", "Bands &
-  bodyweight" options) — verified those bundles generate viable plans. STILL TODO for #3 later:
-  backfill the older 93 exercises with the new rich fields (they work fine without, the sheet
-  renders only what's present), and keep growing toward "every exercise" (kettlebell/band variants
-  of more lifts, smith-machine coverage).
-- **#5 Fix the plans — IN PROGRESS (2 real defects fixed; 2 diagnosed "issues" turned out not to
-  be defects).** Ran a rigorous diagnostic across 18 profiles. FIXED + shipped:
-  (1) **1-set compound filler** — 8/18 plans prescribed a compound at a single set (nobody does one
-  set of squats); now 0 across the grid (Wave 6-F).
-  (2) **bodyweight when a gym is available** — 33 cases where a full-gym lifter got a capped
-  bodyweight lift (bodyweight lunge, inverted row) instead of the loaded version that progresses;
-  the ranking now prefers loadable exercises when equipment exists, down to 14 (the rest are
-  legit), bodyweight-only users unaffected (Wave 6-G).
-  VERIFIED NOT ACTUALLY DEFECTS (so deliberately NOT "fixed", to avoid degrading quality):
-  (3) **"uneven sessions in a rotation"** — the sparse-looking day (4 exercises vs 7) carries the
-  SAME total sets (12 vs 12), just more sets per exercise. That's legitimate focused programming;
-  forcing more exercises would either exceed the weekly volume target or split into worse
-  junk-volume. Not a defect.
-  (4) **"redundant same-family compounds"** — mostly correct (3 pushes on a Push day is right).
-  The one real-ish case is a full-body day getting a 3rd "pull" that's actually barbell-upright-row
-  (a delt/trap move mis-lumped as a lat pull by its vertical-pull tag) — a minor data-classification
-  artifact that evens out across the week, not worth a risky change to the tuned pattern-coverage.
-  Net: the plans are meaningfully better (no filler, loaded lifts preferred). If you still feel
-  specific plans are bad, tell me WHICH profile/day and what feels wrong — I'll target it.
-- **#2 Adaptive engine — noted as the headline vision, after #3/#5.** The plan learns from logged
-  data (RIR, completed reps, stalls) and adjusts per-muscle volume/intensity per person. Needs a
-  solid baseline plan to adapt from, so it follows the library + plan fixes.
-- **#1 "is the exercise scoring thorough?"** — PARTIALLY IMPROVED. It ranks by mechanic (compounds
-  first), difficulty fit (hard gate), lengthened-bias bonus, movement-pattern spread, equipment,
-  and a deterministic tie-break — and now (Wave 6-G) PREFERS well-loaded gym lifts over capped
-  bodyweight when equipment exists. Still NOT wired in: `cns_cost` (avoid stacking too many
-  high-systemic-fatigue lifts in one session) — the field now exists on the new exercises; a
-  future wave can use it. Remaining honest gap: scoring is rule-based, not yet *learned* from the
-  user's own response — that's #2.
-- **#4 Mid-workout swap — DONE (Wave 6-I).** In the player, a "🔄 Swap this exercise" button (shown
-  before you've logged any set of the current lift) offers same-muscle, equipment-and-injury-filtered
-  alternatives; picking one temporarily replaces it for THIS workout (saved plan untouched),
-  crash-safe. The "machine occupied" case is covered. REORDER-during-session is deferred (lower
-  value than swap).
-- **#6 low-volume / high-frequency / high-intensity research — DONE (Wave 6-H).** Honest answer:
-  the KB covered the pieces (volume dose-response, frequency, failure) but had NO dedicated
-  synthesis, so I wrote content/03-programming/minimalist-and-low-volume-training.md (verified
-  citations only). Thesis: "low volume + high frequency + high effort" is evidence-consistent and
-  efficient/sustainable, but at MATCHED weekly volume it's equivalent to — not better than —
-  ordinary moderate-volume training; it's a deliberate trade toward time/recovery, best for the
-  time-crunched, beginners, older adults, and maintenance.
+- **#1 "What to adjust" shouldn't exist; the algorithm should adjust automatically — DONE (the
+  card is gone, the engine adjusts itself), with the full vision as a staged arc.** The Progress
+  card was removed in Wave 53 (replaced by one quiet line: "Your plan retunes itself each block
+  from all of this — you don't have to adjust anything"). What the engine now does on its own, at
+  each block boundary: per-muscle volume auto-tune (bounded ±2 sets/cycle, hard-clamped MEV↔MRV so
+  it can never run away); it is **recovery- and energy-aware** (Wave 54 — it will NOT add volume to
+  a stalled muscle when your check-ins show you're under-recovered or your bodyweight trend shows a
+  deficit, because that stall is a fuel/sleep problem and more volume makes it worse — this is the
+  "how the variables affect each other" you asked for); and the stall window itself is **learned
+  from your own demonstrated PR rhythm** (Wave 55 — a ~6-week responder isn't judged "plateaued" on
+  a fixed 4-week clock, and the window only ever stretches patience, never shrinks it). Signals now
+  consumed: sets, reps, est-1RM trend, volume vs landmarks, frequency, sleep/energy/mood/motivation/
+  stress (check-ins), bodyweight trend / energy balance, and logged calories where present. Two
+  pieces deliberately staged rather than shipped: the **effort/RIR lever** was evaluated and
+  deferred with recorded rationale (the available signal is ambiguous — "no rep drop-off" reads the
+  same for "trained too easy" and for a disciplined lifter correctly stopping 2 short; gating volume
+  on it would wrongly withhold volume from people training well); and **cross-user learning** ("form
+  our own conclusions from our data") is the recorded far vision with an honesty guardrail — noisy
+  early aggregate data must never silently override Grade-A evidence, and it genuinely needs a
+  multi-user dataset we don't have yet (BLOCKERS #9). Full design + roadmap:
+  `docs/adaptive-algorithm.md`. Bonus from your #7: the Muscle & Strength Pyramid's plateau
+  framework independently validates both core choices (diagnose-before-dosing; judge plateaus
+  against the individual's own rate).
+- **#2 Test the algorithm on a slow and a fast responder over 4/12/24 weeks — DONE (Wave 59), and
+  it caught a real flaw.** `app/scripts/sim-adaptive.mjs` drives the REAL engine (the same
+  functions `/api/today` runs) with fake-but-realistic data; it's a readable report
+  (`cd app && npm run sim`) AND a permanent regression guard (11 assertions inside the app test
+  gate). Results: the slow responder (+4% PR every ~6 weeks) gets one unavoidable early bump, then
+  by week 12 the engine has learned the rhythm, stretches its stall window to ~9 weeks, and HOLDS —
+  never churned across 24 weeks. The fast responder (+1.5%/week, then a hard plateau) has the
+  genuine stall detected promptly and answered with bounded accumulating volume (+2/+4/+6). The
+  same fast responder under-recovered from week 8: every bump held at +0 by the recovery gate. The
+  flaw the sim surfaced: cadence-learning originally needed TWO demonstrated PR intervals to lock,
+  so a slow responder was over-bumped early; one interval is already strong evidence and the window
+  only stretches patience (safe direction), so it now locks after the FIRST.
+- **#3 How is secondary-muscle volume counted? — Direct answer: a hard set counts 1.0 for each
+  primary muscle and 0.5 for each secondary.** So one bench press set = 1.0 chest + 0.5 triceps +
+  0.5 front delts. That's the "effective sets" convention the volume landmarks were built on, and
+  it's why a muscle's weekly total can show a half (e.g. "9.5 sets"). This had never been explained
+  anywhere a user could find it, so Wave 60 added a plain-language glossary entry ("Effective sets —
+  why you might see a half", bench→triceps as the worked example) next to the Volume definition the
+  Progress tab links to.
+- **#4 What about tertiary activation? — Considered answer: NO, deliberately.** The fractional
+  two-tier scheme (1.0 / 0.5) is the method with the strongest relative evidence in the 2026
+  dose-response meta-regression (Pelland 2026, verified in the registry). There is no established
+  weighting for a third tier: a muscle that merely stabilizes sees too little mechanical tension —
+  the primary growth driver — to add meaningful hypertrophy, and counting it would be false
+  precision that inflates weekly totals against MEV/MRV landmarks built on the two-tier convention.
+  Wave 61 wrote this reasoning into `volume.md` (Grade-C bullet) so the answer is on the record,
+  not just in this file.
+- **#5 "People underestimate reps in reserve — I aim for failure. Thoughts?" — You're right, and
+  the KB now says so explicitly (Waves 62 + 65).** The evidence agrees people typically
+  under-estimate RIR: told "leave 2-3", many stop at a true 4-5 — too easy. Which means when
+  someone AIMS for failure they usually land about a rep short anyway — an effectively ideal
+  proximity. So for safe isolation/machine work, "push hard, aim for failure" is often the more
+  honest cue than a precise RIR number, and that's now the page's stated position. The 1-3 RIR
+  reserve stays justified on heavy compounds — but for the honest reason: fatigue, technique
+  breakdown, and recovery cost (protecting your quality volume), NOT because the last reps lack
+  stimulus. Wave 65 added the load nuance: heavy loads recruit the high-threshold motor units from
+  the first hard reps, so the growth stimulus is reached a little further from failure there —
+  proximity matters most on lighter work.
+- **#6 "Only the last 5 reps of a set matter" — that's the "effective reps" (a.k.a. "stimulating
+  reps") model, and the KB now names and assesses it (Wave 62).** We had covered the underlying
+  truth (reps near failure are the most stimulating) but never the model itself. Honest assessment:
+  it's a mechanistic hypothesis, not an established finding — the strict "only the last ~5" version
+  has no direct support, and the proximity-to-failure syntheses already cited (Refalo 2023,
+  Robinson 2024) find the effect small and NON-linear, not an all-or-nothing rep-count switch.
+  Useful intuition ("the hard reps at the end are why the set works"), not a number to chase.
+- **#7 Muscle & Strength Pyramid + Pure Bodybuilding review — DONE (Waves 63–66), adoptions
+  shipped.** What THEY do better → taken: (a) the Pyramids' signature explicit priority hierarchy —
+  we had the ordering buried in a pillar index; now there's a top-level "What actually matters (in
+  priority order)" getting-started page (consistency → volume → effort → protein/calories → sleep →
+  … → "what to basically ignore for now"), closing with "the app already does the ordering for
+  you"; (b) the load-dependent proximity nuance above (Wave 65) — a real KB gap the book surfaced;
+  (c) Pure Bodybuilding's biggest edge is its per-exercise demo VIDEO library — that's already our
+  top human-blocked item (BLOCKERS #1: licence/film/curate — it needs you). What WE do better:
+  the engine is adaptive and individualized where a book is static (and their own Level-3 plateau
+  framework validates our design — recorded as external validation in
+  `docs/adaptive-algorithm.md`); every claim is machine-checked against a web-verified citation
+  registry with honest A–D grades; and the app executes the priority ordering for the user instead
+  of teaching them to self-program.
 
-## Where things stand (Claude) — ALL SIX ITEMS DONE
-- **#1 exercise scoring** — DONE. Ranks by mechanic, difficulty (hard gate), lengthened-bias,
-  pattern spread, equipment, loadable-over-bodyweight preference, AND now cns_cost (no session
-  stacks >2 high-CNS compounds). Plus it now *learns* per-muscle volume from your response (#2).
-- **#2 adaptive/self-learning engine** — DONE (conservative build, per my stated default). The plan
-  now ADJUSTS per-muscle volume from your logged data: at each 6-week block boundary it reads how
-  each muscle responded (stall detection + volume-vs-landmarks) and tunes next block's target — a
-  muscle that keeps stalling with headroom gains ~2 sets, one stalled at its recoverable ceiling
-  gets eased, all ACCUMULATING across blocks and hard-clamped to MEV↔MRV so it can never run away.
-  The Progress "What to adjust" card shows the live signal, the "Why this plan?" screen shows the
-  adaptive delta, and the new-block coach note tells you ("Based on how you've been responding, I've
-  added volume for your Chest"). This is the "starting point from the KB, then learn from the data"
-  you asked for. NEXT (if you want it more aggressive): trust more signals (RIR, completed-vs-target
-  reps, soreness) and adapt faster/mid-block — say the word.
-- **#3 exercise library** — DONE. 93→171 exercises, ALL 171 now carry full rich metadata
-  (loading_bias, cns_cost, execution_steps, good/bad-when); band/kettlebell/smith-machine added;
-  surfaced in the exercise sheet + onboarding.
-- **#4 mid-workout swap + reorder** — DONE. "🔄 Swap this exercise" and "⤵️ Do this later" in the
-  player (both crash-safe, temporary, session-only).
-- **#5 fix the plans** — DONE (real defects). No 1-set filler; loaded lifts preferred over capped
-  bodyweight; no >2 high-CNS stacking. (Two diagnosed "issues" were verified NOT to be defects and
-  deliberately left alone — see above.) If specific plans still feel off, name the profile/day.
-- **#6 low-volume research** — DONE. New minimalist/low-volume KB page (verified citations).
-
-If you feel any of these needs to go further, tell me which and how — the loop continues.
+**Where things stand:** all seven items answered and shipped; prod is current. Still open from
+this batch: the effort/RIR lever (deferred until a clean signal exists) and cross-user learning
+(needs real multi-user data). If any answer above should go further — or a plan/screen still feels
+wrong — name it and the loop picks it up next.
 ---
 
