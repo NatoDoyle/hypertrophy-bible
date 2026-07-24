@@ -19,7 +19,7 @@
 
 ## The Evidence
 
-**Response to identical training varies dramatically.** Hubal and colleagues (2005) trained a large cohort with the **same** unilateral program and measured the range of outcomes: muscle-size and strength gains ranged from essentially **none in some individuals to very large in others** — direct evidence that genetics (and other individual factors) heavily modulate the response to a given stimulus[^hubal-2005-responders]. **[Grade B]** This is why cookie-cutter expectations fail: the same program produces different results in different people, and adjusting to your own response is essential. It also means low initial response isn't necessarily permanent — changing the stimulus (volume, exercises) can help apparent non-responders.
+**Response to identical training varies dramatically.** Hubal and colleagues (2005) trained a large cohort with the **same** unilateral program and measured the range of outcomes: muscle-size and strength gains ranged from essentially **none in some individuals to very large in others** — direct evidence that genetics (and other individual factors) heavily modulate the response to a given stimulus[^hubal-2005-responders]. **[Grade B]** This is why cookie-cutter expectations fail: the same program produces different results in different people, and adjusting to your own response is essential. It also means a low initial response isn't necessarily permanent: in a 2024 trial, older adults who **failed to gain on a single-set program went on to significantly increase muscle size and strength once the volume was raised** to multiple sets[^lixandrao-2024-volume-nonresponders] — so an apparent "non-responder" is often really "not enough stimulus yet," and changing the dose (or the exercises) can unlock progress. **[Grade C]**
 
 ## Key Uncertainties & Nuance
 - **"Non-responder" is partly program-specific** — some low responders to one protocol respond better to higher volume or different exercises.
@@ -32,3 +32,4 @@ None.
 
 ## References
 [^hubal-2005-responders]: Hubal MJ, et al. (2005). *Variability in muscle size and strength gain after unilateral resistance training.* Medicine and Science in Sports and Exercise, 37(6), 964–972. PMID: [15947721](https://pubmed.ncbi.nlm.nih.gov/15947721/).
+[^lixandrao-2024-volume-nonresponders]: Lixandrão ME, et al. (2024). *Higher resistance training volume offsets muscle hypertrophy nonresponsiveness in older individuals.* Journal of Applied Physiology, 136(2), 421–429. DOI: [10.1152/japplphysiol.00670.2023](https://doi.org/10.1152/japplphysiol.00670.2023). PMID: 38174375.
