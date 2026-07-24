@@ -118,3 +118,23 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
 Each increment ships as its own verified wave (both test gates green, deployed and
 prod-smoked), extends the pure core with new *inputs* while preserving determinism and
 the bounds, and is traceable back to this document.
+
+## External validation
+
+The two design choices at the core of this engine are not just ours — they match the
+current authoritative programming synthesis (Helms/Morgan/Valdez, *The Muscle & Strength
+Pyramid: Training*, 3rd ed. 2025), reviewed for considerations #7:
+
+- **Diagnose before dosing.** When performance stalls, the recommended response is to
+  first rule out recovery causes (sleep, nutrition, life stress) before changing volume —
+  only add sets once recovery and organization are dialed in. This is exactly Increment A:
+  the tune suppresses a volume increase when the athlete is under-recovered or in an energy
+  deficit, because the stall is then a recovery/fuel problem, not a volume one.
+- **Judge plateaus against the individual's expected rate.** A plateau is defined relative
+  to the progression rate appropriate for a lifter's *training age*, not a fixed clock —
+  which is precisely what Increment B does by scaling the stall window to each user's own
+  demonstrated cadence.
+
+That the engine converges on the same logic from data that a leading evidence-based text
+reaches from the literature is reassuring, not a coincidence — both are reasoning from the
+same stimulus-fatigue-recovery-adaptation model.
