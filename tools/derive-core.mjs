@@ -26,6 +26,63 @@ export const countsForE1RM = (set) =>
   typeof set.reps === "number" && set.reps > 0 && set.reps <= RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
+// Personal records set IN a session — the reward the app celebrates after a workout.
+// Mirrors the est-1RM / load split used everywhere else (countsForE1RM + RELIABLE_1RM_REPS
+// as the single source of truth) so a celebrated PR can NEVER contradict the progression
+// trend (lesson: surfaces must agree). Two bands:
+//   • e1rm PR — for heavy work (reps <= RELIABLE_1RM_REPS): a new all-time-best estimated
+//     1RM, requiring a >0.5 kg margin so estimator noise isn't dressed up as a record.
+//   • load PR — for higher-rep hypertrophy work (reps > RELIABLE_1RM_REPS, where Epley is
+//     guesswork): a new all-time-best top LOAD at that rep range. This is the large class
+//     of pump-band work the e1rm-only check silently ignored — a 15-rep leg curl or lateral
+//     raise could beat its best weight forever and be told nothing.
+// A first-EVER performance is not a PR (no prior best to beat) — the caller frames "first
+// time" separately if it wants. `priorSessions` = every session before the one checked.
+// Warm-ups never count; a deload is intentionally light so it can't out-lift a real best.
+// Pure and deterministic (no Date.now/Math.random).
+export function detectPersonalRecords(session, priorSessions = []) {
+  const isLoadSet = (set) =>
+    (set.set_type ?? "work") !== "warmup" &&
+    typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS &&
+    typeof set.weight_kg === "number" && set.weight_kg > 0;
+  // All-time bests per exercise across the prior history.
+  const priorE1rm = {}, priorLoad = {};
+  for (const s of priorSessions) for (const set of s.sets ?? []) {
+    if (countsForE1RM(set)) {
+      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+      if (e1rm > (priorE1rm[set.exercise] ?? 0)) priorE1rm[set.exercise] = e1rm;
+    } else if (isLoadSet(set)) {
+      if (set.weight_kg > (priorLoad[set.exercise] ?? 0)) priorLoad[set.exercise] = set.weight_kg;
+    }
+  }
+  // Best in the just-logged session per exercise.
+  const newE1rm = {}, newLoad = {};
+  for (const set of session.sets ?? []) {
+    if (countsForE1RM(set)) {
+      const { e1rm } = estimate1RM(set.weight_kg, set.reps);
+      const cur = newE1rm[set.exercise];
+      if (!cur || e1rm > cur.e1rm) newE1rm[set.exercise] = { e1rm, weight_kg: set.weight_kg, reps: set.reps };
+    } else if (isLoadSet(set)) {
+      const cur = newLoad[set.exercise];
+      if (!cur || set.weight_kg > cur.load) newLoad[set.exercise] = { load: set.weight_kg, reps: set.reps };
+    }
+  }
+  const prs = [];
+  for (const [ex, cur] of Object.entries(newE1rm)) {
+    const prev = priorE1rm[ex];
+    if (prev != null && cur.e1rm - prev > 0.5) {
+      prs.push({ exercise: ex, kind: "e1rm", e1rm_kg: cur.e1rm, prev_kg: prev, delta_kg: Math.round((cur.e1rm - prev) * 10) / 10, weight_kg: cur.weight_kg, reps: cur.reps });
+    }
+  }
+  for (const [ex, cur] of Object.entries(newLoad)) {
+    const prev = priorLoad[ex];
+    if (prev != null && cur.load > prev) {
+      prs.push({ exercise: ex, kind: "load", load_kg: cur.load, prev_kg: prev, reps: cur.reps });
+    }
+  }
+  return prs;
+}
+
 // ISO week key "YYYY-Www" for grouping weekly volume.
 export function isoWeekKey(dateStr) {
   const d = new Date(dateStr);

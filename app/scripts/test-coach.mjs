@@ -411,6 +411,16 @@ check("sessionRecap returns derived wins (PR detection)", () => {
   assert.ok(pr && pr.e1rm_kg > 0 && pr.delta_kg > 0 && pr.name); // new e1RM PR detected
 });
 
+check("sessionRecap now celebrates HIGHER-REP work — a load PR (Wave 79, Goal 4)", () => {
+  // higher-rep hypertrophy work (>12 reps) is tracked by top LOAD, not e1rm — beating your
+  // best weight there used to be told nothing; now it's a pr-load win.
+  const s1 = { date: "2026-06-01T18:00:00Z", session_id: "a", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 40, reps: 15 }] };
+  const s2 = { date: "2026-06-08T18:00:00Z", session_id: "b", sets: [{ exercise: "leg-curl", set_type: "work", weight_kg: 45, reps: 15 }] };
+  const recap = sessionRecap(user, [s1, s2], s2);
+  const pr = recap.wins.find((w) => w.kind === "pr-load");
+  assert.ok(pr && pr.load_kg === 45 && pr.reps === 15 && pr.name); // structured, client formats the unit
+});
+
 check("progressReport infers energy balance from bodyweight trend (no calories)", () => {
   const sessions = [{ date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] }];
   const bodyweights = [
