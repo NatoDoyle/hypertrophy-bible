@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport } from "./adherence.mjs";
@@ -348,7 +348,30 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const sessions = await store.listSessions(id);
-    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true });
+    // Only surface a commitment for THE CURRENT iso week — a stale one from a
+    // prior week reads back as unset so the client re-prompts naturally,
+    // without needing its own copy of the iso-week algorithm.
+    const curWeek = isoWeekKey(new Date().toISOString());
+    const commitment = user.profile?.commitment?.week === curWeek ? user.profile.commitment : null;
+    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment });
+  });
+
+  // Weekly training commitment (#4 adherence, roadmap item #2): the user states
+  // which days THIS week they intend to train — an implementation-intention /
+  // commitment-consistency lever, distinct from the fixed days_per_week cadence.
+  // Lives on the profile so it survives merges. `week` pins it to the ISO week
+  // it was made for (isoWeekKey, the same one push.mjs checks against) so a
+  // stale prior week's commitment can't silently linger or drive a reminder
+  // days after the user meant it.
+  app.post("/api/commitment", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const days = Array.isArray(b.days) ? [...new Set(b.days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : [];
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKey(new Date().toISOString()), days } };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ commitment: updated.profile.commitment });
   });
 
   // --- Web Push device reminders (#4): subscribe/unsubscribe + the public key.

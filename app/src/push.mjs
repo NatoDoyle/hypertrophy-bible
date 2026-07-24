@@ -1,3 +1,5 @@
+import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. EMPTY-payload design: an empty push needs no RFC 8291
 // payload encryption, only VAPID auth (RFC 8292) — a short-lived ES256 JWT
@@ -80,6 +82,21 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
   return Number.isFinite(days) && days >= PUSH_MIN_LAPSE_DAYS && days <= PUSH_MAX_LAPSE_DAYS;
 }
 
+// A commitment reminder fires when TODAY is a day the user THEMSELVES said
+// they'd train this week (`user.profile.commitment`, set via /api/commitment)
+// and they haven't trained yet today — proactive and keyed to the user's own
+// stated plan, unlike shouldPush's reactive "N days since last session" check
+// (which also can't fire the day right after training, exactly when a same-day
+// commitment reminder should). A commitment from a PRIOR iso week is stale and
+// never fires — the user meant "this week", not forever.
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff }) {
+  if (paused || remindersOff || !commitment?.days?.length) return false;
+  if (commitment.week !== isoWeekKey(now)) return false;
+  if (!commitment.days.includes(weekDayKey(now))) return false;
+  if (!lastSessionAt) return true;
+  return new Date(lastSessionAt).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10);
+}
+
 // One daily sweep. Injectable sender/fetch so the whole thing unit-tests on the
 // file store; dead subscriptions (404/410) are pruned as we go.
 export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch) {
@@ -90,13 +107,15 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
     try {
       const user = await store.getUser(sub.user_id);
       if (!user) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-      const hit = shouldPush({
-        lastSessionAt: await store.latestSessionDate(sub.user_id),
-        subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null,
-        paused: !!user.paused,
-        remindersOff: user.profile?.reminders_off === true,
-        now,
-      });
+      const lastSessionAt = await store.latestSessionDate(sub.user_id);
+      const paused = !!user.paused;
+      const remindersOff = user.profile?.reminders_off === true;
+      // Two independent reasons to push, one send: lapse-reactive (shouldPush)
+      // OR the user's own weekly commitment (shouldPushForCommitment). The push
+      // itself carries no payload either way (see the file header), so a single
+      // boolean OR is correct — never a double send for the same day.
+      const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
+        || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now });
       if (!hit) continue;
       // Never POST to a non-push-service host, even if an old row slipped one in.
       if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }

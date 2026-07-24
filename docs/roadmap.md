@@ -54,9 +54,16 @@ multi-user infra).
    the single source of truth shared by the engine and the recap). **Remaining slices (build
    next):** (b) an in-*player* PR moment (celebrate mid-session when a set beats a best, not only
    in the recap); (c) a persistent "wins"/PR feed + PR count (a lookback surface — progress-dopamine).
-2. **[Goal 4] Variable rewards + proactive habit reminders.** Surprise "lucky set"/bonus XP on
-   top of fixed XP; a weekly "when will you train?" commitment device; push reminders keyed to
-   the user's *own* logged training times, not just lapse-reactive.
+2. **[Goal 4] Variable rewards + proactive habit reminders.** — *PARTIALLY SHIPPED (Wave 81).*
+   Done: the weekly "when will you train?" commitment device — `POST /api/commitment` (pinned to
+   the current ISO week, `tools/derive-core.mjs`'s `isoWeekKey`/`WEEK_DAY_KEYS`/`weekDayKey`) lets
+   a user state which days this week they intend to train; `push.mjs`'s new
+   `shouldPushForCommitment` gives the daily push sweep a genuinely *proactive* trigger — a
+   committed day the user hasn't trained yet — independent of `shouldPush`'s lapse-reactive
+   days-since-last-session gate (which alone can't fire the day right after training, exactly
+   when a same-day commitment reminder should); a `Today`-tab card lets the user set/edit the
+   plan and reinforces it once set, suppressed on day 1 (novice-friction). **Remaining slice:**
+   surprise "lucky set"/bonus XP on top of fixed XP.
 3. **[Goal 2 bottom / Goal 3] Inline exercise demos, v0.** Add a `media` field to the exercise
    schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
    171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to

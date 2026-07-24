@@ -6,7 +6,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, shouldPush, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS } from "../src/push.mjs";
+import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -78,6 +79,21 @@ ok("reminders_off is a hard opt-out for push too", shouldPush({ lastSessionAt: d
 ok("never-trained: activation push after a day", shouldPush({ lastSessionAt: null, subscribedAt: daysAgo(2), now: NOW }) === true);
 ok("never-trained: not within the first hours of subscribing", shouldPush({ lastSessionAt: null, subscribedAt: new Date(NOW - 3600e3).toISOString(), now: NOW }) === false);
 
+// --- shouldPushForCommitment: proactive, keyed to the user's OWN weekly plan ---
+const THIS_WEEK = isoWeekKey(NOW);
+const TODAY_KEY = weekDayKey(NOW);
+ok("today is a committed day, never trained -> push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === true);
+ok("today is a committed day, already trained TODAY -> no push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: NOW, now: NOW }) === false);
+ok("today is a committed day, trained YESTERDAY (not today) -> still push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(1), now: NOW }) === true);
+ok("today is NOT a committed day -> no push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: ["not-a-real-day-that-matches-today"] }, lastSessionAt: null, now: NOW }) === false);
+ok("no commitment set -> no push", shouldPushForCommitment({ commitment: null, lastSessionAt: null, now: NOW }) === false);
+ok("a commitment from a PRIOR week is stale and never fires", shouldPushForCommitment({ commitment: { week: "2020-W01", days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === false);
+ok("paused users are NEVER pushed for a commitment either", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, paused: true, now: NOW }) === false);
+ok("reminders_off is a hard opt-out for commitment pushes too", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, remindersOff: true, now: NOW }) === false);
+// Same-day-after-training is exactly the case shouldPush's PUSH_MIN_LAPSE_DAYS gate would block —
+// the commitment path fires anyway because it's a DIFFERENT reason (the user's own stated plan).
+ok("shouldPush alone would block a same-day-after-training push (the gate this feature bypasses)", shouldPush({ lastSessionAt: daysAgo(1), now: NOW }) === false);
+
 // --- sweep against the real file store ---
 const path = join(tmpdir(), `hb-push-test-${process.pid}.json`);
 const store = createFileStore(path);
@@ -85,17 +101,25 @@ try {
   await store.saveUser("lapsed", { profile: {} });
   await store.saveUser("fresh", { profile: {} });
   await store.saveUser("pausedu", { profile: {}, paused: { from: daysAgo(1) } });
+  // Trained YESTERDAY (same as "fresh" — shouldPush alone would stay silent), but
+  // committed to training TODAY: the commitment path must push anyway.
+  await store.saveUser("committed", { profile: { commitment: { week: THIS_WEEK, days: [TODAY_KEY] } } });
   await store.addSession("lapsed", { session_id: "l1", date: daysAgo(4), sets: [] });
   await store.addSession("fresh", { session_id: "f1", date: daysAgo(1), sets: [] });
   await store.addSession("pausedu", { session_id: "p1", date: daysAgo(4), sets: [] });
-  for (const [u, ep] of [["lapsed", "https://updates.push.services.mozilla.com/wpush/v2/l"], ["fresh", "https://updates.push.services.mozilla.com/wpush/v2/f"], ["pausedu", "https://updates.push.services.mozilla.com/wpush/v2/p"], ["ghost-user", "https://updates.push.services.mozilla.com/wpush/v2/g"]])
+  await store.addSession("committed", { session_id: "c1", date: daysAgo(1), sets: [] });
+  for (const [u, ep] of [["lapsed", "https://updates.push.services.mozilla.com/wpush/v2/l"], ["fresh", "https://updates.push.services.mozilla.com/wpush/v2/f"], ["pausedu", "https://updates.push.services.mozilla.com/wpush/v2/p"], ["committed", "https://updates.push.services.mozilla.com/wpush/v2/c"], ["ghost-user", "https://updates.push.services.mozilla.com/wpush/v2/g"]])
     await store.savePushSubscription(u, { endpoint: ep, keys: { p256dh: "k", auth: "a" } });
 
   const hits = [];
-  const fakeFetch = async (url) => { hits.push(url); return url.endsWith("/l") ? { ok: true, status: 201 } : { ok: false, status: 410 }; };
+  const fakeFetch = async (url) => { hits.push(url); return (url.endsWith("/l") || url.endsWith("/c")) ? { ok: true, status: 201 } : { ok: false, status: 410 }; };
   const r = await runPushSweep(store, vapid, NOW, fakeFetch);
-  ok("sweep pushes ONLY the lapsed opted-in user", hits.length === 1 && hits[0] === "https://updates.push.services.mozilla.com/wpush/v2/l" && r.sent === 1);
+  ok("sweep pushes the lapsed opted-in user AND the committed-but-not-yet-trained-today user, nobody else",
+    hits.length === 2 && hits.includes("https://updates.push.services.mozilla.com/wpush/v2/l") && hits.includes("https://updates.push.services.mozilla.com/wpush/v2/c") && r.sent === 2);
   ok("a subscription whose user is gone is pruned without a send", r.pruned >= 1 && !(await store.listPushSubscriptions()).some((s) => s.user_id === "ghost-user"));
+  // "committed" trains TODAY between sweeps, so the next sweep's 410 must prune
+  // only "lapsed" — proves the commitment reminder stops once its day is trained.
+  await store.addSession("committed", { session_id: "c2", date: new Date(NOW).toISOString(), sets: [] });
   const again = await runPushSweep(store, vapid, new Date(NOW).getTime(), async (url) => { hits.push(url); return { ok: false, status: 410 }; });
   ok("a 410 on send prunes that subscription", again.pruned === 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://updates.push.services.mozilla.com/wpush/v2/l"));
 

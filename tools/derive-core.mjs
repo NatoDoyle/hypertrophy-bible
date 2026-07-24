@@ -113,6 +113,13 @@ export const sessionWeekKey = (s) => {
   return k.includes("NaN") ? isoWeekKey(s.date) : k;
 };
 
+// Weekday keys for the weekly training-commitment device (Mon-first, matching
+// isoWeekKey's ISO convention) — the single source of truth so the API's
+// day-name validation and the push sweep's "is today a committed day" check
+// can never disagree on what a valid day key is.
+export const WEEK_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+export const weekDayKey = (dateStr) => WEEK_DAY_KEYS[(new Date(dateStr).getUTCDay() + 6) % 7];
+
 // Is a set a "hard working set" that counts toward hypertrophy volume?
 // Warm-ups never count. If effort is logged, it must be near failure (RPE>=gate / RIR<=4).
 // If effort is NOT logged, a work set counts (we don't penalize missing data).
