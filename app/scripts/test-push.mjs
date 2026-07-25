@@ -246,6 +246,28 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     sentBody = "unset";
     const r7 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
     ok("a paused user with a pending challenge invite is NOT pushed", r7.sent === 0 && sentBody === "unset");
+
+    // --- accept push (Wave 137): the CHALLENGER hears when the opponent accepts ---
+    await chalStore.saveUser("challenger", { profile: { tz_offset_min: -300, challenge: { id: "c9", role: "challenger", status: "active", week, created_at: NOW - 3600e3, accepted_at: NOW } } });
+    await chalStore.savePushSubscription("challenger", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/accept", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let acceptHits = 0; sentBody = "unset";
+    const acceptFetch = async (url, opts) => { if (url.includes("/accept")) { acceptHits++; sentBody = opts.body; } return { ok: true, status: 201 }; };
+    await runPushSweep(chalStore, vapid, NOW, acceptFetch);
+    ok("an accepted challenge pushes 'challenge on' to the CHALLENGER, any hour", acceptHits === 1 && sentBody instanceof Uint8Array);
+    const aMsg = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the accept push carries the challenge-on copy", aMsg.tag === "hb-challenge" && /accepted/.test(aMsg.body));
+    ok("challenge_accept_pushed_at is stamped (seen-once)", (await chalStore.getUser("challenger")).profile.challenge_accept_pushed_at === NOW);
+    acceptHits = 0;
+    await runPushSweep(chalStore, vapid, NOW + 3600e3, acceptFetch);
+    ok("the SAME accept never pushes twice", acceptHits === 0);
+    // A pre-137 active challenge (no accepted_at) can never fire; a declined one has no consumer.
+    await chalStore.saveUser("chal-old", { profile: { tz_offset_min: -300, challenge: { id: "c10", role: "challenger", status: "active", week, created_at: NOW } } });
+    await chalStore.savePushSubscription("chal-old", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/accept-old", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await chalStore.saveUser("chal-declined", { profile: { tz_offset_min: -300, challenge: { id: "c11", role: "challenger", status: "declined", week, created_at: NOW, accepted_at: NOW } } });
+    await chalStore.savePushSubscription("chal-declined", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/accept-decl", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let oldDeclHits = 0;
+    await runPushSweep(chalStore, vapid, NOW, async (url, opts) => { if (url.includes("accept-old") || url.includes("accept-decl")) oldDeclHits++; return { ok: true, status: 201 }; });
+    ok("a pre-accepted_at active challenge and a declined one never accept-push", oldDeclHits === 0);
   } finally { try { rmSync(chalPath); } catch {} }
 }
 

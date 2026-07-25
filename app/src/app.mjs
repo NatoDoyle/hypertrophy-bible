@@ -694,12 +694,18 @@ export function createApp(store, config = {}) {
     if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKey(new Date().toISOString()))
       return c.json({ error: "no-pending-challenge" }, 400);
     const status = b.accept === true ? "active" : "declined";
+    // On ACCEPT, stamp accepted_at on the CHALLENGER's copy: the push sweep uses it
+    // as the high-water mark to tell them the race is on (the same event-marker
+    // shape as challenge.created_at → the opponent's invite push). Declines don't
+    // stamp — nothing consumes it (the in-app card shows the decline, and a "they
+    // said no" notification helps nobody train).
+    const acceptedAt = Date.now();
     await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, status } }; return u; });
     const challengerId = mine.partner_token && (await store.getShareUserId(mine.partner_token));
     if (challengerId) {
       await store.updateUser(challengerId, (u) => {
         if (u.profile?.challenge?.id !== mine.id) return u; // challenger already moved on — don't resurrect a stale slot
-        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status } };
+        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status, ...(status === "active" ? { accepted_at: acceptedAt } : {}) } };
         return u;
       });
     }

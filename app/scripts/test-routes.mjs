@@ -641,6 +641,7 @@ try {
   const decline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
   ok("#challenge decline succeeds", decline.status === 200 && decline.data.status === "declined");
   ok("#challenge decline propagates to the challenger's side too", (await getChallenge(carol)).challenge.status === "declined");
+  ok("#challenge a DECLINE never stamps accepted_at (nothing consumes it; no push)", (await getChallenge(carol)).challenge.accepted_at === undefined);
   ok("#challenge a challenger can't respond to their own proposal", (await json("POST", "/api/challenge/respond", { user_id: carol, accept: true })).status === 400);
   // An unanswered/declined invite has no real result — it must NOT add a history entry.
   ok("#challenge-history a declined challenge records no history", ((await getChallenge(carol)).history ?? []).length === 0);
@@ -650,6 +651,7 @@ try {
   const accept = await json("POST", "/api/challenge/respond", { user_id: dave, accept: true });
   ok("#challenge accept succeeds", accept.status === 200 && accept.data.status === "active");
   ok("#challenge accept propagates to the challenger's side too", (await getChallenge(carol)).challenge.status === "active");
+  ok("#challenge an ACCEPT stamps accepted_at on the challenger's copy (the accept-push high-water mark)", typeof (await getChallenge(carol)).challenge.accepted_at === "number");
   ok("#challenge a second propose while active is refused (409)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 409);
 
   // Log sessions for each side THIS week and confirm the live tally is correct.

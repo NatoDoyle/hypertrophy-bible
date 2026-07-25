@@ -217,6 +217,20 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
       }
 
+      // A challenge ACCEPT (Wave 137): the CHALLENGER hears the race is on —
+      // completing the propose→accept event loop the invite push above started.
+      // accepted_at (stamped on the challenger's copy at respond time) is the
+      // high-water mark vs challenge_accept_pushed_at. Pre-137 active challenges
+      // have no accepted_at and can never fire. Declines deliberately do NOT
+      // push — the in-app card shows them, and a "they said no" notification
+      // helps nobody train.
+      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
+          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
+        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
+        if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
+      }
+
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
       const lastSessionAt = await store.latestSessionDate(userId);
