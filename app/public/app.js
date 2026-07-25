@@ -1785,7 +1785,7 @@ async function renderCoach() {
       box.classList.remove("hidden");
       // Build the row structurally and set the URL via .value (a property, never
       // interpolated into HTML) so there is no injection surface.
-      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="sharecopy" style="width:auto">Copy</button></div>${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
+      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="sharecopy" style="width:auto">Copy</button></div>${r.new_cheers > 0 ? `<p style="margin-top:8px;color:var(--accent);font-weight:600">🎉 ${r.new_cheers} new cheer${r.new_cheers === 1 ? "" : "s"} since you last looked!</p>` : ""}${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
       $("#shareurl").value = url;
       $("#sharecopy").onclick = () => { try { navigator.clipboard?.writeText(url); } catch {} $("#shareurl").select(); say("Link copied."); };
       $("#sharerevoke").onclick = async () => {

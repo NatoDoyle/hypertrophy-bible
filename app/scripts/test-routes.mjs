@@ -538,6 +538,18 @@ try {
   const cheerOtherIp = (await app.request(`/api/share/${cheerTok}/cheer`, { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "198.51.100.7" } })).status;
   ok("#cheer rate-limit is per-IP (a different IP still cheers)", cheerOtherIp === 200);
 
+  // --- "New cheers since you last looked" delta (#10 social feedback) ---
+  const ncUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const nc1 = await json("POST", "/api/share", { user_id: ncUser });
+  ok("#new-cheers a fresh share reports 0 new", nc1.data.new_cheers === 0 && nc1.data.cheers === 0);
+  await json("POST", `/api/share/${nc1.data.share_id}/cheer`);
+  const nc2 = await json("POST", "/api/share", { user_id: ncUser });
+  ok("#new-cheers a cheer since the last look shows as new", nc2.data.new_cheers === 1 && nc2.data.cheers === 1);
+  const nc3 = await json("POST", "/api/share", { user_id: ncUser });
+  ok("#new-cheers looking again clears the delta (marked seen)", nc3.data.new_cheers === 0 && nc3.data.cheers === 1);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

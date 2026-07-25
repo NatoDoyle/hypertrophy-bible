@@ -478,7 +478,16 @@ export function createApp(store, config = {}) {
     if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
     let shareId = await store.getShareIdForUser(b.user_id);
     if (!shareId) shareId = await store.createShare(b.user_id, crypto.randomUUID(), Date.now());
-    return c.json({ share_id: shareId, cheers: await store.getShareCheers(shareId) });
+    const cheers = await store.getShareCheers(shareId);
+    // Surface how many cheers arrived SINCE the user last looked — the motivating
+    // signal (a total that never visibly grows is easy to ignore) — then mark seen.
+    let newCheers = 0;
+    await store.updateUser(b.user_id, (u) => {
+      newCheers = Math.max(0, cheers - (u.profile?.cheers_seen ?? 0));
+      u.profile = { ...(u.profile ?? {}), cheers_seen: cheers };
+      return u;
+    });
+    return c.json({ share_id: shareId, cheers, new_cheers: newCheers });
   });
   app.post("/api/share/revoke", async (c) => {
     const b = await c.req.json().catch(() => ({}));
