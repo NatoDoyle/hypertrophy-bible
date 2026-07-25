@@ -1,6 +1,7 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP } from "/session-core.mjs";
+import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -995,6 +996,7 @@ function renderPlayer(resting = 0) {
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
+    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
     <div class="setdots">${setDots}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
@@ -1139,6 +1141,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${m.unilateral ? `<div class="cue">↔️ <b>One side at a time</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
+      ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
@@ -1223,8 +1226,9 @@ function renderSupersetStation(L, P, resting = 0) {
     finish();
   };
 }
-// The "how do I do this?" sheet: full cues + mistakes from the KB, and a form-
-// video search — an honest stand-in until we have vetted demo media of our own.
+// The "how do I do this?" sheet: full cues + mistakes from the KB, plus the
+// inline line-art movement demo (real per-exercise footage is BLOCKERS.md #1 —
+// blocked on licensed/filmed media; this is the honest, self-buildable v0).
 const BIAS_LABEL = { lengthened: "loads the stretch 🎯", shortened: "loads the squeeze", "mid-range": "hardest mid-range", uniform: "even resistance" };
 function renderExerciseSheet(ex, d) {
   const name = d?.name ?? ex.name;
@@ -1240,18 +1244,16 @@ function renderExerciseSheet(ex, d) {
     d?.cns_cost ? `${d.cns_cost} systemic fatigue` : null,
     d?.difficulty ? d.difficulty : null,
   ].filter(Boolean).map((t) => `<span class="chip">${esc(t)}</span>`).join(" ");
-  const yt = `https://www.youtube.com/results?search_query=${encodeURIComponent(name + " proper form")}`;
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
     ${chips ? `<p>${chips}</p>` : ""}
+    ${renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern)}
     ${d?.resistance_profile ? `<p class="muted">📈 <b>Where it's hardest:</b> ${esc(d.resistance_profile)}</p>` : ""}
     ${steps ? `<h2>Step by step</h2>${steps}` : ""}
     ${cues ? `<h2>Coaching cues</h2>${cues}` : (!steps ? `<p class="muted">No cues on file for this one.</p>` : "")}
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
     ${good ? `<h2>Good pick when</h2>${good}` : ""}
     ${bad ? `<h2>Maybe skip when</h2>${bad}` : ""}
-    <p class="muted">Want to see it? This opens a YouTube search in a new tab — pick a clear, calm demo (avoid ego-lifting clips).</p>
-    <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${yt}" target="_blank" rel="noopener">▶ Find a form video</a>
     <button class="btn" id="back">Back to workout</button>`;
   $("#back").onclick = () => renderPlayer(0);
 }
@@ -1298,9 +1300,11 @@ async function renderSwap() {
       equipment: chosen?.equipment ?? null,
       // Carry the new lift's own coaching cues (the endpoint now returns them) — a
       // unilateral or stretch-focused replacement keeps its "each side" / "🎯
-      // stretch-focused" guidance instead of inheriting a blank.
+      // stretch-focused" guidance instead of inheriting a blank. movement_pattern
+      // travels too, or the swapped-in lift would show the OLD lift's inline demo.
       suggested_kg: null, cue: null,
       unilateral: !!chosen?.unilateral, lengthened_bias: !!chosen?.lengthened_bias,
+      movement_pattern: chosen?.movement_pattern ?? null,
       superset_with: undefined, superset_with_name: undefined,
     };
     delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.rir[sess.i];

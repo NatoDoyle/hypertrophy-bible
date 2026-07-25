@@ -56,6 +56,11 @@ try {
   const bench = (t.session?.exercises ?? []).find((e) => e.exercise === "barbell-bench-press");
   ok("progression anchors past the deload end-to-end", !bench || bench.suggested_kg == null || bench.suggested_kg > 90);
 
+  // #exercise-demo: movement_pattern must reach /api/today so the client can pick
+  // the right inline line-art demo without an extra round-trip per exercise.
+  ok("#exercise-demo /api/today's session.exercises carry movement_pattern",
+    !bench || bench.movement_pattern === "horizontal-push");
+
   // roadmap #4's last slice, end-to-end through the real route: a non-beginner
   // with a bodyweight on file gets a body-scaled starting guess for a lift they've
   // never logged (a confirm, not a blind pick from an empty bar).
@@ -170,6 +175,13 @@ try {
   ok("#12 /api/exercises carries unilateral + lengthened_bias for swap cue preservation",
     dbEx.every((e) => typeof e.unilateral === "boolean" && typeof e.lengthened_bias === "boolean")
     && !!bss && bss.unilateral === true && bss.lengthened_bias === true);
+  // #exercise-demo: movement_pattern must also survive a mid-workout SWAP (a
+  // different call site than /api/today — lesson 1: fix every call site, not just
+  // the one that first exposed the gap), or the swapped-in lift falls back to the
+  // generic pulse demo instead of its real animation.
+  ok("#exercise-demo /api/exercises carries movement_pattern for the swap picker",
+    dbEx.every((e) => e.custom || typeof e.movement_pattern === "string")
+    && bss?.movement_pattern === "lunge");
 
   // #D3: a custom plan edit clears the now-stale generated rationale (the "Why this
   // plan?" science block must not describe a plan the user no longer has).
