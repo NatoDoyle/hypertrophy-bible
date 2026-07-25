@@ -210,6 +210,26 @@ These are real failures from previous iterations. Each is now a standing check.
    shipped since iteration-37 — is lesson 17's positive case in action: yield came from
    genuinely UN-audited new code, not from re-sweeping surfaces already swept.
 
+20. **'/loop' command is banned, do not use it** you should follow the loop explained in this 
+   file.
+
+21. **A read that also writes must report what it PERSISTED, not its optimistic local guess.**
+   Wave 128's `GET /api/challenge` computed a win/loss and flipped status locally, then persisted
+   via `store.updateUser`, whose CAS guard (`u.profile?.challenge?.id !== ch.id`) legitimately
+   *no-ops* the write when a concurrent propose replaced the slot (reachable because Wave-127's
+   `isChallengeOpen` frees a week-over challenge) — yet the response still returned the fabricated
+   trophy the store never recorded. The Wave-128 review (mine) called this path "effectively
+   correct" under concurrency; it wasn't, and the diff-scoped audit two waves later caught it. →
+   **Standing lens:** when a GET/read handler also writes (self-transition, a seen-once watermark,
+   a completion record), derive the response from `updateUser`'s RETURN value (the actually-persisted
+   state), never from the pre-write local computation; confirm `updateUser`'s return contract holds
+   identically in BOTH stores; and guard its `null` return (a row can vanish between the handler's
+   read and its write). This is lesson 10 (a derived status must never contradict what's stored) at
+   the *response* layer, under concurrency. Meta (token discipline): this fix was code-groundable and
+   was fully verified inline before a redundant 3-agent verify-workflow (~177k tokens) merely
+   re-confirmed it and the one nit already spotted inline — exactly the verify-agent fan-out
+   Token-discipline rule 1 forbids. Verify code claims inline; reserve agents for domain judgment.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
