@@ -1710,7 +1710,8 @@ async function renderCoach() {
       <div class="big">${a.sessions_logged === 0 ? "🌱 Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
       <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
       ${a.sessions_logged === 0 ? "" : `<p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
-      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}</div>
+      <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}
+      ${a.share_cheers > 0 ? `<p style="color:var(--accent);font-weight:600;margin-top:6px">💪 ${a.share_cheers} ${a.share_cheers === 1 ? "person has" : "people have"} cheered you on</p>` : ""}</div>
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
     ${a.streak_freeze && a.streak_freeze.balance > 0 ? `<div class="card"><b>🛡️ ${a.streak_freeze.balance} streak freeze${a.streak_freeze.balance === 1 ? "" : "s"}</b>

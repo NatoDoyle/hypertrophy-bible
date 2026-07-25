@@ -358,7 +358,12 @@ export function createApp(store, config = {}) {
     // without needing its own copy of the iso-week algorithm.
     const curWeek = isoWeekKey(new Date().toISOString());
     const commitment = user.profile?.commitment?.week === curWeek ? user.profile.commitment : null;
-    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment });
+    // Surface the cheer tally on the main Coach view (not just buried in the share
+    // box) so the social validation actually lands where the user looks. Only an
+    // extra read for users who've opted into sharing; null/0 otherwise.
+    const shareId = await store.getShareIdForUser(id);
+    const shareCheers = shareId ? await store.getShareCheers(shareId) : 0;
+    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers });
   });
 
   // Weekly training commitment (#4 adherence, roadmap item #2): the user states

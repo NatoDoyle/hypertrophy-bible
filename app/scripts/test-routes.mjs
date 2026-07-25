@@ -549,6 +549,11 @@ try {
   ok("#new-cheers a cheer since the last look shows as new", nc2.data.new_cheers === 1 && nc2.data.cheers === 1);
   const nc3 = await json("POST", "/api/share", { user_id: ncUser });
   ok("#new-cheers looking again clears the delta (marked seen)", nc3.data.new_cheers === 0 && nc3.data.cheers === 1);
+  // The cheer total is surfaced on the main Coach view (/api/adherence), not just the share box.
+  const ncAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": ncUser } })).json();
+  ok("#adherence surfaces the share cheer total on the main Coach view", ncAdh.share_cheers === 1);
+  const noShareAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": freshUser } })).json();
+  ok("#adherence share_cheers is 0 for a user who hasn't shared", noShareAdh.share_cheers === 0);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
