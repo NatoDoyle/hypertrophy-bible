@@ -7,6 +7,7 @@
 - Autoregulate with **RIR/RPE** so hard days are hard and fatigue days are lighter. **[Grade B]**
 - Don't expect a **periodization model** to add much hypertrophy at matched volume — pick one you'll follow. **[Grade B]**
 - Keep the **stimulus rising** relative to your adaptation, or growth stalls. **[Grade A]**
+- **Peaking for a specific event?** Run a **~2-week taper** — cut volume ~40–60%, keep the load — to arrive fresh. It sharpens *performance on the day*, not muscle size, so it's for competitors, not general hypertrophy. **[Grade B]**
 
 ## Practical Application
 
@@ -29,6 +30,8 @@
 
 **Load/rep progression is flexible.** Because a wide range of loads builds muscle when effort is high, you can progress via reps or load across roughly 5–30 reps and still grow — the practical basis for double progression[^schoenfeld-2021-loading-recommendations]. **[Grade A]** Autoregulating with the RIR-based RPE scale lets you keep effort on target as daily readiness fluctuates[^helms-2020-regulating-monitoring]. **[Grade C]**
 
+**Tapering peaks _performance_ for a target day — not hypertrophy.** If you're training toward a specific event (a meet, a show, a strength test), a **~2-week taper** that **exponentially reduces training volume by ~40–60% while holding intensity (load) constant** is the best-supported way to arrive fresh and strong: Bosquet and colleagues' meta-analysis found this strategy produced a small but reliable performance gain (overall effect ≈ 0.72), whereas cutting intensity did not help[^bosquet-2007-taper]. **[Grade B]** This is about **strength/skill expression on the day**, distinct from the growth stimulus the rest of a block chases — you *hold the weight and cut the sets*, unlike a deload (which eases both). The evidence is in competitive athletes and measures performance, not muscle size, so a taper is a peaking tool for competitors, not something a general trainee chasing hypertrophy needs.
+
 ## Key Uncertainties & Nuance
 - **Periodization may matter more for strength and for advanced lifters** than for hypertrophy in general trainees; the "wash" is a hypertrophy-at-matched-volume statement.
 - **Autoregulation can be over-applied** — beginners estimate RIR poorly, so simple double progression is often better for them.
@@ -43,3 +46,4 @@
 [^grgic-2017-periodization]: Grgic J, et al. (2017). *Effects of linear and daily undulating periodized resistance training programs on measures of muscle hypertrophy: a systematic review and meta-analysis.* PeerJ, 5, e3695. DOI: [10.7717/peerj.3695](https://doi.org/10.7717/peerj.3695). PMID: 28848690.
 [^schoenfeld-2021-loading-recommendations]: Schoenfeld BJ, Grgic J, et al. (2021). *Loading Recommendations for Muscle Strength, Hypertrophy, and Local Endurance: A Re-Examination of the Repetition Continuum.* Sports (Basel), 9(2), 32. DOI: [10.3390/sports9020032](https://doi.org/10.3390/sports9020032). PMID: 33671664.
 [^helms-2020-regulating-monitoring]: Helms ER, et al. (2020). *Methods for Regulating and Monitoring Resistance Training.* Journal of Human Kinetics, 74, 23–42. DOI: [10.2478/hukin-2020-0011](https://doi.org/10.2478/hukin-2020-0011). PMID: 33312273.
+[^bosquet-2007-taper]: Bosquet L, Montpetit J, Arvisais D, Mujika I (2007). *Effects of tapering on performance: a meta-analysis.* Medicine and Science in Sports and Exercise, 39(8), 1358–1365. DOI: [10.1249/mss.0b013e31806010e0](https://doi.org/10.1249/mss.0b013e31806010e0). PMID: 17762369.
