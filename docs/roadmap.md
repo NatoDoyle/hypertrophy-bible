@@ -38,11 +38,14 @@ and no evidence-based debunks). "Every claim web-verified" is true for ~a third 
 Has the skeleton — forgiving weeks-streak, XP/levels, session-count milestones, comeback
 email + push, at-risk warnings. Much of the high-powered space is now built: variable/intermittent
 rewards (lucky-set XP, Wave "cloud loop"), **PR/achievement celebration** (Waves 79–86), a "when
-will you train this week?" commitment device (Wave cloud loop), and — **Wave 96** — a **user-held
-streak freeze** (earn a token per ~4 trained weeks, hold up to 3, spend one to protect a missed
-week; reuses the walker's neutral-week path so it can only bridge, never break). Still missing: a
-proactive *habit-cue* reminder beyond the lapse-reactive push, and anything **social**
-(friends/accountability/challenges — the biggest remaining lever, needs multi-user infra).
+will you train this week?" commitment device (Wave cloud loop), a **user-held streak freeze**
+(Wave 96 — earn a token per ~4 trained weeks, hold up to 3, spend one to protect a missed week;
+reuses the walker's neutral-week path so it can only bridge, never break), and **timezone-aware
+push timing** (Wave 97 — the commitment-day nudge now fires at ~17:00 the user's LOCAL time via an
+hourly sweep gated per-user, instead of 16:00 UTC for everyone; email cadence unchanged). The
+proactive habit-cue is now delivered (a commitment-day nudge at a sensible local hour). Biggest
+remaining Goal-4 lever: anything **social** (friends/accountability/challenges — needs multi-user
+infra, the one genuinely large build left here).
 
 ## Build queue (pull from the top)
 
