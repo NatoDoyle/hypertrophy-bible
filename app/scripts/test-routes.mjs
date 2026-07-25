@@ -554,6 +554,15 @@ try {
   ok("#adherence surfaces the share cheer total on the main Coach view", ncAdh.share_cheers === 1);
   const noShareAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": freshUser } })).json();
   ok("#adherence share_cheers is 0 for a user who hasn't shared", noShareAdh.share_cheers === 0);
+  // Revoking a share drops its cheer tally too (no orphaned rows).
+  const rvUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const rvShare = (await json("POST", "/api/share", { user_id: rvUser })).data.share_id;
+  await json("POST", `/api/share/${rvShare}/cheer`);
+  ok("#revoke-cheers precondition: the share has a cheer", (await store.getShareCheers(rvShare)) === 1);
+  await json("POST", "/api/share/revoke", { user_id: rvUser });
+  ok("#revoke drops the share's cheer tally (no orphaned rows)", (await store.getShareCheers(rvShare)) === 0);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

@@ -258,7 +258,12 @@ export function createD1Store(db) {
     },
     async deleteShare(userId) {
       await ensureShares(db);
-      await db.prepare("DELETE FROM shares WHERE user_id = ?").bind(userId).run();
+      // Drop the cheer tally with the share (the count belongs to that share_id).
+      // One implicit transaction so a Worker death can't leave a half-revoke.
+      await db.batch([
+        db.prepare("DELETE FROM share_cheers WHERE share_id IN (SELECT share_id FROM shares WHERE user_id = ?)").bind(userId),
+        db.prepare("DELETE FROM shares WHERE user_id = ?").bind(userId),
+      ]);
     },
     // A public "cheer" tally on a share card (social proof). Bounded so it can't grow
     // absurdly; the caller validates the share_id resolves before incrementing.
