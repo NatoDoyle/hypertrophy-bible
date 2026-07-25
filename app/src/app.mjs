@@ -6,7 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
-import { adherenceReport, streakFreezeState } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState, publicShareCard } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
@@ -466,6 +466,39 @@ export function createApp(store, config = {}) {
     if (!updated) return c.json({ error: "unknown user" }, 404);
     if (!frozenWeek) return c.json({ error: reason || "cannot-freeze" }, 400);
     return c.json({ frozen_week: frozenWeek, ...adherenceReport(updated, sessions, now) });
+  });
+
+  // --- Shareable progress card (opt-in social, #10) --------------------------
+  // Opt in: mint (or return the existing) unguessable share token for this user.
+  // The token is a capability, NOT the user_id — it only ever exposes the non-PII
+  // aggregate card below, and the user can revoke it. Stable across taps so a link
+  // already shared keeps working; /revoke drops it, and the next opt-in makes a fresh one.
+  app.post("/api/share", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
+    let shareId = await store.getShareIdForUser(b.user_id);
+    if (!shareId) shareId = await store.createShare(b.user_id, crypto.randomUUID(), Date.now());
+    return c.json({ share_id: shareId });
+  });
+  app.post("/api/share/revoke", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    await store.deleteShare(b.user_id);
+    return c.json({ revoked: true });
+  });
+  // PUBLIC (no auth): resolve a share token to its owner and return ONLY the
+  // allowlisted non-PII card. The user_id is never exposed; an unknown/revoked
+  // token is an indistinguishable 404. A malformed token can't hit the store as a
+  // user_id (it's looked up in the shares index, a separate namespace).
+  app.get("/api/share/:shareId", async (c) => {
+    const shareId = c.req.param("shareId");
+    if (!shareId || shareId.length > 100) return c.json({ error: "not found" }, 404);
+    const userId = await store.getShareUserId(shareId);
+    if (!userId) return c.json({ error: "not found" }, 404);
+    const user = await store.getUser(userId);
+    if (!user) return c.json({ error: "not found" }, 404);
+    const sessions = await store.listSessions(userId);
+    return c.json(publicShareCard(user, sessions));
   });
 
   app.get("/api/checkin/today", async (c) => {

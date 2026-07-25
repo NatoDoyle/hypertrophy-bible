@@ -1717,6 +1717,10 @@ async function renderCoach() {
       ${a.streak_freeze.protectable_week
         ? `<p class="muted" style="margin-top:8px">You've got a missed week you can still protect. Spend one freeze to keep your streak alive — no shame either way.</p><button class="btn secondary" id="freeze">Protect my streak 🛡️</button>`
         : `<p class="muted" style="margin-top:8px">Banked and ready — miss a week and one of these quietly keeps your streak going. You earn more just by training consistently.</p>`}</div>` : ""}
+    ${a.sessions_logged > 0 ? `<div class="card"><b>📣 Share your progress</b>
+      <p class="muted" style="margin-top:8px">Post a read-only card of your streak, level and session count — a simple accountability nudge. No personal details are shared, and you can turn it off anytime.</p>
+      <button class="btn secondary" id="sharebtn">Get my share link</button>
+      <div id="sharebox" class="hidden" style="margin-top:10px"></div></div>` : ""}
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
@@ -1771,6 +1775,25 @@ async function renderCoach() {
       say(`Streak protected — still ${r.streak_weeks} week${r.streak_weeks === 1 ? "" : "s"} strong.`);
       await renderCoach(); $("#freeze")?.focus();
     } catch { alertBar("📴 Couldn't apply the freeze right now. Try again in a moment."); }
+  };
+  const shareBtn = $("#sharebtn");
+  if (shareBtn) shareBtn.onclick = async () => {
+    try {
+      const r = await api("/api/share", { method: "POST", body: JSON.stringify({ user_id: uid }) });
+      const url = `${location.origin}/share.html?s=${r.share_id}`;
+      const box = $("#sharebox");
+      box.classList.remove("hidden");
+      // Build the row structurally and set the URL via .value (a property, never
+      // interpolated into HTML) so there is no injection surface.
+      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="sharecopy" style="width:auto">Copy</button></div><button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
+      $("#shareurl").value = url;
+      $("#sharecopy").onclick = () => { try { navigator.clipboard?.writeText(url); } catch {} $("#shareurl").select(); say("Link copied."); };
+      $("#sharerevoke").onclick = async () => {
+        try { await api("/api/share/revoke", { method: "POST", body: JSON.stringify({ user_id: uid }) }); box.classList.add("hidden"); box.innerHTML = ""; say("Sharing turned off. The old link no longer works."); }
+        catch { alertBar("📴 Couldn't turn sharing off right now."); }
+      };
+      say("Your share link is ready.");
+    } catch { alertBar("📴 Couldn't create a share link right now. Try again in a moment."); }
   };
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {

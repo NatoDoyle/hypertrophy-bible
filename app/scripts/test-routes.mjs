@@ -489,6 +489,30 @@ try {
   const advLinRanges = new Set((await store.getUser(advLinUser)).program.sessions.flatMap((s) => s.exercises).map((e) => e.rep_range));
   ok("#periodization: an explicit 'linear' override survives the whitelist and disables undulation", !advLinRanges.has("4-6"));
 
+  // --- Shareable progress card (#10 social): opt-in, revocable, PII-safe. ---
+  const noUserShare = await json("POST", "/api/share", {});
+  ok("#share POST with no user_id is a clean 404", noUserShare.status === 404);
+  const share1 = await json("POST", "/api/share", { user_id: uid });
+  ok("#share POST mints a share token", share1.status === 200 && typeof share1.data.share_id === "string" && share1.data.share_id.length > 8);
+  const share2 = await json("POST", "/api/share", { user_id: uid });
+  ok("#share POST is stable — a second opt-in returns the SAME token (a shared link keeps working)", share2.data.share_id === share1.data.share_id);
+  ok("#share token is NOT the user_id (never expose the credential)", share1.data.share_id !== uid);
+  // Public read: allowlisted aggregate stats ONLY.
+  const pub = await json("GET", `/api/share/${share1.data.share_id}`);
+  ok("#share public GET returns the card", pub.status === 200 && typeof pub.data.streak_weeks === "number" && typeof pub.data.level === "number" && typeof pub.data.sessions_logged === "number");
+  ok("#share public card leaks NO PII (allowlist only: streak_weeks/level/sessions_logged)",
+    Object.keys(pub.data).every((k) => ["streak_weeks", "level", "sessions_logged"].includes(k)) &&
+    !JSON.stringify(pub.data).includes(uid));
+  const unknownShare = await json("GET", "/api/share/not-a-real-token-1234");
+  ok("#share public GET for an unknown token is 404", unknownShare.status === 404);
+  // Revoke invalidates the old token; the public link goes dark.
+  const revoked = await json("POST", "/api/share/revoke", { user_id: uid });
+  ok("#share revoke succeeds", revoked.status === 200 && revoked.data.revoked === true);
+  const afterRevoke = await json("GET", `/api/share/${share1.data.share_id}`);
+  ok("#share a revoked token no longer resolves (link goes dark)", afterRevoke.status === 404);
+  const share3 = await json("POST", "/api/share", { user_id: uid });
+  ok("#share re-opting-in after revoke mints a FRESH token (not the revoked one)", share3.data.share_id !== share1.data.share_id);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

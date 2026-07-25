@@ -1,5 +1,5 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
-import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX } from "../src/adherence.mjs";
+import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
@@ -57,6 +57,14 @@ const fzState = streakFreezeState(freezeGap, "2026-02-11", []);
 ok("streak-freeze: a recent missed week is protectable when a token is held", fzState.balance === 1 && !!fzState.protectable_week && fzState.freezable.includes(fzState.protectable_week));
 ok("streak-freeze: the in-progress current week is never offered as protectable", !fzState.freezable.includes("2026-W07"));
 ok("streak-freeze: adherenceReport surfaces the freeze wallet", adherenceReport({ streak_freezes: [] }, eight, "2026-02-25").streak_freeze.earned_total === 2);
+
+// --- publicShareCard (#10 social): a hard PII boundary — allowlist ONLY. A user
+// object stuffed with PII must yield exactly three non-identifying aggregate keys.
+const pii = { email: "a@b.com", user_id: "secret-uuid", profile: { sex: "male", bodyweight: 90 }, paused: null, streak_freezes: [] };
+const card = publicShareCard(pii, eight, "2026-02-25");
+ok("publicShareCard exposes EXACTLY streak_weeks/level/sessions_logged", JSON.stringify(Object.keys(card).sort()) === JSON.stringify(["level", "sessions_logged", "streak_weeks"]));
+ok("publicShareCard leaks no email/user_id/profile anywhere in its output", !JSON.stringify(card).includes("secret-uuid") && !JSON.stringify(card).includes("a@b.com"));
+ok("publicShareCard reports real aggregate values", card.sessions_logged === eight.length && card.level >= 1);
 
 // XP + level: 3 sessions × (100 + 3 hard sets ×5) = 3×115 = 345 -> level 1
 const xl = xpAndLevel(three);

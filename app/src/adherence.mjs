@@ -114,6 +114,16 @@ function isoWeekKeyFromOrdinal(ord) {
   return isoWeekKey(new Date(ord * 7 * 86400000 + 3 * 86400000).toISOString()); // +3d → land mid-week, away from any boundary
 }
 
+// The public shareable card (opt-in social). A deliberate ALLOWLIST of non-PII
+// aggregate stats — never a filtered dump of adherenceReport, so a field added
+// there later can't silently leak. NO email, user_id, name, bodyweight, nutrition,
+// check-ins, injuries, or raw sessions ever cross this boundary.
+export function publicShareCard(user, sessions, now = new Date().toISOString()) {
+  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || [], user.streak_freezes || []);
+  const { level } = xpAndLevel(sessions);
+  return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length };
+}
+
 export function xpAndLevel(sessions) {
   // 100 XP per session + 5 per hard set — engagement tied to real training.
   const base = (sessions ?? []).reduce((a, s) => a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5, 0);
