@@ -6,8 +6,21 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour } from "../src/push.mjs";
+import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+
+// A fake browser subscription: a real UA-generated ECDH keypair + a random auth
+// secret (same pattern as test-push-encrypt.mjs), so sendPush's encryption runs
+// for real and a test can decrypt the result to check the app never sends the
+// static-reminder path a payload it can't handle.
+async function fakeUaSubscription() {
+  const kp = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const p256dh = bytesToB64u(new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)));
+  const privJwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+  const auth = bytesToB64u(crypto.getRandomValues(new Uint8Array(16)));
+  return { p256dh, auth, privJwk };
+}
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -49,6 +62,26 @@ const vapid = { privateJwk, publicKeyB64u: b64u(rawPub), subject: "mailto:test@t
   ok("410 marks the subscription gone", r410.gone === true);
   const rNet = await sendEmptyPush({ endpoint: "https://push.example.com/x" }, vapid, async () => { throw new Error("net"); });
   ok("a network error keeps the subscription (retry tomorrow)", rNet.ok === false && rNet.gone === false);
+}
+
+// --- sendPush: a content-bearing (RFC 8291) push encrypts, and the UA can decrypt it ---
+{
+  const ua = await fakeUaSubscription();
+  let seen = null;
+  const okFetch = async (url, opts) => { seen = { url, opts }; return { ok: true, status: 201 }; };
+  const payload = { title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" };
+  const r1 = await sendPush({ endpoint: "https://push.example.com/x", p256dh: ua.p256dh, auth: ua.auth }, vapid, payload, okFetch);
+  ok("sendPush POSTs an encrypted body with aes128gcm headers", r1.ok
+    && seen.opts.headers["Content-Encoding"] === "aes128gcm"
+    && seen.opts.headers["Content-Type"] === "application/octet-stream"
+    && /^vapid /.test(seen.opts.headers.Authorization)
+    && seen.opts.body instanceof Uint8Array && seen.opts.body.length > 0);
+  const decrypted = await decryptPushPayload({ body: seen.opts.body, uaPrivateJwk: ua.privJwk, auth: ua.auth });
+  ok("the UA's own keys decrypt it back to the exact JSON payload", JSON.parse(decrypted).body === payload.body && JSON.parse(decrypted).tag === "hb-nudge");
+  const r410 = await sendPush({ endpoint: "https://push.example.com/x", p256dh: ua.p256dh, auth: ua.auth }, vapid, payload, async () => ({ ok: false, status: 410 }));
+  ok("sendPush also detects a gone subscription", r410.gone === true);
+  const rBadKeys = await sendPush({ endpoint: "https://push.example.com/x", p256dh: "not-valid-keys", auth: "x" }, vapid, payload, okFetch);
+  ok("sendPush fails soft (not throw) on undecryptable subscription keys", rBadKeys.ok === false && rBadKeys.gone === false);
 }
 
 // --- #25 endpoint host allowlist (SSRF guard on the outbound sweep) ---
@@ -116,6 +149,43 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     const h2 = []; await runPushSweep(tzStore, vapid, atUtc("2026-07-10T05:00:00Z"), async (u) => { h2.push(u); return { ok: true, status: 201 }; });
     ok("sweep at their 17:00 local (05:00 UTC) DOES push the UTC+12 user", h2.length === 1);
   } finally { try { rmSync(tzPath); } catch {} }
+}
+
+// --- runPushSweep: a pending training-partner nudge sends an ENCRYPTED, content-bearing
+// push (not the empty reminder), fires regardless of the user's local reminder hour, and
+// never repeats once delivered. ---
+{
+  const nudgePath = join(tmpdir(), `hb-push-nudge-test-${process.pid}.json`);
+  const nudgeStore = createFileStore(nudgePath);
+  try {
+    const ua = await fakeUaSubscription();
+    await nudgeStore.saveUser("nudgee", { profile: { tz_offset_min: -300, partner_nudge: { at: NOW } } }); // 22:00 UTC local hour, NOT their push hour at NOW
+    await nudgeStore.savePushSubscription("nudgee", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/nudge", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let sentBody = null;
+    const captureFetch = async (url, opts) => { sentBody = opts.body; return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(nudgeStore, vapid, NOW, captureFetch);
+    ok("a pending nudge sends even OUTSIDE the user's local reminder hour", r1.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the delivered push is the nudge copy, not the empty reminder", decrypted.tag === "hb-nudge" && /nudged you/.test(decrypted.body));
+    const nudgee = await nudgeStore.getUser("nudgee");
+    ok("nudge_pushed_at is stamped with the nudge's own timestamp (seen-once marker)", nudgee.profile.nudge_pushed_at === NOW);
+
+    sentBody = "unset";
+    const r2 = await runPushSweep(nudgeStore, vapid, NOW + 3600e3, captureFetch);
+    ok("the SAME nudge is never pushed twice", r2.sent === 0 && sentBody === "unset");
+
+    // A fresh nudge (later timestamp) fires again — proves it's keyed to the event, not a one-shot lock.
+    await nudgeStore.updateUser("nudgee", (u) => { u.profile = { ...(u.profile ?? {}), partner_nudge: { at: NOW + 7200e3 } }; return u; });
+    const r3 = await runPushSweep(nudgeStore, vapid, NOW + 7200e3, captureFetch);
+    ok("a NEW nudge event fires its own push", r3.sent === 1 && sentBody instanceof Uint8Array);
+
+    // Paused/reminders_off users never get the nudge push either (same guardrail as the reminder).
+    await nudgeStore.saveUser("nudgee-paused", { profile: { partner_nudge: { at: NOW } }, paused: { from: daysAgo(1) } });
+    await nudgeStore.savePushSubscription("nudgee-paused", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/nudge-paused", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r4 = await runPushSweep(nudgeStore, vapid, NOW, captureFetch);
+    ok("a paused user with a pending nudge is NOT pushed", r4.sent === 0 && sentBody === "unset");
+  } finally { try { rmSync(nudgePath); } catch {} }
 }
 
 // --- sweep against the real file store ---

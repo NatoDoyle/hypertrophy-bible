@@ -1,14 +1,19 @@
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+import { encryptPushPayload } from "./push-encrypt.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
-// comeback nudges. EMPTY-payload design: an empty push needs no RFC 8291
-// payload encryption, only VAPID auth (RFC 8292) — a short-lived ES256 JWT
-// signed with our P-256 keypair via crypto.subtle (zero dependencies, runs
-// identically on Node and Workers). The service worker shows a static
-// notification and deep-links into the app, so no user data ever transits the
-// push service. Guardrails mirror the email nudges structurally: paused users
-// and reminders_off are never pushed, and the window is bounded (a lapsed user
-// stops getting daily pushes after ~3 weeks — the email path owns the long tail).
+// comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
+// it needs no RFC 8291 payload encryption, only VAPID auth (RFC 8292) — a
+// short-lived ES256 JWT signed with our P-256 keypair via crypto.subtle (zero
+// dependencies, runs identically on Node and Workers) — and the service
+// worker shows static copy, so no user data ever transits the push service
+// for it. A discrete social event worth naming (e.g. a training-partner
+// nudge) instead goes through `sendPush`, which DOES carry a small encrypted
+// payload (RFC 8291 aes128gcm, push-encrypt.mjs) — still no user_id or
+// anything not already public via a share token. Guardrails mirror the email
+// nudges structurally either way: paused users and reminders_off are never
+// pushed, and the reminder's window is bounded (a lapsed user stops getting
+// daily pushes after ~3 weeks — the email path owns the long tail).
 
 // Push endpoints only ever originate from a browser's push service. Restricting
 // stored endpoints to these hosts stops a subscriber from registering an
@@ -63,6 +68,31 @@ export async function sendEmptyPush(subscription, vapid, fetchFn = fetch) {
     return { ok: res.ok, gone: res.status === 404 || res.status === 410, status: res.status };
   } catch {
     return { ok: false, gone: false, status: 0 }; // network blip: keep the subscription, retry tomorrow
+  }
+}
+
+// A CONTENT-BEARING push (RFC 8291 aes128gcm), for the rare event worth naming —
+// unlike the daily reminder above, which is deliberately empty so no user data
+// ever transits the push service. `payload` is a small plain object the SW turns
+// straight into a notification ({ title, body, tag }); it never carries a user_id
+// or anything a `hb-share`-style token wouldn't already make public. Requires the
+// subscription's stored p256dh/auth (always present for a real browser
+// subscription — see savePushSubscription); the caller checks for them.
+export async function sendPush(subscription, vapid, payload, fetchFn = fetch) {
+  try {
+    const { body, headers } = await encryptPushPayload({
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      plaintext: JSON.stringify(payload),
+    });
+    const res = await fetchFn(subscription.endpoint, {
+      method: "POST",
+      headers: { Authorization: await buildVapidAuth(subscription.endpoint, vapid), TTL: "86400", Urgency: "normal", "Content-Type": "application/octet-stream", ...headers },
+      body,
+    });
+    return { ok: res.ok, gone: res.status === 404 || res.status === 410, status: res.status };
+  } catch {
+    return { ok: false, gone: false, status: 0 }; // network/crypto blip: keep the subscription, retry next tick
   }
 }
 
@@ -121,13 +151,31 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
     try {
       const user = await store.getUser(sub.user_id);
       if (!user) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+      const paused = !!user.paused;
+      const remindersOff = user.profile?.reminders_off === true;
+
+      // A training-partner nudge (Wave 119) is a discrete social event, not a daily
+      // cadence — push it on the NEXT hourly tick rather than waiting for the user's
+      // one local reminder hour, so it can reach a device before the app is ever
+      // reopened. `nudge_pushed_at` is a separate seen-once marker from the in-app
+      // `nudge_seen_at` (app.mjs /api/adherence) — a push and the in-app banner are
+      // two different surfaces for the same event and must not gate each other.
+      const pendingNudge = user.profile?.partner_nudge;
+      if (!paused && !remindersOff && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)
+          && isAllowedPushEndpoint(sub.endpoint) && sub.p256dh && sub.auth) {
+        const res = await sendPush(sub, vapid, { title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" }, fetchFn);
+        if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+        if (res.ok) {
+          sent++;
+          await store.updateUser(sub.user_id, (u) => { u.profile = { ...(u.profile ?? {}), nudge_pushed_at: pendingNudge.at }; return u; });
+        }
+      }
+
       // Timezone-aware timing: only nudge in this user's one eligible hour/day, so an
       // hourly sweep never lands at 3am and never fires 24×. (Gate before any further
       // work — a user who isn't in their window this hour is simply skipped.)
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
       const lastSessionAt = await store.latestSessionDate(sub.user_id);
-      const paused = !!user.paused;
-      const remindersOff = user.profile?.reminders_off === true;
       // Two independent reasons to push, one send: lapse-reactive (shouldPush)
       // OR the user's own weekly commitment (shouldPushForCommitment). The push
       // itself carries no payload either way (see the file header), so a single
