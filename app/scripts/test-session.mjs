@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -347,6 +347,17 @@ check("weeklyRaceStatus: ahead/behind/tied and missing-count defaults", () => {
   assert.equal(weeklyRaceStatus(0, 0), "tied", "neither has trained yet this week — tied, not a false 'ahead'");
   assert.equal(weeklyRaceStatus(undefined, undefined), "tied", "missing counts default to 0, not NaN/throw");
   assert.equal(weeklyRaceStatus(1, undefined), "ahead", "a partner with no sessions_this_week (stale card) defaults to 0");
+});
+
+// formatWeekLabel (#10 social, challenge-history LIST view): a real ISO week key
+// reads as "Week N, YYYY"; anything malformed (incl. the test suite's own
+// "filler-N" cap fixtures) degrades to the raw string instead of throwing.
+check("formatWeekLabel: real ISO week keys and malformed/filler fallback", () => {
+  assert.equal(formatWeekLabel("2026-W30"), "Week 30, 2026");
+  assert.equal(formatWeekLabel("2026-W05"), "Week 5, 2026", "leading zero in the key doesn't leak into the label");
+  assert.equal(formatWeekLabel("filler-18"), "filler-18", "non-ISO test fixture keys pass through unchanged, not thrown on");
+  assert.equal(formatWeekLabel(undefined), "", "missing key never throws");
+  assert.equal(formatWeekLabel(null), "");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
