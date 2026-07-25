@@ -20,6 +20,8 @@
 
 **Selection principles.** Favor presses that let you reach a deep stretch (dumbbells and many machines beat a barbell, which the chest stops short of); use flyes/crossovers to add adduction and loaded stretch that pressing alone misses.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 Chest development follows the general training-variable evidence rather than chest-specific magic. **Volume drives growth** within a recoverable range[^schoenfeld-2017-volume-dose-response] **[Grade A]**, and **range of motion — especially loading the stretched position — matters**, so deep presses and flyes are favored over short-range work[^schoenfeld-2020-rom-review][^kassiano-2023-rom-review]. **[Grade B]** The case for training multiple angles rests on regional emphasis (upper vs lower fibers) and is supported more by anatomy and electromyography than by long-term hypertrophy trials, so it's graded as reasoned practice. **[Grade C]** Underlying all of it, mechanical tension on the pec fibers is the driver[^schoenfeld-2010-mechanisms]. **[Grade C]**
@@ -33,7 +35,6 @@ Chest development follows the general training-variable evidence rather than che
 - [`data/muscles/chest.json`](../../data/muscles/chest.json) — functions, regions, volume landmarks
 - Exercises: [`incline-dumbbell-press`](../../data/exercises/incline-dumbbell-press.json), [`barbell-bench-press`](../../data/exercises/barbell-bench-press.json)
 
-- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
 
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.

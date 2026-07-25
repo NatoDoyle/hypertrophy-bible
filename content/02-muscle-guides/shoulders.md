@@ -18,6 +18,8 @@
 
 **Why the asymmetry.** Pressing already trains the front delt hard, so piling on front raises is usually redundant. The side and rear delts are barely touched by compound lifts, so they're where dedicated volume pays off — and they tolerate a lot of it. **Lateral raises** respond well to higher frequency and rep ranges; a cable or lean-away variation loads the bottom (lengthened) range better than a standard dumbbell raise, where tension is near-zero at the bottom.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 Delt training is a clean application of two principles. First, **regional/indirect work explains the programming asymmetry**: because pressing heavily recruits the front delt, direct front work adds little, while the side and rear heads need dedicated volume — a selection argument grounded in function rather than delt-specific trials. **[Grade C]** Second, **volume drives growth** for the side and rear delts as for any muscle[^schoenfeld-2017-volume-dose-response] **[Grade A]**, and where an exercise loads the muscle in its range matters — hence favoring variations that load the lengthened position of the side delt[^kassiano-2023-rom-review]. **[Grade C]** Since load can be light when effort is high, lateral and rear-delt work should be taken close to failure rather than made heavy[^schoenfeld-2017-load-meta]. **[Grade B]**
@@ -31,7 +33,6 @@ Delt training is a clean application of two principles. First, **regional/indire
 - [`data/muscles/front-delts.json`](../../data/muscles/front-delts.json), [`side-delts.json`](../../data/muscles/side-delts.json), [`rear-delts.json`](../../data/muscles/rear-delts.json)
 - Exercise: [`dumbbell-lateral-raise`](../../data/exercises/dumbbell-lateral-raise.json)
 
-- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
 
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.

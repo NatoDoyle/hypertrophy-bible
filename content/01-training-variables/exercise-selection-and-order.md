@@ -22,6 +22,8 @@
 
 **Ordering a session.** Put the exercises that demand the most fresh performance — heavy compounds, and anything for a **priority/lagging muscle** — early. Do smaller isolation and lower-priority work later. If a muscle is your main goal, you can (and sometimes should) break "compounds always first" and train it first while fresh.
 
+**See it applied per muscle.** The muscle guides put this into practice region by region, with ranked, cued picks: [Back](../02-muscle-guides/back.md), [Chest](../02-muscle-guides/chest.md), [Shoulders](../02-muscle-guides/shoulders.md), [Legs](../02-muscle-guides/legs.md), [Arms](../02-muscle-guides/arms.md), [Core](../02-muscle-guides/core.md), and [Neck](../02-muscle-guides/neck.md).
+
 ## The Evidence
 
 **Selection changes *where* and *how much* a muscle is stimulated.** The lengthened-position research applies directly here: Maeo and colleagues (2023) showed that simply changing arm position — overhead versus neutral — **substantially changed triceps growth** for the same movement[^maeo-2023-triceps-overhead], and Pedrosa and colleagues (2022) showed loading at long muscle lengths drives favorable adaptations[^pedrosa-2022-lengthened-partials]. Kassiano and colleagues' 2023 review reinforces that **the position of loading within the range is a real selection variable**, not a detail[^kassiano-2023-rom-review]. **[Grade B]** Mechanistically, this fits tension being the primary hypertrophy stimulus[^schoenfeld-2010-mechanisms] — exercises that maximize tension on the target muscle through its range are the better picks. **[Grade C]**
@@ -37,7 +39,6 @@
 
 ## Backing Data
 - Exercise attributes used to drive selection (`primary_muscles`, `mechanic`, `resistance_profile`, `lengthened_bias`, `stability`): [`data/exercises/`](../../data/exercises/)
-- **Ranked, cued exercise picks per muscle** — the muscle guides apply everything here region by region: [Back](../02-muscle-guides/back.md), [Chest](../02-muscle-guides/chest.md), [Shoulders](../02-muscle-guides/shoulders.md), [Legs](../02-muscle-guides/legs.md), [Arms](../02-muscle-guides/arms.md), [Core](../02-muscle-guides/core.md), [Neck](../02-muscle-guides/neck.md).
 
 ## References
 [^maeo-2023-triceps-overhead]: Maeo S, et al. (2023). *Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.* European Journal of Sport Science, 23(7), 1240–1250. DOI: [10.1080/17461391.2022.2100279](https://doi.org/10.1080/17461391.2022.2100279). PMID: 35819335.

@@ -38,6 +38,8 @@ The back rewards treating it as regions with different best tools, not one undif
 
 **Putting a week together.** A simple, complete back week is one vertical pull + one or two horizontal pulls (at least one chest-supported), a couple of rear-delt sets, and whatever erector work your compounds don't already cover — repeated across **two sessions** for most people, since spreading volume over two days beats cramming it into one.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 Back growth follows the same levers as every muscle. **Volume within a recoverable range drives hypertrophy** — more hard sets per week means more growth, up to the point you can recover from[^schoenfeld-2017-volume-dose-response] **[Grade A]** — which is why the high-tolerance lats and upper back can productively carry a lot of weekly sets. **Training through a full range, loading the lengthened position**, is favoured by the range-of-motion evidence: fuller-ROM work (the deep overhead stretch on a pulldown, the full reach on a row) matches or beats short-range work for hypertrophy[^schoenfeld-2020-rom-review]. **[Grade B]** Training **multiple pulling angles** — vertical for width, horizontal for thickness — is grounded in the muscles' distinct functions and is standard practice, though head-to-head hypertrophy comparisons of specific pull variations are limited, hence the lower grade. **[Grade C]**

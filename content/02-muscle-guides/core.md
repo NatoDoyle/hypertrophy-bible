@@ -33,6 +33,8 @@ Treat the core as regions with different tools. Picks are ordered for **hypertro
 
 **Putting a week together.** For most people: **2–4 loaded rectus sets** (a cable/machine crunch or hanging raise) plus **2–4 oblique sets** (a rotation or anti-rotation move), a couple of times a week, progressed like any lift. Your compounds cover the deep-core bracing. That's it — abs don't need special daily treatment.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 There is little ab-*specific* hypertrophy research, so the guidance is the **general hypertrophy principles applied to the abs**: growth requires sufficient **mechanical tension and volume with progression**[^schoenfeld-2017-volume-dose-response][^schoenfeld-2010-mechanisms], which for abs means added resistance rather than high-rep bodyweight work. **[Grade C]** Whether abs are *visible*, though, is a body-fat question, not a training-volume one — and **spot reduction is a myth**: Vispute and colleagues had participants perform six weeks of abdominal exercise and found it **did not reduce abdominal subcutaneous fat or overall body composition** (it improved muscular endurance, but not fatness)[^vispute-2011-ab-exercise-fat]. **[Grade B]** So direct ab work builds the muscle; **diet reveals it**.
