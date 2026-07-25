@@ -44,6 +44,13 @@ const twoGaps = [sess("2026-01-05"), sess("2026-01-19"), sess("2026-02-02")]; //
 ok("streak-freeze: the free forgiveness bridges only ONE of two gaps (control)", weeksConsistent(twoGaps, "2026-02-04") === 2);
 ok("streak-freeze: a frozen week bridges the SECOND gap (2 -> 3)", weeksConsistent(twoGaps, "2026-02-04", null, [], ["2026-W05"]) === 3);
 ok("streak-freeze: freezing an already-TRAINED week never inflates the streak", weeksConsistent(twoGaps, "2026-02-04", null, [], ["2026-W04"]) === 2);
+// The subtle boundary: freeze + the free forgiveness STACK to cover TWO consecutive
+// misses. Trained W02 & W05, missed W03 & W04 (adjacent). Freezing W03 protects it,
+// and the free token then bridges W04 (whose predecessor W03 is now neutral — the
+// `inPause(w-1)` branch), so the pre-gap W02 still counts.
+const twoAdjacentGaps = [sess("2026-01-05"), sess("2026-01-26")]; // W02, W05; W03 & W04 missed
+ok("streak-freeze: without a freeze, two adjacent misses break the streak (control)", weeksConsistent(twoAdjacentGaps, "2026-01-28") === 1);
+ok("streak-freeze: freeze one of two ADJACENT misses + forgiveness bridges the other (frozen-predecessor branch)", weeksConsistent(twoAdjacentGaps, "2026-01-28", null, [], ["2026-W03"]) === 2);
 // Token economics: earn one per 4 trained weeks, hold at most STREAK_FREEZE_MAX, replenish as you spend.
 const consec = (count, start = "2026-01-05") => Array.from({ length: count }, (_, i) => sess(new Date(Date.parse(start) + i * 7 * 86400000).toISOString().slice(0, 10)));
 const eight = consec(8); // 8 distinct trained weeks (W02..W09)
