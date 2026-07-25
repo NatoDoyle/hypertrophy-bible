@@ -188,6 +188,44 @@ export function waveRir(band, week) {
   return band;
 }
 
+// Tapering toward a goal event: when a user sets one (a meet, a show, a
+// strength test), the closing ~2 weeks trade volume for freshness — strength/
+// skill EXPRESSION on the day, distinct from the hypertrophy stimulus the rest
+// of the plan chases (periodization-and-progression.md covers the general
+// periodization picture). Date-driven, not cyclical, so it OVERRIDES the
+// mesocycle wave above in buildToday rather than compounding with it — a
+// scheduled deload landing in the same week as a taper would double-cut
+// volume for no reason. Intensity (load) is deliberately left alone here,
+// unlike a real deload: a taper's whole point is staying strong while doing
+// less, so only set count and how close to failure you go come down.
+const TAPER_WINDOW_DAYS = 14;
+export function taperPhase(now, goalEventDate, experience) {
+  if (experience === "beginner" || !now || !goalEventDate) return null;
+  const daysUntil = Math.floor((+new Date(goalEventDate) - +new Date(now)) / 86400000);
+  if (!Number.isFinite(daysUntil) || daysUntil < 0 || daysUntil > TAPER_WINDOW_DAYS) return null;
+  const early = daysUntil > 7;
+  return {
+    daysUntil,
+    phase: "taper",
+    setScale: early ? 0.6 : 0.4,
+    rirFloor: early ? 2 : 3,
+    note: early
+      ? `${daysUntil} days to go — taper starting. Sets drop from here so you're fresh for it; the weight stays where it is.`
+      : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go — final taper. Sets are cut hard, but the weight stays real. This is what makes you feel strong on the day.`,
+  };
+}
+
+// Eases the near edge of a RIR band no closer than `floor` reps shy of
+// failure — same shape as waveRir, but keyed to the taper window rather than
+// the weekly wave, and it can only ever move the band AWAY from failure.
+export function taperRir(band, floor) {
+  const m = /^(\d+)-(\d+)$/.exec(band ?? "");
+  if (!m) return band;
+  const lo = +m[1], hi = +m[2];
+  if (lo >= floor) return band;
+  return `${floor}-${Math.max(floor + 1, hi)}`;
+}
+
 // Immediate same-day readiness from an optional check-in (1-5 fields; stress
 // inverted). Gentle + honest: a low day eases the session, never blocks or guilts.
 export function dailyReadiness(checkin) {
@@ -215,6 +253,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
   const block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
+  // Is a goal event close enough to taper for? (null unless the user set one AND
+  // it's inside the taper window — see taperPhase's comment for why this
+  // OVERRIDES the mesocycle wave below rather than compounding with it.)
+  const taper = taperPhase(now, user.profile?.goal_event_date, user.profile?.training_status);
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
   // rotation_base rebases the cycle at the last regenerate: the deterministic
@@ -247,7 +289,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // exists to de-fatigue. Acknowledge the good day, but hold the deload line.
     coach_note = block?.phase === "deload"
       ? "You're feeling fresh — good sign the deload is working. Still keep it a genuine deload; the volume comes back next week."
-      : "You're fresh today — if a lift feels easy, add a back-off set.";
+      : taper
+        ? "You're feeling fresh — the taper's doing its job. Keep the sets where they are; that's the point."
+        : "You're fresh today — if a lift feels easy, add a back-off set.";
   } else if (readiness) {
     // The common case must never be silent: a user who checked in and saw nothing
     // change concludes it didn't work. Acknowledge, then confirm the plan stands.
@@ -287,23 +331,30 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const e = byId.get(ex.exercise);
     // The rir band shown to the user IS the prescription the autoregulation
     // measures compliance against — compute it first and pass it through.
-    const rirBand = block?.phase === "deload" ? "3-4" : block ? waveRir(ex.rir ?? "1-3", block.week) : ex.rir ?? "1-3";
+    const rirBand = taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
+      : block?.phase === "deload" ? "3-4"
+      : block ? waveRir(ex.rir ?? "1-3", block.week)
+      : ex.rir ?? "1-3";
     const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand);
     // Apply the mesocycle wave: sets scale with the block week — but never below 2
     // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
     // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
     // plan engine's own no-1-set rule holds through the wave; week-1 users were
     // seeing five 1-set entries). Deload recovery still lands via the halved big
-    // lifts, the ~10% load ease below, and RIR 3-4.
-    const sets = block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale)) : ex.sets;
+    // lifts, the ~10% load ease below, and RIR 3-4. A taper uses its OWN scale
+    // instead (see taperPhase) — it overrides the wave rather than compounding.
+    const sets = taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
+      : block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale))
+      : ex.sets;
     // Deload load must ease from last week's ACTUAL weight, not the progressed
     // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
     // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
     // week (e.g. (40+5)*0.9 = 40.5 > 40). Anchor on `last_kg` and take the MIN with
     // whatever suggestWeight already returned, so a deload can never be heavier than
     // the prior real week and never undoes a lighter ease (a layoff comeback at
-    // 0.88× stays at 0.88×, not bumped back up to 0.9×).
-    let suggested_kg = block?.phase === "deload" && sug.suggested_kg != null
+    // 0.88× stays at 0.88×, not bumped back up to 0.9×). Never during a taper — a
+    // taper's whole point is holding the load while sets come down.
+    let suggested_kg = !taper && block?.phase === "deload" && sug.suggested_kg != null
       ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
       : sug.suggested_kg;
     // No history for this lift: a non-beginner gets a body-scaled starting guess
@@ -344,7 +395,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
   // client tags this session's sets `deload` so the eased weights never enter
   // the e1RM/stall trends as a fabricated ~12% strength loss.
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner };
+  // A taper supersedes the block card entirely (they'd otherwise show two
+  // conflicting "here's why volume changed this week" explanations at once).
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block: taper ? null : block, taper: taper ? { days_until: taper.daysUntil, note: taper.note } : null, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner };
 }
 
 // The Today card state machine: one decision only.

@@ -174,6 +174,11 @@ const STEPS = [
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
   { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 && a.training_status !== "beginner" },
+  // Settings-ONLY (gated on settingsMode): a goal event date is a niche competitive-lifter
+  // need, so it never appears in first-run onboarding (Goals 2 & 3: minimal customization,
+  // zero cognitive load) — the taper engine is off by default. A non-beginner who wants it
+  // sets it later from Settings, where this same wizard runs with settingsMode = true.
+  { key: "goal_event_date", q: "Training toward a specific date?", date: true, optional: true, hint: "Optional — a meet, show, or strength test. The final ~2 weeks taper volume down so you're fresh, not fatigued, on the day. Leave blank if there isn't one.", showIf: (a) => settingsMode && a.training_status !== "beginner" },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
@@ -214,6 +219,7 @@ async function renderSettings() {
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
     specialization: p.specialization === true,
+    goal_event_date: p.goal_event_date || "",
     units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
@@ -267,6 +273,12 @@ function renderOnboarding() {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
       + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
+  } else if (step.date) {
+    const v = answers[step.key] || "";
+    const todayStr = new Date().toISOString().slice(0, 10); // a goal event can't be in the past
+    body = `<input type="date" id="dateval" min="${todayStr}" value="${esc(v)}" aria-label="${esc(step.q)}"
+        style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
+      <p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
@@ -295,6 +307,10 @@ function renderOnboarding() {
       b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
       saveOnb();
     });
+    $("#next").onclick = advance;
+  } else if (step.date) {
+    answers[step.key] = answers[step.key] || "";
+    $("#dateval").oninput = (e) => { answers[step.key] = e.target.value; saveOnb(); };
     $("#next").onclick = advance;
   } else {
     app.querySelectorAll(".choice").forEach((b) => b.onclick = () => { answers[step.key] = step.opts[+b.dataset.i][1]; saveOnb(); advance(); });
@@ -326,6 +342,10 @@ async function submitOnboarding() {
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
     available_equipment: answers.available_equipment, priority_muscles: priority,
     specialization: priority.length ? answers.specialization === true : false,
+    // Always sent (never omitted) so a settings edit can CLEAR a previously-set
+    // date, not just add one — the regenerate route merges profile fields by
+    // spreading the new object over the old, so an omitted key would never clear.
+    goal_event_date: answers.training_status !== "beginner" && answers.goal_event_date ? answers.goal_event_date : null,
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
   // NOTE: the display-unit preference (hb_units) is written only on the SUCCESS
@@ -668,10 +688,15 @@ async function renderToday() {
   // Friendly phase labels (never the raw token) + a tap-to-learn on the jargon,
   // matching the helpDot-on-jargon pattern everywhere else in the app.
   const PHASE_LABEL = { build: "building up", peak: "peak week", deload: "easy week (deload)" };
+  // A taper (goal-event countdown) supersedes the mesocycle card — the server
+  // never sends both (see coach.mjs buildToday), so this is never ambiguous.
   const blockCard = s.block
     ? `<div class="card"><b>${s.block.phase === "deload" ? "🌊" : s.block.phase === "peak" ? "⛰️" : "📈"} Week ${s.block.week} of ${s.block.of} — ${PHASE_LABEL[s.block.phase] ?? s.block.phase}</b> ${helpDot("deloads-and-rest-days", "ⓘ why weeks differ")}
         <p class="muted">${esc(s.block.note)}</p></div>`
-    : "";
+    : s.taper
+      ? `<div class="card"><b>⏳ ${s.taper.days_until} day${s.taper.days_until === 1 ? "" : "s"} to go — tapering</b>
+          <p class="muted">${esc(s.taper.note)}</p></div>`
+      : "";
   // --- The daily flow (considerations #6): one obvious sequence — morning
   // check-in (weight + how you feel) → the workout → tonight's calories. Each
   // step shows done ✓ or is the highlighted next action; the first unfinished

@@ -1,7 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
-import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir } from "../src/coach.mjs";
+import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -492,6 +492,50 @@ check("progressReport infers energy balance from bodyweight trend (no calories)"
   const r = progressReport(user, sessions, bodyweights);
   assert.equal(r.energy_balance.direction, "surplus"); // gaining -> surplus, on-target for hypertrophy
   assert.ok(r.bodyweight_trend.slope_kg_per_week > 0);
+});
+
+check("taperPhase: gates on beginner, missing date, the 14-day window, and past events", () => {
+  assert.equal(taperPhase("2026-07-25", null, "intermediate"), null); // no goal date set
+  assert.equal(taperPhase("2026-07-25", "2026-07-30", "beginner"), null); // programmatic peaking isn't a beginner decision
+  assert.equal(taperPhase("2026-07-25", "2026-07-01", "intermediate"), null); // event already passed -> no-op, not an error
+  assert.equal(taperPhase("2026-07-01", "2026-07-30", "intermediate"), null); // 29 days out, outside the 14-day window
+  const early = taperPhase("2026-07-20", "2026-07-30", "intermediate"); // 10 days out
+  assert.equal(early.setScale, 0.6);
+  assert.equal(early.rirFloor, 2);
+  const late = taperPhase("2026-07-27", "2026-07-30", "intermediate"); // 3 days out
+  assert.equal(late.setScale, 0.4);
+  assert.equal(late.rirFloor, 3);
+});
+
+check("taperRir only ever eases the near edge AWAY from failure, never toward it", () => {
+  assert.equal(taperRir("1-3", 2), "2-3");
+  assert.equal(taperRir("0-1", 3), "3-4"); // hi is also below the floor -> widen to floor+1
+  assert.equal(taperRir("3-4", 2), "3-4"); // already easier than the floor -> untouched
+  assert.equal(taperRir(undefined, 2), undefined);
+});
+
+check("buildToday: an active taper OVERRIDES the mesocycle wave rather than compounding with it", () => {
+  const intermediateUser = {
+    profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, goal_event_date: "2026-07-30" },
+    program: selectProgram({ training_status: "intermediate", days_per_week: 3 }),
+    plan_meta: { block_start: "2026-06-01T00:00:00Z" },
+    created_at: "2026-06-01T00:00:00Z",
+  };
+  const taperDay = buildToday(intermediateUser, [], null, [], "2026-07-27T12:00:00Z");
+  assert.equal(taperDay.block, null); // never shown alongside the taper card — one explanation, not two
+  assert.ok(taperDay.taper && taperDay.taper.days_until <= 7);
+  assert.ok(/taper/i.test(taperDay.taper.note));
+  const rawEx = intermediateUser.program.sessions[taperDay.index].exercises;
+  taperDay.exercises.forEach((e) => {
+    const raw = rawEx.find((r) => r.exercise === e.exercise);
+    assert.ok(e.sets <= raw.sets); // taper never adds sets
+    assert.ok(+e.rir.split("-")[0] >= 3); // 3 days out -> rirFloor 3, so every band's near edge is >= 3
+  });
+
+  const noTaperUser = { ...intermediateUser, profile: { ...intermediateUser.profile, goal_event_date: null } };
+  const normalDay = buildToday(noTaperUser, [], null, [], "2026-07-27T12:00:00Z");
+  assert.equal(normalDay.taper, null);
+  assert.ok(normalDay.block); // clearing the goal date lets the mesocycle wave resume
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

@@ -52,6 +52,10 @@ export function createApp(store, config = {}) {
   app.post("/api/onboard", async (c) => {
     const { profile } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
+    // A client-supplied date is hostile until parsed (possession-of-UUID auth means
+    // any client can post): junk silently drops to null rather than corrupting the
+    // taper engine with an un-parseable goalEventDate.
+    if (profile.goal_event_date != null && !validLocalDate(profile.goal_event_date)) profile.goal_event_date = null;
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -92,6 +96,8 @@ export function createApp(store, config = {}) {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
     if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
+    // Same trust-boundary guard as /api/onboard: junk collapses to null.
+    if (body.profile?.goal_event_date != null && !validLocalDate(body.profile.goal_event_date)) body.profile.goal_event_date = null;
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);

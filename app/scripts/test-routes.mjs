@@ -789,6 +789,38 @@ try {
   store.updateUser = realUpdateUser2;
   ok("#challenge-history a user row vanishing at write time returns 200, not a 500 (updated?. guard)", henryVanished.status === 200);
 
+  // --- Goal-event taper (Tier-3 #9 first slice): /api/today reads the REAL
+  // clock, so date the goal event RELATIVE to Date.now(), not a fixed calendar
+  // date (the deload-anchoring test above hit this same lesson).
+  const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const taperUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    goal_event_date: inDays(3),
+  } })).data.user_id;
+  const taperToday = await (await app.request("/api/today", { headers: { "X-HB-User": taperUser } })).json();
+  ok("#taper /api/today surfaces the taper card inside the window", taperToday.session?.taper?.days_until <= 3 && taperToday.session?.taper?.days_until >= 2);
+  ok("#taper suppresses the mesocycle block card so they never contradict each other", taperToday.session?.block == null);
+
+  // A junk/unparsable date is hostile client input until validated (possession-
+  // of-UUID auth means any client can post) — it must collapse to null, not
+  // corrupt the taper engine or get stored verbatim.
+  const junkDateUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"], goal_event_date: "not-a-real-date",
+  } })).data.user_id;
+  const junkExplain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": junkDateUser } })).json();
+  ok("#taper a junk goal_event_date is sanitized to null at the trust boundary, not stored verbatim", junkExplain.profile?.goal_event_date === null);
+
+  // A beginner is exempt (programmatic peaking isn't a beginner decision) even
+  // with a goal date inside the window.
+  const beginnerTaperUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"], goal_event_date: inDays(3),
+  } })).data.user_id;
+  const beginnerToday = await (await app.request("/api/today", { headers: { "X-HB-User": beginnerTaperUser } })).json();
+  ok("#taper beginners are exempt even with a goal date inside the window", beginnerToday.session?.taper == null);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
