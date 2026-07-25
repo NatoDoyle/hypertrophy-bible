@@ -1,5 +1,6 @@
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
+import { settleChallenge } from "./adherence.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -229,6 +230,28 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
+      }
+
+      // A challenge RESULT (Wave 138): if the week ended and this user never
+      // reopened the app, GET /api/challenge's self-transition never ran — settle
+      // it here with the SAME shared logic (settleChallenge, never a second copy)
+      // and tell them how it ended. The completed status IS the seen-once event:
+      // a GET-settled challenge arrives here already terminal and never pushes
+      // (the user saw the card in-app), and once this settle lands, the next tick
+      // sees terminal too — at-most-once by construction. If every device send
+      // fails this tick, the in-app result card remains the fallback surface.
+      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
+          && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString())) {
+        const settled = await settleChallenge(store, userId, user, now);
+        if (settled.result) {
+          const r = settled.result;
+          const body = r.result === "win"
+            ? `🏆 You won this week's challenge ${r.my_count}–${r.opponent_count}!`
+            : r.result === "lose"
+              ? `Challenge over — your partner took this week ${r.opponent_count}–${r.my_count}. Rematch?`
+              : `Challenge over — dead heat at ${r.my_count}–${r.opponent_count}.`;
+          await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+        }
       }
 
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
