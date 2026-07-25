@@ -122,6 +122,17 @@ export function createFileStore(path) {
         const dates = new Set(dst.map((e) => e.date));
         for (const e of db.nutrition_logs[fromId]) if (!dates.has(e.date)) dst.push(e);
       }
+      // Shares follow the user too, or the merged-away user's share row points at a
+      // DELETED user — a dead public link + orphaned cheers (the same trap the push
+      // move above avoids). Reassign it to the survivor so a link they already
+      // distributed keeps working; if the survivor already has one (UNIQUE per user),
+      // drop the merged-away share + its cheers instead.
+      const fromShareId = Object.keys(db.shares ?? {}).find((sid) => db.shares[sid].user_id === fromId);
+      if (fromShareId) {
+        const toHasShare = Object.values(db.shares).some((r) => r.user_id === toId);
+        if (toHasShare) { delete db.shares[fromShareId]; delete (db.share_cheers ??= {})[fromShareId]; }
+        else { db.shares[fromShareId].user_id = toId; } // share_id + its cheers (keyed by share_id) preserved
+      }
       delete db.nutrition_logs?.[fromId];
       delete db.sessions[fromId];
       delete db.bodyweights[fromId];
