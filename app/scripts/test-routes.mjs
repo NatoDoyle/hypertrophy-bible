@@ -424,6 +424,37 @@ try {
   const staleAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment from a prior week reads back as unset via /api/adherence", staleAdh.commitment === null);
 
+  // --- Streak freeze (#4 adherence): spend a held token to protect a missed week.
+  // Guards first (same parity concern as commitment: an undefined bind THROWS on D1).
+  const noUserFreeze = await json("POST", "/api/streak/freeze", { week: "2026-W01" });
+  ok("#streak-freeze with no user_id is a clean 404 (guarded before the store call)", noUserFreeze.status === 404);
+  const unknownFreeze = await json("POST", "/api/streak/freeze", { user_id: "nope-not-a-user" });
+  ok("#streak-freeze for an unknown user is 404", unknownFreeze.status === 404);
+  // A brand-new user has trained no weeks -> no earned tokens -> nothing to spend.
+  const freshUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const brokeFreeze = await json("POST", "/api/streak/freeze", { user_id: freshUser });
+  ok("#streak-freeze with no earned tokens is a 400 (no-tokens)", brokeFreeze.status === 400 && brokeFreeze.data.error === "no-tokens");
+  // Happy path: 5 distinct trained weeks (dated relative to NOW — the route reads the
+  // real clock) earns a token; weeks -1 AND -4 are missed, so the free forgiveness
+  // covers one gap and the freeze must cover the other. Protecting the most-recent
+  // missed week frees the forgiveness for the older gap, so the streak jumps.
+  const fzUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  for (const n of [14, 21, 35, 42, 49]) // weeks -2,-3,-5,-6,-7 trained; -1 and -4 missed
+    await json("POST", "/api/session", { user_id: fzUser, session_id: `fz-${n}`, date: dAgo(n), local_date: dAgo(n).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const beforeFz = await (await app.request("/api/adherence", { headers: { "X-HB-User": fzUser } })).json();
+  const fzRes = await json("POST", "/api/streak/freeze", { user_id: fzUser });
+  ok("#streak-freeze spends a token and returns the frozen week", fzRes.status === 200 && !!fzRes.data.frozen_week);
+  const fzStored = await store.getUser(fzUser);
+  ok("#streak-freeze persists the freeze on the user blob (store parity)", (fzStored.streak_freezes || []).length === 1 && fzStored.streak_freezes[0] === fzRes.data.frozen_week);
+  ok("#streak-freeze protecting a second gap lifts the streak above the forgiveness-only value", fzRes.data.streak_weeks > beforeFz.streak_weeks);
+  // Re-spending: the same week can't be frozen twice; a fresh call protects another gap or reports none.
+  const fzAgain = await json("POST", "/api/streak/freeze", { user_id: fzUser });
+  ok("#streak-freeze never double-spends the same week", fzAgain.status === 404 ? false : (fzAgain.status === 400 || (fzAgain.status === 200 && fzAgain.data.frozen_week !== fzRes.data.frozen_week)));
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

@@ -1709,6 +1709,10 @@ async function renderCoach() {
       <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}</div>
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
+    ${a.streak_freeze && a.streak_freeze.balance > 0 ? `<div class="card"><b>🛡️ ${a.streak_freeze.balance} streak freeze${a.streak_freeze.balance === 1 ? "" : "s"}</b>
+      ${a.streak_freeze.protectable_week
+        ? `<p class="muted" style="margin-top:8px">You've got a missed week you can still protect. Spend one freeze to keep your streak alive — no shame either way.</p><button class="btn secondary" id="freeze">Protect my streak 🛡️</button>`
+        : `<p class="muted" style="margin-top:8px">Banked and ready — miss a week and one of these quietly keeps your streak going. You earn more just by training consistently.</p>`}</div>` : ""}
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
@@ -1755,6 +1759,14 @@ async function renderCoach() {
       say(paused ? "Resumed. Welcome back." : "Paused — heal up. Your streak is safe.");
       await renderCoach(); $("#pause")?.focus();
     } catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
+  };
+  const freezeBtn = $("#freeze");
+  if (freezeBtn) freezeBtn.onclick = async () => {
+    try {
+      const r = await api("/api/streak/freeze", { method: "POST", body: JSON.stringify({ user_id: uid }) });
+      say(`Streak protected — still ${r.streak_weeks} week${r.streak_weeks === 1 ? "" : "s"} strong.`);
+      await renderCoach(); $("#freeze")?.focus();
+    } catch { alertBar("📴 Couldn't apply the freeze right now. Try again in a moment."); }
   };
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {
