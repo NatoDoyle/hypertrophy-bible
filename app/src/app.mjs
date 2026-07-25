@@ -672,7 +672,17 @@ export function createApp(store, config = {}) {
     const responder = b.user_id && (await store.getUser(b.user_id));
     if (!responder) return c.json({ error: "unknown user" }, 404);
     const mine = responder.profile?.challenge;
-    if (!mine || mine.role !== "opponent" || mine.status !== "pending") return c.json({ error: "no-pending-challenge" }, 400);
+    // The normal UI always calls GET /api/challenge first, which self-transitions a
+    // pending-past-its-week challenge to "declined" before offering accept/decline
+    // buttons — but this route is reachable directly (possession-of-UUID auth means
+    // any client can call it), so it must enforce the SAME week-freshness rule
+    // itself. Without this, a late accept could revive a challenge whose week
+    // already ended into "active", which GET would then resolve into a fabricated
+    // "completed" result from training that happened before anyone had agreed to
+    // compete over it — not the "never answered, no result to show" outcome the
+    // design intends for an unanswered invite.
+    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKey(new Date().toISOString()))
+      return c.json({ error: "no-pending-challenge" }, 400);
     const status = b.accept === true ? "active" : "declined";
     await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, status } }; return u; });
     const challengerId = mine.partner_token && (await store.getShareUserId(mine.partner_token));

@@ -674,6 +674,22 @@ try {
   ok("#challenge self-completes once its week has ended", carolView3.challenge.status === "completed" && carolView3.week_over === true);
   ok("#challenge a completed challenge frees the slot for a new propose", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 200);
 
+  // A stale pending challenge (its week already ended) must NOT be acceptable via
+  // /api/challenge/respond directly — this route is reachable without ever calling
+  // GET /api/challenge first (which is what normally self-resolves a stale pending
+  // challenge to "declined"), so it has to enforce the same week-freshness rule
+  // itself or a late accept could revive an unanswered invite into "active".
+  const stalePastWeek = isoWeekKey(new Date(Date.now() - 8 * 7 * 86400000).toISOString());
+  await store.updateUser(carol, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
+  await store.updateUser(dave, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
+  const staleAccept = await json("POST", "/api/challenge/respond", { user_id: dave, accept: true });
+  ok("#challenge accepting a challenge whose week already ended is refused (400), not revived to active", staleAccept.status === 400 && staleAccept.data.error === "no-pending-challenge");
+  // Reading it (which self-transitions the stale pending copy to "declined") proves
+  // the refused accept above left no "active" residue on the challenger's side either.
+  ok("#challenge a refused stale accept never revived the challenger's copy to active", (await getChallenge(carol)).challenge.status === "declined");
+  const staleDecline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
+  ok("#challenge declining a challenge whose week already ended is also refused (the slot resolves via GET's self-transition instead)", staleDecline.status === 400 && staleDecline.data.error === "no-pending-challenge");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
