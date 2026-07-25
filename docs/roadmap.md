@@ -22,13 +22,14 @@ fiber-type×rep-range, tendinopathy. Supplements: only 8 entries (no vitamin D, 
 and no evidence-based debunks). "Every claim web-verified" is true for ~a third of the surface.
 
 **Goal 2 — best coaching app, novice → Mr. Olympia:**
-- *Bottom end + Goal 3 (zero cognitive load): one disqualifying hole.* Onboarding and the
-  crash-safe player are strong, but there are **no embedded exercise demos** — the app punts a
-  never-trained user to a YouTube search and asks them to self-judge "avoid ego-lifting clips"
-  at peak anxiety. Every best-in-class app shows an inline loop on the set screen. Plus small
-  friction: the specialization question is shown to beginners, the Fuel tab is a 6-field
-  tape-measure wall, RIR jargon sits on the set screen, and day 1 highlights the *optional*
-  check-in over the workout.
+- *Bottom end + Goal 3 (zero cognitive load): the YouTube punt is gone.* Onboarding and the
+  crash-safe player are strong, and the app no longer sends a never-trained user off-app to a
+  raw YouTube search — v0 inline line-art movement demos now ship on the set screen (Tier-1 #3,
+  below). Real per-exercise footage is still the eventual bar (BLOCKERS.md #1, blocked on
+  licensed/filmed media) and the v0 glyphs are a generic stand-in, not real form video — so this
+  is real progress, not a closed gap. (The other novice-friction items this paragraph used to
+  list — specialization question shown to beginners, the Fuel tape-measure wall, RIR jargon,
+  day-1 emphasis — are already resolved per Tier-1 #4 below; don't re-list them here as open.)
 - *Top end (elite): FAR.* The engine runs one linear mesocycle wave + block-boundary volume
   auto-tune + a specialization cap. No block/undulating/conjugate periodization, no
   peaking/taper/contest-prep, no velocity/advanced autoregulation. A serious intermediate
@@ -80,10 +81,27 @@ infra, the one genuinely large build left here).
    against the server in `test-session.mjs`, same pattern as the PR toast) and is summed into
    `xpAndLevel`'s `lucky_xp` + surfaced as a recap win line, so the live celebration, the recap,
    and the banked XP total can never disagree.
-3. **[Goal 2 bottom / Goal 3] Inline exercise demos, v0.** Add a `media` field to the exercise
-   schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
-   171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to
-   per-exercise clips over time. (Real footage remains BLOCKERS #1.)
+3. **[Goal 2 bottom / Goal 3] Inline exercise demos, v0.** — *SHIPPED (Cloud loop wave).*
+   `app/public/movement-demo.mjs` (pure, DOM-free, unit-tested like `session-core.mjs`) maps
+   all 23 `movement_pattern` values to a `[kind, caption]` pair — a small static line-art figure
+   + one animated glyph (vertical bounce / bounce-rotated-90°-for-side / rotate-bend / pulse,
+   `prefers-reduced-motion`-aware) plus a plain-language caption. Keyed off `movement_pattern`
+   (already on every exercise) rather than a new per-exercise field, so all 171 exercises get a
+   demo with zero new data authored — deliberately **not** the literal "add a `media` field to
+   the schema" the roadmap originally specified: an unused field is exactly the standing lesson-14
+   anti-pattern ("a declared-but-unused tunable is a silent contradiction"), and `movement_pattern`
+   already fully determines the v0 animation. Wired inline on the live set screen (first set of
+   each exercise only, to avoid repeat-set clutter), the superset station (first round), and the
+   "How do I do this?" sheet, which also had the YouTube-search punt **deleted** entirely.
+   `movement_pattern` now flows through `/api/today` (`coach.mjs`) and `/api/exercises`
+   (`app.mjs`) so a mid-workout **swap** carries the right demo too, not just the original pick
+   (lesson 1: fixed at every call site, not just the first). Verified in a real browser
+   (Playwright + the pre-installed Chromium): the demo renders correctly for Leg Press (squat →
+   "Bend your knees…") and survives a swap into Barbell Back Squat; the YouTube link is
+   confirmed gone from the rendered page. 5 new unit tests assert full schema-enum coverage (no
+   pattern silently falls through) plus 2 new route tests for the today/swap wiring. Upgrading to
+   real per-exercise clips (BLOCKERS.md #1, still blocked on licensed/filmed media) becomes a
+   fallback-preserving override later — this file doesn't need to change for that to land.
 4. **[Goal 3] Novice-friction quick wins.** — *PARTIALLY SHIPPED (Wave 81 + this reconcile).* Done: the
    set screen's "leave about N in the tank" target no longer surfaces the bare "what's RIR?" glossary
    link to a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term

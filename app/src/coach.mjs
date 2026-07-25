@@ -328,6 +328,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
+      movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
       // Per-exercise layoff ease (this lift returned after >=12 days even though

@@ -66,6 +66,24 @@ button{font:inherit;color:inherit;cursor:pointer}
 .timer{font-size:2.4rem;font-weight:800;text-align:center;margin:8px 0}
 .cue{background:var(--card2);border-left:3px solid var(--accent2);padding:10px 12px;border-radius:8px;color:var(--dim);font-size:.92rem;margin:10px 0}
 
+/* Inline movement demo — v0 line-art stand-in for real footage (BLOCKERS #1): a
+   static figure + one animated glyph showing the plane of motion, plus a caption
+   that carries the specifics. Keyed by movement_pattern (public/movement-demo.mjs). */
+.demo{display:flex;align-items:center;gap:12px;background:var(--card2);border-radius:12px;padding:10px 12px;margin:10px 0}
+.demo-fig{position:relative;width:40px;height:40px;flex:0 0 40px;color:var(--accent)}
+.hb-figure{stroke:currentColor;stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.hb-arrow{position:absolute;right:-6px;bottom:-6px;stroke:currentColor;stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.hb-arrow.rot90{transform:rotate(90deg);transform-origin:16px 16px}
+.hb-arrow circle{fill:currentColor;stroke:none}
+.hb-bounce{animation:hb-bounce 1.6s ease-in-out infinite}
+.hb-bend{animation:hb-bend 1.6s ease-in-out infinite;transform-origin:16px 20px}
+.hb-pulse{animation:hb-pulse 1.6s ease-in-out infinite;transform-origin:16px 16px}
+@keyframes hb-bounce{0%,100%{transform:translateY(-5px)}50%{transform:translateY(5px)}}
+@keyframes hb-bend{0%,100%{transform:rotate(-20deg)}50%{transform:rotate(20deg)}}
+@keyframes hb-pulse{0%,100%{transform:scale(.8);opacity:.55}50%{transform:scale(1.15);opacity:1}}
+@media (prefers-reduced-motion:reduce){.hb-bounce,.hb-bend,.hb-pulse{animation:none}}
+.demo-caption{margin:0;flex:1}
+
 /* Progress */
 .bar{height:12px;border-radius:6px;background:var(--card2);overflow:hidden;margin-top:6px}
 .bar > i{display:block;height:100%}
