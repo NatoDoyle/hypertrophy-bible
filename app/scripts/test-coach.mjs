@@ -1,7 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
-import { selectProgram } from "../src/kb.mjs";
-import { buildToday, suggestWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir } from "../src/coach.mjs";
+import { selectProgram, exerciseById } from "../src/kb.mjs";
+import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -86,6 +86,28 @@ check("suggestWeight: double progression adds load only when top of range is hit
   ] }];
   assert.equal(suggestWeight(missedTop, "barbell-bench-press", "6-10").suggested_kg, 100); // hold, add reps
   assert.equal(suggestWeight([], "barbell-bench-press", "6-10").suggested_kg, null); // first time
+});
+
+check("estimateStartingWeight: a body-scaled guess, rounded down to the load increment, erring light", () => {
+  const bench = exerciseById.get("barbell-bench-press"); // horizontal-push, barbell, compound
+  assert.equal(estimateStartingWeight(bench, 80, "barbell-bench-press"), 35); // 80*0.45*1=36 -> floor to 2.5kg increment
+  assert.equal(estimateStartingWeight(bench, null, "barbell-bench-press"), null); // no bodyweight on file -> no guess
+  const pullup = exerciseById.get("pull-up"); // bodyweight equipment -> never a loaded guess
+  if (pullup) assert.equal(estimateStartingWeight(pullup, 80, "pull-up"), null);
+});
+
+check("buildToday: first-timer's suggested weight is body-scaled for a non-beginner, still null for a true beginner", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const intermediate = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog };
+  const t = buildToday(intermediate, [], null, [], null, 80);
+  assert.equal(t.exercises[0].suggested_kg, 35); // confirm-not-guess: pre-filled from bodyweight
+  assert.match(t.exercises[0].suggestion_note, /starting estimate/);
+  // Same lift, no bodyweight on file -> falls back to the pre-existing null (empty-bar) behavior.
+  assert.equal(buildToday(intermediate, [], null, [], null, null).exercises[0].suggested_kg, null);
+  // A true beginner NEVER gets the body-scaled guess, even with a bodyweight on file —
+  // they keep the safe empty-bar default + the "let's find your weight" ramp-up card.
+  const beginnerU = { profile: { training_status: "beginner", days_per_week: 3 }, program: prog };
+  assert.equal(buildToday(beginnerU, [], null, [], null, 80).exercises[0].suggested_kg, null);
 });
 
 check("suggestWeight: RIR autoregulation raises load when reps are left in reserve", () => {

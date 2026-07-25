@@ -56,6 +56,19 @@ try {
   const bench = (t.session?.exercises ?? []).find((e) => e.exercise === "barbell-bench-press");
   ok("progression anchors past the deload end-to-end", !bench || bench.suggested_kg == null || bench.suggested_kg > 90);
 
+  // roadmap #4's last slice, end-to-end through the real route: a non-beginner
+  // with a bodyweight on file gets a body-scaled starting guess for a lift they've
+  // never logged (a confirm, not a blind pick from an empty bar).
+  const bwUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  await json("POST", "/api/bodyweight", { user_id: bwUser, kg: 80 });
+  const bwToday = await (await app.request("/api/today", { headers: { "X-HB-User": bwUser } })).json();
+  const bwExercises = bwToday.session?.exercises ?? [];
+  ok("#4 a non-beginner with a bodyweight on file gets a body-scaled first-time weight (not a blind null)",
+    bwExercises.some((e) => e.suggested_kg != null && /starting estimate/.test(e.suggestion_note ?? "")));
+
   // Junk must still be stripped (the whitelist's actual job).
   const s3 = await json("POST", "/api/session", { user_id: uid, session_id: "rt-3", date: "2026-06-09T18:00:00Z",
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, evil: "<script>", deload: false }] });
