@@ -205,7 +205,9 @@ export function createFileStore(path) {
       return hit?.share_id ?? null;
     },
     async deleteShare(userId) {
-      for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) delete db.shares[sid];
+      // Revoking a share drops its cheer tally too — the count belongs to that
+      // share_id, so it must die with it (no orphaned rows; a future share is fresh).
+      for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) { delete db.shares[sid]; delete (db.share_cheers ??= {})[sid]; }
       flush();
     },
     // Public "cheer" tally — parity with store-d1.mjs (bounded).
