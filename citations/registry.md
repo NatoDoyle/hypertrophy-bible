@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**115** verified references.
+**117** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -64,6 +64,14 @@ Bohm S & et al. (2015). Human tendon adaptation in response to mechanical loadin
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1186/s40798-015-0009-9](https://doi.org/10.1186/s40798-015-0009-9) · PMID: [27747846](https://pubmed.ncbi.nlm.nih.gov/27747846/)
 
+### borsheim-2002-eaa-mps
+Børsheim E et al. (2002). Essential amino acids and muscle protein recovery from resistance exercise.
+
+*American Journal of Physiology-Endocrinology and Metabolism*, 283(4), E648-E657.
+
+- Type: mechanistic · Population: recreationally-active
+- DOI: [10.1152/ajpendo.00466.2001](https://doi.org/10.1152/ajpendo.00466.2001) · PMID: [12217881](https://pubmed.ncbi.nlm.nih.gov/12217881/)
+
 ### bruusgaard-2010-myonuclei
 Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.
 
@@ -95,6 +103,14 @@ Carvalho L & et al. (2022). Muscle hypertrophy and strength gains after resistan
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1139/apnm-2021-0515](https://doi.org/10.1139/apnm-2021-0515) · PMID: [35015560](https://pubmed.ncbi.nlm.nih.gov/35015560/)
+
+### church-2020-eaa-synthesis
+Church DD et al. (2020). Essential Amino Acids and Protein Synthesis: Insights into Maximizing the Muscle and Whole-Body Response to Feeding.
+
+*Nutrients*, 12(12), 3717.
+
+- Type: mechanistic · Population: mixed
+- DOI: [10.3390/nu12123717](https://doi.org/10.3390/nu12123717) · PMID: [33276485](https://pubmed.ncbi.nlm.nih.gov/33276485/)
 
 ### coleman-2024-deload-rct
 Coleman M & et al. (2024). Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations.

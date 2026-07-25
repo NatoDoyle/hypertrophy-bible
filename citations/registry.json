@@ -2203,6 +2203,52 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/21804427/"
+    },
+    {
+      "key": "borsheim-2002-eaa-mps",
+      "authors": [
+        "Børsheim E",
+        "Tipton KD",
+        "Wolf SE",
+        "Wolfe RR"
+      ],
+      "year": 2002,
+      "title": "Essential amino acids and muscle protein recovery from resistance exercise.",
+      "source": "American Journal of Physiology-Endocrinology and Metabolism",
+      "volume": "283",
+      "issue": "4",
+      "pages": "E648-E657",
+      "doi": "10.1152/ajpendo.00466.2001",
+      "pmid": "12217881",
+      "study_type": "mechanistic",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/12217881/"
+    },
+    {
+      "key": "church-2020-eaa-synthesis",
+      "authors": [
+        "Church DD",
+        "Hirsch KR",
+        "Park S",
+        "Kim IY",
+        "Gwin JA",
+        "Pasiakos SM",
+        "Wolfe RR",
+        "Ferrando AA"
+      ],
+      "year": 2020,
+      "title": "Essential Amino Acids and Protein Synthesis: Insights into Maximizing the Muscle and Whole-Body Response to Feeding.",
+      "source": "Nutrients",
+      "volume": "12",
+      "issue": "12",
+      "pages": "3717",
+      "doi": "10.3390/nu12123717",
+      "pmid": "33276485",
+      "study_type": "mechanistic",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33276485/"
     }
   ]
 }
