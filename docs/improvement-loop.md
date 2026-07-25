@@ -230,6 +230,27 @@ These are real failures from previous iterations. Each is now a standing check.
    re-confirmed it and the one nit already spotted inline — exactly the verify-agent fan-out
    Token-discipline rule 1 forbids. Verify code claims inline; reserve agents for domain judgment.
 
+22. **Never subtract a UTC instant from a calendar date — compare calendar dates, in the
+   user's frame.** Wave 132's taper floored `(dateOnlyEvent - fullInstantNow)/day`: the negative
+   fraction on event day floored to -1, so the taper VANISHED on meet morning and the mesocycle
+   wave ("peak volume — push hard") came back; the countdown lagged a day, 15-days-out flickered
+   in as 14, and west-of-UTC users lost a further day (a Friday-evening session read as Saturday).
+   The same wave's date PICKER had the sibling bug client-side (`toISOString()` min = UTC date).
+   → **Standing lens:** when a feature involves a calendar date (event dates, week keys,
+   streaks), every comparison must be date-vs-date in the user's local frame (`tz_offset_min`,
+   falling back to UTC date), never instant-vs-date arithmetic — grep for `new Date(` near any
+   `YYYY-MM-DD` field and check which frame each side is in.
+
+23. **State granularity must match loop granularity: a per-USER marker stamped inside a
+   per-DEVICE loop loses events.** Waves 131/134 stamped `nudge_pushed_at`/`challenge_pushed_at`
+   after the FIRST subscription's 201 inside the flat per-subscription sweep — a two-device user
+   got the social push on one arbitrary device, and a stale-but-accepting endpoint could consume
+   the event for the device the user actually carries (the daily reminder beside it fanned out
+   correctly). → **Standing lens:** when a write marks an event "handled", ask what SCOPE the
+   marker has (user? device? event?) and make the loop iterate at that scope: fan out to all
+   members first, stamp once, only on ≥1 success (all-failed must retry), precondition inside
+   the mutator so a concurrent stamp can't rewind.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
