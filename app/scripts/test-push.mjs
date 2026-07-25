@@ -271,6 +271,94 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
+// --- runPushSweep: a challenge RESULT (this slice) — before this, a completed
+// challenge only ever surfaced on the user's OWN next `GET /api/challenge`;
+// someone who never reopens the app after their week ends never learned
+// whether they won. The sweep now resolves + pushes proactively, using the
+// SAME resolveChallenge (push.mjs) the route itself calls (lesson 1). ---
+{
+  const resPath = join(tmpdir(), `hb-push-challenge-result-test-${process.pid}.json`);
+  const resStore = createFileStore(resPath);
+  try {
+    const ua = await fakeUaSubscription();
+    const pastWeekDate = new Date(NOW - 8 * 7 * 86400000).toISOString();
+    const pastWeek = isoWeekKey(pastWeekDate);
+    const bench = (id, date) => ({ session_id: id, date, sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+
+    // Winner side: 2 sessions vs the opponent's 1 -> a real WIN, pushed proactively.
+    await resStore.createShare("loser-opp", "share-loser-opp", NOW);
+    await resStore.saveUser("winner", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "challenger", partner_token: "share-loser-opp", week: pastWeek, status: "active", created_at: NOW, accepted_at: NOW } } });
+    await resStore.saveUser("loser-opp", { profile: {} });
+    await resStore.addSession("winner", bench("res-w1", pastWeekDate));
+    await resStore.addSession("winner", bench("res-w2", pastWeekDate));
+    await resStore.addSession("loser-opp", bench("res-l1", pastWeekDate));
+    await resStore.savePushSubscription("winner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-win", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+
+    let sentBody = "unset";
+    const captureFetch = async (url, opts) => { sentBody = opts.body; return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(resStore, vapid, NOW, captureFetch);
+    ok("a completed challenge pushes the WIN result proactively", r1.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the result push names the win and the score", decrypted.tag === "hb-challenge" && /won 2–1/.test(decrypted.body));
+    const winner = await resStore.getUser("winner");
+    ok("the challenge slot itself is resolved to completed with the result recorded on it", winner.profile.challenge.status === "completed" && winner.profile.challenge.result === "win");
+    ok("history also records the win (same write resolveChallenge already made for GET)", winner.profile.challenge_history?.[0]?.result === "win");
+    ok("challenge_result_pushed_at is stamped to the challenge's own completed_at (seen-once)", winner.profile.challenge_result_pushed_at === winner.profile.challenge.completed_at);
+
+    sentBody = "unset";
+    const r2 = await runPushSweep(resStore, vapid, NOW + 3600e3, captureFetch);
+    ok("the SAME result is never pushed twice", r2.sent === 0 && sentBody === "unset");
+
+    // Mirror: the opponent's own side independently resolves to a LOSE.
+    await resStore.createShare("winner", "share-winner", NOW);
+    await resStore.saveUser("loser-opp", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "opponent", partner_token: "share-winner", week: pastWeek, status: "active", created_at: NOW } } });
+    await resStore.savePushSubscription("loser-opp", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-lose", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    await runPushSweep(resStore, vapid, NOW, captureFetch);
+    const loseMsg = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the mirror side gets its own LOSE push, independently derived", loseMsg.tag === "hb-challenge" && /lost 1–2/.test(loseMsg.body));
+
+    // A still-running (week not over) active challenge is never resolved or pushed.
+    const thisWeek = isoWeekKey(new Date(NOW).toISOString());
+    await resStore.createShare("live-opp", "share-live-opp", NOW);
+    await resStore.saveUser("live", { profile: { tz_offset_min: -300, challenge: { id: "r2", role: "challenger", partner_token: "share-live-opp", week: thisWeek, status: "active", created_at: NOW } } });
+    await resStore.saveUser("live-opp", { profile: {} });
+    await resStore.savePushSubscription("live", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-live", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const rLive = await runPushSweep(resStore, vapid, NOW, captureFetch);
+    ok("a mid-week active challenge is not touched by the result push", sentBody === "unset" && (await resStore.getUser("live")).profile.challenge.status === "active");
+
+    // An opponent whose share vanished has no real score — completes, but no
+    // result is recorded, so nothing gets pushed (never manufacture a trophy).
+    await resStore.saveUser("vanished", { profile: { tz_offset_min: -300, challenge: { id: "r3", role: "challenger", partner_token: "share-gone-forever", week: pastWeek, status: "active", created_at: NOW } } });
+    await resStore.savePushSubscription("vanished", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-vanished", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    await runPushSweep(resStore, vapid, NOW, captureFetch);
+    ok("a vanished opponent completes the slot with NO result and NO push", sentBody === "unset"
+      && (await resStore.getUser("vanished")).profile.challenge.status === "completed"
+      && (await resStore.getUser("vanished")).profile.challenge.result === undefined);
+
+    // A stale PENDING invite (never answered, week over) is left for GET to
+    // self-transition to "declined" — the sweep's result push never touches it.
+    await resStore.saveUser("stale-pending", { profile: { tz_offset_min: -300, challenge: { id: "r4", role: "opponent", partner_token: "share-loser-opp", week: pastWeek, status: "pending", created_at: NOW } } });
+    await resStore.savePushSubscription("stale-pending", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-stale-pending", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    await runPushSweep(resStore, vapid, NOW, captureFetch);
+    ok("a stale pending invite is not resolved/pushed by the result sweep (GET's job)", sentBody === "unset" && (await resStore.getUser("stale-pending")).profile.challenge.status === "pending");
+
+    // Retry-safe: a challenge already resolved to "completed" with a result (e.g. a
+    // prior tick's push send failed) is pushed straight off the STORED fields —
+    // no re-fetch, no re-write — the moment a live device is available.
+    await resStore.saveUser("retry", { profile: { tz_offset_min: -300, challenge: { id: "r5", status: "completed", week: pastWeek, result: "tie", completed_at: NOW - 3600e3, my_count: 2, opponent_count: 2 } } });
+    await resStore.savePushSubscription("retry", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/result-retry", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    await runPushSweep(resStore, vapid, NOW, captureFetch);
+    const retryMsg = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("an already-resolved result retries straight off the stored fields", retryMsg.tag === "hb-challenge" && /tied 2–2/.test(retryMsg.body));
+    ok("the retry stamps the seen-once marker too", (await resStore.getUser("retry")).profile.challenge_result_pushed_at === NOW - 3600e3);
+  } finally { try { rmSync(resPath); } catch {} }
+}
+
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the
 // FIRST device's successful send consume the event for every other device. ---
 {

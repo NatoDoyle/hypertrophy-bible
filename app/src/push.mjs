@@ -1,5 +1,6 @@
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
+import { sessionsInWeek } from "./adherence.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -141,6 +142,65 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   return new Date(lastSessionAt).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10);
 }
 
+// Same cap as `following` (profile.following.slice(0, 20)) — a bounded personal
+// record, not an unbounded log. Oldest entries fall off the end.
+export const CHALLENGE_HISTORY_CAP = 20;
+
+// Single source of truth (lesson 1) for resolving a user's OWN half of a 1v1
+// weekly challenge — used by BOTH `GET /api/challenge` (live/final display, a
+// read the user triggers) and the push sweep below (a proactive result
+// notification for a user who never reopens the app after their week ends).
+// Computes both sides' current tallies for the challenge's own week (needed
+// for live display regardless of resolution), then — only if the challenge
+// has run its course (active/pending, and its week is over or its opponent's
+// share vanished) — transitions it to a terminal state exactly as GET always
+// has: "declined" for an unanswered pending invite (no result — nothing to
+// notify), "completed" with a recorded win/lose/tie for an active one that
+// had a real opponent. The result/tally/timestamp are written onto the LIVE
+// challenge slot itself (not just into history), so a later retry — e.g. the
+// push sweep's send failed once — can read them straight off the persisted
+// challenge with no re-fetch and no re-write (calling this again on an
+// already-terminal challenge is a no-op: its status is no longer
+// active/pending, so the write path never re-fires, mirroring the read-side
+// idempotence GET has always had).
+export async function resolveChallenge(store, userId, ch, now = Date.now()) {
+  const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
+  const weekOver = ch.week !== isoWeekKey(new Date(now).toISOString());
+  let my_count = null, opponent_count = null;
+  if (opponentId) {
+    const [mySessions, opponentSessions] = await Promise.all([store.listSessions(userId), store.listSessions(opponentId)]);
+    my_count = sessionsInWeek(mySessions, ch.week);
+    opponent_count = sessionsInWeek(opponentSessions, ch.week);
+  }
+  if (!((ch.status === "active" || ch.status === "pending") && (weekOver || !opponentId))) {
+    return { challenge: ch, opponentId, my_count, opponent_count, changed: false };
+  }
+  const nextStatus = ch.status === "pending" ? "declined" : "completed";
+  // An opponent's share vanishing mid-week, or an invite nobody ever answered
+  // (declined), has no real score to record — don't manufacture one.
+  const recordResult = nextStatus === "completed" && !!opponentId;
+  const result = recordResult ? (my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie") : null;
+  const updated = await store.updateUser(userId, (u) => {
+    if (u.profile?.challenge?.id !== ch.id) return u; // slot replaced by a fresh propose — don't resurrect it
+    u.profile = {
+      ...u.profile,
+      challenge: { ...u.profile.challenge, status: nextStatus, ...(recordResult ? { completed_at: now, result, my_count, opponent_count } : {}) },
+      ...(recordResult
+        ? { challenge_history: [{ week: ch.week, result, my_count, opponent_count }, ...(u.profile?.challenge_history ?? [])].slice(0, CHALLENGE_HISTORY_CAP) }
+        : {}),
+    };
+    return u;
+  });
+  // Report exactly what got PERSISTED, not the optimistic local computation — a
+  // concurrent fresh propose can legitimately replace this user's challenge id
+  // between the read above and this write (lesson 21: never fabricate a result
+  // the store didn't actually record). `updated` is also null if the user row
+  // vanished mid-request.
+  const wrote = updated?.profile?.challenge?.id === ch.id;
+  if (!wrote) return { challenge: ch, opponentId, my_count, opponent_count, changed: false };
+  return { challenge: updated.profile.challenge, opponentId, my_count, opponent_count, changed: true, history: updated.profile.challenge_history ?? [] };
+}
+
 // One daily sweep. Injectable sender/fetch so the whole thing unit-tests on the
 // file store; dead subscriptions (404/410) are pruned as we go.
 export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch) {
@@ -229,6 +289,27 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
+      }
+
+      // A challenge RESULT (this slice): before this, a completed challenge only
+      // ever surfaced on the user's own NEXT `GET /api/challenge` — someone who
+      // doesn't reopen the app after their week ends never learns whether they
+      // won, defeating the whole point of a proactive social nudge. Gated on
+      // weekOver BEFORE calling resolveChallenge (which fetches both sides'
+      // sessions) so a still-running challenge costs the sweep nothing on any
+      // of its ~168 hourly ticks before the week actually ends. Once resolved,
+      // result/completed_at/my_count/opponent_count live on the challenge slot
+      // itself (see resolveChallenge), so a send failure this tick retries next
+      // tick straight off those stored fields — no re-fetch, no re-write.
+      const challengeWeekOver = pendingChallenge && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString());
+      const finalChallenge = (pendingChallenge && pendingChallenge.status === "active" && challengeWeekOver)
+        ? (await resolveChallenge(store, userId, pendingChallenge, now)).challenge
+        : pendingChallenge;
+      if (!paused && !remindersOff && finalChallenge?.status === "completed" && finalChallenge.result
+          && finalChallenge.completed_at > (user.profile?.challenge_result_pushed_at ?? 0)) {
+        const verb = finalChallenge.result === "win" ? "won" : finalChallenge.result === "lose" ? "lost" : "tied";
+        const ok = await fanOut({ title: "The Hypertrophy Bible", body: `Your weekly challenge is over — you ${verb} ${finalChallenge.my_count}–${finalChallenge.opponent_count}.`, tag: "hb-challenge" });
+        if (ok) await stamp("challenge_result_pushed_at", finalChallenge.completed_at);
       }
 
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
