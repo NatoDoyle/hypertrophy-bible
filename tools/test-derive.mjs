@@ -115,6 +115,24 @@ check("bodyweightTrend regresses ~0.5 kg/week", () => {
   assert.ok(Math.abs(t.slope_kg_per_week - 0.5) < 0.01, `slope ${t.slope_kg_per_week}`);
 });
 
+check("bodyweightTrend ignores non-positive weights and never yields NaN", () => {
+  // A spurious 0/negative entry (bad data) must be filtered, not corrupt the trend
+  // or produce a NaN pct_per_week (a zero average would divide by zero).
+  const series = [
+    { date: "2026-06-01", bodyweight_kg: 80.0 },
+    { date: "2026-06-05", bodyweight_kg: 0 },      // garbage — must be dropped
+    { date: "2026-06-08", bodyweight_kg: 80.5 },
+    { date: "2026-06-15", bodyweight_kg: 81.0 },
+    { date: "2026-06-22", bodyweight_kg: -5 },     // garbage — must be dropped
+    { date: "2026-06-29", bodyweight_kg: 82.0 },
+  ];
+  const t = bodyweightTrend(series);
+  assert.equal(t.n, 4, "only the 4 valid weigh-ins count");
+  assert.ok(Number.isFinite(t.pct_per_week) && Number.isFinite(t.slope_kg_per_week), "no NaN in the trend");
+  // all-zero (degenerate) input: filtered to nothing → null, never a NaN object
+  assert.equal(bodyweightTrend([{ date: "2026-06-01", bodyweight_kg: 0 }, { date: "2026-06-08", bodyweight_kg: 0 }, { date: "2026-06-15", bodyweight_kg: 0 }]), null);
+});
+
 check("classifyEnergyBalance from weight trend + goal (no calories)", () => {
   const gaining = { pct_per_week: 0.3 };
   assert.equal(classifyEnergyBalance(gaining, "hypertrophy").direction, "surplus");

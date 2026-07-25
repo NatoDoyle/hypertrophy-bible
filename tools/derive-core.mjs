@@ -367,7 +367,9 @@ export function recoverySignal(checkins = [], energyBalance = null, { minCheckin
 // the slope of the trend is the signal — and doubles as the energy-balance sensor.
 export function bodyweightTrend(series) {
   const pts = series
-    .filter((p) => p.date && typeof p.bodyweight_kg === "number")
+    // Require a POSITIVE weight (consistent with adaptiveTDEE): a 0/negative entry
+    // isn't a real weigh-in, and a zero average would make pct_per_week divide by 0.
+    .filter((p) => p.date && typeof p.bodyweight_kg === "number" && p.bodyweight_kg > 0)
     .map((p) => ({ t: new Date(p.date).getTime() / 86400000, w: p.bodyweight_kg }))
     .sort((a, b) => a.t - b.t);
   if (pts.length < 3) return null;
@@ -387,7 +389,7 @@ export function bodyweightTrend(series) {
     days: xs[n - 1] - xs[0],
     avg_kg: Math.round(avgW * 100) / 100,
     slope_kg_per_week: Math.round(slopePerWeek * 1000) / 1000,
-    pct_per_week: Math.round((slopePerWeek / avgW) * 10000) / 100,
+    pct_per_week: avgW > 0 ? Math.round((slopePerWeek / avgW) * 10000) / 100 : 0, // never NaN, even on degenerate input
   };
 }
 
