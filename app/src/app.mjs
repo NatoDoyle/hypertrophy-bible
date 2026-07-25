@@ -23,6 +23,10 @@ const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.tes
 const isChallengeOpen = (challenge) =>
   !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKey(new Date().toISOString());
 
+// Same cap as `following` (profile.following.slice(0, 20)) — a bounded personal
+// record, not an unbounded log. Oldest entries fall off the end.
+const CHALLENGE_HISTORY_CAP = 20;
+
 export function createApp(store, config = {}) {
   const app = new Hono();
   const sendEmail = config.sendEmail ?? (async () => ({ dev: true }));
@@ -709,25 +713,43 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
     const ch = user.profile?.challenge;
-    if (!ch) return c.json({ challenge: null });
+    const history = user.profile?.challenge_history ?? [];
+    if (!ch) return c.json({ challenge: null, history });
     const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
     const weekOver = ch.week !== isoWeekKey(new Date().toISOString());
+    // Fetch both sides' tallies up front (needed either way once an opponent
+    // exists) so a completing challenge can record its result using the SAME
+    // counts the response shows — no second fetch, no chance of the two disagreeing.
+    let my_count = null, opponent_count = null;
+    if (opponentId) {
+      const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
+      my_count = sessionsInWeek(mySessions, ch.week);
+      opponent_count = sessionsInWeek(opponentSessions, ch.week);
+    }
+    let newHistory = history;
     if ((ch.status === "active" || ch.status === "pending") && (weekOver || !opponentId)) {
       const nextStatus = ch.status === "pending" ? "declined" : "completed";
+      // A win/lose/tie result is only recorded when the challenge actually ran its
+      // course against a still-active opponent (an ACTIVE challenge whose week
+      // ended). An opponent's share vanishing mid-week, or an invite nobody ever
+      // answered (declined), has no real score to record — don't manufacture one.
+      const recordResult = nextStatus === "completed" && opponentId;
+      if (recordResult) {
+        const result = my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie";
+        newHistory = [{ week: ch.week, result, my_count, opponent_count }, ...history].slice(0, CHALLENGE_HISTORY_CAP);
+      }
       await store.updateUser(id, (u) => {
         if (u.profile?.challenge?.id !== ch.id) return u;
-        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus } };
+        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus }, ...(recordResult ? { challenge_history: newHistory } : {}) };
         return u;
       });
       ch.status = nextStatus;
     }
-    if (!opponentId) return c.json({ challenge: { ...ch, opponent_active: false } });
-    const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
+    if (!opponentId) return c.json({ challenge: { ...ch, opponent_active: false }, history: newHistory });
     return c.json({
       challenge: { ...ch, opponent_active: true },
-      my_count: sessionsInWeek(mySessions, ch.week),
-      opponent_count: sessionsInWeek(opponentSessions, ch.week),
-      week_over: weekOver,
+      my_count, opponent_count, week_over: weekOver,
+      history: newHistory,
     });
   });
 
