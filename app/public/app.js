@@ -275,7 +275,11 @@ function renderOnboarding() {
       + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
-    const todayStr = new Date().toISOString().slice(0, 10); // a goal event can't be in the past
+    // A goal event can't be in the past — in the USER'S local calendar, not UTC's:
+    // toISOString() is the UTC date, which west of UTC in the evening blocked
+    // selecting the user's real "tomorrow" (and east of UTC allowed local-yesterday).
+    const dNow = new Date();
+    const todayStr = `${dNow.getFullYear()}-${String(dNow.getMonth() + 1).padStart(2, "0")}-${String(dNow.getDate()).padStart(2, "0")}`;
     body = `<input type="date" id="dateval" min="${todayStr}" value="${esc(v)}" aria-label="${esc(step.q)}"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
       <p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
