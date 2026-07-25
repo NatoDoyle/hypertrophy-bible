@@ -33,6 +33,8 @@ The strongest arm-specific finding is about **exercise position**: Maeo and coll
 - [`data/muscles/biceps.json`](../../data/muscles/biceps.json), [`triceps.json`](../../data/muscles/triceps.json), [`forearms.json`](../../data/muscles/forearms.json)
 - Exercises: [`overhead-cable-triceps-extension`](../../data/exercises/overhead-cable-triceps-extension.json), [`incline-dumbbell-curl`](../../data/exercises/incline-dumbbell-curl.json)
 
+- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
+
 ## References
 [^maeo-2023-triceps-overhead]: Maeo S, et al. (2023). *Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.* European Journal of Sport Science, 23(7), 1240–1250. DOI: [10.1080/17461391.2022.2100279](https://doi.org/10.1080/17461391.2022.2100279). PMID: 35819335.
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.

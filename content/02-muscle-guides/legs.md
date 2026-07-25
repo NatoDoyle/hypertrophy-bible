@@ -35,6 +35,8 @@ Lower-body training showcases the **lengthened-position** theme most clearly. Sq
 - [`data/muscles/quadriceps.json`](../../data/muscles/quadriceps.json), [`hamstrings.json`](../../data/muscles/hamstrings.json), [`glutes.json`](../../data/muscles/glutes.json), [`calves.json`](../../data/muscles/calves.json)
 - Exercises: [`barbell-back-squat`](../../data/exercises/barbell-back-squat.json), [`romanian-deadlift`](../../data/exercises/romanian-deadlift.json), [`seated-leg-curl`](../../data/exercises/seated-leg-curl.json)
 
+- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
+
 ## References
 [^schoenfeld-2020-rom-review]: Schoenfeld BJ, Grgic J (2020). *Effects of range of motion on muscle development during resistance training interventions: A systematic review.* SAGE Open Medicine, 8, 2050312120901559. DOI: [10.1177/2050312120901559](https://doi.org/10.1177/2050312120901559). PMID: 32030125.
 [^kassiano-2023-rom-review]: Kassiano W, et al. (2023). *Which ROMs Lead to Rome? A Systematic Review of the Effects of Range of Motion on Muscle Hypertrophy.* Journal of Strength and Conditioning Research, 37(5), 1135–1144. DOI: [10.1519/JSC.0000000000004415](https://doi.org/10.1519/JSC.0000000000004415). PMID: 36662126.

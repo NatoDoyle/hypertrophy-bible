@@ -33,5 +33,7 @@ There is little neck-*specific* hypertrophy research, so guidance rests on **app
 - [`data/muscles/neck.json`](../../data/muscles/neck.json)
 - Exercises: [`neck-curl`](../../data/exercises/neck-curl.json), [`neck-extension`](../../data/exercises/neck-extension.json)
 
+- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
+
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.

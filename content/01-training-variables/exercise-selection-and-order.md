@@ -37,6 +37,7 @@
 
 ## Backing Data
 - Exercise attributes used to drive selection (`primary_muscles`, `mechanic`, `resistance_profile`, `lengthened_bias`, `stability`): [`data/exercises/`](../../data/exercises/)
+- **Ranked, cued exercise picks per muscle** — the muscle guides apply everything here region by region: [Back](../02-muscle-guides/back.md), [Chest](../02-muscle-guides/chest.md), [Shoulders](../02-muscle-guides/shoulders.md), [Legs](../02-muscle-guides/legs.md), [Arms](../02-muscle-guides/arms.md), [Core](../02-muscle-guides/core.md), [Neck](../02-muscle-guides/neck.md).
 
 ## References
 [^maeo-2023-triceps-overhead]: Maeo S, et al. (2023). *Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position.* European Journal of Sport Science, 23(7), 1240–1250. DOI: [10.1080/17461391.2022.2100279](https://doi.org/10.1080/17461391.2022.2100279). PMID: 35819335.
