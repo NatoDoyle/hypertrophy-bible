@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -1727,9 +1727,10 @@ async function renderCoach() {
       <p class="muted" style="margin-top:8px">Follow a friend's share link and their streak shows up here — a little mutual accountability. Paste the link they sent you:</p>
       <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="followbtn" style="width:auto">Follow</button></div>
       <p class="muted" id="followmsg" style="margin-top:6px"></p>
-      ${(fw.partners || []).map((p) => p.active
-        ? `<div class="row" style="margin-top:8px;align-items:center"><span style="flex:1">🔥 <b>${p.streak_weeks} wk${p.streak_weeks === 1 ? "" : "s"}</b> · lvl ${p.level} · ${p.sessions_logged} sessions${p.cheers > 0 ? ` · 💪 ${p.cheers}` : ""}</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`
-        : `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
+      ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) =>
+        `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}</span>${r.isYou ? "" : `<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`).join("")}</div>` : ""}
+      ${(fw.partners || []).filter((p) => !p.active).map((p) =>
+        `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
