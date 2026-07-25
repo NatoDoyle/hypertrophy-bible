@@ -1,0 +1,12 @@
+{
+  "id": "ashwagandha",
+  "name": "Ashwagandha (Withania somnifera)",
+  "tier": "insufficient",
+  "summary": "Genuinely promising but not yet proven. An adaptogenic herb; a well-conducted RCT showed greater strength and muscle-size gains than placebo, but the evidence is thin and needs replication before it earns a firm recommendation.",
+  "effect": "In one randomized controlled trial, 8 weeks of ashwagandha with resistance training produced significantly larger gains in bench-press and leg-extension strength and in arm and chest muscle size than placebo. It may also help stress/cortisol and perceived recovery. Effect sizes and replication remain limited, and industry funding is common in this space.",
+  "dosing": "Studied at ~300-600 mg/day of a root extract; if trying it, use a third-party-tested product.",
+  "timing": "Not time-critical; often taken daily.",
+  "safety": "Generally well tolerated short-term; can cause GI upset/drowsiness, may interact with thyroid/sedative medication, and is not for pregnancy. Talk to a clinician if you take medication.",
+  "evidence_grade": "C",
+  "citations": ["wankhede-2015-ashwagandha"]
+}

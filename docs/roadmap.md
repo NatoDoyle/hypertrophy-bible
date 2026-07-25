@@ -167,11 +167,13 @@ infra, the one genuinely large build left here).
    debunks (glutamine, ashwagandha, ZMA, tart cherry).
 
 ### Tier 3 — big bets
-9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Wave 98):* **opt-in Daily
-   Undulating Periodization** shipped — `profile.periodization: "undulating"` varies the
-   rep/intensity band by training day (heavy/moderate/light) for the hypertrophy family; a clean
-   per-session scheme swap so the linear default is byte-identical; onboarding step + end-to-end
-   whitelist test; prod-verified (an undulating plan carries the heavy 4-6 band). Still to build:
+9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Waves 98+100):* **Daily Undulating
+   Periodization**, now **auto-derived** (Wave 100, per the Goal-2 minimal-customization
+   refinement): advanced trainees on a muscle-building goal get heavy/moderate/light-by-day
+   automatically — no question asked — while beginners/intermediates keep the byte-identical linear
+   default; `profile.periodization` stays a respected override. Undulates only the COMPOUND band;
+   isolations keep their higher-rep near-failure band every day (the KB isolation invariants caught
+   and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). Still to build:
    BLOCK periodization (accumulation→intensification→peak), a taper/peak phase, contest-prep mode,
    deeper autoregulation (velocity/RIR-driven). Serves the "win Mr. Olympia" end.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (needs multi-user

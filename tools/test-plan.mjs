@@ -39,17 +39,20 @@ ok("split is a valid enum value", ["full-body", "upper-lower", "push-pull-legs",
 ok("every exercise id resolves to a real exercise", allEx.every((e) => exIds.has(e.exercise)));
 ok("every set count is 1-10", allEx.every((e) => Number.isInteger(e.sets) && e.sets >= 1 && e.sets <= 10));
 
-// --- opt-in Daily Undulating Periodization (roadmap #9, first slice) ---
+// --- Daily Undulating Periodization: auto-derived smart default (roadmap #9 + Goal 2) ---
 const mechOf = (id) => exercises.find((x) => x.id === id)?.mechanic;
 const compoundRanges = (plan) => new Set(plan.program.sessions.flatMap((s) => s.exercises).filter((e) => mechOf(e.exercise) === "compound").map((e) => e.rep_range));
-const dup = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", periodization: "undulating" }, kb);
-const dupRanges = compoundRanges(dup);
-ok("DUP: compound rep-ranges undulate across the week (>=2 bands, incl. a heavy 4-6)", dupRanges.size >= 2 && dupRanges.has("4-6"));
-const lin = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced" }, kb); // no periodization = linear
-const linRanges = compoundRanges(lin);
-ok("linear (default): every compound uses the single base band (no undulation)", linRanges.size === 1 && linRanges.has("6-10"));
-const strDup = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", primary_goal: "strength", periodization: "undulating" }, kb);
-const strRanges = compoundRanges(strDup);
+// Advanced + muscle-building goal auto-undulates with NO flag set (minimal customization).
+const advAuto = compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "advanced" }, kb));
+ok("DUP smart default: an advanced hypertrophy profile auto-undulates (>=2 bands incl. heavy 4-6), no flag", advAuto.size >= 2 && advAuto.has("4-6"));
+// Intermediate stays linear by default (the method best suits advanced trainees).
+const intAuto = compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "intermediate" }, kb));
+ok("intermediate stays linear by default (single base band, no auto-undulation)", intAuto.size === 1 && intAuto.has("6-10"));
+// The profile field is a respected OVERRIDE both ways.
+ok("override: periodization 'linear' forces an advanced user back to one band", compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", periodization: "linear" }, kb)).size === 1);
+ok("override: periodization 'undulating' turns it on for an intermediate (heavy 4-6 present)", compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "intermediate", periodization: "undulating" }, kb)).has("4-6"));
+// Gating: a strength goal never undulates (its bands are already goal-specific).
+const strRanges = compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", primary_goal: "strength", periodization: "undulating" }, kb));
 ok("DUP gating: a strength goal ignores undulation (compounds stay the strength base 3-6)", strRanges.size === 1 && strRanges.has("3-6"));
 ok("every exercise has a rep_range string", allEx.every((e) => typeof e.rep_range === "string" && /\d+-\d+/.test(e.rep_range)));
 ok("no exercise exceeds 5 sets", allEx.every((e) => e.sets <= 5));

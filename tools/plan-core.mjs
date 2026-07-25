@@ -67,17 +67,18 @@ const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 // (whose base band is moderate); left off for strength/fat-loss, whose bands are
 // already goal-specific. Default ("linear"/unset) returns the base scheme unchanged,
 // so a plan generated without opting in is byte-identical to before.
-const UNDULATION_BANDS = {
-  heavy: { compound: ["4-6", "2-3"], isolation: ["6-10", "1-2"], priorityIso: ["8-12", "0-1"], pumpIso: ["10-15", "0-1"] },
-  light: { compound: ["10-15", "1-2"], isolation: ["15-20", "0-1"], priorityIso: ["15-20", "0-1"], pumpIso: ["15-20", "0-1"] },
-};
-const UNDULATION_ORDER = ["heavy", "moderate", "light"]; // moderate = the goal's base scheme
+// Only the COMPOUND (mechanical-tension) work undulates — heavy on one day, higher-rep
+// on another. ISOLATIONS deliberately stay in their evidence-based higher-rep, near-failure
+// band EVERY day (the KB's stance: heavy low-rep isolation like a 5-rep lateral raise is
+// poor practice), so undulation never drags a curl or a fly into a 6-rep band.
+const UNDULATION_COMPOUND = { heavy: ["4-6", "2-3"], light: ["10-15", "1-2"] }; // moderate = the goal's base compound
+const UNDULATION_ORDER = ["heavy", "moderate", "light"];
 const undulatesForGoal = (goal) => goal === "hypertrophy" || goal === "recomposition";
-// Pick a session's band from its index in the week; `moderate` falls back to base.
+// Pick a session's scheme from its index in the week; only the compound band shifts.
 function sessionRepScheme(baseScheme, undulating, sessionIndex) {
   if (!undulating) return baseScheme;
   const band = UNDULATION_ORDER[sessionIndex % UNDULATION_ORDER.length];
-  return band === "moderate" ? baseScheme : UNDULATION_BANDS[band];
+  return band === "moderate" ? baseScheme : { ...baseScheme, compound: UNDULATION_COMPOUND[band] };
 }
 
 // Small muscles whose isolation work runs higher-rep "pump" ranges in practice.
@@ -280,9 +281,16 @@ export function generatePlan(profile, kb, opts = {}) {
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
-  // Opt-in daily undulation (roadmap #9): heavy/moderate/light by training day.
-  // Off by default and for non-hypertrophy goals, so default plans are unchanged.
-  const undulating = profile.periodization === "undulating" && undulatesForGoal(goal);
+  // Daily undulation (roadmap #9), auto-derived to keep manual customization minimal
+  // (Goal 2): ADVANCED trainees on a muscle-building goal get heavy/moderate/light-by-day
+  // automatically — the method most suits them and they shouldn't have to ask for it —
+  // while beginners/intermediates keep the simpler linear default. `profile.periodization`
+  // is a respected OVERRIDE either way ("undulating" forces it on, "linear" forces it off),
+  // but nothing needs to be set: the right default is chosen from training status.
+  const undulating = undulatesForGoal(goal) && (
+    profile.periodization === "undulating" ||
+    (profile.periodization !== "linear" && experience === "advanced")
+  );
 
   const muscleById = new Map(muscles.map((m) => [m.id, m]));
   // Loaded carries (suitcase/bottoms-up) are a time-and-distance movement — there is

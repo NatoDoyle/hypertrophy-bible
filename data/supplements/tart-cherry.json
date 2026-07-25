@@ -1,0 +1,12 @@
+{
+  "id": "tart-cherry",
+  "name": "Tart Cherry",
+  "tier": "insufficient",
+  "summary": "A recovery aid, not a muscle-builder. Polyphenol-rich tart cherry can ease post-exercise soreness and speed recovery from muscle damage, but there's no evidence it adds muscle — and mega-dosing antioxidants around training may even be counterproductive.",
+  "effect": "A systematic review found tart cherry (and pomegranate) supplementation enhances recovery from exercise-induced muscle damage, most reliably when started a few days before and continued after hard/damaging sessions at a high total phenolic dose. Its value is faster recovery between sessions, not extra hypertrophy.",
+  "dosing": "For recovery around unusually damaging bouts: a high-polyphenol dose (roughly ≥1000 mg/day total phenolics, e.g. concentrate/juice) spanning several days pre-to-post. Not needed day-to-day.",
+  "timing": "Begin a few days before a damaging session and continue a few days after.",
+  "safety": "Generally safe (a food-based product); juices carry sugar/calories worth counting. Routinely blunting exercise-induced oxidative signalling with high-dose antioxidants is a theoretical downside for adaptation.",
+  "evidence_grade": "B",
+  "citations": ["ortega-2021-tart-cherry-recovery"]
+}
