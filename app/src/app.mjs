@@ -6,7 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
-import { adherenceReport } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
@@ -432,6 +432,34 @@ export function createApp(store, config = {}) {
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
     return c.json({ paused: !!updated.paused });
+  });
+
+  // Spend a held streak-freeze token to neutralise a missed week (#4 adherence —
+  // the user-held protection the roadmap called out). The token check and the
+  // already-frozen guard live INSIDE the mutator so the CAS store can't double-spend
+  // under a concurrent write; sessions (which decide what's freezable) are read once
+  // outside — they don't race a freeze in practice.
+  app.post("/api/streak/freeze", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
+    const now = new Date().toISOString();
+    const sessions = await store.listSessions(b.user_id);
+    let frozenWeek = null, reason = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      const freezes = u.streak_freezes || [];
+      const state = streakFreezeState(sessions, now, freezes, u.paused || null, u.pause_history || []);
+      // Client may name a week to protect; else default to the most recent missed one.
+      const week = b.week ? (state.freezable.includes(b.week) ? b.week : null) : state.protectable_week;
+      if (state.balance <= 0) { reason = "no-tokens"; return u; }
+      if (!week) { reason = b.week ? "week-not-freezable" : "nothing-to-protect"; return u; }
+      if (freezes.includes(week)) { reason = "already-frozen"; return u; }
+      u.streak_freezes = [...freezes, week].slice(-24); // cap blob growth (parity with pause_history)
+      frozenWeek = week;
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    if (!frozenWeek) return c.json({ error: reason || "cannot-freeze" }, 400);
+    return c.json({ frozen_week: frozenWeek, ...adherenceReport(updated, sessions, now) });
   });
 
   app.get("/api/checkin/today", async (c) => {

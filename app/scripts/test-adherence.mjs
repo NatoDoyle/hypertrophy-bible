@@ -1,5 +1,5 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
-import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport } from "../src/adherence.mjs";
+import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 
@@ -36,6 +36,27 @@ ok("#19 a pause never RETROACTIVELY bridges a real gap before it (no free streak
   // trained W02 only (2026-01-05), missed W03+, pause starts W06 (2026-02-02): the
   // W03/W04/W05 gap is BEFORE the pause and still breaks — streak counts just W02.
   weeksConsistent([sess("2026-01-05")], injuredNow, { from: "2026-02-02" }) === 0);
+
+// --- Streak-freeze tokens (#4 adherence): a user-HELD protection, distinct from the
+// automatic single-miss forgiveness. A spent freeze neutralises a week exactly like a
+// pause, so it can bridge a SECOND gap the free forgiveness already spent.
+const twoGaps = [sess("2026-01-05"), sess("2026-01-19"), sess("2026-02-02")]; // W02, W04, W06 — misses W03 & W05
+ok("streak-freeze: the free forgiveness bridges only ONE of two gaps (control)", weeksConsistent(twoGaps, "2026-02-04") === 2);
+ok("streak-freeze: a frozen week bridges the SECOND gap (2 -> 3)", weeksConsistent(twoGaps, "2026-02-04", null, [], ["2026-W05"]) === 3);
+ok("streak-freeze: freezing an already-TRAINED week never inflates the streak", weeksConsistent(twoGaps, "2026-02-04", null, [], ["2026-W04"]) === 2);
+// Token economics: earn one per 4 trained weeks, hold at most STREAK_FREEZE_MAX, replenish as you spend.
+const consec = (count, start = "2026-01-05") => Array.from({ length: count }, (_, i) => sess(new Date(Date.parse(start) + i * 7 * 86400000).toISOString().slice(0, 10)));
+const eight = consec(8); // 8 distinct trained weeks (W02..W09)
+ok("streak-freeze: trainedWeekCount counts DISTINCT trained weeks", trainedWeekCount(eight) === 8);
+ok("streak-freeze: earn one token per 4 trained weeks", streakFreezeState(eight, "2026-02-25", []).earned_total === 2);
+ok("streak-freeze: balance = earned - used", streakFreezeState(eight, "2026-02-25", ["2020-W01"]).balance === 1);
+ok("streak-freeze: held balance is capped at the max", streakFreezeState(consec(20), new Date(Date.parse("2026-01-05") + 19 * 7 * 86400000).toISOString(), []).balance === STREAK_FREEZE_MAX);
+// Protectable-week detection: a recent missed week, with a token held, is offered.
+const freezeGap = [sess("2026-01-05"), sess("2026-01-12"), sess("2026-01-19"), sess("2026-01-26")]; // W02..W05 trained, miss W06, now W07
+const fzState = streakFreezeState(freezeGap, "2026-02-11", []);
+ok("streak-freeze: a recent missed week is protectable when a token is held", fzState.balance === 1 && !!fzState.protectable_week && fzState.freezable.includes(fzState.protectable_week));
+ok("streak-freeze: the in-progress current week is never offered as protectable", !fzState.freezable.includes("2026-W07"));
+ok("streak-freeze: adherenceReport surfaces the freeze wallet", adherenceReport({ streak_freezes: [] }, eight, "2026-02-25").streak_freeze.earned_total === 2);
 
 // XP + level: 3 sessions × (100 + 3 hard sets ×5) = 3×115 = 345 -> level 1
 const xl = xpAndLevel(three);

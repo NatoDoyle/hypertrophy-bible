@@ -37,7 +37,13 @@ const weekOrdinal = (dateOrKey) => {
 // exact demotivation the rail exists to prevent). `paused` is user.paused:
 // { from: "YYYY-MM-DD", reason } or falsy; a legacy pause with no date neutralizes
 // only the current week.
-export function weeksConsistent(sessions, now, paused = null, pauseHistory = []) {
+// `frozenWeeks` (user.streak_freezes: ISO week keys the user spent a freeze token
+// on) are treated as NEUTRAL, exactly like an injury pause — a spent freeze is just
+// a single-week pause the user chose. Reusing the tested neutral-week path (not a
+// new branch in the forgiveness walk) keeps this bug-prone walker unchanged in
+// spirit: a freeze can never *break* a streak, only bridge a gap the one free
+// forgiveness didn't cover.
+export function weeksConsistent(sessions, now, paused = null, pauseHistory = [], frozenWeeks = []) {
   // local_date (the device's calendar day, when the client sent one) banks the
   // session to the week the USER experienced — a Monday-morning session in
   // UTC+12 is Monday, not the previous ISO week's Sunday.
@@ -49,16 +55,63 @@ export function weeksConsistent(sessions, now, paused = null, pauseHistory = [])
   // record, retroactively turning the frozen weeks into misses and collapsing
   // the streak the pause card promised was safe.
   const windows = (pauseHistory ?? []).filter((p) => p?.from && p?.to).map((p) => [weekOrdinal(p.from), weekOrdinal(p.to)]);
-  const inPause = (w) => w >= pauseStartWeek || windows.some(([a, b]) => w >= a && w <= b); // the walk only ever visits w <= cur
+  const frozen = new Set((frozenWeeks ?? []).map(weekOrdinal));
+  const inPause = (w) => w >= pauseStartWeek || windows.some(([a, b]) => w >= a && w <= b) || frozen.has(w); // the walk only ever visits w <= cur
   let w = trained.has(cur) ? cur : cur - 1; // grace: not training THIS week yet doesn't break it
   let streak = 0, forgiven = false;
   while (w > 0) {
     if (trained.has(w)) { streak++; w--; }
-    else if (inPause(w)) { w--; } // injured/ill week — neutral: no penalty, no forgiveness spent
+    else if (inPause(w)) { w--; } // injured/ill OR frozen week — neutral: no penalty, no forgiveness spent
     else if (!forgiven && (trained.has(w - 1) || inPause(w - 1))) { forgiven = true; w--; } // bridge a single miss — a paused predecessor counts as trained-equivalent, so a miss right after a pause can't collapse the pre-pause streak
     else break;
   }
   return streak;
+}
+
+// --- Streak-freeze tokens (#4 adherence): a user-HELD protection the roadmap calls
+// out as missing. Distinct from the automatic single-miss forgiveness already in the
+// walker — a freeze is a token the user earns by training and chooses to spend to
+// neutralise a missed week, so it survives a SECOND miss the free forgiveness can't.
+// Loss-aversion + the endowment effect: a balance you can see and don't want to lose.
+export const STREAK_FREEZE_MAX = 3;       // most you can hold at once (Duolingo-style cap)
+export const WEEKS_PER_FREEZE = 4;        // earn one per ~month of weeks actually trained
+export const FREEZE_LOOKBACK_WEEKS = 6;   // how far back a token may reach (no reviving ancient streaks)
+
+// Distinct weeks the user has trained — the SAME device-local week banking the streak
+// walker uses. Freezes are earned from this (a monotone count), NOT from the streak
+// value, so a freeze can never feed back into the streak it protects.
+export function trainedWeekCount(sessions) {
+  return new Set((sessions ?? []).filter((s) => s.local_date || s.date).map((s) => weekOrdinal(sessionWeekKey(s)))).size;
+}
+
+// Freeze wallet + what's protectable right now. `earnedTotal` grows without bound as
+// you train; the holdable BALANCE is capped at STREAK_FREEZE_MAX, replenishing as you
+// spend and keep training. `protectable_week` is the single most-recent missed week a
+// token could still reach (the clear one-tap "protect last week" case); `freezable`
+// lists every reachable missed week for a client that wants to offer a choice.
+export function streakFreezeState(sessions, now, freezes = [], paused = null, pauseHistory = []) {
+  const used = (freezes ?? []).length;
+  const earnedTotal = Math.floor(trainedWeekCount(sessions) / WEEKS_PER_FREEZE);
+  const balance = Math.max(0, Math.min(STREAK_FREEZE_MAX, earnedTotal - used));
+  const cur = weekOrdinal(now);
+  const trained = new Set((sessions ?? []).filter((s) => s.local_date || s.date).map((s) => weekOrdinal(sessionWeekKey(s))));
+  const frozenOrd = new Set((freezes ?? []).map(weekOrdinal));
+  const pauseStartWeek = paused ? (paused.from ? weekOrdinal(paused.from) : cur) : Infinity;
+  const windows = (pauseHistory ?? []).filter((p) => p?.from && p?.to).map((p) => [weekOrdinal(p.from), weekOrdinal(p.to)]);
+  const neutral = (w) => w >= pauseStartWeek || windows.some(([a, b]) => w >= a && w <= b) || frozenOrd.has(w);
+  // Candidate = a PAST week (never the in-progress current week, still trainable),
+  // within lookback, that was missed and isn't already neutral.
+  const freezable = [];
+  for (let w = cur - 1; w >= cur - FREEZE_LOOKBACK_WEEKS && w > 0; w--) {
+    if (!trained.has(w) && !neutral(w)) freezable.push(isoWeekKeyFromOrdinal(w));
+  }
+  return { earned_total: earnedTotal, used, balance, max: STREAK_FREEZE_MAX, freezable, protectable_week: freezable[0] ?? null };
+}
+
+// Inverse of weekOrdinal: the ISO "YYYY-Www" key for a sequential week index, so the
+// freeze state can hand the client/route real week keys to store and re-parse.
+function isoWeekKeyFromOrdinal(ord) {
+  return isoWeekKey(new Date(ord * 7 * 86400000 + 3 * 86400000).toISOString()); // +3d → land mid-week, away from any boundary
 }
 
 export function xpAndLevel(sessions) {
@@ -124,7 +177,8 @@ export function weeklySummary(sessions, now) {
 // The whole adherence payload for the app.
 export function adherenceReport(user, sessions, now = new Date().toISOString()) {
   const paused = !!user.paused;
-  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || []);
+  const freezes = user.streak_freezes || [];
+  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || [], freezes);
   return {
     streak_weeks: streak,
     ...xpAndLevel(sessions),
@@ -133,5 +187,6 @@ export function adherenceReport(user, sessions, now = new Date().toISOString()) 
     status: adherenceStatus(sessions, now, paused),
     week: weeklySummary(sessions, now),
     paused,
+    streak_freeze: streakFreezeState(sessions, now, freezes, user.paused || null, user.pause_history || []),
   };
 }
