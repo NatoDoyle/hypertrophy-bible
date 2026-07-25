@@ -1702,6 +1702,7 @@ async function renderCoach() {
     $("#retry-coach").onclick = () => renderCoach();
     return;
   }
+  let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
@@ -1722,6 +1723,13 @@ async function renderCoach() {
       <p class="muted" style="margin-top:8px">Post a read-only card of your streak, level and session count — a simple accountability nudge. No personal details are shared, and you can turn it off anytime.</p>
       <button class="btn secondary" id="sharebtn">Get my share link</button>
       <div id="sharebox" class="hidden" style="margin-top:10px"></div></div>` : ""}
+    <div class="card"><b>🤝 Training partners</b>
+      <p class="muted" style="margin-top:8px">Follow a friend's share link and their streak shows up here — a little mutual accountability. Paste the link they sent you:</p>
+      <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="followbtn" style="width:auto">Follow</button></div>
+      <p class="muted" id="followmsg" style="margin-top:6px"></p>
+      ${(fw.partners || []).map((p) => p.active
+        ? `<div class="row" style="margin-top:8px;align-items:center"><span style="flex:1">🔥 <b>${p.streak_weeks} wk${p.streak_weeks === 1 ? "" : "s"}</b> · lvl ${p.level} · ${p.sessions_logged} sessions${p.cheers > 0 ? ` · 💪 ${p.cheers}` : ""}</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`
+        : `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
@@ -1796,6 +1804,21 @@ async function renderCoach() {
       say("Your share link is ready.");
     } catch { alertBar("📴 Couldn't create a share link right now. Try again in a moment."); }
   };
+  const followBtn = $("#followbtn");
+  if (followBtn) followBtn.onclick = async () => {
+    const raw = ($("#followurl")?.value || "").trim();
+    if (!raw) { $("#followmsg").textContent = "Paste your friend's share link first."; return; }
+    let token = raw;
+    try { token = new URL(raw).searchParams.get("s") || raw; } catch {} // accept a full share URL or a bare token
+    try {
+      await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
+      say("Training partner added.");
+      await renderCoach();
+    } catch { $("#followmsg").textContent = "That link isn't an active share — ask your friend for a fresh one."; }
+  };
+  app.querySelectorAll(".unfollow").forEach((b) => b.onclick = async () => {
+    try { await api("/api/following/remove", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); await renderCoach(); } catch { alertBar("📴 Couldn't update — try again when connected."); }
+  });
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {
     try {

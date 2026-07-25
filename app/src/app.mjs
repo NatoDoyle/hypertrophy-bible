@@ -536,6 +536,52 @@ export function createApp(store, config = {}) {
     return c.json({ cheers: await store.addShareCheer(shareId) });
   });
 
+  // --- Training partners (#10 social, accountability) — follow a friend's share
+  // card by its token so their streak shows on your Coach tab. Following stores only
+  // the partner's PUBLIC capability token on your profile (no PII, no reciprocal
+  // access); the partner is unaware and unaffected. Reuses the share reverse-index.
+  app.post("/api/following", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
+    const token = typeof b.token === "string" ? b.token.trim() : "";
+    if (!token || token.length > 100) return c.json({ error: "bad-token" }, 400);
+    const ownerId = await store.getShareUserId(token);           // must be a real, live share
+    if (!ownerId) return c.json({ error: "not-found" }, 404);
+    if (ownerId === b.user_id) return c.json({ error: "cannot-follow-self" }, 400);
+    const updated = await store.updateUser(b.user_id, (u) => {
+      const list = (u.profile?.following ?? []).filter((t) => t !== token); // dedup, most-recent first, capped
+      u.profile = { ...(u.profile ?? {}), following: [token, ...list].slice(0, 20) };
+      return u;
+    });
+    return c.json({ following: updated.profile.following.length });
+  });
+  app.post("/api/following/remove", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.profile = { ...(u.profile ?? {}), following: (u.profile?.following ?? []).filter((t) => t !== b.token) };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ following: updated.profile.following.length });
+  });
+  // Fetch the followed partners' PUBLIC cards (lazy — its own screen, not every Coach
+  // load). A revoked/dead token resolves to { active:false } instead of vanishing, so
+  // the user can see and prune it. Never exposes any partner's user_id (allowlist card).
+  app.get("/api/following", async (c) => {
+    const { user, error } = await requireUser(c);
+    if (error) return error;
+    const partners = [];
+    for (const token of user.profile?.following ?? []) {
+      const ownerId = await store.getShareUserId(token);
+      const owner = ownerId && await store.getUser(ownerId);
+      if (!owner) { partners.push({ token, active: false }); continue; }
+      const sessions = await store.listSessions(ownerId);
+      partners.push({ token, active: true, ...publicShareCard(owner, sessions), cheers: await store.getShareCheers(token) });
+    }
+    return c.json({ partners });
+  });
+
   app.get("/api/checkin/today", async (c) => {
     const { id, error } = await requireUser(c);
     if (error) return error;
