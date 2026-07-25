@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -1760,7 +1760,15 @@ async function renderCoach() {
         const wins = cw.history.filter((h) => h.result === "win").length;
         const losses = cw.history.filter((h) => h.result === "lose").length;
         const ties = cw.history.length - wins - losses;
-        return `<div class="card"><b>📊 Challenge record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p></div>`;
+        // The full per-challenge list beneath the tally (the roadmap's "history LIST
+        // view" follow-on) — `/api/challenge` already returned every past result
+        // (newest first, capped at 20), just never rendered individually before now.
+        const rows = cw.history.map((h) => {
+          const icon = h.result === "win" ? "🏆" : h.result === "lose" ? "😤" : "🤝";
+          const label = h.result === "win" ? "Won" : h.result === "lose" ? "Lost" : "Tied";
+          return `<div class="row" style="padding:4px 0;justify-content:space-between"><span class="muted">${icon} ${label} · ${esc(formatWeekLabel(h.week))}</span><span class="muted">${h.my_count}–${h.opponent_count}</span></div>`;
+        }).join("");
+        return `<div class="card"><b>📊 Challenge record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p><div style="margin-top:8px">${rows}</div></div>`;
       })()
       : ""}
     <h2>Schedule your sessions</h2>
