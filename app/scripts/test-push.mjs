@@ -6,7 +6,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour } from "../src/push.mjs";
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
@@ -93,6 +93,30 @@ ok("reminders_off is a hard opt-out for commitment pushes too", shouldPushForCom
 // Same-day-after-training is exactly the case shouldPush's PUSH_MIN_LAPSE_DAYS gate would block —
 // the commitment path fires anyway because it's a DIFFERENT reason (the user's own stated plan).
 ok("shouldPush alone would block a same-day-after-training push (the gate this feature bypasses)", shouldPush({ lastSessionAt: daysAgo(1), now: NOW }) === false);
+
+// --- timezone-aware push timing: the hourly sweep gives each user ONE eligible hour ---
+const atUtc = (iso) => +new Date(iso);
+ok("no timezone stored -> fires only at the legacy 16:00 UTC hour", isUserPushHour(undefined, atUtc("2026-07-10T16:30:00Z")) === true);
+ok("no timezone stored -> silent at other UTC hours", isUserPushHour(undefined, atUtc("2026-07-10T15:30:00Z")) === false);
+ok("US Eastern (-300) fires at ~17:00 local (22:00 UTC)", isUserPushHour(-300, atUtc("2026-07-10T22:00:00Z")) === true);
+ok("US Eastern (-300) silent at 16:00 UTC (noon local)", isUserPushHour(-300, atUtc("2026-07-10T16:00:00Z")) === false);
+ok("UTC+12 (+720) fires at ~17:00 local (05:00 UTC) — the 3am-nudge case this fixes", isUserPushHour(720, atUtc("2026-07-10T05:00:00Z")) === true);
+ok("UTC+12 (+720) silent at 16:00 UTC (04:00 local — the old bad slot)", isUserPushHour(720, atUtc("2026-07-10T16:00:00Z")) === false);
+ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPushHour(0, atUtc("2026-07-10T17:00:00Z")) === true && isUserPushHour(0, atUtc("2026-07-10T16:00:00Z")) === false);
+
+// End-to-end: the sweep skips a user outside their local window and pushes them inside it.
+{
+  const tzPath = join(tmpdir(), `hb-push-tz-test-${process.pid}.json`);
+  const tzStore = createFileStore(tzPath);
+  try {
+    await tzStore.saveUser("tzu", { profile: { tz_offset_min: 720, commitment: { week: THIS_WEEK, days: [TODAY_KEY] } } }); // UTC+12, committed today
+    await tzStore.savePushSubscription("tzu", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/tz", keys: { p256dh: "k", auth: "a" } });
+    const h1 = []; await runPushSweep(tzStore, vapid, atUtc("2026-07-10T16:00:00Z"), async (u) => { h1.push(u); return { ok: true, status: 201 }; });
+    ok("sweep at 16:00 UTC does NOT push a UTC+12 user (would be 4am local)", h1.length === 0);
+    const h2 = []; await runPushSweep(tzStore, vapid, atUtc("2026-07-10T05:00:00Z"), async (u) => { h2.push(u); return { ok: true, status: 201 }; });
+    ok("sweep at their 17:00 local (05:00 UTC) DOES push the UTC+12 user", h2.length === 1);
+  } finally { try { rmSync(tzPath); } catch {} }
+}
 
 // --- sweep against the real file store ---
 const path = join(tmpdir(), `hb-push-test-${process.pid}.json`);

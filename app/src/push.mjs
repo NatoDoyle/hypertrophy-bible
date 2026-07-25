@@ -68,6 +68,20 @@ export async function sendEmptyPush(subscription, vapid, fetchFn = fetch) {
 
 export const PUSH_MIN_LAPSE_DAYS = 2;   // don't nag someone who trained yesterday
 export const PUSH_MAX_LAPSE_DAYS = 21;  // after ~3 weeks the daily push goes quiet (email owns the long tail)
+export const PUSH_TARGET_LOCAL_HOUR = 17; // ~5pm local — late afternoon, actionable before evening training
+export const PUSH_LEGACY_UTC_HOUR = 16;   // users with no stored timezone keep the old single 16:00-UTC slot
+
+// The sweep now runs HOURLY (wrangler cron), so each user must be eligible in exactly
+// ONE hour per day or an hourly sweep would push up to 24×. If we know the device's
+// UTC offset (captured at subscribe), that hour is their local PUSH_TARGET_LOCAL_HOUR;
+// otherwise they keep the legacy 16:00-UTC slot, so nothing changes for older installs.
+// tzOffsetMin is minutes EAST of UTC (US Eastern = -300; UTC+12 = +720).
+export function isUserPushHour(tzOffsetMin, now) {
+  const utcHour = new Date(now).getUTCHours();
+  if (!Number.isFinite(tzOffsetMin)) return utcHour === PUSH_LEGACY_UTC_HOUR;
+  const localHour = new Date(+new Date(now) + tzOffsetMin * 60000).getUTCHours();
+  return localHour === PUSH_TARGET_LOCAL_HOUR;
+}
 
 // Pure decision: should this subscriber get today's reminder push?
 export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, now }) {
@@ -107,6 +121,10 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
     try {
       const user = await store.getUser(sub.user_id);
       if (!user) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+      // Timezone-aware timing: only nudge in this user's one eligible hour/day, so an
+      // hourly sweep never lands at 3am and never fires 24×. (Gate before any further
+      // work — a user who isn't in their window this hour is simply skipped.)
+      if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
       const lastSessionAt = await store.latestSessionDate(sub.user_id);
       const paused = !!user.paused;
       const remindersOff = user.profile?.reminders_off === true;
