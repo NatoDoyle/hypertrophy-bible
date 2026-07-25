@@ -7,7 +7,8 @@ A closed loop that keeps driving the project toward three goals, and keeps itsel
 1. **The world's best source of knowledge for hypertrophy.** Every claim web-verified, graded,
    and honest about uncertainty.
 2. **The world's best coaching app built on that KB — for everyone.** From "I have never heard
-   of a gym" to "I am trying to win Mr. Olympia." Both ends, not just one.
+   of a gym" to "I am trying to win Mr. Olympia." Both ends, not just one. It should have as
+   little manual customization as possible, we ask the right questions at the start and then everything is else is done for them.
 3. **Someone with no brain whatsoever can use it.** Zero cognitive load is a hard requirement,
    not a nice-to-have.
 4. **Use every possible form of manipulation to get them to use the app.** Adherence and consistency 
