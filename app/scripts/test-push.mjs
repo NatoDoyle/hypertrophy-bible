@@ -268,6 +268,38 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     let oldDeclHits = 0;
     await runPushSweep(chalStore, vapid, NOW, async (url, opts) => { if (url.includes("accept-old") || url.includes("accept-decl")) oldDeclHits++; return { ok: true, status: 201 }; });
     ok("a pre-accepted_at active challenge and a declined one never accept-push", oldDeclHits === 0);
+
+    // --- result push (Wave 138): a week-over ACTIVE challenge is settled BY THE
+    // SWEEP (shared settleChallenge — the user never reopened the app) and each
+    // side hears how it ended; a GET-settled (already terminal) one never pushes. ---
+    const PASTWEEK = isoWeekKey(new Date(NOW - 7 * 86400e3).toISOString());
+    const pastDate = new Date(NOW - 7 * 86400e3).toISOString();
+    await chalStore.saveUser("res-winner", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "challenger", status: "active", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.saveUser("res-loser", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "opponent", status: "active", week: PASTWEEK, partner_token: "share-winner", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.createShare("res-winner", "share-winner", NOW);
+    await chalStore.createShare("res-loser", "share-loser", NOW);
+    await chalStore.addSession("res-winner", { session_id: "rw1", date: pastDate, sets: [] });
+    await chalStore.addSession("res-winner", { session_id: "rw2", date: pastDate, sets: [] });
+    await chalStore.addSession("res-loser", { session_id: "rl1", date: pastDate, sets: [] });
+    await chalStore.savePushSubscription("res-winner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-win", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await chalStore.savePushSubscription("res-loser", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-lose", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await chalStore.saveUser("res-read", { profile: { tz_offset_min: -300, challenge: { id: "r2", role: "challenger", status: "completed", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.savePushSubscription("res-read", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-read", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    const resBodies = {};
+    const resFetch = async (url, opts) => { const m = url.match(/res-(win|lose|read)/); if (m) resBodies[m[1]] = opts.body; return { ok: true, status: 201 }; };
+    await runPushSweep(chalStore, vapid, NOW, resFetch);
+    const winMsg = resBodies.win && JSON.parse(await decryptPushPayload({ body: resBodies.win, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    const loseMsg = resBodies.lose && JSON.parse(await decryptPushPayload({ body: resBodies.lose, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the sweep settles a week-over challenge and pushes the WIN result", !!winMsg && /🏆/.test(winMsg.body) && /2–1/.test(winMsg.body));
+    ok("the losing side hears its own result, framed forward (rematch), not shame", !!loseMsg && /took this week 2–1/.test(loseMsg.body) && /Rematch/.test(loseMsg.body));
+    ok("a GET-settled (already terminal) challenge never result-pushes", resBodies.read === undefined);
+    const w = await chalStore.getUser("res-winner"), l = await chalStore.getUser("res-loser");
+    ok("the sweep-settled result is PERSISTED like a GET settle (status + history both sides)",
+      w.profile.challenge.status === "completed" && w.profile.challenge_history[0].result === "win" &&
+      l.profile.challenge.status === "completed" && l.profile.challenge_history[0].result === "lose");
+    delete resBodies.win; delete resBodies.lose;
+    await runPushSweep(chalStore, vapid, NOW + 3600e3, resFetch);
+    ok("a settled result never re-pushes and history never duplicates", resBodies.win === undefined && resBodies.lose === undefined && (await chalStore.getUser("res-winner")).profile.challenge_history.length === 1);
   } finally { try { rmSync(chalPath); } catch {} }
 }
 

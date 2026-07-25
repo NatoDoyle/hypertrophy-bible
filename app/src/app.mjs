@@ -6,7 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
-import { adherenceReport, streakFreezeState, publicShareCard, sessionsInWeek } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
@@ -22,10 +22,6 @@ const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.tes
 // that's actually over but simply hasn't been read since.
 const isChallengeOpen = (challenge) =>
   !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKey(new Date().toISOString());
-
-// Same cap as `following` (profile.following.slice(0, 20)) — a bounded personal
-// record, not an unbounded log. Oldest entries fall off the end.
-const CHALLENGE_HISTORY_CAP = 20;
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -724,57 +720,17 @@ export function createApp(store, config = {}) {
   app.get("/api/challenge", async (c) => {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
-    const ch = user.profile?.challenge;
-    const history = user.profile?.challenge_history ?? [];
-    if (!ch) return c.json({ challenge: null, history });
-    const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
-    const weekOver = ch.week !== isoWeekKey(new Date().toISOString());
-    // Fetch both sides' tallies up front (needed either way once an opponent
-    // exists) so a completing challenge can record its result using the SAME
-    // counts the response shows — no second fetch, no chance of the two disagreeing.
-    let my_count = null, opponent_count = null;
-    if (opponentId) {
-      const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
-      my_count = sessionsInWeek(mySessions, ch.week);
-      opponent_count = sessionsInWeek(opponentSessions, ch.week);
-    }
-    let newHistory = history;
-    if ((ch.status === "active" || ch.status === "pending") && (weekOver || !opponentId)) {
-      const nextStatus = ch.status === "pending" ? "declined" : "completed";
-      // A win/lose/tie result is only recorded when the challenge actually ran its
-      // course against a still-active opponent (an ACTIVE challenge whose week
-      // ended). An opponent's share vanishing mid-week, or an invite nobody ever
-      // answered (declined), has no real score to record — don't manufacture one.
-      const recordResult = nextStatus === "completed" && opponentId;
-      const proposedHistory = recordResult
-        ? [{ week: ch.week, result: my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie", my_count, opponent_count }, ...history].slice(0, CHALLENGE_HISTORY_CAP)
-        : newHistory;
-      const updated = await store.updateUser(id, (u) => {
-        if (u.profile?.challenge?.id !== ch.id) return u;
-        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus }, ...(recordResult ? { challenge_history: proposedHistory } : {}) };
-        return u;
-      });
-      // Report exactly what got PERSISTED, not the optimistic local computation —
-      // if this user's challenge slot was replaced mid-request (e.g. raced by a
-      // fresh propose landing between the read above and this write; isChallengeOpen
-      // already treats a week-over challenge as free, so this is reachable, not
-      // contrived), the guard above no-ops the write and the response must not
-      // fabricate a win/loss the store never actually recorded (lesson 10: never
-      // render a derived status/record that contradicts what's actually stored).
-      // `updated` is null if the user row vanished between this handler's initial
-      // read and this write (e.g. a magic-link mergeUser deleting the anonymous
-      // fromId, racing an in-flight GET) — treat that as "not written" (wrote=false)
-      // rather than dereferencing null, so a deleted-mid-request user gets the
-      // un-fabricated current state, never a 500.
-      const wrote = updated?.profile?.challenge?.id === ch.id;
-      newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
-      if (wrote) ch.status = nextStatus;
-    }
-    if (!opponentId) return c.json({ challenge: { ...ch, opponent_active: false }, history: newHistory });
+    // All transition rules (week-over completion, opponent-vanished, decline of an
+    // unanswered invite, the persisted-not-optimistic reporting) live in ONE place:
+    // settleChallenge (adherence.mjs), shared with the push sweep so a result can
+    // land even for a user who never reopens the app — never two copies (lesson 1).
+    const s = await settleChallenge(store, id, user);
+    if (!s.challenge) return c.json({ challenge: null, history: s.history });
+    if (!s.opponentId) return c.json({ challenge: { ...s.challenge, opponent_active: false }, history: s.history });
     return c.json({
-      challenge: { ...ch, opponent_active: true },
-      my_count, opponent_count, week_over: weekOver,
-      history: newHistory,
+      challenge: { ...s.challenge, opponent_active: true },
+      my_count: s.my_count, opponent_count: s.opponent_count, week_over: s.week_over,
+      history: s.history,
     });
   });
 
