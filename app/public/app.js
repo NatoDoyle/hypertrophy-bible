@@ -1780,7 +1780,7 @@ async function renderCoach() {
   if (shareBtn) shareBtn.onclick = async () => {
     try {
       const r = await api("/api/share", { method: "POST", body: JSON.stringify({ user_id: uid }) });
-      const url = `${location.origin}/share.html?s=${r.share_id}`;
+      const url = `${location.origin}/share?s=${r.share_id}`; // clean URL (assets binding serves share.html here, no redirect)
       const box = $("#sharebox");
       box.classList.remove("hidden");
       // Build the row structurally and set the URL via .value (a property, never
