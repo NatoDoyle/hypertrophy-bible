@@ -585,6 +585,32 @@ try {
   ok("#following a revoked partner shows inactive (prunable), not vanished", partnerGone.partners.length === 1 && partnerGone.partners[0].active === false);
   ok("#following/remove drops the partner", (await json("POST", "/api/following/remove", { user_id: followerU, token: partnerShare })).data.following === 0);
 
+  // --- Mutual/reciprocal accountability + partner nudge (#10, this slice) ---
+  const alice = (await onboardBw("beginner")).data.user_id;
+  const bob = (await onboardBw("beginner")).data.user_id;
+  const aliceShare = (await json("POST", "/api/share", { user_id: alice })).data.share_id;
+  const bobShare = (await json("POST", "/api/share", { user_id: bob })).data.share_id;
+  await json("POST", "/api/following", { user_id: alice, token: bobShare }); // alice follows bob (one-directional so far)
+  const aliceListOneWay = await (await app.request("/api/following", { headers: { "X-HB-User": alice } })).json();
+  ok("#mutual one-directional following is NOT mutual yet", aliceListOneWay.partners[0].mutual === false);
+  const nudgeNotMutual = await json("POST", "/api/following/nudge", { user_id: alice, token: bobShare });
+  ok("#nudge is refused between one-directional (non-mutual) partners", nudgeNotMutual.status === 403 && nudgeNotMutual.data.error === "not-mutual");
+  await json("POST", "/api/following", { user_id: bob, token: aliceShare }); // bob follows alice back -> now mutual
+  const aliceListMutual = await (await app.request("/api/following", { headers: { "X-HB-User": alice } })).json();
+  ok("#mutual reciprocal following IS flagged mutual", aliceListMutual.partners[0].mutual === true);
+  const bobListMutual = await (await app.request("/api/following", { headers: { "X-HB-User": bob } })).json();
+  ok("#mutual is symmetric — bob sees alice as mutual too", bobListMutual.partners[0].mutual === true);
+  const nudgeBadToken = await json("POST", "/api/following/nudge", { user_id: alice, token: "not-a-token-alice-doesnt-follow" });
+  ok("#nudge with a token you don't follow is refused (400)", nudgeBadToken.status === 400);
+  const nudgeOk = await json("POST", "/api/following/nudge", { user_id: alice, token: bobShare });
+  ok("#nudge between confirmed mutual partners succeeds", nudgeOk.status === 200 && nudgeOk.data.nudged === true);
+  const bobAdherence = await (await app.request("/api/adherence", { headers: { "X-HB-User": bob } })).json();
+  ok("#nudge surfaces once on the receiver's /api/adherence", bobAdherence.nudged === true);
+  const bobAdherenceAgain = await (await app.request("/api/adherence", { headers: { "X-HB-User": bob } })).json();
+  ok("#nudge does not re-surface after being seen once", bobAdherenceAgain.nudged === false);
+  const aliceAdherence = await (await app.request("/api/adherence", { headers: { "X-HB-User": alice } })).json();
+  ok("#nudge only surfaces for the RECEIVER, never the sender", aliceAdherence.nudged === false);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

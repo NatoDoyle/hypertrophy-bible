@@ -190,10 +190,24 @@ infra, the one genuinely large build left here).
     profile.following, capped/deduped) and their streak/level/cheers show on your Coach tab via a
     lazy authed GET; one-directional, partner-unaware, PII-safe (no user_id), revoked partners show
     inactive/prunable; reuses the share reverse-index, no new tables. Cheer rate-limit also shipped
-    (Wave 109, per-IP via the magic_links bucket). Still to build (needs deeper infra):
-    reciprocal/mutual accountability, challenges, leaderboards, and payload-encrypted (RFC 8291)
-    push so a cheer/partner event can send a SPECIFIC notification (the current push is empty-payload,
-    so it can't say "someone cheered you" without the crypto layer).
+    (Wave 109, per-IP via the magic_links bucket). **You-vs-partners mini-leaderboard shipped
+    (Wave 116):** a pure `rankPartners(you, partners)` (`session-core.mjs`) ranks you + active
+    partners by streak then level on the Coach tab, your row tagged — reuses data the tab already
+    fetches, no new backend. **Reciprocal/mutual accountability + a partner nudge shipped (this
+    slice):** `GET /api/following` now flags each partner `mutual: true` when THEY follow you back
+    too (derived by checking their `profile.following` for your own current share token — no new
+    field to store, no reciprocal access granted, either side's user_id still never crosses the
+    wire); `POST /api/following/nudge` is a one-tap encouragement gated to CONFIRMED mutual pairs
+    only (a one-directional follower nudging someone unaware they're being followed was the
+    creepy failure mode being guarded against) — stores a single pending marker on the receiver's
+    profile, surfaced exactly once via `/api/adherence`'s `nudged` flag (the same seen-once pattern
+    `new_cheers` already uses) on BOTH the Today landing tab and the Coach tab (a lesson-15-class
+    bug caught before shipping: the notification is a byproduct of any `/api/adherence` read, and
+    Today calls it first — a banner only in `renderCoach()` would have been silently consumed
+    before the user ever saw it). Real-browser-verified end to end (mutual detection, nudge gating,
+    seen-once). Still to build (needs deeper infra): challenges, and payload-encrypted (RFC 8291)
+    push so a cheer/partner/nudge event can reach a device NOT currently in the app (the current
+    push is empty-payload, so it can't say "someone nudged you" without the crypto layer).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

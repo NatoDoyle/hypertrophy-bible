@@ -647,7 +647,8 @@ async function renderToday() {
       <div class="bar" style="margin-top:6px"><i style="width:${adh.level_progress_pct}%;background:var(--accent)"></i></div>
       <span class="muted" style="font-size:.82rem">Level ${adh.level} · ${adh.xp} XP · ${adh.xp_to_next} to next</span></div>
       <span class="chip" style="font-size:1rem">Lv ${adh.level}</span></div>
-    ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}`;
+    ${st.state && st.state !== "on-track" && st.message ? `<div class="card"><p>${icon} ${esc(st.message)}</p></div>` : ""}
+    ${adh.nudged ? `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>` : ""}`;
   const list = s.exercises.map((e) => `<div class="row"><div><b>${esc(e.name)}</b>${e.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br><span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${e.unilateral ? " <b>each side</b>" : ""}${e.superset_with_name ? ` · <b>🔗 superset with ${esc(e.superset_with_name)}</b>` : ""} · works ${esc(friendlyMuscles(e.primary_muscles))}</span></div></div>`).join("");
   // No check-in yet today → gently offer one; otherwise surface the readiness note.
   // "Skip today" and a finished workout both dismiss the offer FOR THE DAY —
@@ -1713,6 +1714,7 @@ async function renderCoach() {
       ${a.sessions_logged === 0 ? "" : `<p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
       <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}
       ${a.share_cheers > 0 ? `<p style="color:var(--accent);font-weight:600;margin-top:6px">💪 ${a.share_cheers} ${a.share_cheers === 1 ? "person has" : "people have"} cheered you on</p>` : ""}</div>
+    ${a.nudged ? `<div class="card"><b>👋 A training partner nudged you</b><p class="muted" style="margin-top:8px">They noticed you've got a session waiting — let's get it in.</p></div>` : ""}
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
     ${a.streak_freeze && a.streak_freeze.balance > 0 ? `<div class="card"><b>🛡️ ${a.streak_freeze.balance} streak freeze${a.streak_freeze.balance === 1 ? "" : "s"}</b>
@@ -1728,7 +1730,7 @@ async function renderCoach() {
       <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="followbtn" style="width:auto">Follow</button></div>
       <p class="muted" id="followmsg" style="margin-top:6px"></p>
       ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) =>
-        `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}</span>${r.isYou ? "" : `<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`).join("")}</div>` : ""}
+        `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"}${!r.isYou && r.mutual ? " ✓" : ""} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}</span>${r.isYou ? "" : `${r.mutual ? `<button class="linkbtn nudge" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">👋 nudge</button>` : ""}<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`).join("")}</div>` : ""}
       ${(fw.partners || []).filter((p) => !p.active).map((p) =>
         `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
     <h2>Schedule your sessions</h2>
@@ -1819,6 +1821,12 @@ async function renderCoach() {
   };
   app.querySelectorAll(".unfollow").forEach((b) => b.onclick = async () => {
     try { await api("/api/following/remove", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); await renderCoach(); } catch { alertBar("📴 Couldn't update — try again when connected."); }
+  });
+  app.querySelectorAll(".nudge").forEach((b) => b.onclick = async () => {
+    if (b.disabled) return;
+    b.disabled = true;
+    try { await api("/api/following/nudge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); b.textContent = "👋 nudged"; say("Nudge sent."); }
+    catch { b.disabled = false; alertBar("📴 Couldn't send that nudge — try again when connected."); }
   });
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {

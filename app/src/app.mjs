@@ -363,7 +363,14 @@ export function createApp(store, config = {}) {
     // extra read for users who've opted into sharing; null/0 otherwise.
     const shareId = await store.getShareIdForUser(id);
     const shareCheers = shareId ? await store.getShareCheers(shareId) : 0;
-    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers });
+    // A mutual partner's nudge (POST /api/following/nudge) surfaces exactly ONCE, the
+    // same seen-once pattern as new_cheers: pending iff its timestamp is newer than the
+    // watermark, then the watermark advances so a repeat /api/adherence read (every
+    // Coach load) doesn't re-show a stale toast.
+    const pendingNudge = user.profile?.partner_nudge;
+    const nudged = !!pendingNudge && pendingNudge.at > (user.profile?.nudge_seen_at ?? 0);
+    if (nudged) await store.updateUser(id, (u) => { u.profile = { ...(u.profile ?? {}), nudge_seen_at: pendingNudge.at }; return u; });
+    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers, nudged });
   });
 
   // Weekly training commitment (#4 adherence, roadmap item #2): the user states
@@ -569,17 +576,44 @@ export function createApp(store, config = {}) {
   // load). A revoked/dead token resolves to { active:false } instead of vanishing, so
   // the user can see and prune it. Never exposes any partner's user_id (allowlist card).
   app.get("/api/following", async (c) => {
-    const { user, error } = await requireUser(c);
+    const { id, user, error } = await requireUser(c);
     if (error) return error;
+    // Reciprocal accountability (roadmap #10's next slice): following is one-directional
+    // by design, but a partner who follows YOU BACK is a stronger, mutually-aware bond —
+    // flagged here (never a new field to store; derived by checking whether the partner's
+    // OWN following list contains your current share token) so the client can distinguish
+    // it and unlock the nudge below, without either side learning the other's user_id.
+    const myToken = await store.getShareIdForUser(id);
     const partners = [];
     for (const token of user.profile?.following ?? []) {
       const ownerId = await store.getShareUserId(token);
       const owner = ownerId && await store.getUser(ownerId);
       if (!owner) { partners.push({ token, active: false }); continue; }
       const sessions = await store.listSessions(ownerId);
-      partners.push({ token, active: true, ...publicShareCard(owner, sessions), cheers: await store.getShareCheers(token) });
+      const mutual = !!myToken && (owner.profile?.following ?? []).includes(myToken);
+      partners.push({ token, active: true, mutual, ...publicShareCard(owner, sessions), cheers: await store.getShareCheers(token) });
     }
     return c.json({ partners });
+  });
+  // A one-tap encouragement, but ONLY between confirmed mutual partners (both sides
+  // follow each other) — a one-directional follower nudging someone unaware they're
+  // being followed would be the creepy failure mode this guards against. Stored as a
+  // single pending marker on the RECEIVER's profile (no history, no identity of the
+  // sender beyond "a training partner") and surfaced once via /api/adherence, the same
+  // seen-once pattern share cheers already use.
+  app.post("/api/following/nudge", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const sender = b.user_id && (await store.getUser(b.user_id));
+    if (!sender) return c.json({ error: "unknown user" }, 404);
+    const token = typeof b.token === "string" ? b.token.trim() : "";
+    if (!token || token.length > 100 || !(sender.profile?.following ?? []).includes(token)) return c.json({ error: "not-following" }, 400);
+    const ownerId = await store.getShareUserId(token);
+    if (!ownerId) return c.json({ error: "not-found" }, 404);
+    const myToken = await store.getShareIdForUser(b.user_id);
+    const owner = await store.getUser(ownerId);
+    if (!myToken || !(owner.profile?.following ?? []).includes(myToken)) return c.json({ error: "not-mutual" }, 403);
+    await store.updateUser(ownerId, (u) => { u.profile = { ...(u.profile ?? {}), partner_nudge: { at: Date.now() } }; return u; });
+    return c.json({ nudged: true });
   });
 
   app.get("/api/checkin/today", async (c) => {
