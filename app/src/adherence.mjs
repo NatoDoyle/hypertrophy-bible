@@ -121,7 +121,11 @@ function isoWeekKeyFromOrdinal(ord) {
 export function publicShareCard(user, sessions, now = new Date().toISOString()) {
   const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || [], user.streak_freezes || []);
   const { level } = xpAndLevel(sessions);
-  return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length };
+  // sessions_this_week (#10 social — weekly race): the SAME aggregate-only allowlist
+  // model as the other three fields, just resetting every week instead of all-time —
+  // it's what turns the static streak/level leaderboard into a comparison with actual
+  // urgency (a partner can be "ahead" only until Sunday, not forever).
+  return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length, sessions_this_week: weeklySummary(sessions ?? [], now).sessions };
 }
 
 export function xpAndLevel(sessions) {

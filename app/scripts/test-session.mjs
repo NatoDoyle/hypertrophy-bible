@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -336,6 +336,17 @@ check("rankPartners ranks you + active partners by streak, level tiebreak; tags 
   assert.equal(ranked[1].level, 10, "level tiebreak within equal streak");
   assert.ok(ranked[2].isYou && ranked[2].rank === 3, "you are last here, tagged isYou");
   assert.equal(rankPartners({ streak_weeks: 0, level: 1 }, []).length, 1, "solo: just you");
+});
+
+// weeklyRaceStatus (#10 accountability, weekly race): pure ahead/behind/tied compare,
+// missing counts default to 0 rather than throwing.
+check("weeklyRaceStatus: ahead/behind/tied and missing-count defaults", () => {
+  assert.equal(weeklyRaceStatus(3, 1), "ahead");
+  assert.equal(weeklyRaceStatus(1, 3), "behind");
+  assert.equal(weeklyRaceStatus(2, 2), "tied");
+  assert.equal(weeklyRaceStatus(0, 0), "tied", "neither has trained yet this week — tied, not a false 'ahead'");
+  assert.equal(weeklyRaceStatus(undefined, undefined), "tied", "missing counts default to 0, not NaN/throw");
+  assert.equal(weeklyRaceStatus(1, undefined), "ahead", "a partner with no sessions_this_week (stale card) defaults to 0");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
