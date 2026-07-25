@@ -36,12 +36,13 @@ and no evidence-based debunks). "Every claim web-verified" is true for ~a third 
 
 **Goal 4 — adherence by every means (the STATED top priority): FAR, and least developed.**
 Has the skeleton — forgiving weeks-streak, XP/levels, session-count milestones, comeback
-email + push, at-risk warnings. Missing most of the high-powered space: variable/intermittent
-rewards (XP is fully predictable), **PR/achievement celebration** moments (est-1RM is computed
-but a personal best is never celebrated), proactive habit reminders (push only *reacts* to
-lapses), a "when will you train this week?" commitment device, a streak freeze/repair the user
-can hold, and anything **social** (friends/accountability/challenges — the biggest lever, needs
-multi-user infra).
+email + push, at-risk warnings. Much of the high-powered space is now built: variable/intermittent
+rewards (lucky-set XP, Wave "cloud loop"), **PR/achievement celebration** (Waves 79–86), a "when
+will you train this week?" commitment device (Wave cloud loop), and — **Wave 96** — a **user-held
+streak freeze** (earn a token per ~4 trained weeks, hold up to 3, spend one to protect a missed
+week; reuses the walker's neutral-week path so it can only bridge, never break). Still missing: a
+proactive *habit-cue* reminder beyond the lapse-reactive push, and anything **social**
+(friends/accountability/challenges — the biggest remaining lever, needs multi-user infra).
 
 ## Build queue (pull from the top)
 
