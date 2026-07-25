@@ -279,7 +279,17 @@ infra, the one genuinely large build left here).
     resolution/slot-reopening, all from both sides) + 4 new `sessionsInWeek` unit tests. Still not
     the full "challenges" vision (only ONE concurrent challenge, no history/win-loss record, no
     push notification when challenged) — those are natural v1 follow-ons once a real table is
-    justified by the need for multiple concurrent challenges or a history view.
+    justified by the need for multiple concurrent challenges or a history view. **Audit fix
+    (Cloud loop wave):** `isChallengeOpen`'s week-freshness check (Wave 126) was applied to
+    `POST /api/challenge` (propose) but not to `POST /api/challenge/respond` — the normal UI
+    always calls `GET /api/challenge` first, which self-transitions a pending-past-its-week
+    challenge to "declined" before ever rendering accept/decline buttons, but `respond` is
+    reachable directly (possession-of-UUID auth means any client can call it without going
+    through GET first), so a stale pending challenge could be revived into "active" via a late
+    accept — later resolving into a fabricated "completed" result from training logged before
+    either side had agreed to compete. Fixed by enforcing the same week check in `respond`
+    directly; 3 new route tests lock in the stale-accept/decline refusal and confirm no
+    "active" residue survives on the challenger's side.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
