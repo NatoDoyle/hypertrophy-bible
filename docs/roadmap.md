@@ -176,12 +176,15 @@ infra, the one genuinely large build left here).
    and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). Still to build:
    BLOCK periodization (accumulation→intensification→peak), a taper/peak phase, contest-prep mode,
    deeper autoregulation (velocity/RIR-driven). Serves the "win Mr. Olympia" end.
-10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (needs multi-user
-    infra; the single biggest retention lever). *Note (Wave 98):* a privacy-safe first slice (an
-    opt-in, revocable, read-only shareable progress card) needs a share-token→user reverse index;
-    D1 has no runtime-migration path here (the query CLI 7403s per the saved memory), so it wants a
-    `CREATE TABLE IF NOT EXISTS` self-init in the D1 store OR a token stored on the user blob with a
-    scan — scope that carefully before building (privacy + XSS surface on a public endpoint).
+10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
+    retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
+    read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
+    is public and returns a strict non-PII allowlist (streak/level/sessions) via `publicShareCard`
+    (double-tested: unit allowlist + route no-PII). The D1 reverse index is solved with a runtime
+    `CREATE TABLE IF NOT EXISTS shares` self-init (no CLI migration needed) — **prod-verified the
+    table self-creates and the full mint→public-read→revoke flow works**. Still to build (needs
+    multi-user infra): friends/accountability pairs, challenges, leaderboards — the interactive
+    social loop beyond a shareable card.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
