@@ -128,7 +128,26 @@ export function createD1Store(db) {
           });
         }
       }
+      // Shares follow the user, or the merged-away user's share row points at a
+      // DELETED user (dead public link + orphaned cheers). Reassign to the survivor
+      // so a distributed link keeps working; if the survivor already has a share
+      // (UNIQUE per user), drop the merged-away one + its cheers instead. Read
+      // before building the batch; the shares table may not exist yet if neither
+      // user ever shared, so ensure it first.
+      await ensureShares(db);
+      const [fromShareRow, toShareRow] = await Promise.all([
+        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(fromId).first(),
+        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(toId).first(),
+      ]);
       const stmts = [];
+      if (fromShareRow) {
+        if (toShareRow) {
+          stmts.push(db.prepare("DELETE FROM share_cheers WHERE share_id = ?").bind(fromShareRow.share_id));
+          stmts.push(db.prepare("DELETE FROM shares WHERE user_id = ?").bind(fromId));
+        } else {
+          stmts.push(db.prepare("UPDATE shares SET user_id = ? WHERE user_id = ?").bind(toId, fromId)); // cheers follow (keyed by share_id)
+        }
+      }
       const sIdx = stmts.push(db.prepare("UPDATE sessions SET user_id = ? WHERE user_id = ?").bind(toId, fromId)) - 1;
       // One weigh-in per day survives the merge: drop from-rows whose date the
       // target already has (keep the target's), THEN move the rest.

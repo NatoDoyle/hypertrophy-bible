@@ -113,6 +113,25 @@ try {
   ok("getAccountByUserId finds a bound account", (await store.getAccountByUserId(anon))?.email === "claim@t.com");
   ok("getAccountByUserId is null for anonymous users", (await store.getAccountByUserId("acct-user")) === null);
 
+  // --- merge reassigns SHARES (a distributed share link must not die on restore) ---
+  await store.saveUser("share-from", { profile: {} });
+  await store.saveUser("share-to", { profile: {} });
+  await store.createShare("share-from", "shr-token-1", 1000);
+  await store.addShareCheer("shr-token-1"); await store.addShareCheer("shr-token-1");
+  await store.reassignUserData("share-from", "share-to");
+  ok("merge reassigns the share to the survivor (the link stays alive)", (await store.getShareUserId("shr-token-1")) === "share-to");
+  ok("merge keeps the share's cheer tally", (await store.getShareCheers("shr-token-1")) === 2);
+  ok("merge: getShareIdForUser follows to the survivor", (await store.getShareIdForUser("share-to")) === "shr-token-1");
+  ok("merge deletes the from-user's ghost (no dangling share owner)", (await store.getUser("share-from")) === null);
+  // When BOTH already share, the survivor keeps theirs and the merged-away one is dropped (UNIQUE per user).
+  await store.saveUser("share-from2", { profile: {} });
+  await store.saveUser("share-to2", { profile: {} });
+  await store.createShare("share-to2", "shr-keep", 1000);
+  await store.createShare("share-from2", "shr-drop", 1000);
+  await store.reassignUserData("share-from2", "share-to2");
+  ok("merge with both sharing: survivor keeps their own share", (await store.getShareIdForUser("share-to2")) === "shr-keep");
+  ok("merge with both sharing: the merged-away share is dropped (no dead link)", (await store.getShareUserId("shr-drop")) === null);
+
   // consume must refuse to bind an account to a user that was deleted (e.g. merged
   // away) — otherwise the account points at a ghost and the app can't load.
   await store.saveUser("ghost-user", { profile: {} });
