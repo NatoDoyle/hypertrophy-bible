@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**110** verified references.
+**114** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -79,6 +79,14 @@ Byrne NM & et al. (2018). Intermittent energy restriction improves weight loss e
 
 - Type: RCT · Population: mixed
 - DOI: [10.1038/ijo.2017.206](https://doi.org/10.1038/ijo.2017.206) · PMID: [28925405](https://pubmed.ncbi.nlm.nih.gov/28925405/)
+
+### candow-2001-glutamine
+Candow DG et al. (2001). Effect of glutamine supplementation combined with resistance training in young adults.
+
+*European Journal of Applied Physiology*, 86(2), 142-149.
+
+- Type: RCT · Population: untrained
+- DOI: [10.1007/s00421-001-0523-y](https://doi.org/10.1007/s00421-001-0523-y) · PMID: [11822473](https://pubmed.ncbi.nlm.nih.gov/11822473/)
 
 ### carvalho-2022-volume-matched-loads
 Carvalho L & et al. (2022). Muscle hypertrophy and strength gains after resistance training with different volume-matched loads: a systematic review and meta-analysis.
@@ -464,6 +472,14 @@ Nunes EA & et al. (2022). Systematic review and meta-analysis of protein intake 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1002/jcsm.12922](https://doi.org/10.1002/jcsm.12922) · PMID: [35187864](https://pubmed.ncbi.nlm.nih.gov/35187864/)
 
+### ortega-2021-tart-cherry-recovery
+Ortega DR et al. (2021). Tart cherry and pomegranate supplementations enhance recovery from exercise-induced muscle damage: a systematic review.
+
+*Biology of Sport*, 38(1), 97-111.
+
+- Type: systematic-review · Population: mixed
+- DOI: [10.5114/biolsport.2020.97069](https://doi.org/10.5114/biolsport.2020.97069) · PMID: [33795919](https://pubmed.ncbi.nlm.nih.gov/33795919/)
+
 ### pallares-2021-rom-meta
 Pallarés JG & et al. (2021). Effects of range of motion on resistance training adaptations: A systematic review and meta-analysis.
 
@@ -824,6 +840,14 @@ Wackerhage H & et al. (2019). Stimuli and sensors that initiate skeletal muscle 
 - Type: narrative-review
 - DOI: [10.1152/japplphysiol.00685.2018](https://doi.org/10.1152/japplphysiol.00685.2018) · PMID: [30335577](https://pubmed.ncbi.nlm.nih.gov/30335577/)
 
+### wankhede-2015-ashwagandha
+Wankhede S et al. (2015). Examining the effect of Withania somnifera supplementation on muscle strength and recovery: a randomized controlled trial.
+
+*Journal of the International Society of Sports Nutrition*, 12, 43.
+
+- Type: RCT · Population: untrained
+- DOI: [10.1186/s12970-015-0104-9](https://doi.org/10.1186/s12970-015-0104-9) · PMID: [26609282](https://pubmed.ncbi.nlm.nih.gov/26609282/)
+
 ### wiewelhove-2019-foam-rolling
 Wiewelhove T & et al. (2019). A Meta-Analysis of the Effects of Foam Rolling on Performance and Recovery.
 
@@ -831,6 +855,14 @@ Wiewelhove T & et al. (2019). A Meta-Analysis of the Effects of Foam Rolling on 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.3389/fphys.2019.00376](https://doi.org/10.3389/fphys.2019.00376) · PMID: [31024339](https://pubmed.ncbi.nlm.nih.gov/31024339/)
+
+### wilborn-2004-zma
+Wilborn CD et al. (2004). Effects of Zinc Magnesium Aspartate (ZMA) Supplementation on Training Adaptations and Markers of Anabolism and Catabolism.
+
+*Journal of the International Society of Sports Nutrition*, 1(2), 12-20.
+
+- Type: RCT · Population: trained
+- DOI: [10.1186/1550-2783-1-2-12](https://doi.org/10.1186/1550-2783-1-2-12) · PMID: [18500945](https://pubmed.ncbi.nlm.nih.gov/18500945/)
 
 ### wilson-2012-concurrent-meta
 Wilson JM & et al. (2012). Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.

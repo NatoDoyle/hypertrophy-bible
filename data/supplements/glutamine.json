@@ -1,0 +1,12 @@
+{
+  "id": "glutamine",
+  "name": "Glutamine",
+  "tier": "insufficient",
+  "summary": "A popular 'recovery/anti-catabolic' amino acid with no evidence for building muscle in healthy lifters who eat enough protein. Skip it.",
+  "effect": "A controlled resistance-training trial found glutamine supplementation had no significant effect on muscle performance, body composition, or muscle protein breakdown versus placebo. Any role is in clinical illness/gut health, not hypertrophy.",
+  "dosing": "Not recommended as a muscle-building aid. (Doses of ~0.9 g/kg have been studied without hypertrophy benefit.)",
+  "timing": "Irrelevant.",
+  "safety": "Generally safe; the issue is lack of benefit, not risk.",
+  "evidence_grade": "B",
+  "citations": ["candow-2001-glutamine"]
+}

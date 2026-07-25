@@ -1,0 +1,12 @@
+{
+  "id": "zma",
+  "name": "ZMA (Zinc Magnesium Aspartate)",
+  "tier": "insufficient",
+  "summary": "Marketed to raise testosterone and boost recovery; a controlled trial in trained lifters found it does neither. Only worth it to correct a real zinc/magnesium deficiency.",
+  "effect": "A resistance-training RCT found ZMA raised serum zinc but produced no significant difference versus placebo in anabolic or catabolic hormones, body composition, strength, or endurance. Testosterone benefits appear only when correcting an actual deficiency.",
+  "dosing": "Not recommended as an ergogenic aid. Address a diagnosed zinc/magnesium shortfall with a clinician instead.",
+  "timing": "Irrelevant to any muscle effect.",
+  "safety": "Generally safe at label doses; excess zinc impairs copper absorption over time.",
+  "evidence_grade": "B",
+  "citations": ["wilborn-2004-zma"]
+}
