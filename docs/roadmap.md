@@ -109,7 +109,12 @@ multi-user infra).
    undercited targets: `sleep` (2), `weak-point-prioritization` (0 graded — mostly synthesis),
    `breaking-advanced-plateaus`, `long-term-and-annual-planning`, and the getting-started pillar.
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the 7 guides into region-by-region
-   authoritative treatments (`back.md` as exemplar), feeding the app's exercise engine.
+   authoritative treatments, feeding the app's exercise engine. *STARTED:* **`back.md` done
+   (Wave 93)** — the exemplar: 5 regions (lats/width, mid-back thickness, upper traps, rear delts,
+   erectors), each with function + a hypertrophy-ranked pick list pulled from the exercise DB
+   (mirroring the engine's lengthened→equipment→fatigue ranking), per-region cues, week-assembly
+   summary, and an honest regional-hypertrophy nuance (Varovic 2025). Remaining guides to bring to
+   the same depth: `chest`, `legs`, `shoulders`, `arms`, `core`, `neck`.
 8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
    muscle+bone through the transition; Zhao 2025 BMD meta + Radaelli 2025 muscle; HRT framed as a
    medical decision). **Pregnancy & Postpartum Training shipped (Wave 91)** — the honest
