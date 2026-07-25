@@ -2057,6 +2057,48 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23679146/"
+    },
+    {
+      "key": "hirshkowitz-2015-sleep-duration",
+      "authors": [
+        "Hirshkowitz M",
+        "Whiton K",
+        "Albert SM",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "National Sleep Foundation's sleep time duration recommendations: methodology and results summary.",
+      "source": "Sleep Health",
+      "volume": "1",
+      "issue": "1",
+      "pages": "40-43",
+      "doi": "10.1016/j.sleh.2014.12.010",
+      "pmid": "29073412",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29073412/"
+    },
+    {
+      "key": "saner-2020-sleep-restriction-mps",
+      "authors": [
+        "Saner NJ",
+        "Lee MJ",
+        "Pitchford NW",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.",
+      "source": "The Journal of Physiology",
+      "volume": "598",
+      "issue": "8",
+      "pages": "1523-1536",
+      "doi": "10.1113/JP278828",
+      "pmid": "32078168",
+      "study_type": "non-RCT-trial",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32078168/"
     }
   ]
 }

@@ -3,7 +3,7 @@
 > **TL;DR** — Sleep is the highest-leverage recovery input, and the one most people shortchange. Chronically poor sleep **impairs training performance** and, when dieting, **shifts your weight loss away from fat and toward muscle** — the opposite of what you want. Aim for **7–9 hours** of good-quality sleep; it does more for your physique than any supplement. Protect it like part of your program, because it is.
 
 **Quick recommendations**
-- Target **7–9 hours** per night, consistently. **[Grade B]**
+- Target **7–9 hours** per night, consistently — the range a National Sleep Foundation expert panel recommends for healthy adults[^hirshkowitz-2015-sleep-duration]. **[Grade B]**
 - Treat sleep as **non-negotiable when dieting** — short sleep makes you lose more muscle and less fat. **[Grade B]**
 - Expect **worse training performance** after poor sleep; don't judge a program by badly-slept sessions. **[Grade B]**
 - Basic hygiene: **consistent schedule, dark/cool room, limit late caffeine and alcohol** (see [Alcohol](../04-nutrition/alcohol.md)). **[Grade C]**
@@ -23,6 +23,8 @@ Sleep is when much of recovery and adaptation is consolidated — hormonal envir
 
 **Sleep loss degrades physical performance.** Craven and colleagues' 2022 meta-analysis found that **acute sleep loss impairs physical performance**, including strength- and power-relevant measures[^craven-2022-sleep-performance]. **[Grade B]** Since training quality (hard, well-performed sets) drives the growth stimulus, worse performance from poor sleep means a weaker stimulus over time.
 
+**And it reaches muscle-building directly.** Saner and colleagues had young men undergo five nights of sleep restriction (4 h in bed); the restricted group showed **lower rates of myofibrillar protein synthesis** — the very process that repairs and builds muscle — which offers a plausible mechanism for the muscle loss seen with chronic short sleep. Tellingly, a group that performed **high-intensity exercise** during those same short nights kept synthesis at normal levels[^saner-2020-sleep-restriction-mps]. **[Grade C]** *(A short mechanistic study, not a hypertrophy trial — but the direction is clear: training protects muscle, and sleeping well lets it do more.)*
+
 ## Key Uncertainties & Nuance
 - **Individual sleep needs vary** around the 7–9 h guideline; consistency and how rested you feel matter alongside the clock.
 - **Occasional bad nights aren't catastrophic** — it's chronic short sleep that erodes progress.
@@ -35,3 +37,5 @@ None.
 ## References
 [^nedeltcheva-2010-sleep-adiposity]: Nedeltcheva AV, et al. (2010). *Insufficient sleep undermines dietary efforts to reduce adiposity.* Annals of Internal Medicine, 153(7), 435–441. DOI: [10.7326/0003-4819-153-7-201010050-00006](https://doi.org/10.7326/0003-4819-153-7-201010050-00006). PMID: 20921542.
 [^craven-2022-sleep-performance]: Craven J, et al. (2022). *Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review.* Sports Medicine, 52(11), 2669–2690. DOI: [10.1007/s40279-022-01706-y](https://doi.org/10.1007/s40279-022-01706-y). PMID: 35708888.
+[^hirshkowitz-2015-sleep-duration]: Hirshkowitz M, Whiton K, Albert SM, et al. (2015). *National Sleep Foundation's sleep time duration recommendations: methodology and results summary.* Sleep Health, 1(1), 40–43. DOI: [10.1016/j.sleh.2014.12.010](https://doi.org/10.1016/j.sleh.2014.12.010). PMID: 29073412.
+[^saner-2020-sleep-restriction-mps]: Saner NJ, Lee MJ, Pitchford NW, et al. (2020). *The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.* The Journal of Physiology, 598(8), 1523–1536. DOI: [10.1113/JP278828](https://doi.org/10.1113/JP278828). PMID: 32078168.

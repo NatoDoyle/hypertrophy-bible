@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**108** verified references.
+**110** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -263,6 +263,14 @@ Hermann T & et al. (2025). Without Fail: Muscular Adaptations in Single-Set Resi
 
 - Type: RCT · Population: recreationally-active
 - DOI: [10.1249/MSS.0000000000003728](https://doi.org/10.1249/MSS.0000000000003728) · PMID: [40249908](https://pubmed.ncbi.nlm.nih.gov/40249908/)
+
+### hirshkowitz-2015-sleep-duration
+Hirshkowitz M et al. (2015). National Sleep Foundation's sleep time duration recommendations: methodology and results summary.
+
+*Sleep Health*, 1(1), 40-43.
+
+- Type: position-stand · Population: mixed
+- DOI: [10.1016/j.sleh.2014.12.010](https://doi.org/10.1016/j.sleh.2014.12.010) · PMID: [29073412](https://pubmed.ncbi.nlm.nih.gov/29073412/)
 
 ### hubal-2005-responders
 Hubal MJ & et al. (2005). Variability in muscle size and strength gain after unilateral resistance training.
@@ -583,6 +591,14 @@ Robinson ZP & et al. (2024). Exploring the Dose-Response Relationship Between Es
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-024-02069-2](https://doi.org/10.1007/s40279-024-02069-2) · PMID: [38970765](https://pubmed.ncbi.nlm.nih.gov/38970765/)
+
+### saner-2020-sleep-restriction-mps
+Saner NJ et al. (2020). The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.
+
+*The Journal of Physiology*, 598(8), 1523-1536.
+
+- Type: non-RCT-trial · Population: untrained
+- DOI: [10.1113/JP278828](https://doi.org/10.1113/JP278828) · PMID: [32078168](https://pubmed.ncbi.nlm.nih.gov/32078168/)
 
 ### schoenfeld-2010-mechanisms
 Schoenfeld BJ (2010). The mechanisms of muscle hypertrophy and their application to resistance training.
