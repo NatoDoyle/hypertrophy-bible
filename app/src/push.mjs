@@ -231,6 +231,32 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
       }
 
+      // A share-card CHEER (roadmap Tier-3 #10's last un-wired social event): unlike
+      // nudge/challenge, a cheer has no single event instant to use as a high-water
+      // mark — cheers accumulate as a running count on the share row (store.getShareCheers),
+      // keyed by share_id, not by user. So the marker here is the COUNT itself
+      // (cheers_pushed) rather than an `at` timestamp: `stamp`'s `>= at` guard works
+      // identically for a monotonic count. Only users who opted into sharing (a live
+      // share token exists) are ever looked up; most users have none and this is a
+      // single cheap no-op lookup. Fires on the next hourly tick, same as nudge/challenge,
+      // since a cheer is a discrete "someone did something nice for you" moment, not a
+      // daily cadence.
+      if (!paused && !remindersOff) {
+        const shareId = await store.getShareIdForUser(userId);
+        if (shareId) {
+          const cheers = await store.getShareCheers(shareId);
+          const pushedCount = user.profile?.cheers_pushed ?? 0;
+          if (cheers > pushedCount) {
+            const delta = cheers - pushedCount;
+            const body = delta === 1
+              ? "Someone cheered your progress on the Hypertrophy Bible — keep it up!"
+              : `${delta} people cheered your progress on the Hypertrophy Bible — keep it up!`;
+            const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-cheer" });
+            if (ok) await stamp("cheers_pushed", cheers);
+          }
+        }
+      }
+
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
       const lastSessionAt = await store.latestSessionDate(userId);
