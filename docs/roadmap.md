@@ -182,9 +182,13 @@ infra, the one genuinely large build left here).
     is public and returns a strict non-PII allowlist (streak/level/sessions) via `publicShareCard`
     (double-tested: unit allowlist + route no-PII). The D1 reverse index is solved with a runtime
     `CREATE TABLE IF NOT EXISTS shares` self-init (no CLI migration needed) — **prod-verified the
-    table self-creates and the full mint→public-read→revoke flow works**. Still to build (needs
-    multi-user infra): friends/accountability pairs, challenges, leaderboards — the interactive
-    social loop beyond a shareable card.
+    table self-creates and the full mint→public-read→revoke flow works**. **Cheer counter shipped
+    (Wave 108):** a public 💪 tally on the card (a viewer taps, the sharer sees "N cheered you on") —
+    a second self-init table `share_cheers`, bounded, PII-safe, client-guarded; prod-verified the
+    table self-creates and cheers increment/reflect. Still to build (needs multi-user infra):
+    friends/accountability pairs, challenges, leaderboards, and a per-IP rate-limit on the public
+    cheer write (currently a client localStorage guard + bounded counter; scripted inflation of a
+    vanity count is low-harm).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
