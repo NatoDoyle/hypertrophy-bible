@@ -41,6 +41,7 @@
 - **"To failure" is doing heavy lifting in these studies.** The load-agnostic result depends on comparable effort. Lighter loads only match heavier ones when taken close to failure — which is more uncomfortable and rep-heavy at light loads (see [Proximity to Failure](proximity-to-failure.md)).
 - **Very high reps are hard to push.** Sets of 25–30 become limited by breathing and discomfort before the target muscle is fully taxed, which can blunt the stimulus in practice even if not in theory.
 - **Fiber-type "rep range" claims are weak.** The idea that low reps preferentially grow Type II and high reps grow Type I fibers has some mechanistic plausibility but limited and inconsistent human evidence. Don't build a program around it. **[Grade C]**
+- **Very light loads can still work — with a catch.** The one way to build muscle with loads far below the usual range is [blood-flow-restriction training](blood-flow-restriction.md), where partially occluding blood flow lets ~20–30% loads drive growth; a useful tool around injuries or for a joint-sparing pump, not a general replacement for heavier work.
 - **Individual joint tolerance matters.** The "best" range for an exercise is partly the one your joints tolerate for hard, repeatable sets.
 
 ## Backing Data

@@ -26,6 +26,7 @@
 - **Genetics set ranges, not exact fates** — training quality still moves you within your range, which is wide.
 - **Muscle shape is fixed, size is not** — you can grow a muscle substantially even if you can't change its insertion.
 - **Comparisons to others (especially enhanced athletes) are misleading** — benchmark against your own trajectory.
+- **Genetics attracts a lot of nonsense** — for the common misconceptions (bad-genetics excuses, "hardgainer" myths, and what's actually true), see [Genetics & expectations myths](../08-myths/genetics-and-expectations-myths.md).
 
 ## Backing Data
 None.
