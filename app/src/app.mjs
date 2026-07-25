@@ -478,7 +478,7 @@ export function createApp(store, config = {}) {
     if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
     let shareId = await store.getShareIdForUser(b.user_id);
     if (!shareId) shareId = await store.createShare(b.user_id, crypto.randomUUID(), Date.now());
-    return c.json({ share_id: shareId });
+    return c.json({ share_id: shareId, cheers: await store.getShareCheers(shareId) });
   });
   app.post("/api/share/revoke", async (c) => {
     const b = await c.req.json().catch(() => ({}));
@@ -498,7 +498,18 @@ export function createApp(store, config = {}) {
     const user = await store.getUser(userId);
     if (!user) return c.json({ error: "not found" }, 404);
     const sessions = await store.listSessions(userId);
-    return c.json(publicShareCard(user, sessions));
+    return c.json({ ...publicShareCard(user, sessions), cheers: await store.getShareCheers(shareId) });
+  });
+  // PUBLIC: a viewer cheers a share card (social proof). No auth — the share token is
+  // the capability; validated to resolve to a real user so a bad/revoked token 404s.
+  // The tally is bounded in the store; a client-side per-share guard stops casual
+  // double-taps (a vanity counter, so scripted inflation is low-harm — noted).
+  app.post("/api/share/:shareId/cheer", async (c) => {
+    const shareId = c.req.param("shareId");
+    if (!shareId || shareId.length > 100) return c.json({ error: "not found" }, 404);
+    const userId = await store.getShareUserId(shareId);
+    if (!userId) return c.json({ error: "not found" }, 404);
+    return c.json({ cheers: await store.addShareCheer(shareId) });
   });
 
   app.get("/api/checkin/today", async (c) => {

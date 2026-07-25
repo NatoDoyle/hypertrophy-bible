@@ -500,8 +500,8 @@ try {
   // Public read: allowlisted aggregate stats ONLY.
   const pub = await json("GET", `/api/share/${share1.data.share_id}`);
   ok("#share public GET returns the card", pub.status === 200 && typeof pub.data.streak_weeks === "number" && typeof pub.data.level === "number" && typeof pub.data.sessions_logged === "number");
-  ok("#share public card leaks NO PII (allowlist only: streak_weeks/level/sessions_logged)",
-    Object.keys(pub.data).every((k) => ["streak_weeks", "level", "sessions_logged"].includes(k)) &&
+  ok("#share public card leaks NO PII (allowlist only: streak_weeks/level/sessions_logged/cheers)",
+    Object.keys(pub.data).every((k) => ["streak_weeks", "level", "sessions_logged", "cheers"].includes(k)) &&
     !JSON.stringify(pub.data).includes(uid));
   const unknownShare = await json("GET", "/api/share/not-a-real-token-1234");
   ok("#share public GET for an unknown token is 404", unknownShare.status === 404);
@@ -512,6 +512,22 @@ try {
   ok("#share a revoked token no longer resolves (link goes dark)", afterRevoke.status === 404);
   const share3 = await json("POST", "/api/share", { user_id: uid });
   ok("#share re-opting-in after revoke mints a FRESH token (not the revoked one)", share3.data.share_id !== share1.data.share_id);
+
+  // --- Cheer counter (#10 social): public, bounded, PII-safe social proof. ---
+  const cheerTok = share3.data.share_id;
+  const card0 = await json("GET", `/api/share/${cheerTok}`);
+  ok("#cheer a fresh card starts at 0 cheers", card0.data.cheers === 0);
+  const cheer1 = await json("POST", `/api/share/${cheerTok}/cheer`);
+  ok("#cheer POST increments and returns the new count", cheer1.status === 200 && cheer1.data.cheers === 1);
+  const cheer2 = await json("POST", `/api/share/${cheerTok}/cheer`);
+  ok("#cheer POST increments again (server-side; client guards casual double-taps)", cheer2.data.cheers === 2);
+  const card2 = await json("GET", `/api/share/${cheerTok}`);
+  ok("#cheer the public card reflects the tally", card2.data.cheers === 2);
+  ok("#cheer the card still leaks NO PII with cheers added", Object.keys(card2.data).every((k) => ["streak_weeks", "level", "sessions_logged", "cheers"].includes(k)) && !JSON.stringify(card2.data).includes(uid));
+  const cheerUnknown = await json("POST", "/api/share/not-a-real-token/cheer");
+  ok("#cheer on an unknown/revoked token is 404 (no phantom rows)", cheerUnknown.status === 404);
+  const cheerRevoked = await json("POST", `/api/share/${share1.data.share_id}/cheer`);
+  ok("#cheer on a revoked token is 404", cheerRevoked.status === 404);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

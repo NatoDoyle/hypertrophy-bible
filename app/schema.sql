@@ -88,3 +88,10 @@ CREATE TABLE IF NOT EXISTS shares (
   user_id    TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL
 );
+
+-- Public "cheer" tally on a share card (social proof). Separate table so it can be
+-- self-initialized without altering the existing `shares` table. Bounded in code.
+CREATE TABLE IF NOT EXISTS share_cheers (
+  share_id TEXT PRIMARY KEY,
+  count    INTEGER NOT NULL DEFAULT 0
+);
