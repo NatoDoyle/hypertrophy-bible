@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -317,6 +317,25 @@ check("checkLuckySet (client, live-player order) agrees with luckySetsInSession 
   }
   const serverHits = luckySetsInSession({ session_id: sessionId, sets: rawSets }).map((h) => h.exercise);
   assert.deepEqual(clientHits, serverHits);
+});
+
+// rankPartners (mini-leaderboard): ranks you + active partners by streak then level.
+check("rankPartners ranks you + active partners by streak, level tiebreak; tags you; drops inactive", () => {
+  const ranked = rankPartners(
+    { streak_weeks: 5, level: 8 },
+    [
+      { active: true, streak_weeks: 9, level: 3 },   // top by streak
+      { active: true, streak_weeks: 5, level: 10 },  // tie streak w/ you → higher level wins
+      { active: false, streak_weeks: 99, level: 99 }, // inactive → excluded
+    ],
+  );
+  assert.equal(ranked.length, 3, "you + 2 active partners (inactive dropped)");
+  assert.equal(ranked[0].streak_weeks, 9, "highest streak first");
+  assert.equal(ranked[0].rank, 1);
+  // 5-week tie: the level-10 partner outranks you (level 8)
+  assert.equal(ranked[1].level, 10, "level tiebreak within equal streak");
+  assert.ok(ranked[2].isYou && ranked[2].rank === 3, "you are last here, tagged isYou");
+  assert.equal(rankPartners({ streak_weeks: 0, level: 1 }, []).length, 1, "solo: just you");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

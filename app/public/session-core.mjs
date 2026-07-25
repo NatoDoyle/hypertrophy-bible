@@ -124,3 +124,14 @@ export function stationProgress(logged, ex, L, P) {
   const round = Math.min(loggedWorkSets(logged, ex[L].exercise), loggedWorkSets(logged, ex[P].exercise));
   return { paired, round, done: round >= paired };
 }
+
+// You-vs-partners mini-leaderboard (#10 accountability). Pure so the ranking is
+// unit-tested rather than living untested in app.js. Combines the user (`you`) with
+// their ACTIVE followed partners, ranks by streak then level (a friendly nudge), and
+// tags the user's own row. Inactive partners (revoked shares) are excluded from the
+// ranking — the UI lists them separately for pruning.
+export function rankPartners(you, partners) {
+  const entries = [{ ...you, isYou: true }, ...(partners || []).filter((p) => p && p.active)];
+  entries.sort((a, b) => (b.streak_weeks - a.streak_weeks) || (b.level - a.level));
+  return entries.map((e, i) => ({ ...e, rank: i + 1 }));
+}
