@@ -135,3 +135,16 @@ export function rankPartners(you, partners) {
   entries.sort((a, b) => (b.streak_weeks - a.streak_weeks) || (b.level - a.level));
   return entries.map((e, i) => ({ ...e, rank: i + 1 }));
 }
+
+// Weekly race vs one partner (#10 accountability, next slice after the all-time
+// leaderboard): "ahead"/"behind"/"tied" on THIS week's session count only, so it
+// resets every week instead of accumulating forever — a short-horizon nudge with
+// real urgency ("still behind, get one in before Sunday") that the all-time
+// streak/level comparison can't provide on its own. Pure so it's unit-tested
+// the same way as rankPartners; missing counts default to 0 rather than throwing.
+export function weeklyRaceStatus(youThisWeek, partnerThisWeek) {
+  const you = youThisWeek ?? 0, partner = partnerThisWeek ?? 0;
+  if (you > partner) return "ahead";
+  if (you < partner) return "behind";
+  return "tied";
+}

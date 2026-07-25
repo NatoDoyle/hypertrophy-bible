@@ -239,7 +239,24 @@ infra, the one genuinely large build left here).
     likely infeasible headless). Still to build (needs deeper infra): challenges; wiring the verified
     encryption into the push sweep + a SW that reads the payload so a cheer/partner/nudge event can
     reach a device NOT currently in the app (the current push is empty-payload, so it can't say
-    "someone nudged you" until that layer is wired).
+    "someone nudged you" until that layer is wired) — **PR #202 (open, cloud loop) claims this slice;
+    don't re-propose it until #202 merges or closes.** **Weekly race shipped (this slice):** the
+    all-time streak/level leaderboard (Wave 116) never resets, so a lapsed partner still outranks
+    someone training hard *this* week — no short-horizon urgency. `publicShareCard` (the same
+    non-PII allowlist `GET /api/share/:token` and `GET /api/following` already return) now also
+    carries `sessions_this_week` (reusing `weeklySummary`, the same window `/api/adherence` shows
+    you for yourself); a new pure `weeklyRaceStatus(youThisWeek, partnerThisWeek)`
+    (`session-core.mjs`, unit-tested alongside `rankPartners`) compares you to each partner and the
+    Coach tab's partner row now shows "🏁 you're ahead this week" / "they're ahead this week" /
+    "tied this week" next to the existing streak/level line — resets naturally every week with no
+    new persisted state, no propose/accept flow, no push wiring (in-app only, same shipped-alone
+    precedent as the cheer counter and the mini-leaderboard). Deliberately NOT the full "challenges"
+    item (a user-initiated, time-boxed 1v1 competition with its own accept/decline state machine) —
+    that remains a larger, still-unclaimed follow-on; this slice is the smallest coherent step that
+    turns the static leaderboard into something with real weekly stakes. Both PII-allowlist tests
+    (`test-adherence.mjs`, `test-routes.mjs`) updated to the new 4-key card shape; a route test locks
+    in that `sessions_this_week` actually flows through `GET /api/following`, not just the public
+    share endpoint.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
