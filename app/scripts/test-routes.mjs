@@ -455,6 +455,23 @@ try {
   const fzAgain = await json("POST", "/api/streak/freeze", { user_id: fzUser });
   ok("#streak-freeze never double-spends the same week", fzAgain.status === 404 ? false : (fzAgain.status === 400 || (fzAgain.status === 200 && fzAgain.data.frozen_week !== fzRes.data.frozen_week)));
 
+  // Periodization plumbing (roadmap #9): the profile whitelist + storage must carry
+  // `periodization` end-to-end, or an undulating profile silently makes a LINEAR plan.
+  // "4-6" is a heavy-compound band ONLY the undulation path produces — its presence
+  // proves the field survived onboard → store → generateUserPlan.
+  const dupUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "advanced", primary_goal: "hypertrophy",
+    days_per_week: 6, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], periodization: "undulating" } })).data.user_id;
+  const dupProg = (await store.getUser(dupUser)).program;
+  const dupRanges = new Set(dupProg.sessions.flatMap((s) => s.exercises).map((e) => e.rep_range));
+  ok("#periodization: an undulating profile makes an undulating plan end-to-end (whitelist carries the field)", dupRanges.has("4-6") && dupRanges.size >= 2);
+  const linUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "advanced", primary_goal: "hypertrophy",
+    days_per_week: 6, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  const linRanges = new Set((await store.getUser(linUser)).program.sessions.flatMap((s) => s.exercises).map((e) => e.rep_range));
+  ok("#periodization: the default profile stays linear (no heavy 4-6 band)", !linRanges.has("4-6"));
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
