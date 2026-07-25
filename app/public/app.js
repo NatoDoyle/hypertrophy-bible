@@ -1704,6 +1704,9 @@ async function renderCoach() {
     return;
   }
   let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
+  let cw = { challenge: null }; try { cw = await api(`/api/challenge`); } catch {}
+  const ch = cw.challenge;
+  const canChallenge = !ch || ch.status === "completed" || ch.status === "declined";
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
@@ -1732,10 +1735,24 @@ async function renderCoach() {
       ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) => {
         const race = r.isYou ? null : weeklyRaceStatus(a.week.sessions, r.sessions_this_week);
         const raceLabel = race === "ahead" ? "🏁 you're ahead this week" : race === "behind" ? "🏁 they're ahead this week" : race === "tied" ? "🏁 tied this week" : "";
-        return `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"}${!r.isYou && r.mutual ? " ✓" : ""} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}${raceLabel ? ` · ${raceLabel}` : ""}</span>${r.isYou ? "" : `${r.mutual ? `<button class="linkbtn nudge" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">👋 nudge</button>` : ""}<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`;
+        return `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"}${!r.isYou && r.mutual ? " ✓" : ""} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}${raceLabel ? ` · ${raceLabel}` : ""}</span>${r.isYou ? "" : `${r.mutual && canChallenge ? `<button class="linkbtn challenge-send" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">⚔️ challenge</button>` : ""}${r.mutual ? `<button class="linkbtn nudge" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">👋 nudge</button>` : ""}<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`;
       }).join("")}</div>` : ""}
       ${(fw.partners || []).filter((p) => !p.active).map((p) =>
         `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
+    ${ch && ch.status === "pending" && ch.role === "opponent" ? `<div class="card"><b>⚔️ A training partner challenged you</b>
+      <p class="muted" style="margin-top:8px">Most sessions logged by the end of this week wins. Are you in?</p>
+      <div class="row" style="gap:8px;margin-top:8px"><button class="btn" id="challenge-accept" style="width:auto">Accept</button><button class="btn secondary" id="challenge-decline" style="width:auto">Decline</button></div></div>`
+      : ch && ch.status === "pending" && ch.role === "challenger" ? `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`
+      : ch && ch.status === "active" ? (() => {
+          const race = weeklyRaceStatus(cw.my_count, cw.opponent_count);
+          const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "😤 you're behind" : "🤝 tied";
+          return `<div class="card"><b>⚔️ Challenge in progress</b><p class="muted" style="margin-top:8px">You ${cw.my_count} – ${cw.opponent_count} them · ${label} · decides at week's end</p></div>`;
+        })()
+      : ch && ch.status === "completed" && ch.opponent_active !== false ? (() => {
+          const result = cw.my_count > cw.opponent_count ? "🏆 You won" : cw.my_count < cw.opponent_count ? "😤 You lost" : "🤝 It was a tie";
+          return `<div class="card"><b>⚔️ Challenge result</b><p class="muted" style="margin-top:8px">${result} ${cw.my_count}–${cw.opponent_count}. Send a new challenge any time.</p></div>`;
+        })()
+      : ""}
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
       <div id="days" style="margin:8px 0"></div>
@@ -1831,6 +1848,22 @@ async function renderCoach() {
     try { await api("/api/following/nudge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); b.textContent = "👋 nudged"; say("Nudge sent."); }
     catch { b.disabled = false; alertBar("📴 Couldn't send that nudge — try again when connected."); }
   });
+  app.querySelectorAll(".challenge-send").forEach((b) => b.onclick = async () => {
+    if (b.disabled) return;
+    b.disabled = true;
+    try { await api("/api/challenge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); say("Challenge sent."); await renderCoach(); }
+    catch { b.disabled = false; alertBar("📴 Couldn't send that challenge — try again when connected."); }
+  });
+  const challengeAccept = $("#challenge-accept");
+  if (challengeAccept) challengeAccept.onclick = async () => {
+    try { await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: true }) }); say("Challenge accepted — good luck."); await renderCoach(); }
+    catch { alertBar("📴 Couldn't accept — try again when connected."); }
+  };
+  const challengeDecline = $("#challenge-decline");
+  if (challengeDecline) challengeDecline.onclick = async () => {
+    try { await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: false }) }); say("Challenge declined."); await renderCoach(); }
+    catch { alertBar("📴 Couldn't update — try again when connected."); }
+  };
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {
     try {
