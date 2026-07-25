@@ -741,6 +741,54 @@ try {
   const frankCapped = await getChallenge(frank);
   ok("#challenge-history caps at 20 entries, dropping the oldest", frankCapped.history.length === 20 && frankCapped.history[0].week === fgPastWeek && frankCapped.history[19].week === "filler-18");
 
+  // Regression (audit fix): isChallengeOpen already treats a week-over challenge
+  // as free (Wave 127), so a fresh propose can legitimately land between GET
+  // /api/challenge's read and its own completion-write for the SAME user. The
+  // CAS guard inside that write correctly no-ops (the challenge id it's holding
+  // is now stale), but the response must not still report the win/loss it had
+  // optimistically computed — that would show a trophy the store never recorded.
+  const henry = (await onboardBw("beginner")).data.user_id;
+  const iris = (await onboardBw("beginner")).data.user_id;
+  const henryShare = (await json("POST", "/api/share", { user_id: henry })).data.share_id;
+  const irisShare = (await json("POST", "/api/share", { user_id: iris })).data.share_id;
+  await json("POST", "/api/following", { user_id: henry, token: irisShare });
+  await json("POST", "/api/following", { user_id: iris, token: henryShare });
+  await json("POST", "/api/challenge", { user_id: henry, token: irisShare });
+  await json("POST", "/api/challenge/respond", { user_id: iris, accept: true });
+  const hiPastDate = new Date(Date.now() - 8 * 7 * 86400000).toISOString();
+  const hiPastWeek = isoWeekKey(hiPastDate);
+  await json("POST", "/api/session", { user_id: henry, session_id: "hi-h1", date: hiPastDate,
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await store.updateUser(henry, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: hiPastWeek } }; return u; });
+  await store.updateUser(iris, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: hiPastWeek } }; return u; });
+  // Simulate the race: right as the route calls store.updateUser(henry, ...) to
+  // persist the completion, a "concurrent" fresh propose has already swapped
+  // henry's challenge id out from under it — one time only, mirroring exactly
+  // the window the fix guards.
+  const realUpdateUser = store.updateUser.bind(store);
+  let raced = false;
+  store.updateUser = async (uid, mutator) => {
+    if (uid === henry && !raced) {
+      raced = true;
+      await realUpdateUser(henry, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, id: "raced-in-new-id" } }; return u; });
+    }
+    return realUpdateUser(uid, mutator);
+  };
+  const henryRaced = await getChallenge(henry);
+  store.updateUser = realUpdateUser;
+  ok("#challenge-history a raced slot-replacement does not fabricate a history entry in the response", (henryRaced.history ?? []).length === 0);
+  ok("#challenge-history a raced slot-replacement does not persist a phantom entry either", ((await store.getUser(henry)).profile.challenge_history ?? []).length === 0);
+  // Hardening (PR #210 follow-up): if the user row vanishes between the handler's
+  // initial read and its completion-write, store.updateUser returns null — the
+  // route must treat that as "not written" (via `updated?.`) and return the
+  // un-fabricated current state, never dereference null and 500. henry's challenge
+  // is still active + week-over here, so the GET reaches the completion-write path.
+  const realUpdateUser2 = store.updateUser.bind(store);
+  store.updateUser = async () => null; // simulate the row gone at write time
+  const henryVanished = await app.request("/api/challenge", { headers: { "X-HB-User": henry } });
+  store.updateUser = realUpdateUser2;
+  ok("#challenge-history a user row vanishing at write time returns 200, not a 500 (updated?. guard)", henryVanished.status === 200);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

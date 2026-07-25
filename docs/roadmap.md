@@ -335,7 +335,20 @@ infra, the one genuinely large build left here).
     challenge" beneath the win/lose result card. Not done: no way to see PAST opponents by
     identity (deliberately — the feature stores no PII/user_id, only aggregate W/L/T), and
     multiple concurrent challenges / a full history LIST view remain the v1 follow-ons the prior
-    wave already named.
+    wave already named. **History LIST view shipped (Wave 129):** frontend-only — the per-entry
+    list (icon/result/week/score) now renders beneath the aggregate record card; `formatWeekLabel`
+    (pure, unit-tested) turns the internal ISO week key into a readable label. Only "multiple
+    concurrent challenges" remains an unclaimed v1 follow-on (needs a real table, a bigger change).
+    **Audit fix (Cloud loop wave):** `GET /api/challenge`'s completion write reported the
+    optimistically-computed win/loss to the client even when the CAS guard no-op'd the actual
+    store write — reachable because `isChallengeOpen` (Wave 127) already treats a week-over
+    challenge as free, so a fresh `POST /api/challenge` propose can legitimately race in and
+    replace this user's challenge id between the read and the write. The response now reflects
+    exactly what `store.updateUser` actually persisted, never the optimistic guess — a phantom
+    "trophy" the store never recorded is no longer possible. 2 new route tests simulate the race
+    (a monkey-patched `store.updateUser` swaps the challenge id mid-request) and confirm neither
+    the response nor the store shows a fabricated entry; verified the new test fails without the
+    fix and passes with it.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
