@@ -149,10 +149,19 @@ infra, the one genuinely large build left here).
    debunks (glutamine, ashwagandha, ZMA, tart cherry).
 
 ### Tier 3 — big bets
-9. **[Goal 2 elite] Real periodization + peaking** — block/undulating options, a taper/peak
-   phase, contest-prep mode, deeper autoregulation. Serves the "win Mr. Olympia" end.
+9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Wave 98):* **opt-in Daily
+   Undulating Periodization** shipped — `profile.periodization: "undulating"` varies the
+   rep/intensity band by training day (heavy/moderate/light) for the hypertrophy family; a clean
+   per-session scheme swap so the linear default is byte-identical; onboarding step + end-to-end
+   whitelist test; prod-verified (an undulating plan carries the heavy 4-6 band). Still to build:
+   BLOCK periodization (accumulation→intensification→peak), a taper/peak phase, contest-prep mode,
+   deeper autoregulation (velocity/RIR-driven). Serves the "win Mr. Olympia" end.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (needs multi-user
-    infra; the single biggest retention lever).
+    infra; the single biggest retention lever). *Note (Wave 98):* a privacy-safe first slice (an
+    opt-in, revocable, read-only shareable progress card) needs a share-token→user reverse index;
+    D1 has no runtime-migration path here (the query CLI 7403s per the saved memory), so it wants a
+    `CREATE TABLE IF NOT EXISTS` self-init in the D1 store OR a token stored on the user blob with a
+    scan — scope that carefully before building (privacy + XSS surface on a public endpoint).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
