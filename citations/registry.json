@@ -2099,6 +2099,89 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32078168/"
+    },
+    {
+      "key": "candow-2001-glutamine",
+      "authors": [
+        "Candow DG",
+        "Chilibeck PD",
+        "Burke DG",
+        "Davison KS"
+      ],
+      "year": 2001,
+      "title": "Effect of glutamine supplementation combined with resistance training in young adults.",
+      "source": "European Journal of Applied Physiology",
+      "volume": "86",
+      "issue": "2",
+      "pages": "142-149",
+      "doi": "10.1007/s00421-001-0523-y",
+      "pmid": "11822473",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/11822473/"
+    },
+    {
+      "key": "wankhede-2015-ashwagandha",
+      "authors": [
+        "Wankhede S",
+        "Langade D",
+        "Joshi K",
+        "Sinha SR"
+      ],
+      "year": 2015,
+      "title": "Examining the effect of Withania somnifera supplementation on muscle strength and recovery: a randomized controlled trial.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "12",
+      "pages": "43",
+      "doi": "10.1186/s12970-015-0104-9",
+      "pmid": "26609282",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26609282/"
+    },
+    {
+      "key": "wilborn-2004-zma",
+      "authors": [
+        "Wilborn CD",
+        "Kerksick CM",
+        "Campbell BI",
+        "Taylor LW"
+      ],
+      "year": 2004,
+      "title": "Effects of Zinc Magnesium Aspartate (ZMA) Supplementation on Training Adaptations and Markers of Anabolism and Catabolism.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "1",
+      "issue": "2",
+      "pages": "12-20",
+      "doi": "10.1186/1550-2783-1-2-12",
+      "pmid": "18500945",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/18500945/"
+    },
+    {
+      "key": "ortega-2021-tart-cherry-recovery",
+      "authors": [
+        "Ortega DR",
+        "López AM",
+        "Amaya HM",
+        "de la Rosa FJB"
+      ],
+      "year": 2021,
+      "title": "Tart cherry and pomegranate supplementations enhance recovery from exercise-induced muscle damage: a systematic review.",
+      "source": "Biology of Sport",
+      "volume": "38",
+      "issue": "1",
+      "pages": "97-111",
+      "doi": "10.5114/biolsport.2020.97069",
+      "pmid": "33795919",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33795919/"
     }
   ]
 }
