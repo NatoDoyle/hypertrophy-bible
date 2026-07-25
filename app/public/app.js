@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -1752,6 +1752,24 @@ async function renderCoach() {
           const result = cw.my_count > cw.opponent_count ? "🏆 You won" : cw.my_count < cw.opponent_count ? "😤 You lost" : "🤝 It was a tie";
           return `<div class="card"><b>⚔️ Challenge result</b><p class="muted" style="margin-top:8px">${result} ${cw.my_count}–${cw.opponent_count}. Send a new challenge any time.</p></div>`;
         })()
+      : ""}
+    ${(cw.history || []).length > 0 ? (() => {
+        // A persisted win/lose/tie record across every challenge that's ever run its
+        // course — separate from the single-slot `challenge` card above, which only
+        // ever shows the CURRENT one and is overwritten the moment a new one starts.
+        const wins = cw.history.filter((h) => h.result === "win").length;
+        const losses = cw.history.filter((h) => h.result === "lose").length;
+        const ties = cw.history.length - wins - losses;
+        // The full per-challenge list beneath the tally (the roadmap's "history LIST
+        // view" follow-on) — `/api/challenge` already returned every past result
+        // (newest first, capped at 20), just never rendered individually before now.
+        const rows = cw.history.map((h) => {
+          const icon = h.result === "win" ? "🏆" : h.result === "lose" ? "😤" : "🤝";
+          const label = h.result === "win" ? "Won" : h.result === "lose" ? "Lost" : "Tied";
+          return `<div class="row" style="padding:4px 0;justify-content:space-between"><span class="muted">${icon} ${label} · ${esc(formatWeekLabel(h.week))}</span><span class="muted">${h.my_count}–${h.opponent_count}</span></div>`;
+        }).join("");
+        return `<div class="card"><b>📊 Challenge record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p><div style="margin-top:8px">${rows}</div></div>`;
+      })()
       : ""}
     <h2>Schedule your sessions</h2>
     <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>

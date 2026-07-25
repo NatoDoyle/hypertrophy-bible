@@ -313,7 +313,29 @@ infra, the one genuinely large build left here).
     accept — later resolving into a fabricated "completed" result from training logged before
     either side had agreed to compete. Fixed by enforcing the same week check in `respond`
     directly; 3 new route tests lock in the stale-accept/decline refusal and confirm no
-    "active" residue survives on the challenger's side.
+    "active" residue survives on the challenger's side. **Challenge history / win-loss record
+    shipped (Cloud loop wave, PR pending):** the one still-open gap the wave above flagged
+    ("no history/win-loss record"). No new store table — `profile.challenge_history` (capped
+    at 20, oldest dropped, same cap convention as `following`) lives beside the existing
+    single-slot `profile.challenge` mirror, on both sides independently. `GET /api/challenge`
+    now computes both sides' tallies ONCE up front and reuses them for both the live-tally
+    response AND the history write when a challenge genuinely completes, so the two can never
+    disagree. A result is recorded ONLY when an ACTIVE challenge ran its course against a
+    still-active opponent (win/lose/tie from the two counts already fetched) — an opponent's
+    share vanishing mid-week or an unanswered (declined) invite has no real score, so neither
+    writes a history entry (same "don't manufacture a result" stance the rest of the feature
+    already takes). Re-reading a terminal challenge is a no-op (status is no longer
+    pending/active, so the write path never re-fires). The Coach tab shows a persistent
+    "📊 Challenge record: NW – ML across K challenges" card beneath the single current-challenge
+    card, so a win/loss history survives past the next challenge overwriting the live slot.
+    6 new route tests (win recorded correctly, the mirror loss on the opponent's own side, no
+    entry on decline, no duplicate on re-read, the 20-entry cap drops the oldest). Real-browser-
+    verified with Playwright (pre-installed Chromium): completed a real challenge through the
+    HTTP API, loaded the Coach tab, and confirmed the record card renders "1W – 0L across 1
+    challenge" beneath the win/lose result card. Not done: no way to see PAST opponents by
+    identity (deliberately — the feature stores no PII/user_id, only aggregate W/L/T), and
+    multiple concurrent challenges / a full history LIST view remain the v1 follow-ons the prior
+    wave already named.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

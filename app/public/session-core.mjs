@@ -148,3 +148,15 @@ export function weeklyRaceStatus(youThisWeek, partnerThisWeek) {
   if (you < partner) return "behind";
   return "tied";
 }
+
+// Turns an ISO week key ("2026-W30", the internal identity `isoWeekKey` stamps
+// on every challenge/session) into a label a user can read ("Week 30, 2026").
+// Pure + unit-tested so the challenge-history list (#10 social follow-on: the
+// roadmap's "full history LIST view" — the backend already returns every past
+// challenge in `history`, this is what was missing to actually show them) never
+// leaks the raw internal key, and a malformed/filler key (e.g. the test suite's
+// "filler-18" cap fixtures) degrades to the raw string instead of throwing.
+export function formatWeekLabel(weekKey) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(weekKey || "");
+  return m ? `Week ${Number(m[2])}, ${m[1]}` : String(weekKey ?? "");
+}

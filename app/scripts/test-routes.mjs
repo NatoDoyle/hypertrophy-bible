@@ -642,6 +642,8 @@ try {
   ok("#challenge decline succeeds", decline.status === 200 && decline.data.status === "declined");
   ok("#challenge decline propagates to the challenger's side too", (await getChallenge(carol)).challenge.status === "declined");
   ok("#challenge a challenger can't respond to their own proposal", (await json("POST", "/api/challenge/respond", { user_id: carol, accept: true })).status === 400);
+  // An unanswered/declined invite has no real result — it must NOT add a history entry.
+  ok("#challenge-history a declined challenge records no history", ((await getChallenge(carol)).history ?? []).length === 0);
 
   // Re-propose (the slot was freed by the decline) and accept this time.
   await json("POST", "/api/challenge", { user_id: carol, token: daveShare });
@@ -689,6 +691,55 @@ try {
   ok("#challenge a refused stale accept never revived the challenger's copy to active", (await getChallenge(carol)).challenge.status === "declined");
   const staleDecline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
   ok("#challenge declining a challenge whose week already ended is also refused (the slot resolves via GET's self-transition instead)", staleDecline.status === 400 && staleDecline.data.error === "no-pending-challenge");
+
+  // --- Challenge history / win-loss record (#10 social follow-on): a completed
+  // challenge now persists a compact win/lose/tie record to profile.challenge_history
+  // on BOTH sides — separate from the single-slot `challenge` field, which the next
+  // propose overwrites. Dated relative to Date.now() so a session-date filter
+  // (sessionsInWeek) actually matches the manufactured past week, unlike the
+  // week-over test above (which doesn't need real counts, just the status flip).
+  const frank = (await onboardBw("beginner")).data.user_id;
+  const grace = (await onboardBw("beginner")).data.user_id;
+  const frankShare = (await json("POST", "/api/share", { user_id: frank })).data.share_id;
+  const graceShare = (await json("POST", "/api/share", { user_id: grace })).data.share_id;
+  await json("POST", "/api/following", { user_id: frank, token: graceShare });
+  await json("POST", "/api/following", { user_id: grace, token: frankShare });
+  await json("POST", "/api/challenge", { user_id: frank, token: graceShare });
+  await json("POST", "/api/challenge/respond", { user_id: grace, accept: true });
+  const fgPastDate = new Date(Date.now() - 8 * 7 * 86400000).toISOString();
+  const fgPastWeek = isoWeekKey(fgPastDate);
+  // Sessions dated WITHIN that same manufactured past week, so sessionsInWeek
+  // actually credits them once the challenge's own week is moved there too.
+  await json("POST", "/api/session", { user_id: frank, session_id: "fg-f1", date: fgPastDate,
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: frank, session_id: "fg-f2", date: fgPastDate,
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: grace, session_id: "fg-g1", date: fgPastDate,
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await store.updateUser(frank, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  await store.updateUser(grace, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  const frankFinal = await getChallenge(frank);
+  ok("#challenge-history a completed challenge records a WIN for the side with more sessions", frankFinal.challenge.status === "completed"
+    && frankFinal.history.length === 1 && frankFinal.history[0].result === "win"
+    && frankFinal.history[0].my_count === 2 && frankFinal.history[0].opponent_count === 1 && frankFinal.history[0].week === fgPastWeek);
+  const graceFinal = await getChallenge(grace);
+  ok("#challenge-history the mirror LOSE is recorded independently on the opponent's own side", graceFinal.history.length === 1
+    && graceFinal.history[0].result === "lose" && graceFinal.history[0].my_count === 1 && graceFinal.history[0].opponent_count === 2);
+  // Re-reading doesn't double-record: the challenge is already terminal, so a
+  // second GET must not append a duplicate entry.
+  const frankReread = await getChallenge(frank);
+  ok("#challenge-history re-reading a completed challenge does not duplicate the history entry", frankReread.history.length === 1);
+  // A fresh challenge + tie also records correctly, AND the cap holds the most
+  // recent CHALLENGE_HISTORY_CAP (20) entries, oldest dropped first.
+  await store.updateUser(frank, (u) => { u.profile = { ...u.profile, challenge_history: Array.from({ length: 20 }, (_, i) => ({ week: `filler-${i}`, result: "win", my_count: 1, opponent_count: 0 })) }; return u; });
+  await json("POST", "/api/challenge", { user_id: frank, token: graceShare });
+  await json("POST", "/api/challenge/respond", { user_id: grace, accept: true });
+  await json("POST", "/api/session", { user_id: grace, session_id: "fg-g2", date: fgPastDate,
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await store.updateUser(frank, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  await store.updateUser(grace, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  const frankCapped = await getChallenge(frank);
+  ok("#challenge-history caps at 20 entries, dropping the oldest", frankCapped.history.length === 20 && frankCapped.history[0].week === fgPastWeek && frankCapped.history[19].week === "filler-18");
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
