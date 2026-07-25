@@ -249,6 +249,54 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
+// --- multi-device fan-out (Wave 136): the per-USER social markers must not let the
+// FIRST device's successful send consume the event for every other device. ---
+{
+  const mdPath = join(tmpdir(), `hb-push-multidev-test-${process.pid}.json`);
+  const mdStore = createFileStore(mdPath);
+  try {
+    const ua = await fakeUaSubscription();
+    await mdStore.saveUser("multi", { profile: { tz_offset_min: -300, partner_nudge: { at: NOW } } });
+    await mdStore.savePushSubscription("multi", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/md-laptop", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await mdStore.savePushSubscription("multi", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/md-phone", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let hits = [];
+    const recordFetch = async (url) => { hits.push(url); return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(mdStore, vapid, NOW, recordFetch);
+    ok("a nudge fans out to BOTH of a user's devices, not just the first", r1.sent === 2 && hits.filter((u) => u.includes("md-")).length === 2);
+    ok("the marker is stamped ONCE after the fan-out", (await mdStore.getUser("multi")).profile.nudge_pushed_at === NOW);
+    hits = [];
+    const r2 = await runPushSweep(mdStore, vapid, NOW + 3600e3, recordFetch);
+    ok("after the fan-out, the same nudge never re-fires on either device", r2.sent === 0 && hits.length === 0);
+
+    // First device's subscription is dead (410): it's pruned, the second still hears,
+    // and the marker still stamps — the event is never consumed by a dead endpoint.
+    await mdStore.saveUser("multi2", { profile: { tz_offset_min: -300, partner_nudge: { at: NOW } } });
+    await mdStore.savePushSubscription("multi2", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m2-dead", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await mdStore.savePushSubscription("multi2", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m2-live", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    const mixedFetch = async (url) => url.includes("m2-dead") ? { ok: false, status: 410 } : { ok: true, status: 201 };
+    const r3 = await runPushSweep(mdStore, vapid, NOW, mixedFetch);
+    ok("a dead first device is pruned while the live one still receives", r3.sent === 1 && r3.pruned === 1);
+    ok("the marker stamps because a live device accepted", (await mdStore.getUser("multi2")).profile.nudge_pushed_at === NOW);
+
+    // EVERY send fails (network): the marker must NOT stamp, so the next tick retries.
+    await mdStore.saveUser("multi3", { profile: { tz_offset_min: -300, partner_nudge: { at: NOW } } });
+    await mdStore.savePushSubscription("multi3", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m3-a", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    const failFetch = async () => { throw new Error("network down"); };
+    await runPushSweep(mdStore, vapid, NOW, failFetch);
+    ok("an all-failed fan-out leaves the marker unstamped (retry next tick)", ((await mdStore.getUser("multi3")).profile.nudge_pushed_at ?? 0) === 0);
+    const retry = await runPushSweep(mdStore, vapid, NOW + 3600e3, async () => ({ ok: true, status: 201 }));
+    ok("the retry tick then delivers and stamps", retry.sent >= 1 && (await mdStore.getUser("multi3")).profile.nudge_pushed_at === NOW);
+
+    // A challenge invite fans out the same way.
+    await mdStore.saveUser("multi4", { profile: { tz_offset_min: -300, challenge: { id: "c1", role: "opponent", status: "pending", week: isoWeekKey(new Date(NOW).toISOString()), created_at: NOW } } });
+    await mdStore.savePushSubscription("multi4", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m4-a", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await mdStore.savePushSubscription("multi4", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m4-b", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let m4hits = [];
+    const r4 = await runPushSweep(mdStore, vapid, NOW, async (url) => { m4hits.push(url); return { ok: true, status: 201 }; });
+    ok("a challenge invite fans out to BOTH devices too", m4hits.filter((u) => u.includes("m4-")).length === 2 && (await mdStore.getUser("multi4")).profile.challenge_pushed_at === NOW);
+  } finally { try { rmSync(mdPath); } catch {} }
+}
+
 // --- sweep against the real file store ---
 const path = join(tmpdir(), `hb-push-test-${process.pid}.json`);
 const store = createFileStore(path);

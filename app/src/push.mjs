@@ -146,75 +146,97 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
 export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch) {
   const subs = await store.listPushSubscriptions();
   let checked = 0, sent = 0, pruned = 0;
-  for (const sub of subs) {
-    checked++;
+  // Group subscriptions per USER first. The social seen-once markers
+  // (nudge_pushed_at / challenge_pushed_at) are per-user, but sends are
+  // per-subscription — evaluating the marker inside a flat per-subscription loop
+  // meant the FIRST device whose push service said 201 stamped the marker and
+  // every other device was silently skipped for good (worst case: a stale but
+  // still-accepting endpoint consumed the event and the device the user actually
+  // carries never heard about it). Social events now fan out to ALL of a user's
+  // devices, then stamp ONCE — mirroring how the daily reminder already reaches
+  // every subscription.
+  const byUser = new Map();
+  for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
+  for (const [userId, userSubs] of byUser) {
     try {
-      const user = await store.getUser(sub.user_id);
-      if (!user) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+      const user = await store.getUser(userId);
+      if (!user) { for (const s of userSubs) { await store.deletePushSubscription(s.endpoint); pruned++; checked++; } continue; }
+      checked += userSubs.length;
       const paused = !!user.paused;
       const remindersOff = user.profile?.reminders_off === true;
+      const gone = new Set(); // endpoints pruned mid-user; later sends skip them
+      // Send an encrypted payload to every capable device; returns how many the
+      // push service ACCEPTED. One dead endpoint prunes and moves on; one thrown
+      // send never blocks the user's other devices.
+      const fanOut = async (payload) => {
+        let ok = 0;
+        for (const s of userSubs) {
+          if (gone.has(s.endpoint) || !isAllowedPushEndpoint(s.endpoint) || !s.p256dh || !s.auth) continue;
+          try {
+            const res = await sendPush(s, vapid, payload, fetchFn);
+            if (res.gone) { await store.deletePushSubscription(s.endpoint); gone.add(s.endpoint); pruned++; continue; }
+            if (res.ok) { ok++; sent++; }
+          } catch { /* one bad subscription never blocks the rest */ }
+        }
+        return ok;
+      };
+      // Stamp a seen-once marker AFTER at least one device accepted — with the
+      // precondition INSIDE the mutator (store contract): a concurrent stamp that
+      // already advanced the marker makes this a no-op instead of a rewind, and a
+      // CAS write-conflict is swallowed so the failure mode is a possible repeat
+      // push next tick (at-least-once), never a lost reminder/challenge below.
+      const stamp = async (field, at) => {
+        try {
+          await store.updateUser(userId, (u) => {
+            if ((u.profile?.[field] ?? 0) >= at) return u;
+            u.profile = { ...(u.profile ?? {}), [field]: at };
+            return u;
+          });
+        } catch { /* retried next sweep; the guard above makes the re-send idempotent per event */ }
+      };
 
       // A training-partner nudge (Wave 119) is a discrete social event, not a daily
       // cadence — push it on the NEXT hourly tick rather than waiting for the user's
-      // one local reminder hour, so it can reach a device before the app is ever
-      // reopened. `nudge_pushed_at` is a separate seen-once marker from the in-app
-      // `nudge_seen_at` (app.mjs /api/adherence) — a push and the in-app banner are
-      // two different surfaces for the same event and must not gate each other.
+      // one local reminder hour. `nudge_pushed_at` is separate from the in-app
+      // `nudge_seen_at` (app.mjs /api/adherence): two surfaces, never gating each other.
       const pendingNudge = user.profile?.partner_nudge;
-      if (!paused && !remindersOff && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)
-          && isAllowedPushEndpoint(sub.endpoint) && sub.p256dh && sub.auth) {
-        const res = await sendPush(sub, vapid, { title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" }, fetchFn);
-        if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-        if (res.ok) {
-          sent++;
-          await store.updateUser(sub.user_id, (u) => { u.profile = { ...(u.profile ?? {}), nudge_pushed_at: pendingNudge.at }; return u; });
-        }
+      if (!paused && !remindersOff && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
+        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
+        if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
       }
 
-      // A challenge PROPOSAL (Wave 126) is a discrete social event exactly like the
-      // partner nudge above — the OPPONENT should hear about it on the next hourly
-      // tick, not wait for their one local reminder hour, since a challenge only
-      // has until the end of ITS week to be answered. `challenge.created_at`
-      // (already stamped at propose, Date.now()) doubles as the high-water mark
-      // against a new `challenge_pushed_at` seen-once marker — same shape as
-      // nudge_pushed_at, no new field needed on the challenge object itself. Only
-      // the opponent's own still-PENDING invite pushes (an active/declined/
-      // completed challenge, or the challenger's own half, has nothing new to
-      // announce); the week check guards the rare case of a propose landing right
-      // at week rollover with a delayed sweep, mirroring isChallengeOpen's own
-      // freshness rule in app.mjs.
+      // A challenge PROPOSAL (Wave 126): the OPPONENT hears on the next hourly tick —
+      // a challenge only has until the end of ITS week to be answered. created_at
+      // (stamped at propose) is the high-water mark against challenge_pushed_at.
+      // Only the opponent's own still-PENDING, current-week invite pushes.
       const pendingChallenge = user.profile?.challenge;
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
           && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
-          && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)
-          && isAllowedPushEndpoint(sub.endpoint) && sub.p256dh && sub.auth) {
-        const res = await sendPush(sub, vapid, { title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" }, fetchFn);
-        if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-        if (res.ok) {
-          sent++;
-          await store.updateUser(sub.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge_pushed_at: pendingChallenge.created_at }; return u; });
-        }
+          && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
+        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
+        if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
       }
 
-      // Timezone-aware timing: only nudge in this user's one eligible hour/day, so an
-      // hourly sweep never lands at 3am and never fires 24×. (Gate before any further
-      // work — a user who isn't in their window this hour is simply skipped.)
+      // Timezone-aware daily reminder: only in this user's one eligible hour/day.
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
-      const lastSessionAt = await store.latestSessionDate(sub.user_id);
-      // Two independent reasons to push, one send: lapse-reactive (shouldPush)
-      // OR the user's own weekly commitment (shouldPushForCommitment). The push
-      // itself carries no payload either way (see the file header), so a single
-      // boolean OR is correct — never a double send for the same day.
-      const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
-        || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now });
-      if (!hit) continue;
-      // Never POST to a non-push-service host, even if an old row slipped one in.
-      if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-      const res = await sendEmptyPush(sub, vapid, fetchFn);
-      if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-      if (res.ok) sent++;
+      const lastSessionAt = await store.latestSessionDate(userId);
+      for (const sub of userSubs) {
+        if (gone.has(sub.endpoint)) continue;
+        // Two independent reasons to push, one send: lapse-reactive (shouldPush)
+        // OR the user's own weekly commitment. subscribedAt is PER-SUBSCRIPTION
+        // (a brand-new device shouldn't be nagged on day one), so this stays in
+        // the per-subscription loop.
+        const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
+          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now });
+        if (!hit) continue;
+        // Never POST to a non-push-service host, even if an old row slipped one in.
+        if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+        const res = await sendEmptyPush(sub, vapid, fetchFn);
+        if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+        if (res.ok) sent++;
+      }
     } catch {
-      // one bad subscription/user must never abort the sweep
+      // one bad user must never abort the sweep
     }
   }
   return { checked, sent, pruned };
