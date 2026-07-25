@@ -5,7 +5,7 @@ A closed loop that keeps driving the project toward three goals, and keeps itsel
 ## The four goals (the only scoring function)
 
 1. **The world's best source of knowledge for hypertrophy.** Every claim web-verified, graded,
-   and honest about uncertainty.
+   and honest about uncertainty. A neural network.
 2. **The world's best coaching app built on that KB — for everyone.** From "I have never heard
    of a gym" to "I am trying to win Mr. Olympia." Both ends, not just one. It should have as
    little manual customization as possible, we ask the right questions at the start and then everything is else is done for them.
