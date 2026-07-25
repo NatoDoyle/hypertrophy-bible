@@ -185,10 +185,15 @@ infra, the one genuinely large build left here).
     table self-creates and the full mint→public-read→revoke flow works**. **Cheer counter shipped
     (Wave 108):** a public 💪 tally on the card (a viewer taps, the sharer sees "N cheered you on") —
     a second self-init table `share_cheers`, bounded, PII-safe, client-guarded; prod-verified the
-    table self-creates and cheers increment/reflect. Still to build (needs multi-user infra):
-    friends/accountability pairs, challenges, leaderboards, and a per-IP rate-limit on the public
-    cheer write (currently a client localStorage guard + bounded counter; scripted inflation of a
-    vanity count is low-harm).
+    table self-creates and cheers increment/reflect. **Training partners shipped (Wave 115):** an
+    accountability first slice — follow a friend's share link (its public token stored on your
+    profile.following, capped/deduped) and their streak/level/cheers show on your Coach tab via a
+    lazy authed GET; one-directional, partner-unaware, PII-safe (no user_id), revoked partners show
+    inactive/prunable; reuses the share reverse-index, no new tables. Cheer rate-limit also shipped
+    (Wave 109, per-IP via the magic_links bucket). Still to build (needs deeper infra):
+    reciprocal/mutual accountability, challenges, leaderboards, and payload-encrypted (RFC 8291)
+    push so a cheer/partner event can send a SPECIFIC notification (the current push is empty-payload,
+    so it can't say "someone cheered you" without the crypto layer).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
