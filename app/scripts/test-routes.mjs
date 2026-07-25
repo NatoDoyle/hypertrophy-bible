@@ -499,9 +499,9 @@ try {
   ok("#share token is NOT the user_id (never expose the credential)", share1.data.share_id !== uid);
   // Public read: allowlisted aggregate stats ONLY.
   const pub = await json("GET", `/api/share/${share1.data.share_id}`);
-  ok("#share public GET returns the card", pub.status === 200 && typeof pub.data.streak_weeks === "number" && typeof pub.data.level === "number" && typeof pub.data.sessions_logged === "number");
-  ok("#share public card leaks NO PII (allowlist only: streak_weeks/level/sessions_logged/cheers)",
-    Object.keys(pub.data).every((k) => ["streak_weeks", "level", "sessions_logged", "cheers"].includes(k)) &&
+  ok("#share public GET returns the card", pub.status === 200 && typeof pub.data.streak_weeks === "number" && typeof pub.data.level === "number" && typeof pub.data.sessions_logged === "number" && typeof pub.data.sessions_this_week === "number");
+  ok("#share public card leaks NO PII (allowlist only: streak_weeks/level/sessions_logged/sessions_this_week/cheers)",
+    Object.keys(pub.data).every((k) => ["streak_weeks", "level", "sessions_logged", "sessions_this_week", "cheers"].includes(k)) &&
     !JSON.stringify(pub.data).includes(uid));
   const unknownShare = await json("GET", "/api/share/not-a-real-token-1234");
   ok("#share public GET for an unknown token is 404", unknownShare.status === 404);
@@ -523,7 +523,7 @@ try {
   ok("#cheer POST increments again (server-side; client guards casual double-taps)", cheer2.data.cheers === 2);
   const card2 = await json("GET", `/api/share/${cheerTok}`);
   ok("#cheer the public card reflects the tally", card2.data.cheers === 2);
-  ok("#cheer the card still leaks NO PII with cheers added", Object.keys(card2.data).every((k) => ["streak_weeks", "level", "sessions_logged", "cheers"].includes(k)) && !JSON.stringify(card2.data).includes(uid));
+  ok("#cheer the card still leaks NO PII with cheers added", Object.keys(card2.data).every((k) => ["streak_weeks", "level", "sessions_logged", "sessions_this_week", "cheers"].includes(k)) && !JSON.stringify(card2.data).includes(uid));
   const cheerUnknown = await json("POST", "/api/share/not-a-real-token/cheer");
   ok("#cheer on an unknown/revoked token is 404 (no phantom rows)", cheerUnknown.status === 404);
   const cheerRevoked = await json("POST", `/api/share/${share1.data.share_id}/cheer`);
@@ -580,6 +580,7 @@ try {
   const list = await (await app.request("/api/following", { headers: { "X-HB-User": followerU } })).json();
   ok("#following GET returns the partner's PUBLIC card only (streak/level/cheers, no user_id)",
     list.partners.length === 1 && list.partners[0].active === true && typeof list.partners[0].streak_weeks === "number" && list.partners[0].cheers === 1 && !JSON.stringify(list.partners[0]).includes(partnerU));
+  ok("#following GET carries sessions_this_week for the weekly race (#10 social)", typeof list.partners[0].sessions_this_week === "number");
   await json("POST", "/api/share/revoke", { user_id: partnerU });
   const partnerGone = await (await app.request("/api/following", { headers: { "X-HB-User": followerU } })).json();
   ok("#following a revoked partner shows inactive (prunable), not vanished", partnerGone.partners.length === 1 && partnerGone.partners[0].active === false);

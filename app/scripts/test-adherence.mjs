@@ -66,12 +66,13 @@ ok("streak-freeze: the in-progress current week is never offered as protectable"
 ok("streak-freeze: adherenceReport surfaces the freeze wallet", adherenceReport({ streak_freezes: [] }, eight, "2026-02-25").streak_freeze.earned_total === 2);
 
 // --- publicShareCard (#10 social): a hard PII boundary — allowlist ONLY. A user
-// object stuffed with PII must yield exactly three non-identifying aggregate keys.
+// object stuffed with PII must yield exactly four non-identifying aggregate keys.
 const pii = { email: "a@b.com", user_id: "secret-uuid", profile: { sex: "male", bodyweight: 90 }, paused: null, streak_freezes: [] };
 const card = publicShareCard(pii, eight, "2026-02-25");
-ok("publicShareCard exposes EXACTLY streak_weeks/level/sessions_logged", JSON.stringify(Object.keys(card).sort()) === JSON.stringify(["level", "sessions_logged", "streak_weeks"]));
+ok("publicShareCard exposes EXACTLY streak_weeks/level/sessions_logged/sessions_this_week", JSON.stringify(Object.keys(card).sort()) === JSON.stringify(["level", "sessions_logged", "sessions_this_week", "streak_weeks"]));
 ok("publicShareCard leaks no email/user_id/profile anywhere in its output", !JSON.stringify(card).includes("secret-uuid") && !JSON.stringify(card).includes("a@b.com"));
 ok("publicShareCard reports real aggregate values", card.sessions_logged === eight.length && card.level >= 1);
+ok("publicShareCard sessions_this_week matches weeklySummary for the same window", card.sessions_this_week === weeklySummary(eight, "2026-02-25").sessions);
 
 // XP + level: 3 sessions × (100 + 3 hard sets ×5) = 3×115 = 345 -> level 1
 const xl = xpAndLevel(three);

@@ -145,16 +145,16 @@ infra, the one genuinely large build left here).
    0.25–0.5%/wk rate heuristic (Iraki 2019), both dual-verified. **`sleep` done (Wave 95)** — was
    2 citations; grounded the headline "7–9 h" claim (Hirshkowitz 2015 NSF consensus) and added the
    missing direct sleep→muscle mechanism (Saner 2020, myofibrillar protein synthesis). Registry now
-   110. **`weak-point-prioritization` done** (PR #184, pre-dates this reassessment) — its regional-
-   hypertrophy claim now carries 4 citations (Varovic 2025, Attarieh 2025, Larsen 2026, Maeo 2023).
-   **Reassessed this iteration:** `breaking-advanced-plateaus` and `long-term-and-annual-planning`
-   are Grade C/D **by design** (planning frameworks/heuristics no trial has directly tested — per
-   STYLE.md, honest grading beats force-citing a claim that isn't actually studied). The
-   getting-started pillar is almost entirely practical/logistics content with no gradeable claims;
-   its two exceptions (`what-actually-matters.md`, `starting-out-as-a-woman.md`) are already
-   citation-coverage-ALLOWLISTED by-reference synthesis. **No further concrete target found** —
-   this item is effectively done; the "deeper per-claim proximity" note below stays aspirational
-   until a real undercited-but-citable claim turns up.
+   119 (Wave 122 EAAs + Wave 123 neck). Reassessed (Wave 123 + cloud-loop cross-check): the
+   remaining "undercited" pages are largely NOT genuine gaps — `weak-point-prioritization` now
+   carries 4 citations (Varovic 2025, Attarieh 2025, Larsen 2026, Maeo 2023; PR #184);
+   `breaking-advanced-plateaus` (all Grade C/D) and `long-term-and-annual-planning` (all Grade D)
+   are honest synthesis/practice pages by design, densely cross-linked to their evidence pillars —
+   citing them would be manufacturing, not grounding. Genuinely thin remaining: the getting-started
+   pillar (much of it is Grade C/D practical guidance, so lower-priority than the raw zero-citation
+   count implied; its two graded exceptions, `what-actually-matters.md` and
+   `starting-out-as-a-woman.md`, are already citation-coverage-ALLOWLISTED by-reference synthesis).
+   **Tier-2 #6 is effectively done** — no further concrete target found without a fresh audit.
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the guides into region-by-region
    authoritative treatments, feeding the app's exercise engine. *STARTED:* **`back.md` done
    (Wave 93)** — the exemplar: 5 regions (lats/width, mid-back thickness, upper traps, rear delts,
@@ -163,7 +163,11 @@ infra, the one genuinely large build left here).
    summary, and an honest regional-hypertrophy nuance (Varovic 2025). **Reassessed (Wave 95):**
    `chest` (568w, 4 cites), `shoulders` (591w, 3 cites), and `legs` (740w, direct Maeo evidence)
    are already decent region-by-region treatments — back.md was the outlier, so this item is lower
-   priority than the audit implied. Thinnest remaining if revisited: `core` (480w), `neck` (489w).
+   priority than the audit implied. Reassessed (Wave 123): `core` is now a full region-by-region
+   treatment (858w, 3 regions + ranked picks + 3 cites) and `neck` (522w) is appropriately concise
+   for a niche/optional muscle and was grounded this wave (collins-2014 concussion association +
+   hrysomallis-2016 review, honestly caveated). **No muscle guide is a genuine depth gap anymore** —
+   don't rebuild these unless a specific claim is wrong or a real audience need appears.
 8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
    muscle+bone through the transition; Zhao 2025 BMD meta + Radaelli 2025 muscle; HRT framed as a
    medical decision). **Pregnancy & Postpartum Training shipped (Wave 91)** — the honest
@@ -177,13 +181,13 @@ infra, the one genuinely large build left here).
    (`connective-tissue-adaptation.md`). **fiber-type × rep-range: verified NOT a gap (Wave 95)** —
    `01-training-variables/intensity-load-and-rep-ranges.md` already covers rep ranges and fiber
    type. No obvious breadth gaps remain; propose new ones only against a real audience need.
-   Supplement data: **vitamin D + omega-3 added (Wave 90)**, **EAAs added (Wave 122)**, and the
-   popular debunks (glutamine, ashwagandha, ZMA, tart cherry) are also already in
-   (`data/supplements/`, cited and woven into `supplements.md`'s Evidence section) — all honestly
-   graded (vitamin D fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect
-   in healthy adults per Therdyothin 2025; EAAs genuinely raise MPS but are redundant with adequate
-   whole protein; the debunks show no effect beyond a real deficiency). **Supplement breadth item
-   now fully covered** — no more gaps identified without a real audience need surfacing one.
+   Supplement data: **vitamin D + omega-3 added (Wave 90)** — both honestly graded (vitamin D
+   fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect in healthy
+   adults per Therdyothin 2025, a health supplement not a muscle-builder). **Supplement breadth now
+   CLOSED (Wave 123 reassessment):** the debunks (glutamine, ashwagandha, ZMA, tart cherry) all
+   shipped since the audit and **EAAs shipped (Wave 122)** — an honest "complete stimulus but
+   redundant with adequate protein" entry (Børsheim 2002 + Church 2020, dual-verified). 15
+   supplement entries now cover the field; don't re-investigate supplements as a gap.
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Waves 98+100):* **Daily Undulating
@@ -192,9 +196,22 @@ infra, the one genuinely large build left here).
    automatically — no question asked — while beginners/intermediates keep the byte-identical linear
    default; `profile.periodization` stays a respected override. Undulates only the COMPOUND band;
    isolations keep their higher-rep near-failure band every day (the KB isolation invariants caught
-   and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). Still to build:
-   BLOCK periodization (accumulation→intensification→peak), a taper/peak phase, contest-prep mode,
-   deeper autoregulation (velocity/RIR-driven). Serves the "win Mr. Olympia" end.
+   and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). **Reassessed
+   (Wave 124) against the KB’s own evidence — a full BLOCK-periodization _hypertrophy_ engine is NOT a
+   genuine gap:** `periodization-and-progression.md` (Moesgaard 2022 meta) states periodization “does not
+   clearly beat sensible non-periodized progression when volume is matched” for hypertrophy, and
+   `long-term-and-annual-planning.md` grades block sequencing Grade D throughout (its value is
+   _organization/adherence_, not extra stimulus). Building a macro-emphasis engine
+   (accumulation→intensification→peak shifts across mesocycles) for a bodybuilder would assert a benefit
+   the KB refutes — the Varovic lesson at the ENGINE level — and the app ALREADY ships the evidence-aligned
+   pieces: the within-mesocycle build→peak→deload wave (`blockPhase`), block-boundary volume auto-tune,
+   recovery-gated volume (`deriveVolumeAdjust` context), undulating-for-advanced, and exercise rotation.
+   The genuinely-remaining elite work is narrower, evidence-supported, but INPUT-GATED (a larger feature,
+   not a clean first slice): a **taper/peak toward a goal date** (tapering has real strength-EXPRESSION
+   evidence, distinct from hypertrophy) and a **contest-prep mode** — both need a new “goal/meet/show
+   date” onboarding input + a peaking protocol; deeper velocity-driven autoregulation needs hardware the
+   app can’t collect. So this item serves the strength/peaking/contest end, NOT general hypertrophy —
+   and only once a goal-date input exists.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
@@ -233,23 +250,40 @@ infra, the one genuinely large build left here).
     likely infeasible headless). Still to build (needs deeper infra): challenges; wiring the verified
     encryption into the push sweep + a SW that reads the payload so a cheer/partner/nudge event can
     reach a device NOT currently in the app (the current push is empty-payload, so it can't say
-    "someone nudged you" until that layer is wired). **Wiring shipped (Cloud loop wave):** `push.mjs`'s
-    new `sendPush` builds an RFC 8291-encrypted body via `encryptPushPayload` and POSTs it
-    (`Content-Encoding: aes128gcm`) alongside the existing VAPID auth; `runPushSweep` checks each
-    subscriber's `profile.partner_nudge` on every hourly tick (not gated to their one local reminder
-    hour — a social nudge is a discrete event, not a daily cadence) and sends a content-bearing
-    "your training partner nudged you" push, stamping a NEW `nudge_pushed_at` seen-once marker
-    (deliberately separate from the in-app `nudge_seen_at` `/api/adherence` already uses, since a
-    push must reach a device that never reopens the app) so the same nudge never re-fires.
-    `sw.js`'s `push` handler now reads `e.data.json()` when present (the browser decrypts before the
-    SW ever sees it — no client-side crypto needed) and falls back to the old static reminder copy
-    when absent, so the empty-payload daily reminder is untouched. Verified with a real ECDH+HKDF+
-    AES-GCM round-trip in tests (encrypt via `sendPush`, decrypt with the fake subscriber's own
-    keys, assert the exact JSON survives) plus sweep-level tests for dedup/re-fire/pause-gating.
-    Cheers aren't wired the same way yet (no natural single-event marker like the nudge's `at`
-    timestamp — would need a per-cheer-count high-water-mark design); that and challenges remain.
-    The live-push-service-send-201 check (needs a real browser subscription) stays the last
-    production-readiness gate, unchanged from Wave 120 — infeasible to verify headless.
+    "someone nudged you" until that layer is wired). **Wiring shipped (Cloud loop wave, PR #202):**
+    `push.mjs`'s new `sendPush` builds an RFC 8291-encrypted body via `encryptPushPayload` and
+    POSTs it (`Content-Encoding: aes128gcm`) alongside the existing VAPID auth; `runPushSweep`
+    checks each subscriber's `profile.partner_nudge` on every hourly tick (not gated to their one
+    local reminder hour — a social nudge is a discrete event, not a daily cadence) and sends a
+    content-bearing "your training partner nudged you" push, stamping a NEW `nudge_pushed_at`
+    seen-once marker (deliberately separate from the in-app `nudge_seen_at` `/api/adherence`
+    already uses, since a push must reach a device that never reopens the app) so the same nudge
+    never re-fires. `sw.js`'s `push` handler now reads `e.data.json()` when present (the browser
+    decrypts before the SW ever sees it — no client-side crypto needed) and falls back to the old
+    static reminder copy when absent, so the empty-payload daily reminder is untouched. Verified
+    with a real ECDH+HKDF+AES-GCM round-trip in tests (encrypt via `sendPush`, decrypt with the
+    fake subscriber's own keys, assert the exact JSON survives) plus sweep-level tests for
+    dedup/re-fire/pause-gating. Cheers aren't wired the same way yet (no natural single-event
+    marker like the nudge's `at` timestamp — would need a per-cheer-count high-water-mark design);
+    that and challenges remain. The live-push-service-send-201 check (needs a real browser
+    subscription) stays the last production-readiness gate, unchanged from Wave 120 — infeasible
+    to verify headless. **Weekly race shipped (Wave 125):** the all-time streak/level leaderboard
+    (Wave 116) never resets, so a lapsed partner still outranks someone training hard *this* week —
+    no short-horizon urgency. `publicShareCard` (the same non-PII allowlist `GET /api/share/:token`
+    and `GET /api/following` already return) now also carries `sessions_this_week` (reusing
+    `weeklySummary`, the same window `/api/adherence` shows you for yourself); a new pure
+    `weeklyRaceStatus(youThisWeek, partnerThisWeek)` (`session-core.mjs`, unit-tested alongside
+    `rankPartners`) compares you to each partner and the Coach tab's partner row now shows "🏁
+    you're ahead this week" / "they're ahead this week" / "tied this week" next to the existing
+    streak/level line — resets naturally every week with no new persisted state, no propose/accept
+    flow, no push wiring (in-app only, same shipped-alone precedent as the cheer counter and the
+    mini-leaderboard). Deliberately NOT the full "challenges" item (a user-initiated, time-boxed
+    1v1 competition with its own accept/decline state machine) — that remains a larger,
+    still-unclaimed follow-on; this slice is the smallest coherent step that turns the static
+    leaderboard into something with real weekly stakes. Both PII-allowlist tests
+    (`test-adherence.mjs`, `test-routes.mjs`) updated to the new 4-key card shape; a route test
+    locks in that `sessions_this_week` actually flows through `GET /api/following`, not just the
+    public share endpoint.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

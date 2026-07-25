@@ -26,6 +26,8 @@
 
 There is little neck-*specific* hypertrophy research, so guidance rests on **applying the general hypertrophy principles** — progressive tension and volume grow the neck as they do any muscle[^schoenfeld-2017-volume-dose-response] — combined with **conservative loading practice** for the cervical spine (light load, slow tempo, pain-free range), which is a safety convention rather than a directly-tested hypertrophy protocol. **[Grade C]** The decision to train the neck at all is a goal/practice choice, not an evidence-based necessity for general muscle development. **[Grade D]**
 
+**The collision-sport injury-resilience rationale has real but limited support.** In a prospective study of high-school athletes, greater overall neck strength was associated with lower concussion risk — each additional pound of neck strength corresponded to roughly **5% lower odds of concussion** (OR 0.95)[^collins-2014-neck-concussion]. **[Grade C]** That is an observational *association*, not proof that training the neck prevents concussions: a review of neck strength and injury found that training reliably builds neck strength, but the direct evidence that it *reduces* injury is limited — with one signal that isometric neck work lowered match-related cervical-spine injuries[^hrysomallis-2016-neck-review]. So neck strengthening is a reasonable, low-risk hedge for athletes in collision sports, but its protective effect shouldn't be oversold. **[Grade C]**
+
 ## Key Uncertainties & Nuance
 - **Neck hypertrophy dose-response is largely unstudied** — the low-volume, light-load guidance is precautionary and practice-based.
 - **Injury risk** makes aggressive neck training a poor trade for most people; the downside of overloading the cervical spine outweighs the cosmetic upside.
@@ -38,3 +40,5 @@ There is little neck-*specific* hypertrophy research, so guidance rests on **app
 
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.
+[^collins-2014-neck-concussion]: Collins CL, Fletcher EN, Fields SK, et al. (2014). *Neck strength: a protective factor reducing risk for concussion in high school sports.* The Journal of Primary Prevention, 35(5), 309–319. DOI: [10.1007/s10935-014-0355-2](https://doi.org/10.1007/s10935-014-0355-2). PMID: 24930131.
+[^hrysomallis-2016-neck-review]: Hrysomallis C (2016). *Neck Muscular Strength, Training, Performance and Sport Injury Risk: A Review.* Sports Medicine, 46(8), 1111–1124. DOI: [10.1007/s40279-016-0490-4](https://doi.org/10.1007/s40279-016-0490-4). PMID: 26861960.
