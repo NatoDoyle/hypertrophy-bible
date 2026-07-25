@@ -188,6 +188,67 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
   } finally { try { rmSync(nudgePath); } catch {} }
 }
 
+// --- runPushSweep: a pending challenge INVITE (the opponent's still-pending half)
+// sends an ENCRYPTED, content-bearing push, fires regardless of the user's local
+// reminder hour, never repeats once delivered, and never fires for the CHALLENGER's
+// own half or a non-pending status. ---
+{
+  const chalPath = join(tmpdir(), `hb-push-challenge-test-${process.pid}.json`);
+  const chalStore = createFileStore(chalPath);
+  try {
+    const ua = await fakeUaSubscription();
+    const week = isoWeekKey(new Date(NOW).toISOString());
+    await chalStore.saveUser("opponent", { profile: { tz_offset_min: -300, challenge: { id: "c1", role: "opponent", status: "pending", week, created_at: NOW } } }); // 22:00 UTC local hour, NOT their push hour at NOW
+    await chalStore.savePushSubscription("opponent", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/challenge", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let sentBody = null;
+    const captureFetch = async (url, opts) => { sentBody = opts.body; return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("a pending challenge invite sends even OUTSIDE the user's local reminder hour", r1.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the delivered push is the challenge copy, not the empty reminder", decrypted.tag === "hb-challenge" && /challenged you/.test(decrypted.body));
+    const opponent = await chalStore.getUser("opponent");
+    ok("challenge_pushed_at is stamped with the challenge's own created_at (seen-once marker)", opponent.profile.challenge_pushed_at === NOW);
+
+    sentBody = "unset";
+    const r2 = await runPushSweep(chalStore, vapid, NOW + 3600e3, captureFetch);
+    ok("the SAME challenge invite is never pushed twice", r2.sent === 0 && sentBody === "unset");
+
+    // A fresh challenge (later created_at) fires again — proves it's keyed to the event.
+    await chalStore.updateUser("opponent", (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, id: "c2", created_at: NOW + 7200e3 } }; return u; });
+    const r3 = await runPushSweep(chalStore, vapid, NOW + 7200e3, captureFetch);
+    ok("a NEW challenge event fires its own push", r3.sent === 1 && sentBody instanceof Uint8Array);
+
+    // The CHALLENGER's own half (role: "challenger") never pushes — they proposed it, nothing to announce.
+    await chalStore.saveUser("challenger", { profile: { challenge: { id: "c3", role: "challenger", status: "pending", week, created_at: NOW } } });
+    await chalStore.savePushSubscription("challenger", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/challenger", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r4 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("the challenger's own pending half is NOT pushed", r4.sent === 0 && sentBody === "unset");
+
+    // An ACTIVE (already-accepted) challenge is not a new invite — nothing to push.
+    await chalStore.saveUser("active-opp", { profile: { challenge: { id: "c4", role: "opponent", status: "active", week, created_at: NOW } } });
+    await chalStore.savePushSubscription("active-opp", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/active-opp", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r5 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("an already-active challenge is NOT pushed as a new invite", r5.sent === 0 && sentBody === "unset");
+
+    // A challenge from a STALE (already-ended) week never pushes, even if never read via GET yet.
+    const staleWeek = isoWeekKey(new Date(NOW - 20 * 86400000).toISOString());
+    await chalStore.saveUser("stale-opp", { profile: { challenge: { id: "c5", role: "opponent", status: "pending", week: staleWeek, created_at: NOW } } });
+    await chalStore.savePushSubscription("stale-opp", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/stale-opp", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r6 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("a challenge whose week has already ended is NOT pushed", r6.sent === 0 && sentBody === "unset");
+
+    // Paused/reminders_off users never get the challenge push either.
+    await chalStore.saveUser("opponent-paused", { profile: { challenge: { id: "c6", role: "opponent", status: "pending", week, created_at: NOW } }, paused: { from: daysAgo(1) } });
+    await chalStore.savePushSubscription("opponent-paused", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/opponent-paused", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r7 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("a paused user with a pending challenge invite is NOT pushed", r7.sent === 0 && sentBody === "unset");
+  } finally { try { rmSync(chalPath); } catch {} }
+}
+
 // --- sweep against the real file store ---
 const path = join(tmpdir(), `hb-push-test-${process.pid}.json`);
 const store = createFileStore(path);

@@ -171,6 +171,31 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         }
       }
 
+      // A challenge PROPOSAL (Wave 126) is a discrete social event exactly like the
+      // partner nudge above — the OPPONENT should hear about it on the next hourly
+      // tick, not wait for their one local reminder hour, since a challenge only
+      // has until the end of ITS week to be answered. `challenge.created_at`
+      // (already stamped at propose, Date.now()) doubles as the high-water mark
+      // against a new `challenge_pushed_at` seen-once marker — same shape as
+      // nudge_pushed_at, no new field needed on the challenge object itself. Only
+      // the opponent's own still-PENDING invite pushes (an active/declined/
+      // completed challenge, or the challenger's own half, has nothing new to
+      // announce); the week check guards the rare case of a propose landing right
+      // at week rollover with a delayed sweep, mirroring isChallengeOpen's own
+      // freshness rule in app.mjs.
+      const pendingChallenge = user.profile?.challenge;
+      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
+          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)
+          && isAllowedPushEndpoint(sub.endpoint) && sub.p256dh && sub.auth) {
+        const res = await sendPush(sub, vapid, { title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" }, fetchFn);
+        if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
+        if (res.ok) {
+          sent++;
+          await store.updateUser(sub.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge_pushed_at: pendingChallenge.created_at }; return u; });
+        }
+      }
+
       // Timezone-aware timing: only nudge in this user's one eligible hour/day, so an
       // hourly sweep never lands at 3am and never fires 24×. (Gate before any further
       // work — a user who isn't in their window this hour is simply skipped.)
