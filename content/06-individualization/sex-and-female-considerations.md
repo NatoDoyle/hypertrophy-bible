@@ -27,6 +27,7 @@
 - **Menstrual-cycle research is young and heterogeneous** — the honest answer is "effects are small/uncertain; individualize."
 - **Hormonal contraceptives, menopause, and pregnancy** add considerations beyond this general guidance and may warrant tailored/medical advice. Menopause has its own page: [Menopause & Training](menopause-and-training.md); pregnancy and the postpartum return are covered in [Pregnancy & Postpartum Training](pregnancy-and-postpartum-training.md).
 - **Female-specific hypertrophy data is still underrepresented** in the literature relative to males.
+- **New and want a woman-focused starting point?** See [Starting out as a woman](../09-getting-started/starting-out-as-a-woman.md).
 
 ## Backing Data
 None.

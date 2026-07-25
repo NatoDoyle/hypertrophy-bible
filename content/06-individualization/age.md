@@ -24,6 +24,7 @@
 - **Anabolic resistance** means older muscle responds a bit less to a given protein dose — higher per-meal protein helps compensate.
 - **Youth hypertrophy is hormone-limited** pre-puberty; strength/skill gains are the main early adaptations.
 - **Health screening** is prudent for older or previously-sedentary beginners — this Bible is not medical advice.
+- **Brand new to lifting?** Gentle, beginner-first on-ramps: [Starting later in life](../09-getting-started/starting-later-in-life.md) and [Starting young — teens & parents](../09-getting-started/starting-young-teens-and-parents.md).
 
 ## Backing Data
 None.

@@ -33,6 +33,7 @@
 - **Periodization may matter more for strength and for advanced lifters** than for hypertrophy in general trainees; the "wash" is a hypertrophy-at-matched-volume statement.
 - **Autoregulation can be over-applied** — beginners estimate RIR poorly, so simple double progression is often better for them.
 - **Progression can't be infinite** — when load/reps stall, progress volume or change the exercise (see [Variation & Specialization](variation-and-specialization.md)).
+- **Zooming out to months and years** — once the weekly wave repeats, [Long-term & annual planning](long-term-and-annual-planning.md) covers sequencing blocks, gaining/cutting phases, and deloads across a training year.
 
 ## Backing Data
 - [`data/progressions/`](../../data/progressions/) — progression rule definitions (double-progression, RIR autoregulation)

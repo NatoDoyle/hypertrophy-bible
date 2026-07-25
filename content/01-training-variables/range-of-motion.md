@@ -39,6 +39,7 @@ Both positions can grow muscle; the lengthened-biased option tends to be the hig
 - **"Full ROM" must be an *achievable, safe* ROM.** For a given person and joint, the usable full range may be less than textbook; force ROM against pain and you trade a small growth edge for injury risk.
 - **Loaded stretch, not passive stretch.** The benefit is about training *under load* at long lengths, which is different from stretching for flexibility.
 - **Shortened-position work still has a place.** Peak-contraction exercises aren't useless — they're a complement, not the foundation.
+- **Full-range work loads tendons, not just muscle.** Training at long muscle lengths stresses connective tissue, which adapts more slowly than muscle — see [Connective-tissue adaptation](../00-foundations/connective-tissue-adaptation.md).
 
 ## Backing Data
 - Exercise `resistance_profile`, `rom_notes`, and `lengthened_bias`: [`data/exercises/`](../../data/exercises/)
