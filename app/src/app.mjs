@@ -734,16 +734,29 @@ export function createApp(store, config = {}) {
       // ended). An opponent's share vanishing mid-week, or an invite nobody ever
       // answered (declined), has no real score to record — don't manufacture one.
       const recordResult = nextStatus === "completed" && opponentId;
-      if (recordResult) {
-        const result = my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie";
-        newHistory = [{ week: ch.week, result, my_count, opponent_count }, ...history].slice(0, CHALLENGE_HISTORY_CAP);
-      }
-      await store.updateUser(id, (u) => {
+      const proposedHistory = recordResult
+        ? [{ week: ch.week, result: my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie", my_count, opponent_count }, ...history].slice(0, CHALLENGE_HISTORY_CAP)
+        : newHistory;
+      const updated = await store.updateUser(id, (u) => {
         if (u.profile?.challenge?.id !== ch.id) return u;
-        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus }, ...(recordResult ? { challenge_history: newHistory } : {}) };
+        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus }, ...(recordResult ? { challenge_history: proposedHistory } : {}) };
         return u;
       });
-      ch.status = nextStatus;
+      // Report exactly what got PERSISTED, not the optimistic local computation —
+      // if this user's challenge slot was replaced mid-request (e.g. raced by a
+      // fresh propose landing between the read above and this write; isChallengeOpen
+      // already treats a week-over challenge as free, so this is reachable, not
+      // contrived), the guard above no-ops the write and the response must not
+      // fabricate a win/loss the store never actually recorded (lesson 10: never
+      // render a derived status/record that contradicts what's actually stored).
+      // `updated` is null if the user row vanished between this handler's initial
+      // read and this write (e.g. a magic-link mergeUser deleting the anonymous
+      // fromId, racing an in-flight GET) — treat that as "not written" (wrote=false)
+      // rather than dereferencing null, so a deleted-mid-request user gets the
+      // un-fabricated current state, never a 500.
+      const wrote = updated?.profile?.challenge?.id === ch.id;
+      newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
+      if (wrote) ch.status = nextStatus;
     }
     if (!opponentId) return c.json({ challenge: { ...ch, opponent_active: false }, history: newHistory });
     return c.json({
