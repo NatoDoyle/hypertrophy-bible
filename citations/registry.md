@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**114** verified references.
+**115** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -823,6 +823,14 @@ Varović D & et al. (2025). Does Muscle Length Influence Regional Hypertrophy? A
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1055/a-2615-4935](https://doi.org/10.1055/a-2615-4935) · PMID: [40570881](https://pubmed.ncbi.nlm.nih.gov/40570881/)
+
+### vispute-2011-ab-exercise-fat
+Vispute SS et al. (2011). The effect of abdominal exercise on abdominal fat.
+
+*Journal of Strength and Conditioning Research*, 25(9), 2559-2564.
+
+- Type: RCT · Population: untrained
+- DOI: [10.1519/JSC.0b013e3181fb4a46](https://doi.org/10.1519/JSC.0b013e3181fb4a46) · PMID: [21804427](https://pubmed.ncbi.nlm.nih.gov/21804427/)
 
 ### vispute-2011-abdominal-fat
 Vispute SS & et al. (2011). The effect of abdominal exercise on abdominal fat.

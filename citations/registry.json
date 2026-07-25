@@ -2182,6 +2182,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33795919/"
+    },
+    {
+      "key": "vispute-2011-ab-exercise-fat",
+      "authors": [
+        "Vispute SS",
+        "Smith JD",
+        "LeCheminant JD",
+        "Hurley KS"
+      ],
+      "year": 2011,
+      "title": "The effect of abdominal exercise on abdominal fat.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "25",
+      "issue": "9",
+      "pages": "2559-2564",
+      "doi": "10.1519/JSC.0b013e3181fb4a46",
+      "pmid": "21804427",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/21804427/"
     }
   ]
 }
