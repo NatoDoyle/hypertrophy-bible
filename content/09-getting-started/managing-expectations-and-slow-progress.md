@@ -57,4 +57,5 @@ For a full method of reading these signals without fooling yourself, see [assess
 - [Enhanced vs natural](../06-individualization/enhanced-vs-natural.md) — why enhanced physiques are the wrong yardstick for a natural lifter.
 - [Stimulus, fatigue, and adaptation](../00-foundations/stimulus-fatigue-adaptation.md) — why progress is non-linear and happens during recovery.
 - [Building the training habit](building-the-training-habit.md) — how to keep showing up while results are still slow.
+- [What actually matters](what-actually-matters.md) — the priority order of what builds muscle, so slow progress doesn't push you into program-hopping or fussing over rounding-error details instead of the big rocks.
 - [Glossary](glossary.md) — plain definitions for any term you meet.

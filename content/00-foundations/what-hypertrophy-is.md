@@ -30,6 +30,7 @@ What this means practically:
 - **Sarcoplasmic hypertrophy** — whether "non-functional" fluid growth is a real, trainable, distinct adaptation (and whether certain rep ranges bias it) is genuinely unresolved. Don't program around it.
 - **Early size measurements overstate growth** because of edema from muscle damage — a key reason the muscle-damage-equals-growth idea is misleading (see [Mechanisms](mechanisms.md)).
 - **Regional growth is non-uniform.** A muscle can grow more in some regions than others depending on exercise selection, so whole-muscle averages hide detail.
+- **How confident to be in any single claim varies.** The noisy measurement tools above are one reason this Bible grades each claim A–D rather than stating everything as fact; see [Reading the Evidence](reading-the-evidence.md) for how to weigh grades, effect sizes, and replication before you overhaul your training.
 
 ## Backing Data
 None (conceptual). Per-muscle structure and training targets live in [Muscle Guides](../02-muscle-guides/index.md) and [`data/muscles/`](../../data/muscles/).
