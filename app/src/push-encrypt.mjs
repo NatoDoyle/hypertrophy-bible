@@ -4,10 +4,13 @@
 // body + headers; wiring it into the push sweep + a SW that reads the payload is a
 // SEPARATE later step. Nothing here logs keys or plaintext.
 //
-// Verification: test-push-encrypt.mjs round-trips (encrypt to a UA public key, then
-// decrypt with that UA's private key) — which exercises the full ECDH, HKDF, and
-// AES-GCM path; any mismatch in the RFC info-strings, salt, or byte-framing fails it.
-// The constants below are per the RFCs (verify against RFC 8291 §3.4 / RFC 8188 §2.1).
+// Verification: test-push-encrypt.mjs (a) round-trips (encrypt to a UA public key,
+// then decrypt with that UA's private key) — exercising the full ECDH/HKDF/AES-GCM
+// path — AND (b) runs a byte-exact KNOWN-ANSWER TEST against RFC 8291 §5's published
+// "watermelon" example: injecting the RFC's fixed AS keypair + salt reproduces the
+// RFC's exact aes128gcm body, which proves the info-strings, 0x02 delimiter, rs=4096,
+// and header framing below are RFC-compliant (not merely self-consistent). The only
+// remaining check is a live push-service send returning 201 before production wiring.
 
 const te = new TextEncoder();
 const concat = (...arrs) => { const n = arrs.reduce((s, a) => s + a.length, 0); const out = new Uint8Array(n); let o = 0; for (const a of arrs) { out.set(a, o); o += a.length; } return out; };

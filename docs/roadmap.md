@@ -205,9 +205,16 @@ infra, the one genuinely large build left here).
     bug caught before shipping: the notification is a byproduct of any `/api/adherence` read, and
     Today calls it first — a banner only in `renderCoach()` would have been silently consumed
     before the user ever saw it). Real-browser-verified end to end (mutual detection, nudge gating,
-    seen-once). Still to build (needs deeper infra): challenges, and payload-encrypted (RFC 8291)
-    push so a cheer/partner/nudge event can reach a device NOT currently in the app (the current
-    push is empty-payload, so it can't say "someone nudged you" without the crypto layer).
+    seen-once). **Payload-encrypted (RFC 8291) push — crypto core landed + RFC-verified (Waves
+    118, 120):** `app/src/push-encrypt.mjs` is a pure WebCrypto `encryptPushPayload` (aes128gcm,
+    ECDH→HKDF→AES-128-GCM) that Wave 118 proved by round-trip and Wave 120 proved RFC-compliant
+    via a byte-exact known-answer test against RFC 8291 §5's published "watermelon" example (vectors
+    cross-checked against rfc-editor.org + datatracker). NOT yet wired into the sweep/SW — the last
+    gate before wiring is a live push-service send returning 201 (needs a real browser subscription,
+    likely infeasible headless). Still to build (needs deeper infra): challenges; wiring the verified
+    encryption into the push sweep + a SW that reads the payload so a cheer/partner/nudge event can
+    reach a device NOT currently in the app (the current push is empty-payload, so it can't say
+    "someone nudged you" until that layer is wired).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
