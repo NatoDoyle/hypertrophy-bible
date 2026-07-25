@@ -21,11 +21,13 @@ MAIL_FROM = "The Hypertrophy Bible <hello@hypertrophybible.com>"
 # private half is a secret: npx wrangler secret put VAPID_PRIVATE_JWK)
 VAPID_PUBLIC_KEY = "BEZ6ZmrGhbwa6F_luGpHIELORw6Xj58yoB7A7dquHBuiiuC7Xje1XXOugI6s6cz-h1SXdd8QKsD2GLXQqLFzffE"
 
-# Daily comeback-nudge sweep (worker.mjs `scheduled`): 16:00 UTC lands late
-# morning in the Americas / evening in Europe — when a "train today?" note is
-# actionable. At most 2 emails per lapse per user; pause/opt-out respected.
+# Hourly sweep (worker.mjs `scheduled`). PUSH is timezone-aware: each user is
+# nudged at ~17:00 THEIR local time (offset captured at subscribe), so the note is
+# actionable everywhere instead of firing at 3am for UTC+8..+12. The comeback EMAIL
+# sweep is gated in `scheduled` to the 16:00-UTC hour only, so its once-daily
+# cadence is unchanged. At most 2 emails per lapse per user; pause/opt-out respected.
 [triggers]
-crons = ["0 16 * * *"]
+crons = ["0 * * * *"]
 
 # Frontend: everything in ./public is served straight from Cloudflare's edge.
 # The Worker (main) only runs for routes the assets don't match — i.e. /api/*.

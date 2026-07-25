@@ -393,6 +393,12 @@ export function createApp(store, config = {}) {
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!b.subscription?.endpoint || !isAllowedPushEndpoint(b.subscription.endpoint)) return c.json({ error: "bad-subscription" }, 400);
     await store.savePushSubscription(b.user_id, b.subscription);
+    // Capture the device's UTC offset so the hourly push sweep can nudge at a sensible
+    // LOCAL hour instead of 16:00 UTC for everyone. Stored on the profile (a JSON blob,
+    // so no schema change); validated to the real ±14h timezone range.
+    if (Number.isFinite(b.tz_offset_min) && Math.abs(b.tz_offset_min) <= 840) {
+      await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), tz_offset_min: b.tz_offset_min }; return u; });
+    }
     return c.json({ subscribed: true });
   });
   app.post("/api/push/unsubscribe", async (c) => {

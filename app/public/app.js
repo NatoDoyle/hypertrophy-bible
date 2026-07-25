@@ -1806,7 +1806,10 @@ async function renderCoach() {
       const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/"));
       const appKey = new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON() }) });
+      // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate) — lets the
+      // server nudge at ~5pm THIS device's local time instead of 16:00 UTC for everyone.
+      const tz_offset_min = -new Date().getTimezoneOffset();
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min }) });
       localStorage.setItem("hb_push", "1");
       say("Device reminders on."); await renderCoach(); $("#pushbtn")?.focus();
     } catch { msg("📴 Couldn't set up device reminders — try again when you're online."); }

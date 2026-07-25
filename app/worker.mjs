@@ -21,16 +21,23 @@ export default {
     });
     return app.fetch(request, env, ctx);
   },
-  // Daily cron ([triggers] in wrangler.toml): comeback emails + device pushes.
+  // Hourly cron ([triggers] in wrangler.toml). The PUSH sweep needs the fine cadence
+  // to nudge each user at their own local hour (timezone-aware). The EMAIL comeback
+  // sweep stays a once-daily 16:00-UTC job — gated here so its behaviour is byte-for-
+  // byte unchanged by the switch to an hourly trigger.
   async scheduled(event, env, ctx) {
+    const now = Date.now();
     const store = createD1Store(env.DB);
-    const send = createComebackSender({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM });
-    ctx.waitUntil(runComebackSweep(store, send, Date.now()).then((r) => console.log("comeback sweep", JSON.stringify(r))));
+    if (new Date(now).getUTCHours() === 16) {
+      const send = createComebackSender({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM });
+      ctx.waitUntil(runComebackSweep(store, send, now).then((r) => console.log("comeback sweep", JSON.stringify(r))));
+    }
     // Push sweep runs only when the keypair is configured (VAPID_PRIVATE_JWK is
-    // a wrangler secret; VAPID_PUBLIC_KEY a var) — absent config is a no-op.
+    // a wrangler secret; VAPID_PUBLIC_KEY a var) — absent config is a no-op. It runs
+    // every hour; runPushSweep gates each user to their one eligible hour internally.
     if (env.VAPID_PRIVATE_JWK && env.VAPID_PUBLIC_KEY) {
       const vapid = { privateJwk: JSON.parse(env.VAPID_PRIVATE_JWK), publicKeyB64u: env.VAPID_PUBLIC_KEY, subject: "mailto:hello@hypertrophybible.com" };
-      ctx.waitUntil(runPushSweep(store, vapid, Date.now()).then((r) => console.log("push sweep", JSON.stringify(r))));
+      ctx.waitUntil(runPushSweep(store, vapid, now).then((r) => console.log("push sweep", JSON.stringify(r))));
     }
   },
 };
