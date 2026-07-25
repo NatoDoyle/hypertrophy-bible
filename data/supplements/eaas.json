@@ -1,0 +1,15 @@
+{
+  "id": "eaas",
+  "name": "EAAs (Essential Amino Acids)",
+  "tier": "insufficient",
+  "summary": "Unlike isolated BCAAs, EAAs supply all nine essential amino acids, so they are a complete stimulus and genuinely raise muscle protein synthesis. But they are the same essentials complete dietary protein already delivers, so they are redundant once you eat enough quality protein.",
+  "effect": "Stimulate muscle protein synthesis effectively (non-essential amino acids aren't needed for the response), but provide no added hypertrophy benefit over adequate complete protein from food or whey.",
+  "dosing": "Not needed as a muscle-building supplement if you meet protein targets (~1.6 g/kg from quality sources). Acute doses of ~6-15 g raise MPS, but a normal protein-containing meal does the same and provides more.",
+  "timing": "N/A for muscle-building; any anabolic role is covered by protein-containing meals around training.",
+  "safety": "Safe at typical doses, but mostly redundant spend for those meeting protein needs. A niche role only where whole-protein feeding is impractical (very low appetite, or older/clinical populations with anabolic resistance).",
+  "evidence_grade": "C",
+  "citations": [
+    "borsheim-2002-eaa-mps",
+    "church-2020-eaa-synthesis"
+  ]
+}
