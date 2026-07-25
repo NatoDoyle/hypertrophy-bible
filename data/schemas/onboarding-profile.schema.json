@@ -51,6 +51,11 @@
     "rir_calibrated": {
       "type": "boolean",
       "description": "Whether the user has demonstrated reliable RIR estimation (gates trust in self-reported effort)."
+    },
+    "goal_event_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Optional target date (meet, show, test) for an intermediate/advanced lifter. Within ~14 days of it, coach.mjs's taperPhase trades volume for freshness instead of running the normal mesocycle wave. null/absent means no goal event set."
     }
   }
 }
