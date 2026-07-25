@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**117** verified references.
+**119** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -119,6 +119,14 @@ Coleman M & et al. (2024). Gaining more from doing less? The effects of a one-we
 
 - Type: RCT · Population: trained
 - DOI: [10.7717/peerj.16777](https://doi.org/10.7717/peerj.16777) · PMID: [38274324](https://pubmed.ncbi.nlm.nih.gov/38274324/)
+
+### collins-2014-neck-concussion
+Collins CL et al. (2014). Neck strength: a protective factor reducing risk for concussion in high school sports.
+
+*The Journal of Primary Prevention*, 35(5), 309-319.
+
+- Type: cohort · Population: mixed
+- DOI: [10.1007/s10935-014-0355-2](https://doi.org/10.1007/s10935-014-0355-2) · PMID: [24930131](https://pubmed.ncbi.nlm.nih.gov/24930131/)
 
 ### craven-2022-sleep-performance
 Craven J & et al. (2022). Effects of Acute Sleep Loss on Physical Performance: A Systematic and Meta-Analytical Review.
@@ -295,6 +303,14 @@ Hirshkowitz M et al. (2015). National Sleep Foundation's sleep time duration rec
 
 - Type: position-stand · Population: mixed
 - DOI: [10.1016/j.sleh.2014.12.010](https://doi.org/10.1016/j.sleh.2014.12.010) · PMID: [29073412](https://pubmed.ncbi.nlm.nih.gov/29073412/)
+
+### hrysomallis-2016-neck-review
+Hrysomallis C (2016). Neck Muscular Strength, Training, Performance and Sport Injury Risk: A Review.
+
+*Sports Medicine*, 46(8), 1111-1124.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1007/s40279-016-0490-4](https://doi.org/10.1007/s40279-016-0490-4) · PMID: [26861960](https://pubmed.ncbi.nlm.nih.gov/26861960/)
 
 ### hubal-2005-responders
 Hubal MJ & et al. (2005). Variability in muscle size and strength gain after unilateral resistance training.

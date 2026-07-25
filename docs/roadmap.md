@@ -137,8 +137,13 @@ infra, the one genuinely large build left here).
    0.25–0.5%/wk rate heuristic (Iraki 2019), both dual-verified. **`sleep` done (Wave 95)** — was
    2 citations; grounded the headline "7–9 h" claim (Hirshkowitz 2015 NSF consensus) and added the
    missing direct sleep→muscle mechanism (Saner 2020, myofibrillar protein synthesis). Registry now
-   110. Remaining undercited targets: `weak-point-prioritization` (0 graded — mostly synthesis),
-   `breaking-advanced-plateaus`, `long-term-and-annual-planning`, and the getting-started pillar.
+   119 (Wave 122 EAAs + Wave 123 neck). Reassessed (Wave 123): the remaining "undercited" pages
+   are largely NOT genuine gaps — `weak-point-prioritization` now carries 4 citations (2 Grade B);
+   `breaking-advanced-plateaus` (all Grade C/D) and `long-term-and-annual-planning` (all Grade D)
+   are honest synthesis/practice pages by design, densely cross-linked to their evidence pillars —
+   citing them would be manufacturing, not grounding. Genuinely thin remaining: the getting-started
+   pillar (much of it is Grade C/D practical guidance, so lower-priority than the raw zero-citation
+   count implied).
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the guides into region-by-region
    authoritative treatments, feeding the app's exercise engine. *STARTED:* **`back.md` done
    (Wave 93)** — the exemplar: 5 regions (lats/width, mid-back thickness, upper traps, rear delts,
@@ -147,7 +152,11 @@ infra, the one genuinely large build left here).
    summary, and an honest regional-hypertrophy nuance (Varovic 2025). **Reassessed (Wave 95):**
    `chest` (568w, 4 cites), `shoulders` (591w, 3 cites), and `legs` (740w, direct Maeo evidence)
    are already decent region-by-region treatments — back.md was the outlier, so this item is lower
-   priority than the audit implied. Thinnest remaining if revisited: `core` (480w), `neck` (489w).
+   priority than the audit implied. Reassessed (Wave 123): `core` is now a full region-by-region
+   treatment (858w, 3 regions + ranked picks + 3 cites) and `neck` (522w) is appropriately concise
+   for a niche/optional muscle and was grounded this wave (collins-2014 concussion association +
+   hrysomallis-2016 review, honestly caveated). **No muscle guide is a genuine depth gap anymore** —
+   don't rebuild these unless a specific claim is wrong or a real audience need appears.
 8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
    muscle+bone through the transition; Zhao 2025 BMD meta + Radaelli 2025 muscle; HRT framed as a
    medical decision). **Pregnancy & Postpartum Training shipped (Wave 91)** — the honest
@@ -163,8 +172,11 @@ infra, the one genuinely large build left here).
    type. No obvious breadth gaps remain; propose new ones only against a real audience need.
    Supplement data: **vitamin D + omega-3 added (Wave 90)** — both honestly graded (vitamin D
    fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect in healthy
-   adults per Therdyothin 2025, a health supplement not a muscle-builder). Still to add: EAAs, and
-   debunks (glutamine, ashwagandha, ZMA, tart cherry).
+   adults per Therdyothin 2025, a health supplement not a muscle-builder). **Supplement breadth now
+   CLOSED (Wave 123 reassessment):** the debunks (glutamine, ashwagandha, ZMA, tart cherry) all
+   shipped since the audit and **EAAs shipped (Wave 122)** — an honest "complete stimulus but
+   redundant with adequate protein" entry (Børsheim 2002 + Church 2020, dual-verified). 15
+   supplement entries now cover the field; don't re-investigate supplements as a gap.
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Waves 98+100):* **Daily Undulating
