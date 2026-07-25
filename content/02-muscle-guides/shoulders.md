@@ -31,6 +31,8 @@ Delt training is a clean application of two principles. First, **regional/indire
 - [`data/muscles/front-delts.json`](../../data/muscles/front-delts.json), [`side-delts.json`](../../data/muscles/side-delts.json), [`rear-delts.json`](../../data/muscles/rear-delts.json)
 - Exercise: [`dumbbell-lateral-raise`](../../data/exercises/dumbbell-lateral-raise.json)
 
+- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
+
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.
 [^kassiano-2023-rom-review]: Kassiano W, et al. (2023). *Which ROMs Lead to Rome? A Systematic Review of the Effects of Range of Motion on Muscle Hypertrophy.* Journal of Strength and Conditioning Research, 37(5), 1135–1144. DOI: [10.1519/JSC.0000000000004415](https://doi.org/10.1519/JSC.0000000000004415). PMID: 36662126.
