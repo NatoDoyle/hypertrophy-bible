@@ -87,7 +87,7 @@ export function createApp(store, config = {}) {
     // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
     // not a real change and must not restart the mesocycle.
     const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
-    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization"];
+    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;

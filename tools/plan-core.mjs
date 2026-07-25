@@ -57,6 +57,29 @@ const REP_SCHEMES = {
 };
 const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 
+// Daily Undulating Periodization (roadmap #9, first slice): an OPT-IN advanced
+// option (profile.periodization === "undulating") that varies the rep/intensity
+// band by TRAINING DAY across the week — the classic heavy/moderate/light rotation
+// — instead of the same band every session. A muscle trained 2-3×/week then gets a
+// genuinely different stimulus each exposure (heavier mechanical-tension work one
+// day, higher-rep metabolic work another), the recognised intermediate+ method the
+// single linear scheme couldn't express. Only applied to the hypertrophy family
+// (whose base band is moderate); left off for strength/fat-loss, whose bands are
+// already goal-specific. Default ("linear"/unset) returns the base scheme unchanged,
+// so a plan generated without opting in is byte-identical to before.
+const UNDULATION_BANDS = {
+  heavy: { compound: ["4-6", "2-3"], isolation: ["6-10", "1-2"], priorityIso: ["8-12", "0-1"], pumpIso: ["10-15", "0-1"] },
+  light: { compound: ["10-15", "1-2"], isolation: ["15-20", "0-1"], priorityIso: ["15-20", "0-1"], pumpIso: ["15-20", "0-1"] },
+};
+const UNDULATION_ORDER = ["heavy", "moderate", "light"]; // moderate = the goal's base scheme
+const undulatesForGoal = (goal) => goal === "hypertrophy" || goal === "recomposition";
+// Pick a session's band from its index in the week; `moderate` falls back to base.
+function sessionRepScheme(baseScheme, undulating, sessionIndex) {
+  if (!undulating) return baseScheme;
+  const band = UNDULATION_ORDER[sessionIndex % UNDULATION_ORDER.length];
+  return band === "moderate" ? baseScheme : UNDULATION_BANDS[band];
+}
+
 // Small muscles whose isolation work runs higher-rep "pump" ranges in practice.
 // This is the KB's own guidance (intensity page: hypertrophy is load-flexible
 // ~5-30 reps near failure; "isolation and machine work often going a bit higher,
@@ -257,6 +280,9 @@ export function generatePlan(profile, kb, opts = {}) {
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
+  // Opt-in daily undulation (roadmap #9): heavy/moderate/light by training day.
+  // Off by default and for non-hypertrophy goals, so default plans are unchanged.
+  const undulating = profile.periodization === "undulating" && undulatesForGoal(goal);
 
   const muscleById = new Map(muscles.map((m) => [m.id, m]));
   // Loaded carries (suitcase/bottoms-up) are a time-and-distance movement — there is
@@ -387,6 +413,9 @@ export function generatePlan(profile, kb, opts = {}) {
   let weekKneeFlexion = false;  // has ANY session placed knee-flexion hamstring work yet?
   const outSessions = sessionSpecs.map((spec, sIdx) => {
     const mset = ARCH[spec.arch];
+    // This day's rep/intensity band: the base scheme, or (opt-in DUP) a
+    // heavy/moderate/light variant chosen by the day's position in the week.
+    const sessScheme = sessionRepScheme(scheme, undulating, sIdx);
     const credited = {};      // effective sets credited to each muscle THIS session
     const direct = {};        // DIRECT primary sets per muscle this session (KB session-quality cap)
     const isoCredited = {};   // DIRECT isolation sets per muscle this session (arm/delt floor)
@@ -425,7 +454,7 @@ export function generatePlan(profile, kb, opts = {}) {
       // Rep band: priority isolations highest, small-muscle "pump" isolations
       // 12-20 (the KB intensity page's own isolation band), other isolations
       // 10-15, compounds heavy.
-      const s = iso ? (priority.has(forMuscle) ? scheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? scheme.pumpIso : scheme.isolation) : scheme.compound;
+      const s = iso ? (priority.has(forMuscle) ? sessScheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? sessScheme.pumpIso : sessScheme.isolation) : sessScheme.compound;
       // Held-at-maintenance muscles never receive more direct volume than their
       // (maintenance) target still has room for — so a full compoundSets can't blow
       // a small maintenance dose past its ceiling. `credited` is effective volume
@@ -683,7 +712,7 @@ export function generatePlan(profile, kb, opts = {}) {
           const sN = 2;
           placed.add(cand.id); // NOTE: deliberately not counted in setsUsed — the pairing pays the time
           weekUseCount[cand.id] = (weekUseCount[cand.id] ?? 0) + 1; // rescue placements count toward the weekly-variety cap too
-          const sch = priority.has(m) ? scheme.priorityIso : PUMP_MUSCLES.has(m) ? scheme.pumpIso : scheme.isolation; // same band logic as add()
+          const sch = priority.has(m) ? sessScheme.priorityIso : PUMP_MUSCLES.has(m) ? sessScheme.pumpIso : sessScheme.isolation; // same band logic as add() — undulates with the day
           items.push({ exercise: cand.id, sets: sN, rep_range: sch[0], rir: sch[1], superset_with: partner.exercise });
           partner.superset_with = cand.id;
           for (const mm of cand.primary_muscles ?? []) { credited[mm] = (credited[mm] ?? 0) + sN; direct[mm] = (direct[mm] ?? 0) + sN; }

@@ -38,6 +38,19 @@ ok("program id matches ^[a-z0-9-]+$", /^[a-z0-9-]+$/.test(p.program.id));
 ok("split is a valid enum value", ["full-body", "upper-lower", "push-pull-legs", "body-part", "push-pull", "other"].includes(p.program.split));
 ok("every exercise id resolves to a real exercise", allEx.every((e) => exIds.has(e.exercise)));
 ok("every set count is 1-10", allEx.every((e) => Number.isInteger(e.sets) && e.sets >= 1 && e.sets <= 10));
+
+// --- opt-in Daily Undulating Periodization (roadmap #9, first slice) ---
+const mechOf = (id) => exercises.find((x) => x.id === id)?.mechanic;
+const compoundRanges = (plan) => new Set(plan.program.sessions.flatMap((s) => s.exercises).filter((e) => mechOf(e.exercise) === "compound").map((e) => e.rep_range));
+const dup = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", periodization: "undulating" }, kb);
+const dupRanges = compoundRanges(dup);
+ok("DUP: compound rep-ranges undulate across the week (>=2 bands, incl. a heavy 4-6)", dupRanges.size >= 2 && dupRanges.has("4-6"));
+const lin = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced" }, kb); // no periodization = linear
+const linRanges = compoundRanges(lin);
+ok("linear (default): every compound uses the single base band (no undulation)", linRanges.size === 1 && linRanges.has("6-10"));
+const strDup = generatePlan({ ...profile, days_per_week: 6, training_status: "advanced", primary_goal: "strength", periodization: "undulating" }, kb);
+const strRanges = compoundRanges(strDup);
+ok("DUP gating: a strength goal ignores undulation (compounds stay the strength base 3-6)", strRanges.size === 1 && strRanges.has("3-6"));
 ok("every exercise has a rep_range string", allEx.every((e) => typeof e.rep_range === "string" && /\d+-\d+/.test(e.rep_range)));
 ok("no exercise exceeds 5 sets", allEx.every((e) => e.sets <= 5));
 ok("no session exceeds 8 exercises", p.program.sessions.every((s) => s.exercises.length <= 8));
