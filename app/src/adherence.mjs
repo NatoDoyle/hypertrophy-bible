@@ -188,6 +188,15 @@ export function weeklySummary(sessions, now) {
   return { sessions: wk.length, hard_sets: hardSets };
 }
 
+// Session count for a SPECIFIC ISO week key (e.g. "2026-W30"), not just "this
+// week" — unlike weeklySummary (which always answers for the week containing
+// `now`), this lets a 1v1 challenge (#10 social) be scored for its OWN target
+// week even after that week has ended, with no snapshot to take and no cron to
+// run: the tally is just re-derived from the same logged sessions on read.
+export function sessionsInWeek(sessions, weekKey) {
+  return (sessions ?? []).filter((s) => (s.local_date || s.date) && sessionWeekKey(s) === weekKey).length;
+}
+
 // The whole adherence payload for the app.
 export function adherenceReport(user, sessions, now = new Date().toISOString()) {
   const paused = !!user.paused;

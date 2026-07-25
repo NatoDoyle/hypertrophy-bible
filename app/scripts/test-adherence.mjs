@@ -1,7 +1,7 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
-import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard } from "../src/adherence.mjs";
+import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
-import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
+import { isLuckySet, LUCKY_SET_XP, isoWeekKey } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -173,6 +173,18 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const utcOnly = { ...utcSunday }; delete utcOnly.local_date;
   ok("#21 without local_date the same session still counts by UTC date (backward compatible)",
     adherenceStatus([utcOnly], now, false).state === "at-risk"); // the documented bug for legacy sessions — fixed only when the client stamps local_date
+}
+
+// --- sessionsInWeek (#10 social — 1v1 weekly challenges): unlike weeklySummary,
+// scores a SPECIFIC week key, not just the week containing `now` — so a
+// challenge can be scored for its own target week even long after it ended.
+{
+  const w1 = isoWeekKey("2026-01-05"), w2 = isoWeekKey("2026-01-19");
+  const sessions = [sess("2026-01-05"), sess("2026-01-06"), sess("2026-01-19")];
+  ok("sessionsInWeek counts only sessions matching the given week key", sessionsInWeek(sessions, w1) === 2);
+  ok("sessionsInWeek scores a different week independently", sessionsInWeek(sessions, w2) === 1);
+  ok("sessionsInWeek is 0 for a week with no sessions", sessionsInWeek(sessions, isoWeekKey("2026-02-02")) === 0);
+  ok("sessionsInWeek treats a missing sessions array as empty", sessionsInWeek(undefined, w1) === 0);
 }
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

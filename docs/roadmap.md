@@ -256,7 +256,30 @@ infra, the one genuinely large build left here).
     turns the static leaderboard into something with real weekly stakes. Both PII-allowlist tests
     (`test-adherence.mjs`, `test-routes.mjs`) updated to the new 4-key card shape; a route test locks
     in that `sessions_this_week` actually flows through `GET /api/following`, not just the public
-    share endpoint.
+    share endpoint. **1v1 weekly challenges shipped (this slice, PR pending):** the accept/decline
+    state machine the item above deliberately left out. v0 scope: at most ONE challenge per user at
+    a time (challenger or opponent), no history — `POST /api/challenge` (propose, mutual-partners
+    only, reuses the same not-following/not-mutual checks as nudge), `POST /api/challenge/respond`
+    (only the opponent can accept/decline — a challenger "accepting" their own proposal would skip
+    the consent step the whole feature exists to add), `GET /api/challenge` (live tally for both
+    sides via the new `sessionsInWeek(sessions, weekKey)` — unlike `weeklySummary`, scores a
+    SPECIFIC week key so it stays correct after that week has ended, needing no snapshot or cron).
+    No new store table: a mirrored `profile.challenge` object on BOTH sides (each side writes its
+    own half, plus the other's on propose/respond — the same two-sided-write shape `following`'s
+    reciprocal check already reads). A challenge self-transitions to a terminal state ("completed"
+    if it was active, "declined" if a proposal just went unanswered) the next time EITHER side reads
+    it past its week or after its opponent's share vanishes — which also reopens that user's slot.
+    Caught and fixed one real bug before shipping: the "already open" guard on propose originally
+    trusted stored status literally, so a stale-but-not-yet-read challenge could wrongly block a
+    fresh propose as "opponent-busy" even though its week had already ended — fixed with a shared
+    `isChallengeOpen` predicate that also checks the week, not just the status. Coach tab renders a
+    "⚔️ challenge" button per mutual partner (hidden while a slot is occupied), a pending
+    accept/decline card, an in-progress tally, and a final win/lose/tie result. 21 new route tests
+    (propose/mutual/self-target/already-open/opponent-busy/decline/accept/live-tally/week-over-
+    resolution/slot-reopening, all from both sides) + 4 new `sessionsInWeek` unit tests. Still not
+    the full "challenges" vision (only ONE concurrent challenge, no history/win-loss record, no
+    push notification when challenged) — those are natural v1 follow-ons once a real table is
+    justified by the need for multiple concurrent challenges or a history view.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
