@@ -21,6 +21,8 @@
 
 **Manage leg fatigue.** Heavy squats and deadlifts are systemically taxing. Balance them with machine and single-joint work so you can accumulate quad/ham/glute volume without frying your recovery.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 Lower-body training showcases the **lengthened-position** theme most clearly. Squatting to depth and RDLs load the quads and hamstrings under stretch, which the ROM evidence favors[^schoenfeld-2020-rom-review][^kassiano-2023-rom-review] **[Grade B]**, and seated leg curls (hip flexed) train the hamstrings at longer length than lying variations. Here there's **direct** evidence: Maeo and colleagues (2021) trained one leg with seated and the other with lying curls for 12 weeks and found **significantly greater hamstring hypertrophy in the seated (longer-length) condition**[^maeo-2021-hamstring-length]. **[Grade B]** The **two-function hamstring** recommendation follows from anatomy: knee-flexion and hip-extension exercises produce different regional growth, so both are included. **[Grade C]** As always, total **volume** within a recoverable range drives growth[^schoenfeld-2017-volume-dose-response]. **[Grade A]**
@@ -35,7 +37,6 @@ Lower-body training showcases the **lengthened-position** theme most clearly. Sq
 - [`data/muscles/quadriceps.json`](../../data/muscles/quadriceps.json), [`hamstrings.json`](../../data/muscles/hamstrings.json), [`glutes.json`](../../data/muscles/glutes.json), [`calves.json`](../../data/muscles/calves.json)
 - Exercises: [`barbell-back-squat`](../../data/exercises/barbell-back-squat.json), [`romanian-deadlift`](../../data/exercises/romanian-deadlift.json), [`seated-leg-curl`](../../data/exercises/seated-leg-curl.json)
 
-- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
 
 ## References
 [^schoenfeld-2020-rom-review]: Schoenfeld BJ, Grgic J (2020). *Effects of range of motion on muscle development during resistance training interventions: A systematic review.* SAGE Open Medicine, 8, 2050312120901559. DOI: [10.1177/2050312120901559](https://doi.org/10.1177/2050312120901559). PMID: 32030125.

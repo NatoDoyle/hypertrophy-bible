@@ -20,6 +20,8 @@
 
 **Who should bother.** Bodybuilders chasing complete development and athletes in rugby, football, wrestling, or combat sports (where neck strength is associated with resilience to head/neck loading). For general lifters, the neck already gets incidental work from heavy shrugs, deadlifts, and carries, so dedicated training is discretionary.
 
+**The universal levers still rule.** These picks simply apply the fundamentals every muscle obeys — enough [volume](../01-training-variables/volume.md), real [effort](../01-training-variables/proximity-to-failure.md) close to failure, and sound [exercise selection](../01-training-variables/exercise-selection-and-order.md), progressed over time — to this region.
+
 ## The Evidence
 
 There is little neck-*specific* hypertrophy research, so guidance rests on **applying the general hypertrophy principles** — progressive tension and volume grow the neck as they do any muscle[^schoenfeld-2017-volume-dose-response] — combined with **conservative loading practice** for the cervical spine (light load, slow tempo, pain-free range), which is a safety convention rather than a directly-tested hypertrophy protocol. **[Grade C]** The decision to train the neck at all is a goal/practice choice, not an evidence-based necessity for general muscle development. **[Grade D]**
@@ -33,7 +35,6 @@ There is little neck-*specific* hypertrophy research, so guidance rests on **app
 - [`data/muscles/neck.json`](../../data/muscles/neck.json)
 - Exercises: [`neck-curl`](../../data/exercises/neck-curl.json), [`neck-extension`](../../data/exercises/neck-extension.json)
 
-- Related concepts: [Volume](../01-training-variables/volume.md), [Exercise selection & order](../01-training-variables/exercise-selection-and-order.md), [Proximity to failure](../01-training-variables/proximity-to-failure.md), [Frequency](../01-training-variables/frequency.md).
 
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.
