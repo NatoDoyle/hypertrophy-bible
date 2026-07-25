@@ -76,3 +76,15 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
   data    TEXT NOT NULL,
   PRIMARY KEY (user_id, date)
 );
+
+-- Shareable read-only progress cards (opt-in social). share_id is an unguessable
+-- capability token (NOT the user_id) that maps to a user; the public card exposes
+-- only non-PII aggregate stats (streak/level/session count). One share per user
+-- (UNIQUE) so opting in again rotates the link and revokes the old one. Also
+-- self-initialized at runtime by store-d1.mjs (CREATE TABLE IF NOT EXISTS) so it
+-- works without a CLI migration.
+CREATE TABLE IF NOT EXISTS shares (
+  share_id   TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL
+);

@@ -214,5 +214,43 @@ export function createD1Store(db) {
       const row = await db.prepare("SELECT COUNT(*) AS n FROM magic_links WHERE ip = ? AND created_at >= ?").bind(ip, sinceMs).first();
       return row?.n ?? 0;
     },
+
+    // --- Shareable progress cards (opt-in social) ---
+    // The `shares` table is self-initialized at runtime (CREATE TABLE IF NOT EXISTS)
+    // because the D1 query CLI can't run a migration in this project (7403). Memoized
+    // per worker instance so it's a one-time cost, not per request.
+    async createShare(userId, shareId, now) {
+      await ensureShares(db);
+      // One share per user (UNIQUE user_id): opting in again ROTATES the token and
+      // revokes the old link in a single write.
+      await db.prepare("INSERT INTO shares (share_id, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET share_id = excluded.share_id, created_at = excluded.created_at")
+        .bind(shareId, userId, now).run();
+      return shareId;
+    },
+    async getShareUserId(shareId) {
+      await ensureShares(db);
+      const row = await db.prepare("SELECT user_id FROM shares WHERE share_id = ?").bind(shareId).first();
+      return row?.user_id ?? null;
+    },
+    async getShareIdForUser(userId) {
+      await ensureShares(db);
+      const row = await db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(userId).first();
+      return row?.share_id ?? null;
+    },
+    async deleteShare(userId) {
+      await ensureShares(db);
+      await db.prepare("DELETE FROM shares WHERE user_id = ?").bind(userId).run();
+    },
   };
+}
+
+// One-time (per worker instance) creation of the shares table. Cached as a promise
+// so concurrent first-callers all await the same CREATE rather than racing it.
+let _sharesReady = null;
+function ensureShares(db) {
+  if (!_sharesReady) {
+    _sharesReady = db.prepare("CREATE TABLE IF NOT EXISTS shares (share_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)").run()
+      .catch((e) => { _sharesReady = null; throw e; }); // don't cache a failure — let the next call retry
+  }
+  return _sharesReady;
 }

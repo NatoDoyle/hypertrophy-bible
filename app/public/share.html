@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>A lifter's progress · The Hypertrophy Bible</title>
+  <meta name="robots" content="noindex">
+  <style>
+    :root { --bg:#0e1116; --card:#171c24; --line:#242c38; --text:#e8edf4; --muted:#93a0b4; --accent:#3ddc84; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+      background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .card { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:20px; padding:28px; text-align:center; }
+    h1 { font-size:1.05rem; margin:0 0 20px; color:var(--muted); font-weight:600; }
+    .hero { font-size:2.6rem; font-weight:800; margin:4px 0; }
+    .hero .u { font-size:1rem; color:var(--muted); font-weight:600; }
+    .row { display:flex; gap:12px; margin-top:20px; }
+    .stat { flex:1; background:#0f141b; border:1px solid var(--line); border-radius:14px; padding:14px 8px; }
+    .stat b { display:block; font-size:1.5rem; }
+    .stat span { color:var(--muted); font-size:.82rem; }
+    a.cta { display:inline-block; margin-top:22px; color:#06210f; background:var(--accent); text-decoration:none;
+      font-weight:700; padding:12px 20px; border-radius:12px; }
+    .muted { color:var(--muted); }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🏋️ A lifter's progress</h1>
+    <div id="ok" class="hidden">
+      <div class="hero">🔥 <span id="streak">0</span> <span class="u">week streak</span></div>
+      <div class="row">
+        <div class="stat"><b id="level">1</b><span>level</span></div>
+        <div class="stat"><b id="sessions">0</b><span>sessions</span></div>
+      </div>
+      <a class="cta" href="/">Start your own — free</a>
+      <p class="muted" style="margin-top:16px;font-size:.82rem">Built with The Hypertrophy Bible — an evidence-based training coach.</p>
+    </div>
+    <div id="bad" class="hidden">
+      <p>This progress link isn't available.</p>
+      <p class="muted">It may have been turned off by its owner.</p>
+      <a class="cta" href="/">Explore the app</a>
+    </div>
+    <div id="loading"><p class="muted">Loading…</p></div>
+  </div>
+  <script>
+    (async () => {
+      const show = (id) => { for (const x of ["ok","bad","loading"]) document.getElementById(x).classList.toggle("hidden", x !== id); };
+      const token = new URLSearchParams(location.search).get("s");
+      if (!token) return show("bad");
+      try {
+        const r = await fetch("/api/share/" + encodeURIComponent(token));
+        if (!r.ok) return show("bad");
+        const d = await r.json();
+        // Numbers only, set via textContent — no HTML injection surface.
+        document.getElementById("streak").textContent = String(d.streak_weeks ?? 0);
+        document.getElementById("level").textContent = String(d.level ?? 1);
+        document.getElementById("sessions").textContent = String(d.sessions_logged ?? 0);
+        const u = document.querySelector(".hero .u");
+        if (u) u.textContent = (d.streak_weeks === 1 ? "week streak" : "week streak");
+        show("ok");
+      } catch { show("bad"); }
+    })();
+  </script>
+</body>
+</html>

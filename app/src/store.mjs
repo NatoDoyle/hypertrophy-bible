@@ -12,6 +12,7 @@ export function createFileStore(path) {
   db.accounts ??= {};        // tolerate stores written before email backup existed
   db.magic_links ??= {};
   db.checkins ??= {};
+  db.shares ??= {};          // opt-in shareable progress cards (share_id → user_id)
   const flush = () => writeFileSync(path, JSON.stringify(db, null, 2));
   // Match the D1 store's "ORDER BY date ASC, rowid ASC": chronological, with
   // insertion order as a stable tiebreak. Keeps coach output identical on both.
@@ -176,6 +177,24 @@ export function createFileStore(path) {
     },
     async countRecentByIp(ip, sinceMs) {
       return Object.values(db.magic_links).filter((l) => l.ip === ip && l.created_at >= sinceMs).length;
+    },
+
+    // --- Shareable progress cards (opt-in social) — parity with store-d1.mjs ---
+    // One share per user: creating rotates (revokes the old token) by first dropping
+    // any existing row for this user, then inserting the new share_id.
+    async createShare(userId, shareId, now) {
+      for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) delete db.shares[sid];
+      db.shares[shareId] = { share_id: shareId, user_id: userId, created_at: now };
+      flush(); return shareId;
+    },
+    async getShareUserId(shareId) { return db.shares[shareId]?.user_id ?? null; },
+    async getShareIdForUser(userId) {
+      const hit = Object.values(db.shares).find((r) => r.user_id === userId);
+      return hit?.share_id ?? null;
+    },
+    async deleteShare(userId) {
+      for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) delete db.shares[sid];
+      flush();
     },
   };
 }
