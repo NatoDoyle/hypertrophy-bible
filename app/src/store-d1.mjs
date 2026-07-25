@@ -3,6 +3,8 @@
 // app and every route are byte-for-byte identical on Node and on Workers.
 // Rows hold a JSON blob per record — the app owns the shape, D1 is just durable
 // key/value with an index. See schema.sql for the tables.
+import { mergeUserProfile } from "./merge-profile.mjs";
+
 export function createD1Store(db) {
   return {
     async getUser(id) {
@@ -119,14 +121,18 @@ export function createD1Store(db) {
       // idempotent, so a CAS retry is safe.
       if (fromRow && toRow) {
         const fromU = JSON.parse(fromRow.data);
-        if (fromU.custom_exercises?.length) {
-          await this.updateUser(toId, (u) => {
+        await this.updateUser(toId, (u) => {
+          if (fromU.custom_exercises?.length) {
             u.custom_exercises = u.custom_exercises || [];
             const have = new Set(u.custom_exercises.map((x) => x.id));
             for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { u.custom_exercises.push(ex); have.add(ex.id); }
-            return u;
-          });
-        }
+          }
+          // Streak-freeze balance, pause history, partner list, commitment, and
+          // challenge history all live on the user doc too — merge them additively
+          // (see merge-profile.mjs, shared with the file store) before the from-row
+          // is deleted below, or they're lost.
+          return mergeUserProfile(fromU, u);
+        });
       }
       // Shares follow the user, or the merged-away user's share row points at a
       // DELETED user (dead public link + orphaned cheers). Reassign to the survivor
