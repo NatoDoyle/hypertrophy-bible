@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**119** verified references.
+**120** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -71,6 +71,14 @@ Børsheim E et al. (2002). Essential amino acids and muscle protein recovery fro
 
 - Type: mechanistic · Population: recreationally-active
 - DOI: [10.1152/ajpendo.00466.2001](https://doi.org/10.1152/ajpendo.00466.2001) · PMID: [12217881](https://pubmed.ncbi.nlm.nih.gov/12217881/)
+
+### bosquet-2007-taper
+Bosquet L et al. (2007). Effects of tapering on performance: a meta-analysis.
+
+*Medicine and Science in Sports and Exercise*, 39(8), 1358-1365.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1249/mss.0b013e31806010e0](https://doi.org/10.1249/mss.0b013e31806010e0) · PMID: [17762369](https://pubmed.ncbi.nlm.nih.gov/17762369/)
 
 ### bruusgaard-2010-myonuclei
 Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede hypertrophy and are not lost on detraining.
