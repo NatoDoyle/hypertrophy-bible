@@ -43,6 +43,7 @@ These landmarks are **practical estimates, not measured constants** — they var
 - **The MEV/MRV landmarks are a model.** They popularized a useful way to think about volume progression, but the specific numbers are estimates with limited direct validation. Treat them as starting anchors you adjust from your own response. **[Grade C]**
 - **"Junk volume" is real at the margins.** Sets performed far from failure or with heavy fatigue contribute little; padding set counts with low-quality sets inflates the number without the stimulus.
 - **Volume interacts with everything.** The same set count is more or less effective depending on proximity to failure, load, and exercise selection. Volume is the headline variable, not the only one.
+- **Less can be enough when life is busy.** You don't always need to chase the top of the range — a minimum-effective dose still drives growth and is far better than skipping; see [Minimalist & low-volume training](../03-programming/minimalist-and-low-volume-training.md).
 
 ## Backing Data
 - Per-muscle weekly set landmarks (MV/MEV/MAV/MRV): [`data/muscles/`](../../data/muscles/)

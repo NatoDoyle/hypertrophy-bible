@@ -37,7 +37,7 @@
 ## Key Uncertainties & Nuance
 
 - **Frequency and quality are entangled.** At matched volume, any edge for higher frequency probably comes from fresher, higher-quality sets — not from more frequent protein-synthesis spikes, a mechanism that has weaker support than once thought.
-- **Very high volumes may *need* higher frequency.** If a muscle needs 20+ weekly sets, you essentially must spread them across 3+ sessions to keep effort high — so at the top of the volume range, frequency starts to matter more, indirectly.
+- **Very high volumes may *need* higher frequency.** If a muscle needs 20+ weekly sets, you essentially must spread them across 3+ sessions to keep effort high — so at the top of the volume range, frequency starts to matter more, indirectly. Which [training split](../03-programming/splits.md) you run is how that frequency actually gets arranged across the week.
 - **Muscle-specific recovery varies.** Smaller muscles and those biased toward endurance may tolerate and even prefer higher frequencies; heavily damaged movements (e.g. long-length hamstring or heavy eccentric work) may need more recovery between sessions.
 - **Adherence beats optimization.** The frequency you'll actually do consistently outperforms the theoretically ideal one you skip.
 
