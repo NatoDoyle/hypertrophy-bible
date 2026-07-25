@@ -241,6 +241,19 @@ export function createD1Store(db) {
       await ensureShares(db);
       await db.prepare("DELETE FROM shares WHERE user_id = ?").bind(userId).run();
     },
+    // A public "cheer" tally on a share card (social proof). Bounded so it can't grow
+    // absurdly; the caller validates the share_id resolves before incrementing.
+    async addShareCheer(shareId) {
+      await ensureShares(db);
+      await db.prepare("INSERT INTO share_cheers (share_id, count) VALUES (?, 1) ON CONFLICT(share_id) DO UPDATE SET count = MIN(count + 1, 1000000)").bind(shareId).run();
+      const row = await db.prepare("SELECT count FROM share_cheers WHERE share_id = ?").bind(shareId).first();
+      return row?.count ?? 0;
+    },
+    async getShareCheers(shareId) {
+      await ensureShares(db);
+      const row = await db.prepare("SELECT count FROM share_cheers WHERE share_id = ?").bind(shareId).first();
+      return row?.count ?? 0;
+    },
   };
 }
 
@@ -249,8 +262,13 @@ export function createD1Store(db) {
 let _sharesReady = null;
 function ensureShares(db) {
   if (!_sharesReady) {
-    _sharesReady = db.prepare("CREATE TABLE IF NOT EXISTS shares (share_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)").run()
-      .catch((e) => { _sharesReady = null; throw e; }); // don't cache a failure — let the next call retry
+    // Both tables self-init together. `share_cheers` is SEPARATE (not a column on
+    // `shares`) because the shares table already exists in prod without it, and
+    // CREATE TABLE IF NOT EXISTS can't add a column to an existing table.
+    _sharesReady = db.batch([
+      db.prepare("CREATE TABLE IF NOT EXISTS shares (share_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS share_cheers (share_id TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0)"),
+    ]).catch((e) => { _sharesReady = null; throw e; }); // don't cache a failure — let the next call retry
   }
   return _sharesReady;
 }

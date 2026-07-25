@@ -13,6 +13,7 @@ export function createFileStore(path) {
   db.magic_links ??= {};
   db.checkins ??= {};
   db.shares ??= {};          // opt-in shareable progress cards (share_id → user_id)
+  db.share_cheers ??= {};    // public "cheer" tally per share (share_id → count)
   const flush = () => writeFileSync(path, JSON.stringify(db, null, 2));
   // Match the D1 store's "ORDER BY date ASC, rowid ASC": chronological, with
   // insertion order as a stable tiebreak. Keeps coach output identical on both.
@@ -196,5 +197,12 @@ export function createFileStore(path) {
       for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) delete db.shares[sid];
       flush();
     },
+    // Public "cheer" tally — parity with store-d1.mjs (bounded).
+    async addShareCheer(shareId) {
+      db.share_cheers ??= {};
+      db.share_cheers[shareId] = Math.min((db.share_cheers[shareId] ?? 0) + 1, 1000000);
+      flush(); return db.share_cheers[shareId];
+    },
+    async getShareCheers(shareId) { return (db.share_cheers ?? {})[shareId] ?? 0; },
   };
 }

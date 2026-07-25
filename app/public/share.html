@@ -20,6 +20,9 @@
     .stat span { color:var(--muted); font-size:.82rem; }
     a.cta { display:inline-block; margin-top:22px; color:#06210f; background:var(--accent); text-decoration:none;
       font-weight:700; padding:12px 20px; border-radius:12px; }
+    button.cheer { display:block; width:100%; margin-top:18px; padding:12px; border-radius:12px; cursor:pointer;
+      background:#0f141b; border:1px solid var(--line); color:var(--text); font-size:1rem; font-weight:600; }
+    button.cheer:disabled { opacity:.7; cursor:default; }
     .muted { color:var(--muted); }
     .hidden { display:none; }
   </style>
@@ -33,6 +36,7 @@
         <div class="stat"><b id="level">1</b><span>level</span></div>
         <div class="stat"><b id="sessions">0</b><span>sessions</span></div>
       </div>
+      <button id="cheer" class="cheer">💪 Cheer them on · <span id="cheers">0</span></button>
       <a class="cta" href="/">Start your own — free</a>
       <p class="muted" style="margin-top:16px;font-size:.82rem">Built with The Hypertrophy Bible — an evidence-based training coach.</p>
     </div>
@@ -58,6 +62,22 @@
         document.getElementById("sessions").textContent = String(d.sessions_logged ?? 0);
         const u = document.querySelector(".hero .u");
         if (u) u.textContent = (d.streak_weeks === 1 ? "week streak" : "week streak");
+        // Cheer button: one per share per browser (localStorage guard), count via textContent.
+        const cheersEl = document.getElementById("cheers");
+        const btn = document.getElementById("cheer");
+        cheersEl.textContent = String(d.cheers ?? 0);
+        const key = "hb_cheered_" + token;
+        let done = false; try { done = localStorage.getItem(key) === "1"; } catch {}
+        if (done) { btn.disabled = true; btn.textContent = "💪 Cheered · "; btn.appendChild(cheersEl); }
+        btn.onclick = async () => {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          try {
+            const r = await fetch("/api/share/" + encodeURIComponent(token) + "/cheer", { method: "POST" });
+            if (r.ok) { const j = await r.json(); cheersEl.textContent = String(j.cheers ?? 0); try { localStorage.setItem(key, "1"); } catch {} btn.textContent = "💪 Cheered · "; btn.appendChild(cheersEl); }
+            else btn.disabled = false;
+          } catch { btn.disabled = false; }
+        };
         show("ok");
       } catch { show("bad"); }
     })();
