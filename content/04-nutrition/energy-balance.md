@@ -22,6 +22,8 @@
 
 **Adjust by the scale and mirror**, not by a formula. Maintenance estimates are rough; the real target is a gaining rate you can verify over 2–4 weeks. Gaining too fast → trim calories; not gaining → add some.
 
+**Beyond calories and protein.** The energy target and protein do most of the work for body composition, but the rest of the diet still matters for health, training performance, and recovery around it — see [Carbohydrates, fat & hydration](carbohydrates-fat-and-hydration.md) and [Micronutrients & food quality](micronutrients-and-food-quality.md).
+
 ## The Evidence
 
 **A surplus helps but isn't mandatory.** Slater and colleagues (2019) reviewed whether an energy surplus is required to maximize resistance-training hypertrophy and concluded that while a **surplus supports maximal muscle gain**, meaningful hypertrophy can still occur at energy balance or even in a deficit — particularly in **untrained, returning, or higher-body-fat individuals**, who can use body fat stores and have more "room" to add muscle[^slater-2019-energy-surplus]. **[Grade B]** The practical reading: bulk in a *slight* surplus to maximize the rate of gain, but understand that recomposition is a real option for the right person.
