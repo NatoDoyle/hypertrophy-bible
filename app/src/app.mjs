@@ -509,6 +509,16 @@ export function createApp(store, config = {}) {
     if (!shareId || shareId.length > 100) return c.json({ error: "not found" }, 404);
     const userId = await store.getShareUserId(shareId);
     if (!userId) return c.json({ error: "not found" }, 404);
+    // Per-IP rate-limit on this public write, reusing the same magic_links bucket the
+    // onboard throttle uses (ip column left NULL so cheer markers don't eat the auth
+    // per-IP budget of a shared NAT). 30/hr is generous for a real viewer cheering a
+    // few cards but caps scripted write-amplification of the vanity counter.
+    const ip = c.req.header("CF-Connecting-IP") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const now = Date.now();
+    if (ip) {
+      if ((await store.countRecentLinks("cheer:" + ip, now - 60 * 60 * 1000)) >= 30) return c.json({ error: "rate-limited", cheers: await store.getShareCheers(shareId) }, 429);
+      await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: "cheer:" + ip, ip: null, user_id: "cheer-marker", purpose: "cheer-marker", expires_at: now, used: 1, created_at: now });
+    }
     return c.json({ cheers: await store.addShareCheer(shareId) });
   });
 

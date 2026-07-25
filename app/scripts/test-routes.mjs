@@ -528,6 +528,15 @@ try {
   ok("#cheer on an unknown/revoked token is 404 (no phantom rows)", cheerUnknown.status === 404);
   const cheerRevoked = await json("POST", `/api/share/${share1.data.share_id}/cheer`);
   ok("#cheer on a revoked token is 404", cheerRevoked.status === 404);
+  // Per-IP rate-limit: a fixed IP gets 30 cheers/hr, then 429 (public-write hardening).
+  const cheerIP = async () => (await app.request(`/api/share/${cheerTok}/cheer`, { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "203.0.113.9" } })).status;
+  let statuses = [];
+  for (let i = 0; i < 31; i++) statuses.push(await cheerIP());
+  ok("#cheer per-IP rate-limit: first 30 from an IP succeed", statuses.slice(0, 30).every((s) => s === 200));
+  ok("#cheer per-IP rate-limit: the 31st in the window is 429", statuses[30] === 429);
+  // A DIFFERENT IP is unaffected (the cap is per-IP, not global).
+  const cheerOtherIp = (await app.request(`/api/share/${cheerTok}/cheer`, { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "198.51.100.7" } })).status;
+  ok("#cheer rate-limit is per-IP (a different IP still cheers)", cheerOtherIp === 200);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
