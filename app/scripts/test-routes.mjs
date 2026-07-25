@@ -564,6 +564,27 @@ try {
   await json("POST", "/api/share/revoke", { user_id: rvUser });
   ok("#revoke drops the share's cheer tally (no orphaned rows)", (await store.getShareCheers(rvShare)) === 0);
 
+  // --- Training partners: follow a friend's share card (#10 accountability) ---
+  const onboardBw = (st) => json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: st, primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["bodyweight"] } });
+  const partnerU = (await onboardBw("beginner")).data.user_id;
+  const partnerShare = (await json("POST", "/api/share", { user_id: partnerU })).data.share_id;
+  await json("POST", `/api/share/${partnerShare}/cheer`); // give the partner a cheer to surface
+  const followerU = (await onboardBw("beginner")).data.user_id;
+  ok("#following rejects a token that isn't a live share (404)", (await json("POST", "/api/following", { user_id: followerU, token: "not-a-real-token" })).status === 404);
+  ok("#following you can't follow your own card (400)", (await json("POST", "/api/following", { user_id: partnerU, token: partnerShare })).status === 400);
+  const follow = await json("POST", "/api/following", { user_id: followerU, token: partnerShare });
+  ok("#following adds the partner", follow.status === 200 && follow.data.following === 1);
+  ok("#following is idempotent (no duplicate)", (await json("POST", "/api/following", { user_id: followerU, token: partnerShare })).data.following === 1);
+  const list = await (await app.request("/api/following", { headers: { "X-HB-User": followerU } })).json();
+  ok("#following GET returns the partner's PUBLIC card only (streak/level/cheers, no user_id)",
+    list.partners.length === 1 && list.partners[0].active === true && typeof list.partners[0].streak_weeks === "number" && list.partners[0].cheers === 1 && !JSON.stringify(list.partners[0]).includes(partnerU));
+  await json("POST", "/api/share/revoke", { user_id: partnerU });
+  const partnerGone = await (await app.request("/api/following", { headers: { "X-HB-User": followerU } })).json();
+  ok("#following a revoked partner shows inactive (prunable), not vanished", partnerGone.partners.length === 1 && partnerGone.partners[0].active === false);
+  ok("#following/remove drops the partner", (await json("POST", "/api/following/remove", { user_id: followerU, token: partnerShare })).data.following === 0);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
