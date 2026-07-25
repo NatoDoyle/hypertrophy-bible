@@ -27,6 +27,7 @@
 - **The Longland protocol was aggressive and short** (a large deficit with very high protein and training); it proves the principle but exact real-world rates vary.
 - **"Retention" is a success in a cut** — for advanced lifters, holding muscle while losing fat is the realistic and worthy goal.
 - **Sleep and stress matter more when dieting**, since recovery capacity is reduced (see [Recovery](../05-recovery/index.md)).
+- **Cardio cuts both ways in a deficit** — it helps expenditure, but too much can interfere with strength and muscle retention; see [Cardio & concurrent training](../03-programming/cardio-and-concurrent-training.md).
 
 ## Backing Data
 None.
