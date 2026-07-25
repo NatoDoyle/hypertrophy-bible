@@ -185,9 +185,22 @@ infra, the one genuinely large build left here).
    automatically — no question asked — while beginners/intermediates keep the byte-identical linear
    default; `profile.periodization` stays a respected override. Undulates only the COMPOUND band;
    isolations keep their higher-rep near-failure band every day (the KB isolation invariants caught
-   and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). Still to build:
-   BLOCK periodization (accumulation→intensification→peak), a taper/peak phase, contest-prep mode,
-   deeper autoregulation (velocity/RIR-driven). Serves the "win Mr. Olympia" end.
+   and enforce this). Prod-verified (advanced auto-undulates, intermediate stays linear). **Reassessed
+   (Wave 124) against the KB’s own evidence — a full BLOCK-periodization _hypertrophy_ engine is NOT a
+   genuine gap:** `periodization-and-progression.md` (Moesgaard 2022 meta) states periodization “does not
+   clearly beat sensible non-periodized progression when volume is matched” for hypertrophy, and
+   `long-term-and-annual-planning.md` grades block sequencing Grade D throughout (its value is
+   _organization/adherence_, not extra stimulus). Building a macro-emphasis engine
+   (accumulation→intensification→peak shifts across mesocycles) for a bodybuilder would assert a benefit
+   the KB refutes — the Varovic lesson at the ENGINE level — and the app ALREADY ships the evidence-aligned
+   pieces: the within-mesocycle build→peak→deload wave (`blockPhase`), block-boundary volume auto-tune,
+   recovery-gated volume (`deriveVolumeAdjust` context), undulating-for-advanced, and exercise rotation.
+   The genuinely-remaining elite work is narrower, evidence-supported, but INPUT-GATED (a larger feature,
+   not a clean first slice): a **taper/peak toward a goal date** (tapering has real strength-EXPRESSION
+   evidence, distinct from hypertrophy) and a **contest-prep mode** — both need a new “goal/meet/show
+   date” onboarding input + a peaking protocol; deeper velocity-driven autoregulation needs hardware the
+   app can’t collect. So this item serves the strength/peaking/contest end, NOT general hypertrophy —
+   and only once a goal-date input exists.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
