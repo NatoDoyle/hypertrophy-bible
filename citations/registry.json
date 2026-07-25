@@ -2290,6 +2290,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26861960/"
+    },
+    {
+      "key": "bosquet-2007-taper",
+      "authors": [
+        "Bosquet L",
+        "Montpetit J",
+        "Arvisais D",
+        "Mujika I"
+      ],
+      "year": 2007,
+      "title": "Effects of tapering on performance: a meta-analysis.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "39",
+      "issue": "8",
+      "pages": "1358-1365",
+      "doi": "10.1249/mss.0b013e31806010e0",
+      "pmid": "17762369",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/17762369/"
     }
   ]
 }
