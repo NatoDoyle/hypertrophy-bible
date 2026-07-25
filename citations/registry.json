@@ -2249,6 +2249,47 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33276485/"
+    },
+    {
+      "key": "collins-2014-neck-concussion",
+      "authors": [
+        "Collins CL",
+        "Fletcher EN",
+        "Fields SK",
+        "Kluchurosky L",
+        "Rohrkemper MK",
+        "Comstock RD"
+      ],
+      "year": 2014,
+      "title": "Neck strength: a protective factor reducing risk for concussion in high school sports.",
+      "source": "The Journal of Primary Prevention",
+      "volume": "35",
+      "issue": "5",
+      "pages": "309-319",
+      "doi": "10.1007/s10935-014-0355-2",
+      "pmid": "24930131",
+      "study_type": "cohort",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24930131/"
+    },
+    {
+      "key": "hrysomallis-2016-neck-review",
+      "authors": [
+        "Hrysomallis C"
+      ],
+      "year": 2016,
+      "title": "Neck Muscular Strength, Training, Performance and Sport Injury Risk: A Review.",
+      "source": "Sports Medicine",
+      "volume": "46",
+      "issue": "8",
+      "pages": "1111-1124",
+      "doi": "10.1007/s40279-016-0490-4",
+      "pmid": "26861960",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26861960/"
     }
   ]
 }
