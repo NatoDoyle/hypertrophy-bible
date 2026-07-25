@@ -210,6 +210,9 @@ These are real failures from previous iterations. Each is now a standing check.
    shipped since iteration-37 — is lesson 17's positive case in action: yield came from
    genuinely UN-audited new code, not from re-sweeping surfaces already swept.
 
+20. **'/loop' command is banned, do not use it** you should follow the loop explained in this 
+   file.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
