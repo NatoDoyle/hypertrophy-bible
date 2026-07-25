@@ -303,6 +303,84 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
+// --- streak-freeze proactive nudge (Cloud-loop wave): a HELD freeze token can
+// retroactively protect a missed week, but today only surfaces on the Progress
+// card if the user reopens the app. Piggybacked on the daily local-hour slot
+// (not every hourly tick like the discrete social events above); fires once per
+// distinct protectable week. Assertions look for a Uint8Array body specifically
+// (the content-bearing freeze push) among ALL captured fetch bodies, so they
+// stay correct regardless of whether the plain empty daily reminder ALSO fires
+// in the same tick (it uses a bodyless request, easily told apart). ---
+{
+  const fzPath = join(tmpdir(), `hb-push-freeze-test-${process.pid}.json`);
+  const fzStore = createFileStore(fzPath);
+  try {
+    const ua = await fakeUaSubscription();
+    const findFreezePush = async (bodies) => {
+      for (const b of bodies) {
+        if (!(b instanceof Uint8Array)) continue;
+        const d = JSON.parse(await decryptPushPayload({ body: b, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+        if (d.tag === "hb-freeze") return d;
+      }
+      return null;
+    };
+    // tz_offset_min +60 lands this user's local push hour AT `NOW` (16:00 UTC + 1h = 17:00 local).
+    await fzStore.saveUser("freezeme", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freezeme", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    // 4 distinct trained weeks (earns 1 token) with the MOST RECENT past week (1 week
+    // ago) left un-trained — mirrors test-adherence's freezeGap fixture (the clear
+    // "protect last week" case).
+    for (const d of [14, 21, 28, 35]) await fzStore.addSession("freezeme", { session_id: `fz-${d}`, date: daysAgo(d), sets: [] });
+    let bodies = [];
+    const captureFetch = async (url, opts) => { bodies.push(opts.body); return { ok: true, status: 201 }; };
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    const msg1 = await findFreezePush(bodies);
+    ok("a held freeze + a protectable week sends the streak-freeze push", !!msg1 && /streak freeze/.test(msg1.body));
+    const fzUser = await fzStore.getUser("freezeme");
+    const week1 = fzUser.profile.freeze_pushed_week;
+    ok("freeze_pushed_week is stamped to the protectable week (seen-once marker)", typeof week1 === "string" && week1.length > 0);
+
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW + 86400e3, captureFetch); // next day, same local hour, same protectable week
+    ok("the SAME protectable week is never pushed twice", (await findFreezePush(bodies)) === null);
+
+    // The marker is an EQUALITY check, not a forward-only `>=` guard: a stored value
+    // that looks "later" than the real protectable week (simulating the case where
+    // freezing the nearest miss uncovers an OLDER still-open one) must not
+    // permanently suppress the nudge for a genuinely different week.
+    await fzStore.updateUser("freezeme", (u) => { u.profile = { ...u.profile, freeze_pushed_week: "9999-W99" }; return u; });
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW + 86400e3, captureFetch);
+    const msg2 = await findFreezePush(bodies);
+    ok("a marker that looks 'later' than the real protectable week does not suppress a genuinely different week (equality, not >=)", !!msg2);
+    ok("the marker is corrected back to the real protectable week after that push", (await fzStore.getUser("freezeme")).profile.freeze_pushed_week === week1);
+
+    // No held tokens -> no push, even with a protectable-looking gap.
+    await fzStore.saveUser("freeze-broke", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freeze-broke", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-broke", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await fzStore.addSession("freeze-broke", { session_id: "fb1", date: daysAgo(35), sets: [] }); // 1 trained week -> 0 earned tokens
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("no held freeze tokens -> no streak-freeze push", (await findFreezePush(bodies)) === null);
+
+    // No gap in the lookback window -> nothing to protect -> no push, even with a balance.
+    await fzStore.saveUser("freeze-perfect", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freeze-perfect", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-perfect", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    for (const d of [7, 14, 21, 28, 35, 42]) await fzStore.addSession("freeze-perfect", { session_id: `fp-${d}`, date: daysAgo(d), sets: [] }); // 6 consecutive trained weeks, no gap
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("a full lookback window with no misses -> no streak-freeze push", (await findFreezePush(bodies)) === null);
+
+    // Paused / reminders_off users never get the freeze nudge either.
+    await fzStore.saveUser("freeze-paused", { profile: { tz_offset_min: 60 }, paused: { from: daysAgo(1) } });
+    await fzStore.savePushSubscription("freeze-paused", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-paused", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    for (const d of [14, 21, 28, 35]) await fzStore.addSession("freeze-paused", { session_id: `fpz-${d}`, date: daysAgo(d), sets: [] });
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("a paused user with a protectable week and tokens is NOT pushed", (await findFreezePush(bodies)) === null);
+  } finally { try { rmSync(fzPath); } catch {} }
+}
+
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the
 // FIRST device's successful send consume the event for every other device. ---
 {

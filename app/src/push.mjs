@@ -1,6 +1,6 @@
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
-import { settleChallenge } from "./adherence.mjs";
+import { settleChallenge, streakFreezeState } from "./adherence.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -195,6 +195,20 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
           });
         } catch { /* retried next sweep; the guard above makes the re-send idempotent per event */ }
       };
+      // Same seen-once contract as `stamp`, but for a marker that is a WEEK KEY, not
+      // a timestamp — the streak-freeze nudge below tracks `protectable_week`, which
+      // can move BACKWARD (freezing the nearest miss can uncover an OLDER still-open
+      // one). A forward-only `>=` guard would permanently block re-notifying about
+      // that still-real, still-actionable gap, so this compares by equality instead.
+      const stampIfChanged = async (field, value) => {
+        try {
+          await store.updateUser(userId, (u) => {
+            if ((u.profile?.[field] ?? null) === value) return u;
+            u.profile = { ...(u.profile ?? {}), [field]: value };
+            return u;
+          });
+        } catch { /* retried next sweep; worst case one repeat push for the same value */ }
+      };
 
       // A training-partner nudge (Wave 119) is a discrete social event, not a daily
       // cadence — push it on the NEXT hourly tick rather than waiting for the user's
@@ -256,6 +270,25 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
 
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
+
+      // A protectable streak (#4 adherence, loss-aversion): a held freeze token can
+      // retroactively save a missed week, but today that only ever surfaces if the
+      // user reopens the Progress card — the same "you have to come back to find
+      // out" gap the other proactive nudges above close. Piggybacked on the user's
+      // ONE daily local-hour slot (not every hourly tick like the discrete social
+      // events above), since streakFreezeState needs a full session-history read
+      // that would be wasteful to run 24x/day for every subscriber. Fires once per
+      // DISTINCT protectable week (`freeze_pushed_week`, via stampIfChanged).
+      if (!paused && !remindersOff) {
+        const sessions = await store.listSessions(userId);
+        const freeze = streakFreezeState(sessions, now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
+        if (freeze.balance > 0 && freeze.protectable_week && freeze.protectable_week !== (user.profile?.freeze_pushed_week ?? null)) {
+          const week = freeze.protectable_week;
+          const ok = await fanOut({ title: "The Hypertrophy Bible", body: "You missed a week, but a streak freeze can still save it — protect it before it's gone.", tag: "hb-freeze" });
+          if (ok) await stampIfChanged("freeze_pushed_week", week);
+        }
+      }
+
       const lastSessionAt = await store.latestSessionDate(userId);
       for (const sub of userSubs) {
         if (gone.has(sub.endpoint)) continue;
