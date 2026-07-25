@@ -173,7 +173,6 @@ const STEPS = [
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
   { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 && a.training_status !== "beginner" },
-  { key: "periodization", q: "Vary your rep ranges through the week?", opts: [["Keep it simple (same reps)", "linear"], ["Undulate — heavy, medium & high-rep days", "undulating"]], hint: "Undulating rotates each training day's rep range (heavy / moderate / high-rep) — a proven method once you're past the beginner stage. Only affects muscle-building goals.", showIf: (a) => a.training_status !== "beginner" && (a.primary_goal === "hypertrophy" || a.primary_goal === "recomposition") },
   { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
@@ -214,7 +213,6 @@ async function renderSettings() {
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
     specialization: p.specialization === true,
-    periodization: p.periodization === "undulating" ? "undulating" : "linear",
     units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
@@ -327,7 +325,6 @@ async function submitOnboarding() {
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
     available_equipment: answers.available_equipment, priority_muscles: priority,
     specialization: priority.length ? answers.specialization === true : false,
-    periodization: answers.periodization === "undulating" ? "undulating" : "linear",
     injuries, sex: answers.sex, units: answers.units || "metric",
   };
   // NOTE: the display-unit preference (hb_units) is written only on the SUCCESS
