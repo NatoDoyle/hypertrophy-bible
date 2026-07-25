@@ -320,7 +320,12 @@ export function createApp(store, config = {}) {
       workout_logged: sessions.some((s) => onDay(s.local_date ?? s.date)),
       calories_logged: nutrition.some((e) => onDay(e.date)),
     };
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO), daily });
+    // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
+    // guess for a lift with no history. `bodyweights` is ASC-sorted (byDate), so the
+    // last entry is the most recent; no log yet -> null, and buildToday falls back
+    // to the safe empty-bar default the client already applies.
+    const latestBodyweightKg = bodyweights.length ? bodyweights[bodyweights.length - 1].kg : null;
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg), daily });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns

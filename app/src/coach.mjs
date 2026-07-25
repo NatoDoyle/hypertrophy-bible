@@ -68,6 +68,33 @@ function lastAnyDateForExercise(sessions, exId) {
 export const COMEBACK_GAP_DAYS = 12;
 const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels easy
 
+// Rough BODY-SCALED starting guess for a lift the user has never logged, so a
+// non-beginner sees a plausible number to confirm/adjust instead of an empty bar
+// (roadmap #4's last slice). True beginners keep the safe empty-bar default
+// (app.js's startWeightDefault) — they haven't trained enough yet to judge whether
+// a body-scaled guess fits them. Deliberately erred light and rounded DOWN to the
+// exercise's own load increment: a fast climb over the first couple of sets is
+// safe, a heavy first guess risks form breakdown before the ramp-up card's "start
+// light, add a little each set" advice even lands. Patterns/equipment with no
+// sane bodyweight ratio (carries, unmapped "other", bands) return null and fall
+// back to the same empty-bar default.
+const PATTERN_BW_RATIO = {
+  squat: 0.5, hinge: 0.6, lunge: 0.2,
+  "horizontal-push": 0.45, "vertical-push": 0.3,
+  "horizontal-pull": 0.4, "vertical-pull": 0.4,
+};
+const ISOLATION_BW_RATIO = 0.1;
+const EQUIPMENT_LOAD_SCALE = { barbell: 1, "smith-machine": 1, machine: 0.9, cable: 0.7, kettlebell: 0.6, dumbbell: 0.45 };
+export function estimateStartingWeight(e, bodyweightKg, exId, byId = exerciseById) {
+  if (!e || !(bodyweightKg > 0) || e.equipment === "bodyweight") return null;
+  const ratio = e.movement_pattern?.startsWith("isolation-") ? ISOLATION_BW_RATIO : PATTERN_BW_RATIO[e.movement_pattern];
+  const eqScale = EQUIPMENT_LOAD_SCALE[e.equipment];
+  if (ratio == null || eqScale == null) return null;
+  const inc = loadIncrement(exId, byId);
+  const rounded = Math.floor((bodyweightKg * ratio * eqScale) / inc) * inc;
+  return rounded > 0 ? rounded : inc;
+}
+
 // Double progression: hit the top of the range on every set last time -> add load;
 // otherwise keep the load and aim to add reps. First time -> no suggestion (user picks).
 // `now` (ISO) enables layoff-aware deloading so the "I eased your weights" copy is true.
@@ -177,9 +204,15 @@ export function dailyReadiness(checkin) {
 
 // Build today's session card: every exercise pre-filled with a suggested weight.
 // A low-readiness check-in trims the last accessory and adds a caring coach note.
-export function buildToday(user, sessions, readiness = null, customEx = [], now = null) {
+export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
+  // beginner: gates plain-effort language on the set screen (Goal 3) — a true
+  // novice sees "leave a couple in the tank", not the "RIR" acronym; someone with
+  // real training history keeps the term. Also gates the body-scaled starting-
+  // weight guess below (a true novice hasn't trained enough to judge one).
+  // Defaults to beginner (the safe, plainer default) when training_status is unset.
+  const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
   const block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
   // Rotate by sessions of THIS program only, so merged sessions from a different
@@ -270,9 +303,20 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // whatever suggestWeight already returned, so a deload can never be heavier than
     // the prior real week and never undoes a lighter ease (a layoff comeback at
     // 0.88× stays at 0.88×, not bumped back up to 0.9×).
-    const suggested_kg = block?.phase === "deload" && sug.suggested_kg != null
+    let suggested_kg = block?.phase === "deload" && sug.suggested_kg != null
       ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
       : sug.suggested_kg;
+    // No history for this lift: a non-beginner gets a body-scaled starting guess
+    // to confirm/adjust instead of an empty bar (roadmap #4's last slice); a true
+    // beginner keeps the null (the client's safe empty-bar default + ramp-up card).
+    let suggestion_note = sug.note;
+    if (suggested_kg == null && !beginner && bodyweightKg) {
+      const estimate = estimateStartingWeight(e, bodyweightKg, ex.exercise, byId);
+      if (estimate != null) {
+        suggested_kg = estimate;
+        suggestion_note = "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort.";
+      }
+    }
     return {
       exercise: ex.exercise,
       name: name(ex.exercise),
@@ -285,7 +329,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
       suggested_kg,
-      suggestion_note: sug.note,
+      suggestion_note,
       // Per-exercise layoff ease (this lift returned after >=12 days even though
       // the session isn't a whole-session comeback — e.g. a rotated-back
       // accessory): its sets are planned-easy and must be deload-tagged too, or
@@ -299,11 +343,6 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
   // client tags this session's sets `deload` so the eased weights never enter
   // the e1RM/stall trends as a fabricated ~12% strength loss.
-  // beginner: gates plain-effort language on the set screen (Goal 3) — a true
-  // novice sees "leave a couple in the tank", not the "RIR" acronym; someone with
-  // real training history keeps the term. Defaults to beginner (the safe, plainer
-  // default) when training_status is unset.
-  const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner };
 }
 

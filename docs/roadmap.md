@@ -80,9 +80,9 @@ multi-user infra).
    schema; ship one looping line-art/silhouette animation per `movement_pattern` (~20 cover all
    171 exercises) inline on the set screen; delete the YouTube-search punt. Upgrade to
    per-exercise clips over time. (Real footage remains BLOCKERS #1.)
-4. **[Goal 3] Novice-friction quick wins.** *PARTIALLY SHIPPED (Wave 81).* Done: the set screen's
-   "leave about N in the tank" target no longer surfaces the bare "what's RIR?" glossary link to
-   a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term
+4. **[Goal 3] Novice-friction quick wins.** — *PARTIALLY SHIPPED (Wave 81 + this reconcile).* Done: the
+   set screen's "leave about N in the tank" target no longer surfaces the bare "what's RIR?" glossary
+   link to a true novice (`buildToday` now returns `beginner` from `training_status`, gating the term
    client-side; non-beginners keep it). Also done (Wave 83): the specialization question
    ("All-in specialization block…") is hidden from beginners — a programming decision a novice
    can't make, now gated on `training_status !== "beginner"` in the onboarding `showIf`. Also done
@@ -90,9 +90,16 @@ multi-user infra).
    Also done (Wave 87): the **Fuel tape-measure wall is gone** — `bmiBodyFat` (Deurenberg, a rough
    BMI-based BF% seed the adaptive TDEE later corrects) is the last fallback in `nutritionInputs`,
    so the Fuel form works from **weight + height alone**; BF% and tape measures are now optional
-   "sharper estimate" fields. **Remaining slice:** seed the first-set weight to a body-scaled
-   estimate for non-beginners (a body-scaled first guess so the number on screen is a confirm, not
-   a blind guess; keep the safe empty-bar default for true beginners).
+   "sharper estimate" fields. **Also done (Cloud loop wave):** the first-set weight is now
+   body-scaled for a non-beginner with no history on a lift — `coach.mjs`'s `estimateStartingWeight`
+   scales the latest logged bodyweight (`/api/today` now fetches it) by a movement-pattern ratio
+   (squat/hinge/lunge/push/pull, isolation) × an equipment load-scale (barbell/machine/cable/
+   dumbbell/kettlebell), rounded DOWN to the lift's own load increment so the guess errs light —
+   a confirm-and-adjust number instead of the empty-bar blind guess. True beginners are
+   deliberately excluded (`buildToday`'s existing `beginner` gate) and keep the safe empty-bar
+   default + the "let's find your weight" ramp-up card; a lift with no bodyweight on file, or an
+   equipment/pattern combo with no sane ratio (bodyweight moves, carries, "other"), falls back to
+   the same pre-existing null. **ITEM #4 NOW FULLY SHIPPED** (all four novice-friction items done).
 5. **[Goal 1] Citation-coverage gate.** — *SHIPPED.* `tools/check-claim-coverage.mjs` runs in
    `npm run check` and fails the build when a content page makes a [Grade A]/[Grade B] claim but
    carries zero `[^footnote]` citations. Two plain-language getting-started synthesis pages (which
