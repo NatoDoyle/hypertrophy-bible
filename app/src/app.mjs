@@ -6,13 +6,22 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
-import { adherenceReport, streakFreezeState, publicShareCard } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState, publicShareCard, sessionsInWeek } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
 const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
+
+// A challenge (#10 social) still occupies its owner's one-at-a-time slot only
+// if it's non-terminal AND its target week hasn't passed yet — a stale
+// pending/active record whose week already ended is NOT open, even before
+// either side has read GET /api/challenge to self-transition it. Without this,
+// a propose could be wrongly refused as "opponent-busy" against a challenge
+// that's actually over but simply hasn't been read since.
+const isChallengeOpen = (challenge) =>
+  !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKey(new Date().toISOString());
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -614,6 +623,112 @@ export function createApp(store, config = {}) {
     if (!myToken || !(owner.profile?.following ?? []).includes(myToken)) return c.json({ error: "not-mutual" }, 403);
     await store.updateUser(ownerId, (u) => { u.profile = { ...(u.profile ?? {}), partner_nudge: { at: Date.now() } }; return u; });
     return c.json({ nudged: true });
+  });
+
+  // --- 1v1 weekly challenges (#10 social, the accept/decline state machine the
+  // roadmap calls out as still missing beyond the passive weekly race). v0 scope,
+  // deliberately: at most ONE challenge per user at a time (challenger or
+  // opponent), no history — a real product feature, but the smallest coherent
+  // slice, same "ship the narrow thing first" precedent as the cheer counter and
+  // the mini-leaderboard. Lives entirely as a mirrored `profile.challenge` object
+  // on BOTH sides (no new store table): each side only ever writes ITS OWN half
+  // plus, on propose/respond, the other party's half via their share token — the
+  // same two-sided-write shape `following`'s reciprocal check already reads, just
+  // now also written. Resolution needs no snapshot or cron: sessionsInWeek
+  // re-derives each side's tally for the challenge's OWN week key on every read,
+  // so it's correct whether read mid-week or long after the week ended.
+  app.post("/api/challenge", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const sender = b.user_id && (await store.getUser(b.user_id));
+    if (!sender) return c.json({ error: "unknown user" }, 404);
+    const token = typeof b.token === "string" ? b.token.trim() : "";
+    if (!token || token.length > 100) return c.json({ error: "bad-token" }, 400);
+    if (!(sender.profile?.following ?? []).includes(token)) return c.json({ error: "not-following" }, 400);
+    const ownerId = await store.getShareUserId(token);
+    if (!ownerId) return c.json({ error: "not-found" }, 404);
+    if (ownerId === b.user_id) return c.json({ error: "cannot-challenge-self" }, 400);
+    const myToken = await store.getShareIdForUser(b.user_id);
+    const owner = await store.getUser(ownerId);
+    if (!myToken || !(owner.profile?.following ?? []).includes(myToken)) return c.json({ error: "not-mutual" }, 403);
+    if (isChallengeOpen(sender.profile?.challenge)) return c.json({ error: "already-challenging" }, 409);
+    if (isChallengeOpen(owner.profile?.challenge)) return c.json({ error: "opponent-busy" }, 409);
+    const id = crypto.randomUUID();
+    const week = isoWeekKey(new Date().toISOString());
+    const createdAt = Date.now();
+    await store.updateUser(b.user_id, (u) => {
+      u.profile = { ...(u.profile ?? {}), challenge: { id, role: "challenger", partner_token: token, week, status: "pending", created_at: createdAt } };
+      return u;
+    });
+    await store.updateUser(ownerId, (u) => {
+      u.profile = { ...(u.profile ?? {}), challenge: { id, role: "opponent", partner_token: myToken, week, status: "pending", created_at: createdAt } };
+      return u;
+    });
+    return c.json({ challenged: true, week });
+  });
+  // Only the OPPONENT can respond (a challenger accepting their own proposal
+  // would skip the consent step the whole feature exists to add).
+  app.post("/api/challenge/respond", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const responder = b.user_id && (await store.getUser(b.user_id));
+    if (!responder) return c.json({ error: "unknown user" }, 404);
+    const mine = responder.profile?.challenge;
+    // The normal UI always calls GET /api/challenge first, which self-transitions a
+    // pending-past-its-week challenge to "declined" before offering accept/decline
+    // buttons — but this route is reachable directly (possession-of-UUID auth means
+    // any client can call it), so it must enforce the SAME week-freshness rule
+    // itself. Without this, a late accept could revive a challenge whose week
+    // already ended into "active", which GET would then resolve into a fabricated
+    // "completed" result from training that happened before anyone had agreed to
+    // compete over it — not the "never answered, no result to show" outcome the
+    // design intends for an unanswered invite.
+    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKey(new Date().toISOString()))
+      return c.json({ error: "no-pending-challenge" }, 400);
+    const status = b.accept === true ? "active" : "declined";
+    await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, status } }; return u; });
+    const challengerId = mine.partner_token && (await store.getShareUserId(mine.partner_token));
+    if (challengerId) {
+      await store.updateUser(challengerId, (u) => {
+        if (u.profile?.challenge?.id !== mine.id) return u; // challenger already moved on — don't resurrect a stale slot
+        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status } };
+        return u;
+      });
+    }
+    return c.json({ status });
+  });
+  // Live (or final, once the target week has passed) state of the caller's own
+  // challenge, incl. both sides' tallies for the challenge's OWN week — so this
+  // reads correctly whether the week is still running or long over. A challenge
+  // self-transitions to a terminal state on read — ONLY this side's copy,
+  // mirroring the rest of this feature's one-side-writes-its-own-half design —
+  // once its week ends or its opponent's share vanishes: an ACTIVE one
+  // "completed" (it ran and has a result), a still-PENDING one "declined" (never
+  // answered, so there's no result to show). Either terminal state reopens this
+  // user's challenge slot for a new propose (the OPEN check in POST
+  // /api/challenge only blocks "pending"/"active").
+  app.get("/api/challenge", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    const ch = user.profile?.challenge;
+    if (!ch) return c.json({ challenge: null });
+    const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
+    const weekOver = ch.week !== isoWeekKey(new Date().toISOString());
+    if ((ch.status === "active" || ch.status === "pending") && (weekOver || !opponentId)) {
+      const nextStatus = ch.status === "pending" ? "declined" : "completed";
+      await store.updateUser(id, (u) => {
+        if (u.profile?.challenge?.id !== ch.id) return u;
+        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status: nextStatus } };
+        return u;
+      });
+      ch.status = nextStatus;
+    }
+    if (!opponentId) return c.json({ challenge: { ...ch, opponent_active: false } });
+    const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
+    return c.json({
+      challenge: { ...ch, opponent_active: true },
+      my_count: sessionsInWeek(mySessions, ch.week),
+      opponent_count: sessionsInWeek(opponentSessions, ch.week),
+      week_over: weekOver,
+    });
   });
 
   app.get("/api/checkin/today", async (c) => {

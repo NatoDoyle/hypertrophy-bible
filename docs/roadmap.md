@@ -263,27 +263,57 @@ infra, the one genuinely large build left here).
     static reminder copy when absent, so the empty-payload daily reminder is untouched. Verified
     with a real ECDH+HKDF+AES-GCM round-trip in tests (encrypt via `sendPush`, decrypt with the
     fake subscriber's own keys, assert the exact JSON survives) plus sweep-level tests for
-    dedup/re-fire/pause-gating. Cheers aren't wired the same way yet (no natural single-event
-    marker like the nudge's `at` timestamp — would need a per-cheer-count high-water-mark design);
-    that and challenges remain. The live-push-service-send-201 check (needs a real browser
-    subscription) stays the last production-readiness gate, unchanged from Wave 120 — infeasible
-    to verify headless. **Weekly race shipped (Wave 125):** the all-time streak/level leaderboard
-    (Wave 116) never resets, so a lapsed partner still outranks someone training hard *this* week —
-    no short-horizon urgency. `publicShareCard` (the same non-PII allowlist `GET /api/share/:token`
-    and `GET /api/following` already return) now also carries `sessions_this_week` (reusing
-    `weeklySummary`, the same window `/api/adherence` shows you for yourself); a new pure
-    `weeklyRaceStatus(youThisWeek, partnerThisWeek)` (`session-core.mjs`, unit-tested alongside
-    `rankPartners`) compares you to each partner and the Coach tab's partner row now shows "🏁
-    you're ahead this week" / "they're ahead this week" / "tied this week" next to the existing
-    streak/level line — resets naturally every week with no new persisted state, no propose/accept
-    flow, no push wiring (in-app only, same shipped-alone precedent as the cheer counter and the
-    mini-leaderboard). Deliberately NOT the full "challenges" item (a user-initiated, time-boxed
-    1v1 competition with its own accept/decline state machine) — that remains a larger,
-    still-unclaimed follow-on; this slice is the smallest coherent step that turns the static
-    leaderboard into something with real weekly stakes. Both PII-allowlist tests
-    (`test-adherence.mjs`, `test-routes.mjs`) updated to the new 4-key card shape; a route test
-    locks in that `sessions_this_week` actually flows through `GET /api/following`, not just the
-    public share endpoint.
+    dedup/re-fire/pause-gating. Cheers and challenge events aren't wired into push the same way yet
+    (no natural single-event marker like the nudge's `at` timestamp — would need a per-cheer-count
+    high-water-mark design, or an equivalent for challenge propose/respond). The
+    live-push-service-send-201 check (needs a real browser subscription) stays the last
+    production-readiness gate, unchanged from Wave 120 — infeasible to verify headless. **Weekly
+    race shipped (Wave 125):** the all-time streak/level leaderboard (Wave 116) never resets, so a
+    lapsed partner still outranks someone training hard *this* week — no short-horizon urgency.
+    `publicShareCard` (the same non-PII allowlist `GET /api/share/:token` and `GET /api/following`
+    already return) now also carries `sessions_this_week` (reusing `weeklySummary`, the same window
+    `/api/adherence` shows you for yourself); a new pure `weeklyRaceStatus(youThisWeek,
+    partnerThisWeek)` (`session-core.mjs`, unit-tested alongside `rankPartners`) compares you to
+    each partner and the Coach tab's partner row now shows "🏁 you're ahead this week" / "they're
+    ahead this week" / "tied this week" next to the existing streak/level line — resets naturally
+    every week with no new persisted state, no propose/accept flow, no push wiring (in-app only,
+    same shipped-alone precedent as the cheer counter and the mini-leaderboard). Both PII-allowlist
+    tests (`test-adherence.mjs`, `test-routes.mjs`) updated to the new 4-key card shape; a route
+    test locks in that `sessions_this_week` actually flows through `GET /api/following`, not just
+    the public share endpoint. **1v1 weekly challenges shipped (Wave 126):** the accept/decline
+    state machine the item above deliberately left out. v0 scope: at most ONE challenge per user at
+    a time (challenger or opponent), no history — `POST /api/challenge` (propose, mutual-partners
+    only, reuses the same not-following/not-mutual checks as nudge), `POST /api/challenge/respond`
+    (only the opponent can accept/decline — a challenger "accepting" their own proposal would skip
+    the consent step the whole feature exists to add), `GET /api/challenge` (live tally for both
+    sides via the new `sessionsInWeek(sessions, weekKey)` — unlike `weeklySummary`, scores a
+    SPECIFIC week key so it stays correct after that week has ended, needing no snapshot or cron).
+    No new store table: a mirrored `profile.challenge` object on BOTH sides (each side writes its
+    own half, plus the other's on propose/respond — the same two-sided-write shape `following`'s
+    reciprocal check already reads). A challenge self-transitions to a terminal state ("completed"
+    if it was active, "declined" if a proposal just went unanswered) the next time EITHER side reads
+    it past its week or after its opponent's share vanishes — which also reopens that user's slot.
+    Caught and fixed one real bug before shipping: the "already open" guard on propose originally
+    trusted stored status literally, so a stale-but-not-yet-read challenge could wrongly block a
+    fresh propose as "opponent-busy" even though its week had already ended — fixed with a shared
+    `isChallengeOpen` predicate that also checks the week, not just the status. Coach tab renders a
+    "⚔️ challenge" button per mutual partner (hidden while a slot is occupied), a pending
+    accept/decline card, an in-progress tally, and a final win/lose/tie result. 21 new route tests
+    (propose/mutual/self-target/already-open/opponent-busy/decline/accept/live-tally/week-over-
+    resolution/slot-reopening, all from both sides) + 4 new `sessionsInWeek` unit tests. Still not
+    the full "challenges" vision (only ONE concurrent challenge, no history/win-loss record, no
+    push notification when challenged) — those are natural v1 follow-ons once a real table is
+    justified by the need for multiple concurrent challenges or a history view. **Audit fix
+    (Cloud loop wave):** `isChallengeOpen`'s week-freshness check (Wave 126) was applied to
+    `POST /api/challenge` (propose) but not to `POST /api/challenge/respond` — the normal UI
+    always calls `GET /api/challenge` first, which self-transitions a pending-past-its-week
+    challenge to "declined" before ever rendering accept/decline buttons, but `respond` is
+    reachable directly (possession-of-UUID auth means any client can call it without going
+    through GET first), so a stale pending challenge could be revived into "active" via a late
+    accept — later resolving into a fabricated "completed" result from training logged before
+    either side had agreed to compete. Fixed by enforcing the same week check in `respond`
+    directly; 3 new route tests lock in the stale-accept/decline refusal and confirm no
+    "active" residue survives on the challenger's side.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

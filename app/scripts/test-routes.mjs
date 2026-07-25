@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
+import { isoWeekKey } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -611,6 +612,83 @@ try {
   ok("#nudge does not re-surface after being seen once", bobAdherenceAgain.nudged === false);
   const aliceAdherence = await (await app.request("/api/adherence", { headers: { "X-HB-User": alice } })).json();
   ok("#nudge only surfaces for the RECEIVER, never the sender", aliceAdherence.nudged === false);
+
+  // --- 1v1 weekly challenges (#10 social, accept/decline state machine) ---
+  const carol = (await onboardBw("beginner")).data.user_id;
+  const dave = (await onboardBw("beginner")).data.user_id;
+  const carolShare = (await json("POST", "/api/share", { user_id: carol })).data.share_id;
+  const daveShare = (await json("POST", "/api/share", { user_id: dave })).data.share_id;
+  const getChallenge = (u) => app.request("/api/challenge", { headers: { "X-HB-User": u } }).then((r) => r.json());
+  ok("#challenge not-following is refused (400)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 400);
+  await json("POST", "/api/following", { user_id: carol, token: daveShare }); // one-directional so far
+  ok("#challenge one-directional following is refused (403 not-mutual)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 403);
+  await json("POST", "/api/following", { user_id: dave, token: carolShare }); // now mutual
+  ok("#challenge can't target yourself (400)", (await json("POST", "/api/challenge", { user_id: carol, token: carolShare })).status === 400);
+  const propose = await json("POST", "/api/challenge", { user_id: carol, token: daveShare });
+  ok("#challenge propose between mutual partners succeeds", propose.status === 200 && propose.data.challenged === true);
+  const carolView1 = await getChallenge(carol);
+  ok("#challenge challenger sees role+status pending", carolView1.challenge.role === "challenger" && carolView1.challenge.status === "pending");
+  const daveView1 = await getChallenge(dave);
+  ok("#challenge opponent sees role+status pending too", daveView1.challenge.role === "opponent" && daveView1.challenge.status === "pending");
+  ok("#challenge a challenger can't open a second one while pending (409)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 409);
+  const erin = (await onboardBw("beginner")).data.user_id;
+  const erinShare = (await json("POST", "/api/share", { user_id: erin })).data.share_id;
+  await json("POST", "/api/following", { user_id: erin, token: daveShare });
+  await json("POST", "/api/following", { user_id: dave, token: erinShare }); // erin is ALSO mutual with dave
+  ok("#challenge a third mutual party can't challenge a busy opponent (409)", (await json("POST", "/api/challenge", { user_id: erin, token: daveShare })).status === 409);
+
+  // Decline: both sides see it, and the slot reopens for a fresh propose.
+  const decline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
+  ok("#challenge decline succeeds", decline.status === 200 && decline.data.status === "declined");
+  ok("#challenge decline propagates to the challenger's side too", (await getChallenge(carol)).challenge.status === "declined");
+  ok("#challenge a challenger can't respond to their own proposal", (await json("POST", "/api/challenge/respond", { user_id: carol, accept: true })).status === 400);
+
+  // Re-propose (the slot was freed by the decline) and accept this time.
+  await json("POST", "/api/challenge", { user_id: carol, token: daveShare });
+  const accept = await json("POST", "/api/challenge/respond", { user_id: dave, accept: true });
+  ok("#challenge accept succeeds", accept.status === 200 && accept.data.status === "active");
+  ok("#challenge accept propagates to the challenger's side too", (await getChallenge(carol)).challenge.status === "active");
+  ok("#challenge a second propose while active is refused (409)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 409);
+
+  // Log sessions for each side THIS week and confirm the live tally is correct.
+  const dNow = (n) => new Date(Date.now() - n * 3600000).toISOString();
+  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c1", date: dNow(2),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c2", date: dNow(1),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: dave, session_id: "ch-d1", date: dNow(1),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  const carolView2 = await getChallenge(carol);
+  ok("#challenge live tally counts each side's own sessions this week", carolView2.my_count === 2 && carolView2.opponent_count === 1);
+  const daveView2 = await getChallenge(dave);
+  ok("#challenge live tally is symmetric from the opponent's side", daveView2.my_count === 1 && daveView2.opponent_count === 2);
+  ok("#challenge week_over is false mid-week", carolView2.week_over === false);
+
+  // Week-over auto-resolution: force the stored challenge onto a past week key
+  // (computed relative to Date.now(), never a fixed calendar date — CLAUDE.md)
+  // and confirm it self-completes with the frozen tally on next read.
+  const pastWeek = isoWeekKey(new Date(Date.now() - 8 * 7 * 86400000).toISOString());
+  await store.updateUser(carol, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: pastWeek } }; return u; });
+  await store.updateUser(dave, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: pastWeek } }; return u; });
+  const carolView3 = await getChallenge(carol);
+  ok("#challenge self-completes once its week has ended", carolView3.challenge.status === "completed" && carolView3.week_over === true);
+  ok("#challenge a completed challenge frees the slot for a new propose", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 200);
+
+  // A stale pending challenge (its week already ended) must NOT be acceptable via
+  // /api/challenge/respond directly — this route is reachable without ever calling
+  // GET /api/challenge first (which is what normally self-resolves a stale pending
+  // challenge to "declined"), so it has to enforce the same week-freshness rule
+  // itself or a late accept could revive an unanswered invite into "active".
+  const stalePastWeek = isoWeekKey(new Date(Date.now() - 8 * 7 * 86400000).toISOString());
+  await store.updateUser(carol, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
+  await store.updateUser(dave, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
+  const staleAccept = await json("POST", "/api/challenge/respond", { user_id: dave, accept: true });
+  ok("#challenge accepting a challenge whose week already ended is refused (400), not revived to active", staleAccept.status === 400 && staleAccept.data.error === "no-pending-challenge");
+  // Reading it (which self-transitions the stale pending copy to "declined") proves
+  // the refused accept above left no "active" residue on the challenger's side either.
+  ok("#challenge a refused stale accept never revived the challenger's copy to active", (await getChallenge(carol)).challenge.status === "declined");
+  const staleDecline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
+  ok("#challenge declining a challenge whose week already ended is also refused (the slot resolves via GET's self-transition instead)", staleDecline.status === 400 && staleDecline.data.error === "no-pending-challenge");
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
