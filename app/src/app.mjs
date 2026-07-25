@@ -749,7 +749,12 @@ export function createApp(store, config = {}) {
       // contrived), the guard above no-ops the write and the response must not
       // fabricate a win/loss the store never actually recorded (lesson 10: never
       // render a derived status/record that contradicts what's actually stored).
-      const wrote = updated.profile?.challenge?.id === ch.id;
+      // `updated` is null if the user row vanished between this handler's initial
+      // read and this write (e.g. a magic-link mergeUser deleting the anonymous
+      // fromId, racing an in-flight GET) — treat that as "not written" (wrote=false)
+      // rather than dereferencing null, so a deleted-mid-request user gets the
+      // un-fabricated current state, never a 500.
+      const wrote = updated?.profile?.challenge?.id === ch.id;
       newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
       if (wrote) ch.status = nextStatus;
     }

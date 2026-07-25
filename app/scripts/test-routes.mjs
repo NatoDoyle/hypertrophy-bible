@@ -778,6 +778,16 @@ try {
   store.updateUser = realUpdateUser;
   ok("#challenge-history a raced slot-replacement does not fabricate a history entry in the response", (henryRaced.history ?? []).length === 0);
   ok("#challenge-history a raced slot-replacement does not persist a phantom entry either", ((await store.getUser(henry)).profile.challenge_history ?? []).length === 0);
+  // Hardening (PR #210 follow-up): if the user row vanishes between the handler's
+  // initial read and its completion-write, store.updateUser returns null — the
+  // route must treat that as "not written" (via `updated?.`) and return the
+  // un-fabricated current state, never dereference null and 500. henry's challenge
+  // is still active + week-over here, so the GET reaches the completion-write path.
+  const realUpdateUser2 = store.updateUser.bind(store);
+  store.updateUser = async () => null; // simulate the row gone at write time
+  const henryVanished = await app.request("/api/challenge", { headers: { "X-HB-User": henry } });
+  store.updateUser = realUpdateUser2;
+  ok("#challenge-history a user row vanishing at write time returns 200, not a 500 (updated?. guard)", henryVanished.status === 200);
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
