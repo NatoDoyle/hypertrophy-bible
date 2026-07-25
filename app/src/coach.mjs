@@ -98,7 +98,12 @@ export function estimateStartingWeight(e, bodyweightKg, exId, byId = exerciseByI
 // Double progression: hit the top of the range on every set last time -> add load;
 // otherwise keep the load and aim to add reps. First time -> no suggestion (user picks).
 // `now` (ISO) enables layoff-aware deloading so the "I eased your weights" copy is true.
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null) {
+// `holdLoad` (taper): suppress BOTH progression bumps (RIR-surplus and hit-top-of-
+// range) so the numbers actually match the taper card's "the weight stays where it
+// is" — chasing a PR into an event contradicts the freshness the taper exists to
+// buy. The layoff-comeback ease still overrides (safety first; buildToday makes
+// the taper copy honest about it), and the failure/hold paths are unchanged.
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false) {
   const last = lastSetsForExercise(sessions, exId);
   const { max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -124,13 +129,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   if (rirs.length) {
     const bandTop = (() => { const m = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); return m ? +m[2] : 2; })();
     const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
-    if (avgRir >= bandTop + 1) {
+    if (!holdLoad && avgRir >= bandTop + 1) {
       const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
     if (avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   }
   if (allHitTop) {
+    if (holdLoad) return { suggested_kg: lastWeight, note: "Taper — hold this weight. You'd normally add load here; save that push for after the event.", ...base };
     return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
   return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };
@@ -199,9 +205,22 @@ export function waveRir(band, week) {
 // unlike a real deload: a taper's whole point is staying strong while doing
 // less, so only set count and how close to failure you go come down.
 const TAPER_WINDOW_DAYS = 14;
-export function taperPhase(now, goalEventDate, experience) {
+export function taperPhase(now, goalEventDate, experience, tzOffsetMin = null) {
   if (experience === "beginner" || !now || !goalEventDate) return null;
-  const daysUntil = Math.floor((+new Date(goalEventDate) - +new Date(now)) / 86400000);
+  // Day-granular, in the USER'S local frame. `now` is a full UTC instant while
+  // goal_event_date is a calendar date ("YYYY-MM-DD" parses as UTC midnight), so
+  // the old instant-subtraction + floor made the taper VANISH on event day (the
+  // negative fraction floored to -1 → "peak volume, push hard" on meet morning)
+  // and lagged the countdown by a day for most of each UTC day — worst west of
+  // UTC, where a Friday-evening session already read as Saturday. Shift `now` to
+  // the user's local date first (tz_offset_min = minutes EAST of UTC, the same
+  // convention isUserPushHour uses; absent → UTC date), then compare CALENDAR
+  // DATES: an exact integer, 0 on the event day itself (the taper holds through
+  // the day of the event, never flips back to the mesocycle wave).
+  const localMs = +new Date(now) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0);
+  if (!Number.isFinite(localMs)) return null;
+  const todayLocal = new Date(localMs).toISOString().slice(0, 10);
+  const daysUntil = Math.round((+new Date(goalEventDate) - +new Date(todayLocal)) / 86400000);
   if (!Number.isFinite(daysUntil) || daysUntil < 0 || daysUntil > TAPER_WINDOW_DAYS) return null;
   const early = daysUntil > 7;
   return {
@@ -256,7 +275,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // Is a goal event close enough to taper for? (null unless the user set one AND
   // it's inside the taper window — see taperPhase's comment for why this
   // OVERRIDES the mesocycle wave below rather than compounding with it.)
-  const taper = taperPhase(now, user.profile?.goal_event_date, user.profile?.training_status);
+  const taper = taperPhase(now, user.profile?.goal_event_date, user.profile?.training_status, user.profile?.tz_offset_min);
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
   // rotation_base rebases the cycle at the last regenerate: the deterministic
@@ -287,10 +306,16 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // telling the user to cut sets and recover, so "add a back-off set" would be a
     // direct contradiction on the same screen and undercuts the one week the program
     // exists to de-fatigue. Acknowledge the good day, but hold the deload line.
-    coach_note = block?.phase === "deload"
-      ? "You're feeling fresh — good sign the deload is working. Still keep it a genuine deload; the volume comes back next week."
-      : taper
-        ? "You're feeling fresh — the taper's doing its job. Keep the sets where they are; that's the point."
+    // Taper FIRST: everywhere else in buildToday the taper overrides the mesocycle
+    // wave (sets, RIR, load-ease, the block card itself is nulled) — so the note
+    // must follow the same precedence, or a week-6 deload overlapping a taper
+    // window produced a "keep it a genuine deload; the volume comes back next
+    // week" note beside a taper card, referencing a deload that was neither
+    // rendered nor applied (and "next week" is the event, not returning volume).
+    coach_note = taper
+      ? "You're feeling fresh — the taper's doing its job. Keep the sets where they are; that's the point."
+      : block?.phase === "deload"
+        ? "You're feeling fresh — good sign the deload is working. Still keep it a genuine deload; the volume comes back next week."
         : "You're fresh today — if a lift feels easy, add a back-off set.";
   } else if (readiness) {
     // The common case must never be silent: a user who checked in and saw nothing
@@ -321,6 +346,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   if (layoffDays >= COMEBACK_GAP_DAYS) {
     const welcome = `Welcome back — it's been ${layoffDays} days, so I eased today's weights to ramp you in safely. They'll climb again fast.`;
     coach_note = coach_note ? `${welcome} ${coach_note}` : welcome;
+    // A comeback INSIDE a taper window: the load ease is correct (safety first),
+    // but the taper card's stock "the weight stays where it is / stays real" line
+    // would sit right next to per-exercise "I eased this to X kg" notes. Lesson 12:
+    // when the numbers are right, make the EXPLANATION honest — don't let two true
+    // mechanisms describe each other's opposite.
+    if (taper) taper.note = `${taper.daysUntil} day${taper.daysUntil === 1 ? "" : "s"} to go — taper, plus you're coming back from a break: sets stay low and the weights are eased a touch, so you arrive fresh, not rusty.`;
   }
   // The all-time bests BEFORE today, per exercise — the exact ceiling sessionRecap will
   // compare this session against once it's logged (same `sessions` array, nothing added
@@ -335,7 +366,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       : block?.phase === "deload" ? "3-4"
       : block ? waveRir(ex.rir ?? "1-3", block.week)
       : ex.rir ?? "1-3";
-    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand);
+    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper);
     // Apply the mesocycle wave: sets scale with the block week — but never below 2
     // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
     // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the

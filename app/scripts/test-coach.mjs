@@ -538,4 +538,59 @@ check("buildToday: an active taper OVERRIDES the mesocycle wave rather than comp
   assert.ok(normalDay.block); // clearing the goal date lets the mesocycle wave resume
 });
 
+check("taperPhase: day-granular local-frame math — survives event day, no off-by-one, no 15-day flicker", () => {
+  // Event MORNING (a full UTC timestamp after midnight): the old instant-floor made
+  // daysUntil -1 and returned the full mesocycle wave ("peak volume") on meet day.
+  const eventDay = taperPhase("2026-07-30T09:00:00Z", "2026-07-30", "intermediate");
+  assert.ok(eventDay, "the taper must hold ON the event day, not vanish");
+  assert.equal(eventDay.daysUntil, 0);
+  assert.equal(eventDay.setScale, 0.4);
+  // Countdown is calendar-exact: the evening before the event is 1 day out, not 0.
+  assert.equal(taperPhase("2026-07-29T18:00:00Z", "2026-07-30", "intermediate").daysUntil, 1);
+  // 15 calendar days out, late in the day: the old fractional floor read 14.04 as 14
+  // and flickered the taper on a day early — calendar math says 15 -> outside the window.
+  assert.equal(taperPhase("2026-07-15T23:00:00Z", "2026-07-30", "intermediate"), null);
+  // West of UTC (tz_offset_min = -420, US Pacific): Friday 17:01 local is Saturday
+  // 00:01Z — the LOCAL frame is still Friday, so a Saturday event is 1 day out
+  // (the old code, and the UTC fallback, would already call it event day).
+  assert.equal(taperPhase("2026-08-01T00:01:00Z", "2026-08-01", "intermediate", -420).daysUntil, 1);
+  assert.equal(taperPhase("2026-08-01T00:01:00Z", "2026-08-01", "intermediate").daysUntil, 0); // no tz known -> UTC date fallback
+});
+
+check("suggestWeight holdLoad (taper): both progression bumps are suppressed so the numbers match the card", () => {
+  const hitTop = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+  ] }];
+  const held = suggestWeight(hitTop, "barbell-bench-press", "6-10", undefined, null, null, true);
+  assert.equal(held.suggested_kg, 100); // would be 102.5 outside a taper
+  assert.ok(/hold this weight/i.test(held.note));
+  const easy = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 4 },
+  ] }];
+  assert.equal(suggestWeight(easy, "barbell-bench-press", "6-10", undefined, null, null, true).suggested_kg, 100); // would be 105
+});
+
+check("buildToday: taper precedence in the high-readiness note, and honest copy on a comeback-in-taper", () => {
+  const user = {
+    profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, goal_event_date: "2026-07-15" },
+    program: selectProgram({ training_status: "intermediate", days_per_week: 3 }),
+    plan_meta: { block_start: "2026-06-01T00:00:00Z" }, // 2026-07-08 = day 37 -> mesocycle week 6 (deload)
+    created_at: "2026-06-01T00:00:00Z",
+  };
+  // Week-6 deload overlapping the taper window + a high check-in: the note must
+  // follow the taper (which governs the sets/RIR/card), never reference a deload
+  // that is neither rendered nor applied.
+  const t = buildToday(user, [], { level: "high", score: 5 }, [], "2026-07-08T12:00:00Z");
+  assert.ok(t.taper, "taper active 7 days out");
+  assert.ok(/taper/i.test(t.coach_note), "high-readiness note follows the taper");
+  assert.ok(!/deload/i.test(t.coach_note), "the unrendered deload never narrates the screen");
+  // A 13-day layoff ending inside the taper: loads are (correctly) eased, so the
+  // taper card must not claim "the weight stays real" beside "I eased this" notes.
+  const back = buildToday(user, [{ date: "2026-06-25T12:00:00Z", sets: [] }], null, [], "2026-07-08T12:00:00Z");
+  assert.equal(back.comeback, true);
+  assert.ok(/eased/i.test(back.taper.note), "taper copy is honest about the comeback ease");
+  assert.ok(!/stays real|stays where it is/i.test(back.taper.note));
+});
+
 console.log(`\n${passed} coach test(s) passed.`);
