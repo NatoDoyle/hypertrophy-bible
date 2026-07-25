@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v123";
+const VERSION = "hb-shell-v124";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -39,15 +39,30 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// --- Web Push device reminders (#4). Empty-payload pushes: the notification
-// copy is static (no user data transits the push service) and tapping it
-// opens (or focuses) the app on the Today screen.
+// --- Web Push device reminders (#4). The daily/commitment reminder is an
+// EMPTY payload (no user data transits the push service) and falls back to
+// static copy here. A discrete social event (e.g. a training-partner nudge,
+// push.mjs's sendPush) instead carries an RFC 8291 encrypted JSON payload —
+// the browser's push subsystem decrypts it before this handler ever sees
+// `e.data`, so reading it here needs no crypto of our own. Either way,
+// tapping the notification opens (or focuses) the app.
 self.addEventListener("push", (e) => {
-  e.waitUntil(self.registration.showNotification("The Hypertrophy Bible", {
-    body: "Your next session is ready — it adjusts to wherever you're at today.",
+  let title = "The Hypertrophy Bible";
+  let body = "Your next session is ready — it adjusts to wherever you're at today.";
+  let tag = "hb-reminder";
+  if (e.data) {
+    try {
+      const data = e.data.json();
+      if (data.title) title = data.title;
+      if (data.body) body = data.body;
+      if (data.tag) tag = data.tag;
+    } catch {} // malformed/foreign payload: keep the safe static reminder copy
+  }
+  e.waitUntil(self.registration.showNotification(title, {
+    body,
     icon: "/icon.svg",
     badge: "/icon.svg",
-    tag: "hb-reminder", // one reminder at a time — a new one replaces the old
+    tag, // one notification per tag at a time — a new one replaces the old
   }));
 });
 self.addEventListener("notificationclick", (e) => {
