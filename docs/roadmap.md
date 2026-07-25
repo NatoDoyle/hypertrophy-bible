@@ -12,14 +12,22 @@ Grounded assessment date: **2026-07-24** (a repo-wide, file-grounded gap audit; 
 
 **Goal 1 — world's best knowledge source: FAR.** The recently-waved "hot" pages
 (`mechanisms`, `volume`, `proximity-to-failure`) are genuinely world-class. But the whole KB
-rests on **99 sources** — MASS reviews ~150–200 studies/year; Schoenfeld's textbook cites
-hundreds. Coverage is bimodal: the entire 24-page `09-getting-started` pillar has **zero**
-citations; core pages carry 0–1 (`energy-balance` 1, `sleep` 2, `weak-point-prioritization` 0,
-`breaking-advanced-plateaus` 0, `long-term-and-annual-planning` 0). The **7 muscle guides —
-the product backbone** — are 480–893-word quick cards, not authoritative treatments. Missing
-whole topics: menopause/HRT, pregnancy/postpartum, plant-based, recomposition,
-fiber-type×rep-range, tendinopathy. Supplements: only 8 entries (no vitamin D, omega-3, EAAs,
-and no evidence-based debunks). "Every claim web-verified" is true for ~a third of the surface.
+rests on **~110 sources** (Wave 92–95 additions since this paragraph's original count of 99) —
+MASS reviews ~150–200 studies/year; Schoenfeld's textbook cites hundreds. Coverage is bimodal:
+most of the 24-page `09-getting-started` pillar is practical/logistics content with no gradeable
+claims to cite (not a gap — see Tier-2 #6's reassessment); `energy-balance` and `sleep` are now
+cited (Wave 92/95), and `weak-point-prioritization` picked up 4 citations (PR #184).
+`breaking-advanced-plateaus` and `long-term-and-annual-planning` stay honestly Grade C/D —
+planning heuristics no trial has directly tested, not an oversight. The **7 muscle guides —
+the product backbone** — are 480–893-word quick cards for most regions (back.md is the
+exemplar depth upgrade, Wave 93), not yet authoritative treatments everywhere. Missing whole
+topics: fiber-type×rep-range and tendinopathy were checked and are NOT gaps (already covered);
+menopause/HRT and pregnancy/postpartum shipped (Waves 89/91). Supplements: 15 entries now
+(creatine, caffeine, protein, beta-alanine, citrulline, HMB, BCAAs, EAAs, vitamin D, omega-3,
+ashwagandha, glutamine, ZMA, tart cherry, testosterone-boosters) — this breadth item is done.
+"Every claim web-verified" is materially higher than "a third of the surface" now, but still
+short of comprehensive — this whole paragraph is due a fresh grounded re-audit, not incremental
+hand-edits, once Tier 1/2 next empties.
 
 **Goal 2 — best coaching app, novice → Mr. Olympia:**
 - *Bottom end + Goal 3 (zero cognitive load): the YouTube punt is gone.* Onboarding and the
@@ -137,8 +145,16 @@ infra, the one genuinely large build left here).
    0.25–0.5%/wk rate heuristic (Iraki 2019), both dual-verified. **`sleep` done (Wave 95)** — was
    2 citations; grounded the headline "7–9 h" claim (Hirshkowitz 2015 NSF consensus) and added the
    missing direct sleep→muscle mechanism (Saner 2020, myofibrillar protein synthesis). Registry now
-   110. Remaining undercited targets: `weak-point-prioritization` (0 graded — mostly synthesis),
-   `breaking-advanced-plateaus`, `long-term-and-annual-planning`, and the getting-started pillar.
+   110. **`weak-point-prioritization` done** (PR #184, pre-dates this reassessment) — its regional-
+   hypertrophy claim now carries 4 citations (Varovic 2025, Attarieh 2025, Larsen 2026, Maeo 2023).
+   **Reassessed this iteration:** `breaking-advanced-plateaus` and `long-term-and-annual-planning`
+   are Grade C/D **by design** (planning frameworks/heuristics no trial has directly tested — per
+   STYLE.md, honest grading beats force-citing a claim that isn't actually studied). The
+   getting-started pillar is almost entirely practical/logistics content with no gradeable claims;
+   its two exceptions (`what-actually-matters.md`, `starting-out-as-a-woman.md`) are already
+   citation-coverage-ALLOWLISTED by-reference synthesis. **No further concrete target found** —
+   this item is effectively done; the "deeper per-claim proximity" note below stays aspirational
+   until a real undercited-but-citable claim turns up.
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the guides into region-by-region
    authoritative treatments, feeding the app's exercise engine. *STARTED:* **`back.md` done
    (Wave 93)** — the exemplar: 5 regions (lats/width, mid-back thickness, upper traps, rear delts,
@@ -161,10 +177,13 @@ infra, the one genuinely large build left here).
    (`connective-tissue-adaptation.md`). **fiber-type × rep-range: verified NOT a gap (Wave 95)** —
    `01-training-variables/intensity-load-and-rep-ranges.md` already covers rep ranges and fiber
    type. No obvious breadth gaps remain; propose new ones only against a real audience need.
-   Supplement data: **vitamin D + omega-3 added (Wave 90)** — both honestly graded (vitamin D
-   fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect in healthy
-   adults per Therdyothin 2025, a health supplement not a muscle-builder). Still to add: EAAs, and
-   debunks (glutamine, ashwagandha, ZMA, tart cherry).
+   Supplement data: **vitamin D + omega-3 added (Wave 90)**, **EAAs added (Wave 122)**, and the
+   popular debunks (glutamine, ashwagandha, ZMA, tart cherry) are also already in
+   (`data/supplements/`, cited and woven into `supplements.md`'s Evidence section) — all honestly
+   graded (vitamin D fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect
+   in healthy adults per Therdyothin 2025; EAAs genuinely raise MPS but are redundant with adequate
+   whole protein; the debunks show no effect beyond a real deficiency). **Supplement breadth item
+   now fully covered** — no more gaps identified without a real audience need surfacing one.
 
 ### Tier 3 — big bets
 9. **[Goal 2 elite] Real periodization + peaking** — *STARTED (Waves 98+100):* **Daily Undulating
@@ -214,7 +233,23 @@ infra, the one genuinely large build left here).
     likely infeasible headless). Still to build (needs deeper infra): challenges; wiring the verified
     encryption into the push sweep + a SW that reads the payload so a cheer/partner/nudge event can
     reach a device NOT currently in the app (the current push is empty-payload, so it can't say
-    "someone nudged you" until that layer is wired).
+    "someone nudged you" until that layer is wired). **Wiring shipped (Cloud loop wave):** `push.mjs`'s
+    new `sendPush` builds an RFC 8291-encrypted body via `encryptPushPayload` and POSTs it
+    (`Content-Encoding: aes128gcm`) alongside the existing VAPID auth; `runPushSweep` checks each
+    subscriber's `profile.partner_nudge` on every hourly tick (not gated to their one local reminder
+    hour — a social nudge is a discrete event, not a daily cadence) and sends a content-bearing
+    "your training partner nudged you" push, stamping a NEW `nudge_pushed_at` seen-once marker
+    (deliberately separate from the in-app `nudge_seen_at` `/api/adherence` already uses, since a
+    push must reach a device that never reopens the app) so the same nudge never re-fires.
+    `sw.js`'s `push` handler now reads `e.data.json()` when present (the browser decrypts before the
+    SW ever sees it — no client-side crypto needed) and falls back to the old static reminder copy
+    when absent, so the empty-payload daily reminder is untouched. Verified with a real ECDH+HKDF+
+    AES-GCM round-trip in tests (encrypt via `sendPush`, decrypt with the fake subscriber's own
+    keys, assert the exact JSON survives) plus sweep-level tests for dedup/re-fire/pause-gating.
+    Cheers aren't wired the same way yet (no natural single-event marker like the nudge's `at`
+    timestamp — would need a per-cheer-count high-water-mark design); that and challenges remain.
+    The live-push-service-send-201 check (needs a real browser subscription) stays the last
+    production-readiness gate, unchanged from Wave 120 — infeasible to verify headless.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
