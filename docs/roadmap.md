@@ -102,7 +102,12 @@ multi-user infra).
 
 ### Tier 2 — high value, larger
 6. **[Goal 1] Citation-completeness pass** on the undercited core pages (getting-started pillar,
-   energy-balance, sleep, weak-point, plateaus…), expanding the registry well past 99.
+   energy-balance, sleep, weak-point, plateaus…), expanding the registry well past 99. *STARTED:*
+   **energy-balance done (Wave 92)** — was 1 effective citation for 4 graded claims; now grounds
+   the "keep the surplus modest / excess becomes fat" claim (Garthe 2013) and the surplus-size +
+   0.25–0.5%/wk rate heuristic (Iraki 2019), both dual-verified. Registry now 108. Remaining
+   undercited targets: `sleep` (2), `weak-point-prioritization` (0 graded — mostly synthesis),
+   `breaking-advanced-plateaus`, `long-term-and-annual-planning`, and the getting-started pillar.
 7. **[Goal 1] Muscle-guide depth upgrade** — rebuild the 7 guides into region-by-region
    authoritative treatments (`back.md` as exemplar), feeding the app's exercise engine.
 8. **[Goal 1] Breadth pages** — *STARTED.* Menopause & Training shipped (Wave 89: defends
