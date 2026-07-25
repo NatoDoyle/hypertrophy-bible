@@ -206,12 +206,23 @@ infra, the one genuinely large build left here).
    the KB refutes — the Varovic lesson at the ENGINE level — and the app ALREADY ships the evidence-aligned
    pieces: the within-mesocycle build→peak→deload wave (`blockPhase`), block-boundary volume auto-tune,
    recovery-gated volume (`deriveVolumeAdjust` context), undulating-for-advanced, and exercise rotation.
-   The genuinely-remaining elite work is narrower, evidence-supported, but INPUT-GATED (a larger feature,
-   not a clean first slice): a **taper/peak toward a goal date** (tapering has real strength-EXPRESSION
-   evidence, distinct from hypertrophy) and a **contest-prep mode** — both need a new “goal/meet/show
-   date” onboarding input + a peaking protocol; deeper velocity-driven autoregulation needs hardware the
-   app can’t collect. So this item serves the strength/peaking/contest end, NOT general hypertrophy —
-   and only once a goal-date input exists.
+   The genuinely-remaining elite work is narrower, evidence-supported: a **taper/peak toward a goal
+   date** (tapering has real strength-EXPRESSION evidence, distinct from hypertrophy) and a **contest-prep
+   mode**; deeper velocity-driven autoregulation needs hardware the app can't collect.
+   **Taper/peak SHIPPED (Waves 132/133/135, merged on `main`):** a `goal_event_date` input
+   (Settings-only — deliberately gated out of first-run onboarding per Goals 2/3's minimal-customization
+   principle; a competitive lifter opts in later, non-beginners only) drives `taperPhase` (`coach.mjs`) —
+   a 14-day window trading volume for freshness (sets scale down, RIR eases, load HOLDS — strength
+   expression, not a hypertrophy claim), grounded in evidence (Bosquet 2007 meta) and correctness-audited
+   (local-frame date math, Wave 135). **This closes the "only once a goal-date input exists" gate** the
+   paragraph above used to describe as blocking — it no longer blocks anything. A peak-week carb-loading
+   myth debunk (Henselmans 2022: no benefit found in the trials that tested short-term carb manipulation
+   before an event) is grounded in an open, not-yet-merged PR (#221) — check `gh pr list` before
+   re-building this, don't duplicate it. What's still genuinely open, narrower than before: a full
+   **contest-prep mode**
+   beyond taper + nutrition (peak-week logistics, posing-adjacent guidance) would need real elite ground
+   truth this project doesn't have (`BLOCKERS.md` #6) to build honestly rather than invent — not a clean
+   buildable slice, don't force it.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
