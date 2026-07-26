@@ -468,6 +468,42 @@ a genuine recent 3-week cut diverge in direction, and that the fix picks the rec
     app `npm test` incl. `test-routes.mjs`).
 
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**Ran the loop's own escape valve (lesson 17) instead of forcing filler.** Tier 1 and Tier 2 are
+both fully shipped/closed; every remaining named Tier-3 item was either already shipped, claimed
+by an open PR (#228, email fallback for push-less social events — verified it's real and current:
+the code it targets, `worker.mjs`'s `scheduled()` VAPID gate, is unchanged on `main`), or confirmed
+too large for one iteration by multiple prior sessions (1v1 challenge → multiple-concurrent needs
+a new store table + a redesigned matching/self-transition model, not a bounded-array tweak — the
+existing single-slot mirror already threads through routes, push, merge-profile, and D1/file
+parity, and multiplying that by N concurrent slots multiplies every one of those surfaces, not
+just storage). Rather than force an oversized slice or manufacture a marginal citation add (the
+exact "single-citation currency as default filler" this file already warns against), ran two
+inline-verified audits per token discipline: (1) a diff-scoped correctness sweep over
+`bc586cc..HEAD` (Waves 147–155, the range since the last audit burst) against the standing lessons
+(esp. 16/19/21/22/23, since that range touches new push markers, D1/file store merge parity, and
+calendar-date math) — read the actual diffs for `merge-profile.mjs`, `push.mjs`, `store.mjs`,
+`store-d1.mjs`; no defect found, the watermark-adoption and quiet-hours logic is correctly reasoned
+and already tested; (2) a fresh security audit (a dimension not recently exercised) of every route
+in `app.mjs` plus `auth.mjs`/`store.mjs`/`store-d1.mjs`/`email.mjs`/`push.mjs` for ownership
+bypasses, injection, PII leaks via the share card, and rate-limiting gaps on the newer social
+routes — clean beyond the already-documented and accepted `#6b` merge/delete risk. **What shipped
+instead:** `BLOCKERS.md` #4 (the VAPID secret) moved from 🟡 to 🔴 — its actual blast radius is
+larger than "unlocks something nice": if the secret was never set (unverifiable from a cloud
+session — no wrangler credentials), roughly 15+ waves of Goal-4 push-based adherence work
+(PR/streak-freeze nudges, partner nudges, every challenge event, cheers) may have shipped fully
+tested but never fired a single real push in production, silently, this whole time. That's a
+bigger lever than anything on the current build queue, and it's now flagged at the severity it
+deserves for the next authed session. Registry currency check: `citations/registry.json` is at
+121 verified citations (was 119 at the last count in this file, Wave 122/123; +2 since, consistent
+with Wave 147's Henselmans 2022 addition — not itself evidence of drift, just a housekeeping note
+for the next full re-audit). **This paragraph is the honest state as of this wave:** per lesson 17,
+a swept codebase is not a met goal — the next iteration should either check PR #228's merge status
+and build the next genuinely new slice once "multiple concurrent challenges" gets scoped down to
+something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest distance to each
+goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
+re-running this same clean-audit pass a third time.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
