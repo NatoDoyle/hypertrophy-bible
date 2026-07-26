@@ -215,10 +215,10 @@ infra, the one genuinely large build left here).
    a 14-day window trading volume for freshness (sets scale down, RIR eases, load HOLDS — strength
    expression, not a hypertrophy claim), grounded in evidence (Bosquet 2007 meta) and correctness-audited
    (local-frame date math, Wave 135). **This closes the "only once a goal-date input exists" gate** the
-   paragraph above used to describe as blocking — it no longer blocks anything. A peak-week carb-loading
+   paragraph above used to describe as blocking — it no longer blocks anything. The peak-week carb-loading
    myth debunk (Henselmans 2022: no benefit found in the trials that tested short-term carb manipulation
-   before an event) is grounded in an open, not-yet-merged PR (#221) — check `gh pr list` before
-   re-building this, don't duplicate it. What's still genuinely open, narrower than before: a full
+   before an event) also SHIPPED (Wave 147) — surfaced in the final-week taper note and grounded in the
+   periodization page; don't re-propose it. What's still genuinely open, narrower than before: a full
    **contest-prep mode**
    beyond taper + nutrition (peak-week logistics, posing-adjacent guidance) would need real elite ground
    truth this project doesn't have (`BLOCKERS.md` #6) to build honestly rather than invent — not a clean
