@@ -6,7 +6,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours } from "../src/push.mjs";
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 
@@ -136,6 +136,39 @@ ok("US Eastern (-300) silent at 16:00 UTC (noon local)", isUserPushHour(-300, at
 ok("UTC+12 (+720) fires at ~17:00 local (05:00 UTC) — the 3am-nudge case this fixes", isUserPushHour(720, atUtc("2026-07-10T05:00:00Z")) === true);
 ok("UTC+12 (+720) silent at 16:00 UTC (04:00 local — the old bad slot)", isUserPushHour(720, atUtc("2026-07-10T16:00:00Z")) === false);
 ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPushHour(0, atUtc("2026-07-10T17:00:00Z")) === true && isUserPushHour(0, atUtc("2026-07-10T16:00:00Z")) === false);
+
+// --- quiet hours: discrete social pushes (nudge/challenge/cheer/result) must not
+// wake a subscriber overnight — BLOCKERS.md #4's promised "quiet hours", delivered
+// for these events (the daily/commitment reminder already gets its own single
+// local hour via isUserPushHour and doesn't need this gate). ---
+ok("local midnight is quiet", isSocialPushQuietHours(-600, atUtc("2026-07-10T10:00:00Z")) === true); // UTC-10 -> 00:00 local
+ok("local 6am is quiet", isSocialPushQuietHours(-600, atUtc("2026-07-10T16:00:00Z")) === true); // UTC-10 -> 06:00 local
+ok("local 7am is NOT quiet (window end is exclusive)", isSocialPushQuietHours(-600, atUtc("2026-07-10T17:00:00Z")) === false); // UTC-10 -> 07:00 local
+ok("local noon is NOT quiet", isSocialPushQuietHours(-600, atUtc("2026-07-10T22:00:00Z")) === false); // UTC-10 -> 12:00 local
+ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQuietHours(undefined, atUtc("2026-07-10T03:00:00Z")) === false);
+
+// End-to-end: a pending nudge during the recipient's local quiet hours is deferred,
+// not lost — it fires on the sweep's next tick once outside the window.
+{
+  const qhPath = join(tmpdir(), `hb-push-quiet-test-${process.pid}.json`);
+  const qhStore = createFileStore(qhPath);
+  try {
+    const ua = await fakeUaSubscription();
+    // UTC-10: NOW (16:00 UTC) is 06:00 local — inside the quiet window.
+    await qhStore.saveUser("sleeper", { profile: { tz_offset_min: -600, partner_nudge: { at: NOW } } });
+    await qhStore.savePushSubscription("sleeper", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/quiet", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    let sentBody = null;
+    const captureFetch = async (url, opts) => { sentBody = opts.body; return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(qhStore, vapid, NOW, captureFetch);
+    ok("a pending nudge does NOT push during the recipient's local quiet hours (06:00)", r1.sent === 0 && sentBody === null);
+    ok("nudge_pushed_at stays unset — the event is deferred, not lost", ((await qhStore.getUser("sleeper")).profile.nudge_pushed_at ?? 0) === 0);
+
+    const r2 = await runPushSweep(qhStore, vapid, NOW + 3600e3, captureFetch); // next tick: 07:00 local, outside quiet hours
+    ok("the same nudge fires on the next tick once outside quiet hours", r2.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the deferred push is still the nudge copy", decrypted.tag === "hb-nudge");
+  } finally { try { rmSync(qhPath); } catch {} }
+}
 
 // End-to-end: the sweep skips a user outside their local window and pushes them inside it.
 {

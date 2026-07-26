@@ -45,6 +45,22 @@ const compoundRanges = (plan) => new Set(plan.program.sessions.flatMap((s) => s.
 // Advanced + muscle-building goal auto-undulates with NO flag set (minimal customization).
 const advAuto = compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "advanced" }, kb));
 ok("DUP smart default: an advanced hypertrophy profile auto-undulates (>=2 bands incl. heavy 4-6), no flag", advAuto.size >= 2 && advAuto.has("4-6"));
+// Regression: DUP must vary PER ARCHETYPE, not just plan-wide — a 6-day PPL split
+// (Push A/Push B, ...) repeats every archetype at an interval that evenly divides
+// the 3-band cycle, so a bug keying the band off the session's absolute index
+// (rather than its occurrence within its own archetype) made every repeat of the
+// SAME muscle group land on the identical band while the plan-wide set still
+// looked diverse (Push ≠ Pull ≠ Legs) — the check above couldn't catch it.
+const bandsByName = (plan) => Object.fromEntries(plan.program.sessions.map((s) => [s.name, new Set(s.exercises.filter((e) => mechOf(e.exercise) === "compound").map((e) => e.rep_range))]));
+const adv6 = bandsByName(generatePlan({ ...profile, days_per_week: 6, training_status: "advanced" }, kb));
+ok("DUP per-archetype: Push A and Push B use different compound bands", [...adv6["Push A"]].join() !== [...adv6["Push B"]].join());
+ok("DUP per-archetype: Pull A and Pull B use different compound bands", [...adv6["Pull A"]].join() !== [...adv6["Pull B"]].join());
+ok("DUP per-archetype: Legs A and Legs B use different compound bands", [...adv6["Legs A"]].join() !== [...adv6["Legs B"]].join());
+// A split where no archetype repeats (5-day PUSH/PULL/LEGS/UPPER/LOWER) has no
+// same-archetype exposure to vary — the smart default should still land on >=2
+// distinct bands across the week (falls back to day-position variety).
+const adv5 = compoundRanges(generatePlan({ ...profile, days_per_week: 5, training_status: "advanced" }, kb));
+ok("DUP still varies across a week with no repeated archetype (5-day split)", adv5.size >= 2);
 // Intermediate stays linear by default (the method best suits advanced trainees).
 const intAuto = compoundRanges(generatePlan({ ...profile, days_per_week: 6, training_status: "intermediate" }, kb));
 ok("intermediate stays linear by default (single base band, no auto-undulation)", intAuto.size === 1 && intAuto.has("6-10"));

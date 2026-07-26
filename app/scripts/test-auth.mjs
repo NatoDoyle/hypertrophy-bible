@@ -114,7 +114,7 @@ try {
   ok("getAccountByUserId is null for anonymous users", (await store.getAccountByUserId("acct-user")) === null);
 
   // --- merge reassigns SHARES (a distributed share link must not die on restore) ---
-  await store.saveUser("share-from", { profile: {} });
+  await store.saveUser("share-from", { profile: { cheers_pushed: 2, cheers_seen: 2 } });
   await store.saveUser("share-to", { profile: {} });
   await store.createShare("share-from", "shr-token-1", 1000);
   await store.addShareCheer("shr-token-1"); await store.addShareCheer("shr-token-1");
@@ -123,14 +123,28 @@ try {
   ok("merge keeps the share's cheer tally", (await store.getShareCheers("shr-token-1")) === 2);
   ok("merge: getShareIdForUser follows to the survivor", (await store.getShareIdForUser("share-to")) === "shr-token-1");
   ok("merge deletes the from-user's ghost (no dangling share owner)", (await store.getUser("share-from")) === null);
+  // Cloud loop: `to` had no share of its own, so it inherits from's cheers_pushed/
+  // cheers_seen watermarks along with the share — otherwise the push sweep and the
+  // in-app banner would both read these 2 pre-existing cheers as "new" the moment
+  // `to` takes over a share it never had before (a fabricated "2 people cheered
+  // you!" right after merging, for cheers `from` already knew about).
+  const shareToUser = await store.getUser("share-to");
+  ok("merge adopts from's cheers_pushed watermark onto the share it just inherited", shareToUser.profile.cheers_pushed === 2);
+  ok("merge adopts from's cheers_seen watermark onto the share it just inherited", shareToUser.profile.cheers_seen === 2);
   // When BOTH already share, the survivor keeps theirs and the merged-away one is dropped (UNIQUE per user).
-  await store.saveUser("share-from2", { profile: {} });
-  await store.saveUser("share-to2", { profile: {} });
+  await store.saveUser("share-from2", { profile: { cheers_pushed: 9, cheers_seen: 9 } });
+  await store.saveUser("share-to2", { profile: { cheers_pushed: 1, cheers_seen: 1 } });
   await store.createShare("share-to2", "shr-keep", 1000);
   await store.createShare("share-from2", "shr-drop", 1000);
   await store.reassignUserData("share-from2", "share-to2");
   ok("merge with both sharing: survivor keeps their own share", (await store.getShareIdForUser("share-to2")) === "shr-keep");
   ok("merge with both sharing: the merged-away share is dropped (no dead link)", (await store.getShareUserId("shr-drop")) === null);
+  // The dropped share's watermarks must NOT overwrite the survivor's own live ones
+  // (from's cheers never applied to to's still-live share — adopting them would
+  // wrongly suppress a real pending cheer push/banner on to's own share).
+  const shareTo2User = await store.getUser("share-to2");
+  ok("merge with both sharing: survivor's own cheers_pushed is untouched", shareTo2User.profile.cheers_pushed === 1);
+  ok("merge with both sharing: survivor's own cheers_seen is untouched", shareTo2User.profile.cheers_seen === 1);
 
   // consume must refuse to bind an account to a user that was deleted (e.g. merged
   // away) — otherwise the account points at a ghost and the app can't load.
@@ -185,6 +199,28 @@ try {
   const mp2To = await store.getUser("mp2-to");
   ok("merge keeps to's own commitment over from's", mp2To.profile.commitment.days[0] === "fri");
   ok("merge dedups an identical streak-freeze week instead of duplicating it", mp2To.streak_freezes.length === 1);
+
+  // --- Cloud loop: freeze_pushed_week (Wave 145/146, added after Wave 142's
+  // merge audit) must merge too, or a week already pushed-about on `from` can
+  // resurface as a fresh "duplicate" push on `to` once merged session/freeze
+  // history makes it protectable again on the survivor's timeline ---
+  await store.saveUser("mp3-to", { profile: { freeze_pushed_week: "2026-W10" } });
+  await store.saveUser("mp3-from", { profile: { freeze_pushed_week: "2026-W16" } });
+  await store.reassignUserData("mp3-from", "mp3-to");
+  const mp3To = await store.getUser("mp3-to");
+  ok("merge adopts from's freeze_pushed_week when it's the more recent (later) week", mp3To.profile.freeze_pushed_week === "2026-W16");
+
+  await store.saveUser("mp4-to", { profile: { freeze_pushed_week: "2026-W20" } });
+  await store.saveUser("mp4-from", { profile: { freeze_pushed_week: "2026-W16" } });
+  await store.reassignUserData("mp4-from", "mp4-to");
+  const mp4To = await store.getUser("mp4-to");
+  ok("merge keeps to's own freeze_pushed_week when it's already the more recent week", mp4To.profile.freeze_pushed_week === "2026-W20");
+
+  await store.saveUser("mp5-to", { profile: {} });
+  await store.saveUser("mp5-from", { profile: { freeze_pushed_week: "2026-W16" } });
+  await store.reassignUserData("mp5-from", "mp5-to");
+  const mp5To = await store.getUser("mp5-to");
+  ok("merge adopts from's freeze_pushed_week when to has none", mp5To.profile.freeze_pushed_week === "2026-W16");
 
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });

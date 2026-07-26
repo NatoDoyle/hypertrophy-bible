@@ -8,6 +8,7 @@
 - Don't expect a **periodization model** to add much hypertrophy at matched volume — pick one you'll follow. **[Grade B]**
 - Keep the **stimulus rising** relative to your adaptation, or growth stalls. **[Grade A]**
 - **Peaking for a specific event?** Run a **~2-week taper** — cut volume ~40–60%, keep the load — to arrive fresh. It sharpens *performance on the day*, not muscle size, so it's for competitors, not general hypertrophy. **[Grade B]**
+- Don't bother **carb-loading** before a strength test or meet — that's an endurance-sport tactic; it hasn't been shown to help resistance-training performance. Eat normally through the taper. **[Grade C]**
 
 ## Practical Application
 
@@ -32,11 +33,14 @@
 
 **Tapering peaks *performance* for a target day — not hypertrophy.** If you're training toward a specific event (a meet, a show, a strength test), a **~2-week taper** that **exponentially reduces training volume by ~40–60% while holding intensity (load) constant** is the best-supported way to arrive fresh and strong: Bosquet and colleagues' meta-analysis found this strategy produced a small but reliable performance gain (overall effect ≈ 0.72), whereas cutting intensity did not help[^bosquet-2007-taper]. **[Grade B]** This is about **strength/skill expression on the day**, distinct from the growth stimulus the rest of a block chases — you *hold the weight and cut the sets*, unlike a deload (which eases both). The evidence is in competitive athletes and measures performance, not muscle size, so a taper is a peaking tool for competitors, not something a general trainee chasing hypertrophy needs.
 
+**Carbohydrate-loading before the event doesn't carry over from endurance sport.** A systematic review of 49 trials on carbohydrate intake and strength/resistance performance found that short-term (2–7 day) carbohydrate manipulation — the "peak week" loading protocol borrowed from endurance sport — produced no measurable benefit in any of the seven trials that tested it, and even a single pre-workout carbohydrate dose only helped under narrow conditions (fasted lifters, or sessions over ~10 sets per muscle group)[^henselmans-2022-carb-strength]. **[Grade C]** — few trials, and absence of a measured benefit isn't proof of none, but it directly contradicts the common assumption that a lifter should carb-load the way an endurance athlete does. Unlike a multi-hour endurance event, a single heavy lift or a training session isn't reliably glycogen-limited, so there's no evidence-based reason to change how you eat during a taper.
+
 ## Key Uncertainties & Nuance
 - **Periodization may matter more for strength and for advanced lifters** than for hypertrophy in general trainees; the "wash" is a hypertrophy-at-matched-volume statement.
 - **Autoregulation can be over-applied** — beginners estimate RIR poorly, so simple double progression is often better for them.
 - **Progression can't be infinite** — when load/reps stall, progress volume or change the exercise (see [Variation & Specialization](variation-and-specialization.md)).
 - **Zooming out to months and years** — once the weekly wave repeats, [Long-term & annual planning](long-term-and-annual-planning.md) covers sequencing blocks, gaining/cutting phases, and deloads across a training year.
+- **Carb-loading evidence is thin, not zero** — the glycogen-depletion subgroup of the same review found reload did help in a few trials of *bi-daily* training (two sessions in one day), a scenario closer to endurance-style depletion than a single event; the null result above is specifically for the standard single-event "peak week" protocol.
 
 ## Backing Data
 - [`data/progressions/`](../../data/progressions/) — progression rule definitions (double-progression, RIR autoregulation)
@@ -47,3 +51,4 @@
 [^schoenfeld-2021-loading-recommendations]: Schoenfeld BJ, Grgic J, et al. (2021). *Loading Recommendations for Muscle Strength, Hypertrophy, and Local Endurance: A Re-Examination of the Repetition Continuum.* Sports (Basel), 9(2), 32. DOI: [10.3390/sports9020032](https://doi.org/10.3390/sports9020032). PMID: 33671664.
 [^helms-2020-regulating-monitoring]: Helms ER, et al. (2020). *Methods for Regulating and Monitoring Resistance Training.* Journal of Human Kinetics, 74, 23–42. DOI: [10.2478/hukin-2020-0011](https://doi.org/10.2478/hukin-2020-0011). PMID: 33312273.
 [^bosquet-2007-taper]: Bosquet L, Montpetit J, Arvisais D, Mujika I (2007). *Effects of tapering on performance: a meta-analysis.* Medicine and Science in Sports and Exercise, 39(8), 1358–1365. DOI: [10.1249/mss.0b013e31806010e0](https://doi.org/10.1249/mss.0b013e31806010e0). PMID: 17762369.
+[^henselmans-2022-carb-strength]: Henselmans M, Bjørnsen T, Hedderman R, Vårvik FT (2022). *The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.* Nutrients, 14(4), 856. DOI: [10.3390/nu14040856](https://doi.org/10.3390/nu14040856). PMID: 35215506.

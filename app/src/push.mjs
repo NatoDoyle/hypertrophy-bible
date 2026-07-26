@@ -114,6 +114,27 @@ export function isUserPushHour(tzOffsetMin, now) {
   return localHour === PUSH_TARGET_LOCAL_HOUR;
 }
 
+// BLOCKERS.md #4 promised "quiet hours" alongside the push handler itself; the
+// daily/commitment reminder already gets one via isUserPushHour's single local
+// slot, but the discrete social events (nudge/challenge/cheer/result) fire on
+// the NEXT hourly tick by design, at ANY local hour — fine for "someone cheered
+// you at 2pm", not fine for waking a subscriber at 3am, which risks the user
+// revoking notification permission entirely (killing every future push, the
+// opposite of Goal 4). This gate delays a social push to the sweep's next tick
+// OUTSIDE the window — the underlying pending condition (nudge.at, challenge
+// created_at/accepted_at, cheer count, settled-but-not-pushed result) is
+// untouched, so nothing is lost, only deferred to a decent hour (at-least-once,
+// same as every other guard in this sweep). Unknown timezone can't compute a
+// local hour, so it is NOT restricted — the same "don't starve delivery over
+// missing data" choice isUserPushHour makes for its own legacy slot.
+export const SOCIAL_PUSH_QUIET_START_HOUR = 0; // local midnight...
+export const SOCIAL_PUSH_QUIET_END_HOUR = 7;   // ...through 7am local (exclusive)
+export function isSocialPushQuietHours(tzOffsetMin, now) {
+  if (!Number.isFinite(tzOffsetMin)) return false;
+  const localHour = new Date(+new Date(now) + tzOffsetMin * 60000).getUTCHours();
+  return localHour >= SOCIAL_PUSH_QUIET_START_HOUR && localHour < SOCIAL_PUSH_QUIET_END_HOUR;
+}
+
 // Pure decision: should this subscriber get today's reminder push?
 export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, now }) {
   if (paused || remindersOff) return false;
@@ -165,6 +186,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       checked += userSubs.length;
       const paused = !!user.paused;
       const remindersOff = user.profile?.reminders_off === true;
+      const quietHours = isSocialPushQuietHours(user.profile?.tz_offset_min, now);
       const gone = new Set(); // endpoints pruned mid-user; later sends skip them
       // Send an encrypted payload to every capable device; returns how many the
       // push service ACCEPTED. One dead endpoint prunes and moves on; one thrown
@@ -215,7 +237,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // one local reminder hour. `nudge_pushed_at` is separate from the in-app
       // `nudge_seen_at` (app.mjs /api/adherence): two surfaces, never gating each other.
       const pendingNudge = user.profile?.partner_nudge;
-      if (!paused && !remindersOff && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
+      if (!paused && !remindersOff && !quietHours && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
         if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
       }
@@ -225,7 +247,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // (stamped at propose) is the high-water mark against challenge_pushed_at.
       // Only the opponent's own still-PENDING, current-week invite pushes.
       const pendingChallenge = user.profile?.challenge;
-      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
+      if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
           && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
           && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
@@ -239,7 +261,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // have no accepted_at and can never fire. Declines deliberately do NOT
       // push — the in-app card shows them, and a "they said no" notification
       // helps nobody train.
-      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
+      if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
           && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
@@ -256,7 +278,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // single cheap no-op lookup. Fires on the next hourly tick, same as nudge/challenge,
       // since a cheer is a discrete "someone did something nice for you" moment, not a
       // daily cadence.
-      if (!paused && !remindersOff) {
+      if (!paused && !remindersOff && !quietHours) {
         const shareId = await store.getShareIdForUser(userId);
         if (shareId) {
           const cheers = await store.getShareCheers(shareId);
@@ -291,7 +313,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // ever firing retroactively. A vanished-opponent completion has no history
       // entry -> no push (never manufacture a trophy); declines stay silent.
       const settledCh = user.profile?.challenge;
-      if (!paused && !remindersOff && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
+      if (!paused && !remindersOff && !quietHours && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
           && settledCh.week === isoWeekKey(new Date(now - 7 * 86400e3).toISOString())) {
         const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
         if (entry) {
