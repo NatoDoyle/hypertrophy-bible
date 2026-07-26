@@ -48,6 +48,23 @@ export function mergeUserProfile(fromU, toU) {
   if (fromU.profile?.commitment && !toU.profile?.commitment) {
     toU.profile = { ...(toU.profile ?? {}), commitment: fromU.profile.commitment };
   }
+  // Streak-freeze PUSH watermark (`freeze_pushed_week`, added Wave 145/146 — after
+  // this file's own lesson-16 audit at Wave 142, so it was never wired in here).
+  // Unlike the OTHER push markers this merge deliberately leaves untouched
+  // (`cheers_pushed`/`cheers_seen` are scoped to a share token that never crosses
+  // accounts; the `challenge_*_pushed_at` markers are scoped to the live `challenge`
+  // slot, deliberately not merged below) — this ONE needs it: `streak_freezes` and
+  // sessions above already merge additively, and `streakFreezeState` recomputes
+  // `protectable_week` fresh from that combined timeline, so the exact missed week
+  // `from` was already pushed about can resurface as "new" on `to` post-merge,
+  // producing a duplicate "a streak freeze can still save it" push for a week the
+  // user already knows about from the other device. ISO week keys are zero-padded
+  // (`YYYY-Www`), so lexical comparison IS chronological comparison — take the
+  // later of the two, never a raw overwrite, so this can only suppress a push both
+  // sides already got, never one `to` still genuinely needs.
+  if (fromU.profile?.freeze_pushed_week && fromU.profile.freeze_pushed_week > (toU.profile?.freeze_pushed_week ?? "")) {
+    toU.profile = { ...(toU.profile ?? {}), freeze_pushed_week: fromU.profile.freeze_pushed_week };
+  }
   // The live `challenge` slot is deliberately NOT merged: it's a two-sided mirror
   // keyed by the OTHER side's share token, not a user_id. Lifting it onto `to`
   // without also rewriting the opponent's copy would either silently stomp a
