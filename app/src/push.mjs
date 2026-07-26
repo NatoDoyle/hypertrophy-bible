@@ -160,7 +160,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
   for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
   for (const [userId, userSubs] of byUser) {
     try {
-      const user = await store.getUser(userId);
+      let user = await store.getUser(userId);
       if (!user) { for (const s of userSubs) { await store.deletePushSubscription(s.endpoint); pruned++; checked++; } continue; }
       checked += userSubs.length;
       const paused = !!user.paused;
@@ -246,25 +246,44 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
       }
 
-      // A challenge RESULT (Wave 138): if the week ended and this user never
+      // A challenge RESULT (Waves 138/139): if the week ended and this user never
       // reopened the app, GET /api/challenge's self-transition never ran — settle
-      // it here with the SAME shared logic (settleChallenge, never a second copy)
-      // and tell them how it ended. The completed status IS the seen-once event:
-      // a GET-settled challenge arrives here already terminal and never pushes
-      // (the user saw the card in-app), and once this settle lands, the next tick
-      // sees terminal too — at-most-once by construction. If every device send
-      // fails this tick, the in-app result card remains the fallback surface.
+      // it here with the SAME shared logic (settleChallenge, never a second copy),
+      // then push the result below off the PERSISTED fields.
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
           && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString())) {
-        const settled = await settleChallenge(store, userId, user, now);
-        if (settled.result) {
-          const r = settled.result;
-          const body = r.result === "win"
-            ? `🏆 You won this week's challenge ${r.my_count}–${r.opponent_count}!`
-            : r.result === "lose"
-              ? `Challenge over — your partner took this week ${r.opponent_count}–${r.my_count}. Rematch?`
-              : `Challenge over — dead heat at ${r.my_count}–${r.opponent_count}.`;
-          await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+        await settleChallenge(store, userId, user, now);
+        user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
+      }
+      // The result push itself (design adopted from PR #216): driven entirely off
+      // persisted state — a COMPLETED challenge for the week that JUST ended, with
+      // its recorded history entry and no result_pushed marker on the slot — so a
+      // tick where every device send fails simply retries next tick from the same
+      // stored fields (at-least-once), instead of losing the payoff moment. The
+      // marker lives ON the slot (auto-scoped: the next propose replaces it), and
+      // the just-ended-week guard keeps pre-existing old completed challenges from
+      // ever firing retroactively. A vanished-opponent completion has no history
+      // entry -> no push (never manufacture a trophy); declines stay silent.
+      const settledCh = user.profile?.challenge;
+      if (!paused && !remindersOff && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
+          && settledCh.week === isoWeekKey(new Date(now - 7 * 86400e3).toISOString())) {
+        const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
+        if (entry) {
+          const body = entry.result === "win"
+            ? `🏆 You won this week's challenge ${entry.my_count}–${entry.opponent_count}!`
+            : entry.result === "lose"
+              ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
+              : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
+          const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+          if (ok) {
+            try {
+              await store.updateUser(userId, (u) => {
+                if (u.profile?.challenge?.id !== settledCh.id) return u; // slot replaced — nothing to mark
+                u.profile = { ...u.profile, challenge: { ...u.profile.challenge, result_pushed: true } };
+                return u;
+              });
+            } catch { /* worst case: one repeat push next tick, never a lost result */ }
+          }
         }
       }
 

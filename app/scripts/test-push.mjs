@@ -283,23 +283,48 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     await chalStore.addSession("res-loser", { session_id: "rl1", date: pastDate, sets: [] });
     await chalStore.savePushSubscription("res-winner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-win", keys: { p256dh: ua.p256dh, auth: ua.auth } });
     await chalStore.savePushSubscription("res-loser", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-lose", keys: { p256dh: ua.p256dh, auth: ua.auth } });
-    await chalStore.saveUser("res-read", { profile: { tz_offset_min: -300, challenge: { id: "r2", role: "challenger", status: "completed", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    // In-app (GET) settled: completed + a recorded history entry for the just-ended
+    // week, no result_pushed marker -> still pushes ONCE off the persisted fields.
+    await chalStore.saveUser("res-read", { profile: { tz_offset_min: -300,
+      challenge: { id: "r2", role: "challenger", status: "completed", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 },
+      challenge_history: [{ week: PASTWEEK, result: "tie", my_count: 1, opponent_count: 1 }] } });
     await chalStore.savePushSubscription("res-read", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-read", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    // An OLD completed challenge (3 weeks back) with history must never fire retroactively.
+    const OLDWEEK = isoWeekKey(new Date(NOW - 21 * 86400e3).toISOString());
+    await chalStore.saveUser("res-old", { profile: { tz_offset_min: -300,
+      challenge: { id: "r3", role: "challenger", status: "completed", week: OLDWEEK, partner_token: "share-loser", created_at: NOW - 22 * 86400e3 },
+      challenge_history: [{ week: OLDWEEK, result: "win", my_count: 3, opponent_count: 0 }] } });
+    await chalStore.savePushSubscription("res-old", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-old", keys: { p256dh: ua.p256dh, auth: ua.auth } });
     const resBodies = {};
-    const resFetch = async (url, opts) => { const m = url.match(/res-(win|lose|read)/); if (m) resBodies[m[1]] = opts.body; return { ok: true, status: 201 }; };
+    const resFetch = async (url, opts) => { const m = url.match(/res-(win|lose|read|old)/); if (m) resBodies[m[1]] = opts.body; return { ok: true, status: 201 }; };
     await runPushSweep(chalStore, vapid, NOW, resFetch);
     const winMsg = resBodies.win && JSON.parse(await decryptPushPayload({ body: resBodies.win, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
     const loseMsg = resBodies.lose && JSON.parse(await decryptPushPayload({ body: resBodies.lose, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    const readMsg = resBodies.read && JSON.parse(await decryptPushPayload({ body: resBodies.read, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
     ok("the sweep settles a week-over challenge and pushes the WIN result", !!winMsg && /🏆/.test(winMsg.body) && /2–1/.test(winMsg.body));
     ok("the losing side hears its own result, framed forward (rematch), not shame", !!loseMsg && /took this week 2–1/.test(loseMsg.body) && /Rematch/.test(loseMsg.body));
-    ok("a GET-settled (already terminal) challenge never result-pushes", resBodies.read === undefined);
+    ok("an in-app-settled result still pushes ONCE off persisted fields (PR #216 design)", !!readMsg && /dead heat/.test(readMsg.body));
+    ok("an old completed challenge never fires retroactively (just-ended-week guard)", resBodies.old === undefined);
     const w = await chalStore.getUser("res-winner"), l = await chalStore.getUser("res-loser");
     ok("the sweep-settled result is PERSISTED like a GET settle (status + history both sides)",
       w.profile.challenge.status === "completed" && w.profile.challenge_history[0].result === "win" &&
       l.profile.challenge.status === "completed" && l.profile.challenge_history[0].result === "lose");
-    delete resBodies.win; delete resBodies.lose;
+    ok("result_pushed is stamped on the slot after a delivered push", w.profile.challenge.result_pushed === true && (await chalStore.getUser("res-read")).profile.challenge.result_pushed === true);
+    delete resBodies.win; delete resBodies.lose; delete resBodies.read;
     await runPushSweep(chalStore, vapid, NOW + 3600e3, resFetch);
-    ok("a settled result never re-pushes and history never duplicates", resBodies.win === undefined && resBodies.lose === undefined && (await chalStore.getUser("res-winner")).profile.challenge_history.length === 1);
+    ok("a delivered result never re-pushes and history never duplicates", resBodies.win === undefined && resBodies.lose === undefined && resBodies.read === undefined && (await chalStore.getUser("res-winner")).profile.challenge_history.length === 1);
+
+    // All device sends FAIL on the settle tick: the result must RETRY next tick from
+    // the persisted fields — the payoff moment is never lost to one network blip.
+    await chalStore.saveUser("res-retry", { profile: { tz_offset_min: -300, challenge: { id: "r4", role: "challenger", status: "active", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.addSession("res-retry", { session_id: "rr1", date: pastDate, sets: [] });
+    await chalStore.savePushSubscription("res-retry", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-retry", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await runPushSweep(chalStore, vapid, NOW, async (url) => url.includes("res-retry") ? (() => { throw new Error("net down"); })() : { ok: true, status: 201 });
+    const rr = await chalStore.getUser("res-retry");
+    ok("a failed-send tick still SETTLES but leaves result_pushed unset", rr.profile.challenge.status === "completed" && !rr.profile.challenge.result_pushed);
+    let retryHit = null;
+    await runPushSweep(chalStore, vapid, NOW + 3600e3, async (url, opts) => { if (url.includes("res-retry")) retryHit = opts.body; return { ok: true, status: 201 }; });
+    ok("the next tick retries the result push off the stored fields", retryHit instanceof Uint8Array && (await chalStore.getUser("res-retry")).profile.challenge.result_pushed === true);
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
