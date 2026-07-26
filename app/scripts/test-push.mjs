@@ -268,6 +268,63 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     let oldDeclHits = 0;
     await runPushSweep(chalStore, vapid, NOW, async (url, opts) => { if (url.includes("accept-old") || url.includes("accept-decl")) oldDeclHits++; return { ok: true, status: 201 }; });
     ok("a pre-accepted_at active challenge and a declined one never accept-push", oldDeclHits === 0);
+
+    // --- result push (Wave 138): a week-over ACTIVE challenge is settled BY THE
+    // SWEEP (shared settleChallenge — the user never reopened the app) and each
+    // side hears how it ended; a GET-settled (already terminal) one never pushes. ---
+    const PASTWEEK = isoWeekKey(new Date(NOW - 7 * 86400e3).toISOString());
+    const pastDate = new Date(NOW - 7 * 86400e3).toISOString();
+    await chalStore.saveUser("res-winner", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "challenger", status: "active", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.saveUser("res-loser", { profile: { tz_offset_min: -300, challenge: { id: "r1", role: "opponent", status: "active", week: PASTWEEK, partner_token: "share-winner", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.createShare("res-winner", "share-winner", NOW);
+    await chalStore.createShare("res-loser", "share-loser", NOW);
+    await chalStore.addSession("res-winner", { session_id: "rw1", date: pastDate, sets: [] });
+    await chalStore.addSession("res-winner", { session_id: "rw2", date: pastDate, sets: [] });
+    await chalStore.addSession("res-loser", { session_id: "rl1", date: pastDate, sets: [] });
+    await chalStore.savePushSubscription("res-winner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-win", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await chalStore.savePushSubscription("res-loser", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-lose", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    // In-app (GET) settled: completed + a recorded history entry for the just-ended
+    // week, no result_pushed marker -> still pushes ONCE off the persisted fields.
+    await chalStore.saveUser("res-read", { profile: { tz_offset_min: -300,
+      challenge: { id: "r2", role: "challenger", status: "completed", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 },
+      challenge_history: [{ week: PASTWEEK, result: "tie", my_count: 1, opponent_count: 1 }] } });
+    await chalStore.savePushSubscription("res-read", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-read", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    // An OLD completed challenge (3 weeks back) with history must never fire retroactively.
+    const OLDWEEK = isoWeekKey(new Date(NOW - 21 * 86400e3).toISOString());
+    await chalStore.saveUser("res-old", { profile: { tz_offset_min: -300,
+      challenge: { id: "r3", role: "challenger", status: "completed", week: OLDWEEK, partner_token: "share-loser", created_at: NOW - 22 * 86400e3 },
+      challenge_history: [{ week: OLDWEEK, result: "win", my_count: 3, opponent_count: 0 }] } });
+    await chalStore.savePushSubscription("res-old", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-old", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    const resBodies = {};
+    const resFetch = async (url, opts) => { const m = url.match(/res-(win|lose|read|old)/); if (m) resBodies[m[1]] = opts.body; return { ok: true, status: 201 }; };
+    await runPushSweep(chalStore, vapid, NOW, resFetch);
+    const winMsg = resBodies.win && JSON.parse(await decryptPushPayload({ body: resBodies.win, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    const loseMsg = resBodies.lose && JSON.parse(await decryptPushPayload({ body: resBodies.lose, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    const readMsg = resBodies.read && JSON.parse(await decryptPushPayload({ body: resBodies.read, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the sweep settles a week-over challenge and pushes the WIN result", !!winMsg && /🏆/.test(winMsg.body) && /2–1/.test(winMsg.body));
+    ok("the losing side hears its own result, framed forward (rematch), not shame", !!loseMsg && /took this week 2–1/.test(loseMsg.body) && /Rematch/.test(loseMsg.body));
+    ok("an in-app-settled result still pushes ONCE off persisted fields (PR #216 design)", !!readMsg && /dead heat/.test(readMsg.body));
+    ok("an old completed challenge never fires retroactively (just-ended-week guard)", resBodies.old === undefined);
+    const w = await chalStore.getUser("res-winner"), l = await chalStore.getUser("res-loser");
+    ok("the sweep-settled result is PERSISTED like a GET settle (status + history both sides)",
+      w.profile.challenge.status === "completed" && w.profile.challenge_history[0].result === "win" &&
+      l.profile.challenge.status === "completed" && l.profile.challenge_history[0].result === "lose");
+    ok("result_pushed is stamped on the slot after a delivered push", w.profile.challenge.result_pushed === true && (await chalStore.getUser("res-read")).profile.challenge.result_pushed === true);
+    delete resBodies.win; delete resBodies.lose; delete resBodies.read;
+    await runPushSweep(chalStore, vapid, NOW + 3600e3, resFetch);
+    ok("a delivered result never re-pushes and history never duplicates", resBodies.win === undefined && resBodies.lose === undefined && resBodies.read === undefined && (await chalStore.getUser("res-winner")).profile.challenge_history.length === 1);
+
+    // All device sends FAIL on the settle tick: the result must RETRY next tick from
+    // the persisted fields — the payoff moment is never lost to one network blip.
+    await chalStore.saveUser("res-retry", { profile: { tz_offset_min: -300, challenge: { id: "r4", role: "challenger", status: "active", week: PASTWEEK, partner_token: "share-loser", created_at: NOW - 8 * 86400e3 } } });
+    await chalStore.addSession("res-retry", { session_id: "rr1", date: pastDate, sets: [] });
+    await chalStore.savePushSubscription("res-retry", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-retry", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await runPushSweep(chalStore, vapid, NOW, async (url) => url.includes("res-retry") ? (() => { throw new Error("net down"); })() : { ok: true, status: 201 });
+    const rr = await chalStore.getUser("res-retry");
+    ok("a failed-send tick still SETTLES but leaves result_pushed unset", rr.profile.challenge.status === "completed" && !rr.profile.challenge.result_pushed);
+    let retryHit = null;
+    await runPushSweep(chalStore, vapid, NOW + 3600e3, async (url, opts) => { if (url.includes("res-retry")) retryHit = opts.body; return { ok: true, status: 201 }; });
+    ok("the next tick retries the result push off the stored fields", retryHit instanceof Uint8Array && (await chalStore.getUser("res-retry")).profile.challenge.result_pushed === true);
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
@@ -323,6 +380,85 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     const r5 = await runPushSweep(cheerStore, vapid, NOW, captureFetch);
     ok("a paused user with a fresh cheer is NOT pushed", r5.sent === 0 && sentBody === "unset");
   } finally { try { rmSync(cheerPath); } catch {} }
+}
+
+// --- streak-freeze proactive nudge (Cloud-loop wave): a HELD freeze token can
+// retroactively protect a missed week, but today only surfaces on the Progress
+// card if the user reopens the app. Piggybacked on the daily local-hour slot
+// (not every hourly tick like the discrete social events above); fires once per
+// distinct protectable week. Assertions look for a Uint8Array body specifically
+// (the content-bearing freeze push) among ALL captured fetch bodies, so they
+// stay correct regardless of whether the plain empty daily reminder ALSO fires
+// in the same tick (it uses a bodyless request, easily told apart). ---
+{
+  const fzPath = join(tmpdir(), `hb-push-freeze-test-${process.pid}.json`);
+  const fzStore = createFileStore(fzPath);
+  try {
+    const ua = await fakeUaSubscription();
+    const findFreezePush = async (bodies) => {
+      for (const b of bodies) {
+        if (!(b instanceof Uint8Array)) continue;
+        const d = JSON.parse(await decryptPushPayload({ body: b, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+        if (d.tag === "hb-freeze") return d;
+      }
+      return null;
+    };
+    // tz_offset_min +60 lands this user's local push hour AT `NOW` (16:00 UTC + 1h = 17:00 local).
+    await fzStore.saveUser("freezeme", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freezeme", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    // 4 distinct trained weeks (earns 1 token) with the MOST RECENT past week (1 week
+    // ago) left un-trained — mirrors test-adherence's freezeGap fixture (the clear
+    // "protect last week" case).
+    for (const d of [14, 21, 28, 35]) await fzStore.addSession("freezeme", { session_id: `fz-${d}`, date: daysAgo(d), sets: [] });
+    let bodies = [];
+    const captureFetch = async (url, opts) => { bodies.push(opts.body); return { ok: true, status: 201 }; };
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    const msg1 = await findFreezePush(bodies);
+    ok("a held freeze + a protectable week sends the streak-freeze push", !!msg1 && /streak freeze/.test(msg1.body));
+    const fzUser = await fzStore.getUser("freezeme");
+    const week1 = fzUser.profile.freeze_pushed_week;
+    ok("freeze_pushed_week is stamped to the protectable week (seen-once marker)", typeof week1 === "string" && week1.length > 0);
+
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW + 86400e3, captureFetch); // next day, same local hour, same protectable week
+    ok("the SAME protectable week is never pushed twice", (await findFreezePush(bodies)) === null);
+
+    // The marker is an EQUALITY check, not a forward-only `>=` guard: a stored value
+    // that looks "later" than the real protectable week (simulating the case where
+    // freezing the nearest miss uncovers an OLDER still-open one) must not
+    // permanently suppress the nudge for a genuinely different week.
+    await fzStore.updateUser("freezeme", (u) => { u.profile = { ...u.profile, freeze_pushed_week: "9999-W99" }; return u; });
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW + 86400e3, captureFetch);
+    const msg2 = await findFreezePush(bodies);
+    ok("a marker that looks 'later' than the real protectable week does not suppress a genuinely different week (equality, not >=)", !!msg2);
+    ok("the marker is corrected back to the real protectable week after that push", (await fzStore.getUser("freezeme")).profile.freeze_pushed_week === week1);
+
+    // No held tokens -> no push, even with a protectable-looking gap.
+    await fzStore.saveUser("freeze-broke", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freeze-broke", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-broke", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await fzStore.addSession("freeze-broke", { session_id: "fb1", date: daysAgo(35), sets: [] }); // 1 trained week -> 0 earned tokens
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("no held freeze tokens -> no streak-freeze push", (await findFreezePush(bodies)) === null);
+
+    // No gap in the lookback window -> nothing to protect -> no push, even with a balance.
+    await fzStore.saveUser("freeze-perfect", { profile: { tz_offset_min: 60 } });
+    await fzStore.savePushSubscription("freeze-perfect", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-perfect", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    for (const d of [7, 14, 21, 28, 35, 42]) await fzStore.addSession("freeze-perfect", { session_id: `fp-${d}`, date: daysAgo(d), sets: [] }); // 6 consecutive trained weeks, no gap
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("a full lookback window with no misses -> no streak-freeze push", (await findFreezePush(bodies)) === null);
+
+    // Paused / reminders_off users never get the freeze nudge either.
+    await fzStore.saveUser("freeze-paused", { profile: { tz_offset_min: 60 }, paused: { from: daysAgo(1) } });
+    await fzStore.savePushSubscription("freeze-paused", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/freeze-paused", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    for (const d of [14, 21, 28, 35]) await fzStore.addSession("freeze-paused", { session_id: `fpz-${d}`, date: daysAgo(d), sets: [] });
+    bodies = [];
+    await runPushSweep(fzStore, vapid, NOW, captureFetch);
+    ok("a paused user with a protectable week and tokens is NOT pushed", (await findFreezePush(bodies)) === null);
+  } finally { try { rmSync(fzPath); } catch {} }
+
 }
 
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the

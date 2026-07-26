@@ -1,5 +1,5 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
-import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek } from "../src/adherence.mjs";
+import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek, settleChallenge } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, isoWeekKey } from "../../tools/derive-core.mjs";
 
@@ -185,6 +185,49 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   ok("sessionsInWeek scores a different week independently", sessionsInWeek(sessions, w2) === 1);
   ok("sessionsInWeek is 0 for a week with no sessions", sessionsInWeek(sessions, isoWeekKey("2026-02-02")) === 0);
   ok("sessionsInWeek treats a missing sessions array as empty", sessionsInWeek(undefined, w1) === 0);
+}
+
+// --- settleChallenge (#10 social): a call whose own write LOSES a race must
+// never report a `result` it didn't actually persist. The push sweep and a
+// user's own GET /api/challenge can both call settleChallenge for the same
+// challenge in the same tick (the sweep iterates many users while a request
+// can land concurrently); whichever call's updateUser mutator finds the
+// challenge ALREADY terminal must treat itself as a no-op, not as having just
+// completed it with its own (possibly stale) locally-recomputed counts.
+{
+  const persistedChallenge = { id: "c1", status: "completed", partner_token: "tok-opp", week: "2020-W01" };
+  const persistedHistory = [{ week: "2020-W01", result: "win", my_count: 5, opponent_count: 3 }];
+  const raceLostStore = {
+    async getShareUserId() { return "opponent-id"; },
+    async listSessions() { return []; }, // this call's own (stale) reads see 0-0, NOT 5-3
+    async updateUser(id, mutator) {
+      // The row is already in the terminal state a concurrent writer landed first.
+      const cur = { profile: { challenge: { ...persistedChallenge }, challenge_history: [...persistedHistory] } };
+      return mutator(cur);
+    },
+  };
+  const staleUser = { profile: { challenge: { id: "c1", status: "active", partner_token: "tok-opp", week: "2020-W01" } } };
+  const lost = await settleChallenge(raceLostStore, "me", staleUser, Date.now());
+  // The bug (pre-fix): this call's own listSessions reads (0-0, stale relative to
+  // the winner's already-persisted 5-3) got wrapped into a fabricated `result`
+  // (a "tie 0-0") purely because the post-write status happened to match this
+  // call's own locally-computed nextStatus — even though its mutator no-op'd.
+  // push.mjs sends a push built directly from `settled.result`, so this would
+  // have notified the user of a score that disagrees with `challenge_history`.
+  ok("settleChallenge: a raced no-op write never fabricates a result", lost.result === null);
+
+  // Control: when this call's own write genuinely performs the transition (no
+  // race), it correctly reports the result it just persisted.
+  const store = { users: { me: { profile: { challenge: { id: "c2", status: "active", partner_token: "tok-opp", week: "2020-W01" } } } } };
+  const wonStore = {
+    async getShareUserId() { return "opponent-id"; },
+    async listSessions(id) { return id === "me" ? [sess("2020-01-01"), sess("2020-01-02")] : [sess("2020-01-01")]; },
+    async updateUser(id, mutator) { store.users[id] = mutator(JSON.parse(JSON.stringify(store.users[id]))); return store.users[id]; },
+  };
+  const freshUser = { profile: { challenge: { id: "c2", status: "active", partner_token: "tok-opp", week: "2020-W01" } } };
+  const won = await settleChallenge(wonStore, "me", freshUser, Date.now());
+  ok("settleChallenge: a genuine (unraced) write reports the result it actually persisted",
+    won.result?.result === "win" && won.history[0]?.result === "win");
 }
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -193,6 +193,70 @@ export function weeklySummary(sessions, now) {
 // `now`), this lets a 1v1 challenge (#10 social) be scored for its OWN target
 // week even after that week has ended, with no snapshot to take and no cron to
 // run: the tally is just re-derived from the same logged sessions on read.
+// One source of truth for a challenge reaching its end (#10 social). Extracted
+// from GET /api/challenge so the push sweep can settle a week-over challenge for
+// a user who never reopened the app — WITHOUT duplicating the transition rules
+// (lesson 1). Behavior is exactly the route's: an ACTIVE challenge whose week
+// ended (or whose opponent's share vanished) completes — recording a win/lose/tie
+// ONLY when it ran its course against a still-resolvable opponent; an unanswered
+// (pending) one declines with nothing recorded. The write is id-guarded AND
+// terminal-state-guarded inside the mutator, and everything reported comes from
+// what actually PERSISTED (lessons 10/21): a raced slot-replacement or a vanished
+// user row yields the un-fabricated current state, never an invented trophy.
+export const CHALLENGE_HISTORY_CAP = 20;
+export async function settleChallenge(store, id, user, now = Date.now()) {
+  const ch = user.profile?.challenge;
+  const history = user.profile?.challenge_history ?? [];
+  if (!ch) return { challenge: null, history, my_count: null, opponent_count: null, week_over: false, result: null };
+  const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
+  const week_over = ch.week !== isoWeekKey(new Date(now).toISOString());
+  // Both sides' tallies up front (needed either way once an opponent exists) so a
+  // completing challenge records its result with the SAME counts it reports.
+  let my_count = null, opponent_count = null;
+  if (opponentId) {
+    const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
+    my_count = sessionsInWeek(mySessions, ch.week);
+    opponent_count = sessionsInWeek(opponentSessions, ch.week);
+  }
+  let newHistory = history;
+  let result = null;
+  if ((ch.status === "active" || ch.status === "pending") && (week_over || !opponentId)) {
+    const nextStatus = ch.status === "pending" ? "declined" : "completed";
+    const recordResult = nextStatus === "completed" && opponentId;
+    const entry = recordResult
+      ? { week: ch.week, result: my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie", my_count, opponent_count }
+      : null;
+    const proposedHistory = entry ? [entry, ...history].slice(0, CHALLENGE_HISTORY_CAP) : newHistory;
+    // `transitioned` is set INSIDE the mutator, reset on every invocation (D1's
+    // updateUser retries the mutator on a CAS conflict, so only the LAST run's
+    // value matters) — it tracks whether THIS call's write actually performed the
+    // transition, never inferred by comparing the post-write status to our own
+    // locally-computed `nextStatus`. Two concurrent settles on the same terminal
+    // status (e.g. this user's own GET racing the push sweep) would otherwise
+    // both see a status match and both believe THEY wrote it, even though only
+    // one of them actually did — reporting a `result` (and firing a push) for a
+    // transition this call never performed, which can disagree with the entry
+    // the other caller actually persisted.
+    let transitioned = false;
+    const updated = await store.updateUser(id, (u) => {
+      transitioned = false;
+      const cur = u.profile?.challenge;
+      if (cur?.id !== ch.id) return u; // slot replaced mid-flight — don't resurrect
+      if (cur.status !== "active" && cur.status !== "pending") return u; // terminal is write-once
+      transitioned = true;
+      u.profile = { ...u.profile, challenge: { ...cur, status: nextStatus }, ...(entry ? { challenge_history: proposedHistory } : {}) };
+      return u;
+    });
+    const wrote = transitioned;
+    newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
+    if (wrote) {
+      ch.status = nextStatus;
+      if (entry) result = entry; // a result that genuinely landed just now
+    }
+  }
+  return { challenge: ch, opponentId, history: newHistory, my_count, opponent_count, week_over, result };
+}
+
 export function sessionsInWeek(sessions, weekKey) {
   return (sessions ?? []).filter((s) => (s.local_date || s.date) && sessionWeekKey(s) === weekKey).length;
 }
