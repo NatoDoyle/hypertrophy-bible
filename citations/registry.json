@@ -2311,6 +2311,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/17762369/"
+    },
+    {
+      "key": "henselmans-2022-carb-strength",
+      "authors": [
+        "Henselmans M",
+        "Bjørnsen T",
+        "Hedderman R",
+        "Vårvik FT"
+      ],
+      "year": 2022,
+      "title": "The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.",
+      "source": "Nutrients",
+      "volume": "14",
+      "issue": "4",
+      "pages": "856",
+      "doi": "10.3390/nu14040856",
+      "pmid": "35215506",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35215506/"
     }
   ]
 }
