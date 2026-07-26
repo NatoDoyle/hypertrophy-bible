@@ -223,6 +223,25 @@ infra, the one genuinely large build left here).
    beyond taper + nutrition (peak-week logistics, posing-adjacent guidance) would need real elite ground
    truth this project doesn't have (`BLOCKERS.md` #6) to build honestly rather than invent — not a clean
    buildable slice, don't force it.
+   **Audit fix (Cloud loop wave):** the auto-derived DUP itself
+   (Wave 100) had a live bug in `sessionRepScheme`/`tools/plan-core.mjs` — it keyed a session's
+   heavy/moderate/light band off its ABSOLUTE index in the week, not its occurrence within its own
+   archetype. Any split repeating an archetype at an interval that divides evenly into 3 — which
+   includes the two most common advanced hypertrophy splits, 6-day PPL (`PUSH, PULL, LEGS, PUSH, PULL,
+   LEGS`) and 2-day full-body — landed every repeat of the SAME muscle group on the IDENTICAL band
+   (confirmed by generating a real 6-day advanced plan: Push A and Push B both `4-6`, Pull A/B both
+   `6-10`, Legs A/B both `10-15`), making the flagship "advanced trainee gets a genuinely different
+   stimulus each exposure" promise fully inert on the split it's most likely to actually run on. The
+   existing test only checked plan-WIDE band diversity (Push ≠ Pull ≠ Legs), which stayed green through
+   the whole bug since different archetypes still differed — it never checked a single archetype's own
+   repeats against each other. Fixed by keying the band off `spec.letter` (the archetype's own 1-based
+   occurrence count) whenever that archetype repeats (`spec.of > 1`), falling back to the day's absolute
+   position only when no archetype repeats at all (e.g. the 5-day PUSH/PULL/LEGS/UPPER/LOWER split, where
+   there's no same-archetype exposure to vary) — preserving the pre-existing incidental variety there
+   instead of collapsing every session to "heavy." 5 new regression tests in `tools/test-plan.mjs` lock
+   in per-archetype variety (Push A ≠ Push B, Pull A ≠ Pull B, Legs A ≠ Legs B on the 6-day split) and
+   confirm the no-repeat fallback still varies across a 5-day week.
+
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
