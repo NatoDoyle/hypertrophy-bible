@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**120** verified references.
+**121** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -295,6 +295,14 @@ Helms ER & et al. (2020). Methods for Regulating and Monitoring Resistance Train
 
 - Type: narrative-review
 - DOI: [10.2478/hukin-2020-0011](https://doi.org/10.2478/hukin-2020-0011) · PMID: [33312273](https://pubmed.ncbi.nlm.nih.gov/33312273/)
+
+### henselmans-2022-carb-strength
+Henselmans M et al. (2022). The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.
+
+*Nutrients*, 14(4), 856.
+
+- Type: systematic-review · Population: mixed
+- DOI: [10.3390/nu14040856](https://doi.org/10.3390/nu14040856) · PMID: [35215506](https://pubmed.ncbi.nlm.nih.gov/35215506/)
 
 ### hermann-2025-failure-rir
 Hermann T & et al. (2025). Without Fail: Muscular Adaptations in Single-Set Resistance Training Performed to Failure or with Repetitions-in-Reserve.

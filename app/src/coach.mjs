@@ -228,9 +228,14 @@ export function taperPhase(now, goalEventDate, experience, tzOffsetMin = null) {
     phase: "taper",
     setScale: early ? 0.6 : 0.4,
     rirFloor: early ? 2 : 3,
+    // The carb-load line only appears in the FINAL week (not the early taper) — it's
+    // "peak week" advice, and stacking it onto the 2-week-out note would answer a
+    // question the user isn't asking yet. Grounded in periodization-and-progression.md
+    // (Henselmans 2022): unlike an endurance event, a single lift/session isn't
+    // reliably glycogen-limited, so there's no evidence-based reason to carb-load.
     note: early
       ? `${daysUntil} days to go — taper starting. Sets drop from here so you're fresh for it; the weight stays where it is.`
-      : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go — final taper. Sets are cut hard, but the weight stays real. This is what makes you feel strong on the day.`,
+      : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go — final taper. Sets are cut hard, but the weight stays real. This is what makes you feel strong on the day. No need to carb-load beforehand — that's an endurance-sport trick; the evidence doesn't show it helps strength performance.`,
   };
 }
 

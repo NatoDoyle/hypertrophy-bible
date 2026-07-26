@@ -206,12 +206,42 @@ infra, the one genuinely large build left here).
    the KB refutes — the Varovic lesson at the ENGINE level — and the app ALREADY ships the evidence-aligned
    pieces: the within-mesocycle build→peak→deload wave (`blockPhase`), block-boundary volume auto-tune,
    recovery-gated volume (`deriveVolumeAdjust` context), undulating-for-advanced, and exercise rotation.
-   The genuinely-remaining elite work is narrower, evidence-supported, but INPUT-GATED (a larger feature,
-   not a clean first slice): a **taper/peak toward a goal date** (tapering has real strength-EXPRESSION
-   evidence, distinct from hypertrophy) and a **contest-prep mode** — both need a new “goal/meet/show
-   date” onboarding input + a peaking protocol; deeper velocity-driven autoregulation needs hardware the
-   app can’t collect. So this item serves the strength/peaking/contest end, NOT general hypertrophy —
-   and only once a goal-date input exists.
+   The genuinely-remaining elite work is narrower, evidence-supported: a **taper/peak toward a goal
+   date** (tapering has real strength-EXPRESSION evidence, distinct from hypertrophy) and a **contest-prep
+   mode**; deeper velocity-driven autoregulation needs hardware the app can't collect.
+   **Taper/peak SHIPPED (Waves 132/133/135, merged on `main`):** a `goal_event_date` input
+   (Settings-only — deliberately gated out of first-run onboarding per Goals 2/3's minimal-customization
+   principle; a competitive lifter opts in later, non-beginners only) drives `taperPhase` (`coach.mjs`) —
+   a 14-day window trading volume for freshness (sets scale down, RIR eases, load HOLDS — strength
+   expression, not a hypertrophy claim), grounded in evidence (Bosquet 2007 meta) and correctness-audited
+   (local-frame date math, Wave 135). **This closes the "only once a goal-date input exists" gate** the
+   paragraph above used to describe as blocking — it no longer blocks anything. The peak-week carb-loading
+   myth debunk (Henselmans 2022: no benefit found in the trials that tested short-term carb manipulation
+   before an event) also SHIPPED (Wave 147) — surfaced in the final-week taper note and grounded in the
+   periodization page; don't re-propose it. What's still genuinely open, narrower than before: a full
+   **contest-prep mode**
+   beyond taper + nutrition (peak-week logistics, posing-adjacent guidance) would need real elite ground
+   truth this project doesn't have (`BLOCKERS.md` #6) to build honestly rather than invent — not a clean
+   buildable slice, don't force it.
+   **Audit fix (Cloud loop wave):** the auto-derived DUP itself
+   (Wave 100) had a live bug in `sessionRepScheme`/`tools/plan-core.mjs` — it keyed a session's
+   heavy/moderate/light band off its ABSOLUTE index in the week, not its occurrence within its own
+   archetype. Any split repeating an archetype at an interval that divides evenly into 3 — which
+   includes the two most common advanced hypertrophy splits, 6-day PPL (`PUSH, PULL, LEGS, PUSH, PULL,
+   LEGS`) and 2-day full-body — landed every repeat of the SAME muscle group on the IDENTICAL band
+   (confirmed by generating a real 6-day advanced plan: Push A and Push B both `4-6`, Pull A/B both
+   `6-10`, Legs A/B both `10-15`), making the flagship "advanced trainee gets a genuinely different
+   stimulus each exposure" promise fully inert on the split it's most likely to actually run on. The
+   existing test only checked plan-WIDE band diversity (Push ≠ Pull ≠ Legs), which stayed green through
+   the whole bug since different archetypes still differed — it never checked a single archetype's own
+   repeats against each other. Fixed by keying the band off `spec.letter` (the archetype's own 1-based
+   occurrence count) whenever that archetype repeats (`spec.of > 1`), falling back to the day's absolute
+   position only when no archetype repeats at all (e.g. the 5-day PUSH/PULL/LEGS/UPPER/LOWER split, where
+   there's no same-archetype exposure to vary) — preserving the pre-existing incidental variety there
+   instead of collapsing every session to "heavy." 5 new regression tests in `tools/test-plan.mjs` lock
+   in per-archetype variety (Push A ≠ Push B, Pull A ≠ Pull B, Legs A ≠ Legs B on the 6-day split) and
+   confirm the no-repeat fallback still varies across a 5-day week.
+
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
@@ -349,6 +379,52 @@ infra, the one genuinely large build left here).
     (a monkey-patched `store.updateUser` swaps the challenge id mid-request) and confirm neither
     the response nor the store shows a fabricated entry; verified the new test fails without the
     fix and passes with it.
+    **Audit fix (Cloud loop wave, diff-scoped over Waves 144-146):** `merge-profile.mjs`'s own
+    header cites lesson 16 ("a field added to the user record after reassignUserData was written
+    silently orphans on merge") as the exact reason the file exists — yet two NEW profile push
+    markers Waves 145/146 added (`freeze_pushed_week`, and `cheers_pushed`/`cheers_seen` at the
+    share-reassignment site) were never wired into it, since both post-date the file's last
+    lesson-16 audit at Wave 142. Two distinct real gaps, not one: (1) `streak_freezes` and session
+    history already merge additively, so `streakFreezeState`'s `protectable_week` is recomputed
+    fresh from the SURVIVOR's combined timeline post-merge — a week already pushed-about on the
+    departing account can resurface as "new" and fire a duplicate streak-freeze nudge; fixed by
+    adopting the lexically-later (ISO week keys are zero-padded, so string order is chronological
+    order) of the two markers, never a raw overwrite. (2) When a share is reassigned onto a
+    survivor with none of its own (the existing `else` branch in both `store.mjs` and
+    `store-d1.mjs`'s `reassignUserData`), the share's lifetime cheer COUNT transfers but the
+    survivor's own watermark defaults to 0 — the push sweep and the in-app "N new cheers" banner
+    would both read the inherited share's full history as brand new, a fabricated "N people
+    cheered you!" for cheers the user already saw pre-merge; fixed by adopting the departing
+    user's watermarks exactly when (and only when) its share is the one that survives — confirmed
+    the OTHER branch (both users already share, the departing one is dropped) leaves the
+    survivor's own watermarks untouched, since adopting there would wrongly suppress a real
+    pending cheer notification on the survivor's still-live share. Both fixes live once in the
+    stores/merge-profile.mjs shared by file + D1 (parity preserved, confirmed via the
+    `test-store-d1.mjs` side-by-side harness). 8 new regression tests across `test-auth.mjs`
+    (freeze-week adopt-when-later/keep-when-later/adopt-when-empty; cheers-watermark adopt-on-
+    inherit and untouched-when-dropped) plus existing D1 parity coverage, all green; root
+    `npm test` + `npm run check` and app `npm test` (full suite incl. `test-routes.mjs` and the
+    D1 parity harness) green. Docs/code only where noted — no `data/`/`content/`/`public/` file
+    touched, so no `build-data` regen or SW `VERSION` bump needed.
+
+## Audit fix (Cloud loop wave, outside the tiers above)
+**`stallDetect` (`tools/derive-core.mjs`) could double-flag one exercise from BOTH its e1RM
+and load paths, rendering a duplicated name on the Progress tab's plateau card.** The function
+tracks two independent per-exercise week-maps — `byEx` (reliable low-rep e1RM data) and
+`byExLoad` (high-rep pump-band load data) — with a majority-of-weeks guard meant to route each
+exercise through exactly one path (mirroring the same dual guard already correct in its sibling
+`progressionByExercise`). The `byExLoad` loop had its half of the guard; the `byEx` loop never
+got the reciprocal check. Whenever an exercise's load-path week-count exceeded its e1RM-path
+week-count (e.g. a lifter logs a backoff/pump set every week but skips the heavy top set one
+week), both loops pushed a stall entry for the same exercise — `progressReport` returns this
+`stalls` array unfiltered and `app.js` renders it as `"2 lifts have plateaued: Bench Press,
+Bench Press"`, a literal duplicated name and a wrong count on a coaching surface that's supposed
+to build trust (Goal 2/3). Fixed by adding the same reciprocal guard `progressionByExercise`
+already uses. One new regression test in `tools/test-derive.mjs`, verified to fail on the
+pre-fix code (2 entries) and pass on the fix (1, `basis: "load"` since majority-of-weeks routes
+it there). Entirely contained in `tools/derive-core.mjs` + its test file — no `data/`/`content/`/
+`app/src`/`public/` file touched, so no `build-data` regen or SW `VERSION` bump needed. Root
+`npm test` + `npm run check` and app `npm test` (full suite) all green.
 
 ## Audit fix (Cloud loop wave, outside the tiers above)
 **Progress screen's bodyweight trend/energy-balance was averaging the user's ENTIRE

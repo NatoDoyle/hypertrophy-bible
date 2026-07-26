@@ -267,6 +267,28 @@ check("#21 one grinding 12-rep week must not hide a pump lift's load history (ma
   assert.equal(rows[0].weeks, 4); // the 4 pump weeks chart; the lone e1RM week defers
 });
 
+check("#cloud-loop stallDetect must not double-flag one exercise from BOTH the e1RM and load paths when both are flat", () => {
+  // A common real pattern: a flat 5-rep top set logged for only 4 of 5 weeks (one
+  // week the lifter skipped the heavy set but still did the backoff/pump work) +
+  // a flat 15-rep backoff set logged every week — the load path has MORE weeks
+  // than the e1RM path, so the byExLoad loop's own majority-of-weeks guard does
+  // NOT skip it. Before the fix, the e1RM (byEx) loop had no reciprocal guard at
+  // all — unlike its sibling progressionByExercise, which guards BOTH directions
+  // — so this pushed TWO stall entries for one exercise, rendering the Progress
+  // tab's plateau card as "2 lifts have plateaued: Bench Press, Bench Press" (a
+  // literal duplicated name + wrong count).
+  const w = (n, sets) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets });
+  const sessions = [0, 1, 2, 3, 4].map((n) => {
+    const sets = [{ exercise: "bench", set_type: "work", weight_kg: 60, reps: 15 }];
+    if (n < 4) sets.push({ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 });
+    return w(n, sets);
+  });
+  const stalls = stallDetect(sessions, exIndex);
+  assert.equal(stalls.length, 1, `expected exactly one stall entry, got ${stalls.length}`);
+  assert.equal(stalls[0].exercise, "bench");
+  assert.equal(stalls[0].basis, "load"); // the load path has MORE weeks (5 vs 4), so majority-of-weeks routes it there
+});
+
 check("progressionByExercise: est-1RM rises across the log", () => {
   const sessions = [
     { date: "2026-06-01T18:00:00Z", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] },
