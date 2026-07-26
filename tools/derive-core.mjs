@@ -528,6 +528,14 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
   };
   const out = [];
   for (const [ex, weekMap] of Object.entries(byEx)) {
+    // Majority-of-weeks rule (mirrors progressionByExercise + this function's own
+    // byExLoad loop below): without this reciprocal guard, an exercise logged with
+    // BOTH a flat low-rep top set and a flat high-rep backoff/isolation set (a
+    // common top-set-plus-backoff pattern) pushed a stall entry from EACH path,
+    // rendering the exercise's own name twice in the Progress tab's plateau card
+    // ("2 lifts have plateaued: Bench Press, Bench Press") — a visibly duplicated,
+    // wrong count on a coaching surface that's supposed to build trust.
+    if (Object.keys(byExLoad[ex] ?? {}).length > Object.keys(weekMap).length) continue;
     const hi = flatWindow(weekMap);
     if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_e1rm: hi });
   }
