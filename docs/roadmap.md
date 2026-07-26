@@ -350,6 +350,25 @@ infra, the one genuinely large build left here).
     the response nor the store shows a fabricated entry; verified the new test fails without the
     fix and passes with it.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**`stallDetect` (`tools/derive-core.mjs`) could double-flag one exercise from BOTH its e1RM
+and load paths, rendering a duplicated name on the Progress tab's plateau card.** The function
+tracks two independent per-exercise week-maps — `byEx` (reliable low-rep e1RM data) and
+`byExLoad` (high-rep pump-band load data) — with a majority-of-weeks guard meant to route each
+exercise through exactly one path (mirroring the same dual guard already correct in its sibling
+`progressionByExercise`). The `byExLoad` loop had its half of the guard; the `byEx` loop never
+got the reciprocal check. Whenever an exercise's load-path week-count exceeded its e1RM-path
+week-count (e.g. a lifter logs a backoff/pump set every week but skips the heavy top set one
+week), both loops pushed a stall entry for the same exercise — `progressReport` returns this
+`stalls` array unfiltered and `app.js` renders it as `"2 lifts have plateaued: Bench Press,
+Bench Press"`, a literal duplicated name and a wrong count on a coaching surface that's supposed
+to build trust (Goal 2/3). Fixed by adding the same reciprocal guard `progressionByExercise`
+already uses. One new regression test in `tools/test-derive.mjs`, verified to fail on the
+pre-fix code (2 entries) and pass on the fix (1, `basis: "load"` since majority-of-weeks routes
+it there). Entirely contained in `tools/derive-core.mjs` + its test file — no `data/`/`content/`/
+`app/src`/`public/` file touched, so no `build-data` regen or SW `VERSION` bump needed. Root
+`npm test` + `npm run check` and app `npm test` (full suite) all green.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
