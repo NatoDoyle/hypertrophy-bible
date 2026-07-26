@@ -617,4 +617,39 @@ check("buildToday: taper precedence in the high-readiness note, and honest copy 
   assert.ok(!/stays real|stays where it is/i.test(back.taper.note));
 });
 
+check("buildToday: a PER-EXERCISE comeback ease inside a taper (session-level layoff < 12) still makes the taper copy honest", () => {
+  // The audit case: buildToday's comeback branch keys off SESSION-level layoff, but
+  // suggestWeight eases PER-EXERCISE — a lift untrained >=12 days while the user
+  // trained something else recently gets an eased weight, yet the taper card used to
+  // still claim "the weight stays real." now = 5 days before the event (final taper).
+  const now = "2026-07-27T12:00:00Z";
+  const prog = selectProgram({ training_status: "intermediate", days_per_week: 3 });
+  const n = prog.sessions.length;
+  const todayIdx = 2 % n; // two fixture sessions logged below -> nextSessionIndex = 2 % n
+  const Y = prog.sessions[todayIdx].exercises[0].exercise; // a lift on TODAY's card
+  const user = {
+    profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, goal_event_date: "2026-08-01" },
+    program: prog,
+    plan_meta: { block_start: "2026-07-01T00:00:00Z" },
+    created_at: "2026-06-01T00:00:00Z",
+  };
+  const sessions = [
+    // A recent session 3 days ago (empty sets) -> SESSION-level layoff = 3 (< 12),
+    // so the whole-session comeback branch does NOT fire. It logs no Y sets, so Y's
+    // OWN last-trained date stays the old session below.
+    { date: "2026-07-24T12:00:00Z", sets: [] },
+    // Y last trained 20 days ago -> per-exercise layoff 20 (>= 12) -> suggestWeight eases it.
+    { date: "2026-07-07T12:00:00Z", sets: [
+      { exercise: Y, set_type: "work", weight_kg: 100, reps: 8 },
+      { exercise: Y, set_type: "work", weight_kg: 100, reps: 8 },
+    ] },
+  ];
+  const t = buildToday(user, sessions, null, [], now);
+  assert.ok(t.taper && t.taper.days_until === 5, "taper active, final week");
+  assert.equal(t.comeback, false, "session-level comeback flag stays false (trained 3 days ago)");
+  assert.equal(t.exercises.find((e) => e.exercise === Y)?.eased, true, "the untrained lift is per-exercise eased");
+  assert.ok(!/stays real|stays where it is/i.test(t.taper.note), "taper note no longer claims the weight holds");
+  assert.ok(/eased|haven't trained/i.test(t.taper.note), "taper note acknowledges the partial ease");
+});
+
 console.log(`\n${passed} coach test(s) passed.`);
