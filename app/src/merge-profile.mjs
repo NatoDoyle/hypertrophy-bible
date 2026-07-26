@@ -65,6 +65,29 @@ export function mergeUserProfile(fromU, toU) {
   if (fromU.profile?.freeze_pushed_week && fromU.profile.freeze_pushed_week > (toU.profile?.freeze_pushed_week ?? "")) {
     toU.profile = { ...(toU.profile ?? {}), freeze_pushed_week: fromU.profile.freeze_pushed_week };
   }
+  // Training-partner nudge (`partner_nudge`/`nudge_pushed_at`/`nudge_seen_at`,
+  // added Wave 115/119 — like `freeze_pushed_week` above, it post-dates this
+  // file's Wave-142 audit and was never wired in, so a real Goal-4 engagement
+  // notification silently evaporated on merge: `from` is deleted right after,
+  // taking any not-yet-seen "your training partner nudged you" nudge with it.
+  // Unlike the live `challenge` slot below (deliberately unmerged — it's a
+  // two-sided mirror keyed by a share token this merge can't rewire on the
+  // OTHER side), `partner_nudge` carries no cross-user reference: it's a plain
+  // `{at}` timestamp stamped directly on the recipient's own profile, so it's
+  // safe to adopt outright. Take the more recent nudge's `at` together with
+  // its OWN push/seen watermarks (never mix one side's `at` with the other's
+  // watermarks — a stale `nudge_seen_at` paired with a fresher `at` would wrongly
+  // suppress a nudge nobody has actually seen yet) — same "adopt the fresher
+  // side wholesale, never stomp a fresher one `to` already has" shape as
+  // `freeze_pushed_week` just above.
+  if (fromU.profile?.partner_nudge?.at > (toU.profile?.partner_nudge?.at ?? 0)) {
+    toU.profile = {
+      ...(toU.profile ?? {}),
+      partner_nudge: fromU.profile.partner_nudge,
+      nudge_pushed_at: fromU.profile?.nudge_pushed_at ?? 0,
+      nudge_seen_at: fromU.profile?.nudge_seen_at ?? 0,
+    };
+  }
   // The live `challenge` slot is deliberately NOT merged: it's a two-sided mirror
   // keyed by the OTHER side's share token, not a user_id. Lifting it onto `to`
   // without also rewriting the opponent's copy would either silently stomp a

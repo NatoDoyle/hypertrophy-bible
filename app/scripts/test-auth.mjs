@@ -222,6 +222,29 @@ try {
   const mp5To = await store.getUser("mp5-to");
   ok("merge adopts from's freeze_pushed_week when to has none", mp5To.profile.freeze_pushed_week === "2026-W16");
 
+  // --- Cloud loop: partner_nudge/nudge_pushed_at/nudge_seen_at (Wave 115/119,
+  // also added after Wave 142's merge audit) must merge too, or a pending
+  // "your training partner nudged you" notification silently vanishes with the
+  // deleted `from` row ---
+  await store.saveUser("mp6-to", { profile: { partner_nudge: { at: 100 }, nudge_pushed_at: 100, nudge_seen_at: 100 } });
+  await store.saveUser("mp6-from", { profile: { partner_nudge: { at: 500 }, nudge_pushed_at: 500, nudge_seen_at: 0 } });
+  await store.reassignUserData("mp6-from", "mp6-to");
+  const mp6To = await store.getUser("mp6-to");
+  ok("merge adopts from's more recent partner_nudge", mp6To.profile.partner_nudge.at === 500);
+  ok("merge adopts from's OWN watermarks alongside its nudge, not to's stale ones", mp6To.profile.nudge_pushed_at === 500 && mp6To.profile.nudge_seen_at === 0);
+
+  await store.saveUser("mp7-to", { profile: { partner_nudge: { at: 900 }, nudge_pushed_at: 900, nudge_seen_at: 900 } });
+  await store.saveUser("mp7-from", { profile: { partner_nudge: { at: 500 }, nudge_pushed_at: 500, nudge_seen_at: 500 } });
+  await store.reassignUserData("mp7-from", "mp7-to");
+  const mp7To = await store.getUser("mp7-to");
+  ok("merge keeps to's own partner_nudge when it's already the more recent one", mp7To.profile.partner_nudge.at === 900 && mp7To.profile.nudge_seen_at === 900);
+
+  await store.saveUser("mp8-to", { profile: {} });
+  await store.saveUser("mp8-from", { profile: { partner_nudge: { at: 500 }, nudge_pushed_at: 500, nudge_seen_at: 0 } });
+  await store.reassignUserData("mp8-from", "mp8-to");
+  const mp8To = await store.getUser("mp8-to");
+  ok("merge adopts from's partner_nudge when to has none", mp8To.profile.partner_nudge.at === 500 && mp8To.profile.nudge_seen_at === 0);
+
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });
   await store.saveUser("p-from", { profile: {} });
