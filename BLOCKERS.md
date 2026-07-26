@@ -36,30 +36,7 @@ can't fabricate and won't hotlink without a licence.
   of a blind search. **Cheapest option.**
 - **(d) Tell me to drop it** and keep the v0 line-art demo as the permanent answer.
 
-### 4. Web-push reminders — confirm the VAPID secret is actually set
-**Update (Cloud loop wave):** re-flagging this from 🟡 to 🔴 — its actual scope is bigger than
-"unlocks something nice." The code side is complete and fully tested — `app/src/push.mjs`
-implements send/encrypt/sweep/quiet-hours for the daily reminder, the commitment nudge, PR/
-streak-freeze nudges, and every social event (partner nudge, challenge propose/accept/result,
-cheers). `VAPID_PUBLIC_KEY` is already committed as a plain `[vars]` entry in `app/wrangler.toml`.
-**Blocked on:** one Worker secret — `npx wrangler secret put VAPID_PRIVATE_JWK` in `app/`, pasting
-the private JWK paired to that committed public key (`worker.mjs`'s cron gate reads exactly that
-name; a prior version of this file named it `VAPID_PRIVATE_KEY`, which the code never reads —
-already corrected, Wave 155). **Why this is now 🔴, not 🟡:** `worker.mjs`'s `scheduled()` gates
-the ENTIRE hourly push sweep behind `env.VAPID_PRIVATE_JWK && env.VAPID_PUBLIC_KEY` both being
-set. If the secret was never actually put (or was put under the old wrong name), `runPushSweep`
-has never run in production — meaning roughly 15+ waves of Goal-4 adherence work (PR/streak-freeze
-nudges, partner nudges, challenge propose/accept/result, cheer notifications) may have shipped
-fully unit- and route-tested but never fired a single real push, silently. This can't be verified
-from a cloud session (no wrangler/Cloudflare credentials here). **What I need:** run
-`npx wrangler secret list` in `app/` from an authed session and confirm `VAPID_PRIVATE_JWK` is
-present. If it isn't, either paste the existing private JWK for me to wire in, or tell me to
-generate a fresh P-256 keypair (I'll give you the exact `wrangler secret put` command and update
-the committed public key to match). PR #228 (open, cloud-loop) adds an email fallback for
-push-less subscribers on top of this — complementary, not a substitute: it still needs
-`RESEND_API_KEY` (separately confirmed working, since magic-link/comeback emails already send)
-and doesn't help subscribers who DO have a push subscription that's silently never firing.
-**Caveat:** iOS PWA push requires "Add to Home Screen" first — real but limited regardless.
+_(Web-push VAPID secret — was #4 here — RESOLVED 2026-07-26; moved to Done below.)_
 
 ---
 
@@ -122,4 +99,18 @@ loop — the per-user algorithm is live and improving.
 ---
 
 ## Done
-_(nothing yet — I'll move items here as you tick them off)_
+
+### 4. Web-push reminders — the VAPID secret IS set *(verified 2026-07-26)*
+`npx wrangler secret list` on the prod Worker shows **both** `VAPID_PRIVATE_JWK` and
+`RESEND_API_KEY` present. So `worker.mjs`'s `scheduled()` gate
+(`env.VAPID_PRIVATE_JWK && env.VAPID_PUBLIC_KEY`) passes and the hourly `runPushSweep` **has been
+running in production** — the ~15 waves of Goal-4 push code (daily/commitment reminder, PR &
+streak-freeze nudges, partner nudge, challenge propose/accept/result, cheers, quiet hours) fire
+for real; the earlier red-flag fear that it was silently inert is disproven. `VAPID_PUBLIC_KEY`
+is the committed `[vars]` public half; the private JWK was set under the correct name (the wrong
+`VAPID_PRIVATE_KEY` naming was only ever a doc typo, fixed Wave 155). Nothing left to unblock —
+what remains is operational (real subscriber uptake, per-send delivery monitoring), not a
+blocker. **Caveat that stands:** iOS PWA push requires "Add to Home Screen" before a device can
+subscribe — a platform limit, not ours. (This also settles the *premise* behind PR #228's email
+fallback: push is live, so that PR is now purely a product choice about whether to *also* email
+push-less users, not a workaround for broken push.)

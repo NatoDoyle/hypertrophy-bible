@@ -488,13 +488,14 @@ and already tested; (2) a fresh security audit (a dimension not recently exercis
 in `app.mjs` plus `auth.mjs`/`store.mjs`/`store-d1.mjs`/`email.mjs`/`push.mjs` for ownership
 bypasses, injection, PII leaks via the share card, and rate-limiting gaps on the newer social
 routes — clean beyond the already-documented and accepted `#6b` merge/delete risk. **What shipped
-instead:** `BLOCKERS.md` #4 (the VAPID secret) moved from 🟡 to 🔴 — its actual blast radius is
-larger than "unlocks something nice": if the secret was never set (unverifiable from a cloud
-session — no wrangler credentials), roughly 15+ waves of Goal-4 push-based adherence work
-(PR/streak-freeze nudges, partner nudges, every challenge event, cheers) may have shipped fully
-tested but never fired a single real push in production, silently, this whole time. That's a
-bigger lever than anything on the current build queue, and it's now flagged at the severity it
-deserves for the next authed session. Registry currency check: `citations/registry.json` is at
+instead:** `BLOCKERS.md` #4 (the VAPID secret) was briefly escalated 🟡→🔴 on the *hypothesis*
+that the secret might be unset (which would have meant ~15 waves of Goal-4 push code — nudges,
+challenge events, cheers — shipping fully tested but never firing a single real push in prod).
+**RESOLVED (Wave 158, verified 2026-07-26):** `wrangler secret list` on the prod Worker shows
+both `VAPID_PRIVATE_JWK` and `RESEND_API_KEY` present, so `worker.mjs`'s cron gate passes and the
+hourly `runPushSweep` **has been live all along** — the hypothesis is disproven, #4 is moved to
+`BLOCKERS.md`'s Done section, and PR #228's email fallback is now purely a product choice (whether
+to *also* email push-less users), not a fix for broken push. Registry currency check: `citations/registry.json` is at
 121 verified citations (was 119 at the last count in this file, Wave 122/123; +2 since, consistent
 with Wave 147's Henselmans 2022 addition — not itself evidence of drift, just a housekeeping note
 for the next full re-audit). **This paragraph is the honest state as of this wave:** per lesson 17,
