@@ -328,6 +328,60 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
+// --- runPushSweep: a share-card CHEER pushes a content-bearing notification, keyed to
+// the cheer COUNT (not a timestamp, since cheers have no single event instant), fires
+// regardless of the user's local reminder hour, never repeats once delivered, and never
+// fires for a user with no share token. ---
+{
+  const cheerPath = join(tmpdir(), `hb-push-cheer-test-${process.pid}.json`);
+  const cheerStore = createFileStore(cheerPath);
+  try {
+    const ua = await fakeUaSubscription();
+    await cheerStore.saveUser("cheered", { profile: { tz_offset_min: -300 } }); // 22:00 UTC local hour, NOT their push hour at NOW
+    await cheerStore.savePushSubscription("cheered", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/cheer", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await cheerStore.createShare("cheered", "share-1", NOW);
+    await cheerStore.addShareCheer("share-1"); // count -> 1
+    let sentBody = null;
+    const captureFetch = async (url, opts) => { sentBody = opts.body; return { ok: true, status: 201 }; };
+    const r1 = await runPushSweep(cheerStore, vapid, NOW, captureFetch);
+    ok("a fresh cheer sends even OUTSIDE the user's local reminder hour", r1.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the delivered push is the cheer copy, singular phrasing for 1", decrypted.tag === "hb-cheer" && /Someone cheered/.test(decrypted.body));
+    const cheered = await cheerStore.getUser("cheered");
+    ok("cheers_pushed is stamped with the current cheer COUNT (seen-once marker)", cheered.profile.cheers_pushed === 1);
+
+    sentBody = "unset";
+    const r2 = await runPushSweep(cheerStore, vapid, NOW + 3600e3, captureFetch);
+    ok("the SAME cheer count never pushes twice", r2.sent === 0 && sentBody === "unset");
+
+    // Two more cheers arrive -> plural phrasing, delta-based (not the raw total).
+    await cheerStore.addShareCheer("share-1"); // -> 2
+    await cheerStore.addShareCheer("share-1"); // -> 3
+    sentBody = "unset";
+    const r3 = await runPushSweep(cheerStore, vapid, NOW + 7200e3, captureFetch);
+    ok("new cheers since the last push fire again", r3.sent === 1 && sentBody instanceof Uint8Array);
+    const decrypted2 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+    ok("the plural push reports the DELTA (2 new), not the raw total (3)", /^2 people cheered/.test(decrypted2.body));
+    ok("cheers_pushed advances to the new total", (await cheerStore.getUser("cheered")).profile.cheers_pushed === 3);
+
+    // A user with no share token is never looked up / pushed for cheers.
+    await cheerStore.saveUser("no-share", { profile: {} });
+    await cheerStore.savePushSubscription("no-share", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/no-share", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const r4 = await runPushSweep(cheerStore, vapid, NOW, captureFetch);
+    ok("a user with no share token gets no cheer push", r4.sent === 0 && sentBody === "unset");
+
+    // Paused/reminders_off users never get the cheer push either.
+    await cheerStore.saveUser("cheered-paused", { profile: {}, paused: { from: daysAgo(1) } });
+    await cheerStore.savePushSubscription("cheered-paused", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/cheer-paused", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    await cheerStore.createShare("cheered-paused", "share-2", NOW);
+    await cheerStore.addShareCheer("share-2");
+    sentBody = "unset";
+    const r5 = await runPushSweep(cheerStore, vapid, NOW, captureFetch);
+    ok("a paused user with a fresh cheer is NOT pushed", r5.sent === 0 && sentBody === "unset");
+  } finally { try { rmSync(cheerPath); } catch {} }
+}
+
 // --- streak-freeze proactive nudge (Cloud-loop wave): a HELD freeze token can
 // retroactively protect a missed week, but today only surfaces on the Progress
 // card if the user reopens the app. Piggybacked on the daily local-hour slot
@@ -404,6 +458,7 @@ ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPush
     await runPushSweep(fzStore, vapid, NOW, captureFetch);
     ok("a paused user with a protectable week and tokens is NOT pushed", (await findFreezePush(bodies)) === null);
   } finally { try { rmSync(fzPath); } catch {} }
+
 }
 
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the

@@ -591,8 +591,11 @@ try {
   const rvShare = (await json("POST", "/api/share", { user_id: rvUser })).data.share_id;
   await json("POST", `/api/share/${rvShare}/cheer`);
   ok("#revoke-cheers precondition: the share has a cheer", (await store.getShareCheers(rvShare)) === 1);
+  // Simulate the cheer-push high-water mark having advanced before the revoke.
+  await store.updateUser(rvUser, (u) => { u.profile = { ...(u.profile ?? {}), cheers_pushed: 1 }; return u; });
   await json("POST", "/api/share/revoke", { user_id: rvUser });
   ok("#revoke drops the share's cheer tally (no orphaned rows)", (await store.getShareCheers(rvShare)) === 0);
+  ok("#revoke resets the cheer-push high-water mark (a re-shared card counts from 0 again)", ((await store.getUser(rvUser)).profile.cheers_pushed ?? 0) === 0);
 
   // --- Training partners: follow a friend's share card (#10 accountability) ---
   const onboardBw = (st) => json("POST", "/api/onboard", { profile: {

@@ -520,6 +520,15 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404);
     await store.deleteShare(b.user_id);
+    // Revoking clears share_cheers, so a future re-share counts from 0 — the
+    // cheer-push high-water mark (profile.cheers_pushed, a COUNT not a timestamp)
+    // must reset with it, or the stale high mark silently suppresses cheer pushes
+    // on the new card until its count surpasses the old lifetime total.
+    await store.updateUser(b.user_id, (u) => {
+      if (!u.profile?.cheers_pushed) return u;
+      u.profile = { ...u.profile, cheers_pushed: 0 };
+      return u;
+    });
     return c.json({ revoked: true });
   });
   // PUBLIC (no auth): resolve a share token to its owner and return ONLY the
