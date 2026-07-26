@@ -505,6 +505,66 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**A plausible-looking `store.mjs`/`store-d1.mjs` parity candidate was investigated and
+REFUTED — recorded here so the next iteration doesn't re-spend tokens rediscovering it
+(lesson 2's LEARN half: record where a finding turned out wrong, not just where it was right).**
+By this wave, 9 open PRs (#228, #238–#245) already claimed the obvious diff-scoped territory
+(`push.mjs`, `merge-profile.mjs`, `adherence.mjs`, `coach.mjs`, `derive-core.mjs`'s
+`progressionCadence`, `app.js`/`share.html`/`sw.js`), and the citation network was still down —
+confirmed directly this wave via `curl` to `eutils.ncbi.nlm.nih.gov`/`api.crossref.org` (both
+`CONNECT tunnel failed, 403`) and the proxy's own `$HTTPS_PROXY/__agentproxy/status`, whose
+`recentRelayFailures` shows the same `connect_rejected`/"policy denial" for both hosts — so per
+CLAUDE.md's "never fabricate a citation" rule, no KB content was touched. A scoped research
+agent (files none of the 9 PRs touch: `store.mjs`/`store-d1.mjs` pairwise, `planner.mjs`,
+`tools/plan-core.mjs`, `tools/nutrition-core.mjs`, `auth.mjs`, `session-core.mjs`,
+`movement-demo.mjs`, the unclaimed `app.mjs` routes) surfaced one candidate: `addSession`
+dedupes `session_id` **per-user** in `store.mjs` (`db.sessions[id]`) but **globally** in
+`store-d1.mjs` (`sessions.session_id TEXT PRIMARY KEY`, `schema.sql`), so a same-`session_id`
+write under two different `user_id`s would land in the file store but silently
+`ON CONFLICT ... DO NOTHING` away in D1 — superficially exactly the CLAUDE.md-documented parity
+invariant ("a method or dedup behavior in one but not the other is a bug") and reachable via the
+already-known multi-tab offline-flush-queue race (lesson 11) straddling an account restore.
+
+**Verifying the premise before fixing (lesson 2) found this exact scenario was already
+investigated, tested, and deliberately left as-is** — `app/scripts/test-store-d1.mjs` (around
+its `collide-from`/`collide-to` cases) already builds precisely this cross-user
+same-`session_id` collision on both stores side by side and asserts the CURRENT, divergent-path,
+convergent-OUTCOME behavior is correct: `session_id` is a fresh `crypto.randomUUID()` minted
+once per session object and posted once, so a genuine collision only happens when the *same*
+physical event gets resubmitted under a different owner (the rebind race) — never two truly
+different workouts. "Keep exactly one copy of the one real event" is the right outcome regardless
+of which of the two candidate owners ends up holding it, so file store's per-user dedup (which
+keeps a copy under BOTH users until a later merge dedupes it away) and D1's write-time collision
+handling (which keeps a copy under only the FIRST writer) are two different mechanisms already
+reasoned to reach the same correct invariant, not an unhandled parity gap. Locking in a
+"collision-safe key" fix as originally scoped would have made D1 keep BOTH copies too — which,
+per this existing reasoning, would have introduced a NEW double-counted-volume/PR bug the moment
+such a straddling pair of accounts is later merged (D1's `reassignUserData` bulk-`UPDATE`s
+`sessions.user_id` unconditionally, with no dedup-by-JSON-`session_id` step, because today it
+structurally never needs one) — a regression, not a fix, to already-correct, already-tested
+behavior. No code changed as a result; the candidate is dropped.
+
+**Confirmed clean beyond that:** `tools/plan-core.mjs`'s `sessionRepScheme`/`spec.letter`/
+`spec.of` band-keying (Wave 152, the most recently-merged engine change, audited per lesson 3
+— "audit the code the last wave introduced") traces correctly end to end: `chooseSplit` builds
+`letter` (1-based per-archetype occurrence, incremented in weekly order) and `of` (total repeats)
+in the same pass, `sessionSpecs` flows unreordered into the per-session loop, and `sIdx` (the
+absolute-position fallback for a non-repeating archetype) is the same array's own index — no
+residual bug found. `tools/nutrition-core.mjs`'s `unit: "lb"` branches are dead code in practice
+(`app.js` always converts to kg client-side before every POST) but not a *live* defect, so left
+alone rather than trimmed as unrequested cleanup (CLAUDE.md: don't default to cosmetic polish).
+`BLOCKERS.md` has nothing newly actionable without a human decision (items #3/#5/#6/#6b/#7/#8 all
+explicitly need the maintainer's call, not code).
+
+**Honest state as of this wave:** no genuine unclaimed code defect was found, so no code shipped
+this iteration — this entry itself, plus the negative-result documentation, is the wave's output
+(recording a refuted lead has real value: it stops a future session from re-spending a research
+agent + verification pass on the identical dead end). The next iteration should check which of
+the 9 open PRs have merged, then either pick up whatever diff-scoped territory they leave behind,
+or — since Tier 1/2/3 are otherwise all shipped/claimed/too-large — run the overdue fresh Goal-1
+KB gap audit once the citation network recovers.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
