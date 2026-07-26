@@ -122,6 +122,19 @@ export function createD1Store(db) {
       // `UPDATE users SET data` in the batch has no compare-and-swap and would
       // clobber a concurrent write to the surviving user. The id-dedup merge is
       // idempotent, so a CAS retry is safe.
+      // Shares follow the user, or the merged-away user's share row points at a
+      // DELETED user (dead public link + orphaned cheers). Reassign to the survivor
+      // so a distributed link keeps working; if the survivor already has a share
+      // (UNIQUE per user), drop the merged-away one + its cheers instead. Read
+      // before building the batch (and before the profile merge below, which needs
+      // to know whether a share is about to be inherited); the shares table may not
+      // exist yet if neither user ever shared, so ensure it first.
+      await ensureShares(db);
+      const [fromShareRow, toShareRow] = await Promise.all([
+        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(fromId).first(),
+        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(toId).first(),
+      ]);
+      const shareReassigns = !!(fromShareRow && !toShareRow);
       if (fromRow && toRow) {
         const fromU = JSON.parse(fromRow.data);
         await this.updateUser(toId, (u) => {
@@ -134,20 +147,17 @@ export function createD1Store(db) {
           // challenge history all live on the user doc too — merge them additively
           // (see merge-profile.mjs, shared with the file store) before the from-row
           // is deleted below, or they're lost.
-          return mergeUserProfile(fromU, u);
+          u = mergeUserProfile(fromU, u);
+          // `to` never had a share, so its OWN cheers_pushed/cheers_seen watermarks
+          // (0, or stale leftovers from a share it revoked earlier) don't describe
+          // the share it's about to inherit below — without this, the push sweep
+          // and the in-app "N new cheers" banner would both read the inherited
+          // share's full lifetime cheer count as brand new, even though `from`
+          // already saw/was pushed every one of them pre-merge.
+          if (shareReassigns) u.profile = { ...(u.profile ?? {}), cheers_pushed: fromU.profile?.cheers_pushed ?? 0, cheers_seen: fromU.profile?.cheers_seen ?? 0 };
+          return u;
         });
       }
-      // Shares follow the user, or the merged-away user's share row points at a
-      // DELETED user (dead public link + orphaned cheers). Reassign to the survivor
-      // so a distributed link keeps working; if the survivor already has a share
-      // (UNIQUE per user), drop the merged-away one + its cheers instead. Read
-      // before building the batch; the shares table may not exist yet if neither
-      // user ever shared, so ensure it first.
-      await ensureShares(db);
-      const [fromShareRow, toShareRow] = await Promise.all([
-        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(fromId).first(),
-        db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(toId).first(),
-      ]);
       const stmts = [];
       if (fromShareRow) {
         if (toShareRow) {

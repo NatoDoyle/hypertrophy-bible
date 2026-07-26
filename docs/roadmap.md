@@ -360,6 +360,33 @@ infra, the one genuinely large build left here).
     (a monkey-patched `store.updateUser` swaps the challenge id mid-request) and confirm neither
     the response nor the store shows a fabricated entry; verified the new test fails without the
     fix and passes with it.
+    **Audit fix (Cloud loop wave, diff-scoped over Waves 144-146):** `merge-profile.mjs`'s own
+    header cites lesson 16 ("a field added to the user record after reassignUserData was written
+    silently orphans on merge") as the exact reason the file exists — yet two NEW profile push
+    markers Waves 145/146 added (`freeze_pushed_week`, and `cheers_pushed`/`cheers_seen` at the
+    share-reassignment site) were never wired into it, since both post-date the file's last
+    lesson-16 audit at Wave 142. Two distinct real gaps, not one: (1) `streak_freezes` and session
+    history already merge additively, so `streakFreezeState`'s `protectable_week` is recomputed
+    fresh from the SURVIVOR's combined timeline post-merge — a week already pushed-about on the
+    departing account can resurface as "new" and fire a duplicate streak-freeze nudge; fixed by
+    adopting the lexically-later (ISO week keys are zero-padded, so string order is chronological
+    order) of the two markers, never a raw overwrite. (2) When a share is reassigned onto a
+    survivor with none of its own (the existing `else` branch in both `store.mjs` and
+    `store-d1.mjs`'s `reassignUserData`), the share's lifetime cheer COUNT transfers but the
+    survivor's own watermark defaults to 0 — the push sweep and the in-app "N new cheers" banner
+    would both read the inherited share's full history as brand new, a fabricated "N people
+    cheered you!" for cheers the user already saw pre-merge; fixed by adopting the departing
+    user's watermarks exactly when (and only when) its share is the one that survives — confirmed
+    the OTHER branch (both users already share, the departing one is dropped) leaves the
+    survivor's own watermarks untouched, since adopting there would wrongly suppress a real
+    pending cheer notification on the survivor's still-live share. Both fixes live once in the
+    stores/merge-profile.mjs shared by file + D1 (parity preserved, confirmed via the
+    `test-store-d1.mjs` side-by-side harness). 8 new regression tests across `test-auth.mjs`
+    (freeze-week adopt-when-later/keep-when-later/adopt-when-empty; cheers-watermark adopt-on-
+    inherit and untouched-when-dropped) plus existing D1 parity coverage, all green; root
+    `npm test` + `npm run check` and app `npm test` (full suite incl. `test-routes.mjs` and the
+    D1 parity harness) green. Docs/code only where noted — no `data/`/`content/`/`public/` file
+    touched, so no `build-data` regen or SW `VERSION` bump needed.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
