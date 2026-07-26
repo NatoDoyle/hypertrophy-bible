@@ -56,6 +56,30 @@ const api = async (path, opts = {}) => {
   const r = await fetch(path, { ...opts, headers });
   return r.json();
 };
+// api() only throws on a genuine network failure — a 4xx business-logic rejection
+// (e.g. "you already have a challenge open") still lands here as a normal JSON
+// body, so every caller MUST check r.error itself or it silently treats a
+// rejection as success (or, worse, reads an undefined field from the missing
+// success payload — the streak-freeze handler below used to render "still
+// undefined weeks strong"). This maps every such route's error strings to copy
+// so no handler has to invent — or forget — its own.
+const SOCIAL_ERROR_COPY = {
+  "bad-token": "That link isn't an active share — ask your friend for a fresh one.",
+  "not-found": "That link isn't an active share — ask your friend for a fresh one.",
+  "cannot-follow-self": "That's your own share link — share it with a friend instead.",
+  "cannot-challenge-self": "That's your own share link — share it with a friend instead.",
+  "not-following": "Refresh the page and try again.",
+  "not-mutual": "You can only do that with a training partner who follows you back too.",
+  "already-challenging": "You already have a challenge in progress.",
+  "opponent-busy": "They're already in a challenge this week — try again later.",
+  "no-pending-challenge": "That challenge isn't waiting on you anymore.",
+  "unknown user": "Refresh the page and try again.",
+  "no-tokens": "You don't have a streak freeze to spend yet.",
+  "nothing-to-protect": "There's no missed week to protect right now.",
+  "week-not-freezable": "That week can't be protected anymore.",
+  "already-frozen": "That week is already protected.",
+};
+const socialErrorMessage = (err) => SOCIAL_ERROR_COPY[err] || "Something went wrong — try again.";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 // Screen-reader announcement for deliberate events only (the old whole-app
 // aria-live re-announced every repaint, making the player unusable by ear).
@@ -1851,6 +1875,7 @@ async function renderCoach() {
   if (freezeBtn) freezeBtn.onclick = async () => {
     try {
       const r = await api("/api/streak/freeze", { method: "POST", body: JSON.stringify({ user_id: uid }) });
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
       say(`Streak protected — still ${r.streak_weeks} week${r.streak_weeks === 1 ? "" : "s"} strong.`);
       await renderCoach(); $("#freeze")?.focus();
     } catch { alertBar("📴 Couldn't apply the freeze right now. Try again in a moment."); }
@@ -1881,34 +1906,55 @@ async function renderCoach() {
     let token = raw;
     try { token = new URL(raw).searchParams.get("s") || raw; } catch {} // accept a full share URL or a bare token
     try {
-      await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
+      const r = await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
+      if (r.error) { $("#followmsg").textContent = socialErrorMessage(r.error); return; }
       say("Training partner added.");
       await renderCoach();
     } catch { $("#followmsg").textContent = "That link isn't an active share — ask your friend for a fresh one."; }
   };
   app.querySelectorAll(".unfollow").forEach((b) => b.onclick = async () => {
-    try { await api("/api/following/remove", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); await renderCoach(); } catch { alertBar("📴 Couldn't update — try again when connected."); }
+    try {
+      const r = await api("/api/following/remove", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) });
+      if (r.error) { alertBar(socialErrorMessage(r.error)); return; }
+      await renderCoach();
+    } catch { alertBar("📴 Couldn't update — try again when connected."); }
   });
   app.querySelectorAll(".nudge").forEach((b) => b.onclick = async () => {
     if (b.disabled) return;
     b.disabled = true;
-    try { await api("/api/following/nudge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); b.textContent = "👋 nudged"; say("Nudge sent."); }
+    try {
+      const r = await api("/api/following/nudge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) });
+      if (r.error) { b.disabled = false; alertBar(socialErrorMessage(r.error)); return; }
+      b.textContent = "👋 nudged"; say("Nudge sent.");
+    }
     catch { b.disabled = false; alertBar("📴 Couldn't send that nudge — try again when connected."); }
   });
   app.querySelectorAll(".challenge-send").forEach((b) => b.onclick = async () => {
     if (b.disabled) return;
     b.disabled = true;
-    try { await api("/api/challenge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) }); say("Challenge sent."); await renderCoach(); }
+    try {
+      const r = await api("/api/challenge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) });
+      if (r.error) { b.disabled = false; alertBar(socialErrorMessage(r.error)); return; }
+      say("Challenge sent."); await renderCoach();
+    }
     catch { b.disabled = false; alertBar("📴 Couldn't send that challenge — try again when connected."); }
   });
   const challengeAccept = $("#challenge-accept");
   if (challengeAccept) challengeAccept.onclick = async () => {
-    try { await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: true }) }); say("Challenge accepted — good luck."); await renderCoach(); }
+    try {
+      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: true }) });
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
+      say("Challenge accepted — good luck."); await renderCoach();
+    }
     catch { alertBar("📴 Couldn't accept — try again when connected."); }
   };
   const challengeDecline = $("#challenge-decline");
   if (challengeDecline) challengeDecline.onclick = async () => {
-    try { await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: false }) }); say("Challenge declined."); await renderCoach(); }
+    try {
+      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: false }) });
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
+      say("Challenge declined."); await renderCoach();
+    }
     catch { alertBar("📴 Couldn't update — try again when connected."); }
   };
   const nudgeBtn = $("#nudges");
