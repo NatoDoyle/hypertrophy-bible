@@ -94,11 +94,14 @@ export function createD1Store(db) {
     },
 
     // --- passwordless email backup ---
+    // SELECT every column the row actually has (parity with the file store's
+    // full-object return) — a caller added later that reads e.g. created_at
+    // must not silently get undefined only in production.
     async getAccountByEmail(email) {
-      return (await db.prepare("SELECT email, user_id, verified_at FROM accounts WHERE email = ?").bind(email).first()) ?? null;
+      return (await db.prepare("SELECT email, user_id, verified_at, created_at FROM accounts WHERE email = ?").bind(email).first()) ?? null;
     },
     async getAccountByUserId(userId) {
-      return (await db.prepare("SELECT email, user_id, verified_at FROM accounts WHERE user_id = ?").bind(userId).first()) ?? null;
+      return (await db.prepare("SELECT email, user_id, verified_at, created_at FROM accounts WHERE user_id = ?").bind(userId).first()) ?? null;
     },
     // Merge-on-restore: move ALL of one user's data onto another, then drop the
     // empty shell. Sessions, bodyweights, checkins, AND the custom-exercise
@@ -204,10 +207,19 @@ export function createD1Store(db) {
         .all();
       return results.map((r) => ({ email: r.email, user_id: r.user_id, last_date: r.last_date ?? null }));
     },
+    // created_at is written explicitly in the same ISO-8601 format the file
+    // store uses (new Date().toISOString()), not left to the accounts table's
+    // `datetime('now')` DEFAULT — that default renders SQLite's own
+    // "YYYY-MM-DD HH:MM:SS" (no 'T', no 'Z'), which `new Date(...)` parses as
+    // LOCAL time, not UTC (the lesson-22 class of timezone bug: same instant,
+    // different stored/parsed representation between the two stores). Only
+    // set on first insert — ON CONFLICT doesn't touch it, so a restore/re-claim
+    // preserves the account's original creation time (parity with the file
+    // store's `?? db.accounts[email]?.created_at`).
     async saveAccount(email, user_id, verified_at) {
       await db
-        .prepare("INSERT INTO accounts (email, user_id, verified_at) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, verified_at = excluded.verified_at")
-        .bind(email, user_id, verified_at ?? null)
+        .prepare("INSERT INTO accounts (email, user_id, verified_at, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, verified_at = excluded.verified_at")
+        .bind(email, user_id, verified_at ?? null, new Date().toISOString())
         .run();
       return { email, user_id, verified_at: verified_at ?? null };
     },
@@ -218,9 +230,13 @@ export function createD1Store(db) {
         .run();
       return row;
     },
+    // SELECT every column (parity with the file store's full-row return,
+    // including rl_key/ip) — a caller reading them off getMagicLink's result
+    // (rather than the dedicated countRecentLinks/countRecentByIp queries)
+    // must not silently get undefined only in production.
     async getMagicLink(tokenHash) {
       return (await db
-        .prepare("SELECT token_hash, email, user_id, purpose, expires_at, used, created_at FROM magic_links WHERE token_hash = ?")
+        .prepare("SELECT token_hash, email, rl_key, ip, user_id, purpose, expires_at, used, created_at FROM magic_links WHERE token_hash = ?")
         .bind(tokenHash)
         .first()) ?? null;
     },

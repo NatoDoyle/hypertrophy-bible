@@ -227,14 +227,27 @@ export async function settleChallenge(store, id, user, now = Date.now()) {
       ? { week: ch.week, result: my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie", my_count, opponent_count }
       : null;
     const proposedHistory = entry ? [entry, ...history].slice(0, CHALLENGE_HISTORY_CAP) : newHistory;
+    // `transitioned` is set INSIDE the mutator, reset on every invocation (D1's
+    // updateUser retries the mutator on a CAS conflict, so only the LAST run's
+    // value matters) — it tracks whether THIS call's write actually performed the
+    // transition, never inferred by comparing the post-write status to our own
+    // locally-computed `nextStatus`. Two concurrent settles on the same terminal
+    // status (e.g. this user's own GET racing the push sweep) would otherwise
+    // both see a status match and both believe THEY wrote it, even though only
+    // one of them actually did — reporting a `result` (and firing a push) for a
+    // transition this call never performed, which can disagree with the entry
+    // the other caller actually persisted.
+    let transitioned = false;
     const updated = await store.updateUser(id, (u) => {
+      transitioned = false;
       const cur = u.profile?.challenge;
       if (cur?.id !== ch.id) return u; // slot replaced mid-flight — don't resurrect
       if (cur.status !== "active" && cur.status !== "pending") return u; // terminal is write-once
+      transitioned = true;
       u.profile = { ...u.profile, challenge: { ...cur, status: nextStatus }, ...(entry ? { challenge_history: proposedHistory } : {}) };
       return u;
     });
-    const wrote = updated?.profile?.challenge?.id === ch.id && updated.profile.challenge.status === nextStatus;
+    const wrote = transitioned;
     newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
     if (wrote) {
       ch.status = nextStatus;
