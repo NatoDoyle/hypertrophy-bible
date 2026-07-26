@@ -348,7 +348,29 @@ infra, the one genuinely large build left here).
     "trophy" the store never recorded is no longer possible. 2 new route tests simulate the race
     (a monkey-patched `store.updateUser` swaps the challenge id mid-request) and confirm neither
     the response nor the store shows a fabricated entry; verified the new test fails without the
-    fix and passes with it.
+    fix and passes with it. **Email fallback for push-less accounts (Cloud loop wave):** every
+    social event this item wired into push (nudge/challenge invite/accept/result, cheer,
+    streak-freeze) only ever reached a device that had granted push permission — `runPushSweep`'s
+    outer loop was keyed off `store.listPushSubscriptions()`, so an email-bound account with ZERO
+    push subscriptions was invisible to the sweep entirely, not merely un-pushed. Given BLOCKERS.md
+    #4 (the VAPID secret is still unresolved as of this wave — `git log` shows no "Done" entry for
+    it), this was likely the ONLY delivery path for these events for most or all users: `worker.mjs`'s
+    `scheduled()` gated the whole sweep behind `VAPID_PRIVATE_JWK && VAPID_PUBLIC_KEY`, so with no
+    secret set, `runPushSweep` never ran at all — the several waves of nudge/challenge/cheer/freeze
+    push code, while fully unit-tested, may have been entirely inert in prod this whole time.
+    Fixed two things: (1) `runPushSweep` now also folds in every email-bound account with no push
+    subscription (via the already-existing `listAccountLastSessions`), falling back to a new
+    `createSocialEmailSender` (`email.mjs`) for the SAME per-event payload already written for push
+    (one copy, two channels — never a hand-duplicated string that could drift) whenever a user has
+    zero live push devices; (2) `worker.mjs`'s cron gate now runs the sweep whenever EITHER VAPID
+    OR `RESEND_API_KEY` is configured, not only when both push secrets exist — so the email fallback
+    actually reaches users even before VAPID is ever set. The daily/commitment reminder is
+    deliberately untouched (nudge.mjs's twice-per-lapse comeback sweep already owns that channel);
+    only the discrete per-event notifications gained the fallback, gated by the identical
+    paused/reminders_off/seen-once-marker rules push already used. 12 new push-suite tests cover:
+    email delivery when push-less, no double-send when a live subscription exists, no email when
+    paused/reminders_off, safe no-op when `sendSocialEmail` is omitted, and the daily reminder
+    staying un-emailed by this path.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

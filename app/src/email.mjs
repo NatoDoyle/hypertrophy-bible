@@ -74,3 +74,41 @@ export function createComebackSender({ apiKey, from } = {}) {
     }
   };
 }
+
+// Social-event email fallback (#4 adherence). Web push (nudge/challenge/cheer/
+// streak-freeze) only ever reaches a device that granted permission — a real gap
+// (push requires "Add to Home Screen" on iOS first, per BLOCKERS.md #4), so a
+// user with no live push subscription would otherwise never hear about a
+// discrete social event until they happened to reopen the app. Every email-bound
+// account gets one, gated the SAME way the push path already is (paused,
+// reminders_off, seen-once per-event markers) — this is a second CHANNEL for the
+// identical decision, not a new decision, so `subject`/`body` are the exact copy
+// already written for the push notification (one source of truth per event,
+// never a hand-duplicated string that could drift, per lesson 1).
+export function createSocialEmailSender({ apiKey, from } = {}) {
+  const sender = from || "The Hypertrophy Bible <onboarding@resend.dev>";
+
+  return async function sendSocialEmail(email, { subject, body }) {
+    if (!apiKey) {
+      console.log(`[dev social-email] ${email} -> ${subject}: ${body}`);
+      return { dev: true, ok: true };
+    }
+    const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:24px auto;color:#111">
+      <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
+      <p>${body}</p>
+      <p style="margin:20px 0"><a href="https://hypertrophybible.com" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">Open the app</a></p>
+      <p style="color:#888;font-size:14px">Turn these off any time: Coach tab → Reminders.</p></div>`;
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ from: sender, to: email, subject, html }),
+      });
+      if (!res.ok) { console.log("social email send failed", res.status, await res.text().catch(() => "")); return { dev: false, ok: false }; }
+      return { dev: false, ok: true };
+    } catch (e) {
+      console.log("social email send error", String(e));
+      return { dev: false, ok: false };
+    }
+  };
+}
