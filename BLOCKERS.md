@@ -36,6 +36,30 @@ can't fabricate and won't hotlink without a licence.
   of a blind search. **Cheapest option.**
 - **(d) Tell me to drop it** and keep the v0 line-art demo as the permanent answer.
 
+### 4. Web-push reminders — confirm the VAPID secret is actually set
+**Update (Cloud loop wave):** re-flagging this from 🟡 to 🔴 — its actual scope is bigger than
+"unlocks something nice." The code side is complete and fully tested — `app/src/push.mjs`
+implements send/encrypt/sweep/quiet-hours for the daily reminder, the commitment nudge, PR/
+streak-freeze nudges, and every social event (partner nudge, challenge propose/accept/result,
+cheers). `VAPID_PUBLIC_KEY` is already committed as a plain `[vars]` entry in `app/wrangler.toml`.
+**Blocked on:** one Worker secret — `npx wrangler secret put VAPID_PRIVATE_JWK` in `app/`, pasting
+the private JWK paired to that committed public key (`worker.mjs`'s cron gate reads exactly that
+name; a prior version of this file named it `VAPID_PRIVATE_KEY`, which the code never reads —
+already corrected, Wave 155). **Why this is now 🔴, not 🟡:** `worker.mjs`'s `scheduled()` gates
+the ENTIRE hourly push sweep behind `env.VAPID_PRIVATE_JWK && env.VAPID_PUBLIC_KEY` both being
+set. If the secret was never actually put (or was put under the old wrong name), `runPushSweep`
+has never run in production — meaning roughly 15+ waves of Goal-4 adherence work (PR/streak-freeze
+nudges, partner nudges, challenge propose/accept/result, cheer notifications) may have shipped
+fully unit- and route-tested but never fired a single real push, silently. This can't be verified
+from a cloud session (no wrangler/Cloudflare credentials here). **What I need:** run
+`npx wrangler secret list` in `app/` from an authed session and confirm `VAPID_PRIVATE_JWK` is
+present. If it isn't, either paste the existing private JWK for me to wire in, or tell me to
+generate a fresh P-256 keypair (I'll give you the exact `wrangler secret put` command and update
+the committed public key to match). PR #228 (open, cloud-loop) adds an email fallback for
+push-less subscribers on top of this — complementary, not a substitute: it still needs
+`RESEND_API_KEY` (separately confirmed working, since magic-link/comeback emails already send)
+and doesn't help subscribers who DO have a push subscription that's silently never firing.
+**Caveat:** iOS PWA push requires "Add to Home Screen" first — real but limited regardless.
 
 ---
 
@@ -46,25 +70,6 @@ can't fabricate and won't hotlink without a licence.
 support button stays hidden by design (never a dead or fake donation link). The copy is
 already written (`docs/donation-page.md`).
 **What I need:** an Open Collective (or GitHub Sponsors) URL → I'll set it and the button appears.
-
-### 4. Web-push reminders
-**Update:** the code side is done, not pending — `app/src/push.mjs` already implements the
-send/encrypt/sweep/quiet-hours logic (daily reminder, commitment nudge, PR/streak-freeze
-nudges, and every social event: partner nudge, challenge propose/accept/result, cheers), all
-unit- and route-tested. `VAPID_PUBLIC_KEY` is already committed as a plain `[vars]` entry in
-`app/wrangler.toml` (safe to publish — it's the public half). **Blocked on:** one Worker
-secret only — `npx wrangler secret put VAPID_PRIVATE_JWK` in `app/`, pasting the private JWK
-paired to that committed public key. **This corrects an error in a prior version of this
-file**, which named the secret `VAPID_PRIVATE_KEY` — that name doesn't match anything the code
-reads (`worker.mjs`'s cron gate checks `env.VAPID_PRIVATE_JWK`), so running that exact command
-would silently leave the entire push sweep a no-op. **What I need:** confirm whether
-`VAPID_PRIVATE_JWK` was ever actually set (`npx wrangler secret list` in `app/` from an authed
-session) — if it wasn't (or was set under the wrong name), several waves of push-based
-adherence work may have shipped fully tested but never actually fired in production. If you
-don't have the matching private JWK anymore, tell me and I'll generate a fresh P-256 keypair,
-give you the exact `wrangler secret put` command with the new value, and update the committed
-public key to match.
-**Caveat:** iOS PWA push requires the user to "Add to Home Screen" first — real but limited.
 
 ### 5. Medical / liability review
 **Blocked on:** a human who accepts the risk. The app tells people to lift heavy things and
