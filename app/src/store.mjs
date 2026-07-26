@@ -3,6 +3,7 @@
 // D1-backed store (see worker.mjs) with zero route changes.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { mergeUserProfile } from "./merge-profile.mjs";
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -93,6 +94,10 @@ export function createFileStore(path) {
         const have = new Set(toU.custom_exercises.map((x) => x.id));
         for (const ex of fromU.custom_exercises) if (!have.has(ex.id)) { toU.custom_exercises.push(ex); have.add(ex.id); }
       }
+      // Streak-freeze balance, pause history, partner list, commitment, and
+      // challenge history all live on the user doc too — merge them additively
+      // (see merge-profile.mjs) before the doc is deleted below, or they're lost.
+      if (toU) mergeUserProfile(fromU, toU);
       if (db.sessions[fromId]?.length) {
         // Skip duplicate session_ids (parity with D1's PRIMARY KEY): a replayed
         // queue item on both users would otherwise double-count volume and PRs.

@@ -10,6 +10,7 @@ import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
 import { isoWeekKey } from "../../tools/derive-core.mjs";
+import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -349,20 +350,24 @@ try {
   const setP = await json("POST", "/api/nutrition/profile", { user_id: nUser, bf_pct: 15, height_cm: 178, activity: "moderate" });
   ok("#43 setting stats yields a full target set (TDEE, calories, protein/fat/carbs)",
     setP.data.nutrition && setP.data.nutrition.tdee > 0 && setP.data.nutrition.calorie_target > 0 && setP.data.nutrition.protein_g > 0 && setP.data.nutrition.tdee_basis === "estimated");
-  // log ~2 weeks of intake with a slight weight drop -> adaptive basis kicks in
+  // log ~2 weeks of intake with a slight weight drop -> adaptive basis kicks in.
+  // Dated RELATIVE to now (the adaptive-TDEE window only looks back ~4 weeks —
+  // see the cloud-loop windowing fix below) rather than a fixed calendar month,
+  // for the same reason dAgo is used everywhere else in this file.
   for (let d = 0; d < 12; d++) {
-    const day = new Date(Date.UTC(2026, 5, 1 + d)).toISOString().slice(0, 10);
+    const day = dAgo(25 - d).slice(0, 10);
     await json("POST", "/api/bodyweight", { user_id: nUser, kg: 85 - d * 0.03, date: day });
     await json("POST", "/api/nutrition/log", { user_id: nUser, date: day, kcal: 2800 });
   }
-  const afterLog = await json("POST", "/api/nutrition/log", { user_id: nUser, date: "2026-06-13", kcal: 2800 });
+  const afterLog = await json("POST", "/api/nutrition/log", { user_id: nUser, date: dAgo(13).slice(0, 10), kcal: 2800 });
   ok("#43 the daily intake log accumulates and re-derives maintenance from data",
     afterLog.data.logged === true && afterLog.data.logged_days >= 10 && afterLog.data.nutrition.tdee_basis === "logged");
   const badKcal = await json("POST", "/api/nutrition/log", { user_id: nUser, kcal: -5 });
   ok("#43 a nonsense intake is rejected", badKcal.status === 400);
   // #51: GET /api/nutrition?d= returns today's logged total (intake-vs-target loop)
-  await json("POST", "/api/nutrition/log", { user_id: nUser, date: "2026-06-30", kcal: 2650, protein_g: 175 });
-  const withToday = await (await app.request("/api/nutrition?d=2026-06-30", { headers: { "X-HB-User": nUser } })).json();
+  const nToday = dAgo(0).slice(0, 10);
+  await json("POST", "/api/nutrition/log", { user_id: nUser, date: nToday, kcal: 2650, protein_g: 175 });
+  const withToday = await (await app.request(`/api/nutrition?d=${nToday}`, { headers: { "X-HB-User": nUser } })).json();
   ok("#51 GET /api/nutrition returns today's logged intake for the given day", withToday.today && withToday.today.kcal === 2650 && withToday.today.protein_g === 175);
   const noToday = await (await app.request("/api/nutrition?d=2020-01-01", { headers: { "X-HB-User": nUser } })).json();
   ok("#51 a day with nothing logged returns no today total", !noToday.today);
@@ -398,6 +403,30 @@ try {
   // nutrition half of the app. (Was: "#70 ... yields no plan"; the hip field is now optional.)
   const fProf2 = await json("POST", "/api/nutrition/profile", { user_id: fUser2, weight_kg: 65, height_cm: 165 });
   ok("#87 a female with just weight+height gets a plan via the BMI fallback (Fuel wall removed)", fProf2.data.nutrition?.calorie_target > 0);
+
+  // --- Cloud loop (audit): adaptiveTDEE must read the RECENT window, not the whole
+  // lifetime log — the same "block vs lifetime average" bug class Wave 69 fixed for
+  // the recovery gate (recoverySignal/bodyweightTrend), but never applied to the
+  // nutrition binder. A stale arc (~3 months ago: a surplus, gaining weight) plus a
+  // recent in-window arc (last ~2 weeks: a deficit, losing weight) should yield a
+  // TDEE that reflects ONLY the recent arc — not one dragged toward a blend of both.
+  const awUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+  await json("POST", "/api/nutrition/profile", { user_id: awUser, bf_pct: 15, height_cm: 178 });
+  const staleArc = Array.from({ length: 12 }, (_, d) => ({ date: dAgo(90 - d).slice(0, 10), kcal: 3600, weight_kg: 80 + d * 0.18 }));
+  const recentArc = Array.from({ length: 12 }, (_, d) => ({ date: dAgo(25 - d).slice(0, 10), kcal: 2200, weight_kg: 84 - d * 0.14 }));
+  for (const e of [...staleArc, ...recentArc]) {
+    await json("POST", "/api/bodyweight", { user_id: awUser, kg: e.weight_kg, date: e.date });
+    await json("POST", "/api/nutrition/log", { user_id: awUser, date: e.date, kcal: e.kcal });
+  }
+  const awGet = await (await app.request("/api/nutrition", { headers: { "X-HB-User": awUser } })).json();
+  const expectedRecentOnly = adaptiveTDEE(recentArc);
+  const expectedIfBlended = adaptiveTDEE([...staleArc, ...recentArc]);
+  ok("#cloud-loop the two arcs genuinely diverge (a meaningful test, not a rounding wash)",
+    Math.abs(expectedRecentOnly - expectedIfBlended) > 100);
+  ok("#cloud-loop GET /api/nutrition's adaptive TDEE matches the RECENT-window estimate",
+    awGet.nutrition?.tdee_basis === "logged" && Math.abs(awGet.nutrition.tdee - expectedRecentOnly) <= 2);
+  ok("#cloud-loop ...and is NOT dragged toward the lifetime-blended estimate",
+    Math.abs(awGet.nutrition.tdee - expectedIfBlended) > 90);
 
   // --- Wave 46: daily-flow status (#6) + morning check-in captures weight ---
   const dUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;

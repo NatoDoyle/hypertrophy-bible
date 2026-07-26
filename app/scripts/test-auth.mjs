@@ -151,6 +151,41 @@ try {
   ok("merge moves check-ins", (await store.listCheckins("m-to")).length === 2);
   ok("merge deletes the from-user's check-ins", (await store.listCheckins("m-from")).length === 0);
 
+  // --- Cloud loop: merge additively carries forward streak-freeze/pause/social
+  // state that lived on the user doc (the same "field added, reassignUserData
+  // never updated" gap lesson 16 caught for push_subscriptions) ---
+  await store.saveUser("mp-to", {
+    profile: { following: ["tok-shared", "tok-to-only"], challenge_history: [{ week: "2026-W20", result: "win", my_count: 4, opponent_count: 2 }] },
+    streak_freezes: ["2026-W18"],
+    pause_history: [{ from: "2026-06-01", to: "2026-06-07" }],
+  });
+  await store.saveUser("mp-from", {
+    profile: {
+      following: ["tok-shared", "tok-from-only"],
+      challenge_history: [{ week: "2026-W22", result: "lose", my_count: 1, opponent_count: 3 }],
+      commitment: { week: "2026-W23", days: ["mon", "wed"] },
+      challenge: { id: "live-1", role: "challenger", partner_token: "tok-x", week: "2026-W23", status: "active", created_at: 1 },
+    },
+    streak_freezes: ["2026-W18", "2026-W19"], // W18 overlaps `to`'s own freeze — must dedup, not double-count
+    pause_history: [{ from: "2026-05-01", to: "2026-05-03" }],
+  });
+  await store.reassignUserData("mp-from", "mp-to");
+  const mpTo = await store.getUser("mp-to");
+  ok("merge unions streak-freeze weeks and dedups the overlap", mpTo.streak_freezes.length === 2 && new Set(mpTo.streak_freezes).size === 2);
+  ok("merge concatenates pause history from both sides", mpTo.pause_history.length === 2);
+  ok("merge unions the partner list and dedups the shared token", mpTo.profile.following.length === 3 && new Set(mpTo.profile.following).size === 3);
+  ok("merge concatenates challenge history from both sides, newest week first", mpTo.profile.challenge_history.length === 2 && mpTo.profile.challenge_history[0].week === "2026-W22");
+  ok("merge adopts from's commitment when to has none", mpTo.profile.commitment?.week === "2026-W23");
+  ok("merge deliberately does NOT lift the live challenge slot (two-sided token mirror, out of scope)", mpTo.profile.challenge === undefined);
+
+  // to's OWN commitment/streak-freeze balance must never be clobbered by from's
+  await store.saveUser("mp2-to", { profile: { commitment: { week: "2026-W23", days: ["fri"] } }, streak_freezes: ["2026-W10"] });
+  await store.saveUser("mp2-from", { profile: { commitment: { week: "2026-W23", days: ["sat"] } }, streak_freezes: ["2026-W10"] });
+  await store.reassignUserData("mp2-from", "mp2-to");
+  const mp2To = await store.getUser("mp2-to");
+  ok("merge keeps to's own commitment over from's", mp2To.profile.commitment.days[0] === "fri");
+  ok("merge dedups an identical streak-freeze week instead of duplicating it", mp2To.streak_freezes.length === 1);
+
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });
   await store.saveUser("p-from", { profile: {} });
