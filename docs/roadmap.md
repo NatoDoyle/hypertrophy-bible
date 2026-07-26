@@ -505,6 +505,28 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**Account merge silently dropped a pending training-partner nudge (lesson 16, sibling to Wave
+156's `freeze_pushed_week`/cheers-watermark fixes).** `partner_nudge`/`nudge_pushed_at`/
+`nudge_seen_at` (Wave 115/119) post-date `merge-profile.mjs`'s last lesson-16 audit (Wave 142) and
+were never wired in — a not-yet-seen "your training partner nudged you" notification on the
+merged-away `from` account was silently lost the moment that row got deleted post-merge, exactly
+the gap class lesson 16 exists to catch. Unlike the live `challenge` slot (deliberately unmerged —
+a two-sided mirror keyed by a share token this merge can't rewire on the opponent's side),
+`partner_nudge` is a plain `{at}` timestamp with no cross-user reference, so it's safe to adopt
+outright: take the more recent side's nudge together with its OWN push/seen watermarks (never mix
+one side's `at` with the other's watermarks, which could wrongly mark an unseen nudge as already
+handled). 4 new regression tests in `app/scripts/test-auth.mjs`. Found via a diff-scoped read of
+`merge-profile.mjs` cross-referenced against every push-marker field in `push.mjs`/`app.mjs`
+(same method Wave 156's LEARN entry used) — not a KB citation wave: PubMed/Crossref/generic
+WebFetch were all still returning `CONNECT tunnel failed (403)` for this session (same outage PR
+#238 hit), so no new citation was added or attempted this wave. No `data/`/`content/`/`public/`
+file touched, so no `build-data` regen or SW `VERSION` bump needed. Root `npm test` + `npm run
+check` and app `npm test` (full suite incl. `test-routes.mjs` and the D1 parity harness): green.
+PRs #228 and #238 were both still open and unmerged at the start of this wave and are unrelated to
+this fix (push.mjs email fallback and commitment-push timezone localization, respectively — this
+wave touches only `merge-profile.mjs` and its test).
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
