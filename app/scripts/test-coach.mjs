@@ -507,6 +507,13 @@ check("taperPhase: gates on beginner, missing date, the 14-day window, and past 
   assert.equal(late.rirFloor, 3);
 });
 
+check("taperPhase: final-week note corrects the carb-loading myth (Henselmans 2022) — not the early note", () => {
+  const early = taperPhase("2026-07-20", "2026-07-30", "intermediate"); // 10 days out
+  const late = taperPhase("2026-07-27", "2026-07-30", "intermediate"); // 3 days out
+  assert.ok(/carb-load/i.test(late.note), "final taper week names carb-loading directly");
+  assert.ok(!/carb-load/i.test(early.note), "the 2-week-out note doesn't front-load peak-week advice");
+});
+
 check("taperRir only ever eases the near edge AWAY from failure, never toward it", () => {
   assert.equal(taperRir("1-3", 2), "2-3");
   assert.equal(taperRir("0-1", 3), "3-4"); // hi is also below the floor -> widen to floor+1
