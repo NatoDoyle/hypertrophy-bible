@@ -65,6 +65,25 @@ export function mergeUserProfile(fromU, toU) {
   if (fromU.profile?.freeze_pushed_week && fromU.profile.freeze_pushed_week > (toU.profile?.freeze_pushed_week ?? "")) {
     toU.profile = { ...(toU.profile ?? {}), freeze_pushed_week: fromU.profile.freeze_pushed_week };
   }
+  // Nutrition profile stats (`user.nutrition` — height/neck/waist/hip/bf_pct/
+  // activity/weight_kg fallback, the Fuel tab's Navy-formula + Katch-McArdle
+  // inputs) live on the user doc too, a sibling of `profile` like
+  // `custom_exercises` above — but were never wired into this merge at all,
+  // the same lesson-16 gap already caught for push_subscriptions and (this
+  // file, above) freeze_pushed_week/cheers watermarks. Concretely: a user who
+  // filled in their Fuel stats on `from` before claiming an email account
+  // that never touched Fuel would have every one of those fields silently
+  // vanish on merge, forcing a full remeasure (tape measurements included).
+  // Per-field, only filling gaps `to` doesn't already have — never overwrites
+  // a stat the survivor already entered themselves, same convention as the
+  // rest of this file.
+  if (fromU.nutrition) {
+    const nutrition = { ...(toU.nutrition ?? {}) };
+    for (const key of ["height_cm", "neck_cm", "waist_cm", "hip_cm", "bf_pct", "activity", "weight_kg"]) {
+      if (nutrition[key] == null && fromU.nutrition[key] != null) nutrition[key] = fromU.nutrition[key];
+    }
+    if (Object.keys(nutrition).length) toU.nutrition = nutrition;
+  }
   // The live `challenge` slot is deliberately NOT merged: it's a two-sided mirror
   // keyed by the OTHER side's share token, not a user_id. Lifting it onto `to`
   // without also rewriting the opponent's copy would either silently stomp a

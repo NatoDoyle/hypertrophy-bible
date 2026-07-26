@@ -159,7 +159,12 @@ try {
   // real merge deletes the `from` user). Build overlapping state on BOTH
   // stores identically, run the merge, then compare every surface it touches.
   for (const [id, store] of [["m-from", file], ["m-from", d1], ["m-to", file], ["m-to", d1]]) {
-    await store.saveUser(id, { custom_exercises: id === "m-from" ? [{ id: "ce-1", name: "From Curl" }, { id: "ce-shared", name: "Shared" }] : [{ id: "ce-shared", name: "Shared (kept)" }] });
+    await store.saveUser(id, {
+      custom_exercises: id === "m-from" ? [{ id: "ce-1", name: "From Curl" }, { id: "ce-shared", name: "Shared" }] : [{ id: "ce-shared", name: "Shared (kept)" }],
+      // Nutrition profile stats: `to` has ONLY height set (must survive), `from`
+      // has height (must be ignored) + bf_pct/activity (must be adopted, gap-fill).
+      nutrition: id === "m-from" ? { height_cm: 200, bf_pct: 14, activity: "very_active" } : { height_cm: 178 },
+    });
   }
   // Session ids here are DISTINCT across from/to (unlike bodyweights/checkins/
   // nutrition below, which deliberately collide by date). A same-session_id
@@ -195,6 +200,11 @@ try {
   same("merge: checkins land identically (target's same-date row wins)", await file.listCheckins("m-to"), await d1.listCheckins("m-to"));
   same("merge: nutrition logs land identically (target's same-date row wins)", await file.listNutritionLog("m-to"), await d1.listNutritionLog("m-to"));
   same("merge: custom_exercises dedup by id identically", (await file.getUser("m-to")).custom_exercises, (await d1.getUser("m-to")).custom_exercises);
+  same("merge: nutrition stats merge identically (to's height kept, from's bf_pct/activity gap-filled)", (await file.getUser("m-to")).nutrition, (await d1.getUser("m-to")).nutrition);
+  ok("merge: nutrition kept to's own height_cm, not from's (file)", (await file.getUser("m-to")).nutrition.height_cm === 178);
+  ok("merge: nutrition kept to's own height_cm, not from's (D1)", (await d1.getUser("m-to")).nutrition.height_cm === 178);
+  ok("merge: nutrition gap-filled bf_pct/activity from from's side (file)", (await file.getUser("m-to")).nutrition.bf_pct === 14 && (await file.getUser("m-to")).nutrition.activity === "very_active");
+  ok("merge: nutrition gap-filled bf_pct/activity from from's side (D1)", (await d1.getUser("m-to")).nutrition.bf_pct === 14 && (await d1.getUser("m-to")).nutrition.activity === "very_active");
   ok("merge: bodyweight collision kept the TARGET's value, not the source's (file)", (await file.listBodyweights("m-to")).find((b) => b.date === "2026-06-05")?.kg === 99);
   ok("merge: bodyweight collision kept the TARGET's value, not the source's (D1)", (await d1.listBodyweights("m-to")).find((b) => b.date === "2026-06-05")?.kg === 99);
 
