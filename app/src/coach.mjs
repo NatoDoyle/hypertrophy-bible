@@ -428,6 +428,17 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       pr_watch: { e1rm_kg: prBests.e1rm[ex.exercise] ?? null, load_kg: prBests.load[ex.exercise] ?? null },
     };
   });
+  // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory
+  // untrained >=12 days) while the SESSION-level comeback branch above did NOT
+  // (the user trained other lifts recently, so `layoffDays` < the gap) — the two
+  // use the same threshold on different scopes (whole-session vs this-exercise).
+  // Either way, if any weight on today's card is eased, the taper's stock "the
+  // weight stays where it is / stays real" copy is false for that card. Align the
+  // note here (only when the session-level branch didn't already rewrite it, whose
+  // wholesale "coming back from a break" copy is more accurate for a full comeback).
+  if (taper && layoffDays < COMEBACK_GAP_DAYS && exercises.some((e) => e.eased)) {
+    taper.note = `${taper.daysUntil} day${taper.daysUntil === 1 ? "" : "s"} to go — taper. Most weights hold, but a lift or two you haven't trained in a while are eased a touch to ease you back in.`;
+  }
   // comeback: the layoff ease (0.88×) is a deliberate deload of its own — the
   // client tags this session's sets `deload` so the eased weights never enter
   // the e1RM/stall trends as a fabricated ~12% strength loss.
