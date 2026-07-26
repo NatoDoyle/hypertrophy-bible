@@ -465,9 +465,39 @@ check("detectPersonalRecords: warm-ups and deloads never manufacture a PR", () =
   // a heavy WARM-UP single must not count as a PR
   const warmup = { session_id: "b", sets: [{ exercise: "bench", set_type: "warmup", weight_kg: 200, reps: 1 }, { exercise: "bench", set_type: "work", weight_kg: 90, reps: 5 }] };
   assert.equal(detectPersonalRecords(warmup, prior).length, 0);
-  // a deload week is intentionally light and can't out-lift a real best
+  // a same-reps deload is intentionally light and can't out-lift a real best
   const deload = { session_id: "c", sets: [{ exercise: "bench", set_type: "work", weight_kg: 60, reps: 5, deload: true }] };
   assert.equal(detectPersonalRecords(deload, prior).length, 0);
+});
+
+check("detectPersonalRecords: a deload eased on WEIGHT but logged at higher reps must not out-score a true best (Epley rewards reps)", () => {
+  // 100kg x5 -> e1rm 116.67 (the true, non-deload best). A 90kg x10 deload set
+  // (10% lighter weight, comfortably sub-maximal) scores 120.0 by Epley's formula
+  // alone — higher reps beat the weight cut. Without an explicit deload exclusion
+  // (mirroring stallDetect/progressionByExercise's `if (set.deload) continue`),
+  // this fabricates a "New personal record!" celebration + PR_XP for a planned-easy set.
+  const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }];
+  const deload = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }] };
+  assert.equal(detectPersonalRecords(deload, prior).length, 0);
+  // the same set WITHOUT the deload flag genuinely is a PR — proves the fixture
+  // really would out-score the true best, so the assertion above is meaningful.
+  const notDeload = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10 }] };
+  assert.equal(detectPersonalRecords(notDeload, prior).length, 1);
+});
+
+check("checkSetPR: a deload set never fires the live in-player celebration, even when it would out-score the prior best", () => {
+  const prior = priorPersonalBests([{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]);
+  assert.equal(checkSetPR({ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }, prior), null);
+  assert.ok(checkSetPR({ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10 }, prior)); // sanity: not-deload does fire
+});
+
+check("priorPersonalBests: a deload set never anchors the baseline ceiling future sets are compared against", () => {
+  // If the ONLY logged sets for an exercise are deload-tagged, there is no real
+  // ceiling yet — a later genuine work set must be judged as a first-ever
+  // performance (no prior best), not compared against an inflated deload baseline.
+  const sessions = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }] }];
+  const { e1rm } = priorPersonalBests(sessions);
+  assert.equal(e1rm.bench, undefined);
 });
 
 check("priorPersonalBests: the shared ceiling detectPersonalRecords and checkSetPR both read", () => {
