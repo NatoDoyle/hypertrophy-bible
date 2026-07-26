@@ -155,12 +155,26 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 // (which also can't fire the day right after training, exactly when a same-day
 // commitment reminder should). A commitment from a PRIOR iso week is stale and
 // never fires — the user meant "this week", not forever.
-export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff }) {
+//
+// isoWeekKey/weekDayKey read UTC calendar fields off whatever they're handed —
+// correct for a bare local_date string, but `now` here is a raw UTC instant.
+// tzOffsetMin (minutes EAST of UTC, same convention as isUserPushHour/
+// isSocialPushQuietHours) localizes it first: without this, a west-of-UTC user
+// whose local PUSH_TARGET_LOCAL_HOUR falls after UTC midnight (offset <= -420 —
+// US Mountain/Pacific/Alaska/Hawaii) gets the NEXT calendar day's weekday here,
+// so a commitment for "today" never matches at all (lesson 1/16: a scoping fix
+// applied to this file's other tz-aware functions, but not this sibling call).
+// Missing tz falls back to raw UTC, same "don't starve delivery over missing
+// data" choice isUserPushHour makes for its own legacy slot.
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin }) {
   if (paused || remindersOff || !commitment?.days?.length) return false;
-  if (commitment.week !== isoWeekKey(now)) return false;
-  if (!commitment.days.includes(weekDayKey(now))) return false;
+  const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
+  const localNow = +new Date(now) + offsetMs;
+  if (commitment.week !== isoWeekKey(localNow)) return false;
+  if (!commitment.days.includes(weekDayKey(localNow))) return false;
   if (!lastSessionAt) return true;
-  return new Date(lastSessionAt).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10);
+  const localLast = +new Date(lastSessionAt) + offsetMs;
+  return new Date(localLast).toISOString().slice(0, 10) !== new Date(localNow).toISOString().slice(0, 10);
 }
 
 // One daily sweep. Injectable sender/fetch so the whole thing unit-tests on the
@@ -365,7 +379,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         // (a brand-new device shouldn't be nagged on day one), so this stays in
         // the per-subscription loop.
         const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
-          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now });
+          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min });
         if (!hit) continue;
         // Never POST to a non-push-service host, even if an old row slipped one in.
         if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
