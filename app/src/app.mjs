@@ -808,9 +808,15 @@ export function createApp(store, config = {}) {
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!Number.isFinite(Number(kg)) || Number(kg) <= 0) return c.json({ error: "bad-weight" }, 400);
     await store.addBodyweight(user_id, { date: date ?? new Date().toISOString().slice(0, 10), kg: Number(kg) });
-    const bw = (await store.listBodyweights(user_id)).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
+    const all = await store.listBodyweights(user_id);
+    // Same 42-day windowing as progressReport (lesson 1 — fix every call site of
+    // bodyweightTrend, not just the one that showed the bug); a sparse window falls
+    // back to the full history, same safe-direction fallback as the other call site.
+    const bwWindowStart = new Date(Date.now() - 42 * 86400000).toISOString().slice(0, 10);
+    const recent = all.filter((b) => (b.date || "") >= bwWindowStart);
+    const bw = (recent.length >= 3 ? recent : all).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
     const trend = bodyweightTrend(bw);
-    return c.json({ count: bw.length, trend, energy_balance: classifyEnergyBalance(trend, user.profile.primary_goal) });
+    return c.json({ count: all.length, trend, energy_balance: classifyEnergyBalance(trend, user.profile.primary_goal) });
   });
 
   // --- Nutrition: calorie/macro targets + adaptive TDEE (considerations #4).

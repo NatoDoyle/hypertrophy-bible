@@ -609,7 +609,18 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
     .slice(0, 8)
     .map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
-  const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
+  // Bodyweight trend/energy-balance must reflect the CURRENT phase, not the user's
+  // whole lifetime history — the exact "lifetime vs block" bug /api/today's recovery
+  // gate already guards against (L266 above) for this SAME bodyweightTrend function;
+  // progressReport's own call to it was never scoped. Unwindowed, a user who bulked
+  // for months then genuinely cuts for weeks still reads "surplus" on the Progress
+  // screen long after the recent trend flipped, because the least-squares line is
+  // dominated by the larger, older dataset. Window to the same 42-day block; a sparse
+  // window falls back to the full history (bodyweightTrend's own 3-point floor), the
+  // safe direction — never worse than the unwindowed behavior for a sparse logger.
+  const bwWindowStart = now ? new Date(+new Date(now) - 42 * 86400000).toISOString().slice(0, 10) : null;
+  const recentBodyweights = bwWindowStart ? bodyweights.filter((b) => (b.date || "").slice(0, 10) >= bwWindowStart) : bodyweights;
+  const bwSeries = (recentBodyweights.length >= 3 ? recentBodyweights : bodyweights).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
   // Personal-record history (roadmap #1c): the full PR list for a count, plus the most
