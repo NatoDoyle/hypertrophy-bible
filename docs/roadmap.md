@@ -445,6 +445,29 @@ read "deficit" the same day — two contradictory energy-balance readings for on
 logger. New regression test in `app/scripts/test-coach.mjs` proves a 5-month-old stale bulk and
 a genuine recent 3-week cut diverge in direction, and that the fix picks the recent one.
 
+    **Quiet hours for social pushes shipped (Cloud loop wave):** `BLOCKERS.md` #4 promised "the
+    push handler + quiet hours + self-tapering" but only the daily/commitment reminder ever got
+    an hour gate (`isUserPushHour`'s single local slot); the discrete social events — a training-
+    partner nudge, a challenge invite/accept/result, a share-card cheer — were deliberately built
+    (and tested) to fire on the sweep's very next hourly tick regardless of local time, favoring
+    immediacy over politeness. That means a subscriber could be woken at 3am local by a cheer, a
+    real risk for Goal 4: a bad-time push is a plausible reason someone revokes notification
+    permission entirely, killing every future push. `app/src/push.mjs`'s new
+    `isSocialPushQuietHours(tzOffsetMin, now)` gates only those five discrete social-push sites
+    (never the settle/bookkeeping step, and never the already-targeted daily reminder) to a local
+    00:00–07:00 window; unknown-timezone subscribers are left unrestricted (same "don't starve
+    delivery over missing data" choice `isUserPushHour` already makes for its own legacy slot).
+    The gate only DEFERS — the underlying pending condition (nudge `at`, challenge `created_at`/
+    `accepted_at`, cheer count, settled-but-unpushed result) is untouched, so a quiet-hours push
+    fires on the sweep's next non-quiet tick instead of being lost (same at-least-once contract as
+    every other guard in the sweep). 8 new tests in `app/scripts/test-push.mjs`: the boundary
+    (midnight quiet, 6am quiet, 7am not quiet — window end exclusive, noon not quiet, unknown tz
+    never gated) plus an end-to-end sweep proving a pending nudge is silent during quiet hours and
+    still fires, unaltered, on the next eligible tick. No `data/`/`content/`/`public/` touched, so
+    no `build-data` regen or SW bump needed; both gates green (root `npm test`+`npm run check`,
+    app `npm test` incl. `test-routes.mjs`).
+
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
