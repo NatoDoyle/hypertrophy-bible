@@ -1,6 +1,6 @@
 import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
-import { settleChallenge } from "./adherence.mjs";
+import { settleChallenge, streakFreezeState } from "./adherence.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -160,7 +160,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
   for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
   for (const [userId, userSubs] of byUser) {
     try {
-      const user = await store.getUser(userId);
+      let user = await store.getUser(userId);
       if (!user) { for (const s of userSubs) { await store.deletePushSubscription(s.endpoint); pruned++; checked++; } continue; }
       checked += userSubs.length;
       const paused = !!user.paused;
@@ -194,6 +194,20 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
             return u;
           });
         } catch { /* retried next sweep; the guard above makes the re-send idempotent per event */ }
+      };
+      // Same seen-once contract as `stamp`, but for a marker that is a WEEK KEY, not
+      // a timestamp — the streak-freeze nudge below tracks `protectable_week`, which
+      // can move BACKWARD (freezing the nearest miss can uncover an OLDER still-open
+      // one). A forward-only `>=` guard would permanently block re-notifying about
+      // that still-real, still-actionable gap, so this compares by equality instead.
+      const stampIfChanged = async (field, value) => {
+        try {
+          await store.updateUser(userId, (u) => {
+            if ((u.profile?.[field] ?? null) === value) return u;
+            u.profile = { ...(u.profile ?? {}), [field]: value };
+            return u;
+          });
+        } catch { /* retried next sweep; worst case one repeat push for the same value */ }
       };
 
       // A training-partner nudge (Wave 119) is a discrete social event, not a daily
@@ -232,30 +246,95 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
       }
 
-      // A challenge RESULT (Wave 138): if the week ended and this user never
+      // A share-card CHEER (roadmap Tier-3 #10's last un-wired social event): unlike
+      // nudge/challenge, a cheer has no single event instant to use as a high-water
+      // mark — cheers accumulate as a running count on the share row (store.getShareCheers),
+      // keyed by share_id, not by user. So the marker here is the COUNT itself
+      // (cheers_pushed) rather than an `at` timestamp: `stamp`'s `>= at` guard works
+      // identically for a monotonic count. Only users who opted into sharing (a live
+      // share token exists) are ever looked up; most users have none and this is a
+      // single cheap no-op lookup. Fires on the next hourly tick, same as nudge/challenge,
+      // since a cheer is a discrete "someone did something nice for you" moment, not a
+      // daily cadence.
+      if (!paused && !remindersOff) {
+        const shareId = await store.getShareIdForUser(userId);
+        if (shareId) {
+          const cheers = await store.getShareCheers(shareId);
+          const pushedCount = user.profile?.cheers_pushed ?? 0;
+          if (cheers > pushedCount) {
+            const delta = cheers - pushedCount;
+            const body = delta === 1
+              ? "Someone cheered your progress on the Hypertrophy Bible — keep it up!"
+              : `${delta} people cheered your progress on the Hypertrophy Bible — keep it up!`;
+            const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-cheer" });
+            if (ok) await stamp("cheers_pushed", cheers);
+          }
+        }
+      }
+
+      // A challenge RESULT (Waves 138/139): if the week ended and this user never
       // reopened the app, GET /api/challenge's self-transition never ran — settle
-      // it here with the SAME shared logic (settleChallenge, never a second copy)
-      // and tell them how it ended. The completed status IS the seen-once event:
-      // a GET-settled challenge arrives here already terminal and never pushes
-      // (the user saw the card in-app), and once this settle lands, the next tick
-      // sees terminal too — at-most-once by construction. If every device send
-      // fails this tick, the in-app result card remains the fallback surface.
+      // it here with the SAME shared logic (settleChallenge, never a second copy),
+      // then push the result below off the PERSISTED fields.
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
           && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString())) {
-        const settled = await settleChallenge(store, userId, user, now);
-        if (settled.result) {
-          const r = settled.result;
-          const body = r.result === "win"
-            ? `🏆 You won this week's challenge ${r.my_count}–${r.opponent_count}!`
-            : r.result === "lose"
-              ? `Challenge over — your partner took this week ${r.opponent_count}–${r.my_count}. Rematch?`
-              : `Challenge over — dead heat at ${r.my_count}–${r.opponent_count}.`;
-          await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+        await settleChallenge(store, userId, user, now);
+        user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
+      }
+      // The result push itself (design adopted from PR #216): driven entirely off
+      // persisted state — a COMPLETED challenge for the week that JUST ended, with
+      // its recorded history entry and no result_pushed marker on the slot — so a
+      // tick where every device send fails simply retries next tick from the same
+      // stored fields (at-least-once), instead of losing the payoff moment. The
+      // marker lives ON the slot (auto-scoped: the next propose replaces it), and
+      // the just-ended-week guard keeps pre-existing old completed challenges from
+      // ever firing retroactively. A vanished-opponent completion has no history
+      // entry -> no push (never manufacture a trophy); declines stay silent.
+      const settledCh = user.profile?.challenge;
+      if (!paused && !remindersOff && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
+          && settledCh.week === isoWeekKey(new Date(now - 7 * 86400e3).toISOString())) {
+        const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
+        if (entry) {
+          const body = entry.result === "win"
+            ? `🏆 You won this week's challenge ${entry.my_count}–${entry.opponent_count}!`
+            : entry.result === "lose"
+              ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
+              : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
+          const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+          if (ok) {
+            try {
+              await store.updateUser(userId, (u) => {
+                if (u.profile?.challenge?.id !== settledCh.id) return u; // slot replaced — nothing to mark
+                u.profile = { ...u.profile, challenge: { ...u.profile.challenge, result_pushed: true } };
+                return u;
+              });
+            } catch { /* worst case: one repeat push next tick, never a lost result */ }
+
+          }
         }
       }
 
       // Timezone-aware daily reminder: only in this user's one eligible hour/day.
       if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
+
+      // A protectable streak (#4 adherence, loss-aversion): a held freeze token can
+      // retroactively save a missed week, but today that only ever surfaces if the
+      // user reopens the Progress card — the same "you have to come back to find
+      // out" gap the other proactive nudges above close. Piggybacked on the user's
+      // ONE daily local-hour slot (not every hourly tick like the discrete social
+      // events above), since streakFreezeState needs a full session-history read
+      // that would be wasteful to run 24x/day for every subscriber. Fires once per
+      // DISTINCT protectable week (`freeze_pushed_week`, via stampIfChanged).
+      if (!paused && !remindersOff) {
+        const sessions = await store.listSessions(userId);
+        const freeze = streakFreezeState(sessions, now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
+        if (freeze.balance > 0 && freeze.protectable_week && freeze.protectable_week !== (user.profile?.freeze_pushed_week ?? null)) {
+          const week = freeze.protectable_week;
+          const ok = await fanOut({ title: "The Hypertrophy Bible", body: "You missed a week, but a streak freeze can still save it — protect it before it's gone.", tag: "hb-freeze" });
+          if (ok) await stampIfChanged("freeze_pushed_week", week);
+        }
+      }
+
       const lastSessionAt = await store.latestSessionDate(userId);
       for (const sub of userSubs) {
         if (gone.has(sub.endpoint)) continue;

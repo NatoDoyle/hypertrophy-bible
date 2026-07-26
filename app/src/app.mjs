@@ -520,6 +520,15 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404);
     await store.deleteShare(b.user_id);
+    // Revoking clears share_cheers, so a future re-share counts from 0 — the
+    // cheer-push high-water mark (profile.cheers_pushed, a COUNT not a timestamp)
+    // must reset with it, or the stale high mark silently suppresses cheer pushes
+    // on the new card until its count surpasses the old lifetime total.
+    await store.updateUser(b.user_id, (u) => {
+      if (!u.profile?.cheers_pushed) return u;
+      u.profile = { ...u.profile, cheers_pushed: 0 };
+      return u;
+    });
     return c.json({ revoked: true });
   });
   // PUBLIC (no auth): resolve a share token to its owner and return ONLY the
@@ -818,9 +827,22 @@ export function createApp(store, config = {}) {
       ?? navyBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, neck_cm: n.neck_cm, waist_cm: n.waist_cm, hip_cm: n.hip_cm })
       ?? bmiBodyFat({ sex: user.profile?.sex, height_cm: n.height_cm, weight_kg });
     const profile = { weight_kg, bf_pct, sex: user.profile?.sex, goal: user.profile?.primary_goal, training_status: user.profile?.training_status, activity: n.activity ?? "moderate", unit: "kg" };
-    // adaptive TDEE history: pair the daily intake log with the day's bodyweight
+    // adaptive TDEE history: pair the daily intake log with the day's bodyweight.
+    // adaptiveTDEE averages whatever it's handed (same shape as recoverySignal /
+    // bodyweightTrend, Wave 69's "lifetime vs block" bug) — its own promised contract
+    // is RECENT data ("log food + weight for ~2 weeks and I'll dial it in", the note
+    // nutritionPlan itself shows). Unwindowed, a user who has logged for months gets a
+    // maintenance estimate averaged across unrelated diet phases (e.g. a past bulk's
+    // high intake blended into a current cut), which is the opposite of "adaptive" and
+    // gets slower to correct the longer someone logs. Window to the last ~4 weeks; a
+    // sparse window naturally falls back to the formula estimate (adaptiveTDEE returns
+    // null below its own thresholds) — the safe direction.
+    const ADAPTIVE_WINDOW_DAYS = 28;
+    const windowStart = new Date(Date.now() - ADAPTIVE_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
     const wByDate = new Map(bw.map((b) => [b.date, b.kg]));
-    const history = (await store.listNutritionLog(id)).map((e) => ({ date: e.date, kcal: e.kcal, weight_kg: wByDate.get(e.date) }));
+    const history = (await store.listNutritionLog(id))
+      .filter((e) => (e.date || "") >= windowStart)
+      .map((e) => ({ date: e.date, kcal: e.kcal, weight_kg: wByDate.get(e.date) }));
     return { profile, history };
   };
 
