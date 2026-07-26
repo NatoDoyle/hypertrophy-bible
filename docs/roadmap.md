@@ -206,12 +206,23 @@ infra, the one genuinely large build left here).
    the KB refutes — the Varovic lesson at the ENGINE level — and the app ALREADY ships the evidence-aligned
    pieces: the within-mesocycle build→peak→deload wave (`blockPhase`), block-boundary volume auto-tune,
    recovery-gated volume (`deriveVolumeAdjust` context), undulating-for-advanced, and exercise rotation.
-   The genuinely-remaining elite work is narrower, evidence-supported, but INPUT-GATED (a larger feature,
-   not a clean first slice): a **taper/peak toward a goal date** (tapering has real strength-EXPRESSION
-   evidence, distinct from hypertrophy) and a **contest-prep mode** — both need a new “goal/meet/show
-   date” onboarding input + a peaking protocol; deeper velocity-driven autoregulation needs hardware the
-   app can’t collect. So this item serves the strength/peaking/contest end, NOT general hypertrophy —
-   and only once a goal-date input exists.
+   The genuinely-remaining elite work is narrower, evidence-supported: a **taper/peak toward a goal
+   date** (tapering has real strength-EXPRESSION evidence, distinct from hypertrophy) and a **contest-prep
+   mode**; deeper velocity-driven autoregulation needs hardware the app can't collect.
+   **Taper/peak SHIPPED (Waves 132/133/135, merged on `main`):** a `goal_event_date` input
+   (Settings-only — deliberately gated out of first-run onboarding per Goals 2/3's minimal-customization
+   principle; a competitive lifter opts in later, non-beginners only) drives `taperPhase` (`coach.mjs`) —
+   a 14-day window trading volume for freshness (sets scale down, RIR eases, load HOLDS — strength
+   expression, not a hypertrophy claim), grounded in evidence (Bosquet 2007 meta) and correctness-audited
+   (local-frame date math, Wave 135). **This closes the "only once a goal-date input exists" gate** the
+   paragraph above used to describe as blocking — it no longer blocks anything. The peak-week carb-loading
+   myth debunk (Henselmans 2022: no benefit found in the trials that tested short-term carb manipulation
+   before an event) also SHIPPED (Wave 147) — surfaced in the final-week taper note and grounded in the
+   periodization page; don't re-propose it. What's still genuinely open, narrower than before: a full
+   **contest-prep mode**
+   beyond taper + nutrition (peak-week logistics, posing-adjacent guidance) would need real elite ground
+   truth this project doesn't have (`BLOCKERS.md` #6) to build honestly rather than invent — not a clean
+   buildable slice, don't force it.
 10. **[Goal 4] Social layer** — friends/accountability/challenges/leaderboards (the single biggest
     retention lever). *STARTED (Wave 102):* **shareable progress card shipped** — opt-in, revocable,
     read-only card via an unguessable capability token (NOT the user_id); `GET /api/share/:token`
@@ -349,6 +360,33 @@ infra, the one genuinely large build left here).
     (a monkey-patched `store.updateUser` swaps the challenge id mid-request) and confirm neither
     the response nor the store shows a fabricated entry; verified the new test fails without the
     fix and passes with it.
+    **Audit fix (Cloud loop wave, diff-scoped over Waves 144-146):** `merge-profile.mjs`'s own
+    header cites lesson 16 ("a field added to the user record after reassignUserData was written
+    silently orphans on merge") as the exact reason the file exists — yet two NEW profile push
+    markers Waves 145/146 added (`freeze_pushed_week`, and `cheers_pushed`/`cheers_seen` at the
+    share-reassignment site) were never wired into it, since both post-date the file's last
+    lesson-16 audit at Wave 142. Two distinct real gaps, not one: (1) `streak_freezes` and session
+    history already merge additively, so `streakFreezeState`'s `protectable_week` is recomputed
+    fresh from the SURVIVOR's combined timeline post-merge — a week already pushed-about on the
+    departing account can resurface as "new" and fire a duplicate streak-freeze nudge; fixed by
+    adopting the lexically-later (ISO week keys are zero-padded, so string order is chronological
+    order) of the two markers, never a raw overwrite. (2) When a share is reassigned onto a
+    survivor with none of its own (the existing `else` branch in both `store.mjs` and
+    `store-d1.mjs`'s `reassignUserData`), the share's lifetime cheer COUNT transfers but the
+    survivor's own watermark defaults to 0 — the push sweep and the in-app "N new cheers" banner
+    would both read the inherited share's full history as brand new, a fabricated "N people
+    cheered you!" for cheers the user already saw pre-merge; fixed by adopting the departing
+    user's watermarks exactly when (and only when) its share is the one that survives — confirmed
+    the OTHER branch (both users already share, the departing one is dropped) leaves the
+    survivor's own watermarks untouched, since adopting there would wrongly suppress a real
+    pending cheer notification on the survivor's still-live share. Both fixes live once in the
+    stores/merge-profile.mjs shared by file + D1 (parity preserved, confirmed via the
+    `test-store-d1.mjs` side-by-side harness). 8 new regression tests across `test-auth.mjs`
+    (freeze-week adopt-when-later/keep-when-later/adopt-when-empty; cheers-watermark adopt-on-
+    inherit and untouched-when-dropped) plus existing D1 parity coverage, all green; root
+    `npm test` + `npm run check` and app `npm test` (full suite incl. `test-routes.mjs` and the
+    D1 parity harness) green. Docs/code only where noted — no `data/`/`content/`/`public/` file
+    touched, so no `build-data` regen or SW `VERSION` bump needed.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

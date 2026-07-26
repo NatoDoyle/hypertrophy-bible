@@ -136,7 +136,16 @@ export function createFileStore(path) {
       if (fromShareId) {
         const toHasShare = Object.values(db.shares).some((r) => r.user_id === toId);
         if (toHasShare) { delete db.shares[fromShareId]; delete (db.share_cheers ??= {})[fromShareId]; }
-        else { db.shares[fromShareId].user_id = toId; } // share_id + its cheers (keyed by share_id) preserved
+        else {
+          db.shares[fromShareId].user_id = toId; // share_id + its cheers (keyed by share_id) preserved
+          // `to` never had a share, so its OWN cheers_pushed/cheers_seen watermarks
+          // (0, or stale leftovers from a share it revoked earlier) don't describe
+          // this inherited share's history — without this, the push sweep and the
+          // in-app "N new cheers" banner would both read the share's full lifetime
+          // cheer count as brand new the instant `to` inherits it, even though
+          // `from` already saw/was pushed every one of them pre-merge.
+          if (toU) toU.profile = { ...(toU.profile ?? {}), cheers_pushed: fromU?.profile?.cheers_pushed ?? 0, cheers_seen: fromU?.profile?.cheers_seen ?? 0 };
+        }
       }
       delete db.nutrition_logs?.[fromId];
       delete db.sessions[fromId];
