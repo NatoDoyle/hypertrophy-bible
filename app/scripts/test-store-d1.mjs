@@ -13,7 +13,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
-import { createD1Shim } from "./d1-shim.mjs";
+import { createD1Shim, sqliteAvailable } from "./d1-shim.mjs";
+
+// Node < 22.5 has no node:sqlite — skip cleanly (exit 0) rather than fail the
+// whole app gate on machines running older Node; the suite runs fully wherever
+// node:sqlite exists (Node 22+, incl. the cloud-loop environments).
+if (!(await sqliteAvailable())) {
+  console.log("store-d1 parity suite SKIPPED — node:sqlite unavailable (requires Node >= 22.5; current " + process.version + ").");
+  process.exit(0);
+}
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };

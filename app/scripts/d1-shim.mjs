@@ -3,7 +3,15 @@
 // exercise src/store-d1.mjs against a real database instead of "reviewed by
 // hand" — the store interface (prepare/bind/first/all/run/batch/exec) mirrors
 // the subset of the D1 binding API that src/store-d1.mjs actually calls.
-import { DatabaseSync } from "node:sqlite";
+// node:sqlite ships in Node >= 22.5 — imported lazily by sqliteAvailable()/
+// createD1Shim() so environments on older Node can detect-and-skip instead of
+// crashing at module load (the parity suite self-skips there; it still runs
+// fully on Node 22+, e.g. the cloud-loop sessions).
+let DatabaseSync = null;
+export async function sqliteAvailable() {
+  if (DatabaseSync) return true;
+  try { ({ DatabaseSync } = await import("node:sqlite")); return true; } catch { return false; }
+}
 
 function wrapStatement(raw, sql, boundArgs) {
   return {
