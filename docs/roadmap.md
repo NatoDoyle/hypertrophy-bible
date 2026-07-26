@@ -350,6 +350,25 @@ infra, the one genuinely large build left here).
     the response nor the store shows a fabricated entry; verified the new test fails without the
     fix and passes with it.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**Progress screen's bodyweight trend/energy-balance was averaging the user's ENTIRE
+lifetime weigh-in history, not the current phase (lesson 19 recurring).** `/api/today`'s
+recovery gate already windows `bodyweightTrend`'s input to the last 42 days, with a comment
+explaining exactly why (Wave 69: unwindowed, "block-average" silently became a lifetime
+average). `progressReport` (the Progress tab's `/api/progress`) and the `POST /api/bodyweight`
+response called the SAME `bodyweightTrend`/`classifyEnergyBalance` pair with the full,
+unwindowed history — so a user who bulked for months, then genuinely cut for 3 weeks, still
+saw "surplus" / "Lean-gain rate looks on target" on the Progress screen, because the
+least-squares regression line was dominated by the larger, older dataset; `/api/today`'s
+autoregulation gate, reading the same underlying data with its 42-day window, would correctly
+read "deficit" the same day — two contradictory energy-balance readings for one user (lesson
+10: a derived status must never contradict what's actually known). Fixed in `app/src/coach.mjs`
+(`progressReport`) and `app/src/app.mjs` (`POST /api/bodyweight`): both now window to the same
+42-day block, falling back to the full history when the window has fewer than 3 points
+(`bodyweightTrend`'s own floor) — the safe direction, never worse than before for a sparse
+logger. New regression test in `app/scripts/test-coach.mjs` proves a 5-month-old stale bulk and
+a genuine recent 3-week cut diverge in direction, and that the fix picks the recent one.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
