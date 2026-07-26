@@ -251,6 +251,23 @@ These are real failures from previous iterations. Each is now a standing check.
    members first, stamp once, only on ≥1 success (all-failed must retry), precondition inside
    the mutator so a concurrent stamp can't rewind.
 
+24. **Copy that reconciles two mechanisms must trigger off the SAME scope the mechanism it
+   describes actually fires at — not the nearest convenient signal.** Wave 147 made the taper
+   card honest when a comeback ease overlaps a taper ("the weight stays real" would sit beside
+   "I eased this to X kg"), but gated that note rewrite on the SESSION-level layoff (max over all
+   sessions) — while the ease it was reconciling fires PER-EXERCISE (`lastAnyDateForExercise`).
+   Same threshold, different scope: one lift untrained ≥12 days while the user trained something
+   else 3 days ago got an eased card, but the note stayed stock, resurfacing the exact
+   contradiction the rewrite existed to kill (found by the Waves 135–155 audit, fixed Wave 156).
+   This is [[23]]'s sibling for explanatory copy, and a scope-flavored [[1]] (fix every path, not
+   the one path in front of you). → **Standing lens:** when copy asserts "X holds / Y is why X
+   changed", find EVERY code path that can flip X or trigger Y (per-exercise vs per-session,
+   per-device vs per-user, per-week vs per-block) and make the copy's own trigger cover all of
+   them — the tell is a boolean/threshold computed at one granularity gating a message about a
+   value computed at another. The mechanism often already exposes the right-scope signal (here the
+   per-exercise `eased` tag already existed for the client); reuse it rather than re-deriving a
+   coarser one.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
