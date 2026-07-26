@@ -74,10 +74,18 @@ const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 const UNDULATION_COMPOUND = { heavy: ["4-6", "2-3"], light: ["10-15", "1-2"] }; // moderate = the goal's base compound
 const UNDULATION_ORDER = ["heavy", "moderate", "light"];
 const undulatesForGoal = (goal) => goal === "hypertrophy" || goal === "recomposition";
-// Pick a session's scheme from its index in the week; only the compound band shifts.
-function sessionRepScheme(baseScheme, undulating, sessionIndex) {
+// Pick a session's scheme from its OCCURRENCE within its own archetype (Push A's
+// 1st exposure, Push B's 2nd, ...) — not the session's absolute index in the week.
+// Keying off the absolute index made every repeat of an archetype whose interval
+// divides evenly into 3 (e.g. every PPL split, at 2 or 6 days/week) land on the
+// identical band every time — Push A and Push B both "heavy," never anything else
+// — which is exactly the "same band every session" problem DUP exists to fix.
+// Keying off the archetype's own repeat count guarantees each exposure of a given
+// muscle group cycles through a genuinely different band, independent of how many
+// total sessions share its phase. Only the compound band shifts.
+function sessionRepScheme(baseScheme, undulating, archetypeOccurrence) {
   if (!undulating) return baseScheme;
-  const band = UNDULATION_ORDER[sessionIndex % UNDULATION_ORDER.length];
+  const band = UNDULATION_ORDER[archetypeOccurrence % UNDULATION_ORDER.length];
   return band === "moderate" ? baseScheme : { ...baseScheme, compound: UNDULATION_COMPOUND[band] };
 }
 
@@ -161,7 +169,7 @@ export function chooseSplit({ days_per_week, training_status }) {
   const sessions = names.map((n) => { counts[n] = (counts[n] ?? 0) + 1; return { arch: n, letter: counts[n] }; });
   const multi = Object.fromEntries(Object.entries(counts).map(([n, c]) => [n, c]));
   const label = { FULL: "Full Body", UPPER: "Upper", LOWER: "Lower", PUSH: "Push", PULL: "Pull", LEGS: "Legs" };
-  sessions.forEach((s) => { s.name = label[s.arch] + (multi[s.arch] > 1 ? " " + "ABCDEF"[s.letter - 1] : ""); });
+  sessions.forEach((s) => { s.name = label[s.arch] + (multi[s.arch] > 1 ? " " + "ABCDEF"[s.letter - 1] : ""); s.of = multi[s.arch]; });
   return {
     split, sessions,
     reason: `${days} days × ${training_status ?? "intermediate"} → ${/^[aeiou]/i.test(split) ? "an" : "a"} ${split} split, hitting each muscle ~${split === "full-body" ? days : 2}×/week within the 6–10 hard-sets-per-session quality window.`,
@@ -421,9 +429,15 @@ export function generatePlan(profile, kb, opts = {}) {
   let weekKneeFlexion = false;  // has ANY session placed knee-flexion hamstring work yet?
   const outSessions = sessionSpecs.map((spec, sIdx) => {
     const mset = ARCH[spec.arch];
-    // This day's rep/intensity band: the base scheme, or (opt-in DUP) a
-    // heavy/moderate/light variant chosen by the day's position in the week.
-    const sessScheme = sessionRepScheme(scheme, undulating, sIdx);
+    // This day's rep/intensity band: the base scheme, or (auto/opt-in DUP) a
+    // heavy/moderate/light variant. When this archetype repeats in the week
+    // (spec.of > 1, e.g. Push A/B), key off ITS OWN occurrence count so every
+    // repeat of the same muscle group cycles through a different band — the
+    // guarantee the feature promises. When it doesn't repeat (every archetype
+    // in the split is unique, e.g. the 5-day PUSH/PULL/LEGS/UPPER/LOWER split),
+    // there's no same-archetype exposure to vary, so fall back to the day's
+    // absolute position for whatever incidental week-to-week variety that gives.
+    const sessScheme = sessionRepScheme(scheme, undulating, spec.of > 1 ? spec.letter - 1 : sIdx);
     const credited = {};      // effective sets credited to each muscle THIS session
     const direct = {};        // DIRECT primary sets per muscle this session (KB session-quality cap)
     const isoCredited = {};   // DIRECT isolation sets per muscle this session (arm/delt floor)
