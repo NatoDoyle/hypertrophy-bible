@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir } from "../src/coach.mjs";
-import { isLuckySet, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
+import { isLuckySet, LUCKY_SET_XP, bodyweightTrend } from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -494,6 +494,23 @@ check("progressReport infers energy balance from bodyweight trend (no calories)"
   assert.ok(r.bodyweight_trend.slope_kg_per_week > 0);
 });
 
+check("#cloud-loop progressReport's bodyweight trend reflects the RECENT window, not a lifetime blend", () => {
+  const now = "2026-07-26T10:00:00Z";
+  const dAgo = (n) => new Date(+new Date(now) - n * 86400000).toISOString().slice(0, 10);
+  // a past bulk: 20 weekly weigh-ins, steadily gaining, all well outside the 42-day window
+  const staleGain = Array.from({ length: 20 }, (_, i) => ({ date: dAgo(185 - i * 7), kg: 78 + i * 0.3 }));
+  // the last 3 weeks: a genuine cut, entirely inside the window
+  const recentCut = [
+    { date: dAgo(21), kg: 84.0 }, { date: dAgo(14), kg: 83.3 }, { date: dAgo(7), kg: 82.6 }, { date: dAgo(0), kg: 82.0 },
+  ];
+  const allBw = [...staleGain, ...recentCut];
+  const lifetime = bodyweightTrend(allBw.map((b) => ({ date: b.date, bodyweight_kg: b.kg })));
+  assert.ok(lifetime.slope_kg_per_week > 0, "the unwindowed lifetime series genuinely diverges (a meaningful test, not a wash)");
+  const rep = progressReport(user, [], allBw, [], now);
+  assert.equal(rep.energy_balance.direction, "deficit"); // the recent cut must win, not the 5-month-old bulk
+  assert.ok(rep.bodyweight_trend.slope_kg_per_week < 0);
+});
+
 check("taperPhase: gates on beginner, missing date, the 14-day window, and past events", () => {
   assert.equal(taperPhase("2026-07-25", null, "intermediate"), null); // no goal date set
   assert.equal(taperPhase("2026-07-25", "2026-07-30", "beginner"), null); // programmatic peaking isn't a beginner decision
@@ -505,6 +522,13 @@ check("taperPhase: gates on beginner, missing date, the 14-day window, and past 
   const late = taperPhase("2026-07-27", "2026-07-30", "intermediate"); // 3 days out
   assert.equal(late.setScale, 0.4);
   assert.equal(late.rirFloor, 3);
+});
+
+check("taperPhase: final-week note corrects the carb-loading myth (Henselmans 2022) — not the early note", () => {
+  const early = taperPhase("2026-07-20", "2026-07-30", "intermediate"); // 10 days out
+  const late = taperPhase("2026-07-27", "2026-07-30", "intermediate"); // 3 days out
+  assert.ok(/carb-load/i.test(late.note), "final taper week names carb-loading directly");
+  assert.ok(!/carb-load/i.test(early.note), "the 2-week-out note doesn't front-load peak-week advice");
 });
 
 check("taperRir only ever eases the near edge AWAY from failure, never toward it", () => {
