@@ -505,6 +505,40 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**`settleChallenge`'s raced no-op branch (the lesson-21 fix from Wave 128) withheld a
+fabricated `result` correctly, but still returned the CALLER's stale `challenge.status`/
+`history` instead of what was actually persisted.** Three open PRs (#228 email fallback,
+#238 commitment-push tz fix, #239 merge-profile nudge parity) already claim the obvious
+diff-scoped audit territory this wave, and the citation network (PubMed/Crossref/generic
+WebFetch) was still down for this session (verified directly — even `https://example.com`
+403'd via WebFetch and `curl`), so no KB citation work was possible. Traced `adherence.mjs`'s
+`settleChallenge` end-to-end instead: when this call's own `updateUser` mutator finds the
+challenge ALREADY terminal (a concurrent settle — the push sweep or the opponent's own GET —
+won the race), it correctly sets `transitioned = false` so `result` stays `null` (no phantom
+trophy, the bug Wave 128 fixed). But `ch.status`/`newHistory` were only ever updated inside
+`if (wrote)` — so the STALE locally-passed-in status ("active"/"pending") and history (often
+`[]`, since the caller's own snapshot predates the transition) were returned even though the
+TRUE persisted record (status "completed"/"declined" + its history entry) was sitting right
+there in the mutator's own `u` argument, unused. Concretely: `GET /api/challenge` could show a
+just-settled race as still "in progress" until some unrelated later request happened to
+re-fetch fresh state — the exact class of bug lesson 21 named ("a read that also writes must
+report what it PERSISTED, not its optimistic local guess"), just in the sibling no-op branch
+lesson 21's own fix never checked. Confirmed the premise by tracing the EXISTING race-lost test
+in `test-adherence.mjs` by hand against the pre-fix code: it only asserted `result === null`
+(passes both before and after) and never asserted on `challenge.status`/`history`, so the gap
+shipped invisibly. Fixed by deriving `ch.status`/`newHistory` from `updated.profile.challenge`
+whenever the slot's id still matches (whether this call performed the transition or a
+concurrent one already did) — never from the caller's local snapshot once a same-id write
+attempt has happened. The other no-op path (`cur?.id !== ch.id`, the slot fully replaced by a
+fresh propose) is left as-is: that's the narrower, already-reasoned-about "don't resurrect a
+stale id" case, not this bug. 2 new regression tests in `app/scripts/test-adherence.mjs`,
+verified to FAIL on the pre-fix code (stashed the source change and reran: `challenge.status`
+read "active" instead of "completed", `history` read `[]` instead of the persisted win) and
+pass on the fix. Root `npm test` + `npm run check` and app `npm test` (full suite) all green.
+No `data/`/`content/`/`public/` file touched, so no `build-data` regen or SW `VERSION` bump
+needed.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
