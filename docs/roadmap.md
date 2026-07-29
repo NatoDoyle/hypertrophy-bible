@@ -505,6 +505,31 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**Escalated two environment blockers to `BLOCKERS.md` instead of shipping a 15th speculative
+audit-fix PR into an already-unreviewed queue.** By this wave, 14 "Cloud loop:" PRs were open and
+unmerged (#228, #238–#251, oldest dated 2026-07-26 — the immediately-prior wave, #251, already
+flagged this in its own PR body as "a real review/merge/deploy bottleneck, not a build-capacity
+one" and warned that "piling on further speculative audit passes without any of the backlog
+landing has sharply diminishing value"). Independently re-verified both premises this wave rather
+than trusting the prior wave's claim at face value (lesson 2): `gh`-equivalent PR listing confirms
+all 14 are still open, none merged; `curl` to `eutils.ncbi.nlm.nih.gov` and `api.crossref.org` both
+still return `CONNECT tunnel failed (403)`, and `$HTTPS_PROXY/__agentproxy/status`'s
+`recentRelayFailures` confirms a `connect_rejected` policy denial for both hosts specifically — the
+same outage at least 6 independent sessions have now hit across 3+ days, still unresolved. Both
+facts were previously scattered across five-plus different open PR bodies (mentioned in roadmap.md
+text that hasn't merged) but **never once landed in `BLOCKERS.md`** — the doc that exists
+specifically for "things only the maintainer can unblock" and that every iteration reads first.
+Consolidated both there as new items (#2 citation-network access, #3 the PR backlog itself) with
+the concrete evidence and a specific ask, and sent a direct push notification since neither issue
+was reaching the maintainer any other way. Per CLAUDE.md's "never fabricate a citation" rule, no
+KB content was touched (network still down for citation work); per the standing note above, no new
+code-level audit-fix was forced either — a 15th unreviewed PR on top of 14 already-unreviewed ones
+would not have moved any of the four goals, only grown the backlog it's warning about. No
+`data/`/`content/`/`public/` file touched, so no `build-data` regen or SW `VERSION` bump needed.
+Docs-only change; `npm run check` (citation + data-ref integrity, unaffected by a docs edit) still
+green.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),

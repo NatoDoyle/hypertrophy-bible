@@ -38,6 +38,39 @@ can't fabricate and won't hotlink without a licence.
 
 _(Web-push VAPID secret — was #4 here — RESOLVED 2026-07-26; moved to Done below.)_
 
+### 2. Citation-verification network access is down (blocks ALL Goal-1 KB work)
+**What's happening:** every cloud-loop session's outbound HTTPS goes through a pre-configured
+proxy. For at least the last **3+ days** (first hit 2026-07-26, still failing as of this wave,
+2026-07-29), that proxy has been rejecting CONNECT tunnels to `eutils.ncbi.nlm.nih.gov` and
+`api.crossref.org` with a flat `403` — confirmed directly this wave (`curl` to both hosts:
+`CONNECT tunnel failed, response 403`) and via the proxy's own status endpoint
+(`$HTTPS_PROXY/__agentproxy/status`), whose `recentRelayFailures` shows
+`connect_rejected` / "policy denial or upstream failure" for both hosts specifically. This is not
+a transient blip — at least 6 independent cloud-loop sessions across 3+ days have hit and logged
+the identical failure (see `docs/roadmap.md`'s recent "Cloud loop" wave entries).
+**Why it matters:** `CLAUDE.md`'s "never fabricate a citation" rule requires web-verifying every
+new citation via PubMed E-utilities *and* Crossref before it can ship — with both blocked, the
+loop cannot add a single new citation, update KB content that needs one, or run the overdue fresh
+Goal-1 gap audit `docs/roadmap.md` has been flagging as ready since Tier 1/2 emptied. Every KB
+build this loop could otherwise do is stalled behind this one proxy rule.
+**What I need:** allow the proxy to reach `eutils.ncbi.nlm.nih.gov` and `api.crossref.org` (both
+plain read-only REST APIs, no auth needed) — or tell me if there's a different verification path
+you'd prefer the loop use instead.
+
+### 3. Cloud-loop PR review/merge backlog (14 open, oldest 3+ days)
+**What's happening:** the hourly cloud loop keeps shipping verified, tested waves as PRs (per its
+instructions, it cannot merge or deploy itself), but none have been reviewed or merged since
+**2026-07-26**. As of this wave there are **14 open "Cloud loop:" PRs** on
+`natodoyle/hypertrophy-bible` (#228, #238–#251), each independently green on both test gates.
+**Why it matters:** this is a review-capacity bottleneck, not a build-capacity one — the loop can
+keep producing verified fixes indefinitely, but none of them reach production (and every merge
+gets a little riskier the longer the queue grows, e.g. the recurring `sw.js` VERSION-bump
+collision every wave hits). A swept-but-unmerged codebase doesn't move any of the four goals.
+**What I need:** review and merge the backlog (oldest-first minimizes conflict pain), then
+`git pull && cd app && npm run deploy` as its own step per `CLAUDE.md`. If some of the 14 turn out
+to be redundant with each other after merging a few, closing the rest is fine — the loop will pick
+up whatever real territory is left on the next iteration.
+
 ---
 
 ## 🟡 Unlocks something
