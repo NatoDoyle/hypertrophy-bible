@@ -443,6 +443,7 @@ export function createApp(store, config = {}) {
   // respects unconditionally. Lives on the profile so it survives merges.
   app.post("/api/reminders", async (c) => {
     const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
     const updated = await store.updateUser(b.user_id, (u) => {
       u.profile = { ...(u.profile ?? {}), reminders_off: b.off === true };
       return u;
@@ -454,6 +455,7 @@ export function createApp(store, config = {}) {
   // Safety rail: pause suspends all streak pressure with zero penalty (illness/injury).
   app.post("/api/pause", async (c) => {
     const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
     const paused = b.on ? { from: new Date().toISOString().slice(0, 10), reason: b.reason ?? null } : null;
     const updated = await store.updateUser(b.user_id, (u) => { // CAS: won't clobber a concurrent write (#20)
       // Resuming ARCHIVES the window instead of erasing it: the streak walker

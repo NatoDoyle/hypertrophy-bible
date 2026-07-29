@@ -338,6 +338,16 @@ try {
   await json("POST", "/api/pause", { user_id: ldUser, on: false });
   const ldAfter = await store.getUser(ldUser);
   ok("#21 pause resume archives the window into pause_history", Array.isArray(ldAfter.pause_history) && ldAfter.pause_history.length === 1 && !!ldAfter.pause_history[0].to);
+  // Audit fix (Cloud loop wave): a MISSING user_id must 404 at the door, not reach
+  // store.updateUser(undefined) — null on the file store (→ 404) but a THROW on D1
+  // (→ 500 in prod). /api/commitment and /api/streak/freeze already guard this
+  // (Wave 82); /api/pause and /api/reminders were the two sibling routes that didn't.
+  const noUserPause = await json("POST", "/api/pause", { on: true });
+  ok("#pause with no user_id is a clean 404 (guarded before the store call)", noUserPause.status === 404);
+  const noUserReminders = await json("POST", "/api/reminders", { off: true });
+  ok("#reminders with no user_id is a clean 404 (guarded before the store call)", noUserReminders.status === 404);
+  const remindersRes = await json("POST", "/api/reminders", { user_id: ldUser, off: true });
+  ok("#reminders still works normally with a real user_id", remindersRes.status === 200 && remindersRes.data.reminders_off === true);
 
   // --- Wave 43: nutrition targets + logging ---
   const nUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;

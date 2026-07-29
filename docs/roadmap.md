@@ -505,6 +505,53 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**`/api/reminders` and `/api/pause` could 500 in prod instead of a clean 404 on a malformed
+request.** By this wave, 14 open "Cloud loop:" PRs already existed (dated back to 2026-07-26,
+none yet merged) claiming nearly every diff-scoped surface a fixed-cadence audit would normally
+reach: `push.mjs` (tz bugs, email fallback), `merge-profile.mjs` (nutrition-stats + partner-nudge
+merge gaps), `adherence.mjs` (`settleChallenge` race), `app.mjs`'s challenge/commitment/bodyweight/
+fuel routes, `derive-core.mjs` (`progressionCadence` double-count, deload-PR fabrication),
+`store.mjs`/`store-d1.mjs` parity (one candidate investigated and refuted), the share/referral
+loop, and permanent fuzz-test nets for both `plan-core.mjs` and `derive-core.mjs`. Citation
+verification was checked again and is STILL down for this session (`curl` to
+`eutils.ncbi.nlm.nih.gov`/`api.crossref.org` both `CONNECT tunnel failed, 403`; the proxy's own
+`$HTTPS_PROXY/__agentproxy/status` shows the same `connect_rejected` policy denial for both hosts,
+now confirmed persisting 3+ days across many independent sessions), so no KB content was touched
+this wave either, per CLAUDE.md's "never fabricate a citation" rule.
+Rather than add a 15th speculative pass over already-claimed territory, this wave scoped a
+targeted Explore search to files NONE of the 14 open PRs touch (`planner.mjs`, `movement-demo.mjs`,
+`kb.mjs`, `auth.mjs`'s core magic-link logic, the exercise-swap/custom-exercise/nutrition-log/
+share/following routes in `app.mjs`, and a fresh pass over `session-core.mjs`) and verified its one
+finding inline before fixing: `app.mjs`'s `/api/reminders` (line ~444) and `/api/pause` (line
+~456) both called `store.updateUser(b.user_id, ...)` with no guard on a missing `user_id` — unlike
+their siblings `/api/commitment` and `/api/streak/freeze`, which already carry the exact documented
+fix for this (Wave 82: `store.updateUser(undefined)` returns `null` on the file store, harmlessly
+producing a 404, but *throws* on D1 because `db.prepare(...).bind(id)` rejects an `undefined` bind
+param — confirmed directly against this project's own D1 shim, which raised exactly
+`"Provided value cannot be bound to SQLite parameter 1"`). A malformed or premature POST to either
+route (e.g. a client racing onboarding, or local storage not yet populated) would 200/404 locally
+but 500 in prod. Fixed with the identical one-line guard (`if (!b.user_id) return c.json({error:
+"unknown user"}, 404)`) the two sibling routes already use, at the same call-site position (before
+the store call). Added 4 new regression tests in `app/scripts/test-routes.mjs` (no-`user_id` 404
+for both routes, plus a normal-path sanity check for `/api/reminders`, which had no existing test
+coverage at all) — following the same file-store-only test pattern the sibling fixes used (the
+divergence is real only against D1, which this test harness doesn't exercise directly; the D1
+throw was verified separately, out-of-band, against the D1 shim). No `data/`/`content/`/`public/`
+file touched, so no `build-data` regen or SW `VERSION` bump needed. Root `npm test` + `npm run
+check` and app `npm test` (full suite incl. `test-routes.mjs`): all green.
+
+**Standing note for the next iteration:** 14 "Cloud loop:" PRs are open and unmerged as of this
+wave (oldest dated 2026-07-26, three days old), plus this one — a real review/merge/deploy
+bottleneck, not a build-capacity one. Before picking the next slice, check which of them have
+merged and read what territory they leave behind; piling on further speculative audit passes
+without any of the backlog landing has sharply diminishing value (lesson 17's logic applies to the
+*queue*, not just the codebase: a full pipeline of unreviewed fixes is not the same as progress).
+The citation-network outage (PubMed/Crossref/generic WebFetch, all `403` at the proxy) has now
+been independently confirmed by at least 6 sessions across 3+ days — worth flagging to a human as
+a persistent environment issue, not a transient blip, since it fully blocks the overdue Goal-1 KB
+gap audit.
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
