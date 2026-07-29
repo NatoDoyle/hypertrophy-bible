@@ -1,7 +1,7 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
 import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek, settleChallenge } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
-import { isLuckySet, LUCKY_SET_XP, isoWeekKey } from "../../tools/derive-core.mjs";
+import { isLuckySet, LUCKY_SET_XP, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -228,6 +228,44 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const won = await settleChallenge(wonStore, "me", freshUser, Date.now());
   ok("settleChallenge: a genuine (unraced) write reports the result it actually persisted",
     won.result?.result === "win" && won.history[0]?.result === "win");
+}
+
+// --- settleChallenge (tz bug): a raw-UTC week_over check can end a west-of-UTC
+// user's challenge up to a day before their OWN local week is actually over —
+// the same class of bug PR #238 fixed for the weekly-commitment push, now fixed
+// here via isoWeekKeyLocal (tools/derive-core.mjs), shared by app.mjs's
+// propose/respond/isChallengeOpen checks and the commitment feature too.
+{
+  // 2026-06-01 is a Monday. 02:00 UTC on that Monday is 19:00 the PRIOR Sunday
+  // for a -420 (UTC-7) offset — the raw UTC calendar day has already rolled to
+  // Monday, but it's still Sunday, and still the OLD ISO week, for the user.
+  const MONDAY_EARLY_UTC = new Date("2026-06-01T02:00:00Z").getTime();
+  const MOUNTAIN = -420;
+  const localWeek = isoWeekKeyLocal(MONDAY_EARLY_UTC, MOUNTAIN);
+  ok("sanity: at this instant, raw UTC already disagrees with the user's local week (the case this test guards)",
+    isoWeekKey(new Date(MONDAY_EARLY_UTC).toISOString()) !== localWeek);
+
+  const tzStore = {
+    async getShareUserId() { return "opponent-id"; },
+    async listSessions() { return []; },
+    async updateUser(id, mutator) {
+      const cur = { profile: { challenge: { id: "c3", status: "active", partner_token: "tok-opp", week: localWeek }, tz_offset_min: MOUNTAIN } };
+      return mutator(cur);
+    },
+  };
+  const tzUser = { profile: { challenge: { id: "c3", status: "active", partner_token: "tok-opp", week: localWeek }, tz_offset_min: MOUNTAIN } };
+  const stillRunning = await settleChallenge(tzStore, "me", tzUser, MONDAY_EARLY_UTC);
+  ok("settleChallenge: a west-of-UTC user's challenge stays open while it's still their OWN local week, even though the raw UTC instant already rolled to the next calendar week",
+    stillRunning.week_over === false && stillRunning.challenge.status === "active" && stillRunning.result === null);
+
+  // Control: the SAME instant, with no tz_offset_min on the CALLING user, falls
+  // back to raw UTC (matching push.mjs's own "don't starve delivery over
+  // missing data" convention) — so it DOES read as week-over, proving the
+  // assertion above is meaningful and not just "week_over is always false".
+  const noTzUser = { profile: { challenge: { id: "c3", status: "active", partner_token: "tok-opp", week: localWeek } } };
+  const noTzResult = await settleChallenge(tzStore, "me", noTzUser, MONDAY_EARLY_UTC);
+  ok("control: without a stored tz_offset_min, the same instant falls back to raw UTC and DOES read as week-over",
+    noTzResult.week_over === true);
 }
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -505,6 +505,52 @@ something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest d
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
 
+## Audit fix (Cloud loop wave, outside the tiers above)
+**The 1v1 weekly challenge feature (#10 social) and the weekly-commitment device both stamped/
+compared their "current week" via a raw UTC instant — for anyone west of UTC, that instant can
+already read as the NEXT ISO week while it's still today locally, ending a challenge (or losing a
+commitment match) up to a day before the user's own week is actually over.** By this wave, the
+citation network was checked again first and was STILL down for this session — `curl` to
+`eutils.ncbi.nlm.nih.gov` and `api.crossref.org` both hit `CONNECT tunnel failed (403)` (confirmed
+via the proxy's own `$HTTPS_PROXY/__agentproxy/status`, whose `recentRelayFailures` shows
+`connect_rejected`/"policy denial" for both hosts, not a transient blip), and even a plain
+`WebFetch` to `https://example.com` returned 403 — the same outage several other open cloud-loop
+PRs (#238–#246) already hit and recorded, now confirmed to have persisted across many hours/many
+independent sessions. Per CLAUDE.md's "never fabricate a citation" rule, no KB content was touched
+or attempted this wave either. 9+ open PRs already claimed the obvious diff-scoped territory
+(`push.mjs`, `merge-profile.mjs`, `adherence.mjs`'s `settleChallenge` no-op-race bug, `coach.mjs`,
+`derive-core.mjs`'s `progressionCadence`/PR-deload paths, `app.js`/`share.html`/`sw.js`,
+`store.mjs`/`store-d1.mjs` parity), so this wave read the newer, less-picked-over surface instead:
+PR #238 (still open) localized `shouldPushForCommitment`'s CONSUMPTION of a stored commitment by
+the user's `tz_offset_min` — but never touched the STORAGE side (`POST /api/commitment` in
+`app.mjs`, still `isoWeekKey(new Date().toISOString())`, raw UTC) or the app's own freshness check
+(`GET /api/adherence`'s `curWeek`, same raw UTC) — so, post-#238, storage/display and push
+consumption could silently disagree near the boundary (lesson 1: a fix landed on one call site,
+not its siblings). Tracing every other raw-`isoWeekKey(now)` call site turned up the SAME pattern,
+independently, in the 1v1 challenge feature (Wave 126, unrelated to #238): `POST /api/challenge`'s
+week stamp, `isChallengeOpen`'s staleness check (both call sites — a challenger's own slot AND the
+opponent's), `POST /api/challenge/respond`'s week-freshness guard, and `settleChallenge`'s
+`week_over` (`adherence.mjs`) all read a raw UTC "now" — meaning a west-of-UTC user's challenge
+could auto-complete (or a stale invite get treated as fresh) up to a day off from their own actual
+week boundary. Fixed with one new, directly-tested pure function, `isoWeekKeyLocal(now,
+tzOffsetMin)` (`tools/derive-core.mjs`, next to `isoWeekKey`) — the same "shift the instant by the
+offset, then read its UTC fields as local fields" trick `isUserPushHour`/`isSocialPushQuietHours`/
+`taperPhase` already use, falling back to raw UTC when `tzOffsetMin` is unknown (same "don't starve
+a result over missing data" choice those siblings make) — wired into all six call sites: the
+commitment's storage and freshness check, and the challenge's propose/both isChallengeOpen
+sites/respond/settleChallenge, each localized to the CALLING/CHECKED side's own `tz_offset_min` (a
+challenger and opponent can be in different timezones; each side's own staleness is judged in its
+own local week). 3 new unit tests for `isoWeekKeyLocal` itself (`tools/test-derive.mjs`, a real
+Monday-02:00-UTC boundary case proving raw UTC and a -420 offset disagree, plus east-of-UTC and
+missing-tz fallback controls), 3 new `settleChallenge` tests (`app/scripts/test-adherence.mjs`,
+proving a west-of-UTC challenge stays open past the raw-UTC boundary and a control without
+`tz_offset_min` correctly falls back to week-over), and 3 new HTTP-level wiring tests
+(`app/scripts/test-routes.mjs`, confirming `tz_offset_min` actually flows through the real
+propose/commitment routes and that storage and `/api/adherence`'s read agree). No `data/`/
+`content/`/`public/` file touched, so no `build-data` regen or SW `VERSION` bump needed. Root
+`npm test` + `npm run check` and app `npm test` (full suite incl. `test-routes.mjs` and the D1
+parity harness): all green (590 app-side checks, zero failures).
+
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
 wave (both gates green, deployed + prod-smoked when an authed session; PR-only in the cloud),
