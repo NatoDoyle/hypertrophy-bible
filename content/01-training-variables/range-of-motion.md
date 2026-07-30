@@ -12,7 +12,7 @@
 
 **Full ROM, with intent on the stretch.** For most exercises, the biggest bang comes from owning the deep, lengthened position — the bottom of a Romanian deadlift, the stretch of a chest fly or deep press, the bottom of an overhead triceps extension, a deep squat for the quads. Lower under control into that position and reverse without bouncing.
 
-**Choose exercises by where they load the muscle.** Two exercises for the same muscle can load it in very different positions. Where hypertrophy is the goal, favor the option that challenges the muscle when it's *long*:
+**Choose exercises by where they load the muscle.** Two exercises for the same muscle can load it in very different positions — this is the single biggest lever in [exercise selection](exercise-selection-and-order.md). Where hypertrophy is the goal, favor the option that challenges the muscle when it's *long*:
 
 | Muscle | Lengthened-biased pick | Shortened-biased pick |
 |--------|------------------------|-----------------------|

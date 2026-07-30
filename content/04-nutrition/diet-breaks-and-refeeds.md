@@ -12,7 +12,7 @@
 
 **Diet break** = a planned pause where you eat at **maintenance** (not a surplus, not a binge) for ~1–2 weeks. It lets hunger hormones, training performance, and (partly) metabolic rate recover, and gives a psychological reset before resuming the deficit.
 
-**Refeed** = a shorter version — 1–2 days of higher carbohydrate intake at roughly maintenance — used to top up muscle glycogen and restore gym performance during a longer dieting stretch.
+**Refeed** = a shorter version — 1–2 days of higher [carbohydrate](carbohydrates-fat-and-hydration.md) intake at roughly maintenance — used to top up muscle glycogen and restore gym performance during a longer dieting stretch.
 
 **How to program them:**
 - On a cut lasting more than ~6–8 weeks, insert a diet break at maintenance; shorter cuts may not need one.

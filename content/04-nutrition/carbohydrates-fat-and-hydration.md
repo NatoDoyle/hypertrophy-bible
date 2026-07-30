@@ -3,14 +3,14 @@
 > **TL;DR** — After you've set **calories** and **protein**, carbohydrates and fat are mostly about **fueling training and keeping you healthy** — split the remaining calories between them by preference and performance. Carbs power hard resistance training and aid recovery; dietary fat supports hormones and general health (don't crash it too low). Stay **hydrated** — even mild dehydration can impair performance. These are supporting players; energy balance and protein are the stars.
 
 **Quick recommendations**
-- Set **calories and protein first**, then divide the rest between carbs and fat by preference. **[Grade C]**
+- Set **[calories](energy-balance.md) and [protein](protein.md) first**, then divide the rest between carbs and fat by preference. **[Grade C]**
 - Eat **enough carbohydrate to train hard** — roughly 3–5 g/kg/day suits most lifters; more for high volume. **[Grade C]**
 - Keep **fat ≥ ~0.5 g/kg/day** for hormones and health; don't crash it for the sake of carbs. **[Grade C]**
 - **Hydrate**: drink to thirst plus around training; mild dehydration hurts performance. **[Grade C]**
 
 ## Practical Application
 
-**Carbohydrate** is the main fuel for the glycolytic work of hard sets. Adequate carbs keep muscle glycogen topped up, which supports training quality (more good reps → more effective volume) and recovery. Very low-carb diets are compatible with muscle gain if protein and calories are adequate, but most lifters train better with ample carbs.
+**Carbohydrate** is the main fuel for the glycolytic work of hard sets. Adequate carbs keep muscle glycogen topped up, which supports training quality (more good reps → more effective volume) and recovery. Very low-carb diets are compatible with muscle gain if protein and calories are adequate, but most lifters train better with ample carbs — and if you also run or cycle, [cardio and concurrent training](../03-programming/cardio-and-concurrent-training.md) raises that fuel requirement further. *When* you eat them matters far less than the daily total; see [nutrient timing](nutrient-timing.md).
 
 **Fat** should not be driven too low. Dietary fat supports hormone production (including testosterone) and the absorption of fat-soluble vitamins; a floor around 0.5 g/kg/day (often more) is prudent. Beyond the floor, fat is simply a calorie source to fill your energy target.
 

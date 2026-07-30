@@ -259,9 +259,9 @@ check("buildGraph throws on duplicate slugs", () => {
   assert.throws(() => buildGraph([rec("a"), rec("a")]), /duplicate/i);
 });
 
-check("GATE defaults: minOut 2, enforceMinOut false until Wave 160", () => {
+check("GATE: min out-degree 2, ENFORCED (flipped in Wave 160 once every page cleared the bar)", () => {
   assert.equal(GATE.minOut, 2);
-  assert.equal(GATE.enforceMinOut, false);
+  assert.equal(GATE.enforceMinOut, true); // never silently relax this to unblock a thin new page
 });
 
 // ---------- formatReasons ----------

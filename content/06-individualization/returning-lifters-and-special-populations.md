@@ -13,7 +13,7 @@
 **Comebacks are fast.** Previously-trained muscle regrows quickly because the adaptations that support it (notably retained myonuclei) persist through detraining (see [Foundations → Muscle Memory](../00-foundations/satellite-cells-and-muscle-memory.md)). Practically, a returning lifter should:
 - **Start moderately** (well below previous bests to re-groove technique and spare connective tissue),
 - **Progress aggressively** over the first weeks as strength and size snap back,
-- **Expect to reach former levels much faster** than the original build took.
+- **Expect to reach former levels much faster** than the original build took — how much you lost in the first place is covered in [detraining and maintenance](../05-recovery/detraining-and-maintenance.md).
 
 A caution: while muscle and strength return quickly, **tendons and joints re-adapt more slowly**, so resist the urge to immediately load to old maxes — ramp the loading to let connective tissue catch up and avoid injury.
 

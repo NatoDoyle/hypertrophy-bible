@@ -10,13 +10,13 @@
 
 ## Practical Application
 
-**Regional (non-uniform) hypertrophy.** Growth along a muscle isn't perfectly even — some exercises and angles emphasize the proximal, mid-belly, or distal portions, or one head over another (e.g. the two heads of the biceps, the regions of the quadriceps). The practical use is simple and already baked into the [muscle guides](../02-muscle-guides/index.md): **train a muscle's different functions and through varied angles** to develop it fully, rather than assuming one exercise maximally grows every part.
+**Regional (non-uniform) hypertrophy.** Growth along a muscle isn't perfectly even — some exercises and angles emphasize the proximal, mid-belly, or distal portions, or one head over another (e.g. the two heads of the [biceps](../02-muscle-guides/arms.md), the regions of the quadriceps — see [legs](../02-muscle-guides/legs.md)). The practical use is simple and already baked into the [muscle guides](../02-muscle-guides/index.md): **train a muscle's different functions and through varied angles** to develop it fully, rather than assuming one exercise maximally grows every part. That's a job for [exercise selection](../01-training-variables/exercise-selection-and-order.md), not for micro-adjusting any single lift.
 
 **Architectural adaptation.** Beyond getting bigger, muscle fibers change shape:
 - **Fascicle length** (how long the fiber bundles are) tends to increase with **eccentric-emphasis and long-length training**, which is associated with force production at longer lengths and may relate to injury resilience.
 - **Pennation angle** (the angle fibers attach relative to the tendon) tends to increase with hypertrophy, packing more contractile tissue into the same area.
 
-These are second-order details. They justify **variety and full-range, stretch-inclusive training** — but they're not knobs to obsess over. Get the [training variables](../01-training-variables/index.md) right first.
+These are second-order details. They justify **variety and full-range, stretch-inclusive training** — see [range of motion](../01-training-variables/range-of-motion.md) for how to apply that — but they're not knobs to obsess over. Get the [training variables](../01-training-variables/index.md) right first.
 
 ## The Evidence
 

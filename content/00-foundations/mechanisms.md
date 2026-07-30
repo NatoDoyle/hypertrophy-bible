@@ -9,11 +9,11 @@
 
 ## Practical Application
 
-Everything in [Training Variables](../01-training-variables/index.md) is downstream of one idea: **create high mechanical tension in the target muscle, repeatedly, and recover from it.** That's why volume (how many hard sets), proximity to failure (how much tension the fibers actually experience), and range of motion (tension at long muscle lengths) are the variables that move the needle — and why load itself is flexible, since near failure even lighter loads generate high tension in the working fibers.
+Everything in [Training Variables](../01-training-variables/index.md) is downstream of one idea: **create high mechanical tension in the target muscle, repeatedly, and recover from it.** That's why [volume](../01-training-variables/volume.md) (how many hard sets), [proximity to failure](../01-training-variables/proximity-to-failure.md) (how much tension the fibers actually experience), and [range of motion](../01-training-variables/range-of-motion.md) (tension at long muscle lengths) are the variables that move the needle — and why load itself is flexible, since near failure even lighter loads generate high tension in the working fibers.
 
 The corollary is what *not* to optimize:
 
-- **Soreness (DOMS) is not the target.** It reflects unaccustomed work and muscle damage, not the size of the growth stimulus.
+- **Soreness (DOMS) is not the target.** It reflects unaccustomed work and muscle damage, not the size of the growth stimulus — see [muscle soreness](../05-recovery/muscle-soreness-doms.md) for what it does and doesn't tell you, and [training myths](../08-myths/training-myths.md) for the "no pain, no gain" version of this error.
 - **The pump is not the target.** It's a transient metabolic/fluid effect; pleasant and possibly a minor contributor, but not something to chase at the expense of tension and volume.
 
 ## The Evidence
@@ -30,7 +30,7 @@ The corollary is what *not* to optimize:
 
 - **The exact molecular chain from tension to growth is still being mapped.** We know tension is primary and involves mechanosensing and mTOR-related signaling, but the full pathway and the relative weight of each input are active research areas[^roberts-2023-mechanisms-review].
 - **Metabolic stress vs tension is hard to isolate** in practice, because hard sets create both. This is fine — training hard delivers the primary stimulus regardless.
-- **Muscle damage is not required and may be counterproductive in excess**, because recovering from damage competes with adaptation and limits training frequency and volume (see [Recovery → DOMS](../05-recovery/index.md)).
+- **Muscle damage is not required and may be counterproductive in excess**, because recovering from damage competes with adaptation and limits training [frequency](../01-training-variables/frequency.md) and volume (see [muscle soreness](../05-recovery/muscle-soreness-doms.md)).
 - **Acute MPS is a poor proxy for long-term growth** — don't over-interpret single-session synthesis studies.
 
 ## Backing Data

@@ -3,7 +3,7 @@
 > **TL;DR** — Nutrient timing matters far less than the supplement industry claims. There is **no narrow "anabolic window"** that forces you to slam protein within minutes of training — the window is **hours wide**. What actually matters is hitting your **total daily protein and calories**, and having protein within a few hours on *either* side of training. If you trained fasted, having a protein meal reasonably soon afterward is sensible; otherwise, don't stress the clock.
 
 **Quick recommendations**
-- Prioritize **total daily protein and calories** — timing is a minor refinement. **[Grade A]**
+- Prioritize **total daily [protein](protein.md) and calories** — timing is a minor refinement. **[Grade A]**
 - Eat protein **within a few hours before or after** training; the exact minute is unimportant. **[Grade B]**
 - If you train **fasted**, have a protein-containing meal **reasonably soon after** (within a couple of hours). **[Grade C]**
 - Skip anxiety about **intra-workout shakes and fast carbs** unless training twice a day or very glycogen-depleting sessions. **[Grade C]**
@@ -12,7 +12,7 @@
 
 The practical rule is simple: **anchor a protein-containing meal within a few hours around your session.** Because a typical meal's amino acids remain elevated in the blood for hours, a pre-workout meal already covers the post-workout period for most people. If you train first thing fasted, don't leave a large gap before eating; if you ate beforehand, there's no urgency to eat the instant you rack the bar.
 
-What *doesn't* deserve worry for the general lifter: precise post-workout timing to the minute, fast-digesting "window" carbs, or intra-workout supplements. These matter mainly at the margins — multiple sessions per day, very long/depleting training, or competitive contexts.
+What *doesn't* deserve worry for the general lifter: precise post-workout timing to the minute, fast-digesting "window" [carbs](carbohydrates-fat-and-hydration.md), or intra-workout supplements. These matter mainly at the margins — multiple sessions per day, very long/depleting training, or competitive contexts. The urgency you've been sold here belongs to the same family as the other [timing and hormone myths](../08-myths/timing-and-hormone-myths.md): a real but tiny effect inflated into a rule.
 
 ## The Evidence
 
