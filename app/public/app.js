@@ -8,6 +8,7 @@ const nav = $("#nav");
 let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
+let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
 
 // Plain-English muscle names — a beginner expects "shoulders", not "side-delts".
 const MUSCLE_LABEL = {
@@ -41,7 +42,19 @@ async function learnData() {
 }
 
 // Deep-link into the in-app beginner library (content/09-getting-started).
-function openLearn(slug) { learnSlug = slug || null; tab = "learn"; render(); }
+// Learn→Learn navigation pushes the current page so ‹ Back walks the trail; arriving
+// from any other tab (helpDot mid-workout, Coach links) starts a fresh trail.
+function openLearn(slug) {
+  if (tab === "learn" && learnSlug && slug && slug !== learnSlug) {
+    learnStack.push(learnSlug);
+    if (learnStack.length > 20) learnStack.shift();
+  } else if (tab !== "learn") {
+    learnStack = [];
+  }
+  learnSlug = slug || null;
+  tab = "learn";
+  render();
+}
 // Wire any [data-learn="slug"] element on the current screen to open that page.
 function wireLearnLinks() { app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn)); }
 // A small inline "?" that opens a learn page — decodes jargon in place.
@@ -2008,6 +2021,7 @@ async function renderCoach() {
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
 async function renderLearn() {
   learnSlug = null;
+  learnStack = [];
   app.innerHTML = `<h1>Learn</h1><p class="muted">Loading…</p>`;
   let LEARN_INDEX;
   try { ({ LEARN_INDEX } = await learnData()); }
@@ -2039,18 +2053,39 @@ async function renderLearnPage(slug) {
   // session running. The way back must be one obvious tap — not "find the Today
   // tab, then find Resume" while standing at a bench between sets.
   const workoutBack = sess ? `<button class="btn" id="backToWorkout">◀ Back to workout</button>` : "";
-  app.innerHTML = `${workoutBack}<button class="btn ghost" id="learnback">‹ All topics</button>
+  // The page's place in the knowledge network: its ranked direct connections, plus
+  // "also connected" pages that share evidence/neighbours without a direct link yet.
+  // Every row states WHY it's related — real links and shared studies, never a score.
+  const connRow = ([s, why]) => {
+    const t = LEARN_PAGES[s];
+    return t ? `<button class="choice" data-learn="${esc(s)}"><span style="flex:1"><b>${esc(t.title)}</b><br><span class="muted">${esc(why)}</span></span><span>›</span></button>` : "";
+  };
+  const connected = (pg.connected || []).map(connRow).join("");
+  const suggested = (pg.suggested || []).map(connRow).join("");
+  const connCard = connected || suggested
+    ? `<h2>Connected</h2><div class="card">${connected}${suggested ? `<p class="muted" style="margin:10px 2px 6px">Also connected — no direct link yet:</p>${suggested}` : ""}</div>`
+    : "";
+  const backLabel = learnStack.length ? "‹ Back" : "‹ All topics";
+  const backLabel2 = learnStack.length ? "‹ Back" : "‹ Back to all topics";
+  app.innerHTML = `${workoutBack}<button class="btn ghost" id="learnback">${backLabel}</button>
     <h1>${esc(pg.title)}</h1>
     ${pg.tldr ? `<div class="card tldr"><b>In short</b> ${pg.tldr}</div>` : ""}
     <div class="learn">${pg.html}</div>
+    ${connCard}
     ${workoutBack ? `<button class="btn" id="backToWorkout2">◀ Back to workout</button>` : ""}
-    <button class="btn ghost" id="learnback2">‹ Back to all topics</button>`;
-  const backToPlayer = () => { tab = "today"; learnSlug = null; nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab)); renderPlayer(0); };
+    <button class="btn ghost" id="learnback2">${backLabel2}</button>`;
+  const backToPlayer = () => { tab = "today"; learnSlug = null; learnStack = []; nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab)); renderPlayer(0); };
   if ($("#backToWorkout")) $("#backToWorkout").onclick = backToPlayer;
   if ($("#backToWorkout2")) $("#backToWorkout2").onclick = backToPlayer;
-  $("#learnback").onclick = renderLearn;
-  $("#learnback2").onclick = renderLearn;
-  wireLearnLinks(); // in-page cross-links between pages
+  // ‹ Back walks the traversal trail one page at a time (without re-pushing);
+  // with no trail left it returns to the topic list.
+  const goBack = () => {
+    if (learnStack.length) { learnSlug = learnStack.pop(); renderLearnPage(learnSlug); }
+    else renderLearn();
+  };
+  $("#learnback").onclick = goBack;
+  $("#learnback2").onclick = goBack;
+  wireLearnLinks(); // in-page cross-links between pages + the Connected card
   window.scrollTo(0, 0);
 }
 
@@ -2070,7 +2105,7 @@ function render() {
   else if (tab === "learn") { learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
-nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") learnSlug = null; render(); });
+nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") { learnSlug = null; learnStack = []; } render(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 render();
