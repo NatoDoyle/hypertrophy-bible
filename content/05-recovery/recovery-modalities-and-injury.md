@@ -5,20 +5,20 @@
 **Quick recommendations**
 - Don't rely on **foam rolling/massage** to build muscle — they help comfort and mobility, not growth. **[Grade B]**
 - **Avoid routine post-lifting ice baths** if muscle growth is the goal. **[Grade B]**
-- The best recovery is **sleep + nutrition + appropriate load** — not gadgets. **[Grade B]**
+- The best recovery is **sleep + nutrition + appropriate load** — not gadgets; when load is the problem, take a real [deload or rest day](deloads-and-rest-days.md). **[Grade B]**
 - Around injury: **reduce load/range to a pain-tolerable level and keep training** the rest of the body. **[Grade C]**
 
 ## Practical Application
 
 **Modalities — keep expectations low.** Foam rolling and massage can reduce the *sensation* of tightness and may transiently improve range of motion, which some people find useful before or after training. But they are comfort and mobility tools, not hypertrophy tools — don't let them crowd out the things that actually work.
 
-**Cold-water immersion — time and place.** Ice baths can dampen soreness and speed *acute* recovery, which is why athletes use them between same-day competitions. But routinely icing after resistance training interferes with the adaptive signaling you're trying to create — so if muscle growth is your goal, skip the post-workout ice bath.
+**Cold-water immersion — time and place.** Ice baths can dampen [soreness](muscle-soreness-doms.md) and speed *acute* recovery, which is why athletes use them between same-day competitions. But routinely icing after resistance training interferes with the adaptive signaling you're trying to create — so if muscle growth is your goal, skip the post-workout ice bath.
 
 **Injury management — modify, don't martyr.** When something hurts:
 - **Reduce load and/or range** to a level that's pain-free or only mildly uncomfortable, rather than pushing through sharp pain.
 - **Keep training everything else** — an injured shoulder doesn't require skipping leg training; maintaining overall training preserves muscle and momentum.
 - **Substitute exercises** that load the target muscle without provoking the painful joint (machines/cables often help).
-- **Seek professional assessment** for anything severe, sharp, or persistent. This Bible is not medical advice.
+- **Seek professional assessment** for anything severe, sharp, or persistent — [pain and warning signs](../09-getting-started/pain-and-warning-signs.md) covers which sensations to stop for. This Bible is not medical advice.
 
 ## The Evidence
 

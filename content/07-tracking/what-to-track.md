@@ -14,7 +14,7 @@
 
 | Tier | Metrics | How to read them |
 |------|---------|------------------|
-| Leading (actionable) | Load, reps, RIR, weekly sets | Are my lifts progressing at target effort? Adjust the program from this. |
+| Leading (actionable) | Load, reps, [RIR](rpe-rir-in-practice.md), weekly sets | Are my lifts progressing at target effort? Adjust the program from this. |
 | Lagging (outcome) | Bodyweight trend, tape measurements, photos | Am I actually growing? Judge over 4–12+ weeks. |
 
 **Steer with performance.** If your load and reps on key lifts are climbing over weeks at a controlled effort (RIR), you're almost certainly building muscle — this is the fastest, most reliable feedback. **Volume** (weekly hard sets) tells you whether you're doing enough work; **RIR** tells you whether it's hard enough.

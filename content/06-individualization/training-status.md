@@ -14,7 +14,7 @@
 |-------|-------------|-------------|----------|
 | Beginner (0–1 yr) | Lower (~8–12 sets/muscle/wk) | Add load/reps most sessions | Technique, consistency, habit |
 | Intermediate (1–3 yr) | Moderate–high | Double progression, deloads | Sufficient volume, ~2× frequency |
-| Advanced (3+ yr) | High, individualized | Autoregulation, specialization | Bringing up weak points, fatigue management |
+| Advanced (3+ yr) | High, individualized | Autoregulation, specialization | Bringing up [weak points](../03-programming/weak-point-prioritization.md), fatigue management |
 
 **Why it changes.** Beginners are far from their genetic ceiling, so almost any progressive stimulus works and recovery is quick — over-complicating things or piling on volume just adds fatigue without extra benefit. Advanced lifters are close to their ceiling; the easy gains are gone, so they need more (and smarter) volume, more precise progression, and prioritization of lagging muscles to squeeze out slow gains.
 

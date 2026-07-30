@@ -6,7 +6,7 @@
 - Weight claims by their **evidence grade** (A→D) and by **replication across independent groups**, not by how exciting they sound. **[Grade C]**
 - Be skeptical of **single studies and fashionable findings** — wait for replication before overhauling your training. **[Grade C]**
 - Treat **effect sizes as usually small** — most training-variable tweaks change outcomes modestly, not dramatically. **[Grade C]**
-- Trust **your own tracked results** over any study when they conflict (see [Tracking](../07-tracking/index.md)). **[Grade C]**
+- Trust **your own tracked results** over any study when they conflict — [what to track](../07-tracking/what-to-track.md) covers the few numbers worth keeping. **[Grade C]**
 
 ## Practical Application
 
@@ -21,7 +21,7 @@
 | **Independent replication** (different research groups agree) | Much stronger than one group repeating itself |
 | **Small effect size** | Real but minor — don't reorganize your program around it |
 
-**The practical filter:** the *fundamentals* (do enough hard volume, eat enough protein, progress over time, sleep) are Grade A and won't change. The *details* people argue about online (exact RIR, lengthened partials, tempo, timing) are mostly Grade B–D with small effects — worth applying, not worth agonizing over. When a flashy new study contradicts a large body of evidence, the large body usually wins until the finding replicates.
+**The practical filter:** the *fundamentals* (do enough hard [volume](../01-training-variables/volume.md), eat enough [protein](../04-nutrition/protein.md), progress over time, [sleep](../05-recovery/sleep.md)) are Grade A and won't change. The *details* people argue about online (exact RIR, lengthened partials, tempo, timing) are mostly Grade B–D with small effects — worth applying, not worth agonizing over. When a flashy new study contradicts a large body of evidence, the large body usually wins until the finding replicates. This filter is also the antidote to most [training myths](../08-myths/training-myths.md): they survive on confident storytelling, not on graded evidence.
 
 ## The Evidence
 

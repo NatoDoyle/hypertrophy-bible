@@ -15,6 +15,8 @@ keeps effective, recoverable volume high.
 | [Volume Progression & Deloads](volume-progression-and-deloads.md) | Ramping MEV→MRV across a mesocycle, then deloading | ✅ |
 | [Minimalist, Low-Volume & High-Frequency Training](minimalist-and-low-volume-training.md) | Growing on little, done hard; low volume + high frequency + high effort; when it fits | ✅ |
 | [Exercise Variation & Specialization](variation-and-specialization.md) | How much novelty helps; bringing up lagging muscles; fatigue management | ✅ |
+| [Weak-Point Prioritization](weak-point-prioritization.md) | Diagnosing a lagging muscle and buying it volume without wrecking the rest | ✅ |
+| [Long-Term & Annual Planning](long-term-and-annual-planning.md) | Stringing mesocycles into years; gaining/cutting phases and realistic multi-year expectations | ✅ |
 | [Warm-Ups](warm-up.md) | General warm-up + ramp-up sets; warming up without pre-fatigue | ✅ |
 | [Cardio & Concurrent Training](cardio-and-concurrent-training.md) | The interference effect, programming cardio, cardio for fat loss | ✅ |
 | [Program Templates](program-templates.md) | Beginner / intermediate / advanced full programs (backed by `data/programs/`) | ✅ |

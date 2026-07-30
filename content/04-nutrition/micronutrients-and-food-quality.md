@@ -13,11 +13,11 @@
 **Micronutrients** (vitamins and minerals) are essential for health and for the physiological machinery of training and recovery — but their role in hypertrophy is **permissive, not additive**: being deficient can hold you back, while being replete doesn't push you ahead of adequate. So the goal is *sufficiency*, achieved by eating a varied diet rich in whole foods, not megadosing.
 
 **Food quality** earns its place through second-order effects that genuinely influence results:
-- **Satiety and adherence** — whole, high-fiber, high-protein foods keep you full, which makes hitting your calorie and protein targets easier (especially when cutting).
+- **Satiety and adherence** — whole, high-fiber, high-protein foods keep you full, which makes hitting your [calorie](energy-balance.md) and protein targets easier (especially when [building muscle in a deficit](building-muscle-in-a-deficit.md)).
 - **Micronutrient and fiber coverage** — whole foods deliver the vitamins, minerals, and fiber that processed foods often lack.
 - **Digestion and training comfort** — adequate fiber and hydration support gut health and consistent energy.
 
-**Practical build:** lean proteins at each meal, plenty of vegetables and some fruit, whole-grain and starchy carbs around training, and healthy fats — then a modest allowance (~10–20% of calories) for less nutrient-dense foods you enjoy, which aids long-term adherence. A basic **vitamin D** check is worthwhile for those with little sun exposure, and **iron** for menstruating or plant-based individuals, since these deficiencies are common and impair performance.
+**Practical build:** lean proteins at each meal, plenty of vegetables and some fruit, whole-grain and starchy carbs around training, and healthy fats — then a modest allowance (~10–20% of calories) for less nutrient-dense foods you enjoy, which aids long-term adherence. A basic **vitamin D** check is worthwhile for those with little sun exposure, and **iron** for menstruating or plant-based individuals, since these deficiencies are common and impair performance — correcting a real deficiency is the one place a [supplement](supplements.md) reliably earns its keep.
 
 ## The Evidence
 

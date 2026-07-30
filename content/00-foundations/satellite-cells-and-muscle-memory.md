@@ -11,7 +11,7 @@
 
 The practical payoff of this biology is about **detraining and comebacks**:
 
-- **A break doesn't reset you.** After illness, injury, or a busy life stretch, muscle you've lost tends to come back faster than the time it originally took to build — so returning lifters should use an accelerated ramp (start below previous bests, add load/volume quickly as technique and tissue re-adapt) rather than a beginner's slow build.
+- **A break doesn't reset you.** After illness, injury, or a busy life stretch, muscle you've lost tends to come back faster than the time it originally took to build — so [returning lifters](../06-individualization/returning-lifters-and-special-populations.md) should use an accelerated ramp (start below previous bests, add load/volume quickly as technique and tissue re-adapt) rather than a beginner's slow build. How much you actually lose, and how fast, is covered in [detraining and maintenance](../05-recovery/detraining-and-maintenance.md).
 - **"Use it or lose it" is only half true.** You lose *size* with detraining, but not the underlying adaptation that lets you regain it quickly.
 - **Consistency still wins.** Muscle memory shortens comebacks; it does not replace the need to keep training to hold and add muscle.
 
@@ -30,7 +30,7 @@ The practical payoff of this biology is about **detraining and comebacks**:
 - **Human myonuclear permanence is contested.** The retention findings are strongest in animal models; whether humans keep all overload-gained myonuclei indefinitely is not fully settled — but the *practical* observation that trained people regain muscle fast is robust.
 - **Satellite cells aren't the whole story.** Some hypertrophy can occur without large myonuclear addition up to a point (each nucleus can expand its "domain" somewhat); satellite cells become more important for *large* growth.
 - **You can't meaningfully "boost" satellite cells** with supplements or tricks; they respond to genuine training stimulus and recovery.
-- **Muscle memory has limits and a time course** that isn't precisely defined — very long layoffs and aging may erode the advantage.
+- **Muscle memory has limits and a time course** that isn't precisely defined — very long layoffs and aging may erode the advantage, and where you sit on that curve depends on your [training status](../06-individualization/training-status.md).
 
 ## Backing Data
 None (conceptual). Returning-lifter programming is addressed in [Individualization](../06-individualization/index.md) and [Programming](../03-programming/index.md).

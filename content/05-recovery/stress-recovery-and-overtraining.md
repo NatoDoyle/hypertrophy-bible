@@ -12,7 +12,7 @@
 
 **One recovery budget, many withdrawals.** Training is a stressor you adapt to, but it competes with work stress, sleep debt, illness, and dieting for the same recovery resources. Practically, that means:
 - In **high-stress life periods**, deliberately reduce training volume or intensity — the same program that grew you when life was calm may bury you when it isn't.
-- When **dieting or sleep-deprived**, expect reduced recovery capacity and don't also push volume to new highs.
+- When **dieting or [sleep](sleep.md)-deprived**, expect reduced recovery capacity and don't also push volume to new highs.
 
 **Overreaching vs overtraining.** Short-term hard overreaching (a planned push before a deload) is a normal training tool. *Overtraining syndrome* — a prolonged, serious performance decline with systemic symptoms — is uncommon and usually the product of chronic excessive load with inadequate recovery over weeks to months. The practical takeaway is not fear of hard training, but respect for cumulative fatigue: back off before it becomes a hole.
 

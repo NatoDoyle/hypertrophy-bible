@@ -10,7 +10,7 @@
 
 ## Practical Application
 
-**Rest days** let local and systemic fatigue dissipate so your next hard session is actually hard. How many you need depends on your split and volume — a 3-day full-body plan has 4 rest days built in; a 6-day split has one. Either works if total volume is recoverable.
+**Rest days** let local and systemic fatigue dissipate so your next hard session is actually hard. How many you need depends on your [split](../03-programming/splits.md) and volume — a 3-day full-body plan has 4 rest days built in; a 6-day split has one. Either works if total volume is recoverable.
 
 **Deloads** are planned reductions in training stress, typically a week, used to shed accumulated fatigue before it compromises performance or joints. Two approaches:
 - **Proactive:** schedule a deload every ~4–8 weeks (shorter for high-volume/advanced blocks).

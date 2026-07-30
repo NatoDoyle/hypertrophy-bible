@@ -12,7 +12,7 @@
 
 | Myth | Reality |
 |------|---------|
-| Crunches burn belly fat (spot reduction) | Fat loss is systemic; local training doesn't preferentially burn local fat |
+| Crunches burn belly fat (spot reduction) | Fat loss is systemic and set by [energy balance](../04-nutrition/energy-balance.md); local training doesn't preferentially burn local fat |
 | "Toning" is a special kind of training | It's just muscle gain + fat loss revealing the muscle |
 | Stop lifting and muscle turns to fat | Muscle and fat are different tissues; detraining shrinks muscle, and separate fat gain (from eating more than you burn) can occur simultaneously |
 | Women get bulky from lifting | Large muscle gain is slow/hard; female physiology makes it especially unlikely |

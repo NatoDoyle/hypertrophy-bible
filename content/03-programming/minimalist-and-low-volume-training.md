@@ -11,14 +11,14 @@
 
 ## Practical Application
 
-**The core idea.** Weekly volume is the main growth lever, but you don't have to deliver it in a few punishing sessions. Split it into **many small, high-quality doses**. Training a muscle with **2–4 hard sets, four to six times a week**, reaches the same weekly volume as **10–15 sets in two brutal sessions** — but every set is fresh, technique holds, and no single workout wrecks you. This is what "low volume, high frequency, high intensity" means in practice: *low per session, adequate per week, high effort every time.*
+**The core idea.** Weekly [volume](../01-training-variables/volume.md) is the main growth lever, but you don't have to deliver it in a few punishing sessions. Split it into **many small, high-quality doses**. Training a muscle with **2–4 hard sets, four to six times a week**, reaches the same weekly volume as **10–15 sets in two brutal sessions** — but every set is fresh, technique holds, and no single workout wrecks you. This is what "low volume, high frequency, high intensity" means in practice: *low per session, adequate per week, high effort every time.*
 
 **A minimalist week (example).** Full-body, 4–6 short sessions/week, ~2 hard sets per major muscle per session:
 - Each session: one hard set (to failure) of a squat or hinge, a push, a pull, plus one or two isolations for lagging areas.
 - 20–30 minutes; every set taken to a genuine 0–2 reps in reserve.
 - Across the week that's ~8–12 hard sets per muscle — squarely in the productive range — with none of the per-session grind.
 
-**Why the effort matters more here.** With lots of volume, a few sub-maximal sets don't hurt much — other sets pick up the slack. With *little* volume, **each set is a larger share of the total stimulus**, so leaving reps in the tank wastes a bigger fraction of your training. Minimalist training and high effort are a package deal: **low volume demands high intensity of effort.**
+**Why the effort matters more here.** With lots of volume, a few sub-maximal sets don't hurt much — other sets pick up the slack. With *little* volume, **each set is a larger share of the total stimulus**, so leaving reps in the tank wastes a bigger fraction of your training. Minimalist training and high effort are a package deal: **low volume demands high intensity of effort** — see [proximity to failure](../01-training-variables/proximity-to-failure.md) for how close is close enough.
 
 **Where it shines:**
 - **Time-constrained lifters** — real training in 20–30 min, most days.
@@ -37,7 +37,7 @@
 
 **Effort compensates for low volume.** Proximity to failure matters more the less volume you do: training closer to failure produces comparable or greater hypertrophy per set[^refalo-2023-failure-meta][^grgic-2022-failure-meta], and the volume-and-effort dose-response makes clear that low-volume work must be **high-effort** to be worth it[^robinson-2024-failure-dose-response]. **[Grade B]** In minimalist training, sub-maximal sets are a wasted opportunity you can't afford.
 
-**Frequency is the delivery mechanism, not an independent driver.** At **matched weekly volume**, higher frequency produces **similar hypertrophy**[^schoenfeld-2019-frequency-meta][^grgic-2018-frequency-strength] **[Grade A]** — so training more often isn't inherently more anabolic. Its value here is **logistical**: high frequency lets you keep each session's volume low while still accumulating an adequate weekly total with fresh, high-quality sets. That's the whole engine behind the minimalist approach — *frequency distributes the dose so the dose can stay small.*
+**Frequency is the delivery mechanism, not an independent driver.** At **matched weekly volume**, higher [frequency](../01-training-variables/frequency.md) produces **similar hypertrophy**[^schoenfeld-2019-frequency-meta][^grgic-2018-frequency-strength] **[Grade A]** — so training more often isn't inherently more anabolic. Its value here is **logistical**: high frequency lets you keep each session's volume low while still accumulating an adequate weekly total with fresh, high-quality sets. That's the whole engine behind the minimalist approach — *frequency distributes the dose so the dose can stay small.*
 
 **Putting it together.** "Low volume, high frequency, high intensity" is internally consistent with the evidence: keep per-session volume low (efficiency, freshness), use frequency to reach a productive weekly total (frequency is volume-neutral at matched volume), and push effort high (low volume needs it). What the evidence does **not** support is the idea that this arrangement out-builds ordinary moderate-volume training at the same weekly volume — the honest claim is *equivalent growth, delivered more efficiently and sustainably*, with lower volumes being a deliberate, effective trade toward time and recovery rather than a superior route to maximum size.
 

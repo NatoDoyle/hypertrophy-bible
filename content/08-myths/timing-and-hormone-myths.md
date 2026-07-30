@@ -12,7 +12,7 @@
 
 | Myth | Reality |
 |------|---------|
-| Anabolic window — slam protein post-workout | The window is hours wide; daily protein and calories dominate |
+| Anabolic window — slam protein post-workout | The window is hours wide; daily [protein](../04-nutrition/protein.md) and calories dominate |
 | Training testosterone/GH spikes build muscle | Acute hormonal spikes don't meaningfully drive hypertrophy |
 | Fasted training kills gains | Fine if daily protein/calories are met |
 | No carbs at night / carbs after 6pm store as fat | Timing of carbs doesn't determine fat gain; total energy does |

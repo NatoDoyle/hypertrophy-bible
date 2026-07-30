@@ -5,11 +5,11 @@
 **Quick recommendations**
 - Treat alcohol as a **recovery and progress cost** — occasional and modest is fine; frequent/heavy is not. **[Grade B]**
 - **Don't drink heavily right after training** — it blunts the post-workout muscle-building response. **[Grade B]**
-- Account for its **empty calories** and its **disruption of sleep** (see [Recovery → Sleep](../05-recovery/index.md)). **[Grade C]**
+- Account for its **empty calories** — they count toward [energy balance](energy-balance.md) like any other — and its **disruption of [sleep](../05-recovery/sleep.md)**. **[Grade C]**
 
 ## Practical Application
 
-Alcohol undermines muscle building through several routes at once: it **suppresses the post-exercise rise in muscle protein synthesis**, degrades **sleep quality** (a key recovery input), impairs **judgment around food** (extra calories), and can worsen next-day training. None of this means a drink ends your gains — but the effects are dose-dependent and add up. The practical policy: enjoy alcohol occasionally and in moderation, keep it away from your post-training window, and recognize that a pattern of heavy drinking is one of the easier self-inflicted brakes on progress.
+Alcohol undermines muscle building through several routes at once: it **suppresses the post-exercise rise in muscle protein synthesis** — the process described in [mechanisms](../00-foundations/mechanisms.md) — degrades **[sleep](../05-recovery/sleep.md) quality** (a key recovery input), impairs **judgment around food** (extra calories), and can worsen next-day training. None of this means a drink ends your gains — but the effects are dose-dependent and add up. The practical policy: enjoy alcohol occasionally and in moderation, keep it away from your post-training window, and recognize that a pattern of heavy drinking is one of the easier self-inflicted brakes on progress.
 
 ## The Evidence
 

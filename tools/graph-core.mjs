@@ -68,11 +68,12 @@ export function extractPage({ slug, pillar, md }, knownSlugs) {
   return { slug, pillar, title, outbound: sortObj(outbound), citations: [...cit].sort(bySlugAsc) };
 }
 
-// The gate's single flip point: Wave 159 ships enforceMinOut=false (warn), Wave 160
-// flips it to true once the authoring pass gives every page ≥ minOut rendered links.
-// test-graph.mjs and check-links.mjs both read it, so npm test and npm run check
-// enforce the same bar automatically.
-export const GATE = { minOut: 2, enforceMinOut: false };
+// The gate's single flip point. Wave 159 shipped enforceMinOut=false (warn) while 26
+// pages sat below the bar; Wave 160's authoring pass cleared them, so it is now ENFORCED:
+// every content page must carry at least `minOut` distinct rendered outbound page links.
+// test-graph.mjs and check-links.mjs both read it, so npm test and npm run check enforce
+// the same bar automatically — a new page that links to nothing fails the build.
+export const GATE = { minOut: 2, enforceMinOut: true };
 
 // Records → the whole graph. Weights (integers, max 24) — every term a checkable fact:
 //   3·min(n_ab,2) + 3·min(n_ba,2)  direct links each way, diminishing after the 2nd

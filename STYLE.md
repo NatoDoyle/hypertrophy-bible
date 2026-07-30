@@ -126,4 +126,25 @@ models, not measured constants. Grade them honestly (usually B/C) and say so.
 - Use **relative Markdown links** between pages (`../02-muscle-guides/index.md`). These also resolve
   as Obsidian wikilinks, so the KB is portable.
 - One concept per file. When a page outgrows a single screenful of scope, split it.
+
+**The interconnection contract** (Goal 1 — the KB is a network, not a shelf of documents). All of
+this is enforced by `tools/check-links.mjs`; a violation fails the build.
+
+- **Two canonical link forms only:** `slug.md` (same pillar) or `../<pillar>/slug.md` (another
+  pillar). The app turns exactly these into in-app jumps; any other shape (a deeper path, a
+  differently-cased slug) renders as dead plain text for every app reader.
+- **Cross-links must live in a RENDERED section** — TL;DR through Key Uncertainties, or a
+  getting-started page's topic/Related sections. The app strips **Backing Data** and
+  **References** entirely, so a link parked there is invisible to users and doesn't count.
+- **Every page carries ≥2 outbound page links**, and every page must be linked to from somewhere
+  (no orphans, no dead ends, one connected graph).
+- **Link in prose, on meaning.** The link belongs on the sentence that already refers to the other
+  idea ("sets taken [close to failure](…)"), not in a bolted-on list of related reading. Link
+  liberally — the first mention of any concept another page owns is a link opportunity.
+- **Every page appears in its pillar's `## Contents`** (bullet or table format; both are parsed).
+
+Connections compound: `tools/graph-core.mjs` ranks each page's neighbours by real signals (links
+each way, shared citations, shared neighbours) and surfaces them — plus 2-hop "also connected"
+pages — in the app's Connected card. Denser honest linking directly improves what readers are
+offered next.
 - Data files: one instance per file, named by `id` (e.g. `data/muscles/quadriceps.json`).

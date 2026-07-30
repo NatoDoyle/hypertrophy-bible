@@ -14,7 +14,7 @@
 - **Genetics are real and significant** — they influence how fast you gain, your ultimate muscular ceiling, and your muscle shape/insertions. The people at the very top of the sport are genetic outliers, and in physique sport, many are also chemically enhanced. Comparing yourself to them is a recipe for false expectations.
 - **You are not your genetic worst case** — response to training varies enormously, but almost no one is a true non-responder to *all* training. Adjusting volume and exercise selection often "unlocks" apparent non-responders.
 
-The practical stance: control the controllables (progressive training, protein, calories, sleep), expect a personal (not elite) outcome, and measure success against your own starting point.
+The practical stance: control the controllables (progressive training, protein, calories, sleep), expect a personal (not elite) outcome, and measure success against your own starting point — [reaching your genetic ceiling](../06-individualization/reaching-your-genetic-ceiling.md) covers what that realistically looks like over years.
 
 ## The Evidence
 

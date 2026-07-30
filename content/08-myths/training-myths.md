@@ -21,11 +21,11 @@
 
 ## The Evidence
 
-**"Muscle confusion" is backwards.** Growth requires progressively overloading exercises over time[^schoenfeld-2017-volume-dose-response], which you can't do if you keep swapping them. *Some* variety aids complete development[^fonseca-2014-exercise-variation], but the productive approach is a stable core plus limited rotation — not constant novelty. **[Grade B]**
+**"Muscle confusion" is backwards.** Growth requires progressively overloading exercises over time[^schoenfeld-2017-volume-dose-response], which you can't do if you keep swapping them. *Some* variety aids complete development[^fonseca-2014-exercise-variation], but the productive approach is a stable core plus limited rotation — not constant novelty; [variation and specialization](../03-programming/variation-and-specialization.md) shows where the line sits. **[Grade B]**
 
 **You don't need heavy loads.** The load meta-analysis shows **similar hypertrophy across low and high loads** when sets are taken near failure; only maximal strength specifically favors heavy training[^schoenfeld-2017-load-meta]. **[Grade A]** The same evidence dismantles "**high reps for cutting**": rep range doesn't drive fat loss — that's a function of energy balance — so you should keep training for muscle (moderate-to-heavy, hard sets) whether bulking or cutting. **[Grade A]**
 
-**Soreness isn't the goal.** Muscle protein synthesis early in training goes largely to repairing damage, and correlates with growth only after soreness subsides[^damas-2016-mps-damage]; damage is a byproduct, not a driver[^damas-2018-hypertrophy-damage-mps]. So chasing soreness (often via constant novelty) is chasing the wrong signal. **[Grade B]**
+**Soreness isn't the goal.** Muscle protein synthesis early in training goes largely to repairing damage, and correlates with growth only after [soreness](../05-recovery/muscle-soreness-doms.md) subsides[^damas-2016-mps-damage]; damage is a byproduct, not a driver[^damas-2018-hypertrophy-damage-mps]. So chasing soreness (often via constant novelty) is chasing the wrong signal — the real one is [mechanical tension](../00-foundations/mechanisms.md), accumulated as hard [volume](../01-training-variables/volume.md). **[Grade B]**
 
 **Machines aren't lesser.** Haugen and colleagues' 2023 meta-analysis found **free-weight and machine-based training produce similar hypertrophy** (with some specificity for strength/jump outcomes)[^haugen-2023-free-weights-machines]. **[Grade B]** Machines' stability can even make it easier to train a muscle hard and safely to failure.
 

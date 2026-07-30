@@ -5,7 +5,7 @@
 **Quick recommendations**
 - **Creatine monohydrate, 3–5 g/day** — the one supplement with strong evidence for muscle/strength. **[Grade A]**
 - **Caffeine, ~3–6 mg/kg pre-workout** — improves training performance (indirect benefit). **[Grade A]**
-- **Protein powder** only to help hit your daily protein target — it's food, not a growth agent. **[Grade A]**
+- **Protein powder** only to help hit your daily [protein](protein.md) target — it's food, not a growth agent, and [when you take it](nutrient-timing.md) barely matters. **[Grade A]**
 - **Skip the rest** (testosterone "boosters", BCAAs, most pre-workout blends) until basics are dialed in. **[Grade C]**
 
 ## Practical Application
@@ -30,7 +30,7 @@
 | [Tart cherry](../../data/supplements/tart-cherry.json) | Insufficient | A recovery aid (eases soreness), not a muscle-builder; don't mega-dose around training |
 | ["Testosterone boosters"](../../data/supplements/testosterone-boosters.json) | Avoid | No meaningful effect on testosterone or muscle in healthy men |
 
-**How to think about supplements.** They sit at the very end of the priority list. No supplement compensates for insufficient training, protein, calories, or sleep. Creatine is the rare exception that's cheap, safe, and worth taking by default. Caffeine helps you train harder (a real but indirect route to more muscle). Protein powder is simply groceries in a tub. Be deeply skeptical of anything marketed with dramatic before/after claims.
+**How to think about supplements.** They sit at the very end of the priority list. No supplement compensates for insufficient training, protein, calories, or [sleep](../05-recovery/sleep.md). Creatine is the rare exception that's cheap, safe, and worth taking by default. Caffeine helps you train harder (a real but indirect route to more muscle). Protein powder is simply groceries in a tub. Be deeply skeptical of anything marketed with dramatic before/after claims.
 
 ## The Evidence
 

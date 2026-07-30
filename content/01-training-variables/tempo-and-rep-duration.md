@@ -16,7 +16,7 @@ Think "**controlled, not slow**." Lower the weight under control so the target m
 |----------------|---------|
 | Explosive-but-controlled concentric, controlled eccentric | Good default |
 | Moderate, controlled reps (~2 s down, ~1–2 s up) | Good default |
-| Deliberate super-slow (5–10+ s per phase) | Avoid — big load penalty, no growth benefit |
+| Deliberate super-slow (5–10+ s per phase) | Avoid — big load penalty (see [load and rep ranges](intensity-load-and-rep-ranges.md)), no growth benefit |
 | Bouncing, jerking, dropping the weight | Avoid — reduces effective tension |
 
 **Where a controlled eccentric earns its keep** is technique and tension, not a stopwatch metric: it keeps the muscle loaded through the [range of motion](range-of-motion.md), reduces cheating, and makes each rep count toward the near-failure reps that drive growth.

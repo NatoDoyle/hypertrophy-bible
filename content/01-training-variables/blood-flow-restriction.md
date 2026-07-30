@@ -13,15 +13,17 @@
 **What it is.** A pneumatic cuff or wrap around the top of the working limb (arms or legs) partially restricts venous return, creating a low-oxygen, high-metabolite environment. This lets **very light loads** recruit and fatigue muscle fibers in a way that normally requires heavy loads — driving hypertrophy despite the light weight.
 
 **When it earns its place:**
-- **Rehab / injured or painful joints** — you can grow (or preserve) muscle with loads a damaged joint tolerates.
+- **Rehab / injured or painful joints** — you can grow (or preserve) muscle with loads a damaged joint tolerates (see [recovery modalities and injury](../05-recovery/recovery-modalities-and-injury.md)).
 - **Deload-ish volume** — low mechanical stress makes it a way to add stimulus without much joint/systemic fatigue.
 - **Limited equipment** — meaningful stimulus from very light weights.
+
+It sits alongside the other [advanced techniques](advanced-techniques.md) as a specialty tool: worth knowing, not worth building a program around.
 
 **How to do it (in brief):** cuff the upper limb at a moderate pressure (uncomfortable but not painful, never fully occluding), use ~20–40% 1RM, and take sets to (or near) failure — often a 30-15-15-15 rep scheme with short rests. Keep the cuff on through the exercise. **Get proper instruction on cuff placement and pressure** — done wrong, it's uncomfortable and potentially unsafe (see cautions below).
 
 ## The Evidence
 
-**BFR grows muscle about as well as heavy training — but heavy wins for strength.** Lixandrão and colleagues' 2018 meta-analysis directly compared **high-load resistance training vs low-load training with BFR** and found **similar hypertrophy between the two methods**, while **high-load training produced greater strength gains**[^lixandrao-2018-bfr-meta]. **[Grade B]** The authors positioned BFR as a **valuable option for people who can't perform heavy resistance training** — exactly the rehab/limitation use case. This also fits the broader load literature: hypertrophy is achievable across a wide range of loads when effort is high, whereas maximal strength specifically favors heavy loading[^schoenfeld-2017-load-meta]. **[Grade A]**
+**BFR grows muscle about as well as heavy training — but heavy wins for strength.** Lixandrão and colleagues' 2018 meta-analysis directly compared **high-load resistance training vs low-load training with BFR** and found **similar hypertrophy between the two methods**, while **high-load training produced greater strength gains**[^lixandrao-2018-bfr-meta]. **[Grade B]** The authors positioned BFR as a **valuable option for people who can't perform heavy resistance training** — exactly the rehab/limitation use case. This also fits the broader [load and rep-range](intensity-load-and-rep-ranges.md) literature: hypertrophy is achievable across a wide range of loads when effort is high, whereas maximal strength specifically favors heavy loading[^schoenfeld-2017-load-meta]. **[Grade A]**
 
 ## Key Uncertainties & Nuance
 - **BFR is a means to an end** — it makes light loads "count," but for most healthy lifters ordinary training (heavy or light-to-failure) is simpler and at least as effective.
