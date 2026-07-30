@@ -268,6 +268,25 @@ These are real failures from previous iterations. Each is now a standing check.
    per-exercise `eased` tag already existed for the client); reuse it rather than re-deriving a
    coarser one.
 
+25. **A goal stated as an adjective stays unmeasured — turn it into an invariant a gate can fail
+   on.** Goal 1 said "a neural network" for many waves and `check-links.mjs` reported a clean
+   sweep the whole time — because it only gated *broken* links and *orphans*, both of which were
+   already zero. The moment the graph was actually measured (Waves 159–160), the KB turned out to
+   have **15 dead-end pages and 26 below two outbound links**, with per-pillar density ranging 0.8
+   (myths) to 6.0 (getting-started). Nothing had regressed; the metric that would have shown the
+   gap had never been computed. Two sub-lessons: (a) **a green gate proves only what it measures**
+   — when a goal is qualitative, ask what number would falsify it and compute that number before
+   concluding the surface is swept (lesson 17's blind spot: "the lens returns nothing" can mean the
+   lens is pointed at the wrong thing); (b) **five of those dead ends were dead only because their
+   links pointed at pillar `index.md` TOCs** — real links in the source that the app renders as
+   plain text, i.e. Wave-104/105's lesson recurring silently because it was written as prose
+   guidance rather than an enforced invariant. → **Standing rule:** when a fix depends on authors
+   remembering a rendering constraint, encode the constraint in the gate (Wave 159 made
+   non-canonical/invisible links a hard failure) — and ship the gate in WARN in the wave that adds
+   it, flipping to FAIL only in the wave whose authoring makes it pass, so the bar never lands red.
+   Corollary for the flip: the unit test asserting the pre-flip state is *supposed* to fail on the
+   flip — update it to lock the enforced state, never relax the gate to make a thin new page pass.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
