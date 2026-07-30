@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/training-guideline.json",
+  "title": "TrainingGuideline",
+  "description": "A quantified programming guideline mirroring a content page's numbers, so prose, gate and app read one source. Ranges are practical models graded honestly, not measured constants.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "summary", "evidence_grade"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+    "modalities": {
+      "type": "array",
+      "description": "Ways of doing the activity, ranked by how much they compete with hypertrophy",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "interference", "evidence_grade"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "name": { "type": "string" },
+          "interference": {
+            "enum": ["none", "low", "moderate", "high"],
+            "description": "Relative competition with hypertrophy at a typical dose, not an absolute effect size"
+          },
+          "note": { "type": "string" },
+          "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+          "citations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "dose_by_goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Keyed by the app's primary_goal values",
+      "properties": {
+        "hypertrophy": { "$ref": "#/$defs/dose" },
+        "strength": { "$ref": "#/$defs/dose" },
+        "fat-loss": { "$ref": "#/$defs/dose" },
+        "recomposition": { "$ref": "#/$defs/dose" }
+      }
+    },
+    "timing_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "evidence_grade"],
+        "properties": {
+          "rule": { "type": "string" },
+          "note": { "type": "string" },
+          "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+          "citations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "indicators": {
+      "type": "array",
+      "description": "The self-check. observable_in_app marks the rows the derive engine can compute from logged data.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["signal", "helping", "hindering", "observable_in_app"],
+        "properties": {
+          "signal": { "type": "string" },
+          "helping": { "type": "string" },
+          "hindering": { "type": "string" },
+          "observable_in_app": { "type": "boolean" }
+        }
+      }
+    },
+    "scale_back_protocol": {
+      "type": "string",
+      "description": "The one-variable-at-a-time test that turns the indicators into an answer"
+    },
+    "citations": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "dose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessions_per_week", "minutes_per_session"],
+      "properties": {
+        "steps_per_day": { "$ref": "#/$defs/range" },
+        "sessions_per_week": { "$ref": "#/$defs/range" },
+        "minutes_per_session": { "$ref": "#/$defs/range" },
+        "note": { "type": "string" },
+        "evidence_grade": { "enum": ["A", "B", "C", "D"] },
+        "citations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

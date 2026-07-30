@@ -42,3 +42,4 @@ You don't have to hold this whole ladder in your head. The plan sets your **volu
 - [Building the training habit](building-the-training-habit.md) — how to make rung #1 automatic.
 - [Managing expectations & slow progress](managing-expectations-and-slow-progress.md) — why the payoff is real but slow.
 - [Volume](../01-training-variables/volume.md) and [Proximity to failure](../01-training-variables/proximity-to-failure.md) — the two training pages that carry the most weight.
+- [Cardio & concurrent training](../03-programming/cardio-and-concurrent-training.md) — it isn't on the ignore list: it won't cost you your gains, and it's worth doing for reasons that have nothing to do with muscle.

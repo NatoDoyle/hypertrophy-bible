@@ -181,6 +181,17 @@ infra, the one genuinely large build left here).
    (`connective-tissue-adaptation.md`). **fiber-type × rep-range: verified NOT a gap (Wave 95)** —
    `01-training-variables/intensity-load-and-rep-ranges.md` already covers rep ranges and fiber
    type. No obvious breadth gaps remain; propose new ones only against a real audience need.
+   **DEPTH gaps are a different axis, and the breadth audit is blind to them (Wave 161):** a user
+   asked when cardio helps vs hinders growth, what the actual dose is, and how to tell which way
+   it's going — and `03-programming/cardio-and-concurrent-training.md` existed (so no breadth gap
+   showed) while answering none of the three. It carried zero numbers: `NEAT`, `step count`,
+   `zone 2`, `LISS`, `HIIT`, `VO2max` and any minutes-per-week figure appeared **nowhere in
+   `content/`**. That's lesson 25 at page scope — "moderate" and "manage sensibly" are adjectives
+   no gate can fail on. **When a tier empties, re-audit for DEPTH (does each page answer the
+   questions a reader actually arrives with, in numbers?), not only for missing titles** — and
+   treat a thin page's out-degree as the tell: this one sat at exactly `GATE.minOut` and was
+   unreachable from the training side of the graph, which is what a page nobody has revisited
+   looks like.
    Supplement data: **vitamin D + omega-3 added (Wave 90)** — both honestly graded (vitamin D
    fixes a deficiency, no ergogenic boost when replete; omega-3 has NO MPS effect in healthy
    adults per Therdyothin 2025, a health supplement not a muscle-builder). **Supplement breadth now

@@ -1,0 +1,164 @@
+{
+  "id": "cardio-concurrent-training",
+  "name": "Cardio alongside hypertrophy training",
+  "summary": "Cardio and lifting are compatible. At the whole-muscle level the cost is about zero; at the fibre level it is small and concentrated in running. The practical levers are modality, weekly dose, and how much recovery is left over. Dose ranges below are practical models, not measured constants.",
+  "evidence_grade": "B",
+  "modalities": [
+    {
+      "id": "walking",
+      "name": "Walking and incline walking",
+      "interference": "none",
+      "note": "No measured cost to muscle size. The main way to raise expenditure without spending recovery, which is why steps come before structured cardio in a deficit.",
+      "evidence_grade": "D",
+      "citations": []
+    },
+    {
+      "id": "cycling",
+      "name": "Cycling",
+      "interference": "low",
+      "note": "No fibre-size interference in the fibre-level meta-analysis. One caveat: in the HIIT-specific meta it was cycling, not running, that trended toward blunting lower-body strength.",
+      "evidence_grade": "B",
+      "citations": ["lundberg-2022-fiber-hypertrophy", "sabag-2018-hiit-concurrent-meta"]
+    },
+    {
+      "id": "rowing-elliptical",
+      "name": "Rowing, elliptical, ski erg",
+      "interference": "low",
+      "note": "No direct concurrent-training evidence. Grouped with cycling because they share the low eccentric loading that is the presumed mechanism.",
+      "evidence_grade": "D",
+      "citations": []
+    },
+    {
+      "id": "running",
+      "name": "Running",
+      "interference": "moderate",
+      "note": "The one modality with a measured fibre-level cost: type I fibre hypertrophy was reduced when the aerobic work was running (SMD -0.81), and not when it was cycling. Higher eccentric loading and muscle damage are the presumed mechanism.",
+      "evidence_grade": "B",
+      "citations": ["lundberg-2022-fiber-hypertrophy", "wilson-2012-concurrent-meta"]
+    },
+    {
+      "id": "hiit",
+      "name": "High-intensity intervals",
+      "interference": "moderate",
+      "note": "Did not compromise hypertrophy or upper-body strength, but did cost a little lower-body strength (ES -0.248). Intervals also cost more recovery per minute than steady work.",
+      "evidence_grade": "B",
+      "citations": ["sabag-2018-hiit-concurrent-meta"]
+    }
+  ],
+  "dose_by_goal": {
+    "hypertrophy": {
+      "steps_per_day": { "min": 7000, "max": 8000 },
+      "sessions_per_week": { "min": 2, "max": 3 },
+      "minutes_per_session": { "min": 20, "max": 40 },
+      "note": "The health floor, not a fat-loss dose. Steps carry most of the health return; the sessions add cardiorespiratory fitness at a dose low enough that the interference gradient stays flat. Do not drop to zero in a gaining phase.",
+      "evidence_grade": "D",
+      "citations": ["paluch-2022-daily-steps-mortality"]
+    },
+    "strength": {
+      "steps_per_day": { "min": 7000, "max": 8000 },
+      "sessions_per_week": { "min": 2, "max": 3 },
+      "minutes_per_session": { "min": 20, "max": 40 },
+      "note": "Same floor as hypertrophy, with more care around same-session work: explosive and maximal strength are the outcomes that show interference first.",
+      "evidence_grade": "D",
+      "citations": ["schumann-2022-concurrent-meta"]
+    },
+    "fat-loss": {
+      "steps_per_day": { "min": 8000, "max": 12000 },
+      "sessions_per_week": { "min": 3, "max": 5 },
+      "minutes_per_session": { "min": 20, "max": 45 },
+      "note": "Diet does the heavy lifting. Steps come first because they cost almost no recovery and defend the expenditure that falls on its own during a deficit; structured cardio is the third lever, after food and steps.",
+      "evidence_grade": "D",
+      "citations": ["trexler-2014-metabolic-adaptation"]
+    },
+    "recomposition": {
+      "steps_per_day": { "min": 8000, "max": 10000 },
+      "sessions_per_week": { "min": 2, "max": 4 },
+      "minutes_per_session": { "min": 20, "max": 40 },
+      "note": "Between the two. Keep lifting volume and protein fixed and let steps absorb most of the expenditure work.",
+      "evidence_grade": "D",
+      "citations": []
+    }
+  },
+  "timing_rules": [
+    {
+      "rule": "Keep hard lower-body cardio off the day of, and the day before, a leg session.",
+      "note": "The clearest case of cardio and lifting competing for the same muscles rather than the same day.",
+      "evidence_grade": "D",
+      "citations": []
+    },
+    {
+      "rule": "If cardio and lifting share a session, lift first.",
+      "note": "Commonly recommended and cheap to follow, but the fibre-level meta-analysis found no difference by same-session training order. Treat it as a hedge, not an evidenced rule.",
+      "evidence_grade": "D",
+      "citations": ["lundberg-2022-fiber-hypertrophy"]
+    },
+    {
+      "rule": "When cardio and lifting share a day, separate them by about six hours where practical.",
+      "note": "Extrapolated from acute fatigue timelines, not from a concurrent-training trial that tested separation.",
+      "evidence_grade": "D",
+      "citations": []
+    }
+  ],
+  "indicators": [
+    {
+      "signal": "Lower-body vs upper-body lift progression",
+      "helping": "Both keep climbing.",
+      "hindering": "Legs go flat or slide while upper-body lifts keep climbing.",
+      "observable_in_app": true
+    },
+    {
+      "signal": "Weekly hard sets against your volume landmarks",
+      "helping": "When a lift stalls, it stalls at or above MRV, which is a lifting-volume problem.",
+      "hindering": "A muscle stalls while its weekly sets sit inside the productive MEV-MAV range, which points outside the gym.",
+      "observable_in_app": true
+    },
+    {
+      "signal": "Bodyweight trend against your goal",
+      "helping": "Weight tracks the direction your goal needs.",
+      "hindering": "Weight drifts down while you are trying to gain, or falls faster than about 1 percent of bodyweight per week.",
+      "observable_in_app": true
+    },
+    {
+      "signal": "Daily readiness check-ins",
+      "helping": "Energy, sleep and motivation hold steady or rise across a block.",
+      "hindering": "The block average drifts low and stays there.",
+      "observable_in_app": true
+    },
+    {
+      "signal": "Reps held across sets at the same load",
+      "helping": "You hold your reps set to set, or need less rest for the same reps.",
+      "hindering": "Reps fall off sharply from the first set to the last at loads you used to handle.",
+      "observable_in_app": false
+    },
+    {
+      "signal": "Session RPE at unchanged loads",
+      "helping": "The same weights feel the same or easier.",
+      "hindering": "The same weights feel harder week over week.",
+      "observable_in_app": false
+    },
+    {
+      "signal": "Resting heart rate over weeks",
+      "helping": "Trending down, the expected sign of improving cardiovascular fitness.",
+      "hindering": "Trending up alongside the other signals, a common marker of accumulated fatigue.",
+      "observable_in_app": false
+    },
+    {
+      "signal": "Appetite, sleep, and whether you want to train",
+      "helping": "You eat and sleep well and still look forward to sessions.",
+      "hindering": "Appetite is suppressed, sleep is broken, or training feels like a chore it did not used to feel like.",
+      "observable_in_app": false
+    }
+  ],
+  "scale_back_protocol": "Halve your structured cardio for two to three weeks and hold everything else constant: same lifting volume, same calories, same sleep. If the stalled lifts start moving, cardio load was the limiter. Change one thing at a time or the test tells you nothing.",
+  "citations": [
+    "wilson-2012-concurrent-meta",
+    "schumann-2022-concurrent-meta",
+    "lundberg-2022-fiber-hypertrophy",
+    "murach-2016-concurrent-contrary",
+    "sabag-2018-hiit-concurrent-meta",
+    "konopka-2014-aerobic-hypertrophy",
+    "paluch-2022-daily-steps-mortality",
+    "trexler-2014-metabolic-adaptation",
+    "fyfe-2014-interference-molecular"
+  ]
+}

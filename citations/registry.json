@@ -1,6 +1,63 @@
 {
   "citations": [
     {
+      "key": "acog-2020-pregnancy-exercise",
+      "authors": [
+        "ACOG Committee on Obstetric Practice"
+      ],
+      "year": 2020,
+      "title": "Physical Activity and Exercise During Pregnancy and the Postpartum Period: ACOG Committee Opinion, Number 804.",
+      "source": "Obstetrics and Gynecology",
+      "volume": "135",
+      "issue": "4",
+      "pages": "e178-e188",
+      "doi": "10.1097/AOG.0000000000003772",
+      "pmid": "32217980",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32217980/"
+    },
+    {
+      "key": "ashtary-larky-2025-creatine-meta",
+      "authors": [
+        "Ashtary-Larky D",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "22",
+      "issue": "sup1",
+      "pages": "2586523",
+      "doi": "10.1080/15502783.2025.2586523",
+      "pmid": "41433021",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41433021/"
+    },
+    {
+      "key": "attarieh-2025-biceps-shoulder-angle",
+      "authors": [
+        "Attarieh P",
+        "Nunes JP",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Comparison Between Shoulder Flexed and Extended Positions in Elbow Flexion Resistance Training on Regional Hypertrophy and Maximum Strength: Preacher versus Bayesian Cable Curls",
+      "source": "European Journal of Sport Science",
+      "volume": "25",
+      "issue": "4",
+      "pages": "e12279",
+      "doi": "10.1002/ejsc.12279",
+      "pmid": "40082069",
+      "study_type": "RCT",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40082069/"
+    },
+    {
       "key": "baz-valle-2021-counting-sets",
       "authors": [
         "Baz-Valle E",
@@ -76,6 +133,48 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27747846/"
     },
     {
+      "key": "borsheim-2002-eaa-mps",
+      "authors": [
+        "Børsheim E",
+        "Tipton KD",
+        "Wolf SE",
+        "Wolfe RR"
+      ],
+      "year": 2002,
+      "title": "Essential amino acids and muscle protein recovery from resistance exercise.",
+      "source": "American Journal of Physiology-Endocrinology and Metabolism",
+      "volume": "283",
+      "issue": "4",
+      "pages": "E648-E657",
+      "doi": "10.1152/ajpendo.00466.2001",
+      "pmid": "12217881",
+      "study_type": "mechanistic",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/12217881/"
+    },
+    {
+      "key": "bosquet-2007-taper",
+      "authors": [
+        "Bosquet L",
+        "Montpetit J",
+        "Arvisais D",
+        "Mujika I"
+      ],
+      "year": 2007,
+      "title": "Effects of tapering on performance: a meta-analysis.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "39",
+      "issue": "8",
+      "pages": "1358-1365",
+      "doi": "10.1249/mss.0b013e31806010e0",
+      "pmid": "17762369",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/17762369/"
+    },
+    {
       "key": "bruusgaard-2010-myonuclei",
       "authors": [
         "Bruusgaard JC",
@@ -114,6 +213,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28925405/"
     },
     {
+      "key": "candow-2001-glutamine",
+      "authors": [
+        "Candow DG",
+        "Chilibeck PD",
+        "Burke DG",
+        "Davison KS"
+      ],
+      "year": 2001,
+      "title": "Effect of glutamine supplementation combined with resistance training in young adults.",
+      "source": "European Journal of Applied Physiology",
+      "volume": "86",
+      "issue": "2",
+      "pages": "142-149",
+      "doi": "10.1007/s00421-001-0523-y",
+      "pmid": "11822473",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/11822473/"
+    },
+    {
       "key": "carvalho-2022-volume-matched-loads",
       "authors": [
         "Carvalho L",
@@ -131,6 +251,72 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35015560/"
+    },
+    {
+      "key": "church-2020-eaa-synthesis",
+      "authors": [
+        "Church DD",
+        "Hirsch KR",
+        "Park S",
+        "Kim IY",
+        "Gwin JA",
+        "Pasiakos SM",
+        "Wolfe RR",
+        "Ferrando AA"
+      ],
+      "year": 2020,
+      "title": "Essential Amino Acids and Protein Synthesis: Insights into Maximizing the Muscle and Whole-Body Response to Feeding.",
+      "source": "Nutrients",
+      "volume": "12",
+      "issue": "12",
+      "pages": "3717",
+      "doi": "10.3390/nu12123717",
+      "pmid": "33276485",
+      "study_type": "mechanistic",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33276485/"
+    },
+    {
+      "key": "coleman-2024-deload-rct",
+      "authors": [
+        "Coleman M",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations",
+      "source": "PeerJ",
+      "volume": "12",
+      "pages": "e16777",
+      "doi": "10.7717/peerj.16777",
+      "pmid": "38274324",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38274324/"
+    },
+    {
+      "key": "collins-2014-neck-concussion",
+      "authors": [
+        "Collins CL",
+        "Fletcher EN",
+        "Fields SK",
+        "Kluchurosky L",
+        "Rohrkemper MK",
+        "Comstock RD"
+      ],
+      "year": 2014,
+      "title": "Neck strength: a protective factor reducing risk for concussion in high school sports.",
+      "source": "The Journal of Primary Prevention",
+      "volume": "35",
+      "issue": "5",
+      "pages": "309-319",
+      "doi": "10.1007/s10935-014-0355-2",
+      "pmid": "24930131",
+      "study_type": "cohort",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24930131/"
     },
     {
       "key": "craven-2022-sleep-performance",
@@ -247,6 +433,48 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29282529/"
     },
     {
+      "key": "davenport-2018-prenatal-depression",
+      "authors": [
+        "Davenport MH",
+        "McCurdy AP",
+        "Mottola MF",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Impact of prenatal exercise on both prenatal and postnatal anxiety and depressive symptoms: a systematic review and meta-analysis.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1376-1385",
+      "doi": "10.1136/bjsports-2018-099697",
+      "pmid": "30337464",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337464/"
+    },
+    {
+      "key": "davenport-2018-prenatal-gdm-htn",
+      "authors": [
+        "Davenport MH",
+        "Ruchat SM",
+        "Poitras VJ",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Prenatal exercise for the prevention of gestational diabetes mellitus and hypertensive disorders of pregnancy: a systematic review and meta-analysis.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1367-1375",
+      "doi": "10.1136/bjsports-2018-099355",
+      "pmid": "30337463",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337463/"
+    },
+    {
       "key": "egner-2013-muscle-memory",
       "authors": [
         "Egner IM",
@@ -264,24 +492,6 @@
       "population": "animal",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24167222/"
-    },
-    {
-      "key": "seaborne-2018-epigenetic-memory",
-      "authors": [
-        "Seaborne RA",
-        "et al."
-      ],
-      "year": 2018,
-      "title": "Human Skeletal Muscle Possesses an Epigenetic Memory of Hypertrophy.",
-      "source": "Scientific Reports",
-      "volume": "8",
-      "pages": "1898",
-      "doi": "10.1038/s41598-018-20287-3",
-      "pmid": "29382913",
-      "study_type": "non-RCT-trial",
-      "population": "recreationally-active",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29382913/"
     },
     {
       "key": "enes-2024-volume-progression",
@@ -320,6 +530,47 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24832974/"
+    },
+    {
+      "key": "fyfe-2014-interference-molecular",
+      "authors": [
+        "Fyfe JJ",
+        "Bishop DJ",
+        "Stepto NK"
+      ],
+      "year": 2014,
+      "title": "Interference between concurrent resistance and endurance exercise: molecular bases and the role of individual training variables.",
+      "source": "Sports Medicine",
+      "volume": "44",
+      "issue": "6",
+      "pages": "743-762",
+      "doi": "10.1007/s40279-014-0162-1",
+      "pmid": "24728927",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24728927/"
+    },
+    {
+      "key": "garthe-2013-nutrition-body-comp",
+      "authors": [
+        "Garthe I",
+        "Raastad T",
+        "Refsnes PE",
+        "Sundgot-Borgen J"
+      ],
+      "year": 2013,
+      "title": "Effect of nutritional intervention on body composition and performance in elite athletes.",
+      "source": "European Journal of Sport Science",
+      "volume": "13",
+      "issue": "3",
+      "pages": "295-303",
+      "doi": "10.1080/17461391.2011.643923",
+      "pmid": "23679146",
+      "study_type": "non-RCT-trial",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23679146/"
     },
     {
       "key": "grgic-2017-periodization",
@@ -471,6 +722,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33312273/"
     },
     {
+      "key": "henselmans-2022-carb-strength",
+      "authors": [
+        "Henselmans M",
+        "Bjørnsen T",
+        "Hedderman R",
+        "Vårvik FT"
+      ],
+      "year": 2022,
+      "title": "The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.",
+      "source": "Nutrients",
+      "volume": "14",
+      "issue": "4",
+      "pages": "856",
+      "doi": "10.3390/nu14040856",
+      "pmid": "35215506",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35215506/"
+    },
+    {
       "key": "hermann-2025-failure-rir",
       "authors": [
         "Hermann T",
@@ -488,6 +760,45 @@
       "population": "recreationally-active",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40249908/"
+    },
+    {
+      "key": "hirshkowitz-2015-sleep-duration",
+      "authors": [
+        "Hirshkowitz M",
+        "Whiton K",
+        "Albert SM",
+        "et al."
+      ],
+      "year": 2015,
+      "title": "National Sleep Foundation's sleep time duration recommendations: methodology and results summary.",
+      "source": "Sleep Health",
+      "volume": "1",
+      "issue": "1",
+      "pages": "40-43",
+      "doi": "10.1016/j.sleh.2014.12.010",
+      "pmid": "29073412",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29073412/"
+    },
+    {
+      "key": "hrysomallis-2016-neck-review",
+      "authors": [
+        "Hrysomallis C"
+      ],
+      "year": 2016,
+      "title": "Neck Muscular Strength, Training, Performance and Sport Injury Risk: A Review.",
+      "source": "Sports Medicine",
+      "volume": "46",
+      "issue": "8",
+      "pages": "1111-1124",
+      "doi": "10.1007/s40279-016-0490-4",
+      "pmid": "26861960",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26861960/"
     },
     {
       "key": "hubal-2005-responders",
@@ -509,23 +820,46 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15947721/"
     },
     {
-      "key": "lixandrao-2024-volume-nonresponders",
+      "key": "iraki-2019-offseason-nutrition",
       "authors": [
-        "Lixandrão ME",
+        "Iraki J",
+        "Fitschen P",
+        "Espinar S",
+        "Helms E"
+      ],
+      "year": 2019,
+      "title": "Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review.",
+      "source": "Sports (Basel)",
+      "volume": "7",
+      "issue": "7",
+      "pages": "154",
+      "doi": "10.3390/sports7070154",
+      "pmid": "31247944",
+      "study_type": "narrative-review",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31247944/"
+    },
+    {
+      "key": "jakubowski-2020-hmb-meta",
+      "authors": [
+        "Jakubowski JS",
+        "Nunes EA",
+        "Teixeira FJ",
         "et al."
       ],
-      "year": 2024,
-      "title": "Higher resistance training volume offsets muscle hypertrophy nonresponsiveness in older individuals.",
-      "source": "Journal of Applied Physiology",
-      "volume": "136",
-      "issue": "2",
-      "pages": "421-429",
-      "doi": "10.1152/japplphysiol.00670.2023",
-      "pmid": "38174375",
-      "study_type": "non-RCT-trial",
+      "year": 2020,
+      "title": "Supplementation with the Leucine Metabolite beta-hydroxy-beta-methylbutyrate (HMB) does not Improve Resistance Exercise-Induced Changes in Body Composition or Strength in Young Subjects: A Systematic Review and Meta-Analysis.",
+      "source": "Nutrients",
+      "volume": "12",
+      "issue": "5",
+      "pages": "1523",
+      "doi": "10.3390/nu12051523",
+      "pmid": "32456217",
+      "study_type": "meta-analysis",
       "population": "mixed",
       "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38174375/"
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32456217/"
     },
     {
       "key": "kassiano-2023-rom-review",
@@ -545,6 +879,25 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36662126/"
+    },
+    {
+      "key": "konopka-2014-aerobic-hypertrophy",
+      "authors": [
+        "Konopka AR",
+        "Harber MP"
+      ],
+      "year": 2014,
+      "title": "Skeletal muscle hypertrophy after aerobic exercise training.",
+      "source": "Exercise and Sport Sciences Reviews",
+      "volume": "42",
+      "issue": "2",
+      "pages": "53-61",
+      "doi": "10.1249/JES.0000000000000007",
+      "pmid": "24508740",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24508740/"
     },
     {
       "key": "kouri-1995-ffmi",
@@ -603,63 +956,6 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28615996/"
     },
     {
-      "key": "ashtary-larky-2025-creatine-meta",
-      "authors": [
-        "Ashtary-Larky D",
-        "et al."
-      ],
-      "year": 2025,
-      "title": "Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.",
-      "source": "Journal of the International Society of Sports Nutrition",
-      "volume": "22",
-      "issue": "sup1",
-      "pages": "2586523",
-      "doi": "10.1080/15502783.2025.2586523",
-      "pmid": "41433021",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41433021/"
-    },
-    {
-      "key": "zhang-2019-vitamin-d-strength",
-      "authors": [
-        "Zhang L",
-        "et al."
-      ],
-      "year": 2019,
-      "title": "Effect of vitamin D supplementation on upper and lower limb muscle strength and muscle power in athletes: A meta-analysis.",
-      "source": "PLOS ONE",
-      "volume": "14",
-      "issue": "4",
-      "pages": "e0215826",
-      "doi": "10.1371/journal.pone.0215826",
-      "pmid": "31039170",
-      "study_type": "meta-analysis",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31039170/"
-    },
-    {
-      "key": "therdyothin-2025-omega3-mps",
-      "authors": [
-        "Therdyothin A",
-        "et al."
-      ],
-      "year": 2025,
-      "title": "The effects of omega-3 polyunsaturated fatty acids on muscle and whole-body protein synthesis: a systematic review and meta-analysis.",
-      "source": "Nutrition Reviews",
-      "volume": "83",
-      "issue": "2",
-      "pages": "e131-e143",
-      "doi": "10.1093/nutrit/nuae055",
-      "pmid": "38777807",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38777807/"
-    },
-    {
       "key": "krieger-2010-single-multiple-sets",
       "authors": [
         "Krieger JW"
@@ -697,24 +993,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31817252/"
     },
     {
-      "key": "tsartsapakis-2026-advanced-systems",
+      "key": "larsen-2026-biceps-shoulder-angle",
       "authors": [
-        "Tsartsapakis I",
-        "Zafeiroudi A",
-        "Kouthouris C"
+        "Larsen S",
+        "Sandvik Kristiansen B",
+        "Swinton PA",
+        "Wolf M",
+        "et al."
       ],
       "year": 2026,
-      "title": "Effects of Advanced Resistance Training Systems on Muscle Hypertrophy and Strength in Recreationally Trained Adults: A Systematic Review and Meta-Analysis.",
-      "source": "Journal of Functional Morphology and Kinesiology",
-      "volume": "11",
-      "issue": "1",
-      "pages": "80",
-      "doi": "10.3390/jfmk11010080",
-      "pmid": "41718208",
-      "study_type": "meta-analysis",
-      "population": "mixed",
+      "title": "The effects of shoulder extension angle on elbow flexor hypertrophy in the cable curl exercise",
+      "source": "Frontiers in Physiology",
+      "volume": "17",
+      "pages": "1750722",
+      "doi": "10.3389/fphys.2026.1750722",
+      "pmid": "41988507",
+      "study_type": "RCT",
+      "population": "untrained",
       "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41718208/"
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41988507/"
     },
     {
       "key": "lasevicius-2018-intensities-volume-load",
@@ -755,6 +1052,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29043659/"
     },
     {
+      "key": "lixandrao-2024-volume-nonresponders",
+      "authors": [
+        "Lixandrão ME",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Higher resistance training volume offsets muscle hypertrophy nonresponsiveness in older individuals.",
+      "source": "Journal of Applied Physiology",
+      "volume": "136",
+      "issue": "2",
+      "pages": "421-429",
+      "doi": "10.1152/japplphysiol.00670.2023",
+      "pmid": "38174375",
+      "study_type": "non-RCT-trial",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38174375/"
+    },
+    {
       "key": "longland-2016-deficit-protein",
       "authors": [
         "Longland TM",
@@ -791,6 +1107,25 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33433148/"
+    },
+    {
+      "key": "lundberg-2022-fiber-hypertrophy",
+      "authors": [
+        "Lundberg TR",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "The Effects of Concurrent Aerobic and Strength Training on Muscle Fiber Hypertrophy: A Systematic Review and Meta-Analysis.",
+      "source": "Sports Medicine",
+      "volume": "52",
+      "issue": "10",
+      "pages": "2391-2403",
+      "doi": "10.1007/s40279-022-01688-x",
+      "pmid": "35476184",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35476184/"
     },
     {
       "key": "maeo-2021-hamstring-length",
@@ -908,6 +1243,46 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28698222/"
     },
     {
+      "key": "mottola-2018-pregnancy-guideline",
+      "authors": [
+        "Mottola MF",
+        "Davenport MH",
+        "Ruchat SM",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "2019 Canadian guideline for physical activity throughout pregnancy.",
+      "source": "British Journal of Sports Medicine",
+      "volume": "52",
+      "issue": "21",
+      "pages": "1339-1346",
+      "doi": "10.1136/bjsports-2018-100056",
+      "pmid": "30337460",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337460/"
+    },
+    {
+      "key": "murach-2016-concurrent-contrary",
+      "authors": [
+        "Murach KA",
+        "Bagley JR"
+      ],
+      "year": 2016,
+      "title": "Skeletal Muscle Hypertrophy with Concurrent Exercise Training: Contrary Evidence for an Interference Effect.",
+      "source": "Sports Medicine",
+      "volume": "46",
+      "issue": "8",
+      "pages": "1029-1039",
+      "doi": "10.1007/s40279-016-0496-y",
+      "pmid": "26932769",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26932769/"
+    },
+    {
       "key": "nedeltcheva-2010-sleep-adiposity",
       "authors": [
         "Nedeltcheva AV",
@@ -946,6 +1321,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35187864/"
     },
     {
+      "key": "ortega-2021-tart-cherry-recovery",
+      "authors": [
+        "Ortega DR",
+        "López AM",
+        "Amaya HM",
+        "de la Rosa FJB"
+      ],
+      "year": 2021,
+      "title": "Tart cherry and pomegranate supplementations enhance recovery from exercise-induced muscle damage: a systematic review.",
+      "source": "Biology of Sport",
+      "volume": "38",
+      "issue": "1",
+      "pages": "97-111",
+      "doi": "10.5114/biolsport.2020.97069",
+      "pmid": "33795919",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33795919/"
+    },
+    {
       "key": "pallares-2021-rom-meta",
       "authors": [
         "Pallarés JG",
@@ -963,6 +1359,25 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/34170576/"
+    },
+    {
+      "key": "paluch-2022-daily-steps-mortality",
+      "authors": [
+        "Paluch AE",
+        "et al."
+      ],
+      "year": 2022,
+      "title": "Daily steps and all-cause mortality: a meta-analysis of 15 international cohorts.",
+      "source": "The Lancet Public Health",
+      "volume": "7",
+      "issue": "3",
+      "pages": "e219-e228",
+      "doi": "10.1016/S2468-2667(21)00302-9",
+      "pmid": "35247352",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35247352/"
     },
     {
       "key": "parr-2014-alcohol",
@@ -1001,6 +1416,28 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33977835/"
+    },
+    {
+      "key": "pelland-2026-dose-response",
+      "authors": [
+        "Pelland JC",
+        "Remmert JF",
+        "Robinson ZP",
+        "Hinson SR",
+        "Zourdos MC"
+      ],
+      "year": 2026,
+      "title": "The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains",
+      "source": "Sports Medicine",
+      "volume": "56",
+      "issue": "2",
+      "pages": "481-505",
+      "doi": "10.1007/s40279-025-02344-w",
+      "pmid": "41343037",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
     },
     {
       "key": "peos-2021-diet-break",
@@ -1060,24 +1497,6 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39405023/"
     },
     {
-      "key": "zhao-2025-postmenopausal-bmd",
-      "authors": [
-        "Zhao",
-        "et al."
-      ],
-      "year": 2025,
-      "title": "Optimal resistance training parameters for improving bone mineral density in postmenopausal women: a systematic review and meta-analysis.",
-      "source": "Journal of Orthopaedic Surgery and Research",
-      "volume": "20",
-      "pages": "523",
-      "doi": "10.1186/s13018-025-05890-1",
-      "pmid": "40420105",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40420105/"
-    },
-    {
       "key": "ramirez-campillo-2013-spot-reduction",
       "authors": [
         "Ramírez-Campillo R",
@@ -1133,6 +1552,22 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38393985/"
+    },
+    {
+      "key": "refalo-2025-deficit-protein-meta",
+      "authors": [
+        "Refalo MC",
+        "Trexler ET",
+        "Helms ER"
+      ],
+      "year": 2025,
+      "title": "Effect of Dietary Protein on Fat-Free Mass in Energy Restricted, Resistance-Trained Individuals: An Updated Systematic Review With Meta-Regression",
+      "source": "Strength and Conditioning Journal",
+      "doi": "10.1519/SSC.0000000000000888",
+      "study_type": "meta-analysis",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://api.crossref.org/works/10.1519/SSC.0000000000000888"
     },
     {
       "key": "rhim-2020-citrulline",
@@ -1228,6 +1663,46 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38970765/"
+    },
+    {
+      "key": "sabag-2018-hiit-concurrent-meta",
+      "authors": [
+        "Sabag A",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "The compatibility of concurrent high intensity interval training and resistance training for muscular strength and hypertrophy: a systematic review and meta-analysis.",
+      "source": "Journal of Sports Sciences",
+      "volume": "36",
+      "issue": "21",
+      "pages": "2472-2483",
+      "doi": "10.1080/02640414.2018.1464636",
+      "pmid": "29658408",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29658408/"
+    },
+    {
+      "key": "saner-2020-sleep-restriction-mps",
+      "authors": [
+        "Saner NJ",
+        "Lee MJ",
+        "Pitchford NW",
+        "et al."
+      ],
+      "year": 2020,
+      "title": "The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.",
+      "source": "The Journal of Physiology",
+      "volume": "598",
+      "issue": "8",
+      "pages": "1523-1536",
+      "doi": "10.1113/JP278828",
+      "pmid": "32078168",
+      "study_type": "non-RCT-trial",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32078168/"
     },
     {
       "key": "schoenfeld-2010-mechanisms",
@@ -1557,6 +2032,43 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/34757594/"
     },
     {
+      "key": "seaborne-2018-epigenetic-memory",
+      "authors": [
+        "Seaborne RA",
+        "et al."
+      ],
+      "year": 2018,
+      "title": "Human Skeletal Muscle Possesses an Epigenetic Memory of Hypertrophy.",
+      "source": "Scientific Reports",
+      "volume": "8",
+      "pages": "1898",
+      "doi": "10.1038/s41598-018-20287-3",
+      "pmid": "29382913",
+      "study_type": "non-RCT-trial",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29382913/"
+    },
+    {
+      "key": "singer-2024-rest-meta",
+      "authors": [
+        "Singer A",
+        "Wolf M",
+        "et al."
+      ],
+      "year": 2024,
+      "title": "Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy",
+      "source": "Frontiers in Sports and Active Living",
+      "volume": "6",
+      "pages": "1429789",
+      "doi": "10.3389/fspor.2024.1429789",
+      "pmid": "39205815",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39205815/"
+    },
+    {
       "key": "slater-2019-energy-surplus",
       "authors": [
         "Slater GJ",
@@ -1613,6 +2125,45 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33300582/"
     },
     {
+      "key": "therdyothin-2025-omega3-mps",
+      "authors": [
+        "Therdyothin A",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "The effects of omega-3 polyunsaturated fatty acids on muscle and whole-body protein synthesis: a systematic review and meta-analysis.",
+      "source": "Nutrition Reviews",
+      "volume": "83",
+      "issue": "2",
+      "pages": "e131-e143",
+      "doi": "10.1093/nutrit/nuae055",
+      "pmid": "38777807",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38777807/"
+    },
+    {
+      "key": "trexler-2014-metabolic-adaptation",
+      "authors": [
+        "Trexler ET",
+        "Smith-Ryan AE",
+        "Norton LE"
+      ],
+      "year": 2014,
+      "title": "Metabolic adaptation to weight loss: implications for the athlete.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "11",
+      "issue": "1",
+      "pages": "7",
+      "doi": "10.1186/1550-2783-11-7",
+      "pmid": "24571926",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24571926/"
+    },
+    {
       "key": "trexler-2015-beta-alanine",
       "authors": [
         "Trexler ET",
@@ -1629,6 +2180,26 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26175657/"
+    },
+    {
+      "key": "tsartsapakis-2026-advanced-systems",
+      "authors": [
+        "Tsartsapakis I",
+        "Zafeiroudi A",
+        "Kouthouris C"
+      ],
+      "year": 2026,
+      "title": "Effects of Advanced Resistance Training Systems on Muscle Hypertrophy and Strength in Recreationally Trained Adults: A Systematic Review and Meta-Analysis.",
+      "source": "Journal of Functional Morphology and Kinesiology",
+      "volume": "11",
+      "issue": "1",
+      "pages": "80",
+      "doi": "10.3390/jfmk11010080",
+      "pmid": "41718208",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41718208/"
     },
     {
       "key": "varovic-2025-muscle-length-regional",
@@ -1648,6 +2219,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40570881/"
+    },
+    {
+      "key": "vispute-2011-ab-exercise-fat",
+      "authors": [
+        "Vispute SS",
+        "Smith JD",
+        "LeCheminant JD",
+        "Hurley KS"
+      ],
+      "year": 2011,
+      "title": "The effect of abdominal exercise on abdominal fat.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "25",
+      "issue": "9",
+      "pages": "2559-2564",
+      "doi": "10.1519/JSC.0b013e3181fb4a46",
+      "pmid": "21804427",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/21804427/"
     },
     {
       "key": "vispute-2011-abdominal-fat",
@@ -1688,6 +2280,26 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30335577/"
     },
     {
+      "key": "wankhede-2015-ashwagandha",
+      "authors": [
+        "Wankhede S",
+        "Langade D",
+        "Joshi K",
+        "Sinha SR"
+      ],
+      "year": 2015,
+      "title": "Examining the effect of Withania somnifera supplementation on muscle strength and recovery: a randomized controlled trial.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "12",
+      "pages": "43",
+      "doi": "10.1186/s12970-015-0104-9",
+      "pmid": "26609282",
+      "study_type": "RCT",
+      "population": "untrained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26609282/"
+    },
+    {
       "key": "wiewelhove-2019-foam-rolling",
       "authors": [
         "Wiewelhove T",
@@ -1704,6 +2316,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31024339/"
+    },
+    {
+      "key": "wilborn-2004-zma",
+      "authors": [
+        "Wilborn CD",
+        "Kerksick CM",
+        "Campbell BI",
+        "Taylor LW"
+      ],
+      "year": 2004,
+      "title": "Effects of Zinc Magnesium Aspartate (ZMA) Supplementation on Training Adaptations and Markers of Anabolism and Catabolism.",
+      "source": "Journal of the International Society of Sports Nutrition",
+      "volume": "1",
+      "issue": "2",
+      "pages": "12-20",
+      "doi": "10.1186/1550-2783-1-2-12",
+      "pmid": "18500945",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/18500945/"
     },
     {
       "key": "wilson-2012-concurrent-meta",
@@ -1744,27 +2377,6 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23374455/"
     },
     {
-      "key": "jakubowski-2020-hmb-meta",
-      "authors": [
-        "Jakubowski JS",
-        "Nunes EA",
-        "Teixeira FJ",
-        "et al."
-      ],
-      "year": 2020,
-      "title": "Supplementation with the Leucine Metabolite beta-hydroxy-beta-methylbutyrate (HMB) does not Improve Resistance Exercise-Induced Changes in Body Composition or Strength in Young Subjects: A Systematic Review and Meta-Analysis.",
-      "source": "Nutrients",
-      "volume": "12",
-      "issue": "5",
-      "pages": "1523",
-      "doi": "10.3390/nu12051523",
-      "pmid": "32456217",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32456217/"
-    },
-    {
       "key": "wolfe-2017-bcaa",
       "authors": [
         "Wolfe RR"
@@ -1780,6 +2392,43 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28852372/"
+    },
+    {
+      "key": "zhang-2019-vitamin-d-strength",
+      "authors": [
+        "Zhang L",
+        "et al."
+      ],
+      "year": 2019,
+      "title": "Effect of vitamin D supplementation on upper and lower limb muscle strength and muscle power in athletes: A meta-analysis.",
+      "source": "PLOS ONE",
+      "volume": "14",
+      "issue": "4",
+      "pages": "e0215826",
+      "doi": "10.1371/journal.pone.0215826",
+      "pmid": "31039170",
+      "study_type": "meta-analysis",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31039170/"
+    },
+    {
+      "key": "zhao-2025-postmenopausal-bmd",
+      "authors": [
+        "Zhao",
+        "et al."
+      ],
+      "year": 2025,
+      "title": "Optimal resistance training parameters for improving bone mineral density in postmenopausal women: a systematic review and meta-analysis.",
+      "source": "Journal of Orthopaedic Surgery and Research",
+      "volume": "20",
+      "pages": "523",
+      "doi": "10.1186/s13018-025-05890-1",
+      "pmid": "40420105",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40420105/"
     },
     {
       "key": "zourdos-2016-rir-rpe-scale",
@@ -1818,520 +2467,6 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30747900/"
-    },
-    {
-      "key": "pelland-2026-dose-response",
-      "authors": [
-        "Pelland JC",
-        "Remmert JF",
-        "Robinson ZP",
-        "Hinson SR",
-        "Zourdos MC"
-      ],
-      "year": 2026,
-      "title": "The Resistance Training Dose Response: Meta-Regressions Exploring the Effects of Weekly Volume and Frequency on Muscle Hypertrophy and Strength Gains",
-      "source": "Sports Medicine",
-      "volume": "56",
-      "issue": "2",
-      "pages": "481-505",
-      "doi": "10.1007/s40279-025-02344-w",
-      "pmid": "41343037",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41343037/"
-    },
-    {
-      "key": "coleman-2024-deload-rct",
-      "authors": [
-        "Coleman M",
-        "et al."
-      ],
-      "year": 2024,
-      "title": "Gaining more from doing less? The effects of a one-week deload period during supervised resistance training on muscular adaptations",
-      "source": "PeerJ",
-      "volume": "12",
-      "pages": "e16777",
-      "doi": "10.7717/peerj.16777",
-      "pmid": "38274324",
-      "study_type": "RCT",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38274324/"
-    },
-    {
-      "key": "refalo-2025-deficit-protein-meta",
-      "authors": [
-        "Refalo MC",
-        "Trexler ET",
-        "Helms ER"
-      ],
-      "year": 2025,
-      "title": "Effect of Dietary Protein on Fat-Free Mass in Energy Restricted, Resistance-Trained Individuals: An Updated Systematic Review With Meta-Regression",
-      "source": "Strength and Conditioning Journal",
-      "doi": "10.1519/SSC.0000000000000888",
-      "study_type": "meta-analysis",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://api.crossref.org/works/10.1519/SSC.0000000000000888"
-    },
-    {
-      "key": "singer-2024-rest-meta",
-      "authors": [
-        "Singer A",
-        "Wolf M",
-        "et al."
-      ],
-      "year": 2024,
-      "title": "Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy",
-      "source": "Frontiers in Sports and Active Living",
-      "volume": "6",
-      "pages": "1429789",
-      "doi": "10.3389/fspor.2024.1429789",
-      "pmid": "39205815",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/39205815/"
-    },
-    {
-      "key": "attarieh-2025-biceps-shoulder-angle",
-      "authors": [
-        "Attarieh P",
-        "Nunes JP",
-        "et al."
-      ],
-      "year": 2025,
-      "title": "Comparison Between Shoulder Flexed and Extended Positions in Elbow Flexion Resistance Training on Regional Hypertrophy and Maximum Strength: Preacher versus Bayesian Cable Curls",
-      "source": "European Journal of Sport Science",
-      "volume": "25",
-      "issue": "4",
-      "pages": "e12279",
-      "doi": "10.1002/ejsc.12279",
-      "pmid": "40082069",
-      "study_type": "RCT",
-      "population": "recreationally-active",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40082069/"
-    },
-    {
-      "key": "larsen-2026-biceps-shoulder-angle",
-      "authors": [
-        "Larsen S",
-        "Sandvik Kristiansen B",
-        "Swinton PA",
-        "Wolf M",
-        "et al."
-      ],
-      "year": 2026,
-      "title": "The effects of shoulder extension angle on elbow flexor hypertrophy in the cable curl exercise",
-      "source": "Frontiers in Physiology",
-      "volume": "17",
-      "pages": "1750722",
-      "doi": "10.3389/fphys.2026.1750722",
-      "pmid": "41988507",
-      "study_type": "RCT",
-      "population": "untrained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41988507/"
-    },
-    {
-      "key": "acog-2020-pregnancy-exercise",
-      "authors": [
-        "ACOG Committee on Obstetric Practice"
-      ],
-      "year": 2020,
-      "title": "Physical Activity and Exercise During Pregnancy and the Postpartum Period: ACOG Committee Opinion, Number 804.",
-      "source": "Obstetrics and Gynecology",
-      "volume": "135",
-      "issue": "4",
-      "pages": "e178-e188",
-      "doi": "10.1097/AOG.0000000000003772",
-      "pmid": "32217980",
-      "study_type": "position-stand",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32217980/"
-    },
-    {
-      "key": "mottola-2018-pregnancy-guideline",
-      "authors": [
-        "Mottola MF",
-        "Davenport MH",
-        "Ruchat SM",
-        "et al."
-      ],
-      "year": 2018,
-      "title": "2019 Canadian guideline for physical activity throughout pregnancy.",
-      "source": "British Journal of Sports Medicine",
-      "volume": "52",
-      "issue": "21",
-      "pages": "1339-1346",
-      "doi": "10.1136/bjsports-2018-100056",
-      "pmid": "30337460",
-      "study_type": "position-stand",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337460/"
-    },
-    {
-      "key": "davenport-2018-prenatal-gdm-htn",
-      "authors": [
-        "Davenport MH",
-        "Ruchat SM",
-        "Poitras VJ",
-        "et al."
-      ],
-      "year": 2018,
-      "title": "Prenatal exercise for the prevention of gestational diabetes mellitus and hypertensive disorders of pregnancy: a systematic review and meta-analysis.",
-      "source": "British Journal of Sports Medicine",
-      "volume": "52",
-      "issue": "21",
-      "pages": "1367-1375",
-      "doi": "10.1136/bjsports-2018-099355",
-      "pmid": "30337463",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337463/"
-    },
-    {
-      "key": "davenport-2018-prenatal-depression",
-      "authors": [
-        "Davenport MH",
-        "McCurdy AP",
-        "Mottola MF",
-        "et al."
-      ],
-      "year": 2018,
-      "title": "Impact of prenatal exercise on both prenatal and postnatal anxiety and depressive symptoms: a systematic review and meta-analysis.",
-      "source": "British Journal of Sports Medicine",
-      "volume": "52",
-      "issue": "21",
-      "pages": "1376-1385",
-      "doi": "10.1136/bjsports-2018-099697",
-      "pmid": "30337464",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337464/"
-    },
-    {
-      "key": "iraki-2019-offseason-nutrition",
-      "authors": [
-        "Iraki J",
-        "Fitschen P",
-        "Espinar S",
-        "Helms E"
-      ],
-      "year": 2019,
-      "title": "Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review.",
-      "source": "Sports (Basel)",
-      "volume": "7",
-      "issue": "7",
-      "pages": "154",
-      "doi": "10.3390/sports7070154",
-      "pmid": "31247944",
-      "study_type": "narrative-review",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31247944/"
-    },
-    {
-      "key": "garthe-2013-nutrition-body-comp",
-      "authors": [
-        "Garthe I",
-        "Raastad T",
-        "Refsnes PE",
-        "Sundgot-Borgen J"
-      ],
-      "year": 2013,
-      "title": "Effect of nutritional intervention on body composition and performance in elite athletes.",
-      "source": "European Journal of Sport Science",
-      "volume": "13",
-      "issue": "3",
-      "pages": "295-303",
-      "doi": "10.1080/17461391.2011.643923",
-      "pmid": "23679146",
-      "study_type": "non-RCT-trial",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23679146/"
-    },
-    {
-      "key": "hirshkowitz-2015-sleep-duration",
-      "authors": [
-        "Hirshkowitz M",
-        "Whiton K",
-        "Albert SM",
-        "et al."
-      ],
-      "year": 2015,
-      "title": "National Sleep Foundation's sleep time duration recommendations: methodology and results summary.",
-      "source": "Sleep Health",
-      "volume": "1",
-      "issue": "1",
-      "pages": "40-43",
-      "doi": "10.1016/j.sleh.2014.12.010",
-      "pmid": "29073412",
-      "study_type": "position-stand",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29073412/"
-    },
-    {
-      "key": "saner-2020-sleep-restriction-mps",
-      "authors": [
-        "Saner NJ",
-        "Lee MJ",
-        "Pitchford NW",
-        "et al."
-      ],
-      "year": 2020,
-      "title": "The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.",
-      "source": "The Journal of Physiology",
-      "volume": "598",
-      "issue": "8",
-      "pages": "1523-1536",
-      "doi": "10.1113/JP278828",
-      "pmid": "32078168",
-      "study_type": "non-RCT-trial",
-      "population": "untrained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32078168/"
-    },
-    {
-      "key": "candow-2001-glutamine",
-      "authors": [
-        "Candow DG",
-        "Chilibeck PD",
-        "Burke DG",
-        "Davison KS"
-      ],
-      "year": 2001,
-      "title": "Effect of glutamine supplementation combined with resistance training in young adults.",
-      "source": "European Journal of Applied Physiology",
-      "volume": "86",
-      "issue": "2",
-      "pages": "142-149",
-      "doi": "10.1007/s00421-001-0523-y",
-      "pmid": "11822473",
-      "study_type": "RCT",
-      "population": "untrained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/11822473/"
-    },
-    {
-      "key": "wankhede-2015-ashwagandha",
-      "authors": [
-        "Wankhede S",
-        "Langade D",
-        "Joshi K",
-        "Sinha SR"
-      ],
-      "year": 2015,
-      "title": "Examining the effect of Withania somnifera supplementation on muscle strength and recovery: a randomized controlled trial.",
-      "source": "Journal of the International Society of Sports Nutrition",
-      "volume": "12",
-      "pages": "43",
-      "doi": "10.1186/s12970-015-0104-9",
-      "pmid": "26609282",
-      "study_type": "RCT",
-      "population": "untrained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26609282/"
-    },
-    {
-      "key": "wilborn-2004-zma",
-      "authors": [
-        "Wilborn CD",
-        "Kerksick CM",
-        "Campbell BI",
-        "Taylor LW"
-      ],
-      "year": 2004,
-      "title": "Effects of Zinc Magnesium Aspartate (ZMA) Supplementation on Training Adaptations and Markers of Anabolism and Catabolism.",
-      "source": "Journal of the International Society of Sports Nutrition",
-      "volume": "1",
-      "issue": "2",
-      "pages": "12-20",
-      "doi": "10.1186/1550-2783-1-2-12",
-      "pmid": "18500945",
-      "study_type": "RCT",
-      "population": "trained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/18500945/"
-    },
-    {
-      "key": "ortega-2021-tart-cherry-recovery",
-      "authors": [
-        "Ortega DR",
-        "López AM",
-        "Amaya HM",
-        "de la Rosa FJB"
-      ],
-      "year": 2021,
-      "title": "Tart cherry and pomegranate supplementations enhance recovery from exercise-induced muscle damage: a systematic review.",
-      "source": "Biology of Sport",
-      "volume": "38",
-      "issue": "1",
-      "pages": "97-111",
-      "doi": "10.5114/biolsport.2020.97069",
-      "pmid": "33795919",
-      "study_type": "systematic-review",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33795919/"
-    },
-    {
-      "key": "vispute-2011-ab-exercise-fat",
-      "authors": [
-        "Vispute SS",
-        "Smith JD",
-        "LeCheminant JD",
-        "Hurley KS"
-      ],
-      "year": 2011,
-      "title": "The effect of abdominal exercise on abdominal fat.",
-      "source": "Journal of Strength and Conditioning Research",
-      "volume": "25",
-      "issue": "9",
-      "pages": "2559-2564",
-      "doi": "10.1519/JSC.0b013e3181fb4a46",
-      "pmid": "21804427",
-      "study_type": "RCT",
-      "population": "untrained",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/21804427/"
-    },
-    {
-      "key": "borsheim-2002-eaa-mps",
-      "authors": [
-        "Børsheim E",
-        "Tipton KD",
-        "Wolf SE",
-        "Wolfe RR"
-      ],
-      "year": 2002,
-      "title": "Essential amino acids and muscle protein recovery from resistance exercise.",
-      "source": "American Journal of Physiology-Endocrinology and Metabolism",
-      "volume": "283",
-      "issue": "4",
-      "pages": "E648-E657",
-      "doi": "10.1152/ajpendo.00466.2001",
-      "pmid": "12217881",
-      "study_type": "mechanistic",
-      "population": "recreationally-active",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/12217881/"
-    },
-    {
-      "key": "church-2020-eaa-synthesis",
-      "authors": [
-        "Church DD",
-        "Hirsch KR",
-        "Park S",
-        "Kim IY",
-        "Gwin JA",
-        "Pasiakos SM",
-        "Wolfe RR",
-        "Ferrando AA"
-      ],
-      "year": 2020,
-      "title": "Essential Amino Acids and Protein Synthesis: Insights into Maximizing the Muscle and Whole-Body Response to Feeding.",
-      "source": "Nutrients",
-      "volume": "12",
-      "issue": "12",
-      "pages": "3717",
-      "doi": "10.3390/nu12123717",
-      "pmid": "33276485",
-      "study_type": "mechanistic",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33276485/"
-    },
-    {
-      "key": "collins-2014-neck-concussion",
-      "authors": [
-        "Collins CL",
-        "Fletcher EN",
-        "Fields SK",
-        "Kluchurosky L",
-        "Rohrkemper MK",
-        "Comstock RD"
-      ],
-      "year": 2014,
-      "title": "Neck strength: a protective factor reducing risk for concussion in high school sports.",
-      "source": "The Journal of Primary Prevention",
-      "volume": "35",
-      "issue": "5",
-      "pages": "309-319",
-      "doi": "10.1007/s10935-014-0355-2",
-      "pmid": "24930131",
-      "study_type": "cohort",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24930131/"
-    },
-    {
-      "key": "hrysomallis-2016-neck-review",
-      "authors": [
-        "Hrysomallis C"
-      ],
-      "year": 2016,
-      "title": "Neck Muscular Strength, Training, Performance and Sport Injury Risk: A Review.",
-      "source": "Sports Medicine",
-      "volume": "46",
-      "issue": "8",
-      "pages": "1111-1124",
-      "doi": "10.1007/s40279-016-0490-4",
-      "pmid": "26861960",
-      "study_type": "narrative-review",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/26861960/"
-    },
-    {
-      "key": "bosquet-2007-taper",
-      "authors": [
-        "Bosquet L",
-        "Montpetit J",
-        "Arvisais D",
-        "Mujika I"
-      ],
-      "year": 2007,
-      "title": "Effects of tapering on performance: a meta-analysis.",
-      "source": "Medicine and Science in Sports and Exercise",
-      "volume": "39",
-      "issue": "8",
-      "pages": "1358-1365",
-      "doi": "10.1249/mss.0b013e31806010e0",
-      "pmid": "17762369",
-      "study_type": "meta-analysis",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/17762369/"
-    },
-    {
-      "key": "henselmans-2022-carb-strength",
-      "authors": [
-        "Henselmans M",
-        "Bjørnsen T",
-        "Hedderman R",
-        "Vårvik FT"
-      ],
-      "year": 2022,
-      "title": "The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.",
-      "source": "Nutrients",
-      "volume": "14",
-      "issue": "4",
-      "pages": "856",
-      "doi": "10.3390/nu14040856",
-      "pmid": "35215506",
-      "study_type": "systematic-review",
-      "population": "mixed",
-      "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35215506/"
     }
   ]
 }

@@ -363,6 +363,110 @@ export function recoverySignal(checkins = [], energyBalance = null, { minCheckin
   return { underRecovered, inDeficit, avgReadiness, n };
 }
 
+// Which muscles make an exercise "lower-body" for the concurrent-training read.
+// spinal-erectors and abs are deliberately absent: both are loaded by upper- AND
+// lower-body work, so they can't discriminate between the two halves.
+export const LOWER_BODY_MUSCLES = new Set(["quadriceps", "hamstrings", "glutes", "calves"]);
+const LOWER_BODY_INJURY_REGIONS = new Set(["knee", "hip", "ankle", "lower-back"]);
+
+// CONCURRENT-INTERFERENCE PATTERN. The classic fingerprint of a cardio load
+// competing for leg recovery is ASYMMETRY: lower-body lifts flat while the upper
+// body keeps climbing. A systemic cause (sleep, stress, under-eating) stalls
+// everything; too much lifting volume stalls the muscle it's aimed at. So the read
+// is only honest when the legs are stalled INSIDE their productive volume range —
+// otherwise volumeResponse already owns the story and the two surfaces would
+// contradict each other. See content/03-programming/cardio-and-concurrent-training.md.
+//
+// HONESTY BOUND, non-negotiable: the app has never observed the user's cardio. This
+// detects a PATTERN and names cardio as one candidate cause; it must never assert
+// causation. The copy therefore states only what was measured, and offers the
+// non-cardio explanation in the same breath.
+//
+// Pure: consumes already-derived inputs (the SAME `stalls` array the plateau card
+// renders, so the two can never name different lifts). Returns null — the common
+// case — unless every gate holds. `guideline` is the data/guidelines node, so the
+// prescribed test is single-sourced with the KB rather than restated here.
+export function interferenceSignal(
+  { stalls = [], progression = [], weekVolume = null, energyBalance = null, recovery = null, goal = null, injuries = [] },
+  exIndex, muscleIndex, guideline = null,
+  { minLowerStalled = 2, minUpperProgressing = 2, minProgressWeeks = 3, noisePct = 2.5 } = {},
+) {
+  // On fat-loss the deficit is deliberate and cardio is prescribed — flagging
+  // "interference" there would contradict the app's own advice.
+  if (goal !== "hypertrophy" && goal !== "strength") return null;
+  // A stalled squat while managing a knee is likelier the knee, and cardio-framed
+  // copy would read tone-deaf.
+  for (const inj of injuries || []) {
+    const region = typeof inj === "string" ? inj : inj?.region;
+    if (region && LOWER_BODY_INJURY_REGIONS.has(region)) return null;
+  }
+
+  const half = (exId) => {
+    const primary = exIndex.get(exId)?.primary ?? [];
+    if (!primary.length) return null; // unknown/custom exercise: can't place it, don't guess
+    return primary.some((m) => LOWER_BODY_MUSCLES.has(m)) ? "lower" : "upper";
+  };
+
+  const stalledLower = (stalls || []).filter((s) => half(s.exercise) === "lower");
+  if (stalledLower.length < minLowerStalled) return null;
+
+  // "Progressing" uses the same noise band stallDetect does, so a lift can never be
+  // counted as both. One genuinely climbing leg lift falsifies the whole story.
+  const stalledIds = new Set((stalls || []).map((s) => s.exercise));
+  const progressing = (progression || []).filter(
+    (p) => !stalledIds.has(p.exercise) && (p.weeks ?? 0) >= minProgressWeeks && (p.change_pct ?? 0) >= noisePct,
+  );
+  if (progressing.some((p) => half(p.exercise) === "lower")) return null;
+  const upperProgressing = progressing.filter((p) => half(p.exercise) === "upper").length;
+  // If the upper body is flat too, the cause is systemic — the plateau card and the
+  // recovery gate already own that, and this card stays quiet.
+  if (upperProgressing < minUpperProgressing) return null;
+
+  // THE DISCRIMINATOR. Below MEV is under-stimulus ("add"); above MAV is a lifting-
+  // volume problem ("reduce"/"change"). Only a stall INSIDE the productive range
+  // points outside the gym. No landmark or no volume data → can't rule volume out →
+  // stay silent rather than guess.
+  let judged = 0;
+  for (const s of stalledLower) {
+    for (const m of exIndex.get(s.exercise)?.primary ?? []) {
+      if (!LOWER_BODY_MUSCLES.has(m)) continue;
+      const lm = muscleIndex.get(m);
+      const sets = weekVolume?.[m];
+      if (!lm || lm.mev?.min == null || lm.mav?.max == null || typeof sets !== "number") continue;
+      if (sets < lm.mev.min || sets > lm.mav.max) return null;
+      judged++;
+    }
+  }
+  if (!judged) return null;
+
+  // At least one independent read that recovery or fuel is actually short. Without
+  // one, "legs flat, upper body fine" is just normal lower-body lumpiness.
+  const corroborators = [];
+  if (energyBalance?.direction === "deficit") corroborators.push("unintended-deficit");
+  if (recovery?.underRecovered) corroborators.push("under-recovered");
+  if (!corroborators.length) return null;
+
+  const names = stalledLower.map((s) => s.name);
+  const lifts = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const weeksFlat = Math.max(...stalledLower.map((s) => s.weeks_flat ?? 0));
+  const alsoSaw = corroborators.includes("unintended-deficit")
+    ? "you've been losing weight while training to gain"
+    : "your check-ins have been reading low";
+  const test = guideline?.scale_back_protocol
+    ?? "Halve your structured cardio for two to three weeks and hold everything else constant. If the stalled lifts start moving, cardio load was the limiter.";
+  const note = `${lifts} ${names.length === 1 ? "has" : "have"} been flat for about ${weeksFlat} weeks while your upper-body lifts keep climbing, and ${alsoSaw}. `
+    + `Your leg volume is inside its productive range, so the plan itself probably isn't the limiter — something outside the gym looks like it's competing for leg recovery or fuel. `
+    + `A heavy running or cycling load is one common cause, and it's fixable without giving cardio up. If cardio isn't part of your week, food and sleep are the usual suspects. ${test}`;
+
+  return {
+    pattern: "lower-body-stall-asymmetry",
+    stalled_lower: stalledLower.map((s) => ({ exercise: s.exercise, name: s.name })),
+    upper_progressing: upperProgressing,
+    corroborators,
+    note,
+  };
+}
+
 // Bodyweight trend via least-squares regression (kg/week). Daily weight is noise;
 // the slope of the trend is the signal — and doubles as the energy-balance sensor.
 export function bodyweightTrend(series) {

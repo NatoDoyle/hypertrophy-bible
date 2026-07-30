@@ -25,6 +25,8 @@
 
 Work top to bottom. Most advanced stalls resolve in the first three rows.
 
+**One pattern worth checking before you start.** If your lower-body lifts have gone flat while your upper body keeps climbing, and the stalled muscles are still inside their productive volume range, the limiter is probably outside the gym rather than in your program — and a heavy [cardio load](../03-programming/cardio-and-concurrent-training.md) is the most commonly missed withdrawal.
+
 ## The Evidence
 
 **The order reflects effort-to-payoff, not a tested protocol.** Volume is the best-evidenced lever for adding growth, so it leads; effort and fatigue management follow from the stimulus–fatigue–adaptation logic that organizes this whole Bible. **[Grade C]** The specific six-step sequence is a coaching framework assembled from those evidence pages rather than a directly-studied algorithm, so it's graded as practice-based. **[Grade D]** What *is* well-supported is the backdrop: growth decelerates sharply with training age, so an advanced lifter's true rate of gain is genuinely small — meaning a "plateau" over a few weeks may just be that slow rate hiding inside normal week-to-week noise (see [Stimulus, Fatigue & Adaptation](../00-foundations/stimulus-fatigue-adaptation.md)). **[Grade C]**

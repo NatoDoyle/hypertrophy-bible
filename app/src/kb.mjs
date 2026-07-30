@@ -1,6 +1,6 @@
 // KB access layer: builds the derive-engine's Maps from the bundled data and
 // selects a program template. No filesystem — portable to Node and Workers.
-import { exercises, muscles, programs } from "./kb-data.mjs";
+import { exercises, muscles, programs, guidelines } from "./kb-data.mjs";
 
 // Rich exercise lookup for the app UI (cues, equipment, muscles).
 export const exerciseById = new Map(exercises.map((e) => [e.id, e]));
@@ -14,6 +14,12 @@ export const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null
 
 export { programs };
 export const programById = new Map(programs.map((p) => [p.id, p]));
+
+// Quantified programming guidelines, keyed by id — the machine-readable mirror of a
+// content page. Coach surfaces read their numbers and prescriptions from here so the
+// KB stays the single source; `data/guidelines/cardio-concurrent-training.json` backs
+// content/03-programming/cardio-and-concurrent-training.md.
+export const guidelineById = new Map(guidelines.map((g) => [g.id, g]));
 
 // Pick the best program for a profile. Scores by days match, experience match,
 // and avoids specialization blocks as a default.

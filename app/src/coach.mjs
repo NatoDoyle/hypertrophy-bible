@@ -5,8 +5,9 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
+  interferenceSignal,
 } from "../../tools/derive-core.mjs";
-import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById } from "./kb.mjs";
+import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -549,7 +550,7 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, recovery);
 }
 
-export function progressReport(user, sessions, bodyweights, customEx = [], now = null) {
+export function progressReport(user, sessions, bodyweights, customEx = [], now = null, checkins = []) {
   const { index, name } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
@@ -639,5 +640,17 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // the client renders in the user's unit.
   const prHistory = allPersonalRecords(sessions);
   const personal_records = prHistory.slice(0, 8).map((pr) => ({ ...pr, name: name(pr.exercise) }));
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length };
+  // Concurrent-training read. Windowed to the same 42-day block as the bodyweight
+  // trend above — recoverySignal averages whatever it's handed, and a lifetime blend
+  // is the exact bug /api/today's gate already guards against. Fed the FULL
+  // progression list (not the 8-row display slice) so a climbing upper-body lift can
+  // never be truncated out of the asymmetry check, and the same `stalls` array the
+  // plateau card renders, so the two surfaces can't name different lifts.
+  const recentCheckins = bwWindowStart ? (checkins || []).filter((c) => (c.date || "").slice(0, 10) >= bwWindowStart) : (checkins || []);
+  const interference = latest ? interferenceSignal({
+    stalls, progression: allProg, weekVolume: weekly[latest], energyBalance: energy,
+    recovery: recoverySignal(recentCheckins, energy),
+    goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
+  }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference };
 }

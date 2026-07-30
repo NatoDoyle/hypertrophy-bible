@@ -797,8 +797,10 @@ export function createApp(store, config = {}) {
   app.get("/api/progress", async (c) => {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
-    const [sessions, bodyweights] = await Promise.all([store.listSessions(id), store.listBodyweights(id)]);
-    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString()));
+    // Check-ins feed the concurrent-training read's readiness corroborator;
+    // progressReport windows them to the same 42-day block as the bodyweight trend.
+    const [sessions, bodyweights, checkins] = await Promise.all([store.listSessions(id), store.listBodyweights(id), store.listCheckins(id)]);
+    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins));
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).

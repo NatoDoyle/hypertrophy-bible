@@ -484,6 +484,64 @@ check("sessionRecap: no lucky_xp when the session isn't seeded to hit (no sessio
   assert.equal(sessionRecap(user, [], s).lucky_xp, 0);
 });
 
+// ---------------------------------------------------------------------------
+// The concurrent-training read, through the binder. progressReport takes `now`
+// explicitly, so fixed dates are safe here (unlike the route suite).
+// ---------------------------------------------------------------------------
+const IF_NOW = "2026-02-16T10:00:00Z"; // Monday of 2026-W08; the fixture's last full week is W07
+// 6 weeks: squat + RDL dead flat, bench/row/press climbing 2.5 kg a week. Squat twice
+// a week puts quads at 10 sets and hamstrings at 9 — both inside their MEV..MAV range,
+// which is what makes this a recovery story rather than a volume one.
+const ifSessions = () => {
+  const set = (ex, w, r) => ({ exercise: ex, set_type: "work", weight_kg: w, reps: r });
+  const out = [];
+  for (let n = 0; n < 6; n++) {
+    const base = 100 + n * 2.5;
+    const D = (o) => new Date(Date.UTC(2026, 0, 5 + n * 7 + o)).toISOString().slice(0, 10);
+    out.push(
+      { session_id: "a" + n, date: D(0), sets: [...Array(5).fill(set("barbell-back-squat", 140, 5)), ...Array(4).fill(set("barbell-bench-press", base, 6))] },
+      { session_id: "b" + n, date: D(2), sets: [...Array(4).fill(set("romanian-deadlift", 120, 8)), ...Array(4).fill(set("barbell-row", base - 20, 8)), ...Array(3).fill(set("barbell-overhead-press", base - 40, 6))] },
+      { session_id: "c" + n, date: D(4), sets: [...Array(5).fill(set("barbell-back-squat", 140, 5)), ...Array(4).fill(set("barbell-bench-press", base, 6))] },
+    );
+  }
+  return out;
+};
+const ifBw = (kgAt) => Array.from({ length: 6 }, (_, n) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString().slice(0, 10), kg: kgAt(n) }));
+const ifUser = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+
+check("progressReport surfaces the interference read when legs stall, upper climbs, and weight is falling", () => {
+  const rep = progressReport(ifUser, ifSessions(), ifBw((n) => 82 - n * 0.3), [], IF_NOW);
+  assert.ok(rep.interference, "expected the pattern to fire");
+  assert.equal(rep.interference.pattern, "lower-body-stall-asymmetry");
+  assert.deepEqual(rep.interference.corroborators, ["unintended-deficit"]);
+  // The two Progress surfaces must never name different lifts — both read one `stalls` array.
+  const stalledIds = new Set(rep.stalls.map((s) => s.exercise));
+  for (const s of rep.interference.stalled_lower) assert.ok(stalledIds.has(s.exercise), `${s.exercise} missing from stalls`);
+  assert.deepEqual(rep.interference.stalled_lower.map((s) => s.exercise).sort(), ["barbell-back-squat", "romanian-deadlift"]);
+  // The prescribed test comes from data/guidelines/, not from copy restated in the engine.
+  assert.ok(/Halve your structured cardio/.test(rep.interference.note));
+});
+
+check("progressReport: the same pattern fires on persistent low check-ins with a flat bodyweight", () => {
+  const checkins = Array.from({ length: 5 }, (_, n) => ({
+    date: new Date(Date.UTC(2026, 1, 5 + n)).toISOString().slice(0, 10),
+    sleep_quality: 2, energy: 2, mood: 2, motivation: 2, stress: 4,
+  }));
+  const rep = progressReport(ifUser, ifSessions(), ifBw(() => 82), [], IF_NOW, checkins);
+  assert.ok(rep.interference);
+  assert.deepEqual(rep.interference.corroborators, ["under-recovered"]);
+});
+
+check("progressReport: silent when nothing corroborates it — a plateau alone is just a plateau", () => {
+  const rep = progressReport(ifUser, ifSessions(), ifBw((n) => 82 + n * 0.3), [], IF_NOW);
+  assert.ok(rep.stalls.length >= 2, "the lifts should still read as stalled"); // the plateau card still fires
+  assert.equal(rep.interference, null);
+});
+
+check("progressReport: interference stays null for a user with no data at all", () => {
+  assert.equal(progressReport(ifUser, [], [], [], IF_NOW).interference, null);
+});
+
 check("progressReport infers energy balance from bodyweight trend (no calories)", () => {
   const sessions = [{ date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] }];
   const bodyweights = [

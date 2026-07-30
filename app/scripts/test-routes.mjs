@@ -855,6 +855,54 @@ try {
   const beginnerToday = await (await app.request("/api/today", { headers: { "X-HB-User": beginnerTaperUser } })).json();
   ok("#taper beginners are exempt even with a goal date inside the window", beginnerToday.session?.taper == null);
 
+  // --- The concurrent-training read, through /api/progress -------------------
+  // Tested at the route because the payload has to survive the same door the client
+  // uses: /api/progress had to start reading check-ins for the readiness corroborator,
+  // and a route that forgets to pass them makes the card silently unreachable while
+  // every unit test stays green (the whole reason this suite exists).
+  //
+  // Dates are relative to Date.now() per this file's rule, but ANCHORED TO A MONDAY:
+  // per-muscle volume buckets by ISO week, so a floating 3-session block could straddle
+  // a week boundary, split the volume, drop it under MEV and silently stop the pattern
+  // firing on whatever weekday CI happened to run.
+  const nowD = new Date();
+  const mondayMs = Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth(), nowD.getUTCDate()) - ((nowD.getUTCDay() + 6) % 7) * 86400000;
+  const wkDay = (weeksBack, offset) => new Date(mondayMs - weeksBack * 7 * 86400000 + offset * 86400000).toISOString();
+  const ifProfile = { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  // 5 complete weeks: squat + RDL dead flat, bench/row/press climbing. Squat twice a
+  // week keeps quads at 10 sets and hamstrings at 9 — inside MEV..MAV, so the
+  // discriminator reads "not a volume problem".
+  const seedInterference = async (user, tag) => {
+    const set = (ex, w, r) => ({ exercise: ex, set_type: "work", weight_kg: w, reps: r });
+    for (let n = 0; n < 5; n++) {
+      const back = 5 - n, base = 100 + n * 2.5;
+      await json("POST", "/api/session", { user_id: user, session_id: `${tag}-a${n}`, date: wkDay(back, 0),
+        sets: [...Array(5).fill(set("barbell-back-squat", 140, 5)), ...Array(4).fill(set("barbell-bench-press", base, 6))] });
+      await json("POST", "/api/session", { user_id: user, session_id: `${tag}-b${n}`, date: wkDay(back, 2),
+        sets: [...Array(4).fill(set("romanian-deadlift", 120, 8)), ...Array(4).fill(set("barbell-row", base - 20, 8)), ...Array(3).fill(set("barbell-overhead-press", base - 40, 6))] });
+      await json("POST", "/api/session", { user_id: user, session_id: `${tag}-c${n}`, date: wkDay(back, 4),
+        sets: [...Array(5).fill(set("barbell-back-squat", 140, 5)), ...Array(4).fill(set("barbell-bench-press", base, 6))] });
+    }
+  };
+  const ifUserId = (await json("POST", "/api/onboard", { profile: ifProfile })).data.user_id;
+  await seedInterference(ifUserId, "if");
+  for (let n = 0; n < 5; n++) await json("POST", "/api/bodyweight", { user_id: ifUserId, kg: 82 - n * 0.3, date: wkDay(5 - n, 0).slice(0, 10) });
+  const ifProg = await (await app.request("/api/progress", { headers: { "X-HB-User": ifUserId } })).json();
+  ok("#cardio /api/progress surfaces the interference pattern end-to-end", ifProg.interference?.pattern === "lower-body-stall-asymmetry");
+  ok("#cardio it names only stalled lower-body lifts, and the plateau card agrees",
+    ifProg.interference?.stalled_lower?.length === 2
+    && ifProg.interference.stalled_lower.every((s) => (ifProg.stalls || []).some((x) => x.exercise === s.exercise)));
+  ok("#cardio the note quotes the KB guideline's scale-back test", /Halve your structured cardio/.test(ifProg.interference?.note || ""));
+
+  // The negative twin: identical training, no weigh-ins and no check-ins. The plateau
+  // card still fires; the interference card must not. Silence is the common case.
+  const ifQuietId = (await json("POST", "/api/onboard", { profile: ifProfile })).data.user_id;
+  await seedInterference(ifQuietId, "ifq");
+  const quietProg = await (await app.request("/api/progress", { headers: { "X-HB-User": ifQuietId } })).json();
+  ok("#cardio uncorroborated, the card stays silent while the plateau card still fires",
+    quietProg.interference == null && (quietProg.stalls || []).length >= 2);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
