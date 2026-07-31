@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**121** verified references.
+**128** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -224,6 +224,14 @@ Fonseca RM & et al. (2014). Changes in exercises are more effective than in load
 - Type: RCT · Population: untrained
 - DOI: [10.1519/JSC.0000000000000539](https://doi.org/10.1519/JSC.0000000000000539) · PMID: [24832974](https://pubmed.ncbi.nlm.nih.gov/24832974/)
 
+### fyfe-2014-interference-molecular
+Fyfe JJ et al. (2014). Interference between concurrent resistance and endurance exercise: molecular bases and the role of individual training variables.
+
+*Sports Medicine*, 44(6), 743-762.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1007/s40279-014-0162-1](https://doi.org/10.1007/s40279-014-0162-1) · PMID: [24728927](https://pubmed.ncbi.nlm.nih.gov/24728927/)
+
 ### garthe-2013-nutrition-body-comp
 Garthe I et al. (2013). Effect of nutritional intervention on body composition and performance in elite athletes.
 
@@ -360,6 +368,14 @@ Kassiano W & et al. (2023). Which ROMs Lead to Rome? A Systematic Review of the 
 - Type: systematic-review · Population: mixed
 - DOI: [10.1519/JSC.0000000000004415](https://doi.org/10.1519/JSC.0000000000004415) · PMID: [36662126](https://pubmed.ncbi.nlm.nih.gov/36662126/)
 
+### konopka-2014-aerobic-hypertrophy
+Konopka AR & Harber MP (2014). Skeletal muscle hypertrophy after aerobic exercise training.
+
+*Exercise and Sport Sciences Reviews*, 42(2), 53-61.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1249/JES.0000000000000007](https://doi.org/10.1249/JES.0000000000000007) · PMID: [24508740](https://pubmed.ncbi.nlm.nih.gov/24508740/)
+
 ### kouri-1995-ffmi
 Kouri EM & et al. (1995). Fat-free mass index in users and nonusers of anabolic-androgenic steroids.
 
@@ -448,6 +464,14 @@ Lopez P & et al. (2021). Resistance Training Load Effects on Muscle Hypertrophy 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1249/MSS.0000000000002585](https://doi.org/10.1249/MSS.0000000000002585) · PMID: [33433148](https://pubmed.ncbi.nlm.nih.gov/33433148/)
 
+### lundberg-2022-fiber-hypertrophy
+Lundberg TR & et al. (2022). The Effects of Concurrent Aerobic and Strength Training on Muscle Fiber Hypertrophy: A Systematic Review and Meta-Analysis.
+
+*Sports Medicine*, 52(10), 2391-2403.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1007/s40279-022-01688-x](https://doi.org/10.1007/s40279-022-01688-x) · PMID: [35476184](https://pubmed.ncbi.nlm.nih.gov/35476184/)
+
 ### maeo-2021-hamstring-length
 Maeo S et al. (2021). Greater Hamstrings Muscle Hypertrophy but Similar Damage Protection after Training at Long versus Short Muscle Lengths.
 
@@ -504,6 +528,14 @@ Mottola MF et al. (2018). 2019 Canadian guideline for physical activity througho
 - Type: position-stand · Population: mixed
 - DOI: [10.1136/bjsports-2018-100056](https://doi.org/10.1136/bjsports-2018-100056) · PMID: [30337460](https://pubmed.ncbi.nlm.nih.gov/30337460/)
 
+### murach-2016-concurrent-contrary
+Murach KA & Bagley JR (2016). Skeletal Muscle Hypertrophy with Concurrent Exercise Training: Contrary Evidence for an Interference Effect.
+
+*Sports Medicine*, 46(8), 1029-1039.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1007/s40279-016-0496-y](https://doi.org/10.1007/s40279-016-0496-y) · PMID: [26932769](https://pubmed.ncbi.nlm.nih.gov/26932769/)
+
 ### nedeltcheva-2010-sleep-adiposity
 Nedeltcheva AV & et al. (2010). Insufficient sleep undermines dietary efforts to reduce adiposity.
 
@@ -535,6 +567,14 @@ Pallarés JG & et al. (2021). Effects of range of motion on resistance training 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1111/sms.14006](https://doi.org/10.1111/sms.14006) · PMID: [34170576](https://pubmed.ncbi.nlm.nih.gov/34170576/)
+
+### paluch-2022-daily-steps-mortality
+Paluch AE & et al. (2022). Daily steps and all-cause mortality: a meta-analysis of 15 international cohorts.
+
+*The Lancet Public Health*, 7(3), e219-e228.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1016/S2468-2667(21)00302-9](https://doi.org/10.1016/S2468-2667(21)00302-9) · PMID: [35247352](https://pubmed.ncbi.nlm.nih.gov/35247352/)
 
 ### parr-2014-alcohol
 Parr EB & et al. (2014). Alcohol ingestion impairs maximal post-exercise rates of myofibrillar protein synthesis following a single bout of concurrent training.
@@ -655,6 +695,14 @@ Robinson ZP & et al. (2024). Exploring the Dose-Response Relationship Between Es
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-024-02069-2](https://doi.org/10.1007/s40279-024-02069-2) · PMID: [38970765](https://pubmed.ncbi.nlm.nih.gov/38970765/)
+
+### sabag-2018-hiit-concurrent-meta
+Sabag A & et al. (2018). The compatibility of concurrent high intensity interval training and resistance training for muscular strength and hypertrophy: a systematic review and meta-analysis.
+
+*Journal of Sports Sciences*, 36(21), 2472-2483.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.1080/02640414.2018.1464636](https://doi.org/10.1080/02640414.2018.1464636) · PMID: [29658408](https://pubmed.ncbi.nlm.nih.gov/29658408/)
 
 ### saner-2020-sleep-restriction-mps
 Saner NJ et al. (2020). The effect of sleep restriction, with or without high-intensity interval exercise, on myofibrillar protein synthesis in healthy young men.
@@ -847,6 +895,14 @@ Therdyothin A & et al. (2025). The effects of omega-3 polyunsaturated fatty acid
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1093/nutrit/nuae055](https://doi.org/10.1093/nutrit/nuae055) · PMID: [38777807](https://pubmed.ncbi.nlm.nih.gov/38777807/)
+
+### trexler-2014-metabolic-adaptation
+Trexler ET et al. (2014). Metabolic adaptation to weight loss: implications for the athlete.
+
+*Journal of the International Society of Sports Nutrition*, 11(1), 7.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1186/1550-2783-11-7](https://doi.org/10.1186/1550-2783-11-7) · PMID: [24571926](https://pubmed.ncbi.nlm.nih.gov/24571926/)
 
 ### trexler-2015-beta-alanine
 Trexler ET & et al. (2015). International society of sports nutrition position stand: Beta-Alanine.

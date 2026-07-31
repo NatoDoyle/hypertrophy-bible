@@ -16,6 +16,8 @@ import {
   volumeResponse,
   deriveVolumeAdjust,
   recoverySignal,
+  interferenceSignal,
+  LOWER_BODY_MUSCLES,
   progressionCadence,
   adaptiveStallWindow,
   bodyweightTrend,
@@ -568,6 +570,115 @@ check("luckySetsInSession: per-exercise hard-set index replays in logged order, 
 });
 check("LUCKY_SET_XP is a positive flat bonus, smaller than the PR bonus", () => {
   assert.ok(LUCKY_SET_XP > 0 && LUCKY_SET_XP < 50);
+});
+
+// ---------------------------------------------------------------------------
+// interferenceSignal — the concurrent-training read. It consumes already-derived
+// inputs, so the fixtures are plain literals. The must-not-fire cases matter more
+// than the fire case: this card is silent for almost everyone, and a false positive
+// on a surface the user is supposed to trust costs more than a missed true one.
+// ---------------------------------------------------------------------------
+const IF_EX = new Map([
+  ["back-squat", { name: "Back Squat", primary: ["quadriceps"], secondary: ["glutes"] }],
+  ["romanian-deadlift", { name: "Romanian Deadlift", primary: ["hamstrings"], secondary: ["glutes"] }],
+  ["leg-press", { name: "Leg Press", primary: ["quadriceps"], secondary: [] }],
+  ["bench-press", { name: "Bench Press", primary: ["chest"], secondary: ["triceps"] }],
+  ["barbell-row", { name: "Barbell Row", primary: ["lats"], secondary: ["biceps"] }],
+  ["overhead-press", { name: "Overhead Press", primary: ["front-delts"], secondary: ["triceps"] }],
+]);
+const IF_MUSCLES = new Map([
+  ["quadriceps", { mev: { min: 8, max: 10 }, mav: { min: 12, max: 18 }, mrv: { min: 20, max: 22 } }],
+  ["hamstrings", { mev: { min: 6, max: 8 }, mav: { min: 10, max: 16 }, mrv: { min: 18, max: 20 } }],
+  ["chest", { mev: { min: 8, max: 10 }, mav: { min: 12, max: 18 }, mrv: { min: 20, max: 22 } }],
+]);
+const IF_STALLS = [
+  { exercise: "back-squat", name: "Back Squat", weeks_flat: 5, best_e1rm: 140 },
+  { exercise: "romanian-deadlift", name: "Romanian Deadlift", weeks_flat: 5, best_e1rm: 120 },
+];
+const IF_PROG = [
+  { exercise: "bench-press", name: "Bench Press", weeks: 5, change_pct: 6.2 },
+  { exercise: "barbell-row", name: "Barbell Row", weeks: 5, change_pct: 4.8 },
+  { exercise: "overhead-press", name: "Overhead Press", weeks: 4, change_pct: 3.1 },
+];
+const ifInput = (over = {}) => ({
+  stalls: IF_STALLS, progression: IF_PROG,
+  weekVolume: { quadriceps: 14, hamstrings: 10, chest: 14 }, // both inside MEV..MAV
+  energyBalance: { direction: "deficit" }, recovery: { underRecovered: false },
+  goal: "hypertrophy", injuries: [], ...over,
+});
+const ifRun = (over, guideline = null) => interferenceSignal(ifInput(over), IF_EX, IF_MUSCLES, guideline);
+
+check("LOWER_BODY_MUSCLES excludes the muscles both halves train", () => {
+  for (const m of ["quadriceps", "hamstrings", "glutes", "calves"]) assert.ok(LOWER_BODY_MUSCLES.has(m), m);
+  for (const m of ["spinal-erectors", "abs", "chest", "lats"]) assert.ok(!LOWER_BODY_MUSCLES.has(m), m);
+});
+check("interferenceSignal: fires on legs-flat/upper-climbing + an unintended deficit", () => {
+  const r = ifRun();
+  assert.equal(r.pattern, "lower-body-stall-asymmetry");
+  assert.deepEqual(r.corroborators, ["unintended-deficit"]);
+  assert.equal(r.upper_progressing, 3);
+  assert.deepEqual(r.stalled_lower.map((s) => s.exercise), ["back-squat", "romanian-deadlift"]);
+  assert.ok(r.note.includes("Back Squat") && r.note.includes("Romanian Deadlift"));
+  assert.ok(r.note.includes("about 5 weeks"));
+  // Honesty bound: names cardio as a candidate, never as the cause, and always
+  // offers the non-cardio explanation in the same breath.
+  assert.ok(r.note.includes("one common cause"));
+  assert.ok(r.note.includes("If cardio isn't part of your week"));
+});
+check("interferenceSignal: fires on persistent under-recovery with a flat bodyweight", () => {
+  const r = ifRun({ energyBalance: { direction: "maintenance" }, recovery: { underRecovered: true } });
+  assert.deepEqual(r.corroborators, ["under-recovered"]);
+  assert.ok(r.note.includes("check-ins have been reading low"));
+});
+check("interferenceSignal: quotes the KB guideline's scale-back test rather than restating it", () => {
+  const r = ifRun({}, { scale_back_protocol: "HALVE-IT-SENTINEL." });
+  assert.ok(r.note.endsWith("HALVE-IT-SENTINEL."));
+});
+check("interferenceSignal: silent without a corroborator — flat legs alone are not a story", () => {
+  assert.equal(ifRun({ energyBalance: { direction: "maintenance" }, recovery: { underRecovered: false } }), null);
+  assert.equal(ifRun({ energyBalance: null, recovery: null }), null);
+});
+check("interferenceSignal: silent when the upper body is stalled too (systemic, not interference)", () => {
+  const r = ifRun({
+    stalls: [...IF_STALLS,
+      { exercise: "bench-press", name: "Bench Press", weeks_flat: 5 },
+      { exercise: "barbell-row", name: "Barbell Row", weeks_flat: 5 }],
+  });
+  assert.equal(r, null); // only overhead-press still progressing → below minUpperProgressing
+});
+check("interferenceSignal: silent when a lower-body lift is still progressing", () => {
+  assert.equal(ifRun({ progression: [...IF_PROG, { exercise: "leg-press", name: "Leg Press", weeks: 5, change_pct: 5 }] }), null);
+});
+check("interferenceSignal: silent when only one lower-body lift has stalled", () => {
+  assert.equal(ifRun({ stalls: [IF_STALLS[0]] }), null);
+});
+check("interferenceSignal: THE DISCRIMINATOR — silent outside the productive volume range", () => {
+  // Over MAV: that's a lifting-volume problem; volumeResponse already says "reduce/change".
+  assert.equal(ifRun({ weekVolume: { quadriceps: 20, hamstrings: 10, chest: 14 } }), null);
+  // Below MEV: that's under-stimulus; volumeResponse already says "add".
+  assert.equal(ifRun({ weekVolume: { quadriceps: 5, hamstrings: 10, chest: 14 } }), null);
+  // Boundaries are inclusive — a muscle sitting exactly on MEV.min or MAV.max still counts as inside.
+  assert.ok(ifRun({ weekVolume: { quadriceps: 8, hamstrings: 16, chest: 14 } }));
+});
+check("interferenceSignal: silent when volume can't be judged at all", () => {
+  assert.equal(ifRun({ weekVolume: null }), null);
+  assert.equal(ifRun({ weekVolume: {} }), null);              // no sets for the stalled muscles
+  assert.equal(interferenceSignal(ifInput(), IF_EX, new Map(), null), null); // no landmarks
+});
+check("interferenceSignal: silent on a fat-loss goal, where the deficit is the plan", () => {
+  assert.equal(ifRun({ goal: "fat-loss" }), null);
+  assert.equal(ifRun({ goal: "recomposition" }), null);
+  assert.equal(ifRun({ goal: null }), null);
+  assert.ok(ifRun({ goal: "strength" }));
+});
+check("interferenceSignal: silent when a lower-body injury better explains the stall", () => {
+  for (const region of ["knee", "hip", "ankle", "lower-back"]) assert.equal(ifRun({ injuries: [{ region }] }), null);
+  assert.equal(ifRun({ injuries: ["knee"] }), null);          // bare-string form too
+  assert.ok(ifRun({ injuries: [{ region: "shoulder" }] }));   // an upper-body injury doesn't suppress it
+});
+check("interferenceSignal: an unknown/custom exercise is skipped, never guessed into a half", () => {
+  const r = ifRun({ stalls: [...IF_STALLS, { exercise: "mystery-machine", name: "Mystery Machine", weeks_flat: 5 }] });
+  assert.deepEqual(r.stalled_lower.map((s) => s.exercise), ["back-squat", "romanian-deadlift"]);
 });
 
 console.log(`\n${passed} test(s) passed.`);

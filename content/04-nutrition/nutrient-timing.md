@@ -19,7 +19,7 @@ What *doesn't* deserve worry for the general lifter: precise post-workout timing
 **The anabolic window is wide, and total intake dominates.** Schoenfeld, Aragon, and Krieger's 2013 meta-analysis found that **protein timing had no significant independent effect on hypertrophy once total daily protein was accounted for** — apparent timing effects were largely explained by the timing groups simply eating more protein[^schoenfeld-2013-protein-timing-meta]. **[Grade A]** Combined with evidence that spreading protein across the day is sensible for hitting daily targets[^schoenfeld-2018-protein-per-meal] **[Grade B]**, the takeaway is that **daily protein distribution across meals** — not a post-workout sprint to the shaker — is the useful application of "timing."
 
 ## Key Uncertainties & Nuance
-- **Peri-workout nutrition may matter more at the extremes** — twice-daily training, endurance-plus-lifting, or fully fasted training — where glycogen and amino-acid availability around sessions carry more weight.
+- **Peri-workout nutrition may matter more at the extremes** — twice-daily training, [endurance-plus-lifting](../03-programming/cardio-and-concurrent-training.md), or fully fasted training — where glycogen and amino-acid availability around sessions carry more weight.
 - **The pre- vs post-workout distinction is minor** for typical trainees who eat regular meals.
 - **"Timing" that helps is really distribution** — several protein feedings across the day, which happens naturally with normal meals.
 - **Overnight protein (e.g. a pre-sleep feeding)** has some support for adding to daily totals, but again works mainly by increasing total intake.

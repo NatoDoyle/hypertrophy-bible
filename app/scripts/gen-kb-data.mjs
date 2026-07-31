@@ -18,6 +18,10 @@ function loadDir(name) {
 const exercises = loadDir("exercises");
 const muscles = loadDir("muscles");
 const programs = loadDir("programs");
+// Quantified programming guidelines (data/guidelines/) mirror a content page's numbers.
+// Bundling them is what lets a coach surface quote the KB's own prescription instead of
+// restating it in copy, so the page, the data file and the screen cannot drift apart.
+const guidelines = loadDir("guidelines");
 const contraindications = JSON.parse(readFileSync(join(dataDir, "injury-contraindications.json"), "utf8"));
 
 mkdirSync(join(appRoot, "src"), { recursive: true });
@@ -27,6 +31,7 @@ const body =
   `export const exercises = ${JSON.stringify(exercises)};\n` +
   `export const muscles = ${JSON.stringify(muscles)};\n` +
   `export const programs = ${JSON.stringify(programs)};\n` +
+  `export const guidelines = ${JSON.stringify(guidelines)};\n` +
   `export const contraindications = ${JSON.stringify(contraindications)};\n`;
 writeFileSync(out, body);
-console.log(`Wrote src/kb-data.mjs — ${exercises.length} exercises, ${muscles.length} muscles, ${programs.length} programs, contraindications.`);
+console.log(`Wrote src/kb-data.mjs — ${exercises.length} exercises, ${muscles.length} muscles, ${programs.length} programs, ${guidelines.length} guidelines, contraindications.`);

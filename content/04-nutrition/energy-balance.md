@@ -33,7 +33,7 @@
 **How big, and how fast.** Iraki and colleagues' off-season nutrition review for bodybuilders translates this into working numbers — a **modest surplus (roughly +10–20% for leaner/less-experienced lifters, smaller for advanced/leaner ones) targeting about 0.25–0.5% bodyweight gain per week** — precisely so the muscle-to-fat ratio of the gain stays favorable[^iraki-2019-offseason-nutrition]. **[Grade C]** Treat these as starting heuristics to verify against the scale, not proven optima.
 
 ## Key Uncertainties & Nuance
-- **"Maintenance calories" is an estimate**, and it changes as you gain weight and as activity shifts — recalculate from real-world results, not a calculator.
+- **"Maintenance calories" is an estimate**, and it changes as you gain weight and as activity shifts — [cardio and daily steps](../03-programming/cardio-and-concurrent-training.md) move it further than most people expect. Recalculate from real-world results, not a calculator.
 - **The optimal surplus size isn't precisely known**; +5–15% is a practical consensus range, not a proven optimum.
 - **The "p-ratio"** (how much of a surplus becomes muscle vs fat) is influenced by training status, genetics, and body fat — leaner, trained individuals tend to partition surplus calories less favorably, arguing for a smaller surplus.
 - **Body fat matters for recomp** — higher-body-fat individuals recompose more readily; very lean lifters usually need a surplus to gain.

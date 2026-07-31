@@ -25,6 +25,7 @@ for (const f of readdirSync(schemasDir).filter((f) => f.endsWith(".schema.json")
 // data subdirectory -> schema short name
 const dirToSchema = {
   exercises: "exercise",
+  guidelines: "training-guideline",
   muscles: "muscle",
   programs: "program-template",
   progressions: "progression-rule",

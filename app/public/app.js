@@ -1522,6 +1522,17 @@ async function renderProgress() {
   const eb = p.energy_balance || {};
   // The wins feed (roadmap #1c): a lookback of the user's personal records — the recap
   // celebrates a PR in the moment; this is the trophy shelf you can come back to.
+  // The concurrent-training read: legs flat while the upper body climbs, with leg
+  // volume still inside its productive range. It sits directly under the plateau card
+  // because it names the SAME stalled lifts (both read one `stalls` array) and is the
+  // "why" that card can't see. Deliberately hedged copy — the app has never observed
+  // the user's cardio, so it reports a pattern and names a candidate cause, never a
+  // verdict. The engine returns null for almost everyone; silence is the normal case.
+  const interfCard = p.interference
+    ? `<div class="card"><b>🚴 Worth a look: legs flat, upper body climbing</b>
+        <p class="muted">${esc(p.interference.note)}</p>
+        <button class="btn ghost" data-learn="cardio-and-concurrent-training">Read: Cardio &amp; concurrent training</button></div>`
+    : "";
   const prCard = (p.pr_count > 0)
     ? `<div class="card"><div class="row"><b>🏆 Personal records</b> <span class="chip">${p.pr_count}</span></div>
         ${(p.personal_records || []).map((r) => {
@@ -1538,6 +1549,7 @@ async function renderProgress() {
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${autoAdaptNote}
     ${stallCard}
+    ${interfCard}
     <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
     <p class="muted">The most you could likely lift for one rep, estimated from your sets. Watch the trend, not the exact number.</p>
     <div class="card">${prog}</div>
@@ -1600,6 +1612,7 @@ async function renderFuel() {
           <option value="moderate" selected>Moderately active (on your feet a fair bit)</option>
           <option value="active">Very active (physical job)</option>
         </select>
+        <p class="muted" style="margin:-6px 0 12px;font-size:.85rem">Steps and cardio swing this more than most people expect — though your targets re-derive from your logged weight either way. ${helpDot("cardio-and-concurrent-training", "cardio &amp; lifting")}</p>
         <button class="btn" id="f-save">Set my targets</button>
         ${t ? `<button class="btn ghost" id="f-cancel">Cancel</button>` : ""}
         <p class="muted" id="f-msg"></p></div>`;
