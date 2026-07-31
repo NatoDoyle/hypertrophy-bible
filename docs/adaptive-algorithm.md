@@ -103,6 +103,25 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
   program isn't churned before it pays off. Bounded to only ever *stretch* patience past
   the reliable-signal minimum, never shrink it. Directly answers the "people progress at
   different intervals" constraint.
+- **[done · Increment D] Exercise-variation + deload levers** — the decision table
+  above named both from the start ("Exercise variation / deload — stalled at the
+  recoverable ceiling"), the increment roadmap never staged either, and no code
+  implemented either: accessories rotated every block UNCONDITIONALLY (variety, not
+  a response to anything) and compounds never rotated at all, so a stalled bench
+  press could not be swapped by any path in the app; the only deloads were the
+  calendar week-6 one and the layoff comeback ease. Now: `stalledExerciseIds` →
+  `generatePlan`'s `stalledExercises` demotes a plateaued lift below every
+  alternative for its muscle at the next block boundary (recency-filtered, or a
+  swapped-out lift would stay flagged forever and never return), and
+  `reactiveDeloadDue` brings the deload FORWARD for a muscle stalled at its
+  ceiling — bounded to once per block, never in weeks 1-2, never doubling a
+  scheduled deload. `volumeResponse`'s `"change"` signal, computed on every
+  progress read since it was written and never once rendered, is now what drives
+  both and what the plateau card actually says.
+  **Meta (a lesson worth keeping): this table was the checklist all along.** Three
+  of its five rows were live, one was explicitly deferred, and one had quietly
+  never been built — a design doc's own decision table is only honest if each row
+  is periodically grepped for a live code path.
 - **[deferred · Increment C] Effort-aware lever** — the idea: when a stall coincides with
   effort consistently *below* target (leaving too many reps in reserve), prescribe
   effort/intensity, not volume. Both available signals were evaluated and **neither clears

@@ -10,6 +10,7 @@
 // observable state, not just "looks right by inspection."
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
@@ -41,7 +42,12 @@ let file, d1, shim;
 function freshStores() {
   file = createFileStore(tmpPath);
   shim = createD1Shim();
-  const schema = readFileSync(join(new URL(".", import.meta.url).pathname, "..", "schema.sql"), "utf8");
+  // fileURLToPath, not `.pathname`: a URL pathname is percent-ENCODED, so any
+  // space in the checkout path ("…/Hypertrophy Bible/…") arrives as "%20" and the
+  // read ENOENTs. Combined with the node:sqlite skip above, that meant this whole
+  // parity suite had never actually executed on a dev machine with a space in its
+  // path — it skipped on old Node, and would have thrown on new Node.
+  const schema = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8");
   shim.exec(schema);
   d1 = createD1Store(shim);
 }
@@ -288,6 +294,52 @@ try {
   ok("file store: a same-date merge collision sorts the target's PRE-EXISTING session first, regardless of which was chronologically logged first (merge-append order)", fileTieOrder.join(",") === "tie-to-own,tie-from-own");
   ok("D1: the SAME collision sorts by ORIGINAL chronological insertion order instead (rowid is untouched by the ownership UPDATE) — the source's earlier session comes first", d1TieOrder.join(",") === "tie-from-own,tie-to-own");
   ok("CONFIRMED, NOT a test artifact: the two stores land on genuinely OPPOSITE orders for this scenario", fileTieOrder.join(",") !== d1TieOrder.join(","));
+
+  // --- voiding + editing a logged session (Wave 163) -----------------------
+  // The riskiest parity surface in this wave: the file store filters voided
+  // sessions in JS, D1 does it in SQL via json_extract on the blob. Two different
+  // mechanisms for one rule is exactly where a "method in one store but not the
+  // other" bug lives, so every observable is compared side by side.
+  await file.saveUser("v1", {}); await d1.saveUser("v1", {});
+  await file.saveAccount("v@t.com", "v1", "2026-07-01T00:00:00.000Z");
+  await d1.saveAccount("v@t.com", "v1", "2026-07-01T00:00:00.000Z");
+  const vA = { session_id: "va", date: "2026-07-01T10:00:00.000Z", sets: [{ exercise: "bench", weight_kg: 60, reps: 8 }] };
+  const vB = { session_id: "vb", date: "2026-07-05T10:00:00.000Z", sets: [{ exercise: "bench", weight_kg: 999, reps: 8 }] };
+  for (const x of [vA, vB]) { await file.addSession("v1", x); await d1.addSession("v1", x); }
+
+  same("updateSession: both return null for a session that isn't this user's", await file.updateSession("v1", "nope", (x) => x), await d1.updateSession("v1", "nope", (x) => x));
+  same("updateSession: a mutator returning null leaves the record untouched (declined != not-found)",
+    await file.updateSession("v1", "va", () => null), await d1.updateSession("v1", "va", () => null));
+
+  const voidIt = (x) => { x.voided_at = "2026-07-06T00:00:00.000Z"; return x; };
+  same("updateSession: both persist a void identically", await file.updateSession("v1", "vb", voidIt), await d1.updateSession("v1", "vb", voidIt));
+  same("listSessions: both HIDE the voided session by default", await file.listSessions("v1"), await d1.listSessions("v1"));
+  ok("listSessions: the void is actually in effect (one session left, the un-voided one)", (await file.listSessions("v1")).length === 1 && (await file.listSessions("v1"))[0].session_id === "va");
+  same("listSessions({includeVoided}): both SHOW it again, so the history screen can offer undo", await file.listSessions("v1", { includeVoided: true }), await d1.listSessions("v1", { includeVoided: true }));
+  ok("listSessions({includeVoided}): both return the full set", (await file.listSessions("v1", { includeVoided: true })).length === 2 && (await d1.listSessions("v1", { includeVoided: true })).length === 2);
+
+  // The nudge sweep reads these two directly, NOT via listSessions — a voided
+  // session must not read as "last trained" or a corrected-away workout would
+  // silently suppress the comeback email the user should get.
+  same("latestSessionDate: both ignore the voided session", await file.latestSessionDate("v1"), await d1.latestSessionDate("v1"));
+  ok("latestSessionDate: falls back to the earlier surviving session, not the voided later one", (await file.latestSessionDate("v1")).slice(0, 10) === "2026-07-01");
+  const fileAcct = (await file.listAccountLastSessions()).find((a) => a.user_id === "v1");
+  const d1Acct = (await d1.listAccountLastSessions()).find((a) => a.user_id === "v1");
+  same("listAccountLastSessions: both ignore the voided session in the aggregate", fileAcct, d1Acct);
+  ok("listAccountLastSessions: the aggregate skipped the voided later session too", (fileAcct.last_date ?? "").slice(0, 10) === "2026-07-01");
+
+  const unvoid = (x) => { delete x.voided_at; return x; };
+  same("updateSession: un-voiding restores it in both (void is a toggle, never a delete)", await file.updateSession("v1", "vb", unvoid), await d1.updateSession("v1", "vb", unvoid));
+  same("listSessions: both show it again after un-voiding", await file.listSessions("v1"), await d1.listSessions("v1"));
+
+  // Editing must keep the `date` COLUMN in sync with the blob in D1 — the ORDER BY
+  // and every MAX(date) aggregate read the column, not the JSON, so a blob-only
+  // update would leave the two stores ordering the same history differently.
+  const redate = (x) => { x.date = "2026-06-01T10:00:00.000Z"; x.sets = [{ exercise: "bench", weight_kg: 62.5, reps: 8 }]; return x; };
+  await file.updateSession("v1", "vb", redate); await d1.updateSession("v1", "vb", redate);
+  same("updateSession: an edit that moves the date re-sorts identically in both stores", await file.listSessions("v1"), await d1.listSessions("v1"));
+  ok("updateSession: D1's date COLUMN followed the blob (the edited session now sorts first)", (await d1.listSessions("v1"))[0].session_id === "vb");
+  same("latestSessionDate: both agree after the edit moved the newest session backwards", await file.latestSessionDate("v1"), await d1.latestSessionDate("v1"));
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

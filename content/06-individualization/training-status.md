@@ -22,8 +22,11 @@
 
 **Trained lifters need more volume to keep growing.** Schoenfeld and colleagues (2019) found **higher volumes produced greater hypertrophy in resistance-trained men**[^schoenfeld-2019-volume-trained-men] — a contrast with beginners, who respond to relatively little. **[Grade B]** The general **dose-response** still applies at every stage, but where you sit on it (and how much you can recover from) shifts with training age[^schoenfeld-2017-volume-dose-response]. **[Grade A]** This is the evidence basis for scaling volume up as you advance rather than starting there.
 
+**How the app decides when you've moved up.** Because "training age" is about time under the bar rather than calendar years, the app promotes you from what you've actually *logged*, not from a date: roughly **six months of distinct trained weeks with at least 40 sessions** moves a beginner to intermediate, and a much longer stretch (about two and a half further years, 250+ sessions) moves an intermediate to advanced — on top of whatever training you declared at the start. It **only ever promotes**: a layoff, an injury, or a quiet month never takes the tools back. It is also deliberately **not conditional on progressing** — training age isn't a reward for results, and a lifter who has stalled is exactly who needs the deloads and volume tuning that the next tier unlocks. **[Grade D]** — these cut-offs are a practical operationalization of the bands above, not a measured threshold; no trial has tested where one stage ends and the next begins.
+
 ## Key Uncertainties & Nuance
 - **"Training age" is fuzzy** — calendar years matter less than how hard and consistently you've actually trained.
+- **The promotion thresholds above are a judgement call.** They're set conservatively on purpose: promoting late costs you some tools for a while, promoting early hands a novice a program they can't recover from.
 - **The beginner→advanced transition is gradual**, not a switch; adjust volume by your own rate of progress.
 - **More volume for advanced lifters has a ceiling too** — it's "more than a beginner needs," not "unlimited."
 - **Detrained former lifters behave like advanced-returning**, not beginners (see [Returning Lifters](returning-lifters-and-special-populations.md)).

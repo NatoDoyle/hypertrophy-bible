@@ -9,7 +9,8 @@ const muscles = load("data/muscles");
 const contraindications = JSON.parse(readFileSync("data/injury-contraindications.json"));
 const registry = new Set(JSON.parse(readFileSync("citations/registry.json")).citations.map((c) => c.key));
 const exIds = new Set(exercises.map((e) => e.id));
-const kb = { exercises, muscles, contraindications };
+const guidelines = load("data/guidelines");
+const kb = { exercises, muscles, contraindications, guidelines };
 const muscleById = new Map(muscles.map((m) => [m.id, m]));
 
 let pass = 0, fail = 0;
@@ -490,6 +491,135 @@ ok("#D2 the same shortfalls are warns under the default (intermediate) bar", war
 ok("#D2 a SEVERELY short muscle (< 0.6×MEV) is still a warn even for a beginner",
   critiquePlan({ sessions: [{ name: "D", exercises: [{ exercise: "cable-crunch", sets: 1, rep_range: "10-15" }] }] }, kb, { experience: "beginner" })
     .findings.some((f) => f.severity === "warn" && /below MEV/.test(f.msg) && f.muscle === "abs"));
+
+// --- the exercise-change lever (Wave 165) --------------------------------
+// The KB's plateau playbook is an ORDER — volume → effort → deload → change
+// exercise (logging-and-plateaus.md) — and only the first was implemented.
+// Accessories rotated every block unconditionally (variety, not a response to
+// anything) and compounds never rotated at all, so a stalled bench press could not
+// be swapped by any code path in the app.
+const stallProfile = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "stall-test" };
+const pickedOf = (plan) => plan.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+const stallBase = generatePlan(stallProfile, kb, {});
+const stallPicked = pickedOf(stallBase);
+const stallAfter = pickedOf(generatePlan(stallProfile, kb, { stalledExercises: stallPicked }));
+const stallUnchanged = stallAfter.filter((id) => stallPicked.includes(id));
+// Some muscles genuinely have only one accessible exercise, so a few legitimately
+// stay — what must not happen is the plan coming back unchanged.
+ok("stalled lifts are replaced by alternatives for the same muscle", stallPicked.length > 0 && stallUnchanged.length < stallPicked.length);
+
+const exByIdT = new Map(exercises.map((e) => [e.id, e]));
+const stallCompounds = stallPicked.filter((id) => exByIdT.get(id)?.mechanic === "compound");
+const rotatedOnly = pickedOf(generatePlan(stallProfile, kb, { blockIndex: 1 }));
+ok("block rotation alone still never moves a compound (the documented behaviour this lever bypasses)",
+  stallCompounds.length > 0 && stallCompounds.every((id) => rotatedOnly.includes(id)));
+const swappedCompounds = pickedOf(generatePlan(stallProfile, kb, { stalledExercises: stallCompounds }));
+ok("but a STALLED compound is swappable — the gap that left a plateaued bench unchangeable",
+  stallCompounds.some((id) => !swappedCompounds.includes(id)));
+
+// Demotion, not exclusion: stalling every option a thin pool has must still yield
+// a real plan rather than an empty one.
+const thinProfile = { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 45,
+  available_equipment: ["bodyweight"], user_id: "stall-thin" };
+const thinPicked = pickedOf(generatePlan(thinProfile, kb, {}));
+const thinAfter = generatePlan(thinProfile, kb, { stalledExercises: thinPicked });
+ok("a muscle's ONLY option is still prescribed — demotion, not exclusion",
+  thinAfter.program.sessions.reduce((a, s) => a + s.exercises.length, 0) > 0);
+
+const detProfile = { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 75,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "stall-determinism" };
+ok("absent, the plan is byte-identical — the determinism guarantee holds",
+  JSON.stringify(generatePlan(detProfile, kb, {})) === JSON.stringify(generatePlan(detProfile, kb, { stalledExercises: [] })));
+
+// --- cardio prescription (Wave 168) --------------------------------------
+// The KB has carried real cardio numbers since Wave 161 and the plan engine emitted
+// NOTHING (`grep cardio tools/plan-core.mjs` → zero hits), so a user asking "how
+// much cardio should I do?" got nothing actionable from the app.
+const cardioGuide = guidelines.find((g) => g.id === "cardio-concurrent-training");
+const cardioProfile = (over = {}) => ({ training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "cardio", ...over });
+const c6 = generatePlan(cardioProfile(), kb, {}).program.cardio;
+ok("the plan now prescribes a cardio dose at all", !!c6 && !!c6.steps_per_day && !!c6.sessions_per_week);
+ok("every number comes from the guideline, not from the engine",
+  c6.steps_per_day.min === cardioGuide.dose_by_goal.hypertrophy.steps_per_day.min &&
+  c6.minutes_per_session.max === cardioGuide.dose_by_goal.hypertrophy.minutes_per_session.max);
+ok("the dose is goal-specific (fat-loss asks for more than a gaining phase)",
+  generatePlan(cardioProfile({ primary_goal: "fat-loss" }), kb, {}).program.cardio.steps_per_day.max > c6.steps_per_day.max);
+ok("it carries the guideline's own Grade D — the dose ranges are practical models, not measured constants", c6.evidence_grade === "D");
+ok("walking leads: the only modality the KB rates as costing nothing", c6.modality?.interference === "none");
+
+// Placement is DERIVED from the split the engine chose, not guessed.
+ok("#cardio on a 6-day PPL, hard cardio is placed only after non-leg-adjacent days",
+  c6.placement.best_after.length > 0 && c6.placement.best_after.every((n) => /push/i.test(n)));
+ok("#cardio and it names the leg sessions to keep away from", c6.placement.avoid_around.every((n) => /leg/i.test(n)));
+// The honest empty answer: on a 4-day upper/lower EVERY day is a leg day or the day
+// before one, so there is no safe slot — and saying so beats inventing one.
+const c4 = generatePlan(cardioProfile({ days_per_week: 4 }), kb, {}).program.cardio;
+ok("#cardio on a 4-day upper/lower no lifting day is safe, and the plan says so rather than inventing a slot",
+  c4.placement.best_after.length === 0 && c4.placement.avoid_around.length === 2);
+
+// Degrades cleanly: a KB without the guideline simply omits the block.
+const noGuide = generatePlan(cardioProfile(), { exercises, muscles, contraindications }, {}).program;
+ok("#cardio a KB with no guideline omits the block rather than inventing numbers", noGuide.cardio === undefined);
+
+// --- KB fidelity trio (Wave 169) -----------------------------------------
+// 1B: the KB's effort table has THREE rows — heavy compounds 1-3 RIR, "moderate
+// compounds and most machine presses/rows" 0-2, isolation 0-1 — and the engine
+// implemented two, keying only off `mechanic`. Self-contradictory as well as
+// unfaithful: the ranker gives machines the LARGEST equipment bonus precisely
+// because they're stable enough to push near failure, then said not to.
+const rirProfile = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "rir-tier" };
+const rirPlan = generatePlan(rirProfile, kb, {});
+const exByIdR = new Map(exercises.map((e) => [e.id, e]));
+const rirRows = rirPlan.program.sessions.flatMap((x) => x.exercises).map((e) => ({ ...e, ex: exByIdR.get(e.exercise) }));
+const supportedRows = rirRows.filter((r) => r.ex?.mechanic === "compound" && r.ex?.stability === "high" && r.ex?.cns_cost !== "high");
+const heavyRows = rirRows.filter((r) => r.ex?.mechanic === "compound" && !(r.ex?.stability === "high" && r.ex?.cns_cost !== "high"));
+ok("#1B supported compounds (machines, smith, chest-supported) get the KB's middle tier, 0-2 RIR",
+  supportedRows.length > 0 && supportedRows.every((r) => r.rir === "0-2"));
+ok("#1B heavy free-weight compounds keep the 1-3 reserve",
+  heavyRows.length > 0 && heavyRows.every((r) => r.rir === "1-3"));
+ok("#1B isolations are untouched by the new tier", rirRows.filter((r) => r.ex?.mechanic === "isolation").every((r) => /^0-1$|^0-2$/.test(r.rir) === (r.rir === "0-1")));
+
+// 1C: the KB's weak-point table says the priority muscle is "Trained first, when
+// you're fresh" — the old tier*2+pri key could never deliver it, because tier
+// always dominated, so a side-delt specialist's laterals sat behind every compound.
+const specProfile = { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts"], specialization: true, user_id: "spec-order" };
+const specPlan = generatePlan(specProfile, kb, {});
+const upper = specPlan.program.sessions.find((x) => (x.exercises ?? []).some((e) => (exByIdR.get(e.exercise)?.primary_muscles ?? []).includes("side-delts")));
+const firstEx = exByIdR.get(upper.exercises[0].exercise);
+ok("#1C in a specialization block the priority muscle's work leads the session",
+  (firstEx?.primary_muscles ?? []).includes("side-delts"));
+// ...but never at the cost of burying genuinely heavy work behind an isolation.
+const specLower = specPlan.program.sessions.find((x) => (x.exercises ?? []).some((e) => exByIdR.get(e.exercise)?.cns_cost === "high"));
+if (specLower) {
+  const idxHigh = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.cns_cost === "high");
+  const idxIso = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.mechanic === "isolation");
+  ok("#1C high-CNS compounds still lead — promotion doesn't bury a squat behind a raise", idxIso === -1 || idxHigh < idxIso);
+}
+// An ORDINARY priority plan (no specialization) is byte-identical to before.
+const priOnly = { ...specProfile, specialization: false, user_id: "spec-order-off" };
+ok("#1C without specialization the ordering is unchanged — the promotion is gated",
+  generatePlan(priOnly, kb, {}).program.sessions.every((sn, i) => sn.exercises.every((e, j) => {
+    const x = exByIdR.get(e.exercise);
+    const prev = j > 0 ? exByIdR.get(sn.exercises[j - 1].exercise) : null;
+    return !prev || !(prev.mechanic === "isolation" && x.mechanic === "compound"); // no isolation-before-compound
+  })));
+
+// 1C part two: a target the split can never deliver was silently missed. An advanced
+// side-delt specialist targets mrv.max 26 but 2 sessions x the 10-set quality cap is
+// 20 — and the under-target warning never fired, because 20 clears 0.6 x 26.
+const capWarn = specPlan.rationale.warnings.find((w) => w.code === "frequency-capped" && w.muscle === "side-delts");
+ok("#1C a target the split can't deliver is now stated, not silently missed", !!capWarn);
+ok("#1C and it gives the KB's own answer — another day, not a longer session", /another training day/i.test(capWarn?.message ?? ""));
+
+// 1D: general-fitness is a valid goal in the schema with no scheme, so it fell
+// through a silent `?? hypertrophy` fallback (lesson 14: declared != supported).
+const gf = generatePlan({ ...rirProfile, primary_goal: "general-fitness", user_id: "gf" }, kb, {});
+ok("#1D general-fitness is now an explicit scheme, not a silent fallback",
+  gf.program.sessions.flatMap((x) => x.exercises).every((e) => !!e.rir && !!e.rep_range));
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

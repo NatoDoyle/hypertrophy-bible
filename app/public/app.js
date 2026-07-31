@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -203,6 +203,10 @@ async function postOrQueue(path, bodyObj) {
 }
 
 // ---------- Onboarding ----------
+// One list, used by onboarding AND the in-session "did this hurt?" report — two
+// copies would drift, and the engine's region keys must match on both paths.
+const INJURY_REGIONS = [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"], ["Neck", "neck"], ["Ankle", "ankle"]];
+
 const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
   { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
@@ -216,7 +220,14 @@ const STEPS = [
   // zero cognitive load) — the taper engine is off by default. A non-beginner who wants it
   // sets it later from Settings, where this same wizard runs with settingsMode = true.
   { key: "goal_event_date", q: "Training toward a specific date?", date: true, optional: true, hint: "Optional — a meet, show, or strength test. The final ~2 weeks taper volume down so you're fresh, not fatigued, on the day. Leave blank if there isn't one.", showIf: (a) => settingsMode && a.training_status !== "beginner" },
-  { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  // Neck and ankle were filterable by the engine (data/injury-contraindications.json
+  // covers 8 regions) and selectable by nobody — the UI offered 6.
+  { key: "injuries", q: "Anything we should train around?", multi: INJURY_REGIONS, optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  // Severity was hardcoded "moderate" for everyone, which made contraExcluded's
+  // `severity === "mild"` branch unreachable from the shipped client — a whole
+  // leniency path that existed in the engine and could never run. Asking one
+  // question turns it on, and lets a niggle keep exercises a real injury removes.
+  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"], ["Serious — keep me well clear", "severe"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "This decides how much I hold back: a niggle only drops the worst offenders, serious clears everything that loads it." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
@@ -377,7 +388,9 @@ async function advance() {
 async function submitOnboarding() {
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Building your plan…</h1></div>`;
   const priority = [...new Set((answers.priority_muscles || []).flat())];
-  const injuries = (answers.injuries || []).map((region) => ({ region, severity: "moderate" }));
+  // Severity is now ASKED (it was hardcoded "moderate", so the engine's mild path
+  // was dead code). Defaults to moderate when the question wasn't reached.
+  const injuries = (answers.injuries || []).flat().map((region) => ({ region, severity: answers.injury_severity || "moderate" }));
   const profile = {
     training_status: answers.training_status, primary_goal: answers.primary_goal,
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
@@ -460,6 +473,22 @@ async function renderPlanExplain(firstTime) {
       <span class="muted" style="font-size:.82rem">${esc((v.reasons || []).join(" · "))} ${gradeChip(v.landmark?.evidence_grade)}</span></div>
       <span class="status ${statusClass(v.projected_status)}">${statusLabel(v.projected_status)}</span></div>`).join("");
   const warns = (r.warnings || []).map((w) => `<div class="win">ℹ️ ${esc(w.message)}</div>`).join("");
+  // The rest of the week: what the plan asks for OUTSIDE the gym. Grade-labelled
+  // like every other landmark surface — the guideline calls its own dose ranges
+  // "practical models, not measured constants", so the app must not imply harder.
+  const pc = d.program?.cardio;
+  const pcRange = (x, unit = "") => x ? (x.min === x.max ? `${x.min}${unit}` : `${x.min}–${x.max}${unit}`) : "";
+  const cardioBlock = pc
+    ? `<h2>Cardio &amp; steps ${helpDot("cardio-and-concurrent-training", "?")}</h2>
+       <div class="card"><div class="row"><div style="flex:1"><b>${pcRange(pc.steps_per_day)} steps/day</b>
+         <div class="muted" style="font-size:.85rem">${esc(pc.note ?? "")}</div></div>
+         <span class="chip">Grade ${esc(pc.evidence_grade)}</span></div>
+         <div class="row"><div style="flex:1"><b>${pcRange(pc.sessions_per_week)} sessions/week</b> <span class="muted">${pcRange(pc.minutes_per_session)} min each</span>
+         <div class="muted" style="font-size:.85rem">${(pc.placement?.best_after ?? []).length
+           ? `Best after: ${esc(pc.placement.best_after.join(", "))}. ${esc(pc.placement.rule ?? "")}`
+           : `Every training day on this split sits next to leg work — put harder sessions on a rest day, or keep it to walking.`}</div></div></div>
+       </div>`
+    : "";
   const sessions = d.program?.sessions || [];
   const sessionRows = sessions.map((s) => `<div class="row"><div style="flex:1"><b>${esc(s.name)}</b></div>
     <span class="muted">${s.exercises.length} exercise${s.exercises.length === 1 ? "" : "s"}</span></div>`).join("");
@@ -480,6 +509,7 @@ async function renderPlanExplain(firstTime) {
     app.innerHTML = `<div class="center"><h1>Your plan is ready 🎉</h1></div>
       <div class="card"><p>Here's your week — <b>${sessions.length} short session${sessions.length === 1 ? "" : "s"}</b>. I chose every exercise, weight, and set for you. You just show up and tap <b>Start</b>.</p></div>
       <div class="card">${sessionRows}</div>
+      ${cardioBlock}
       <div class="card"><b>🚪 Never trained before?</b>
         <p class="muted">These 2-minute reads make your first day easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
@@ -490,6 +520,7 @@ async function renderPlanExplain(firstTime) {
     app.innerHTML = `<h1>Your plan</h1>
       <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div></div>
       <div class="card">${sessionRows}</div>
+      ${cardioBlock}
       ${whyBlock}
       <button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>
       <button class="btn" id="explain-go">Back</button>`;
@@ -738,6 +769,25 @@ async function renderToday() {
       ? `<div class="card"><b>⏳ ${s.taper.days_until} day${s.taper.days_until === 1 ? "" : "s"} to go — tapering</b>
           <p class="muted">${esc(s.taper.note)}</p></div>`
       : "";
+  // CARDIO, prescribed (Wave 168). The KB has carried real numbers since Wave 161 —
+  // dose by goal, an interference ranking, a leg-day timing rule — and the app never
+  // once told anyone what to do with them: a user asking "how much cardio?" had to
+  // go and read a page. Zero cognitive load means the app answers it, the way it
+  // already answers sets and weights. `hard_cardio_ok` is resolved server-side
+  // against TODAY's session, so this can be specific instead of hedging.
+  const cd = s.cardio;
+  const range = (r, unit = "") => r ? (r.min === r.max ? `${r.min}${unit}` : `${r.min}–${r.max}${unit}`) : "";
+  const cardioCard = cd
+    ? `<div class="card"><b>🚶 Cardio &amp; steps</b> <span class="chip">Grade ${esc(cd.evidence_grade)}</span>
+        <p class="muted"><b>${range(cd.steps_per_day)} steps</b> a day, plus <b>${range(cd.sessions_per_week)} sessions</b> of ${range(cd.minutes_per_session)} min a week. ${cd.modality ? `Walking costs your muscle nothing — it's the reason steps come first.` : ""}</p>
+        <p class="muted">${cd.hard_cardio_ok
+          ? `Today's a good day for a harder session — no leg work today or tomorrow.`
+          : (cd.placement?.best_after ?? []).length
+            ? `Keep hard leg-heavy cardio off today. Best after: <b>${esc(cd.placement.best_after.join(", "))}</b>.`
+            : `On this split every training day sits next to leg work, so put harder sessions on a rest day — or keep it to walking, which costs nothing.`}</p>
+        <button class="btn ghost" data-learn="cardio-and-concurrent-training">Read: cardio &amp; concurrent training</button></div>`
+    : "";
+
   // --- The daily flow (considerations #6): one obvious sequence — morning
   // check-in (weight + how you feel) → the workout → tonight's calories. Each
   // step shows done ✓ or is the highlighted next action; the first unfinished
@@ -784,7 +834,8 @@ async function renderToday() {
   const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
-    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
+    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}
+    ${cardioCard}`;
   wireCommitmentCard();
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
@@ -878,7 +929,15 @@ function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } c
 
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
+let historyEdit = null;     // session_id currently open for correction on the history screen
 let quitPending = false;    // two-tap guard on ending a workout early
+// Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
+// Keyed by the EXERCISE ID being confirmed, not its array index: the superset
+// station shows two lifts at once (so one member's confirmation must not wave the
+// other through), and Swap / "do this later" / Unlink all renumber the array — an
+// index-keyed flag would then suppress the warning for whatever lift inherited that
+// slot. Cleared by any stepper touch (they've re-read the number) and once banked.
+let confirmSet = null;
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
   sess = {
@@ -946,6 +1005,33 @@ function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".
 // live `sess` to the pure functions.
 const loggedSetCount = (exId) => loggedWorkSets(sess.logged, exId);
 const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, from);
+
+// Clearing a pending confirm has to REPAINT, not just reset the flag. The stepper
+// handlers update their value in place (no re-render, deliberately), so a bare
+// `confirmSet = null` left the ⚠️ line and the "Tap again" button label on screen
+// describing a number the user had already corrected — a status contradicting the
+// state it reports on, and a button whose label lied about what the next tap does.
+// Returns true when the caller must re-render.
+const clearSetConfirm = () => { const was = confirmSet !== null; confirmSet = null; return was; };
+
+// Would banking index `idx` right now log something that looks like a typo? Binds
+// the live `sess` to session-core's pure isImplausibleSet, reading the same kg the
+// logger will actually send (sess.weights holds DISPLAY units — a lb user's "225"
+// must be judged as 102 kg, not 225, or every lb session would be questioned).
+// Returns false once the user has confirmed THIS index, so the second tap banks it.
+const needsSetConfirm = (idx) => confirmSet !== sess.ex[idx]?.exercise
+  && isImplausibleSet(toKg(sess.weights[idx]), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+
+// The one-line warning shown in place of the usual button label. Names the number
+// it's questioning and what it's comparing against, so the answer is obvious at a
+// glance — and never accuses: a real jump is a tap away, not a blocked action.
+const setConfirmCue = (idx) => {
+  const ex = sess.ex[idx];
+  const ref = [ex?.last_kg, ex?.pr_watch?.load_kg].find((v) => typeof v === "number" && v > 0);
+  const reps = sess.reps[idx];
+  if (typeof reps === "number" && reps > 50) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
+  return `⚠️ <b>${dispWeight(toKg(sess.weights[idx]))} ${unitLabel()}</b> is a big jump${ref != null ? ` from the ${dispWeight(ref)} ${unitLabel()} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
+};
 
 // A brief, self-dismissing toast for the in-player PR moment (roadmap #1 slice b —
 // celebrate mid-session, not only in the end-of-session recap). Appended to <body>,
@@ -1075,7 +1161,8 @@ function renderPlayer(resting = 0) {
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
-      <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
+      ${confirmSet === e.exercise ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
+      <button class="btn" id="done">${confirmSet === e.exercise ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
@@ -1110,15 +1197,16 @@ function renderPlayer(resting = 0) {
   // stepper changes SHAPE (bodyweight "+ add weight" ↔ loaded −/+ stepper).
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
     quitPending = false;
+    const repaint = clearSetConfirm();
     const was = sess.weights[sess.i];
     sess.weights[sess.i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
     const bw = e.equipment === "bodyweight";
-    if (bw && (was === 0 || sess.weights[sess.i] === 0)) return renderPlayer();
+    if (repaint || (bw && (was === 0 || sess.weights[sess.i] === 0))) return renderPlayer();
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[sess.i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[sess.i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.rir[sess.i]); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -1133,6 +1221,10 @@ function renderPlayer(resting = 0) {
   };
   $("#done").onclick = () => {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
+    // One stray stepper tap must not poison the log: a set that dwarfs this lift's
+    // own history asks once first. Confirmed sets fall straight through.
+    if (needsSetConfirm(sess.i)) { confirmSet = e.exercise; return renderPlayer(0); }
+    confirmSet = null;
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
@@ -1212,6 +1304,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
+      ${confirmSet === m.exercise ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -1220,7 +1313,7 @@ function renderSupersetStation(L, P, resting = 0) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
-    <button class="btn" id="doner">Done — round ${round + 1} of ${paired}</button>
+    <button class="btn" id="doner">${[L, P].some((i) => confirmSet === sess.ex[i]?.exercise) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
@@ -1229,15 +1322,16 @@ function renderSupersetStation(L, P, resting = 0) {
   // a bodyweight stepper changes shape. #doner reads sess.* at click time already.
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
     quitPending = false;
+    const repaint = clearSetConfirm();
     const i = +b.dataset.i, was = sess.weights[i];
     sess.weights[i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
     const bw = sess.ex[i].equipment === "bodyweight";
-    if (bw && (was === 0 || sess.weights[i] === 0)) return renderSupersetStation(L, P, 0);
+    if (repaint || (bw && (was === 0 || sess.weights[i] === 0))) return renderSupersetStation(L, P, 0);
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.rir[i]); });
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -1245,6 +1339,12 @@ function renderSupersetStation(L, P, resting = 0) {
   });
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
+    // Same typo guard as the single-lift player, per MEMBER: a round banks two sets
+    // at once, so confirming one must not wave the other through (confirmSet holds
+    // one exercise id, and needsSetConfirm only clears for that exact lift).
+    const suspect = [L, P].find(needsSetConfirm);
+    if (suspect != null) { confirmSet = sess.ex[suspect].exercise; return renderSupersetStation(L, P, 0); }
+    confirmSet = null;
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
@@ -1353,8 +1453,21 @@ async function renderSwap() {
   app.innerHTML = `<h1>Swap ${esc(cur.name)}</h1>
     <p class="muted">Pick a replacement that trains the same muscle. Just for today — your saved plan doesn't change.</p>
     ${rows}
+    <div class="card"><b>😖 Did this hurt?</b>
+      <p class="muted">Swapping only fixes today. If a joint is complaining, tell me which one and I'll keep aggravating movements out of your plan from now on.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}</div>
     <button class="btn ghost" id="back">Keep ${esc(cur.name)}</button>`;
   $("#back").onclick = () => renderPlayer(0);
+  // The reactive injury path app-design-spec.md:174 described and nothing implemented:
+  // the swap button was generic, session-only, and never wrote anything down, so the
+  // app could watch you avoid the same lift every week and never learn from it.
+  app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
+    const region = b.dataset.hurt;
+    const res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) });
+    if (res.error) { say("Couldn't save that — swapping for today instead."); return; }
+    say(`Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.`);
+    renderSwap(); // the alternatives list is injury-filtered server-side, so re-fetch it
+  });
   app.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
     const id = b.dataset.swap, name = b.dataset.name;
     const chosen = alts.find((x) => x.id === id);
@@ -1505,9 +1618,31 @@ async function renderProgress() {
   // an e1RM there would be guesswork, but the dumbbell you hold is not.
   const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
+  // The plateau card now says which lever the engine is ACTUALLY pulling, instead
+  // of the same three-line playbook regardless of cause. `p.adaptive` carries
+  // volumeResponse's per-muscle signal — computed on every progress read since it
+  // was written and never once rendered (a producer with no consumer, lesson 15).
+  // Going BACKWARDS is not a plateau and must not be dressed as one. Never shames
+  // (a standing guardrail) — a decline is nearly always fuel, sleep or life, and
+  // the app's job is to say that plainly and take the pressure off, not to imply
+  // the user failed. Shown ABOVE the plateau card: it's the more urgent read, and
+  // a lift can't sensibly be described as both at once.
+  const regrCard = (p.regressions || []).length
+    ? `<div class="card"><b>📉 ${p.regressions.length === 1 ? "A lift has" : p.regressions.length + " lifts have"} gone backwards</b>
+        <p class="muted">${esc(p.regressions.map((r) => r.name).join(", "))} — down about ${p.regressions[0].drop_pct}% from your recent best, for two weeks running. This is almost always recovery, not training: under-eating, short sleep, illness, or a stressful stretch. It is not lost muscle, and it comes back quickly.</p>
+        <p class="muted">I've stopped adding volume to those muscles until it turns around — more sets is the wrong answer to a body that isn't recovering. Eat enough, sleep, and keep showing up.</p>
+        <button class="btn ghost" data-learn="stimulus-fatigue-adaptation">Read: recovery &amp; adaptation</button></div>`
+    : "";
+  const atCeiling = (p.adaptive || []).filter((a) => a.signal === "change");
+  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
-        <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable. In order: 1) check sleep and food first, 2) swap the exercise for a cousin (same muscle, new angle) in the plan editor, 3) push those sets a rep closer to failure. ${""}</p>
+        <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
+        ${atCeiling.length
+          ? `<p class="muted">Your ${esc(atCeiling.map((a) => a.muscle_name).join(", "))} ${atCeiling.length === 1 ? "is" : "are"} already at the top of what you can recover from, so more sets is the one thing that won't help. I'm easing the volume back and bringing a deload forward, then changing the stalled lift for a different angle next block.</p>`
+          : canAddMore.length
+            ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
+            : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
   // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your
@@ -1516,6 +1651,14 @@ async function renderProgress() {
   // start of the new block. A quiet one-liner here so you know it's happening.
   const autoAdaptNote = p.sessions_logged >= 4
     ? `<p class="muted" style="font-size:.85rem;text-align:center">📈 Your plan retunes itself each block from all of this — you don't have to adjust anything.</p>`
+    : "";
+  // Every number on this screen is derived from the log, so the log has to be
+  // correctable from here — otherwise a mistyped weight is visibly wrong on the
+  // very page that reports it, with nothing the user can do about it.
+  const historyCard = p.sessions_logged > 0
+    ? `<div class="card"><b>📓 Your workouts</b>
+        <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
+        <button class="btn ghost" id="open-history">Review &amp; fix past workouts</button></div>`
     : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
@@ -1542,12 +1685,14 @@ async function renderProgress() {
     : "";
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
+    ${historyCard}
     ${prCard}
     <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
     <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${autoAdaptNote}
+    ${regrCard}
     ${stallCard}
     ${interfCard}
     <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
@@ -1561,6 +1706,7 @@ async function renderProgress() {
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
   wireLearnLinks();
+  if ($("#open-history")) $("#open-history").onclick = () => { tab = "history"; render(); };
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -1577,6 +1723,94 @@ async function renderProgress() {
     note.textContent = "📴 Saved offline — it'll sync when you're back online.";
     $("#logbw").after(note);
   };
+}
+
+// ---------- Workout history (correcting the log) ----------
+// A logged set used to be permanent — one mistyped weight was celebrated as a PR,
+// anchored the next session's suggestion, and sat in the plateau trends forever,
+// fixable only by wiping the account. This is the repair surface.
+//
+// "Take it back" VOIDS rather than deletes ("never lose logged data" is a standing
+// guardrail): the workout stays on this screen, greyed and reversible, and is
+// simply excluded from every engine that reads history. So the screen has to show
+// voided sessions — you can't offer undo for something you refuse to display.
+const sessionVolume = (sess) => (sess.sets ?? []).filter((x) => (x.set_type ?? "work") !== "warmup").length;
+
+async function renderHistory() {
+  app.innerHTML = `<h1>Your workouts</h1><p class="muted">Loading…</p>`;
+  let d;
+  try { d = await api("/api/sessions"); }
+  catch {
+    app.innerHTML = `<h1>Your workouts</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Your history loads when you reconnect. Nothing you've logged is lost.</p>
+      <button class="btn" id="rh">Try again</button></div>`;
+    $("#rh").onclick = () => renderHistory();
+    return;
+  }
+  const list = d.sessions || [];
+  if (historyEdit) {
+    const sess = list.find((x) => x.session_id === historyEdit);
+    if (!sess) { historyEdit = null; return renderHistory(); }
+    const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
+      <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
+      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeight(set.weight_kg)}" aria-label="weight for set ${i + 1}"
+        style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
+      <span class="muted">${unitLabel()} ×</span>
+      <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
+        style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
+    </div>`).join("");
+    app.innerHTML = `<h1>Fix this workout</h1>
+      <p class="muted">${esc(sess.session_name || "Workout")} · ${esc(new Date(sess.date).toLocaleDateString())}</p>
+      <div class="card">${rows || `<p class="muted">No sets on this workout.</p>`}</div>
+      <button class="btn" id="hsave">Save corrections</button>
+      <button class="btn ghost" id="hcancel">Cancel</button>`;
+    $("#hcancel").onclick = () => { historyEdit = null; renderHistory(); };
+    $("#hsave").onclick = async () => {
+      // Send the sets back WHOLE, preserving every field the server gave us
+      // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
+      // is bounded exactly like the original log, but anything we drop here is lost.
+      const sets = (sess.sets ?? []).map((set, i) => {
+        const { name, ...rest } = set; // `name` is a display-only field this screen added
+        const wv = parseFloat(app.querySelector(`[data-w="${i}"]`)?.value);
+        const rv = parseInt(app.querySelector(`[data-reps="${i}"]`)?.value, 10);
+        return { ...rest, weight_kg: Number.isFinite(wv) ? toKg(wv) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
+      });
+      const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
+      if (res.error) { say("Couldn't save that — try again."); return; }
+      historyEdit = null;
+      say("Workout corrected. Your trends have been recalculated.");
+      renderHistory();
+    };
+    return;
+  }
+  const rows = list.map((sess) => {
+    const voided = !!sess.voided_at;
+    const when = new Date(sess.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    return `<div class="card"${voided ? ' style="opacity:.55"' : ""}>
+      <div class="row"><div style="flex:1">
+        <b>${esc(sess.session_name || "Workout")}</b>${voided ? ' <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' <span class="chip">edited</span>' : ""}
+        <div class="muted" style="font-size:.85rem">${esc(when)} · ${sessionVolume(sess)} set${sessionVolume(sess) === 1 ? "" : "s"}</div>
+      </div></div>
+      ${voided
+        ? `<button class="btn ghost" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
+        : `<button class="btn ghost" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+           <button class="btn ghost" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
+    </div>`;
+  }).join("") || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
+  app.innerHTML = `<h1>Your workouts</h1>
+    <p class="muted">Mistyped a weight? Fix it here and every trend recalculates. Nothing is ever deleted — a workout you take back stays on this list and can be put straight back.</p>
+    ${rows}
+    <button class="btn ghost" id="hback">‹ Back to progress</button>`;
+  $("#hback").onclick = () => { tab = "progress"; render(); };
+  app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyEdit = b.dataset.edit; renderHistory(); });
+  const setVoid = async (sessionId, voided) => {
+    const res = await api("/api/session/void", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId, voided }) });
+    if (res.error) { say("Couldn't do that — try again."); return; }
+    say(voided ? "Taken back — it no longer counts toward your trends. You can put it back any time." : "Put back — it counts again.");
+    renderHistory();
+  };
+  app.querySelectorAll("[data-void]").forEach((b) => b.onclick = () => setVoid(b.dataset.void, true));
+  app.querySelectorAll("[data-unvoid]").forEach((b) => b.onclick = () => setVoid(b.dataset.unvoid, false));
 }
 
 // ---------- Fuel (nutrition: calorie/macro targets + daily intake log) ----------
@@ -2106,12 +2340,14 @@ async function renderLearnPage(slug) {
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
+  if (tab !== "history") historyEdit = null; // ...and an in-progress workout correction
   quitPending = false;
   discardPending = false; // an armed Discard must not survive a trip to another tab
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "today") renderToday();
+  else if (tab === "history") { nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === "progress")); renderHistory(); }
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();

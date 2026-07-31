@@ -1,9 +1,9 @@
 // The API. Pure Hono, no filesystem, store injected — the SAME app runs on
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
-import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
+import { selectProgram, exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
+import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
@@ -12,7 +12,50 @@ import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nu
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
+// The injury regions the ENGINE can actually act on, read from the KB rather than
+// hand-listed — a hand-listed copy is how the client came to offer 6 of the 8
+// regions data/injury-contraindications.json supports.
+const VALID_INJURY_REGIONS = new Set(Object.keys(contraindications?.regions ?? {}));
+
 const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
+
+// Hard bounds on a logged set's numbers. `rir` has been clamped at this door for
+// waves — `weight_kg` and `reps` sitting unbounded right beside it is lesson 16
+// exactly (the boundary guard applied to ONE field of a record), and auth here is
+// possession-of-UUID so any client can post. The blast radius of one bad number is
+// permanent and wide: it's celebrated as a PR (+50 XP), becomes that week's best in
+// progressionByExercise / stallDetect / progressionCadence, and suggestWeight then
+// adds an increment ON TOP of it. These ceilings sit far above anything a human
+// lifts (the raw deadlift record is ~500 kg; no prescribed band goes past 30 reps),
+// so they only ever catch garbage — the *ergonomic* guard against a realistic typo
+// (a stray zero, lb typed into a kg field) is the player's confirm, which judges a
+// set against that lift's OWN history. Clamp rather than reject: a 400 here would
+// strand a queued offline session, and losing logged data is the worse failure.
+export const MAX_SET_WEIGHT_KG = 1000;
+export const MAX_SET_REPS = 500;
+const boundedNum = (v, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
+};
+
+// The ONE normalizer every write path for a logged set goes through — the log
+// route and the edit route both call it, so a bound tightened in one can never be
+// missing from the other (lesson 1: prefer a single source of truth to a fix
+// applied at one call site). Whitelisting is deliberate: an unknown field is
+// dropped, and `deload` MUST survive — progression anchoring and stall detection
+// both filter on it, and the whitelist silently dropping it once made the entire
+// deload-aware pipeline inert in production while unit tests (which bypass this
+// route) stayed green.
+const normalizeSet = (s) => ({
+  exercise: s.exercise,
+  set_type: s.set_type ?? "work",
+  weight_kg: boundedNum(s.weight_kg, MAX_SET_WEIGHT_KG),
+  reps: Math.round(boundedNum(s.reps, MAX_SET_REPS)),
+  ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
+  ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
+  ...(s.deload ? { deload: true } : {}),
+  completed_at: s.completed_at ?? new Date().toISOString(),
+});
 
 // A challenge (#10 social) still occupies its owner's one-at-a-time slot only
 // if it's non-terminal AND its target week hasn't passed yet — a stale
@@ -84,7 +127,9 @@ export function createApp(store, config = {}) {
   app.get("/api/plan/explain", async (c) => {
     const { user, error } = await requireUser(c);
     if (error) return error;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
+    // `cardio` must survive this whitelist — a dropped field silently disables its
+    // whole surface (the deload-flag lesson, and the reason test-routes.mjs exists).
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
@@ -236,12 +281,15 @@ export function createApp(store, config = {}) {
     return c.json({ ok: true, exercise: custom });
   });
 
-  const requireUser = async (c) => {
+  // `body` is optional: a POST route that has ALREADY parsed its body passes it in
+  // rather than making this re-read the stream. (Hono does cache a parsed body, but
+  // depending on that is a silent coupling — an explicit hand-off can't rot.)
+  const requireUser = async (c, body = null) => {
     // The user_id IS the full account credential (possession model), so it must
     // NEVER travel in a URL — a `?u=` query string leaks it into access logs,
     // browser history, and any copied/shared link. Accept it only from the
     // X-HB-User header (GETs) or the POST body, both of which stay out of URLs.
-    const id = c.req.header("X-HB-User") || (await c.req.json().catch(() => ({}))).user_id;
+    const id = c.req.header("X-HB-User") || (body ?? await c.req.json().catch(() => ({}))).user_id;
     if (!id) return { error: c.json({ error: "no user" }, 400) };
     const user = await store.getUser(id);
     if (!user) return { error: c.json({ error: "unknown user" }, 404) };
@@ -258,6 +306,43 @@ export function createApp(store, config = {}) {
     // credential so it's fine in the query, unlike user_id). Drives the daily-flow
     // done-state so "logged today" matches the day the user is actually living.
     const clientDay = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : nowISO.slice(0, 10); })();
+    // GRADUATION (considerations #2, finding 2F). training_status was set once at
+    // onboarding and changed by NOTHING afterwards, so a user who joined as a
+    // beginner and has trained hard ever since stayed on beginner volume with no
+    // mesocycle, no deload, no accessory rotation and no volume tune — forever.
+    // Checked BEFORE the block-boundary rotation below, because a promotion starts
+    // a fresh block; the rotation then sees block_index 0 and correctly no-ops.
+    const earnedStatus = graduatedStatus(sessions, user.profile?.training_status);
+    if (earnedStatus && !user.program?.custom) {
+      const promoted = await store.updateUser(id, (u) => {
+        // Re-check inside the CAS on the FRESH read: a concurrent Settings save may
+        // already have changed the status (or made the plan custom), and this must
+        // not clobber it. Re-derive from the fresh copy rather than trusting the
+        // outer read (lesson 21: act on what's actually stored).
+        const fresh = graduatedStatus(sessions, u.profile?.training_status);
+        if (!fresh || u.program?.custom) return u;
+        u.profile = { ...u.profile, training_status: fresh };
+        // A promotion RAISES the volume target (mev.min -> mav.min, or -> mav.max).
+        // Start a fresh block so the mesocycle's own week-1 ramp (0.7x) walks them
+        // into it, instead of the new target landing whole overnight.
+        const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+        u.program = program; u.plan_rationale = rationale;
+        u.plan_meta = {
+          ...meta,
+          block_start: nowISO,
+          block_index: 0,
+          rotation_base: sessions.filter((x) => !x.program_ref || x.program_ref === program.id).length,
+          rotated_at: nowISO,
+          volume_adjust: u.plan_meta?.volume_adjust ?? {},
+          // Announced ONCE (buildToday clears it the moment a session is logged
+          // under the new block) — a step up you earned is a win to celebrate
+          // (Goal 4), not a settings change to discover.
+          graduated_to: fresh,
+        };
+        return u;
+      }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+      if (promoted) user = promoted;
+    }
     // NEW MESOCYCLE -> rotate the accessories. Compounds keep their ranking so
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
@@ -276,7 +361,10 @@ export function createApp(store, config = {}) {
     const recentBodyweights = bodyweights.filter((b) => inBlockWindow(b.date));
     const blockStart = user.plan_meta?.block_start;
     if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
-      const blockIndex = Math.max(0, Math.floor((Date.now() - +new Date(blockStart)) / (7 * 6 * 86400000)));
+      // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
+      // reads, so the boundary that rotates the plan and the phase shown on the card
+      // can never disagree about which block the user is in.
+      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO) / BLOCK_WEEKS);
       if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
         const updated = await store.updateUser(id, (u) => {
           // Re-check the FRESH CAS-read state: the outer guard (L203) saw a stale
@@ -306,11 +394,18 @@ export function createApp(store, config = {}) {
             bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
             eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
           };
-          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
+          // THE EXERCISE-CHANGE LEVER (the KB's 4th plateau lever, previously absent):
+          // lifts this person has genuinely plateaued on are demoted below every
+          // alternative for their muscle, so the new block offers a different angle
+          // rather than the same stalled movement. Recency-filtered, or a swapped-out
+          // lift would stay flagged forever and never come back (see stalledExerciseIds).
+          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO);
+          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
+            swapped_this_block: stalledExercises, // what got changed, for the coach note
             block_index: blockIndex,
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
@@ -320,6 +415,34 @@ export function createApp(store, config = {}) {
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
         if (updated) user = updated;
+      }
+    }
+    // REACTIVE DELOAD (considerations #2, finding 2B — the KB's third plateau lever,
+    // "manage fatigue", which had no code path at all). Fires when a muscle is
+    // stalled AT its recoverable ceiling — `volumeResponse`'s "change" signal, which
+    // the engine has been computing on every progress read and discarding (nothing
+    // rendered it, nothing acted on it). Adding sets there is the one response that
+    // can't help, which is exactly why the KB reaches for a deload instead.
+    //
+    // Read from progressReport rather than re-deriving: one definition of the signal,
+    // not two that can drift (the maintenance/hold filtering matters here too — a
+    // muscle a specialization block deliberately holds low must never trigger this).
+    const rdBlockStart = user.plan_meta?.block_start;
+    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO);
+    const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
+    if (rdBlock && rdBlockStart && !user.program?.custom) {
+      const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
+      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins);
+      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex)) {
+        const stamped = await store.updateUser(id, (u) => {
+          // Precondition re-checked inside the CAS against the FRESH read — a
+          // concurrent request may have stamped this block already, and stamping
+          // twice would move the week forward and deload two weeks running.
+          if ((u.plan_meta?.reactive_deload?.block ?? null) === rdBlockIndex) return u;
+          u.plan_meta = { ...(u.plan_meta ?? {}), reactive_deload: { block: rdBlockIndex, week: isoWeekKey(nowISO) } };
+          return u;
+        }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+        if (stamped) user = stamped; // act on what was PERSISTED, not the local guess (lesson 21)
       }
     }
     const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === clientDay));
@@ -773,24 +896,118 @@ export function createApp(store, config = {}) {
       ...(validLocalDate(body.local_date) ? { local_date: String(body.local_date).slice(0, 10) } : {}),
       program_ref: user.program.id,
       session_name: body.session_name ?? null,
-      sets: (body.sets ?? []).map((s) => ({
-        exercise: s.exercise,
-        set_type: s.set_type ?? "work",
-        weight_kg: Number(s.weight_kg) || 0,
-        reps: Math.max(0, Math.round(Number(s.reps) || 0)),
-        ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
-        ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
-        // deload MUST round-trip: progression anchoring and stall detection both
-        // filter on it — the whitelist silently dropping it made the entire
-        // deload-aware pipeline inert in production while unit tests (which
-        // bypass this route) stayed green.
-        ...(s.deload ? { deload: true } : {}),
-        completed_at: s.completed_at ?? new Date().toISOString(),
-      })),
+      sets: (body.sets ?? []).map(normalizeSet),
     };
     await store.addSession(id, session);
     const all = await store.listSessions(id);
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
+  });
+
+  // Report an injury from inside a workout (considerations #2, finding 2E).
+  // docs/app-design-spec.md described this reactive path — "only when a user skips
+  // or flinches at an exercise... I'll swap it" — and nothing implemented it: the
+  // mid-session swap button was generic, explicitly session-only, and never wrote
+  // anything down, so the app could watch someone avoid the same lift every week
+  // and never learn. This is the write half; the plan regenerates immediately, so
+  // the alternatives list (equipment + injury filtered) reflects it on the spot.
+  app.post("/api/profile/injury", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    const region = String(body.region ?? "");
+    // Validated against the KB's own region keys — an unknown region would sit in
+    // the profile forever, matching no contraindication and filtering nothing.
+    if (!VALID_INJURY_REGIONS.has(region)) return c.json({ error: "unknown region" }, 400);
+    const severity = ["mild", "moderate", "severe"].includes(body.severity) ? body.severity : "moderate";
+    const updated = await store.updateUser(id, (u) => {
+      const injuries = [...(u.profile?.injuries ?? [])];
+      const i = injuries.findIndex((x) => x.region === region);
+      // Reporting pain on a lift is evidence it's at least this bad — so an existing
+      // entry is never DOWNgraded by a repeat report, only raised.
+      const rank = { mild: 0, moderate: 1, severe: 2 };
+      if (i >= 0) injuries[i] = { ...injuries[i], severity: rank[severity] > rank[injuries[i].severity] ? severity : injuries[i].severity };
+      else injuries.push({ region, severity });
+      u.profile = { ...u.profile, injuries };
+      // Regenerate now rather than at the next block: an aggravating exercise must
+      // not sit in the plan for another five weeks. The mesocycle is deliberately
+      // NOT reset — an injury shouldn't cost the user their block progress (unlike
+      // /api/plan/regenerate, where a training-field change means a different plan).
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+      if (!u.program?.custom) { u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {} }; }
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, injuries: updated.profile?.injuries ?? [] });
+  });
+
+  // ---- Correcting the log (Wave 163) -------------------------------------
+  // Until now a logged set was permanent: no edit, no delete, no route of any
+  // kind. One fat-fingered weight was celebrated as a PR, anchored the next
+  // session's suggestion, and sat in the plateau/cadence trends forever — fixable
+  // only by wiping the whole account. Wave 162 stopped the worst of them arriving;
+  // this is how a user fixes one that did.
+  //
+  // Voiding is a FLAG, never a DELETE. "Never lose logged data" is a standing
+  // guardrail, so the row survives untouched and stays visible on this screen —
+  // it's just excluded from every engine that reads history (the stores filter it
+  // inside listSessions). That also makes it reversible: void is a toggle.
+
+  // The history screen: recent sessions INCLUDING voided ones, because you can't
+  // offer "undo" for something you refuse to show.
+  app.get("/api/sessions", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    const all = await store.listSessions(id, { includeVoided: true });
+    // Resolve display names here rather than shipping the exercise DB to a screen
+    // that only needs labels — and include custom exercises, or a user's own lift
+    // would show as a raw slug on the one screen where they have to recognise it.
+    const custom = new Map((user.custom_exercises || []).map((e) => [e.id, e.name]));
+    const label = (exId) => custom.get(exId) ?? exerciseById.get(exId)?.name ?? exId;
+    // Newest first, capped — this is a correction surface, not an archive browser.
+    return c.json({ sessions: all.slice(-60).reverse().map((sess) => ({
+      ...sess,
+      sets: (sess.sets ?? []).map((set) => ({ ...set, name: label(set.exercise) })),
+    })) });
+  });
+
+  // Fix the numbers on a session already logged. Replaces the whole `sets` array
+  // (the client edits a session as a unit) through the SAME normalizer the log
+  // route uses, so an edit can't smuggle past a bound the original had to clear.
+  app.post("/api/session/update", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    if (!body.session_id) return c.json({ error: "session_id required" }, 400);
+    if (!Array.isArray(body.sets)) return c.json({ error: "sets required" }, 400);
+    // A session with no sets left is a session that didn't happen — void it rather
+    // than storing an empty husk that still counts as a trained day for the streak.
+    const sets = body.sets.map(normalizeSet).filter((x) => x.exercise);
+    const updated = await store.updateSession(id, body.session_id, (sess) => {
+      sess.sets = sets;
+      sess.edited_at = new Date().toISOString(); // an edited record says so
+      if (!sets.length) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      return sess;
+    });
+    if (!updated) return c.json({ error: "unknown session" }, 404);
+    // Report what was PERSISTED, not the local guess (lesson 21).
+    return c.json({ ok: true, session: updated });
+  });
+
+  // Void / un-void. Idempotent both ways: re-voiding keeps the ORIGINAL timestamp
+  // rather than sliding it forward, so "when did I take this back" stays true.
+  app.post("/api/session/void", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    if (!body.session_id) return c.json({ error: "session_id required" }, 400);
+    const voided = body.voided !== false;
+    const updated = await store.updateSession(id, body.session_id, (sess) => {
+      if (voided) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      else delete sess.voided_at;
+      return sess;
+    });
+    if (!updated) return c.json({ error: "unknown session" }, 404);
+    return c.json({ ok: true, voided: !!updated.voided_at, session: updated });
   });
 
   // Progress: everything derived, nothing asked.

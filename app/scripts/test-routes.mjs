@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 
 let pass = 0, fail = 0;
@@ -83,11 +83,17 @@ try {
   const stored3 = (await store.listSessions(uid)).find((s) => s.session_id === "rt-3")?.sets?.[0];
   ok("junk fields stripped; falsy deload omitted", stored3 && !("evil" in stored3) && !("deload" in stored3));
 
-  // A new mesocycle auto-rotates accessories through the real route.
+  // A new mesocycle auto-rotates accessories through the real route. The clock is
+  // TRAINED weeks (Wave 167), so backdating block_start is no longer enough on its
+  // own — the block only advances for weeks the user actually trained.
   await store.updateUser(uid, (u) => {
-    u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 43 * 86400000).toISOString(), block_index: 0 };
+    u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 60 * 86400000).toISOString(), block_index: 0 };
     return u;
   });
+  for (let w = 1; w <= 7; w++) {
+    await json("POST", "/api/session", { user_id: uid, session_id: `rt-blk-${w}`, date: new Date(Date.now() - w * 7 * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
   const before = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
   const rolled = await app.request("/api/today", { headers: { "X-HB-User": uid } });
   ok("today succeeds across a block boundary", rolled.status === 200);
@@ -215,12 +221,15 @@ try {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
   const dayAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
-  // 5 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
-  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(35 - w * 7),
+  // 7 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
+  // Seven, not five: the mesocycle clock counts TRAINED weeks (Wave 167), so the
+  // boundary needs six trained weeks behind it — backdating block_start alone no
+  // longer advances a block the user never trained.
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(49 - w * 7),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
   const chestBefore = (await store.getUser(atUser)).plan_rationale?.volume_by_muscle?.chest?.target_sets;
   // backdate block_start so a mesocycle boundary has passed → /api/today rotates + auto-tunes
-  await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": atUser } });
   const atAfter = await store.getUser(atUser);
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
@@ -250,10 +259,12 @@ try {
   const woUser = (await json("POST", "/api/onboard", { profile: {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
-  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(35 - w * 7),
+  // Seven trained weeks (Wave 167: the block clock counts TRAINED weeks, so six
+  // must sit behind the boundary for it to advance at all).
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(49 - w * 7),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
-  for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(120 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
-  await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(150 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
+  await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": woUser } });
   const woAfter = await store.getUser(woUser);
   ok("#69 old out-of-block check-ins don't suppress the bump (recovery gate windows to the current block)", (woAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
@@ -902,6 +913,313 @@ try {
   const quietProg = await (await app.request("/api/progress", { headers: { "X-HB-User": ifQuietId } })).json();
   ok("#cardio uncorroborated, the card stays silent while the plateau card still fires",
     quietProg.interference == null && (quietProg.stalls || []).length >= 2);
+
+  // ---- Wave 162: the logged-set trust boundary ----------------------------
+  // `rir` had been clamped at this door for waves while `weight_kg`/`reps` sat
+  // unbounded right beside it (lesson 16: the guard applied to ONE field). Auth is
+  // possession-of-UUID, so any client can post these. Driven through the REAL
+  // program (a fixed exercise id might not appear in this user's plan, and a test
+  // that can't reach the code it names passes vacuously — lesson 25).
+  const boundId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    // 2 days/week: the rotation returns to session 0 after the two logs below, so
+    // today's card shows the same exercise we poisoned (otherwise the last three
+    // assertions look at a different lift and quietly prove nothing).
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const boundEx = (await (await app.request("/api/today", { headers: { "X-HB-User": boundId } })).json()).session.exercises[0].exercise;
+  // A normal baseline first, so the absurd session below has a prior best to beat —
+  // without it there is no PR to detect and the ceiling assertion proves nothing.
+  await json("POST", "/api/session", { user_id: boundId, session_id: "bound-base", date: new Date(Date.now() - 3 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: boundEx, weight_kg: 60, reps: 8 })] });
+  const boundRes = await json("POST", "/api/session", { user_id: boundId, session_id: "bound-1", date: new Date().toISOString(),
+    sets: [
+      { exercise: boundEx, weight_kg: 999999, reps: 5 },
+      { exercise: boundEx, weight_kg: 100, reps: 99999 },
+      { exercise: boundEx, weight_kg: "not-a-number", reps: -4 },
+    ] });
+  ok("#bounds a session with absurd numbers is still ACCEPTED (a 400 would strand an offline queue)", boundRes.status === 200);
+  ok("#bounds the absurd session still produced a PR — so the ceiling below is a real assertion, not a vacuous one",
+    (boundRes.data?.pr_xp ?? 0) > 0);
+  const boundProg = await (await app.request("/api/progress", { headers: { "X-HB-User": boundId } })).json();
+  // Read the persisted sets back the only way a client can: the records the engines
+  // derive from them. Unbounded, 999999 kg surfaces here as a ~1.4M kg estimated 1RM
+  // and anchors every future suggestion.
+  const heaviestPR = Math.max(0, ...(boundProg.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0));
+  ok("#bounds no derived record can exceed the weight ceiling's own e1RM", heaviestPR > 0 && heaviestPR <= 1000 * (1 + 12 / 30) + 0.01);
+  const boundToday = await (await app.request("/api/today", { headers: { "X-HB-User": boundId } })).json();
+  const boundCard = (boundToday.session?.exercises ?? []).find((e) => e.exercise === boundEx);
+  ok("#bounds the outlier can't anchor the next suggested weight", boundCard != null && boundCard.suggested_kg <= 1000);
+  // last_kg rides the /api/today payload so the player can judge a set against the
+  // lift's OWN history (session-core's isImplausibleSet). A route whitelist dropping
+  // it would silently disable the whole typo guard — exactly the deload-flag bug
+  // this file exists for.
+  ok("#bounds /api/today carries last_kg, the reference the player's typo guard needs",
+    boundCard != null && typeof boundCard.last_kg === "number" && boundCard.last_kg > 0);
+
+  // ---- Wave 163: correcting the log --------------------------------------
+  // A bad set used to be permanent (no edit/delete route existed at all). These
+  // drive the full loop through the real door: log -> it counts -> void it -> it
+  // stops counting everywhere -> un-void -> it counts again.
+  const histId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const histEx = (await (await app.request("/api/today", { headers: { "X-HB-User": histId } })).json()).session.exercises[0].exercise;
+  const histHdr = { headers: { "X-HB-User": histId } };
+  // Three sessions so that voiding ONE leaves an even count — the rotation then
+  // lands back on day 0, where histEx lives, and the anchor assertion below can
+  // actually see the lift it's about (voiding rewinds the rotation, see there).
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-good", date: new Date(Date.now() - 4 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 60, reps: 8 })] });
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-good2", date: new Date(Date.now() - 3 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 60, reps: 8 })] });
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-bad", date: new Date().toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 600, reps: 8 })] });
+
+  const beforeVoid = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history the mistyped session counts before it's corrected (so the void below proves something)",
+    beforeVoid.sessions_logged === 3 && Math.max(0, ...(beforeVoid.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) > 500);
+
+  const histList = await (await app.request("/api/sessions", histHdr)).json();
+  ok("#history GET /api/sessions returns the log, newest first", histList.sessions?.[0]?.session_id === "hist-bad");
+
+  const voidRes = await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad" });
+  ok("#history POST /api/session/void reports what it PERSISTED, not a local guess (lesson 21)", voidRes.status === 200 && voidRes.data.voided === true);
+  const afterVoid = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history a voided session stops counting everywhere the engines look", afterVoid.sessions_logged === 2);
+  ok("#history and its inflated PR is gone with it", Math.max(0, ...(afterVoid.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) < 500);
+  // Voiding also rewinds the session ROTATION (one fewer session logged = you're
+  // due the day you were due), so today's card may be a different day entirely —
+  // assert the thing that actually matters: the voided number anchors nothing.
+  const afterVoidToday = await (await app.request("/api/today", histHdr)).json();
+  const afterVoidCard = (afterVoidToday.session?.exercises ?? []).find((e) => e.exercise === histEx);
+  ok("#history the next suggested weight re-derives from the surviving sessions, not the voided one",
+    afterVoidCard != null && afterVoidCard.last_kg === 60);
+
+  const stillListed = await (await app.request("/api/sessions", histHdr)).json();
+  ok("#history the voided session is NOT deleted — it's still on the history screen, flagged, so undo is possible",
+    (stillListed.sessions ?? []).some((x) => x.session_id === "hist-bad" && !!x.voided_at));
+
+  // Idempotence + reversibility.
+  const reVoid = await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad" });
+  ok("#history re-voiding keeps the ORIGINAL timestamp (when you took it back stays true)",
+    reVoid.data.session.voided_at === voidRes.data.session.voided_at);
+  await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad", voided: false });
+  ok("#history un-voiding brings it back — void is a toggle, never a delete",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 3);
+
+  // Editing: the fix a user actually wants — keep the workout, correct the number.
+  const editRes = await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad",
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 65, reps: 8 })] });
+  ok("#history POST /api/session/update rewrites the sets", editRes.status === 200);
+  const afterEdit = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history the corrected weight replaces the bad one in every derived surface",
+    afterEdit.sessions_logged === 3 && Math.max(0, ...(afterEdit.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) < 500);
+
+  // An edit goes through the SAME normalizer as the log route — it must not be a
+  // back door around the bound Wave 162 added at the front door.
+  await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad",
+    sets: [{ exercise: histEx, weight_kg: 999999, reps: 8, deload: true }] });
+  const histEdited = ((await (await app.request("/api/sessions", histHdr)).json()).sessions ?? []).find((x) => x.session_id === "hist-bad");
+  ok("#history an EDIT is bounded by the same ceiling as the original log (no back door)", histEdited.sets[0].weight_kg === 1000);
+  ok("#history and the edit path preserves `deload`, the flag a whitelist once silently dropped", histEdited.sets[0].deload === true);
+
+  // Emptying a session is a void, not an empty husk that still scores as a
+  // trained day for the streak.
+  await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad", sets: [] });
+  ok("#history clearing every set voids the session rather than leaving a husk that still counts",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 2);
+
+  const noSuch = await json("POST", "/api/session/void", { user_id: histId, session_id: "does-not-exist" });
+  ok("#history voiding an unknown session 404s rather than silently succeeding", noSuch.status === 404);
+  // Possession of a session_id must not be enough to touch someone else's log.
+  const otherId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const crossRes = await json("POST", "/api/session/void", { user_id: otherId, session_id: "hist-good" });
+  ok("#history another user cannot void a session they don't own (user_id is in the WHERE)", crossRes.status === 404);
+  ok("#history and the owner's session is untouched by that attempt",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 2);
+
+  // ---- Wave 164: beginners graduate --------------------------------------
+  // training_status was captured once at onboarding and changed by NOTHING, so a
+  // beginner stayed on mev.min volume with no mesocycle, no deload EVER, no
+  // accessory rotation and no volume tune — Goal 2's novice->Olympia arc failing
+  // at its first transition. Driven through the real route, and asserted on the
+  // GATES the status controls, not just the field itself (the field changing means
+  // nothing if blockPhase and the tune don't follow it).
+  const gradId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const gradHdr = { headers: { "X-HB-User": gradId } };
+  const beforeGrad = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad a beginner starts with no mesocycle at all — no wave, and no deload ever",
+    beforeGrad.session.block == null && beforeGrad.session.beginner === true);
+  const totalTarget = (plan) => Object.values(plan.rationale?.volume_by_muscle ?? {}).reduce((a, v) => a + (v.target_sets ?? 0), 0);
+  const beginnerTarget = totalTarget(await (await app.request("/api/plan/explain", gradHdr)).json());
+
+  // Log a real training age: distinct ISO weeks, twice a week, ending today. Dated
+  // RELATIVE to now — /api/today reads the real clock for layoff/mesocycle logic.
+  const gradEx = beforeGrad.session.exercises[0].exercise;
+  for (let w = GRADUATION.intermediate.weeks; w > 0; w--) {
+    for (let n = 0; n < 2; n++) {
+      await json("POST", "/api/session", { user_id: gradId, session_id: `grad-${w}-${n}`,
+        date: new Date(Date.now() - (w * 7 + n) * 86400000).toISOString(),
+        sets: [...Array(3).fill({ exercise: gradEx, weight_kg: 60, reps: 8 })] });
+    }
+  }
+  const afterGrad = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad the promotion fires on /api/today once the training age is there",
+    afterGrad.session.beginner === false);
+  ok("#grad and it's ANNOUNCED as a win, not left to be discovered",
+    /not a beginner any more/i.test(afterGrad.session.coach_note || ""));
+  // The gates the status actually controls:
+  ok("#grad the mesocycle now exists — so a deload will finally happen", afterGrad.session.block != null);
+  ok("#grad the promotion starts a FRESH block, so the higher target ramps in via week 1 rather than landing whole",
+    afterGrad.session.block.week === 1);
+  const gradPlan = await (await app.request("/api/plan/explain", gradHdr)).json();
+  ok("#grad the plan was regenerated at a genuinely HIGHER volume target (mev.min -> mav.min), not just relabelled",
+    beginnerTarget > 0 && totalTarget(gradPlan) > beginnerTarget);
+  ok("#grad the stored profile itself moved, not only the derived card", gradPlan.profile?.training_status === "intermediate");
+  // Idempotence: a second call must not re-announce or re-reset the block.
+  const secondCall = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad a second /api/today doesn't re-promote or churn the block",
+    secondCall.session.block.week === afterGrad.session.block.week);
+  // Never demotes: an explicit Settings save to a HIGHER status must stick, and the
+  // graduation check must not pull it back down to what the log alone has earned.
+  await json("POST", "/api/plan/regenerate", { user_id: gradId, profile: { ...gradPlan.profile, training_status: "advanced" } });
+  await (await app.request("/api/today", gradHdr)).json(); // give graduation a chance to (wrongly) pull it back
+  const afterManual = await (await app.request("/api/plan/explain", gradHdr)).json();
+  ok("#grad a user who sets a HIGHER status keeps it — graduation promotes, never demotes",
+    afterManual.profile?.training_status === "advanced");
+
+  // ---- Wave 166: regression ------------------------------------------------
+  // A lifter going BACKWARDS was invisible: stallDetect structurally can't flag a
+  // decline (it needs the window inside a 2.5% noise band), and once the pre-drop
+  // weeks rolled out, the new lower level read as an ordinary plateau — whose
+  // answer is +2 sets, to someone already failing to recover.
+  const regId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const regHdr = { headers: { "X-HB-User": regId } };
+  const regEx = (await (await app.request("/api/today", regHdr)).json()).session.exercises[0].exercise;
+  // Peak for two weeks, then two weeks well below it — dated relative to now.
+  const regPlan = [[5, 100], [4, 100], [2, 86], [1, 84]];
+  for (const [wksAgo, kg] of regPlan) {
+    await json("POST", "/api/session", { user_id: regId, session_id: `reg-${wksAgo}`,
+      date: new Date(Date.now() - wksAgo * 7 * 86400000).toISOString(),
+      sets: [...Array(3).fill({ exercise: regEx, weight_kg: kg, reps: 8 })] });
+  }
+  const regProg = await (await app.request("/api/progress", regHdr)).json();
+  ok("#regress a sustained decline is reported end-to-end", (regProg.regressions ?? []).length === 1 && regProg.regressions[0].exercise === regEx);
+  ok("#regress it quantifies the drop honestly rather than just labelling it", regProg.regressions[0].drop_pct >= 5);
+  ok("#regress and it is NOT also called a plateau — a lift can't be both", (regProg.stalls ?? []).every((x) => x.exercise !== regEx));
+
+  // The negative twin: identical shape, but recovered. Silence is the common case.
+  const okId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const okHdr = { headers: { "X-HB-User": okId } };
+  const okEx = (await (await app.request("/api/today", okHdr)).json()).session.exercises[0].exercise;
+  for (const [wksAgo, kg] of [[5, 100], [4, 100], [2, 86], [1, 101]]) {
+    await json("POST", "/api/session", { user_id: okId, session_id: `okr-${wksAgo}`,
+      date: new Date(Date.now() - wksAgo * 7 * 86400000).toISOString(),
+      sets: [...Array(3).fill({ exercise: okEx, weight_kg: kg, reps: 8 })] });
+  }
+  ok("#regress one bad week that bounced back is NOT flagged",
+    ((await (await app.request("/api/progress", okHdr)).json()).regressions ?? []).length === 0);
+
+  // ---- Wave 167: the block clock counts TRAINED weeks ----------------------
+  // It used to be wall-clock, so a user who trained twice in six weeks still got
+  // "Week 6 — deload", and `POST /api/pause` froze the streak and the emails but
+  // not this — a deliberately paused user's block advanced through phases they
+  // never trained. Driven through the real route, both directions.
+  const clkProfile = {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  };
+  const sparseId = (await json("POST", "/api/onboard", { profile: clkProfile })).data.user_id;
+  await store.updateUser(sparseId, (u) => { u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 45 * 86400000).toISOString(), block_index: 0 }; return u; });
+  // Six-and-a-half calendar weeks in, having trained in only two of them.
+  for (const d of [40, 26]) {
+    await json("POST", "/api/session", { user_id: sparseId, session_id: `clk-${d}`, date: new Date(Date.now() - d * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
+  const sparseToday = await (await app.request("/api/today", { headers: { "X-HB-User": sparseId } })).json();
+  ok("#clock a sporadic trainee gets no phantom deload — the block waits for the work",
+    sparseToday.session.block.week === 3 && sparseToday.session.block.phase !== "deload");
+  ok("#clock and the block never rotated, because six trained weeks never happened",
+    (await store.getUser(sparseId)).plan_meta.block_index === 0);
+
+  // The consistent lifter is completely unaffected — same calendar, real deload.
+  const steadyId = (await json("POST", "/api/onboard", { profile: clkProfile })).data.user_id;
+  await store.updateUser(steadyId, (u) => { u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 40 * 86400000).toISOString(), block_index: 0 }; return u; });
+  for (let w = 1; w <= 5; w++) {
+    await json("POST", "/api/session", { user_id: steadyId, session_id: `stdy-${w}`, date: new Date(Date.now() - w * 7 * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
+  const steadyToday = await (await app.request("/api/today", { headers: { "X-HB-User": steadyId } })).json();
+  ok("#clock a lifter who trains every week reaches the deload exactly on schedule",
+    steadyToday.session.block.week === 6 && steadyToday.session.block.phase === "deload");
+
+  // ---- Wave 168: cardio is prescribed, through the real doors --------------
+  // The KB's numbers existed; nothing turned them into a prescription. Both routes
+  // whitelist their payload, and a dropped field silently disables a whole surface
+  // (the deload-flag bug this file exists for), so assert on BOTH.
+  const cardId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 6, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const cardHdr = { headers: { "X-HB-User": cardId } };
+  const cardToday = await (await app.request("/api/today", cardHdr)).json();
+  ok("#cardio /api/today carries a real cardio prescription", (cardToday.session?.cardio?.steps_per_day?.min ?? 0) > 0);
+  ok("#cardio it answers TODAY specifically, not just in general", typeof cardToday.session.cardio.hard_cardio_ok === "boolean");
+  ok("#cardio the today answer agrees with the plan's own placement rule",
+    cardToday.session.cardio.hard_cardio_ok === cardToday.session.cardio.placement.best_after.includes(cardToday.session.name));
+  const cardPlan = await (await app.request("/api/plan/explain", cardHdr)).json();
+  ok("#cardio the plan-explain whitelist carries it too (a dropped field kills the surface)",
+    (cardPlan.program?.cardio?.sessions_per_week?.min ?? 0) > 0 && cardPlan.program.cardio.evidence_grade === "D");
+
+  // ---- Wave 169: reporting an injury from inside a workout ------------------
+  // app-design-spec.md described this reactive path and nothing implemented it: the
+  // mid-session swap was generic, session-only, and never wrote anything down, so
+  // the app could watch someone avoid the same lift weekly and never learn.
+  const injId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const injHdr = { headers: { "X-HB-User": injId } };
+  const beforeInj = await (await app.request("/api/exercises", injHdr)).json();
+  ok("#injury a shoulder-contraindicated lift is offered before anything is reported",
+    beforeInj.some((e) => e.movement_pattern === "vertical-push"));
+  const injRes = await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder" });
+  ok("#injury POST /api/profile/injury records it", injRes.status === 200 && injRes.data.injuries.some((x) => x.region === "shoulder"));
+  const afterInj = await (await app.request("/api/exercises", injHdr)).json();
+  ok("#injury and it takes effect immediately — vertical pressing is gone from the pickers",
+    !afterInj.some((e) => e.movement_pattern === "vertical-push"));
+  const injPlan = await (await app.request("/api/plan/explain", injHdr)).json();
+  ok("#injury the PLAN was regenerated too, not just the picker",
+    !injPlan.program.sessions.flatMap((x) => x.exercises).some((e) => beforeInj.find((b) => b.id === e.exercise)?.movement_pattern === "vertical-push"));
+  const injUser = await store.getUser(injId);
+  ok("#injury reporting pain does NOT reset the mesocycle — an injury shouldn't cost you your block",
+    !!injUser.plan_meta.block_start && (injUser.plan_meta.block_index ?? 0) === 0);
+  // Severity is only ever raised by a repeat report, never lowered.
+  await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder", severity: "severe" });
+  await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder", severity: "mild" });
+  ok("#injury a repeat report can raise severity but never downgrades it",
+    (await store.getUser(injId)).profile.injuries.find((x) => x.region === "shoulder").severity === "severe");
+  const bogus = await json("POST", "/api/profile/injury", { user_id: injId, region: "left-earlobe" });
+  ok("#injury an unknown region is rejected rather than stored forever, matching nothing", bogus.status === 400);
+  // The two regions the engine could always filter and no user could ever pick.
+  for (const region of ["neck", "ankle"]) {
+    const r = await json("POST", "/api/profile/injury", { user_id: injId, region });
+    ok(`#injury ${region} — filterable by the engine all along, now reportable`, r.status === 200);
+  }
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

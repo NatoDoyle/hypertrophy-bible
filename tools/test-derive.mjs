@@ -10,6 +10,10 @@ import {
   stallDetect,
   isoWeekKey,
   sessionWeekKey,
+  graduatedStatus,
+  trainedWeeksInBlock,
+  regressionDetect,
+  GRADUATION,
   isHardSet,
   perMuscleWeeklyVolume,
   volumeVsLandmarks,
@@ -679,6 +683,186 @@ check("interferenceSignal: silent when a lower-body injury better explains the s
 check("interferenceSignal: an unknown/custom exercise is skipped, never guessed into a half", () => {
   const r = ifRun({ stalls: [...IF_STALLS, { exercise: "mystery-machine", name: "Mystery Machine", weeks_flat: 5 }] });
   assert.deepEqual(r.stalled_lower.map((s) => s.exercise), ["back-squat", "romanian-deadlift"]);
+});
+
+// --- graduation (Wave 164): training_status was captured once at onboarding and
+// changed by nothing afterwards, so a beginner stayed on beginner volume, with no
+// mesocycle, no deload and no volume tune, forever. ---
+const gradSessions = (weeks, perWeek = 2) => {
+  const out = [];
+  for (let w = 0; w < weeks; w++) for (let n = 0; n < perWeek; n++) {
+    const d = new Date(Date.UTC(2026, 0, 5) + w * 7 * 86400000 + n * 86400000);
+    out.push({ date: d.toISOString(), sets: [{ exercise: "barbell-bench-press", weight_kg: 60, reps: 8 }] });
+  }
+  return out;
+};
+
+check("graduatedStatus: a beginner with enough logged training age is promoted", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "beginner"), "intermediate");
+});
+
+check("graduatedStatus: not yet — each threshold is required on its own", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks - 1, 2), "beginner"), null, "enough sessions, too few distinct weeks");
+  // 26 distinct weeks but only ONE session each: showing up occasionally is not a
+  // training history, and the session floor is what says so.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 1), "beginner"), null, "enough weeks, too few sessions");
+});
+
+check("graduatedStatus: PROMOTES ONLY — a layoff or a quiet month never takes tools away", () => {
+  assert.equal(graduatedStatus(gradSessions(2, 2), "intermediate"), null, "a thin log never demotes a declared intermediate");
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "intermediate"), null, "already at what the log earned — no change");
+  assert.equal(graduatedStatus(gradSessions(300, 3), "advanced"), null, "advanced is the top — nothing above it to earn");
+});
+
+check("graduatedStatus: the advanced tier needs its own, much longer horizon", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks, 2), "intermediate"), "advanced");
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks - 1, 2), "intermediate"), null);
+  // A beginner whose log clears the advanced bar skips straight there — the log is
+  // the evidence, not a ladder that has to be climbed one rung at a time.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks, 2), "beginner"), "advanced");
+});
+
+check("graduatedStatus: empty sessions don't count toward training age", () => {
+  const empty = gradSessions(GRADUATION.intermediate.weeks, 2).map((s) => ({ ...s, sets: [] }));
+  assert.equal(graduatedStatus(empty, "beginner"), null, "an emptied/voided session is not a trained day");
+  assert.equal(graduatedStatus([], "beginner"), null);
+  assert.equal(graduatedStatus(undefined, "beginner"), null, "no history never throws");
+});
+
+check("graduatedStatus: it is TRAINING AGE, not a reward for progressing", () => {
+  // Every session identical — zero progress across the whole history. A stalled
+  // lifter is exactly who needs the mesocycle wave and the volume tune, so the
+  // promotion must not be gated on results.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "beginner"), "intermediate");
+});
+
+// --- regression (Wave 166): going BACKWARDS, which nothing could see. -----
+// stallDetect structurally CANNOT flag a decline (it requires the window inside a
+// 2.5% noise band, and a real drop blows past it), so a lifter losing strength was
+// invisible — and once the pre-drop weeks rolled out of the window the new lower
+// level read as an ordinary plateau, whose answer is +2 sets. Exactly backwards.
+const regIdx = new Map([["bench", { name: "Bench Press", primary: ["chest"] }]]);
+// Weekly e1RM is Epley: w * (1 + reps/30). At 8 reps that's w * 1.2667.
+const regWeek = (weeksAgo, kg, extra = {}) => ({
+  date: new Date(Date.UTC(2026, 0, 5) + (20 - weeksAgo) * 7 * 86400000).toISOString(),
+  sets: [{ exercise: "bench", set_type: "work", weight_kg: kg, reps: 8, ...extra }],
+});
+
+check("regressionDetect: a sustained decline is flagged", () => {
+  // 100, 100 -> 88, 86: the last two weeks are both >5% below the 100 peak.
+  const r = regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 88), regWeek(1, 86)], regIdx);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].exercise, "bench");
+  assert.ok(r[0].drop_pct >= 5, `expected a real drop, got ${r[0].drop_pct}%`);
+});
+
+check("regressionDetect: ONE bad week is not a regression", () => {
+  // The classic false positive: illness, a bad night, a missed meal. It bounces
+  // back, and treating it as a decline would pull volume for no reason.
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 85), regWeek(1, 101)], regIdx), []);
+  // Even a drop that is still in progress needs TWO weeks before it counts.
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 100), regWeek(1, 85)], regIdx), []);
+});
+
+check("regressionDetect: normal noise and genuine progress are never flagged", () => {
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 99), regWeek(2, 100), regWeek(1, 99)], regIdx), [], "±1% is noise");
+  assert.deepEqual(regressionDetect([regWeek(4, 90), regWeek(3, 95), regWeek(2, 100), regWeek(1, 105)], regIdx), [], "climbing");
+});
+
+check("regressionDetect: a planned DELOAD is not a decline", () => {
+  // The whole point of a deload is lighter weeks. Counting them as regression would
+  // fire on every single mesocycle, every six weeks, forever.
+  const withDeload = [regWeek(4, 100), regWeek(3, 100), regWeek(2, 80, { deload: true }), regWeek(1, 80, { deload: true })];
+  assert.deepEqual(regressionDetect(withDeload, regIdx), []);
+});
+
+check("regressionDetect: a SLOW grind downward is caught, not just a cliff", () => {
+  // -1.5%/week compounding is -6% in a month and unambiguously a problem, but each
+  // week is barely below the one before it — measuring the drop against only the
+  // last few weeks could never accumulate enough to cross the threshold. This is
+  // why the peak lookback is wider than the sustained-for-two-weeks check.
+  const grind = Array.from({ length: 9 }, (_, i) => regWeek(9 - i, Math.round(120 * 0.985 ** i * 100) / 100));
+  const r = regressionDetect(grind, regIdx);
+  assert.equal(r.length, 1, "a sustained slow decline must be visible");
+  assert.ok(r[0].drop_pct >= 5);
+});
+
+check("regressionDetect: a new, STABLE lower baseline eventually stops being a decline", () => {
+  // Dropped long ago and flat ever since: that's the level they train at now — a
+  // plateau, for the plateau levers to answer, not a decline to keep flagging.
+  const settled = [
+    ...Array.from({ length: 2 }, (_, i) => regWeek(12 - i, 120)),
+    ...Array.from({ length: 9 }, (_, i) => regWeek(9 - i, 100)),
+  ];
+  assert.deepEqual(regressionDetect(settled, regIdx), []);
+});
+
+check("regressionDetect: too little history is silent, never a guess", () => {
+  assert.deepEqual(regressionDetect([regWeek(2, 100), regWeek(1, 80)], regIdx), []);
+  assert.deepEqual(regressionDetect([], regIdx), []);
+});
+
+check("deriveVolumeAdjust: a REGRESSING muscle is never given more volume", () => {
+  const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
+  const stalled = new Set(["chest"]);
+  // Baseline: stalled with headroom and recovered -> the engine adds. This is the
+  // exact branch a regression used to fall into once its drop went flat.
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 12 }, idx, stalled, {}), { chest: 2 });
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 12 }, idx, stalled, { regressingMuscleIds: new Set(["chest"]) }), {}, "holds instead of adding");
+});
+
+check("deriveVolumeAdjust: the regression gate is PER-MUSCLE, not whole-athlete", () => {
+  const idx = new Map([
+    ["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }],
+    ["back", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+  ]);
+  const out = deriveVolumeAdjust({}, { chest: 12, back: 12 }, idx, new Set(["chest", "back"]), { regressingMuscleIds: new Set(["chest"]) });
+  assert.deepEqual(out, { back: 2 }, "a fine back still earns its volume while a declining chest holds");
+});
+
+check("deriveVolumeAdjust: EASING still fires for a regressing muscle at its ceiling", () => {
+  // Pulling volume back is always safe — only the ADD branch is gated.
+  const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 24 }, idx, new Set(["chest"]), { regressingMuscleIds: new Set(["chest"]) }), { chest: -2 });
+});
+
+// --- the mesocycle clock (Wave 167) --------------------------------------
+// It used to be wall-clock, so six quiet weeks still delivered "Week 6 — deload".
+const BLK_START = "2026-01-05T00:00:00.000Z"; // a Monday
+const tw = (dayOffsets, nowOffset) => trainedWeeksInBlock(
+  dayOffsets.map((d) => ({ date: new Date(+new Date(BLK_START) + d * 86400000).toISOString(), sets: [{ exercise: "x", weight_kg: 60, reps: 8 }] })),
+  BLK_START,
+  new Date(+new Date(BLK_START) + nowOffset * 86400000).toISOString(),
+);
+
+check("trainedWeeksInBlock: counts distinct trained weeks, not calendar weeks", () => {
+  assert.equal(tw([], 42), 0, "six calendar weeks with nothing logged is not a block");
+  assert.equal(tw([1, 8, 15, 22, 29], 40), 5, "five trained weeks behind the current one");
+});
+
+check("trainedWeeksInBlock: several sessions in one week still count once", () => {
+  assert.equal(tw([1, 2, 3, 4, 5], 14), 1);
+});
+
+check("trainedWeeksInBlock: the CURRENT week isn't counted as finished", () => {
+  // Trained on Monday of the current week; the rest of that week is still ahead.
+  assert.equal(tw([14], 16), 0, "this week's own sessions don't advance the clock");
+  assert.equal(tw([7, 14], 16), 1, "only the completed week counts");
+});
+
+check("trainedWeeksInBlock: sessions before block_start belong to the previous block", () => {
+  assert.equal(tw([-14, -7, 7], 21), 1);
+});
+
+check("trainedWeeksInBlock: an emptied/voided session is not a trained week", () => {
+  const sessions = [{ date: "2026-01-06T00:00:00.000Z", sets: [] }, { date: "2026-01-13T00:00:00.000Z", sets: [{ exercise: "x", weight_kg: 60, reps: 8 }] }];
+  assert.equal(trainedWeeksInBlock(sessions, BLK_START, "2026-01-26T00:00:00.000Z"), 1);
+});
+
+check("trainedWeeksInBlock: missing/garbage inputs return 0 rather than throwing", () => {
+  assert.equal(trainedWeeksInBlock([], null, "2026-01-26T00:00:00.000Z"), 0);
+  assert.equal(trainedWeeksInBlock(undefined, BLK_START, "2026-01-26T00:00:00.000Z"), 0);
+  assert.equal(trainedWeeksInBlock([{ date: "nonsense", sets: [{ exercise: "x" }] }], BLK_START, "2026-01-26T00:00:00.000Z"), 0);
 });
 
 console.log(`\n${passed} test(s) passed.`);

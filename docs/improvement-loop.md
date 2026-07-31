@@ -287,6 +287,47 @@ These are real failures from previous iterations. Each is now a standing check.
    Corollary for the flip: the unit test asserting the pre-flip state is *supposed* to fail on the
    flip — update it to lock the enforced state, never relax the gate to make a thin new page pass.
 
+26. **A design doc's own decision table is a CHECKLIST — grep every row for a live code
+   path.** `docs/adaptive-algorithm.md` opened with a five-lever table ("the algorithm
+   chooses push · hold · ease, and which lever to pull"). Three levers were live, one was
+   explicitly deferred with recorded rationale — and one, *"Exercise variation / deload —
+   stalled at the recoverable ceiling"*, was named in the table, never staged in the
+   increment roadmap below it, and implemented by nothing. It read as shipped for waves
+   because the table said it existed. The tell was available the whole time: `volumeResponse`
+   had been emitting `signal:"change"` ("a deload or a different exercise will help more than
+   piling on volume") on every `/api/progress` call since it was written, and **nothing
+   rendered it and nothing acted on it** — lesson 15's producer-with-no-consumer, sitting on
+   the exact signal the two missing levers needed. → **Standing lens:** treat every row of a
+   design doc's decision/lever/capability table as an assertion to verify, the same way
+   lesson 14 treats a declared tunable; and when you find a computed-but-unconsumed signal,
+   ask what feature it was computed FOR before deleting it — it's often the missing half.
+
+27. **A boundary guard applied to ONE field of a record is lesson 16 waiting to happen.**
+   `POST /api/session`'s set mapper clamped `rir` to 0-10 and left `weight_kg` and `reps`
+   unbounded in the same object literal, three lines apart, for many waves. Auth is
+   possession-of-UUID, so any client can post — and the blast radius was permanent and wide:
+   a fat-fingered weight is celebrated as a PR, banked as that week's best in
+   progressionByExercise / stallDetect / progressionCadence, and then `suggestWeight` adds an
+   increment ON TOP of it. The compounding half: there were **no edit or delete routes of any
+   kind and no history screen**, so a bad number was unfixable short of wiping the account.
+   → **Standing lens:** when you find a validated field, look at its SIBLINGS in the same
+   literal — a whitelist that guards one number and waves through the two beside it is a
+   half-applied fix (lesson 1 at field scope). And for any value the engines treat as
+   ground truth, ask the second question too: *if this arrives wrong, can the user ever take
+   it back?* A write path with no correction path is a one-way door.
+
+28. **"Six weeks" must mean six weeks of the THING, not six weeks of calendar.** The
+   mesocycle advanced on wall-clock, so a user who trained twice in six weeks still got
+   "Week 6 — deload" — a deload from work that never happened — and `POST /api/pause` froze
+   the streak and the comeback emails but not the block clock, so a deliberately paused user
+   advanced through phases they never trained. The fix needed no new state (distinct trained
+   ISO weeks are derivable from sessions the store already has) and is a no-op for anyone
+   consistent, which is the tell that it was always the right unit. → **Standing lens:** when
+   a period is named after an activity (a training block, a streak week, an adherence month),
+   check whether the code counts the ACTIVITY or merely the elapsed time — and note that
+   pause/layoff semantics usually fall out for free once the unit is right, instead of each
+   needing its own special case.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice

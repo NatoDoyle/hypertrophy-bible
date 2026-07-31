@@ -55,7 +55,43 @@ const REP_SCHEMES = {
   strength: { compound: ["3-6", "2-3"], isolation: ["6-10", "1-3"], priorityIso: ["8-12", "1-2"], pumpIso: ["10-15", "1-2"] },
   "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-1"] },
 };
+// `general-fitness` is a valid goal in onboarding-profile.schema.json and had no
+// entry here, so it fell through `?? REP_SCHEMES.hypertrophy` — a silent fallback
+// for a DECLARED option (lesson 14). The shipped client only offers four goals, so
+// this is reachable only by a direct API post — and auth is possession-of-UUID, so
+// that's reachable. Made an EXPLICIT alias rather than an invented fifth scheme:
+// the KB gives no separate rep/effort prescription for general fitness, and making
+// one up would be worse than saying plainly that it's the same as hypertrophy.
+REP_SCHEMES["general-fitness"] = REP_SCHEMES.hypertrophy;
 const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
+
+// THE MIDDLE EFFORT TIER (considerations #1, finding 1B). The KB's effort table has
+// THREE rows — heavy compounds 1-3 RIR · "moderate compounds and most machine
+// presses/rows" 0-2 · isolation 0-1 — and the engine implemented two, keying only
+// off `mechanic`. So a leg press, a hack squat, a machine chest press and a
+// chest-supported row all got the heavy-barbell reserve of 1-3.
+//
+// That was self-contradictory as well as unfaithful: the ranker gives machines the
+// LARGEST equipment bonus (EQUIP_TIER_HYPERTROPHY machine −1.4) precisely because
+// they're stable enough to push near failure safely — then the prescription told
+// the user not to. The engine preferentially selected those lifts and then left
+// their stimulus on the table.
+//
+// `stability: "high"` is the data that already encodes the KB's row: it resolves to
+// exactly the leg presses, hack squats, machine/smith presses, lat pulldowns and
+// chest-supported rows the page names. The `cns_cost` half expresses the page's
+// SECOND stated reason for the heavy reserve (fatiguing and slow to recover, as
+// distinct from technically risky) — it binds nothing in today's data, where every
+// high-stability compound is low or moderate CNS, but a stable yet systemically
+// heavy machine (a belt squat, say) must not be pushed to 0-2 just for being stable.
+const supported = (ex) => ex.mechanic === "compound" && ex.stability === "high" && ex.cns_cost !== "high";
+// One notch closer to failure than the goal's own heavy-compound band, floored at 0
+// — derived rather than four more literal tuples, so it can never drift from them.
+const easeToward = (band) => {
+  const m = /^(\d+)-(\d+)$/.exec(band ?? "");
+  if (!m) return band;
+  return `${Math.max(0, +m[1] - 1)}-${Math.max(0, +m[2] - 1)}`;
+};
 
 // Daily Undulating Periodization (roadmap #9, first slice): an OPT-IN advanced
 // option (profile.periodization === "undulating") that varies the rep/intensity
@@ -201,7 +237,13 @@ const EQUIP_TIER_STRENGTH = { barbell: -1.2, dumbbell: -0.5, kettlebell: -0.3, m
 // it refines ties without burying a great high-CNS lift; works WITH the ≤2
 // high-CNS-per-session cap. Strength embraces heavy systemic work, so it opts out.
 const CNS_PENALTY = { high: 0.6, moderate: 0.25, low: 0 };
-function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy" }) {
+const EMPTY_SET = new Set();
+// Bigger than every other ranking signal combined (lengthened −2, equipment −1.4,
+// bodyweight +2.5, difficulty +3), so a stalled lift always sorts behind a
+// non-stalled alternative regardless of how good it otherwise looks.
+const STALLED_DEMOTION = 12;
+
+function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy", stalled = EMPTY_SET }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
   const equipTier = goal === "strength" ? EQUIP_TIER_STRENGTH : EQUIP_TIER_HYPERTROPHY;
@@ -226,6 +268,17 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
       // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
       // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
       if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
+      // THE EXERCISE-VARIATION LEVER (KB logging-and-plateaus.md: volume → effort →
+      // deload → CHANGE EXERCISE). A lift the user has genuinely plateaued on sinks
+      // below every alternative for that muscle, so the next block gives them a
+      // different angle instead of the same stalled movement. Decisive by design —
+      // larger than any quality signal above — because "keep doing the thing that
+      // stopped working" is the one outcome this lever exists to prevent. It's a
+      // demotion, not an exclusion: if a muscle has only one accessible exercise,
+      // that exercise is still last in a pool of one and still gets picked.
+      // Applies to COMPOUNDS too, which rotateTopK deliberately never touches — a
+      // stalled bench press could previously never be swapped by anything.
+      if (stalled.has(e.id)) score += STALLED_DEMOTION;
       // #1/#5: prefer stable, low-fatigue equipment (machines/cables) for growth —
       // more effective tension per unit of systemic fatigue; barbell for strength.
       score += equipTier[e.equipment] ?? 0;
@@ -276,6 +329,61 @@ export function accessibleExercises(profile, kb) {
   return exercises.filter((e) => equip.has(e.equipment) && !contraExcluded(e, injuries, contraindications));
 }
 
+// CARDIO — prescribed, not just described (considerations #1, finding 1A).
+// The KB has carried real numbers since Wave 161 (dose by goal, a modality
+// interference ranking, timing rules) and the plan engine emitted NOTHING: `grep
+// cardio tools/plan-core.mjs` returned zero hits. The only cardio surfaces in the
+// whole app were a REACTIVE Progress-tab card that fires in one narrow pattern and
+// a passing sentence on the Fuel tab, so a user asking "how much cardio should I
+// do?" got nothing actionable — while the KB page had the answer all along.
+//
+// Every number here comes from data/guidelines/cardio-concurrent-training.json;
+// nothing is invented, and the guideline's own Grade D rides along so the surface
+// can label it honestly ("practical models, not measured constants" — its words).
+//
+// Placement is DERIVED rather than guessed, because the engine already knows which
+// sessions are leg-loaded. The guideline's first timing rule is "keep hard
+// lower-body cardio off the day of, and the day before, a leg session", so a
+// rotation slot is unsafe if it IS leg work or the NEXT slot is (wrapping, since
+// the rotation cycles). On some perfectly normal splits — 4-day upper/lower, where
+// every day is a leg day or the day before one — NOTHING is safe, and the honest
+// answer is rest days and walking rather than pretending a slot exists.
+const LEG_LOADED = new Set(["LEGS", "LOWER", "FULL"]);
+function buildCardio(guideline, goal, sessionSpecs) {
+  if (!guideline) return null;
+  const dose = guideline.dose_by_goal?.[goal] ?? guideline.dose_by_goal?.hypertrophy;
+  if (!dose) return null;
+  const modalities = guideline.modalities ?? [];
+  const byInterference = { none: 0, low: 1, moderate: 2, high: 3 };
+  const ranked = [...modalities].sort((a, b) => (byInterference[a.interference] ?? 9) - (byInterference[b.interference] ?? 9));
+  const legDays = sessionSpecs.map((spec) => LEG_LOADED.has(spec.arch));
+  const n = sessionSpecs.length;
+  const safeSlots = sessionSpecs
+    .map((spec, i) => ({ name: spec.name, safe: !legDays[i] && !legDays[(i + 1) % n] }))
+    .filter((x) => x.safe)
+    .map((x) => x.name);
+  const legSessionNames = sessionSpecs.filter((_, i) => legDays[i]).map((spec) => spec.name);
+  return {
+    steps_per_day: dose.steps_per_day ?? null,
+    sessions_per_week: dose.sessions_per_week ?? null,
+    minutes_per_session: dose.minutes_per_session ?? null,
+    // Walking first — the only modality the KB rates as costing nothing, and the
+    // reason steps come before structured cardio. The structured pick is the
+    // lowest-interference option that isn't just walking again.
+    modality: ranked[0] ? { id: ranked[0].id, name: ranked[0].name, interference: ranked[0].interference } : null,
+    structured_modality: (() => { const m = ranked.find((x) => x.id !== ranked[0]?.id); return m ? { id: m.id, name: m.name, interference: m.interference } : null; })(),
+    // Where the hard sessions go. Empty `best_after` is a real answer, not a gap.
+    placement: {
+      best_after: safeSlots,
+      avoid_around: legSessionNames,
+      rule: guideline.timing_rules?.[0]?.rule ?? null,
+    },
+    note: dose.note ?? guideline.summary ?? null,
+    evidence_grade: dose.evidence_grade ?? guideline.evidence_grade ?? "D",
+    citations: dose.citations ?? [],
+  };
+}
+
 export function generatePlan(profile, kb, opts = {}) {
   const { exercises, muscles, contraindications } = kb;
   const experience = profile.training_status ?? "intermediate";
@@ -286,6 +394,12 @@ export function generatePlan(profile, kb, opts = {}) {
   const seed = seedFromProfile(profile);
   const specialization = !!profile.specialization; // all-in block: priorities to the ceiling, the rest to maintenance
   const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
+  // Lifts this person has genuinely plateaued on — demoted below every alternative
+  // for their muscle so the next block offers a different angle (the KB's
+  // change-exercise lever). Empty by default, so a plan generated without it is
+  // byte-identical to before and the determinism guarantee holds.
+  const stalled = new Set(opts.stalledExercises ?? []);
+  const cardioGuideline = (kb.guidelines ?? []).find((g) => g.id === "cardio-concurrent-training") ?? null;
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
@@ -311,6 +425,8 @@ export function generatePlan(profile, kb, opts = {}) {
 
   // 1) split
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
+  // Cardio rides on the split, since its placement rule is about leg days.
+  const cardio = buildCardio(cardioGuideline, goal, sessionSpecs);
 
   // 2) weekly target per muscle
   // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
@@ -385,7 +501,7 @@ export function generatePlan(profile, kb, opts = {}) {
       }
       return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
     };
-    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal });
+    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled });
     // Progressive-overload guard: a loaded user never rotates onto a non-loadable
     // bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already
     // sorts these last, but the block-rotation counter still periodically lands on
@@ -406,7 +522,7 @@ export function generatePlan(profile, kb, opts = {}) {
     // by more than a score-jitter could flip, an explicit top-K rotation is what
     // actually varies them (jitter alone left the single best-equipment move
     // pinned every block). Compounds keep their stable ranking (double-progression).
-    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal }), blockIndex);
+    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled }), blockIndex);
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
@@ -476,7 +592,11 @@ export function generatePlan(profile, kb, opts = {}) {
       // Rep band: priority isolations highest, small-muscle "pump" isolations
       // 12-20 (the KB intensity page's own isolation band), other isolations
       // 10-15, compounds heavy.
-      const s = iso ? (priority.has(forMuscle) ? sessScheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? sessScheme.pumpIso : sessScheme.isolation) : sessScheme.compound;
+      const s = iso
+        ? (priority.has(forMuscle) ? sessScheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? sessScheme.pumpIso : sessScheme.isolation)
+        : supported(ex)
+          ? [sessScheme.compound[0], easeToward(sessScheme.compound[1])] // the KB's middle effort tier
+          : sessScheme.compound;
       // Held-at-maintenance muscles never receive more direct volume than their
       // (maintenance) target still has room for — so a full compoundSets can't blow
       // a small maintenance dose past its ceiling. `credited` is effective volume
@@ -758,9 +878,21 @@ export function generatePlan(profile, kb, opts = {}) {
       const key = (it) => {
         const x = exById.get(it.exercise);
         if (!x) return 99;
-        const tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
-        const pri = (x.primary_muscles ?? []).some((m) => priority.has(m)) ? 0 : 1;
-        return tier * 2 + pri;
+        const isPri = (x.primary_muscles ?? []).some((m) => priority.has(m));
+        let tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
+        // In a SPECIALIZATION block only, the priority muscle's work is promoted so
+        // it lands while the user is fresh. The KB's weak-point page is explicit
+        // about this — its Placement row reads "Trained first, when you're fresh" —
+        // and the plain tier*2+pri key could never deliver it, because tier always
+        // dominated: a side-delt specialist's lateral raises sat behind every
+        // compound on the day, which is the exact opposite of the prescription, and
+        // it went wrong for precisely the users who opted into specialization.
+        // Still behind genuinely heavy work (a squat outranks a lateral raise even
+        // in a delt block — burying the compound would trade a modest, Grade-D
+        // ordering effect for a real one). Gated on `specialization`, so an ordinary
+        // priority plan is byte-identical to before.
+        if (specialization && isPri && tier > 1) tier = 1;
+        return tier * 2 + (isPri ? 0 : 1);
       };
       return key(a) - key(b);
     });
@@ -881,6 +1013,17 @@ export function generatePlan(profile, kb, opts = {}) {
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
+    // FREQUENCY CEILING (considerations #1, finding 1C). A muscle's weekly target is
+    // split across the sessions that train it and capped at the session-quality
+    // window, so `freq × perSessionCap` is the hard maximum this split can EVER
+    // deliver. Above that, the plan silently under-delivers: an advanced side-delt
+    // specialist targets mrv.max 26 but can only receive 2 × 10 = 20, and the
+    // under-target warning never fires because 20 clears its 0.6 × 26 threshold.
+    // The KB's weak-point page answers this directly — the priority muscle's
+    // Frequency row reads "often bumped to ~3x/week" — and its frequency page says
+    // "add a day rather than cramming". Say so, rather than quietly missing.
+    else if (r.target_sets > (freq[m] ?? 0) * perSessionCap) warnings.push({ code: "frequency-capped", muscle: m,
+      message: `${m} is targeted at ${r.target_sets} sets/wk, but ${freq[m]} session${(freq[m] ?? 0) === 1 ? "" : "s"} a week can only deliver about ${(freq[m] ?? 0) * perSessionCap} at quality — past roughly 10 hard sets for one muscle in a session, the later ones stop counting for much. The fix is another training day that hits it, not a longer session.` });
     else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m,
       // Priority-aware: a muscle you've ALREADY prioritised (or set as a
       // specialization target, whose ceiling is mrv.max and never fits under the
@@ -902,6 +1045,7 @@ export function generatePlan(profile, kb, opts = {}) {
     target_population: `Generated for a ${experience} lifter training ${sessionSpecs.length} days/week for ${goalLabel}${priority.size ? `, prioritizing ${[...priority].join(", ")}` : ""}.`,
     progression_ref: "double-progression",
     sessions: outSessions,
+    ...(cardio ? { cardio } : {}),
     citations,
   };
   const rationale = {

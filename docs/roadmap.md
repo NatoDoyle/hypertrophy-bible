@@ -59,6 +59,27 @@ infra, the one genuinely large build left here).
 ## Build queue (pull from the top)
 
 ### Tier 1 — highest leverage, buildable now
+
+**Tier 1 was empty as of 2026-07-31** (items 1–5 all shipped, Tier-2 6–8 reassessed done).
+The considerations #1/#2 audit (Waves 162–169) refilled it and then cleared it again — the
+ten confirmed findings are all shipped; see `docs/considerations.md` for the write-up. What
+that audit leaves genuinely open, in priority order:
+
+- **[Goal 2 elite] The effort/RIR lever** (`adaptive-algorithm.md` Increment C) — still
+  deferred for the same recorded reason: RIR logging is opt-in and off by default
+  (`app.js`'s `hb_rir`), so the signal isn't there. The cheapest unblock is not building the
+  lever, it's **making effort logging default-on or inferable** — revisit that question
+  first, and only then the lever.
+- **[Goal 1] Cross-user learning** (`adaptive-algorithm.md` far vision) — still needs a
+  multi-user dataset that doesn't exist yet, under the honesty guardrail (noisy aggregates
+  must never override a Grade-A landmark).
+- **[Goal 4] Social** remains the biggest untouched retention lever (Tier 3 #10).
+- **Audit follow-through:** the graduation thresholds (Wave 164) and the reactive-deload
+  bounds (Wave 165) are practice-based Grade-D choices made on no direct evidence. They're
+  labelled as such in the KB, but they're the two numbers in this burst most worth
+  revisiting once there's real usage data to check them against.
+
+
 1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + 81 + this reconcile).* Done:
    reusable pure `detectPersonalRecords` (est-1RM PRs for heavy work AND load PRs for higher-rep
    hypertrophy work — the pump-band gap), wired into the recap with a celebratory "🎉 New personal

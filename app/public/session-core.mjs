@@ -83,6 +83,35 @@ export function checkSetPR(exercise, weightKg, reps, setType, priorBests) {
   return null;
 }
 
+// Does this set look like a typo rather than a lift? A stray zero, or lb typed
+// into a kg field, is expensive here and nearly impossible to take back: the set
+// is celebrated as a PR, it anchors the NEXT session's suggested weight, and it
+// becomes that week's best in the plateau/cadence trends for good. So the player
+// asks once before banking it. The server's own ceiling (MAX_SET_WEIGHT_KG) is the
+// real guard against garbage; this is the ergonomic guard against a realistic slip.
+//
+// Judged against the lift's OWN history — `last_kg` (what they actually lifted on
+// this exercise last time) first, falling back to its best logged load — so a
+// genuinely strong lifter is never second-guessed, and a lift with no history at
+// all is never questioned (there's nothing to be implausible against).
+//
+// BOTH a ratio and an absolute gap must be exceeded. Ratio alone would nag on
+// small weights where a real jump is proportionally huge (2.5 kg → 7.5 kg on a
+// lateral raise is 3x and entirely normal); the absolute floor keeps those quiet
+// while still catching the two errors that actually happen: a stray zero (10x) and
+// an lb/kg mix-up (2.2x). Reps get a flat ceiling instead — no prescribed band in
+// the engine goes near 50, so there's no plausible entry to false-positive on.
+export const IMPLAUSIBLE_RATIO = 2;
+export const IMPLAUSIBLE_MIN_JUMP_KG = 20;
+export const IMPLAUSIBLE_REPS = 50;
+export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = null } = {}) {
+  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS) return true;
+  if (!(typeof weightKg === "number" && Number.isFinite(weightKg) && weightKg > 0)) return false;
+  const ref = [lastKg, priorBests?.load_kg].find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+  if (ref == null) return false;
+  return weightKg >= ref * IMPLAUSIBLE_RATIO && weightKg - ref >= IMPLAUSIBLE_MIN_JUMP_KG;
+}
+
 // Lucky-set XP + hash — DUPLICATES tools/derive-core.mjs's LUCKY_SET_XP/isLuckySet
 // (same reason as checkSetPR above: this file is a static browser asset and can't
 // reach outside public/). A cross-consistency test (test-session.mjs) replays many

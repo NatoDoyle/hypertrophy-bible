@@ -14,7 +14,7 @@
 // weight (Epley: e1RM = weight × (1 + reps/30)) at a fixed 8 reps.
 import assert from "node:assert/strict";
 import { computeVolumeAdjust } from "../src/coach.mjs";
-import { progressionCadence, adaptiveStallWindow, stallDetect } from "../../tools/derive-core.mjs";
+import { progressionCadence, adaptiveStallWindow, stallDetect, regressionDetect } from "../../tools/derive-core.mjs";
 import { exIndex } from "../src/kb.mjs";
 
 const REPS = 8;
@@ -29,6 +29,12 @@ const slowE1rm = Array.from({ length: 24 }, (_, w) => Math.round(100 * 1.04 ** M
 // FAST responder: +1.5%/wk for 8 weeks, then a hard plateau — a genuine stall the tune
 // SHOULD answer with more volume.
 const fastE1rm = Array.from({ length: 24 }, (_, w) => Math.round(120 * 1.015 ** Math.min(w, 8) * 100) / 100);
+// DECLINING responder: climbs for 8 weeks, then genuinely LOSES strength — under-eating,
+// short sleep, a stressful stretch. The engine used to be blind to this: stallDetect
+// can't see a decline (it needs the window inside a 2.5% noise band), and once the
+// pre-drop weeks rolled out of the window the new lower level read as an ordinary
+// plateau, whose answer is +2 sets — piling work onto someone already not recovering.
+const decliningE1rm = Array.from({ length: 24 }, (_, w) => Math.round((w <= 8 ? 120 * 1.015 ** w : 120 * 1.015 ** 8 * 0.985 ** (w - 8)) * 100) / 100);
 
 const genWeek = (w, e1rm, sets, totalWeeks) => ({
   // most-recent week is ~7 days ago so nothing reads as a layoff; older weeks step back by 7d each
@@ -58,6 +64,9 @@ function simulate(e1rmByWeek, { checkinFor = () => null } = {}) {
     adjust = computeVolumeAdjust(adjust, sessions, [], { checkins, goal: "hypertrophy" });
     timeline.push({ throughWeek, setsTrained: setsThisBlock, cadence, window, stalled, chestAdjustForNext: adjust.chest ?? 0 });
   }
+  // The raw log, so an assertion can check what the engine could SEE, not only what
+  // it did — "no bump" is only reassuring if the decline was actually detected.
+  timeline.sessionsForCheck = sessions;
   return timeline;
 }
 
@@ -91,6 +100,9 @@ printUser("FAST responder — +1.5%/wk for 8 weeks, then a hard plateau:", fast,
 const fastUnderRecovered = simulate(fastE1rm, { checkinFor: (w) => (w >= 8 ? { sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 } : null) });
 printUser("FAST responder BUT under-recovered from wk 8 (recovery gate):", fastUnderRecovered, fastE1rm);
 
+const declining = simulate(decliningE1rm);
+printUser("DECLINING responder — climbs 8 weeks, then genuinely loses strength (regression gate):", declining, decliningE1rm);
+
 // ---- Assertions: the behaviours that must hold (regression guard) -----------------
 let checks = 0; const ok = (name, cond) => { assert.ok(cond, name); checks++; };
 
@@ -119,5 +131,21 @@ const fr12 = fastUnderRecovered.find((r) => r.throughWeek === 12);
 const fr24 = fastUnderRecovered.find((r) => r.throughWeek === 24);
 ok("under-recovered fast responder gets NO volume bump at wk 12 (recovery gate holds)", fr12.chestAdjustForNext === 0);
 ok("under-recovered fast responder still gets NO bump at wk 24", fr24.chestAdjustForNext === 0);
+
+// REGRESSION: a lifter going BACKWARDS must never be answered with more volume.
+// Two independent guards produce that outcome, and it's worth being precise about
+// which does the work here. On a SINGLE lift they can't both fire — a >=5% decline
+// blows past stallDetect's 2.5% noise band, so a declining lift simply never reads
+// as "stalled" and the +2 branch is never reached (visible above: stalled=false all
+// the way down). The explicit gate in deriveVolumeAdjust earns its keep on the case
+// this one-lift model can't show: a MUSCLE with several exercises, where one has
+// plateaued and another is declining — chest is then both stalled and regressing,
+// and without the gate the plateau would win and add sets to a muscle already
+// losing ground (covered directly in tools/test-derive.mjs). What this simulation
+// guards is the end-to-end outcome across 24 weeks: never the wrong direction.
+const dec24 = declining.find((r) => r.throughWeek === 24);
+ok("declining responder's volume is never ratcheted UP while strength is falling", dec24.chestAdjustForNext <= 0);
+ok("...and the decline is genuinely visible to the engine, not merely unnoticed",
+  regressionDetect(declining.sessionsForCheck, exIndex).some((r) => r.exercise === "barbell-bench-press"));
 
 console.log(`\n${checks} simulation assertion(s) passed.`);
