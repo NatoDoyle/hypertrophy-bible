@@ -563,5 +563,63 @@ ok("#cardio on a 4-day upper/lower no lifting day is safe, and the plan says so 
 const noGuide = generatePlan(cardioProfile(), { exercises, muscles, contraindications }, {}).program;
 ok("#cardio a KB with no guideline omits the block rather than inventing numbers", noGuide.cardio === undefined);
 
+// --- KB fidelity trio (Wave 169) -----------------------------------------
+// 1B: the KB's effort table has THREE rows — heavy compounds 1-3 RIR, "moderate
+// compounds and most machine presses/rows" 0-2, isolation 0-1 — and the engine
+// implemented two, keying only off `mechanic`. Self-contradictory as well as
+// unfaithful: the ranker gives machines the LARGEST equipment bonus precisely
+// because they're stable enough to push near failure, then said not to.
+const rirProfile = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "rir-tier" };
+const rirPlan = generatePlan(rirProfile, kb, {});
+const exByIdR = new Map(exercises.map((e) => [e.id, e]));
+const rirRows = rirPlan.program.sessions.flatMap((x) => x.exercises).map((e) => ({ ...e, ex: exByIdR.get(e.exercise) }));
+const supportedRows = rirRows.filter((r) => r.ex?.mechanic === "compound" && r.ex?.stability === "high" && r.ex?.cns_cost !== "high");
+const heavyRows = rirRows.filter((r) => r.ex?.mechanic === "compound" && !(r.ex?.stability === "high" && r.ex?.cns_cost !== "high"));
+ok("#1B supported compounds (machines, smith, chest-supported) get the KB's middle tier, 0-2 RIR",
+  supportedRows.length > 0 && supportedRows.every((r) => r.rir === "0-2"));
+ok("#1B heavy free-weight compounds keep the 1-3 reserve",
+  heavyRows.length > 0 && heavyRows.every((r) => r.rir === "1-3"));
+ok("#1B isolations are untouched by the new tier", rirRows.filter((r) => r.ex?.mechanic === "isolation").every((r) => /^0-1$|^0-2$/.test(r.rir) === (r.rir === "0-1")));
+
+// 1C: the KB's weak-point table says the priority muscle is "Trained first, when
+// you're fresh" — the old tier*2+pri key could never deliver it, because tier
+// always dominated, so a side-delt specialist's laterals sat behind every compound.
+const specProfile = { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts"], specialization: true, user_id: "spec-order" };
+const specPlan = generatePlan(specProfile, kb, {});
+const upper = specPlan.program.sessions.find((x) => (x.exercises ?? []).some((e) => (exByIdR.get(e.exercise)?.primary_muscles ?? []).includes("side-delts")));
+const firstEx = exByIdR.get(upper.exercises[0].exercise);
+ok("#1C in a specialization block the priority muscle's work leads the session",
+  (firstEx?.primary_muscles ?? []).includes("side-delts"));
+// ...but never at the cost of burying genuinely heavy work behind an isolation.
+const specLower = specPlan.program.sessions.find((x) => (x.exercises ?? []).some((e) => exByIdR.get(e.exercise)?.cns_cost === "high"));
+if (specLower) {
+  const idxHigh = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.cns_cost === "high");
+  const idxIso = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.mechanic === "isolation");
+  ok("#1C high-CNS compounds still lead — promotion doesn't bury a squat behind a raise", idxIso === -1 || idxHigh < idxIso);
+}
+// An ORDINARY priority plan (no specialization) is byte-identical to before.
+const priOnly = { ...specProfile, specialization: false, user_id: "spec-order-off" };
+ok("#1C without specialization the ordering is unchanged — the promotion is gated",
+  generatePlan(priOnly, kb, {}).program.sessions.every((sn, i) => sn.exercises.every((e, j) => {
+    const x = exByIdR.get(e.exercise);
+    const prev = j > 0 ? exByIdR.get(sn.exercises[j - 1].exercise) : null;
+    return !prev || !(prev.mechanic === "isolation" && x.mechanic === "compound"); // no isolation-before-compound
+  })));
+
+// 1C part two: a target the split can never deliver was silently missed. An advanced
+// side-delt specialist targets mrv.max 26 but 2 sessions x the 10-set quality cap is
+// 20 — and the under-target warning never fired, because 20 clears 0.6 x 26.
+const capWarn = specPlan.rationale.warnings.find((w) => w.code === "frequency-capped" && w.muscle === "side-delts");
+ok("#1C a target the split can't deliver is now stated, not silently missed", !!capWarn);
+ok("#1C and it gives the KB's own answer — another day, not a longer session", /another training day/i.test(capWarn?.message ?? ""));
+
+// 1D: general-fitness is a valid goal in the schema with no scheme, so it fell
+// through a silent `?? hypertrophy` fallback (lesson 14: declared != supported).
+const gf = generatePlan({ ...rirProfile, primary_goal: "general-fitness", user_id: "gf" }, kb, {});
+ok("#1D general-fitness is now an explicit scheme, not a silent fallback",
+  gf.program.sessions.flatMap((x) => x.exercises).every((e) => !!e.rir && !!e.rep_range));
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

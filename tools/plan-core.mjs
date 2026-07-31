@@ -55,7 +55,43 @@ const REP_SCHEMES = {
   strength: { compound: ["3-6", "2-3"], isolation: ["6-10", "1-3"], priorityIso: ["8-12", "1-2"], pumpIso: ["10-15", "1-2"] },
   "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-1"] },
 };
+// `general-fitness` is a valid goal in onboarding-profile.schema.json and had no
+// entry here, so it fell through `?? REP_SCHEMES.hypertrophy` — a silent fallback
+// for a DECLARED option (lesson 14). The shipped client only offers four goals, so
+// this is reachable only by a direct API post — and auth is possession-of-UUID, so
+// that's reachable. Made an EXPLICIT alias rather than an invented fifth scheme:
+// the KB gives no separate rep/effort prescription for general fitness, and making
+// one up would be worse than saying plainly that it's the same as hypertrophy.
+REP_SCHEMES["general-fitness"] = REP_SCHEMES.hypertrophy;
 const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
+
+// THE MIDDLE EFFORT TIER (considerations #1, finding 1B). The KB's effort table has
+// THREE rows — heavy compounds 1-3 RIR · "moderate compounds and most machine
+// presses/rows" 0-2 · isolation 0-1 — and the engine implemented two, keying only
+// off `mechanic`. So a leg press, a hack squat, a machine chest press and a
+// chest-supported row all got the heavy-barbell reserve of 1-3.
+//
+// That was self-contradictory as well as unfaithful: the ranker gives machines the
+// LARGEST equipment bonus (EQUIP_TIER_HYPERTROPHY machine −1.4) precisely because
+// they're stable enough to push near failure safely — then the prescription told
+// the user not to. The engine preferentially selected those lifts and then left
+// their stimulus on the table.
+//
+// `stability: "high"` is the data that already encodes the KB's row: it resolves to
+// exactly the leg presses, hack squats, machine/smith presses, lat pulldowns and
+// chest-supported rows the page names. The `cns_cost` half expresses the page's
+// SECOND stated reason for the heavy reserve (fatiguing and slow to recover, as
+// distinct from technically risky) — it binds nothing in today's data, where every
+// high-stability compound is low or moderate CNS, but a stable yet systemically
+// heavy machine (a belt squat, say) must not be pushed to 0-2 just for being stable.
+const supported = (ex) => ex.mechanic === "compound" && ex.stability === "high" && ex.cns_cost !== "high";
+// One notch closer to failure than the goal's own heavy-compound band, floored at 0
+// — derived rather than four more literal tuples, so it can never drift from them.
+const easeToward = (band) => {
+  const m = /^(\d+)-(\d+)$/.exec(band ?? "");
+  if (!m) return band;
+  return `${Math.max(0, +m[1] - 1)}-${Math.max(0, +m[2] - 1)}`;
+};
 
 // Daily Undulating Periodization (roadmap #9, first slice): an OPT-IN advanced
 // option (profile.periodization === "undulating") that varies the rep/intensity
@@ -556,7 +592,11 @@ export function generatePlan(profile, kb, opts = {}) {
       // Rep band: priority isolations highest, small-muscle "pump" isolations
       // 12-20 (the KB intensity page's own isolation band), other isolations
       // 10-15, compounds heavy.
-      const s = iso ? (priority.has(forMuscle) ? sessScheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? sessScheme.pumpIso : sessScheme.isolation) : sessScheme.compound;
+      const s = iso
+        ? (priority.has(forMuscle) ? sessScheme.priorityIso : PUMP_MUSCLES.has(forMuscle) ? sessScheme.pumpIso : sessScheme.isolation)
+        : supported(ex)
+          ? [sessScheme.compound[0], easeToward(sessScheme.compound[1])] // the KB's middle effort tier
+          : sessScheme.compound;
       // Held-at-maintenance muscles never receive more direct volume than their
       // (maintenance) target still has room for — so a full compoundSets can't blow
       // a small maintenance dose past its ceiling. `credited` is effective volume
@@ -838,9 +878,21 @@ export function generatePlan(profile, kb, opts = {}) {
       const key = (it) => {
         const x = exById.get(it.exercise);
         if (!x) return 99;
-        const tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
-        const pri = (x.primary_muscles ?? []).some((m) => priority.has(m)) ? 0 : 1;
-        return tier * 2 + pri;
+        const isPri = (x.primary_muscles ?? []).some((m) => priority.has(m));
+        let tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
+        // In a SPECIALIZATION block only, the priority muscle's work is promoted so
+        // it lands while the user is fresh. The KB's weak-point page is explicit
+        // about this — its Placement row reads "Trained first, when you're fresh" —
+        // and the plain tier*2+pri key could never deliver it, because tier always
+        // dominated: a side-delt specialist's lateral raises sat behind every
+        // compound on the day, which is the exact opposite of the prescription, and
+        // it went wrong for precisely the users who opted into specialization.
+        // Still behind genuinely heavy work (a squat outranks a lateral raise even
+        // in a delt block — burying the compound would trade a modest, Grade-D
+        // ordering effect for a real one). Gated on `specialization`, so an ordinary
+        // priority plan is byte-identical to before.
+        if (specialization && isPri && tier > 1) tier = 1;
+        return tier * 2 + (isPri ? 0 : 1);
       };
       return key(a) - key(b);
     });
@@ -961,6 +1013,17 @@ export function generatePlan(profile, kb, opts = {}) {
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
+    // FREQUENCY CEILING (considerations #1, finding 1C). A muscle's weekly target is
+    // split across the sessions that train it and capped at the session-quality
+    // window, so `freq × perSessionCap` is the hard maximum this split can EVER
+    // deliver. Above that, the plan silently under-delivers: an advanced side-delt
+    // specialist targets mrv.max 26 but can only receive 2 × 10 = 20, and the
+    // under-target warning never fires because 20 clears its 0.6 × 26 threshold.
+    // The KB's weak-point page answers this directly — the priority muscle's
+    // Frequency row reads "often bumped to ~3x/week" — and its frequency page says
+    // "add a day rather than cramming". Say so, rather than quietly missing.
+    else if (r.target_sets > (freq[m] ?? 0) * perSessionCap) warnings.push({ code: "frequency-capped", muscle: m,
+      message: `${m} is targeted at ${r.target_sets} sets/wk, but ${freq[m]} session${(freq[m] ?? 0) === 1 ? "" : "s"} a week can only deliver about ${(freq[m] ?? 0) * perSessionCap} at quality — past roughly 10 hard sets for one muscle in a session, the later ones stop counting for much. The fix is another training day that hits it, not a longer session.` });
     else if (proj < r.target_sets * 0.6) warnings.push({ code: "under-target", muscle: m,
       // Priority-aware: a muscle you've ALREADY prioritised (or set as a
       // specialization target, whose ceiling is mrv.max and never fits under the

@@ -1185,6 +1185,42 @@ try {
   ok("#cardio the plan-explain whitelist carries it too (a dropped field kills the surface)",
     (cardPlan.program?.cardio?.sessions_per_week?.min ?? 0) > 0 && cardPlan.program.cardio.evidence_grade === "D");
 
+  // ---- Wave 169: reporting an injury from inside a workout ------------------
+  // app-design-spec.md described this reactive path and nothing implemented it: the
+  // mid-session swap was generic, session-only, and never wrote anything down, so
+  // the app could watch someone avoid the same lift weekly and never learn.
+  const injId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const injHdr = { headers: { "X-HB-User": injId } };
+  const beforeInj = await (await app.request("/api/exercises", injHdr)).json();
+  ok("#injury a shoulder-contraindicated lift is offered before anything is reported",
+    beforeInj.some((e) => e.movement_pattern === "vertical-push"));
+  const injRes = await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder" });
+  ok("#injury POST /api/profile/injury records it", injRes.status === 200 && injRes.data.injuries.some((x) => x.region === "shoulder"));
+  const afterInj = await (await app.request("/api/exercises", injHdr)).json();
+  ok("#injury and it takes effect immediately — vertical pressing is gone from the pickers",
+    !afterInj.some((e) => e.movement_pattern === "vertical-push"));
+  const injPlan = await (await app.request("/api/plan/explain", injHdr)).json();
+  ok("#injury the PLAN was regenerated too, not just the picker",
+    !injPlan.program.sessions.flatMap((x) => x.exercises).some((e) => beforeInj.find((b) => b.id === e.exercise)?.movement_pattern === "vertical-push"));
+  const injUser = await store.getUser(injId);
+  ok("#injury reporting pain does NOT reset the mesocycle — an injury shouldn't cost you your block",
+    !!injUser.plan_meta.block_start && (injUser.plan_meta.block_index ?? 0) === 0);
+  // Severity is only ever raised by a repeat report, never lowered.
+  await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder", severity: "severe" });
+  await json("POST", "/api/profile/injury", { user_id: injId, region: "shoulder", severity: "mild" });
+  ok("#injury a repeat report can raise severity but never downgrades it",
+    (await store.getUser(injId)).profile.injuries.find((x) => x.region === "shoulder").severity === "severe");
+  const bogus = await json("POST", "/api/profile/injury", { user_id: injId, region: "left-earlobe" });
+  ok("#injury an unknown region is rejected rather than stored forever, matching nothing", bogus.status === 400);
+  // The two regions the engine could always filter and no user could ever pick.
+  for (const region of ["neck", "ankle"]) {
+    const r = await json("POST", "/api/profile/injury", { user_id: injId, region });
+    ok(`#injury ${region} — filterable by the engine all along, now reportable`, r.status === 200);
+  }
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

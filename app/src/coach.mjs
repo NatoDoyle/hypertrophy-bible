@@ -151,8 +151,13 @@ export function nextSessionIndex(program, sessionCount) {
 
 // ---------------------------------------------------------------------------
 // The mesocycle: the KB's volume wave (volume-progression-and-deloads.md) made
-// real. Weeks 1-5 ramp set volume from ~70% toward the plan's generated target
-// (which is already MRV-trimmed, so the ramp PEAKS at the recoverable ceiling);
+// real. Weeks 1-5 ramp set volume from ~70% toward the plan's generated target.
+// That target is MRV-TRIMMED, which is not the same as being AT MRV — an
+// intermediate's is mav.min — so the ramp peaks at the plan's target, not at the
+// recoverable ceiling the KB's own wave table describes. That's deliberate
+// (plan-core's targetWeeklySets explains why summed mid-MAV targets are
+// undeliverable in a typical week) and the adaptive tune walks the target up from
+// the user's own evidence instead; this comment used to claim the ceiling outright.
 // week 6 is a deload — roughly half volume, ~10% lighter, comfortably shy of
 // failure — then the next block starts automatically. Beginners are exempt:
 // they progress by load/reps and don't yet need volume waves (KB: periodization

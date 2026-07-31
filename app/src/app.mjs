@@ -1,7 +1,7 @@
 // The API. Pure Hono, no filesystem, store injected — the SAME app runs on
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
-import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
+import { selectProgram, exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
@@ -12,6 +12,11 @@ import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nu
 
 // A client-supplied local calendar day is trusted only if it's a real
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
+// The injury regions the ENGINE can actually act on, read from the KB rather than
+// hand-listed — a hand-listed copy is how the client came to offer 6 of the 8
+// regions data/injury-contraindications.json supports.
+const VALID_INJURY_REGIONS = new Set(Object.keys(contraindications?.regions ?? {}));
+
 const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
 
 // Hard bounds on a logged set's numbers. `rir` has been clamped at this door for
@@ -896,6 +901,43 @@ export function createApp(store, config = {}) {
     await store.addSession(id, session);
     const all = await store.listSessions(id);
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
+  });
+
+  // Report an injury from inside a workout (considerations #2, finding 2E).
+  // docs/app-design-spec.md described this reactive path — "only when a user skips
+  // or flinches at an exercise... I'll swap it" — and nothing implemented it: the
+  // mid-session swap button was generic, explicitly session-only, and never wrote
+  // anything down, so the app could watch someone avoid the same lift every week
+  // and never learn. This is the write half; the plan regenerates immediately, so
+  // the alternatives list (equipment + injury filtered) reflects it on the spot.
+  app.post("/api/profile/injury", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    const region = String(body.region ?? "");
+    // Validated against the KB's own region keys — an unknown region would sit in
+    // the profile forever, matching no contraindication and filtering nothing.
+    if (!VALID_INJURY_REGIONS.has(region)) return c.json({ error: "unknown region" }, 400);
+    const severity = ["mild", "moderate", "severe"].includes(body.severity) ? body.severity : "moderate";
+    const updated = await store.updateUser(id, (u) => {
+      const injuries = [...(u.profile?.injuries ?? [])];
+      const i = injuries.findIndex((x) => x.region === region);
+      // Reporting pain on a lift is evidence it's at least this bad — so an existing
+      // entry is never DOWNgraded by a repeat report, only raised.
+      const rank = { mild: 0, moderate: 1, severe: 2 };
+      if (i >= 0) injuries[i] = { ...injuries[i], severity: rank[severity] > rank[injuries[i].severity] ? severity : injuries[i].severity };
+      else injuries.push({ region, severity });
+      u.profile = { ...u.profile, injuries };
+      // Regenerate now rather than at the next block: an aggravating exercise must
+      // not sit in the plan for another five weeks. The mesocycle is deliberately
+      // NOT reset — an injury shouldn't cost the user their block progress (unlike
+      // /api/plan/regenerate, where a training-field change means a different plan).
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+      if (!u.program?.custom) { u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {} }; }
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, injuries: updated.profile?.injuries ?? [] });
   });
 
   // ---- Correcting the log (Wave 163) -------------------------------------

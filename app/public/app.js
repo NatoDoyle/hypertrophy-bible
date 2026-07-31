@@ -203,6 +203,10 @@ async function postOrQueue(path, bodyObj) {
 }
 
 // ---------- Onboarding ----------
+// One list, used by onboarding AND the in-session "did this hurt?" report — two
+// copies would drift, and the engine's region keys must match on both paths.
+const INJURY_REGIONS = [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"], ["Neck", "neck"], ["Ankle", "ankle"]];
+
 const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
   { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
@@ -216,7 +220,14 @@ const STEPS = [
   // zero cognitive load) — the taper engine is off by default. A non-beginner who wants it
   // sets it later from Settings, where this same wizard runs with settingsMode = true.
   { key: "goal_event_date", q: "Training toward a specific date?", date: true, optional: true, hint: "Optional — a meet, show, or strength test. The final ~2 weeks taper volume down so you're fresh, not fatigued, on the day. Leave blank if there isn't one.", showIf: (a) => settingsMode && a.training_status !== "beginner" },
-  { key: "injuries", q: "Anything we should train around?", multi: [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"]], optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  // Neck and ankle were filterable by the engine (data/injury-contraindications.json
+  // covers 8 regions) and selectable by nobody — the UI offered 6.
+  { key: "injuries", q: "Anything we should train around?", multi: INJURY_REGIONS, optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  // Severity was hardcoded "moderate" for everyone, which made contraExcluded's
+  // `severity === "mild"` branch unreachable from the shipped client — a whole
+  // leniency path that existed in the engine and could never run. Asking one
+  // question turns it on, and lets a niggle keep exercises a real injury removes.
+  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"], ["Serious — keep me well clear", "severe"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "This decides how much I hold back: a niggle only drops the worst offenders, serious clears everything that loads it." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
@@ -377,7 +388,9 @@ async function advance() {
 async function submitOnboarding() {
   app.innerHTML = `<div class="center" style="padding-top:20vh"><h1>Building your plan…</h1></div>`;
   const priority = [...new Set((answers.priority_muscles || []).flat())];
-  const injuries = (answers.injuries || []).map((region) => ({ region, severity: "moderate" }));
+  // Severity is now ASKED (it was hardcoded "moderate", so the engine's mild path
+  // was dead code). Defaults to moderate when the question wasn't reached.
+  const injuries = (answers.injuries || []).flat().map((region) => ({ region, severity: answers.injury_severity || "moderate" }));
   const profile = {
     training_status: answers.training_status, primary_goal: answers.primary_goal,
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
@@ -1440,8 +1453,21 @@ async function renderSwap() {
   app.innerHTML = `<h1>Swap ${esc(cur.name)}</h1>
     <p class="muted">Pick a replacement that trains the same muscle. Just for today — your saved plan doesn't change.</p>
     ${rows}
+    <div class="card"><b>😖 Did this hurt?</b>
+      <p class="muted">Swapping only fixes today. If a joint is complaining, tell me which one and I'll keep aggravating movements out of your plan from now on.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}</div>
     <button class="btn ghost" id="back">Keep ${esc(cur.name)}</button>`;
   $("#back").onclick = () => renderPlayer(0);
+  // The reactive injury path app-design-spec.md:174 described and nothing implemented:
+  // the swap button was generic, session-only, and never wrote anything down, so the
+  // app could watch you avoid the same lift every week and never learn from it.
+  app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
+    const region = b.dataset.hurt;
+    const res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) });
+    if (res.error) { say("Couldn't save that — swapping for today instead."); return; }
+    say(`Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.`);
+    renderSwap(); // the alternatives list is injury-filtered server-side, so re-fetch it
+  });
   app.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
     const id = b.dataset.swap, name = b.dataset.name;
     const chosen = alts.find((x) => x.id === id);

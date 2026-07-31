@@ -1,6 +1,6 @@
 // KB access layer: builds the derive-engine's Maps from the bundled data and
 // selects a program template. No filesystem — portable to Node and Workers.
-import { exercises, muscles, programs, guidelines } from "./kb-data.mjs";
+import { exercises, muscles, programs, guidelines, contraindications } from "./kb-data.mjs";
 
 // Rich exercise lookup for the app UI (cues, equipment, muscles).
 export const exerciseById = new Map(exercises.map((e) => [e.id, e]));
@@ -12,7 +12,7 @@ export const exIndex = new Map(
 );
 export const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
 
-export { programs };
+export { programs, contraindications };
 export const programById = new Map(programs.map((p) => [p.id, p]));
 
 // Quantified programming guidelines, keyed by id — the machine-readable mirror of a
