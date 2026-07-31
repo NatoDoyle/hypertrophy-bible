@@ -124,31 +124,66 @@ check("suggestWeight: RIR autoregulation raises load when reps are left in reser
   assert.equal(suggestWeight(failed, "barbell-bench-press", "6-10").suggested_kg, 100);
 });
 
+// The mesocycle advances on TRAINED weeks, not calendar weeks (Wave 167), so these
+// fixtures log a session in each intervening week. `day(n)` is still the calendar
+// offset — with a session banked every week the two clocks coincide exactly, which
+// is the point: a consistent lifter sees byte-identical behaviour to before.
+const START = "2026-01-05T00:00:00Z";
+const dayFrom = (start) => (n) => new Date(+new Date(start) + n * 86400000).toISOString();
+// One session per week for `weeks` weeks, starting at block week 1.
+const weeklyLog = (start, weeks, exercise = "barbell-bench-press") =>
+  Array.from({ length: weeks }, (_, i) => ({
+    date: new Date(+new Date(start) + i * 7 * 86400000).toISOString(),
+    sets: [{ exercise, set_type: "work", weight_kg: 60, reps: 8 }],
+  }));
+
 check("mesocycle: sets ramp 70%->peak across weeks 1-5, deload halves week 6, then cycles", () => {
-  const start = "2026-01-05T00:00:00Z";
-  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
-  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+  const day = dayFrom(START);
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: START },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
-  const setsAt = (n) => buildToday(u, [], null, [], day(n)).exercises[0].sets;
+  // At calendar day n the user has trained every week up to (but not including) this one.
+  const setsAt = (n) => buildToday(u, weeklyLog(START, Math.floor(n / 7) + 1), null, [], day(n)).exercises[0].sets;
   assert.equal(setsAt(0), 3);   // wk1: 4 × 0.7 → 3
   assert.equal(setsAt(14), 4);  // wk3: 4 × 0.9 → 4
   assert.equal(setsAt(28), 4);  // wk5 peak: full
   assert.equal(setsAt(35), 2);  // wk6 deload: half
   assert.equal(setsAt(42), 3);  // next block wk1 again — cycles automatically
-  const deload = buildToday(u, [], null, [], day(35));
+  const deload = buildToday(u, weeklyLog(START, 6), null, [], day(35));
   assert.equal(deload.block.phase, "deload");
   assert.equal(deload.exercises[0].rir, "3-4"); // comfortably shy of failure
 });
 
+check("#2D the mesocycle advances on TRAINED weeks — six quiet weeks are not a block", () => {
+  const day = dayFrom(START);
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: START },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  // Six calendar weeks in, having trained only twice: the wall-clock version served
+  // "Week 6 — deload" to someone who had barely started the block.
+  const sparse = [
+    { date: day(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] },
+    { date: day(9), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] },
+  ];
+  const t = buildToday(u, sparse, null, [], day(38));
+  assert.equal(t.block.week, 3, "two trained weeks behind them → week 3, not week 6");
+  assert.notEqual(t.block.phase, "deload", "no phantom deload for work that never happened");
+});
+
+check("#2D a week in progress isn't counted as finished the moment its first session lands", () => {
+  const day = dayFrom(START);
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: START },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  const mondayOfWeek1 = [{ date: day(0), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] }];
+  assert.equal(buildToday(u, mondayOfWeek1, null, [], day(2)).block.week, 1, "still week 1 on Wednesday, with the rest of it ahead");
+});
+
 check("#16 mesocycle wave creeps EFFORT like the KB table: W1 eased, W2-3 plan band, W4-5 tightened, deload 3-4", () => {
-  const start = "2026-01-05T00:00:00Z";
-  const day = (n) => new Date(+new Date(start) + n * 86400000).toISOString();
-  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+  const day = dayFrom(START);
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: START },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
       { exercise: "barbell-bench-press", sets: 4, rep_range: "6-10", rir: "1-3" },
       { exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "12-20", rir: "0-1" },
     ] }] } };
-  const rirAt = (n) => buildToday(u, [], null, [], day(n)).exercises.map((e) => e.rir);
+  const rirAt = (n) => buildToday(u, weeklyLog(START, Math.floor(n / 7) + 1), null, [], day(n)).exercises.map((e) => e.rir);
   assert.deepEqual(rirAt(0), ["2-3", "1-2"]);  // wk1: one extra rep in the tank (KB: ~2-3 RIR)
   assert.deepEqual(rirAt(14), ["1-3", "0-1"]); // wk3: the plan's own band
   assert.deepEqual(rirAt(28), ["1-2", "0-1"]); // wk5 peak: far edge pulled in; compounds never cross 1 RIR
@@ -281,7 +316,7 @@ check("#14 mesocycle wave never scales a 2-set dose into 1-set scatter", () => {
       { exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" },
       { exercise: "dumbbell-lateral-raise", sets: 2, rep_range: "12-20" },
     ] }] } };
-  const setsAt = (n) => buildToday(u, [], null, [], day(n)).exercises.map((e) => e.sets);
+  const setsAt = (n) => buildToday(u, weeklyLog(start, Math.floor(n / 7) + 1), null, [], day(n)).exercises.map((e) => e.sets);
   assert.deepEqual(setsAt(0), [3, 2]);  // wk1 (0.7): 4→3, but 2 stays 2 — never 1
   assert.deepEqual(setsAt(35), [2, 2]); // wk6 deload (0.5): 4→2 halves, 2 floors at 2
 });
@@ -292,11 +327,11 @@ check("#8-3 high-readiness never invites a back-off set during a deload week", (
   const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
   const high = { level: "high", score: 4.5 };
-  const deload = buildToday(u, [], high, [], day(35)); // wk6 deload
+  const deload = buildToday(u, weeklyLog(start, 6), high, [], day(35)); // wk6 deload
   assert.equal(deload.block.phase, "deload");
   assert.ok(deload.coach_note && !/back-off set/i.test(deload.coach_note)); // no "add volume" during recovery
   assert.ok(/deload/i.test(deload.coach_note)); // holds the deload line
-  const peak = buildToday(u, [], high, [], day(28)); // wk5 peak — adding volume IS fine
+  const peak = buildToday(u, weeklyLog(start, 5), high, [], day(28)); // wk5 peak — adding volume IS fine
   assert.ok(/back-off set/i.test(peak.coach_note));
 });
 
@@ -304,7 +339,9 @@ check("mesocycle: deload eases the suggested load ~10%", () => {
   const start = "2026-01-05T00:00:00Z";
   const u = { profile: { training_status: "advanced", days_per_week: 3 }, plan_meta: { block_start: start },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
-  const last = [{ date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] }];
+  // Five trained weeks behind them puts this session in block week 6 (the deload),
+  // plus the recent heavy session the ease is measured from.
+  const last = [...weeklyLog(start, 5, "goblet-squat"), { date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] }];
   const deloadDay = new Date(+new Date(start) + 36 * 86400000).toISOString(); // inside week 6
   const t = buildToday(u, last, null, [], deloadDay);
   assert.equal(t.exercises[0].suggested_kg, 90); // held weight 100 → 90 on deload
@@ -316,7 +353,7 @@ check("#A2 deload never prescribes >= the prior real week (eases from last load,
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
   // Last week hit the TOP of the range at a LIGHT load → suggestWeight ADDS load.
   // The old deload multiplied that bumped target by 0.9 and came out HEAVIER than 20.
-  const last = [{ date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 20, reps: 10 }] }];
+  const last = [...weeklyLog(start, 5, "goblet-squat"), { date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 20, reps: 10 }] }];
   const deloadDay = new Date(+new Date(start) + 36 * 86400000).toISOString();
   const t = buildToday(u, last, null, [], deloadDay);
   assert.equal(t.block.phase, "deload");
@@ -773,6 +810,23 @@ check("buildToday: a stamp from a DIFFERENT week doesn't deload this one", () =>
   const t = buildToday({ profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4 }, program: prog,
     plan_meta: { block_start: new Date(Date.now() - 15 * 86400000).toISOString(), reactive_deload: { block: 0, week: "2020-W01" } } }, [], null, [], now);
   assert.notEqual(t.block.phase, "deload");
+});
+
+check("#2D a comeback never lands beside 'peak volume — push hard' (lesson 24's sibling)", () => {
+  const start = new Date(Date.now() - 120 * 86400000).toISOString();
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, plan_meta: { block_start: start },
+    program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
+  // Four trained weeks behind them (→ block week 5, "peak"), then a long layoff.
+  const sessions = Array.from({ length: 4 }, (_, i) => ({
+    date: new Date(+new Date(start) + i * 7 * 86400000).toISOString(),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }],
+  }));
+  const t = buildToday(u, sessions, null, [], new Date().toISOString());
+  assert.equal(t.comeback, true, "fixture sanity: this IS a comeback");
+  assert.ok(t.exercises[0].suggested_kg < 100, "fixture sanity: the weight is genuinely eased");
+  assert.ok(!/push hard|push your sets hard/i.test(t.block?.note ?? ""),
+    `the block card must not say "push hard" beside eased weights — got: ${t.block?.note}`);
+  assert.ok(/picking up where you left off/i.test(t.block?.note ?? ""));
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

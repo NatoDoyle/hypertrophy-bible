@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect,
+  interferenceSignal, regressionDetect, trainedWeeksInBlock,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
@@ -160,11 +160,14 @@ export function nextSessionIndex(program, sessionCount) {
 // ---------------------------------------------------------------------------
 export const BLOCK_WEEKS = 6;
 const BLOCK_SET_SCALE = [0.7, 0.8, 0.9, 1.0, 1.0, 0.5]; // w1..w5 build->peak, w6 deload
-export function blockPhase(now, blockStart, experience) {
-  if (experience === "beginner" || !now || !blockStart) return null;
-  const days = Math.floor((+new Date(now) - +new Date(blockStart)) / 86400000);
-  if (!Number.isFinite(days) || days < 0) return null;
-  const week = (Math.floor(days / 7) % BLOCK_WEEKS) + 1; // 1..6, cycles forever
+// `trainedWeeks` = completed TRAINED weeks since block_start (derive-core's
+// trainedWeeksInBlock), not calendar weeks. See that function for why: a wall-clock
+// mesocycle handed a phantom "Week 6 — deload" to someone who trained twice in six
+// weeks, and could put "peak volume — push hard" on the same card as a comeback ease.
+export function blockPhase(trainedWeeks, experience) {
+  if (experience === "beginner") return null;
+  if (!Number.isFinite(trainedWeeks) || trainedWeeks < 0) return null;
+  const week = (Math.floor(trainedWeeks) % BLOCK_WEEKS) + 1; // 1..6, cycles forever
   const phase = week === BLOCK_WEEKS ? "deload" : week >= 4 ? "peak" : "build";
   return {
     week, of: BLOCK_WEEKS, phase,
@@ -277,7 +280,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // Defaults to beginner (the safe, plainer default) when training_status is unset.
   const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
-  let block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
+  let block = blockPhase(trainedWeeksInBlock(sessions, user.plan_meta?.block_start ?? user.created_at, now), user.profile?.training_status);
   // A REACTIVE deload, brought forward because training said so rather than
   // because the calendar did (the KB's third plateau lever). /api/today decides
   // whether one is due and stamps the ISO WEEK it fired in — a week, not a day, so
@@ -392,6 +395,15 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // when the numbers are right, make the EXPLANATION honest — don't let two true
     // mechanisms describe each other's opposite.
     if (taper) taper.note = `${taper.daysUntil} day${taper.daysUntil === 1 ? "" : "s"} to go — taper, plus you're coming back from a break: sets stay low and the weights are eased a touch, so you arrive fresh, not rusty.`;
+    // Same reconciliation for the BLOCK card (lesson 24's sibling — the taper copy was
+    // fixed and this one was not). Since Wave 167 the mesocycle only advances on
+    // TRAINED weeks, so a layoff no longer *pushes* anyone into a peak week — but it
+    // can still resume ON one, and "peak volume — push hard" sitting beside eased
+    // weights and "welcome back, I ramped you in safely" is two true mechanisms
+    // describing each other's opposite. The volume is right; make the wording honest.
+    if (block && block.phase !== "deload") {
+      block.note = `Week ${block.week} of ${block.of} — picking up where you left off. Your block waited for you: it only advances on weeks you train, so nothing was missed. Today's weights are eased to ramp you back in; they'll climb again fast.`;
+    }
   }
   // The all-time bests BEFORE today, per exercise — the exact ceiling sessionRecap will
   // compare this session against once it's logged (same `sessions` array, nothing added

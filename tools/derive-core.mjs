@@ -203,6 +203,40 @@ export const sessionWeekKey = (s) => {
   return k.includes("NaN") ? isoWeekKey(s.date) : k;
 };
 
+// TRAINED WEEKS INSIDE THE CURRENT BLOCK — the mesocycle's clock.
+//
+// It used to be wall-clock: `floor((now - block_start) / 42 days)`. So a user who
+// trained twice in six weeks still got "Week 6 — deload", and someone back from a
+// five-week layoff could land on "peak volume — push hard" the same day
+// suggestWeight eased their loads 12% for a comeback. `POST /api/pause` froze the
+// streak and the nudge emails but not this, so a deliberately paused user's block
+// kept advancing through phases they never trained.
+//
+// Counting TRAINED weeks makes the block mean what it says: six weeks of work, not
+// six weeks of calendar. A consistent lifter is completely unaffected (train any
+// week and it advances one week, exactly as before) — only a sporadic one differs,
+// which is the entire point. Derived from sessions the store already has, so there
+// is no new persisted state and no migration.
+//
+// Weeks STRICTLY BEFORE the current one, so the week in progress isn't counted as
+// finished the moment its first session lands: train on Monday of block-week 1 and
+// you are still in week 1 on Wednesday, with the rest of that week's work ahead.
+export function trainedWeeksInBlock(sessions, blockStartISO, nowISO) {
+  if (!blockStartISO || !nowISO) return 0;
+  const startMs = +new Date(blockStartISO);
+  if (!Number.isFinite(startMs)) return 0;
+  const nowWeek = isoWeekKey(nowISO);
+  const weeks = new Set();
+  for (const s of sessions ?? []) {
+    if (!(s.sets ?? []).length) continue;              // an emptied/voided session isn't a trained week
+    const when = +new Date(s.local_date ?? s.date);
+    if (!Number.isFinite(when) || when < startMs) continue;
+    const wk = sessionWeekKey(s);
+    if (wk !== nowWeek) weeks.add(wk);
+  }
+  return weeks.size;
+}
+
 // TRAINING-AGE GRADUATION. `training_status` was captured once at onboarding and
 // then never changed by anything — so a user who joined as a beginner and has
 // trained hard for eighteen months was STILL being fed beginner volume (mev.min),

@@ -2,8 +2,8 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus } from "../../tools/derive-core.mjs";
+import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
@@ -354,7 +354,10 @@ export function createApp(store, config = {}) {
     const recentBodyweights = bodyweights.filter((b) => inBlockWindow(b.date));
     const blockStart = user.plan_meta?.block_start;
     if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
-      const blockIndex = Math.max(0, Math.floor((Date.now() - +new Date(blockStart)) / (7 * 6 * 86400000)));
+      // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
+      // reads, so the boundary that rotates the plan and the phase shown on the card
+      // can never disagree about which block the user is in.
+      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO) / BLOCK_WEEKS);
       if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
         const updated = await store.updateUser(id, (u) => {
           // Re-check the FRESH CAS-read state: the outer guard (L203) saw a stale
@@ -418,9 +421,10 @@ export function createApp(store, config = {}) {
     // not two that can drift (the maintenance/hold filtering matters here too — a
     // muscle a specialization block deliberately holds low must never trigger this).
     const rdBlockStart = user.plan_meta?.block_start;
-    const rdBlock = blockPhase(nowISO, rdBlockStart ?? user.created_at, user.profile?.training_status);
+    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO);
+    const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
     if (rdBlock && rdBlockStart && !user.program?.custom) {
-      const rdBlockIndex = Math.max(0, Math.floor((Date.now() - +new Date(rdBlockStart)) / (7 * 6 * 86400000)));
+      const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
       const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins);
       if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex)) {
         const stamped = await store.updateUser(id, (u) => {

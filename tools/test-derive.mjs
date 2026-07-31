@@ -11,6 +11,7 @@ import {
   isoWeekKey,
   sessionWeekKey,
   graduatedStatus,
+  trainedWeeksInBlock,
   regressionDetect,
   GRADUATION,
   isHardSet,
@@ -823,6 +824,45 @@ check("deriveVolumeAdjust: EASING still fires for a regressing muscle at its cei
   // Pulling volume back is always safe — only the ADD branch is gated.
   const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
   assert.deepEqual(deriveVolumeAdjust({}, { chest: 24 }, idx, new Set(["chest"]), { regressingMuscleIds: new Set(["chest"]) }), { chest: -2 });
+});
+
+// --- the mesocycle clock (Wave 167) --------------------------------------
+// It used to be wall-clock, so six quiet weeks still delivered "Week 6 — deload".
+const BLK_START = "2026-01-05T00:00:00.000Z"; // a Monday
+const tw = (dayOffsets, nowOffset) => trainedWeeksInBlock(
+  dayOffsets.map((d) => ({ date: new Date(+new Date(BLK_START) + d * 86400000).toISOString(), sets: [{ exercise: "x", weight_kg: 60, reps: 8 }] })),
+  BLK_START,
+  new Date(+new Date(BLK_START) + nowOffset * 86400000).toISOString(),
+);
+
+check("trainedWeeksInBlock: counts distinct trained weeks, not calendar weeks", () => {
+  assert.equal(tw([], 42), 0, "six calendar weeks with nothing logged is not a block");
+  assert.equal(tw([1, 8, 15, 22, 29], 40), 5, "five trained weeks behind the current one");
+});
+
+check("trainedWeeksInBlock: several sessions in one week still count once", () => {
+  assert.equal(tw([1, 2, 3, 4, 5], 14), 1);
+});
+
+check("trainedWeeksInBlock: the CURRENT week isn't counted as finished", () => {
+  // Trained on Monday of the current week; the rest of that week is still ahead.
+  assert.equal(tw([14], 16), 0, "this week's own sessions don't advance the clock");
+  assert.equal(tw([7, 14], 16), 1, "only the completed week counts");
+});
+
+check("trainedWeeksInBlock: sessions before block_start belong to the previous block", () => {
+  assert.equal(tw([-14, -7, 7], 21), 1);
+});
+
+check("trainedWeeksInBlock: an emptied/voided session is not a trained week", () => {
+  const sessions = [{ date: "2026-01-06T00:00:00.000Z", sets: [] }, { date: "2026-01-13T00:00:00.000Z", sets: [{ exercise: "x", weight_kg: 60, reps: 8 }] }];
+  assert.equal(trainedWeeksInBlock(sessions, BLK_START, "2026-01-26T00:00:00.000Z"), 1);
+});
+
+check("trainedWeeksInBlock: missing/garbage inputs return 0 rather than throwing", () => {
+  assert.equal(trainedWeeksInBlock([], null, "2026-01-26T00:00:00.000Z"), 0);
+  assert.equal(trainedWeeksInBlock(undefined, BLK_START, "2026-01-26T00:00:00.000Z"), 0);
+  assert.equal(trainedWeeksInBlock([{ date: "nonsense", sets: [{ exercise: "x" }] }], BLK_START, "2026-01-26T00:00:00.000Z"), 0);
 });
 
 console.log(`\n${passed} test(s) passed.`);

@@ -83,11 +83,17 @@ try {
   const stored3 = (await store.listSessions(uid)).find((s) => s.session_id === "rt-3")?.sets?.[0];
   ok("junk fields stripped; falsy deload omitted", stored3 && !("evil" in stored3) && !("deload" in stored3));
 
-  // A new mesocycle auto-rotates accessories through the real route.
+  // A new mesocycle auto-rotates accessories through the real route. The clock is
+  // TRAINED weeks (Wave 167), so backdating block_start is no longer enough on its
+  // own — the block only advances for weeks the user actually trained.
   await store.updateUser(uid, (u) => {
-    u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 43 * 86400000).toISOString(), block_index: 0 };
+    u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 60 * 86400000).toISOString(), block_index: 0 };
     return u;
   });
+  for (let w = 1; w <= 7; w++) {
+    await json("POST", "/api/session", { user_id: uid, session_id: `rt-blk-${w}`, date: new Date(Date.now() - w * 7 * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
   const before = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
   const rolled = await app.request("/api/today", { headers: { "X-HB-User": uid } });
   ok("today succeeds across a block boundary", rolled.status === 200);
@@ -215,12 +221,15 @@ try {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
   const dayAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
-  // 5 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
-  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(35 - w * 7),
+  // 7 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
+  // Seven, not five: the mesocycle clock counts TRAINED weeks (Wave 167), so the
+  // boundary needs six trained weeks behind it — backdating block_start alone no
+  // longer advances a block the user never trained.
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(49 - w * 7),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
   const chestBefore = (await store.getUser(atUser)).plan_rationale?.volume_by_muscle?.chest?.target_sets;
   // backdate block_start so a mesocycle boundary has passed → /api/today rotates + auto-tunes
-  await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": atUser } });
   const atAfter = await store.getUser(atUser);
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
@@ -250,10 +259,12 @@ try {
   const woUser = (await json("POST", "/api/onboard", { profile: {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
-  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(35 - w * 7),
+  // Seven trained weeks (Wave 167: the block clock counts TRAINED weeks, so six
+  // must sit behind the boundary for it to advance at all).
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(49 - w * 7),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
-  for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(120 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
-  await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(150 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
+  await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": woUser } });
   const woAfter = await store.getUser(woUser);
   ok("#69 old out-of-block check-ins don't suppress the bump (recovery gate windows to the current block)", (woAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
@@ -1122,6 +1133,39 @@ try {
   }
   ok("#regress one bad week that bounced back is NOT flagged",
     ((await (await app.request("/api/progress", okHdr)).json()).regressions ?? []).length === 0);
+
+  // ---- Wave 167: the block clock counts TRAINED weeks ----------------------
+  // It used to be wall-clock, so a user who trained twice in six weeks still got
+  // "Week 6 — deload", and `POST /api/pause` froze the streak and the emails but
+  // not this — a deliberately paused user's block advanced through phases they
+  // never trained. Driven through the real route, both directions.
+  const clkProfile = {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  };
+  const sparseId = (await json("POST", "/api/onboard", { profile: clkProfile })).data.user_id;
+  await store.updateUser(sparseId, (u) => { u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 45 * 86400000).toISOString(), block_index: 0 }; return u; });
+  // Six-and-a-half calendar weeks in, having trained in only two of them.
+  for (const d of [40, 26]) {
+    await json("POST", "/api/session", { user_id: sparseId, session_id: `clk-${d}`, date: new Date(Date.now() - d * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
+  const sparseToday = await (await app.request("/api/today", { headers: { "X-HB-User": sparseId } })).json();
+  ok("#clock a sporadic trainee gets no phantom deload — the block waits for the work",
+    sparseToday.session.block.week === 3 && sparseToday.session.block.phase !== "deload");
+  ok("#clock and the block never rotated, because six trained weeks never happened",
+    (await store.getUser(sparseId)).plan_meta.block_index === 0);
+
+  // The consistent lifter is completely unaffected — same calendar, real deload.
+  const steadyId = (await json("POST", "/api/onboard", { profile: clkProfile })).data.user_id;
+  await store.updateUser(steadyId, (u) => { u.plan_meta = { ...u.plan_meta, block_start: new Date(Date.now() - 40 * 86400000).toISOString(), block_index: 0 }; return u; });
+  for (let w = 1; w <= 5; w++) {
+    await json("POST", "/api/session", { user_id: steadyId, session_id: `stdy-${w}`, date: new Date(Date.now() - w * 7 * 86400000).toISOString(),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }] });
+  }
+  const steadyToday = await (await app.request("/api/today", { headers: { "X-HB-User": steadyId } })).json();
+  ok("#clock a lifter who trains every week reaches the deload exactly on schedule",
+    steadyToday.session.block.week === 6 && steadyToday.session.block.phase === "deload");
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
