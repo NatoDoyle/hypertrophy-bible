@@ -496,7 +496,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // the e1RM/stall trends as a fabricated ~12% strength loss.
   // A taper supersedes the block card entirely (they'd otherwise show two
   // conflicting "here's why volume changed this week" explanations at once).
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block: taper ? null : block, taper: taper ? { days_until: taper.daysUntil, note: taper.note } : null, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner };
+  // Cardio, answered for TODAY rather than left as a page the user has to go read.
+  // `hard_cardio_ok` resolves the guideline's leg-day rule against the session that
+  // is actually on the card, so the copy can be specific instead of conditional.
+  const cardio = program.cardio
+    ? { ...program.cardio, hard_cardio_ok: (program.cardio.placement?.best_after ?? []).includes(templateSession.name) }
+    : null;
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block: taper ? null : block, taper: taper ? { days_until: taper.daysUntil, note: taper.note } : null, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner, cardio };
 }
 
 // The Today card state machine: one decision only.

@@ -1,10 +1,10 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
-import { exercises, muscles, contraindications } from "./kb-data.mjs";
+import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
 import { generatePlan, critiquePlan, accessibleExercises } from "../../tools/plan-core.mjs";
 
 export function generateUserPlan(profile, opts = {}) {
-  return generatePlan(profile, { exercises, muscles, contraindications }, opts);
+  return generatePlan(profile, { exercises, muscles, contraindications, guidelines }, opts);
 }
 
 // KB critique of any program (generated or user-built), including the user's

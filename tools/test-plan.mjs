@@ -9,7 +9,8 @@ const muscles = load("data/muscles");
 const contraindications = JSON.parse(readFileSync("data/injury-contraindications.json"));
 const registry = new Set(JSON.parse(readFileSync("citations/registry.json")).citations.map((c) => c.key));
 const exIds = new Set(exercises.map((e) => e.id));
-const kb = { exercises, muscles, contraindications };
+const guidelines = load("data/guidelines");
+const kb = { exercises, muscles, contraindications, guidelines };
 const muscleById = new Map(muscles.map((m) => [m.id, m]));
 
 let pass = 0, fail = 0;
@@ -530,6 +531,37 @@ const detProfile = { training_status: "advanced", primary_goal: "hypertrophy", d
   available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "stall-determinism" };
 ok("absent, the plan is byte-identical — the determinism guarantee holds",
   JSON.stringify(generatePlan(detProfile, kb, {})) === JSON.stringify(generatePlan(detProfile, kb, { stalledExercises: [] })));
+
+// --- cardio prescription (Wave 168) --------------------------------------
+// The KB has carried real cardio numbers since Wave 161 and the plan engine emitted
+// NOTHING (`grep cardio tools/plan-core.mjs` → zero hits), so a user asking "how
+// much cardio should I do?" got nothing actionable from the app.
+const cardioGuide = guidelines.find((g) => g.id === "cardio-concurrent-training");
+const cardioProfile = (over = {}) => ({ training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "cardio", ...over });
+const c6 = generatePlan(cardioProfile(), kb, {}).program.cardio;
+ok("the plan now prescribes a cardio dose at all", !!c6 && !!c6.steps_per_day && !!c6.sessions_per_week);
+ok("every number comes from the guideline, not from the engine",
+  c6.steps_per_day.min === cardioGuide.dose_by_goal.hypertrophy.steps_per_day.min &&
+  c6.minutes_per_session.max === cardioGuide.dose_by_goal.hypertrophy.minutes_per_session.max);
+ok("the dose is goal-specific (fat-loss asks for more than a gaining phase)",
+  generatePlan(cardioProfile({ primary_goal: "fat-loss" }), kb, {}).program.cardio.steps_per_day.max > c6.steps_per_day.max);
+ok("it carries the guideline's own Grade D — the dose ranges are practical models, not measured constants", c6.evidence_grade === "D");
+ok("walking leads: the only modality the KB rates as costing nothing", c6.modality?.interference === "none");
+
+// Placement is DERIVED from the split the engine chose, not guessed.
+ok("#cardio on a 6-day PPL, hard cardio is placed only after non-leg-adjacent days",
+  c6.placement.best_after.length > 0 && c6.placement.best_after.every((n) => /push/i.test(n)));
+ok("#cardio and it names the leg sessions to keep away from", c6.placement.avoid_around.every((n) => /leg/i.test(n)));
+// The honest empty answer: on a 4-day upper/lower EVERY day is a leg day or the day
+// before one, so there is no safe slot — and saying so beats inventing one.
+const c4 = generatePlan(cardioProfile({ days_per_week: 4 }), kb, {}).program.cardio;
+ok("#cardio on a 4-day upper/lower no lifting day is safe, and the plan says so rather than inventing a slot",
+  c4.placement.best_after.length === 0 && c4.placement.avoid_around.length === 2);
+
+// Degrades cleanly: a KB without the guideline simply omits the block.
+const noGuide = generatePlan(cardioProfile(), { exercises, muscles, contraindications }, {}).program;
+ok("#cardio a KB with no guideline omits the block rather than inventing numbers", noGuide.cardio === undefined);
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

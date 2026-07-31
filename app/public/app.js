@@ -460,6 +460,22 @@ async function renderPlanExplain(firstTime) {
       <span class="muted" style="font-size:.82rem">${esc((v.reasons || []).join(" · "))} ${gradeChip(v.landmark?.evidence_grade)}</span></div>
       <span class="status ${statusClass(v.projected_status)}">${statusLabel(v.projected_status)}</span></div>`).join("");
   const warns = (r.warnings || []).map((w) => `<div class="win">ℹ️ ${esc(w.message)}</div>`).join("");
+  // The rest of the week: what the plan asks for OUTSIDE the gym. Grade-labelled
+  // like every other landmark surface — the guideline calls its own dose ranges
+  // "practical models, not measured constants", so the app must not imply harder.
+  const pc = d.program?.cardio;
+  const pcRange = (x, unit = "") => x ? (x.min === x.max ? `${x.min}${unit}` : `${x.min}–${x.max}${unit}`) : "";
+  const cardioBlock = pc
+    ? `<h2>Cardio &amp; steps ${helpDot("cardio-and-concurrent-training", "?")}</h2>
+       <div class="card"><div class="row"><div style="flex:1"><b>${pcRange(pc.steps_per_day)} steps/day</b>
+         <div class="muted" style="font-size:.85rem">${esc(pc.note ?? "")}</div></div>
+         <span class="chip">Grade ${esc(pc.evidence_grade)}</span></div>
+         <div class="row"><div style="flex:1"><b>${pcRange(pc.sessions_per_week)} sessions/week</b> <span class="muted">${pcRange(pc.minutes_per_session)} min each</span>
+         <div class="muted" style="font-size:.85rem">${(pc.placement?.best_after ?? []).length
+           ? `Best after: ${esc(pc.placement.best_after.join(", "))}. ${esc(pc.placement.rule ?? "")}`
+           : `Every training day on this split sits next to leg work — put harder sessions on a rest day, or keep it to walking.`}</div></div></div>
+       </div>`
+    : "";
   const sessions = d.program?.sessions || [];
   const sessionRows = sessions.map((s) => `<div class="row"><div style="flex:1"><b>${esc(s.name)}</b></div>
     <span class="muted">${s.exercises.length} exercise${s.exercises.length === 1 ? "" : "s"}</span></div>`).join("");
@@ -480,6 +496,7 @@ async function renderPlanExplain(firstTime) {
     app.innerHTML = `<div class="center"><h1>Your plan is ready 🎉</h1></div>
       <div class="card"><p>Here's your week — <b>${sessions.length} short session${sessions.length === 1 ? "" : "s"}</b>. I chose every exercise, weight, and set for you. You just show up and tap <b>Start</b>.</p></div>
       <div class="card">${sessionRows}</div>
+      ${cardioBlock}
       <div class="card"><b>🚪 Never trained before?</b>
         <p class="muted">These 2-minute reads make your first day easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
@@ -490,6 +507,7 @@ async function renderPlanExplain(firstTime) {
     app.innerHTML = `<h1>Your plan</h1>
       <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div></div>
       <div class="card">${sessionRows}</div>
+      ${cardioBlock}
       ${whyBlock}
       <button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>
       <button class="btn" id="explain-go">Back</button>`;
@@ -738,6 +756,25 @@ async function renderToday() {
       ? `<div class="card"><b>⏳ ${s.taper.days_until} day${s.taper.days_until === 1 ? "" : "s"} to go — tapering</b>
           <p class="muted">${esc(s.taper.note)}</p></div>`
       : "";
+  // CARDIO, prescribed (Wave 168). The KB has carried real numbers since Wave 161 —
+  // dose by goal, an interference ranking, a leg-day timing rule — and the app never
+  // once told anyone what to do with them: a user asking "how much cardio?" had to
+  // go and read a page. Zero cognitive load means the app answers it, the way it
+  // already answers sets and weights. `hard_cardio_ok` is resolved server-side
+  // against TODAY's session, so this can be specific instead of hedging.
+  const cd = s.cardio;
+  const range = (r, unit = "") => r ? (r.min === r.max ? `${r.min}${unit}` : `${r.min}–${r.max}${unit}`) : "";
+  const cardioCard = cd
+    ? `<div class="card"><b>🚶 Cardio &amp; steps</b> <span class="chip">Grade ${esc(cd.evidence_grade)}</span>
+        <p class="muted"><b>${range(cd.steps_per_day)} steps</b> a day, plus <b>${range(cd.sessions_per_week)} sessions</b> of ${range(cd.minutes_per_session)} min a week. ${cd.modality ? `Walking costs your muscle nothing — it's the reason steps come first.` : ""}</p>
+        <p class="muted">${cd.hard_cardio_ok
+          ? `Today's a good day for a harder session — no leg work today or tomorrow.`
+          : (cd.placement?.best_after ?? []).length
+            ? `Keep hard leg-heavy cardio off today. Best after: <b>${esc(cd.placement.best_after.join(", "))}</b>.`
+            : `On this split every training day sits next to leg work, so put harder sessions on a rest day — or keep it to walking, which costs nothing.`}</p>
+        <button class="btn ghost" data-learn="cardio-and-concurrent-training">Read: cardio &amp; concurrent training</button></div>`
+    : "";
+
   // --- The daily flow (considerations #6): one obvious sequence — morning
   // check-in (weight + how you feel) → the workout → tonight's calories. Each
   // step shows done ✓ or is the highlighted next action; the first unfinished
@@ -784,7 +821,8 @@ async function renderToday() {
   const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
-    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}`;
+    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}
+    ${cardioCard}`;
   wireCommitmentCard();
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {

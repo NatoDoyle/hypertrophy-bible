@@ -1167,6 +1167,24 @@ try {
   ok("#clock a lifter who trains every week reaches the deload exactly on schedule",
     steadyToday.session.block.week === 6 && steadyToday.session.block.phase === "deload");
 
+  // ---- Wave 168: cardio is prescribed, through the real doors --------------
+  // The KB's numbers existed; nothing turned them into a prescription. Both routes
+  // whitelist their payload, and a dropped field silently disables a whole surface
+  // (the deload-flag bug this file exists for), so assert on BOTH.
+  const cardId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 6, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const cardHdr = { headers: { "X-HB-User": cardId } };
+  const cardToday = await (await app.request("/api/today", cardHdr)).json();
+  ok("#cardio /api/today carries a real cardio prescription", (cardToday.session?.cardio?.steps_per_day?.min ?? 0) > 0);
+  ok("#cardio it answers TODAY specifically, not just in general", typeof cardToday.session.cardio.hard_cardio_ok === "boolean");
+  ok("#cardio the today answer agrees with the plan's own placement rule",
+    cardToday.session.cardio.hard_cardio_ok === cardToday.session.cardio.placement.best_after.includes(cardToday.session.name));
+  const cardPlan = await (await app.request("/api/plan/explain", cardHdr)).json();
+  ok("#cardio the plan-explain whitelist carries it too (a dropped field kills the surface)",
+    (cardPlan.program?.cardio?.sessions_per_week?.min ?? 0) > 0 && cardPlan.program.cardio.evidence_grade === "D");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

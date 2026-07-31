@@ -122,7 +122,9 @@ export function createApp(store, config = {}) {
   app.get("/api/plan/explain", async (c) => {
     const { user, error } = await requireUser(c);
     if (error) return error;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
+    // `cardio` must survive this whitelist — a dropped field silently disables its
+    // whole surface (the deload-flag lesson, and the reason test-routes.mjs exists).
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).

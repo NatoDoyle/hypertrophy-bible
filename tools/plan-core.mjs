@@ -293,6 +293,61 @@ export function accessibleExercises(profile, kb) {
   return exercises.filter((e) => equip.has(e.equipment) && !contraExcluded(e, injuries, contraindications));
 }
 
+// CARDIO — prescribed, not just described (considerations #1, finding 1A).
+// The KB has carried real numbers since Wave 161 (dose by goal, a modality
+// interference ranking, timing rules) and the plan engine emitted NOTHING: `grep
+// cardio tools/plan-core.mjs` returned zero hits. The only cardio surfaces in the
+// whole app were a REACTIVE Progress-tab card that fires in one narrow pattern and
+// a passing sentence on the Fuel tab, so a user asking "how much cardio should I
+// do?" got nothing actionable — while the KB page had the answer all along.
+//
+// Every number here comes from data/guidelines/cardio-concurrent-training.json;
+// nothing is invented, and the guideline's own Grade D rides along so the surface
+// can label it honestly ("practical models, not measured constants" — its words).
+//
+// Placement is DERIVED rather than guessed, because the engine already knows which
+// sessions are leg-loaded. The guideline's first timing rule is "keep hard
+// lower-body cardio off the day of, and the day before, a leg session", so a
+// rotation slot is unsafe if it IS leg work or the NEXT slot is (wrapping, since
+// the rotation cycles). On some perfectly normal splits — 4-day upper/lower, where
+// every day is a leg day or the day before one — NOTHING is safe, and the honest
+// answer is rest days and walking rather than pretending a slot exists.
+const LEG_LOADED = new Set(["LEGS", "LOWER", "FULL"]);
+function buildCardio(guideline, goal, sessionSpecs) {
+  if (!guideline) return null;
+  const dose = guideline.dose_by_goal?.[goal] ?? guideline.dose_by_goal?.hypertrophy;
+  if (!dose) return null;
+  const modalities = guideline.modalities ?? [];
+  const byInterference = { none: 0, low: 1, moderate: 2, high: 3 };
+  const ranked = [...modalities].sort((a, b) => (byInterference[a.interference] ?? 9) - (byInterference[b.interference] ?? 9));
+  const legDays = sessionSpecs.map((spec) => LEG_LOADED.has(spec.arch));
+  const n = sessionSpecs.length;
+  const safeSlots = sessionSpecs
+    .map((spec, i) => ({ name: spec.name, safe: !legDays[i] && !legDays[(i + 1) % n] }))
+    .filter((x) => x.safe)
+    .map((x) => x.name);
+  const legSessionNames = sessionSpecs.filter((_, i) => legDays[i]).map((spec) => spec.name);
+  return {
+    steps_per_day: dose.steps_per_day ?? null,
+    sessions_per_week: dose.sessions_per_week ?? null,
+    minutes_per_session: dose.minutes_per_session ?? null,
+    // Walking first — the only modality the KB rates as costing nothing, and the
+    // reason steps come before structured cardio. The structured pick is the
+    // lowest-interference option that isn't just walking again.
+    modality: ranked[0] ? { id: ranked[0].id, name: ranked[0].name, interference: ranked[0].interference } : null,
+    structured_modality: (() => { const m = ranked.find((x) => x.id !== ranked[0]?.id); return m ? { id: m.id, name: m.name, interference: m.interference } : null; })(),
+    // Where the hard sessions go. Empty `best_after` is a real answer, not a gap.
+    placement: {
+      best_after: safeSlots,
+      avoid_around: legSessionNames,
+      rule: guideline.timing_rules?.[0]?.rule ?? null,
+    },
+    note: dose.note ?? guideline.summary ?? null,
+    evidence_grade: dose.evidence_grade ?? guideline.evidence_grade ?? "D",
+    citations: dose.citations ?? [],
+  };
+}
+
 export function generatePlan(profile, kb, opts = {}) {
   const { exercises, muscles, contraindications } = kb;
   const experience = profile.training_status ?? "intermediate";
@@ -308,6 +363,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // change-exercise lever). Empty by default, so a plan generated without it is
   // byte-identical to before and the determinism guarantee holds.
   const stalled = new Set(opts.stalledExercises ?? []);
+  const cardioGuideline = (kb.guidelines ?? []).find((g) => g.id === "cardio-concurrent-training") ?? null;
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
@@ -333,6 +389,8 @@ export function generatePlan(profile, kb, opts = {}) {
 
   // 1) split
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
+  // Cardio rides on the split, since its placement rule is about leg days.
+  const cardio = buildCardio(cardioGuideline, goal, sessionSpecs);
 
   // 2) weekly target per muscle
   // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
@@ -924,6 +982,7 @@ export function generatePlan(profile, kb, opts = {}) {
     target_population: `Generated for a ${experience} lifter training ${sessionSpecs.length} days/week for ${goalLabel}${priority.size ? `, prioritizing ${[...priority].join(", ")}` : ""}.`,
     progression_ref: "double-progression",
     sessions: outSessions,
+    ...(cardio ? { cardio } : {}),
     citations,
   };
   const rationale = {
