@@ -36,12 +36,33 @@ export function createFileStore(path) {
       const next = mutator(JSON.parse(JSON.stringify(cur)));
       db.users[id] = next; flush(); return next;
     },
-    async listSessions(id) { return byDate(db.sessions[id]); },
+    // Voided sessions are filtered HERE, at the single source, not at each of the
+    // dozen call sites — a per-call-site filter is lesson 1 waiting to happen (one
+    // consumer forgotten = a corrected workout still counting toward a streak, a
+    // stall, or a PR). `includeVoided` is for the history screen alone, which has to
+    // show a voided session in order to offer un-voiding it.
+    async listSessions(id, { includeVoided = false } = {}) {
+      const all = byDate(db.sessions[id]);
+      return includeVoided ? all : all.filter((s) => !s.voided_at);
+    },
     async addSession(id, session) {
       const list = (db.sessions[id] ??= []);
       // Idempotent on session_id: a replayed offline workout is a no-op.
       if (session.session_id && list.some((s) => s.session_id === session.session_id)) return session;
       list.push(session); flush(); return session;
+    },
+    // Edit or void ONE logged session in place. The mutator gets a deep copy and
+    // returns the replacement; returning null/undefined means "leave it alone".
+    // Returns the stored session (updated or not), or null when there is no such
+    // session for this user — so a caller can tell "declined" from "not found".
+    // session_id is the identity: never address a session by position (lesson 11).
+    async updateSession(id, sessionId, mutator) {
+      const list = db.sessions[id] ?? [];
+      const i = list.findIndex((s) => s.session_id === sessionId);
+      if (i < 0) return null;
+      const next = mutator(JSON.parse(JSON.stringify(list[i])));
+      if (next == null) return list[i];
+      list[i] = next; flush(); return next;
     },
     async listBodyweights(id) { return byDate(db.bodyweights[id]); },
     async addBodyweight(id, entry) {
@@ -177,15 +198,18 @@ export function createFileStore(path) {
       if (row && (userId == null || row.user_id === userId)) { delete db.push_subscriptions[endpoint]; flush(); }
     },
     async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
+    // Voided sessions must not count as "last trained" — a user who corrects away
+    // their only recent workout genuinely hasn't trained, and the comeback nudge
+    // should say so. Same exclusion as listSessions (D1 does it in SQL).
     async latestSessionDate(user_id) {
-      return (db.sessions[user_id] ?? []).reduce((m, s) => (s.date && (!m || s.date > m) ? s.date : m), null);
+      return (db.sessions[user_id] ?? []).reduce((m, s) => (s.date && !s.voided_at && (!m || s.date > m) ? s.date : m), null);
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
     async listAccountLastSessions() {
       return Object.values(db.accounts).map((a) => ({
         email: a.email, user_id: a.user_id,
-        last_date: (db.sessions[a.user_id] ?? []).reduce((m, s) => (s.date && (!m || s.date > m) ? s.date : m), null),
+        last_date: (db.sessions[a.user_id] ?? []).reduce((m, s) => (s.date && !s.voided_at && (!m || s.date > m) ? s.date : m), null),
       }));
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },

@@ -946,6 +946,92 @@ try {
   ok("#bounds /api/today carries last_kg, the reference the player's typo guard needs",
     boundCard != null && typeof boundCard.last_kg === "number" && boundCard.last_kg > 0);
 
+  // ---- Wave 163: correcting the log --------------------------------------
+  // A bad set used to be permanent (no edit/delete route existed at all). These
+  // drive the full loop through the real door: log -> it counts -> void it -> it
+  // stops counting everywhere -> un-void -> it counts again.
+  const histId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const histEx = (await (await app.request("/api/today", { headers: { "X-HB-User": histId } })).json()).session.exercises[0].exercise;
+  const histHdr = { headers: { "X-HB-User": histId } };
+  // Three sessions so that voiding ONE leaves an even count — the rotation then
+  // lands back on day 0, where histEx lives, and the anchor assertion below can
+  // actually see the lift it's about (voiding rewinds the rotation, see there).
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-good", date: new Date(Date.now() - 4 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 60, reps: 8 })] });
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-good2", date: new Date(Date.now() - 3 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 60, reps: 8 })] });
+  await json("POST", "/api/session", { user_id: histId, session_id: "hist-bad", date: new Date().toISOString(),
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 600, reps: 8 })] });
+
+  const beforeVoid = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history the mistyped session counts before it's corrected (so the void below proves something)",
+    beforeVoid.sessions_logged === 3 && Math.max(0, ...(beforeVoid.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) > 500);
+
+  const histList = await (await app.request("/api/sessions", histHdr)).json();
+  ok("#history GET /api/sessions returns the log, newest first", histList.sessions?.[0]?.session_id === "hist-bad");
+
+  const voidRes = await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad" });
+  ok("#history POST /api/session/void reports what it PERSISTED, not a local guess (lesson 21)", voidRes.status === 200 && voidRes.data.voided === true);
+  const afterVoid = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history a voided session stops counting everywhere the engines look", afterVoid.sessions_logged === 2);
+  ok("#history and its inflated PR is gone with it", Math.max(0, ...(afterVoid.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) < 500);
+  // Voiding also rewinds the session ROTATION (one fewer session logged = you're
+  // due the day you were due), so today's card may be a different day entirely —
+  // assert the thing that actually matters: the voided number anchors nothing.
+  const afterVoidToday = await (await app.request("/api/today", histHdr)).json();
+  const afterVoidCard = (afterVoidToday.session?.exercises ?? []).find((e) => e.exercise === histEx);
+  ok("#history the next suggested weight re-derives from the surviving sessions, not the voided one",
+    afterVoidCard != null && afterVoidCard.last_kg === 60);
+
+  const stillListed = await (await app.request("/api/sessions", histHdr)).json();
+  ok("#history the voided session is NOT deleted — it's still on the history screen, flagged, so undo is possible",
+    (stillListed.sessions ?? []).some((x) => x.session_id === "hist-bad" && !!x.voided_at));
+
+  // Idempotence + reversibility.
+  const reVoid = await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad" });
+  ok("#history re-voiding keeps the ORIGINAL timestamp (when you took it back stays true)",
+    reVoid.data.session.voided_at === voidRes.data.session.voided_at);
+  await json("POST", "/api/session/void", { user_id: histId, session_id: "hist-bad", voided: false });
+  ok("#history un-voiding brings it back — void is a toggle, never a delete",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 3);
+
+  // Editing: the fix a user actually wants — keep the workout, correct the number.
+  const editRes = await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad",
+    sets: [...Array(3).fill({ exercise: histEx, weight_kg: 65, reps: 8 })] });
+  ok("#history POST /api/session/update rewrites the sets", editRes.status === 200);
+  const afterEdit = await (await app.request("/api/progress", histHdr)).json();
+  ok("#history the corrected weight replaces the bad one in every derived surface",
+    afterEdit.sessions_logged === 3 && Math.max(0, ...(afterEdit.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0)) < 500);
+
+  // An edit goes through the SAME normalizer as the log route — it must not be a
+  // back door around the bound Wave 162 added at the front door.
+  await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad",
+    sets: [{ exercise: histEx, weight_kg: 999999, reps: 8, deload: true }] });
+  const histEdited = ((await (await app.request("/api/sessions", histHdr)).json()).sessions ?? []).find((x) => x.session_id === "hist-bad");
+  ok("#history an EDIT is bounded by the same ceiling as the original log (no back door)", histEdited.sets[0].weight_kg === 1000);
+  ok("#history and the edit path preserves `deload`, the flag a whitelist once silently dropped", histEdited.sets[0].deload === true);
+
+  // Emptying a session is a void, not an empty husk that still scores as a
+  // trained day for the streak.
+  await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad", sets: [] });
+  ok("#history clearing every set voids the session rather than leaving a husk that still counts",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 2);
+
+  const noSuch = await json("POST", "/api/session/void", { user_id: histId, session_id: "does-not-exist" });
+  ok("#history voiding an unknown session 404s rather than silently succeeding", noSuch.status === 404);
+  // Possession of a session_id must not be enough to touch someone else's log.
+  const otherId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const crossRes = await json("POST", "/api/session/void", { user_id: otherId, session_id: "hist-good" });
+  ok("#history another user cannot void a session they don't own (user_id is in the WHERE)", crossRes.status === 404);
+  ok("#history and the owner's session is untouched by that attempt",
+    (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 2);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

@@ -5,6 +5,11 @@
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile } from "./merge-profile.mjs";
 
+// A session the user has voided (corrected away) is still stored — "never lose
+// logged data" — but must be invisible to every engine that reads history. The
+// flag lives in the JSON blob, so this predicate is how SQL asks about it.
+const notVoided = (col = "data") => `json_extract(${col}, '$.voided_at') IS NULL`;
+
 export function createD1Store(db) {
   return {
     async getUser(id) {
@@ -32,11 +37,15 @@ export function createD1Store(db) {
       }
       throw new Error("write-conflict");
     },
-    async listSessions(id) {
-      // rowid tiebreak keeps same-timestamp sessions in insertion order,
-      // matching the file store (coach rotation + PR detection depend on it).
+    // Voided sessions are excluded HERE, at the single source (parity with the file
+    // store's filter) — see its comment for why not at each call site. The predicate
+    // is SQL rather than a JS post-filter so latestSessionDate/listAccountLastSessions
+    // below can reuse it inside their aggregates without pulling every blob.
+    // `voided_at` lives in the JSON blob, so no column and no migration is needed —
+    // SQLite's JSON1 (built into D1) reads it directly.
+    async listSessions(id, { includeVoided = false } = {}) {
       const { results } = await db
-        .prepare("SELECT data FROM sessions WHERE user_id = ? ORDER BY date ASC, rowid ASC")
+        .prepare(`SELECT data FROM sessions WHERE user_id = ?${includeVoided ? "" : " AND " + notVoided()} ORDER BY date ASC, rowid ASC`)
         .bind(id)
         .all();
       return results.map((r) => JSON.parse(r.data));
@@ -48,6 +57,23 @@ export function createD1Store(db) {
         .bind(session.session_id, id, session.date ?? null, JSON.stringify(session))
         .run();
       return session;
+    },
+    // Edit or void ONE logged session in place — parity with the file store,
+    // including the null-means-not-found / unchanged-means-declined contract.
+    // The user_id is part of the WHERE, so possession of a session_id alone can
+    // never edit someone else's workout. `date` is kept in sync with the blob
+    // because the ORDER BY and the MAX() aggregates read the column, not the JSON.
+    async updateSession(id, sessionId, mutator) {
+      const row = await db.prepare("SELECT data FROM sessions WHERE session_id = ? AND user_id = ?").bind(sessionId, id).first();
+      if (!row) return null;
+      const cur = JSON.parse(row.data);
+      const next = mutator(JSON.parse(row.data));
+      if (next == null) return cur;
+      await db
+        .prepare("UPDATE sessions SET data = ?, date = ? WHERE session_id = ? AND user_id = ?")
+        .bind(JSON.stringify(next), next.date ?? null, sessionId, id)
+        .run();
+      return next;
     },
     async listBodyweights(id) {
       const { results } = await db
@@ -205,15 +231,16 @@ export function createD1Store(db) {
       const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();
       return results;
     },
+    // Voided sessions must not count as "last trained" (parity with the file store).
     async latestSessionDate(user_id) {
-      const row = await db.prepare("SELECT MAX(date) AS d FROM sessions WHERE user_id = ?").bind(user_id).first();
+      const row = await db.prepare(`SELECT MAX(date) AS d FROM sessions WHERE user_id = ? AND ${notVoided()}`).bind(user_id).first();
       return row?.d ?? null;
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Parity with the file store.
     async listAccountLastSessions() {
       const { results } = await db
-        .prepare("SELECT a.email, a.user_id, MAX(s.date) AS last_date FROM accounts a LEFT JOIN sessions s ON s.user_id = a.user_id GROUP BY a.email, a.user_id")
+        .prepare(`SELECT a.email, a.user_id, MAX(s.date) AS last_date FROM accounts a LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")} GROUP BY a.email, a.user_id`)
         .all();
       return results.map((r) => ({ email: r.email, user_id: r.user_id, last_date: r.last_date ?? null }));
     },

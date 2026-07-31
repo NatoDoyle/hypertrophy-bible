@@ -878,6 +878,7 @@ function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } c
 
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
+let historyEdit = null;     // session_id currently open for correction on the history screen
 let quitPending = false;    // two-tap guard on ending a workout early
 // Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
 // Keyed by the EXERCISE ID being confirmed, not its array index: the superset
@@ -953,6 +954,14 @@ function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".
 // live `sess` to the pure functions.
 const loggedSetCount = (exId) => loggedWorkSets(sess.logged, exId);
 const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, from);
+
+// Clearing a pending confirm has to REPAINT, not just reset the flag. The stepper
+// handlers update their value in place (no re-render, deliberately), so a bare
+// `confirmSet = null` left the ⚠️ line and the "Tap again" button label on screen
+// describing a number the user had already corrected — a status contradicting the
+// state it reports on, and a button whose label lied about what the next tap does.
+// Returns true when the caller must re-render.
+const clearSetConfirm = () => { const was = confirmSet !== null; confirmSet = null; return was; };
 
 // Would banking index `idx` right now log something that looks like a typo? Binds
 // the live `sess` to session-core's pure isImplausibleSet, reading the same kg the
@@ -1136,16 +1145,17 @@ function renderPlayer(resting = 0) {
   // value. Update the adjacent aria-live .val instead; only re-render when the
   // stepper changes SHAPE (bodyweight "+ add weight" ↔ loaded −/+ stepper).
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
-    quitPending = false; confirmSet = null;
+    quitPending = false;
+    const repaint = clearSetConfirm();
     const was = sess.weights[sess.i];
     sess.weights[sess.i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
     const bw = e.equipment === "bodyweight";
-    if (bw && (was === 0 || sess.weights[sess.i] === 0)) return renderPlayer();
+    if (repaint || (bw && (was === 0 || sess.weights[sess.i] === 0))) return renderPlayer();
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[sess.i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[sess.i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.rir[sess.i]); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -1261,16 +1271,16 @@ function renderSupersetStation(L, P, resting = 0) {
   // a bodyweight stepper changes shape. #doner reads sess.* at click time already.
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
     quitPending = false;
-    confirmSet = null;
+    const repaint = clearSetConfirm();
     const i = +b.dataset.i, was = sess.weights[i];
     sess.weights[i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
     const bw = sess.ex[i].equipment === "bodyweight";
-    if (bw && (was === 0 || sess.weights[i] === 0)) return renderSupersetStation(L, P, 0);
+    if (repaint || (bw && (was === 0 || sess.weights[i] === 0))) return renderSupersetStation(L, P, 0);
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.rir[i]); });
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -1556,6 +1566,14 @@ async function renderProgress() {
   const autoAdaptNote = p.sessions_logged >= 4
     ? `<p class="muted" style="font-size:.85rem;text-align:center">📈 Your plan retunes itself each block from all of this — you don't have to adjust anything.</p>`
     : "";
+  // Every number on this screen is derived from the log, so the log has to be
+  // correctable from here — otherwise a mistyped weight is visibly wrong on the
+  // very page that reports it, with nothing the user can do about it.
+  const historyCard = p.sessions_logged > 0
+    ? `<div class="card"><b>📓 Your workouts</b>
+        <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
+        <button class="btn ghost" id="open-history">Review &amp; fix past workouts</button></div>`
+    : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
@@ -1581,6 +1599,7 @@ async function renderProgress() {
     : "";
   app.innerHTML = `<h1>Progress</h1>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
+    ${historyCard}
     ${prCard}
     <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
     <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
@@ -1600,6 +1619,7 @@ async function renderProgress() {
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
   wireLearnLinks();
+  if ($("#open-history")) $("#open-history").onclick = () => { tab = "history"; render(); };
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -1616,6 +1636,94 @@ async function renderProgress() {
     note.textContent = "📴 Saved offline — it'll sync when you're back online.";
     $("#logbw").after(note);
   };
+}
+
+// ---------- Workout history (correcting the log) ----------
+// A logged set used to be permanent — one mistyped weight was celebrated as a PR,
+// anchored the next session's suggestion, and sat in the plateau trends forever,
+// fixable only by wiping the account. This is the repair surface.
+//
+// "Take it back" VOIDS rather than deletes ("never lose logged data" is a standing
+// guardrail): the workout stays on this screen, greyed and reversible, and is
+// simply excluded from every engine that reads history. So the screen has to show
+// voided sessions — you can't offer undo for something you refuse to display.
+const sessionVolume = (sess) => (sess.sets ?? []).filter((x) => (x.set_type ?? "work") !== "warmup").length;
+
+async function renderHistory() {
+  app.innerHTML = `<h1>Your workouts</h1><p class="muted">Loading…</p>`;
+  let d;
+  try { d = await api("/api/sessions"); }
+  catch {
+    app.innerHTML = `<h1>Your workouts</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Your history loads when you reconnect. Nothing you've logged is lost.</p>
+      <button class="btn" id="rh">Try again</button></div>`;
+    $("#rh").onclick = () => renderHistory();
+    return;
+  }
+  const list = d.sessions || [];
+  if (historyEdit) {
+    const sess = list.find((x) => x.session_id === historyEdit);
+    if (!sess) { historyEdit = null; return renderHistory(); }
+    const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
+      <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
+      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeight(set.weight_kg)}" aria-label="weight for set ${i + 1}"
+        style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
+      <span class="muted">${unitLabel()} ×</span>
+      <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
+        style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
+    </div>`).join("");
+    app.innerHTML = `<h1>Fix this workout</h1>
+      <p class="muted">${esc(sess.session_name || "Workout")} · ${esc(new Date(sess.date).toLocaleDateString())}</p>
+      <div class="card">${rows || `<p class="muted">No sets on this workout.</p>`}</div>
+      <button class="btn" id="hsave">Save corrections</button>
+      <button class="btn ghost" id="hcancel">Cancel</button>`;
+    $("#hcancel").onclick = () => { historyEdit = null; renderHistory(); };
+    $("#hsave").onclick = async () => {
+      // Send the sets back WHOLE, preserving every field the server gave us
+      // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
+      // is bounded exactly like the original log, but anything we drop here is lost.
+      const sets = (sess.sets ?? []).map((set, i) => {
+        const { name, ...rest } = set; // `name` is a display-only field this screen added
+        const wv = parseFloat(app.querySelector(`[data-w="${i}"]`)?.value);
+        const rv = parseInt(app.querySelector(`[data-reps="${i}"]`)?.value, 10);
+        return { ...rest, weight_kg: Number.isFinite(wv) ? toKg(wv) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
+      });
+      const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
+      if (res.error) { say("Couldn't save that — try again."); return; }
+      historyEdit = null;
+      say("Workout corrected. Your trends have been recalculated.");
+      renderHistory();
+    };
+    return;
+  }
+  const rows = list.map((sess) => {
+    const voided = !!sess.voided_at;
+    const when = new Date(sess.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    return `<div class="card"${voided ? ' style="opacity:.55"' : ""}>
+      <div class="row"><div style="flex:1">
+        <b>${esc(sess.session_name || "Workout")}</b>${voided ? ' <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' <span class="chip">edited</span>' : ""}
+        <div class="muted" style="font-size:.85rem">${esc(when)} · ${sessionVolume(sess)} set${sessionVolume(sess) === 1 ? "" : "s"}</div>
+      </div></div>
+      ${voided
+        ? `<button class="btn ghost" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
+        : `<button class="btn ghost" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+           <button class="btn ghost" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
+    </div>`;
+  }).join("") || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
+  app.innerHTML = `<h1>Your workouts</h1>
+    <p class="muted">Mistyped a weight? Fix it here and every trend recalculates. Nothing is ever deleted — a workout you take back stays on this list and can be put straight back.</p>
+    ${rows}
+    <button class="btn ghost" id="hback">‹ Back to progress</button>`;
+  $("#hback").onclick = () => { tab = "progress"; render(); };
+  app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyEdit = b.dataset.edit; renderHistory(); });
+  const setVoid = async (sessionId, voided) => {
+    const res = await api("/api/session/void", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId, voided }) });
+    if (res.error) { say("Couldn't do that — try again."); return; }
+    say(voided ? "Taken back — it no longer counts toward your trends. You can put it back any time." : "Put back — it counts again.");
+    renderHistory();
+  };
+  app.querySelectorAll("[data-void]").forEach((b) => b.onclick = () => setVoid(b.dataset.void, true));
+  app.querySelectorAll("[data-unvoid]").forEach((b) => b.onclick = () => setVoid(b.dataset.unvoid, false));
 }
 
 // ---------- Fuel (nutrition: calorie/macro targets + daily intake log) ----------
@@ -2145,12 +2253,14 @@ async function renderLearnPage(slug) {
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
+  if (tab !== "history") historyEdit = null; // ...and an in-progress workout correction
   quitPending = false;
   discardPending = false; // an armed Discard must not survive a trip to another tab
   if (!uid) return renderOnboarding();
   nav.hidden = false;
   nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "today") renderToday();
+  else if (tab === "history") { nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === "progress")); renderHistory(); }
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();

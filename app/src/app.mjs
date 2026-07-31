@@ -33,6 +33,25 @@ const boundedNum = (v, max) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
 };
 
+// The ONE normalizer every write path for a logged set goes through — the log
+// route and the edit route both call it, so a bound tightened in one can never be
+// missing from the other (lesson 1: prefer a single source of truth to a fix
+// applied at one call site). Whitelisting is deliberate: an unknown field is
+// dropped, and `deload` MUST survive — progression anchoring and stall detection
+// both filter on it, and the whitelist silently dropping it once made the entire
+// deload-aware pipeline inert in production while unit tests (which bypass this
+// route) stayed green.
+const normalizeSet = (s) => ({
+  exercise: s.exercise,
+  set_type: s.set_type ?? "work",
+  weight_kg: boundedNum(s.weight_kg, MAX_SET_WEIGHT_KG),
+  reps: Math.round(boundedNum(s.reps, MAX_SET_REPS)),
+  ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
+  ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
+  ...(s.deload ? { deload: true } : {}),
+  completed_at: s.completed_at ?? new Date().toISOString(),
+});
+
 // A challenge (#10 social) still occupies its owner's one-at-a-time slot only
 // if it's non-terminal AND its target week hasn't passed yet — a stale
 // pending/active record whose week already ended is NOT open, even before
@@ -255,12 +274,15 @@ export function createApp(store, config = {}) {
     return c.json({ ok: true, exercise: custom });
   });
 
-  const requireUser = async (c) => {
+  // `body` is optional: a POST route that has ALREADY parsed its body passes it in
+  // rather than making this re-read the stream. (Hono does cache a parsed body, but
+  // depending on that is a silent coupling — an explicit hand-off can't rot.)
+  const requireUser = async (c, body = null) => {
     // The user_id IS the full account credential (possession model), so it must
     // NEVER travel in a URL — a `?u=` query string leaks it into access logs,
     // browser history, and any copied/shared link. Accept it only from the
     // X-HB-User header (GETs) or the POST body, both of which stay out of URLs.
-    const id = c.req.header("X-HB-User") || (await c.req.json().catch(() => ({}))).user_id;
+    const id = c.req.header("X-HB-User") || (body ?? await c.req.json().catch(() => ({}))).user_id;
     if (!id) return { error: c.json({ error: "no user" }, 400) };
     const user = await store.getUser(id);
     if (!user) return { error: c.json({ error: "unknown user" }, 404) };
@@ -792,24 +814,81 @@ export function createApp(store, config = {}) {
       ...(validLocalDate(body.local_date) ? { local_date: String(body.local_date).slice(0, 10) } : {}),
       program_ref: user.program.id,
       session_name: body.session_name ?? null,
-      sets: (body.sets ?? []).map((s) => ({
-        exercise: s.exercise,
-        set_type: s.set_type ?? "work",
-        weight_kg: boundedNum(s.weight_kg, MAX_SET_WEIGHT_KG),
-        reps: Math.round(boundedNum(s.reps, MAX_SET_REPS)),
-        ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
-        ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
-        // deload MUST round-trip: progression anchoring and stall detection both
-        // filter on it — the whitelist silently dropping it made the entire
-        // deload-aware pipeline inert in production while unit tests (which
-        // bypass this route) stayed green.
-        ...(s.deload ? { deload: true } : {}),
-        completed_at: s.completed_at ?? new Date().toISOString(),
-      })),
+      sets: (body.sets ?? []).map(normalizeSet),
     };
     await store.addSession(id, session);
     const all = await store.listSessions(id);
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
+  });
+
+  // ---- Correcting the log (Wave 163) -------------------------------------
+  // Until now a logged set was permanent: no edit, no delete, no route of any
+  // kind. One fat-fingered weight was celebrated as a PR, anchored the next
+  // session's suggestion, and sat in the plateau/cadence trends forever — fixable
+  // only by wiping the whole account. Wave 162 stopped the worst of them arriving;
+  // this is how a user fixes one that did.
+  //
+  // Voiding is a FLAG, never a DELETE. "Never lose logged data" is a standing
+  // guardrail, so the row survives untouched and stays visible on this screen —
+  // it's just excluded from every engine that reads history (the stores filter it
+  // inside listSessions). That also makes it reversible: void is a toggle.
+
+  // The history screen: recent sessions INCLUDING voided ones, because you can't
+  // offer "undo" for something you refuse to show.
+  app.get("/api/sessions", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    const all = await store.listSessions(id, { includeVoided: true });
+    // Resolve display names here rather than shipping the exercise DB to a screen
+    // that only needs labels — and include custom exercises, or a user's own lift
+    // would show as a raw slug on the one screen where they have to recognise it.
+    const custom = new Map((user.custom_exercises || []).map((e) => [e.id, e.name]));
+    const label = (exId) => custom.get(exId) ?? exerciseById.get(exId)?.name ?? exId;
+    // Newest first, capped — this is a correction surface, not an archive browser.
+    return c.json({ sessions: all.slice(-60).reverse().map((sess) => ({
+      ...sess,
+      sets: (sess.sets ?? []).map((set) => ({ ...set, name: label(set.exercise) })),
+    })) });
+  });
+
+  // Fix the numbers on a session already logged. Replaces the whole `sets` array
+  // (the client edits a session as a unit) through the SAME normalizer the log
+  // route uses, so an edit can't smuggle past a bound the original had to clear.
+  app.post("/api/session/update", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    if (!body.session_id) return c.json({ error: "session_id required" }, 400);
+    if (!Array.isArray(body.sets)) return c.json({ error: "sets required" }, 400);
+    // A session with no sets left is a session that didn't happen — void it rather
+    // than storing an empty husk that still counts as a trained day for the streak.
+    const sets = body.sets.map(normalizeSet).filter((x) => x.exercise);
+    const updated = await store.updateSession(id, body.session_id, (sess) => {
+      sess.sets = sets;
+      sess.edited_at = new Date().toISOString(); // an edited record says so
+      if (!sets.length) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      return sess;
+    });
+    if (!updated) return c.json({ error: "unknown session" }, 404);
+    // Report what was PERSISTED, not the local guess (lesson 21).
+    return c.json({ ok: true, session: updated });
+  });
+
+  // Void / un-void. Idempotent both ways: re-voiding keeps the ORIGINAL timestamp
+  // rather than sliding it forward, so "when did I take this back" stays true.
+  app.post("/api/session/void", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, body);
+    if (error) return error;
+    if (!body.session_id) return c.json({ error: "session_id required" }, 400);
+    const voided = body.voided !== false;
+    const updated = await store.updateSession(id, body.session_id, (sess) => {
+      if (voided) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      else delete sess.voided_at;
+      return sess;
+    });
+    if (!updated) return c.json({ error: "unknown session" }, 404);
+    return c.json({ ok: true, voided: !!updated.voided_at, session: updated });
   });
 
   // Progress: everything derived, nothing asked.
