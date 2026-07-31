@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -879,6 +879,13 @@ function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } c
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
 let quitPending = false;    // two-tap guard on ending a workout early
+// Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
+// Keyed by the EXERCISE ID being confirmed, not its array index: the superset
+// station shows two lifts at once (so one member's confirmation must not wave the
+// other through), and Swap / "do this later" / Unlink all renumber the array — an
+// index-keyed flag would then suppress the warning for whatever lift inherited that
+// slot. Cleared by any stepper touch (they've re-read the number) and once banked.
+let confirmSet = null;
 const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
 function startSession(templateSession) {
   sess = {
@@ -946,6 +953,25 @@ function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".
 // live `sess` to the pure functions.
 const loggedSetCount = (exId) => loggedWorkSets(sess.logged, exId);
 const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, from);
+
+// Would banking index `idx` right now log something that looks like a typo? Binds
+// the live `sess` to session-core's pure isImplausibleSet, reading the same kg the
+// logger will actually send (sess.weights holds DISPLAY units — a lb user's "225"
+// must be judged as 102 kg, not 225, or every lb session would be questioned).
+// Returns false once the user has confirmed THIS index, so the second tap banks it.
+const needsSetConfirm = (idx) => confirmSet !== sess.ex[idx]?.exercise
+  && isImplausibleSet(toKg(sess.weights[idx]), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+
+// The one-line warning shown in place of the usual button label. Names the number
+// it's questioning and what it's comparing against, so the answer is obvious at a
+// glance — and never accuses: a real jump is a tap away, not a blocked action.
+const setConfirmCue = (idx) => {
+  const ex = sess.ex[idx];
+  const ref = [ex?.last_kg, ex?.pr_watch?.load_kg].find((v) => typeof v === "number" && v > 0);
+  const reps = sess.reps[idx];
+  if (typeof reps === "number" && reps > 50) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
+  return `⚠️ <b>${dispWeight(toKg(sess.weights[idx]))} ${unitLabel()}</b> is a big jump${ref != null ? ` from the ${dispWeight(ref)} ${unitLabel()} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
+};
 
 // A brief, self-dismissing toast for the in-player PR moment (roadmap #1 slice b —
 // celebrate mid-session, not only in the end-of-session recap). Appended to <body>,
@@ -1075,7 +1101,8 @@ function renderPlayer(resting = 0) {
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
         <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
-      <button class="btn" id="done">Done — set ${sess.set + 1} of ${e.sets}</button>
+      ${confirmSet === e.exercise ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
+      <button class="btn" id="done">${confirmSet === e.exercise ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
@@ -1109,7 +1136,7 @@ function renderPlayer(resting = 0) {
   // value. Update the adjacent aria-live .val instead; only re-render when the
   // stepper changes SHAPE (bodyweight "+ add weight" ↔ loaded −/+ stepper).
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
-    quitPending = false;
+    quitPending = false; confirmSet = null;
     const was = sess.weights[sess.i];
     sess.weights[sess.i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
@@ -1117,8 +1144,8 @@ function renderPlayer(resting = 0) {
     if (bw && (was === 0 || sess.weights[sess.i] === 0)) return renderPlayer();
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[sess.i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[sess.i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[sess.i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[sess.i]); });
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -1133,6 +1160,10 @@ function renderPlayer(resting = 0) {
   };
   $("#done").onclick = () => {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
+    // One stray stepper tap must not poison the log: a set that dwarfs this lift's
+    // own history asks once first. Confirmed sets fall straight through.
+    if (needsSetConfirm(sess.i)) { confirmSet = e.exercise; return renderPlayer(0); }
+    confirmSet = null;
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
@@ -1212,6 +1243,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
+      ${confirmSet === m.exercise ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -1220,7 +1252,7 @@ function renderSupersetStation(L, P, resting = 0) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
-    <button class="btn" id="doner">Done — round ${round + 1} of ${paired}</button>
+    <button class="btn" id="doner">${[L, P].some((i) => confirmSet === sess.ex[i]?.exercise) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
@@ -1229,6 +1261,7 @@ function renderSupersetStation(L, P, resting = 0) {
   // a bodyweight stepper changes shape. #doner reads sess.* at click time already.
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
     quitPending = false;
+    confirmSet = null;
     const i = +b.dataset.i, was = sess.weights[i];
     sess.weights[i] = Math.max(0, Math.round((was + +b.dataset.w) * 4) / 4);
     saveSess();
@@ -1236,8 +1269,8 @@ function renderSupersetStation(L, P, resting = 0) {
     if (bw && (was === 0 || sess.weights[i] === 0)) return renderSupersetStation(L, P, 0);
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); setStepperVal(b, sess.reps[i]); });
+  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; confirmSet = null; const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); setStepperVal(b, sess.rir[i]); });
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -1245,6 +1278,12 @@ function renderSupersetStation(L, P, resting = 0) {
   });
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
+    // Same typo guard as the single-lift player, per MEMBER: a round banks two sets
+    // at once, so confirming one must not wave the other through (confirmSet holds
+    // one exercise id, and needsSetConfirm only clears for that exact lift).
+    const suspect = [L, P].find(needsSetConfirm);
+    if (suspect != null) { confirmSet = sess.ex[suspect].exercise; return renderSupersetStation(L, P, 0); }
+    confirmSet = null;
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];

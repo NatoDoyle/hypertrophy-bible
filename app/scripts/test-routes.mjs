@@ -903,6 +903,49 @@ try {
   ok("#cardio uncorroborated, the card stays silent while the plateau card still fires",
     quietProg.interference == null && (quietProg.stalls || []).length >= 2);
 
+  // ---- Wave 162: the logged-set trust boundary ----------------------------
+  // `rir` had been clamped at this door for waves while `weight_kg`/`reps` sat
+  // unbounded right beside it (lesson 16: the guard applied to ONE field). Auth is
+  // possession-of-UUID, so any client can post these. Driven through the REAL
+  // program (a fixed exercise id might not appear in this user's plan, and a test
+  // that can't reach the code it names passes vacuously — lesson 25).
+  const boundId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    // 2 days/week: the rotation returns to session 0 after the two logs below, so
+    // today's card shows the same exercise we poisoned (otherwise the last three
+    // assertions look at a different lift and quietly prove nothing).
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const boundEx = (await (await app.request("/api/today", { headers: { "X-HB-User": boundId } })).json()).session.exercises[0].exercise;
+  // A normal baseline first, so the absurd session below has a prior best to beat —
+  // without it there is no PR to detect and the ceiling assertion proves nothing.
+  await json("POST", "/api/session", { user_id: boundId, session_id: "bound-base", date: new Date(Date.now() - 3 * 86400000).toISOString(),
+    sets: [...Array(3).fill({ exercise: boundEx, weight_kg: 60, reps: 8 })] });
+  const boundRes = await json("POST", "/api/session", { user_id: boundId, session_id: "bound-1", date: new Date().toISOString(),
+    sets: [
+      { exercise: boundEx, weight_kg: 999999, reps: 5 },
+      { exercise: boundEx, weight_kg: 100, reps: 99999 },
+      { exercise: boundEx, weight_kg: "not-a-number", reps: -4 },
+    ] });
+  ok("#bounds a session with absurd numbers is still ACCEPTED (a 400 would strand an offline queue)", boundRes.status === 200);
+  ok("#bounds the absurd session still produced a PR — so the ceiling below is a real assertion, not a vacuous one",
+    (boundRes.data?.pr_xp ?? 0) > 0);
+  const boundProg = await (await app.request("/api/progress", { headers: { "X-HB-User": boundId } })).json();
+  // Read the persisted sets back the only way a client can: the records the engines
+  // derive from them. Unbounded, 999999 kg surfaces here as a ~1.4M kg estimated 1RM
+  // and anchors every future suggestion.
+  const heaviestPR = Math.max(0, ...(boundProg.personal_records ?? []).map((r) => r.e1rm_kg ?? r.load_kg ?? 0));
+  ok("#bounds no derived record can exceed the weight ceiling's own e1RM", heaviestPR > 0 && heaviestPR <= 1000 * (1 + 12 / 30) + 0.01);
+  const boundToday = await (await app.request("/api/today", { headers: { "X-HB-User": boundId } })).json();
+  const boundCard = (boundToday.session?.exercises ?? []).find((e) => e.exercise === boundEx);
+  ok("#bounds the outlier can't anchor the next suggested weight", boundCard != null && boundCard.suggested_kg <= 1000);
+  // last_kg rides the /api/today payload so the player can judge a set against the
+  // lift's OWN history (session-core's isImplausibleSet). A route whitelist dropping
+  // it would silently disable the whole typo guard — exactly the deload-flag bug
+  // this file exists for.
+  ok("#bounds /api/today carries last_kg, the reference the player's typo guard needs",
+    boundCard != null && typeof boundCard.last_kg === "number" && boundCard.last_kg > 0);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

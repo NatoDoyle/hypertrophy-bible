@@ -427,6 +427,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       ...(sug.layoff_days != null ? { eased: true } : {}),
       ...(ex.superset_with ? { superset_with: ex.superset_with, superset_with_name: name(ex.superset_with) } : {}),
       pr_watch: { e1rm_kg: prBests.e1rm[ex.exercise] ?? null, load_kg: prBests.load[ex.exercise] ?? null },
+      // What they actually lifted on THIS exercise last time. Already computed by
+      // suggestWeight; carried through so the player can spot a typo (a stray zero,
+      // lb into a kg field) against the lift's own history before banking it — see
+      // session-core's isImplausibleSet. Display/guard only, never stored.
+      last_kg: sug.last_kg ?? null,
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory

@@ -14,6 +14,25 @@ import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nu
 // YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
 const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
 
+// Hard bounds on a logged set's numbers. `rir` has been clamped at this door for
+// waves — `weight_kg` and `reps` sitting unbounded right beside it is lesson 16
+// exactly (the boundary guard applied to ONE field of a record), and auth here is
+// possession-of-UUID so any client can post. The blast radius of one bad number is
+// permanent and wide: it's celebrated as a PR (+50 XP), becomes that week's best in
+// progressionByExercise / stallDetect / progressionCadence, and suggestWeight then
+// adds an increment ON TOP of it. These ceilings sit far above anything a human
+// lifts (the raw deadlift record is ~500 kg; no prescribed band goes past 30 reps),
+// so they only ever catch garbage — the *ergonomic* guard against a realistic typo
+// (a stray zero, lb typed into a kg field) is the player's confirm, which judges a
+// set against that lift's OWN history. Clamp rather than reject: a 400 here would
+// strand a queued offline session, and losing logged data is the worse failure.
+export const MAX_SET_WEIGHT_KG = 1000;
+export const MAX_SET_REPS = 500;
+const boundedNum = (v, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
+};
+
 // A challenge (#10 social) still occupies its owner's one-at-a-time slot only
 // if it's non-terminal AND its target week hasn't passed yet — a stale
 // pending/active record whose week already ended is NOT open, even before
@@ -776,8 +795,8 @@ export function createApp(store, config = {}) {
       sets: (body.sets ?? []).map((s) => ({
         exercise: s.exercise,
         set_type: s.set_type ?? "work",
-        weight_kg: Number(s.weight_kg) || 0,
-        reps: Math.max(0, Math.round(Number(s.reps) || 0)),
+        weight_kg: boundedNum(s.weight_kg, MAX_SET_WEIGHT_KG),
+        reps: Math.round(boundedNum(s.reps, MAX_SET_REPS)),
         ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
         ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
         // deload MUST round-trip: progression anchoring and stall detection both

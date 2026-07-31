@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -358,6 +358,42 @@ check("formatWeekLabel: real ISO week keys and malformed/filler fallback", () =>
   assert.equal(formatWeekLabel("filler-18"), "filler-18", "non-ISO test fixture keys pass through unchanged, not thrown on");
   assert.equal(formatWeekLabel(undefined), "", "missing key never throws");
   assert.equal(formatWeekLabel(null), "");
+});
+
+// isImplausibleSet (Wave 162): the in-player typo guard. The two errors that
+// actually happen are a stray zero (~10x) and lb typed into a kg field (~2.2x);
+// the two things it must NEVER question are a lift with no history and a big
+// PROPORTIONAL jump on a small weight (2.5 -> 7.5 kg on a lateral raise is normal).
+check("isImplausibleSet: catches a stray zero and an lb/kg mix-up", () => {
+  assert.equal(isImplausibleSet(1000, 8, { lastKg: 100 }), true, "stray zero: 100 -> 1000");
+  // lb/kg mix-up: a kg-unit user who last lifted 102 kg thinks in lb and types 225.
+  assert.equal(isImplausibleSet(225, 5, { lastKg: 102 }), true, "the same load in lb typed into a kg field is ~2.2x");
+});
+
+check("isImplausibleSet: silent on real training, however strong the lifter", () => {
+  assert.equal(isImplausibleSet(102.5, 5, { lastKg: 100 }), false, "an ordinary 2.5 kg progression");
+  assert.equal(isImplausibleSet(250, 3, { lastKg: 240 }), false, "an elite lifter is never second-guessed — it judges against THEIR history");
+  assert.equal(isImplausibleSet(7.5, 15, { lastKg: 2.5 }), false, "3x on a lateral raise is normal: the absolute-jump floor keeps it quiet");
+  assert.equal(isImplausibleSet(20, 12, { lastKg: 10 }), false, `2x but only a 10 kg jump — under the ${IMPLAUSIBLE_MIN_JUMP_KG} kg floor`);
+});
+
+check("isImplausibleSet: BOTH the ratio and the absolute jump must be exceeded", () => {
+  // Exactly on both thresholds -> flagged (>=, so the boundary is inclusive).
+  assert.equal(isImplausibleSet(40, 8, { lastKg: 20 }), true, `${IMPLAUSIBLE_RATIO}x AND a ${IMPLAUSIBLE_MIN_JUMP_KG} kg jump`);
+  assert.equal(isImplausibleSet(39, 8, { lastKg: 20 }), false, "just under the ratio");
+  assert.equal(isImplausibleSet(119, 8, { lastKg: 60 }), false, "a 59 kg jump but just under 2x — a hard set, not a typo");
+});
+
+check("isImplausibleSet: no history to judge against is never questioned", () => {
+  assert.equal(isImplausibleSet(500, 5, {}), false, "a first-ever set on a lift has no reference");
+  assert.equal(isImplausibleSet(500, 5, { lastKg: null, priorBests: { load_kg: null, e1rm_kg: 200 } }), false, "e1rm is not a working weight — never used as the reference");
+  assert.equal(isImplausibleSet(500, 5, { lastKg: null, priorBests: { load_kg: 60 } }), true, "falls back to the best logged LOAD when last_kg is missing");
+  assert.equal(isImplausibleSet(0, 10, { lastKg: 60 }), false, "a bodyweight set (0 kg) is not a typo");
+});
+
+check("isImplausibleSet: a rep count past any prescribed band is flagged on its own", () => {
+  assert.equal(isImplausibleSet(20, 88, { lastKg: 20 }), true, "88 reps — no band in the engine goes near it, and the weight is unchanged");
+  assert.equal(isImplausibleSet(20, 30, { lastKg: 20 }), false, "30 reps IS a prescribed band (fat-loss pumpIso tops out at 20-30)");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
