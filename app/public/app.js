@@ -1558,6 +1558,17 @@ async function renderProgress() {
   // of the same three-line playbook regardless of cause. `p.adaptive` carries
   // volumeResponse's per-muscle signal — computed on every progress read since it
   // was written and never once rendered (a producer with no consumer, lesson 15).
+  // Going BACKWARDS is not a plateau and must not be dressed as one. Never shames
+  // (a standing guardrail) — a decline is nearly always fuel, sleep or life, and
+  // the app's job is to say that plainly and take the pressure off, not to imply
+  // the user failed. Shown ABOVE the plateau card: it's the more urgent read, and
+  // a lift can't sensibly be described as both at once.
+  const regrCard = (p.regressions || []).length
+    ? `<div class="card"><b>📉 ${p.regressions.length === 1 ? "A lift has" : p.regressions.length + " lifts have"} gone backwards</b>
+        <p class="muted">${esc(p.regressions.map((r) => r.name).join(", "))} — down about ${p.regressions[0].drop_pct}% from your recent best, for two weeks running. This is almost always recovery, not training: under-eating, short sleep, illness, or a stressful stretch. It is not lost muscle, and it comes back quickly.</p>
+        <p class="muted">I've stopped adding volume to those muscles until it turns around — more sets is the wrong answer to a body that isn't recovering. Eat enough, sleep, and keep showing up.</p>
+        <button class="btn ghost" data-learn="stimulus-fatigue-adaptation">Read: recovery &amp; adaptation</button></div>`
+    : "";
   const atCeiling = (p.adaptive || []).filter((a) => a.signal === "change");
   const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
   const stallCard = (p.stalls || []).length
@@ -1617,6 +1628,7 @@ async function renderProgress() {
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${autoAdaptNote}
+    ${regrCard}
     ${stallCard}
     ${interfCard}
     <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>

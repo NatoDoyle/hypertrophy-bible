@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal,
+  interferenceSignal, regressionDetect,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
@@ -632,7 +632,12 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const energyBalance = classifyEnergyBalance(bodyweightTrend(bwSeries), goal);
   const recovery = recoverySignal(checkins, energyBalance);
-  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, recovery);
+  // A muscle whose lifts are DECLINING must never be answered with more volume.
+  // Without this, a real regression eventually looks like an ordinary plateau (once
+  // the pre-drop weeks roll out of the stall window) and earns +2 sets — piling work
+  // onto someone already failing to recover from what they were doing.
+  const regressingMuscleIds = new Set(regressionDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
+  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds });
 }
 
 export function progressReport(user, sessions, bodyweights, customEx = [], now = null, checkins = []) {
@@ -697,6 +702,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // meaningful with a few weeks of data (stallDetect needs 4 weeks), so it stays
   // quiet for new users beyond the below-MEV nudge.
   const stalledMuscleIds = new Set(stalls.flatMap((x) => index.get(x.exercise)?.primary ?? []));
+  // Going BACKWARDS is a different thing from a plateau and needs different copy —
+  // and until now nothing anywhere could see it (stallDetect structurally can't: a
+  // real decline blows past its noise band).
+  const regressions = regressionDetect(sessions, index).map((r) => ({ ...r, name: name(r.exercise) }));
   const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds)
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
@@ -737,5 +746,5 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     recovery: recoverySignal(recentCheckins, energy),
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference };
 }

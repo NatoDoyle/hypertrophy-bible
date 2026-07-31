@@ -11,6 +11,7 @@ import {
   isoWeekKey,
   sessionWeekKey,
   graduatedStatus,
+  regressionDetect,
   GRADUATION,
   isHardSet,
   perMuscleWeeklyVolume,
@@ -732,6 +733,96 @@ check("graduatedStatus: it is TRAINING AGE, not a reward for progressing", () =>
   // lifter is exactly who needs the mesocycle wave and the volume tune, so the
   // promotion must not be gated on results.
   assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "beginner"), "intermediate");
+});
+
+// --- regression (Wave 166): going BACKWARDS, which nothing could see. -----
+// stallDetect structurally CANNOT flag a decline (it requires the window inside a
+// 2.5% noise band, and a real drop blows past it), so a lifter losing strength was
+// invisible — and once the pre-drop weeks rolled out of the window the new lower
+// level read as an ordinary plateau, whose answer is +2 sets. Exactly backwards.
+const regIdx = new Map([["bench", { name: "Bench Press", primary: ["chest"] }]]);
+// Weekly e1RM is Epley: w * (1 + reps/30). At 8 reps that's w * 1.2667.
+const regWeek = (weeksAgo, kg, extra = {}) => ({
+  date: new Date(Date.UTC(2026, 0, 5) + (20 - weeksAgo) * 7 * 86400000).toISOString(),
+  sets: [{ exercise: "bench", set_type: "work", weight_kg: kg, reps: 8, ...extra }],
+});
+
+check("regressionDetect: a sustained decline is flagged", () => {
+  // 100, 100 -> 88, 86: the last two weeks are both >5% below the 100 peak.
+  const r = regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 88), regWeek(1, 86)], regIdx);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].exercise, "bench");
+  assert.ok(r[0].drop_pct >= 5, `expected a real drop, got ${r[0].drop_pct}%`);
+});
+
+check("regressionDetect: ONE bad week is not a regression", () => {
+  // The classic false positive: illness, a bad night, a missed meal. It bounces
+  // back, and treating it as a decline would pull volume for no reason.
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 85), regWeek(1, 101)], regIdx), []);
+  // Even a drop that is still in progress needs TWO weeks before it counts.
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 100), regWeek(2, 100), regWeek(1, 85)], regIdx), []);
+});
+
+check("regressionDetect: normal noise and genuine progress are never flagged", () => {
+  assert.deepEqual(regressionDetect([regWeek(4, 100), regWeek(3, 99), regWeek(2, 100), regWeek(1, 99)], regIdx), [], "±1% is noise");
+  assert.deepEqual(regressionDetect([regWeek(4, 90), regWeek(3, 95), regWeek(2, 100), regWeek(1, 105)], regIdx), [], "climbing");
+});
+
+check("regressionDetect: a planned DELOAD is not a decline", () => {
+  // The whole point of a deload is lighter weeks. Counting them as regression would
+  // fire on every single mesocycle, every six weeks, forever.
+  const withDeload = [regWeek(4, 100), regWeek(3, 100), regWeek(2, 80, { deload: true }), regWeek(1, 80, { deload: true })];
+  assert.deepEqual(regressionDetect(withDeload, regIdx), []);
+});
+
+check("regressionDetect: a SLOW grind downward is caught, not just a cliff", () => {
+  // -1.5%/week compounding is -6% in a month and unambiguously a problem, but each
+  // week is barely below the one before it — measuring the drop against only the
+  // last few weeks could never accumulate enough to cross the threshold. This is
+  // why the peak lookback is wider than the sustained-for-two-weeks check.
+  const grind = Array.from({ length: 9 }, (_, i) => regWeek(9 - i, Math.round(120 * 0.985 ** i * 100) / 100));
+  const r = regressionDetect(grind, regIdx);
+  assert.equal(r.length, 1, "a sustained slow decline must be visible");
+  assert.ok(r[0].drop_pct >= 5);
+});
+
+check("regressionDetect: a new, STABLE lower baseline eventually stops being a decline", () => {
+  // Dropped long ago and flat ever since: that's the level they train at now — a
+  // plateau, for the plateau levers to answer, not a decline to keep flagging.
+  const settled = [
+    ...Array.from({ length: 2 }, (_, i) => regWeek(12 - i, 120)),
+    ...Array.from({ length: 9 }, (_, i) => regWeek(9 - i, 100)),
+  ];
+  assert.deepEqual(regressionDetect(settled, regIdx), []);
+});
+
+check("regressionDetect: too little history is silent, never a guess", () => {
+  assert.deepEqual(regressionDetect([regWeek(2, 100), regWeek(1, 80)], regIdx), []);
+  assert.deepEqual(regressionDetect([], regIdx), []);
+});
+
+check("deriveVolumeAdjust: a REGRESSING muscle is never given more volume", () => {
+  const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
+  const stalled = new Set(["chest"]);
+  // Baseline: stalled with headroom and recovered -> the engine adds. This is the
+  // exact branch a regression used to fall into once its drop went flat.
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 12 }, idx, stalled, {}), { chest: 2 });
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 12 }, idx, stalled, { regressingMuscleIds: new Set(["chest"]) }), {}, "holds instead of adding");
+});
+
+check("deriveVolumeAdjust: the regression gate is PER-MUSCLE, not whole-athlete", () => {
+  const idx = new Map([
+    ["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }],
+    ["back", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+  ]);
+  const out = deriveVolumeAdjust({}, { chest: 12, back: 12 }, idx, new Set(["chest", "back"]), { regressingMuscleIds: new Set(["chest"]) });
+  assert.deepEqual(out, { back: 2 }, "a fine back still earns its volume while a declining chest holds");
+});
+
+check("deriveVolumeAdjust: EASING still fires for a regressing muscle at its ceiling", () => {
+  // Pulling volume back is always safe — only the ADD branch is gated.
+  const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 24 }, idx, new Set(["chest"]), { regressingMuscleIds: new Set(["chest"]) }), { chest: -2 });
 });
 
 console.log(`\n${passed} test(s) passed.`);

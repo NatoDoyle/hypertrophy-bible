@@ -371,12 +371,18 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
 export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledMuscleIds = new Set(), context = {}) {
   const out = { ...(prevAdjust || {}) };
   const canAdd = !(context.underRecovered || context.inDeficit);
+  // A muscle whose lifts are going BACKWARDS never gets more volume, whatever the
+  // recovery read says. This gate is PER-MUSCLE rather than global (unlike the
+  // recovery/energy one, which is a whole-athlete state): a regressing chest must
+  // not be given more sets while a fine back legitimately still can be.
+  const regressing = context.regressingMuscleIds ?? new Set();
   for (const [m, sets] of Object.entries(weekVolume || {})) {
     const lm = muscleIndex.get(m);
     if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
+    const mayAdd = canAdd && !regressing.has(m);
     let step = 0;
     if (sets > lm.mrv.max) step = -2;                                              // over the ceiling → ease
-    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (canAdd ? 2 : 0) : -2; // stalled: add if room AND recovered, else hold/ease
+    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (mayAdd ? 2 : 0) : -2; // stalled: add if room AND recovered AND not declining, else hold/ease
     // not stalled and within range → progressing fine → hold (no change)
     const prev = prevAdjust?.[m] ?? 0;
     const range = lm.mrv.max - lm.mev.min;
@@ -645,9 +651,15 @@ export function progressionByExercise(sessions, exIndex) {
 // data always existed (progressionByExercise); nothing consumed it — a stalled
 // bench got "add a rep" forever. Deload-tagged sets are excluded (an easy week
 // is planned recovery, not a plateau).
-export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } = {}) {
+// Per-exercise WEEKLY BESTS, the shared substrate for every "is this lift going
+// anywhere?" question (stallDetect and regressionDetect both read it, so the two
+// can never disagree about what a week's best was). Two tracks: estimated 1RM for
+// reliable low-rep work, and best LOAD for pump-band work above RELIABLE_1RM_REPS
+// where Epley is guesswork. Deload-tagged sets are excluded everywhere — a planned
+// easy week is recovery, not a plateau and not a decline.
+function weeklyBestsByExercise(sessions) {
   const byEx = {};
-  const byExLoad = {}; // high-rep (pump-band) work: > RELIABLE_1RM_REPS, where Epley is guesswork — track best LOAD instead
+  const byExLoad = {};
   for (const s of sessions) {
     const wk = sessionWeekKey(s);
     for (const set of s.sets ?? []) {
@@ -664,6 +676,11 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
       }
     }
   }
+  return { byEx, byExLoad };
+}
+
+export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } = {}) {
+  const { byEx, byExLoad } = weeklyBestsByExercise(sessions);
   // Stalled = the recent window sits inside the noise band AND shows NO net
   // progress across it (the latest week is not meaningfully above the earliest).
   // This flags the textbook plateau (identical numbers every week: latest ==
@@ -698,6 +715,58 @@ export function stallDetect(sessions, exIndex, { minWeeks = 4, noisePct = 2.5 } 
     if (Object.keys(byEx[ex] ?? {}).length >= Object.keys(weekMap).length) continue;
     const hi = flatWindow(weekMap);
     if (hi != null) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks_flat: minWeeks, best_load_kg: hi, basis: "load" });
+  }
+  return out;
+}
+
+// REGRESSION — going BACKWARDS, which the engine could not see at all
+// (considerations #2, finding 2C). Three things were true together:
+//   1. suggestWeight's only reaction to a bad session is "hold the weight and build
+//      reps" — textbook double progression, and correct for one bad day.
+//   2. stallDetect structurally CANNOT see a real decline: it requires the recent
+//      window to sit inside a 2.5% noise band, and a genuine drop blows straight
+//      past that. So a lifter losing strength was invisible while it happened.
+//   3. Once the pre-drop weeks rolled out of the window, the NEW, LOWER level went
+//      flat — and read as an ordinary plateau. deriveVolumeAdjust's answer to a
+//      plateau with headroom is +2 sets: MORE volume, to someone already failing to
+//      recover from what they were doing. Exactly backwards.
+//
+// Sustained by construction: the last TWO weeks must both sit at least `dropPct`
+// below the window's peak. One bad week — illness, a bad night, a missed meal —
+// bounces back and must never be treated as a decline. `dropPct` sits well clear of
+// stallDetect's 2.5% noise band so the two can't both claim the same lift.
+export function regressionDetect(sessions, exIndex, { minWeeks = 4, lookbackWeeks = 8, dropPct = 5 } = {}) {
+  const { byEx, byExLoad } = weeklyBestsByExercise(sessions);
+  const declined = (weekMap) => {
+    const weeks = Object.keys(weekMap).sort();
+    if (weeks.length < minWeeks) return null;
+    // The peak is taken over a LONGER window than the "is it sustained?" check.
+    // Measuring the drop against only the last few weeks caps how much decline can
+    // ever accumulate inside the window, so a slow grind downward — say -1.5%/week,
+    // which is -6% in a month and unambiguously a problem — could never cross the
+    // threshold, because each week is barely below the one before it. Judging the
+    // last two weeks against the best of the recent PAST is also simply how a person
+    // reads their own log: "I'm well down on what I was doing."
+    const peakWindow = weeks.slice(-lookbackWeeks).map((w) => weekMap[w]);
+    const peak = Math.max(...peakWindow);
+    if (!(peak > 0)) return null;
+    const floor = peak * (1 - dropPct / 100);
+    const lastTwo = peakWindow.slice(-2);
+    if (lastTwo.length < 2 || !lastTwo.every((v) => v <= floor)) return null;
+    return { peak, latest: peakWindow[peakWindow.length - 1] };
+  };
+  const out = [];
+  for (const [ex, weekMap] of Object.entries(byEx)) {
+    // Same majority-of-weeks reciprocity stallDetect uses, so a lift logged on both
+    // tracks is reported once, from whichever track has more of its history.
+    if (Object.keys(byExLoad[ex] ?? {}).length > Object.keys(weekMap).length) continue;
+    const d = declined(weekMap);
+    if (d) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, basis: "e1rm", peak: Math.round(d.peak * 10) / 10, latest: Math.round(d.latest * 10) / 10, drop_pct: Math.round(((d.peak - d.latest) / d.peak) * 1000) / 10 });
+  }
+  for (const [ex, weekMap] of Object.entries(byExLoad)) {
+    if (Object.keys(byEx[ex] ?? {}).length >= Object.keys(weekMap).length) continue;
+    const d = declined(weekMap);
+    if (d) out.push({ exercise: ex, name: exIndex.get(ex)?.name ?? ex, basis: "load", peak: Math.round(d.peak * 10) / 10, latest: Math.round(d.latest * 10) / 10, drop_pct: Math.round(((d.peak - d.latest) / d.peak) * 1000) / 10 });
   }
   return out;
 }

@@ -1085,6 +1085,44 @@ try {
   ok("#grad a user who sets a HIGHER status keeps it — graduation promotes, never demotes",
     afterManual.profile?.training_status === "advanced");
 
+  // ---- Wave 166: regression ------------------------------------------------
+  // A lifter going BACKWARDS was invisible: stallDetect structurally can't flag a
+  // decline (it needs the window inside a 2.5% noise band), and once the pre-drop
+  // weeks rolled out, the new lower level read as an ordinary plateau — whose
+  // answer is +2 sets, to someone already failing to recover.
+  const regId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const regHdr = { headers: { "X-HB-User": regId } };
+  const regEx = (await (await app.request("/api/today", regHdr)).json()).session.exercises[0].exercise;
+  // Peak for two weeks, then two weeks well below it — dated relative to now.
+  const regPlan = [[5, 100], [4, 100], [2, 86], [1, 84]];
+  for (const [wksAgo, kg] of regPlan) {
+    await json("POST", "/api/session", { user_id: regId, session_id: `reg-${wksAgo}`,
+      date: new Date(Date.now() - wksAgo * 7 * 86400000).toISOString(),
+      sets: [...Array(3).fill({ exercise: regEx, weight_kg: kg, reps: 8 })] });
+  }
+  const regProg = await (await app.request("/api/progress", regHdr)).json();
+  ok("#regress a sustained decline is reported end-to-end", (regProg.regressions ?? []).length === 1 && regProg.regressions[0].exercise === regEx);
+  ok("#regress it quantifies the drop honestly rather than just labelling it", regProg.regressions[0].drop_pct >= 5);
+  ok("#regress and it is NOT also called a plateau — a lift can't be both", (regProg.stalls ?? []).every((x) => x.exercise !== regEx));
+
+  // The negative twin: identical shape, but recovered. Silence is the common case.
+  const okId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const okHdr = { headers: { "X-HB-User": okId } };
+  const okEx = (await (await app.request("/api/today", okHdr)).json()).session.exercises[0].exercise;
+  for (const [wksAgo, kg] of [[5, 100], [4, 100], [2, 86], [1, 101]]) {
+    await json("POST", "/api/session", { user_id: okId, session_id: `okr-${wksAgo}`,
+      date: new Date(Date.now() - wksAgo * 7 * 86400000).toISOString(),
+      sets: [...Array(3).fill({ exercise: okEx, weight_kg: kg, reps: 8 })] });
+  }
+  ok("#regress one bad week that bounced back is NOT flagged",
+    ((await (await app.request("/api/progress", okHdr)).json()).regressions ?? []).length === 0);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
