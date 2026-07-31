@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
@@ -299,6 +299,43 @@ export function createApp(store, config = {}) {
     // credential so it's fine in the query, unlike user_id). Drives the daily-flow
     // done-state so "logged today" matches the day the user is actually living.
     const clientDay = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : nowISO.slice(0, 10); })();
+    // GRADUATION (considerations #2, finding 2F). training_status was set once at
+    // onboarding and changed by NOTHING afterwards, so a user who joined as a
+    // beginner and has trained hard ever since stayed on beginner volume with no
+    // mesocycle, no deload, no accessory rotation and no volume tune — forever.
+    // Checked BEFORE the block-boundary rotation below, because a promotion starts
+    // a fresh block; the rotation then sees block_index 0 and correctly no-ops.
+    const earnedStatus = graduatedStatus(sessions, user.profile?.training_status);
+    if (earnedStatus && !user.program?.custom) {
+      const promoted = await store.updateUser(id, (u) => {
+        // Re-check inside the CAS on the FRESH read: a concurrent Settings save may
+        // already have changed the status (or made the plan custom), and this must
+        // not clobber it. Re-derive from the fresh copy rather than trusting the
+        // outer read (lesson 21: act on what's actually stored).
+        const fresh = graduatedStatus(sessions, u.profile?.training_status);
+        if (!fresh || u.program?.custom) return u;
+        u.profile = { ...u.profile, training_status: fresh };
+        // A promotion RAISES the volume target (mev.min -> mav.min, or -> mav.max).
+        // Start a fresh block so the mesocycle's own week-1 ramp (0.7x) walks them
+        // into it, instead of the new target landing whole overnight.
+        const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+        u.program = program; u.plan_rationale = rationale;
+        u.plan_meta = {
+          ...meta,
+          block_start: nowISO,
+          block_index: 0,
+          rotation_base: sessions.filter((x) => !x.program_ref || x.program_ref === program.id).length,
+          rotated_at: nowISO,
+          volume_adjust: u.plan_meta?.volume_adjust ?? {},
+          // Announced ONCE (buildToday clears it the moment a session is logged
+          // under the new block) — a step up you earned is a win to celebrate
+          // (Goal 4), not a settings change to discover.
+          graduated_to: fresh,
+        };
+        return u;
+      }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+      if (promoted) user = promoted;
+    }
     // NEW MESOCYCLE -> rotate the accessories. Compounds keep their ranking so
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are

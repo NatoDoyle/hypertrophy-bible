@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 
 let pass = 0, fail = 0;
@@ -1031,6 +1031,59 @@ try {
   ok("#history another user cannot void a session they don't own (user_id is in the WHERE)", crossRes.status === 404);
   ok("#history and the owner's session is untouched by that attempt",
     (await (await app.request("/api/progress", histHdr)).json()).sessions_logged === 2);
+
+  // ---- Wave 164: beginners graduate --------------------------------------
+  // training_status was captured once at onboarding and changed by NOTHING, so a
+  // beginner stayed on mev.min volume with no mesocycle, no deload EVER, no
+  // accessory rotation and no volume tune — Goal 2's novice->Olympia arc failing
+  // at its first transition. Driven through the real route, and asserted on the
+  // GATES the status controls, not just the field itself (the field changing means
+  // nothing if blockPhase and the tune don't follow it).
+  const gradId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const gradHdr = { headers: { "X-HB-User": gradId } };
+  const beforeGrad = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad a beginner starts with no mesocycle at all — no wave, and no deload ever",
+    beforeGrad.session.block == null && beforeGrad.session.beginner === true);
+  const totalTarget = (plan) => Object.values(plan.rationale?.volume_by_muscle ?? {}).reduce((a, v) => a + (v.target_sets ?? 0), 0);
+  const beginnerTarget = totalTarget(await (await app.request("/api/plan/explain", gradHdr)).json());
+
+  // Log a real training age: distinct ISO weeks, twice a week, ending today. Dated
+  // RELATIVE to now — /api/today reads the real clock for layoff/mesocycle logic.
+  const gradEx = beforeGrad.session.exercises[0].exercise;
+  for (let w = GRADUATION.intermediate.weeks; w > 0; w--) {
+    for (let n = 0; n < 2; n++) {
+      await json("POST", "/api/session", { user_id: gradId, session_id: `grad-${w}-${n}`,
+        date: new Date(Date.now() - (w * 7 + n) * 86400000).toISOString(),
+        sets: [...Array(3).fill({ exercise: gradEx, weight_kg: 60, reps: 8 })] });
+    }
+  }
+  const afterGrad = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad the promotion fires on /api/today once the training age is there",
+    afterGrad.session.beginner === false);
+  ok("#grad and it's ANNOUNCED as a win, not left to be discovered",
+    /not a beginner any more/i.test(afterGrad.session.coach_note || ""));
+  // The gates the status actually controls:
+  ok("#grad the mesocycle now exists — so a deload will finally happen", afterGrad.session.block != null);
+  ok("#grad the promotion starts a FRESH block, so the higher target ramps in via week 1 rather than landing whole",
+    afterGrad.session.block.week === 1);
+  const gradPlan = await (await app.request("/api/plan/explain", gradHdr)).json();
+  ok("#grad the plan was regenerated at a genuinely HIGHER volume target (mev.min -> mav.min), not just relabelled",
+    beginnerTarget > 0 && totalTarget(gradPlan) > beginnerTarget);
+  ok("#grad the stored profile itself moved, not only the derived card", gradPlan.profile?.training_status === "intermediate");
+  // Idempotence: a second call must not re-announce or re-reset the block.
+  const secondCall = await (await app.request("/api/today", gradHdr)).json();
+  ok("#grad a second /api/today doesn't re-promote or churn the block",
+    secondCall.session.block.week === afterGrad.session.block.week);
+  // Never demotes: an explicit Settings save to a HIGHER status must stick, and the
+  // graduation check must not pull it back down to what the log alone has earned.
+  await json("POST", "/api/plan/regenerate", { user_id: gradId, profile: { ...gradPlan.profile, training_status: "advanced" } });
+  await (await app.request("/api/today", gradHdr)).json(); // give graduation a chance to (wrongly) pull it back
+  const afterManual = await (await app.request("/api/plan/explain", gradHdr)).json();
+  ok("#grad a user who sets a HIGHER status keeps it — graduation promotes, never demotes",
+    afterManual.profile?.training_status === "advanced");
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

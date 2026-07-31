@@ -10,6 +10,8 @@ import {
   stallDetect,
   isoWeekKey,
   sessionWeekKey,
+  graduatedStatus,
+  GRADUATION,
   isHardSet,
   perMuscleWeeklyVolume,
   volumeVsLandmarks,
@@ -679,6 +681,57 @@ check("interferenceSignal: silent when a lower-body injury better explains the s
 check("interferenceSignal: an unknown/custom exercise is skipped, never guessed into a half", () => {
   const r = ifRun({ stalls: [...IF_STALLS, { exercise: "mystery-machine", name: "Mystery Machine", weeks_flat: 5 }] });
   assert.deepEqual(r.stalled_lower.map((s) => s.exercise), ["back-squat", "romanian-deadlift"]);
+});
+
+// --- graduation (Wave 164): training_status was captured once at onboarding and
+// changed by nothing afterwards, so a beginner stayed on beginner volume, with no
+// mesocycle, no deload and no volume tune, forever. ---
+const gradSessions = (weeks, perWeek = 2) => {
+  const out = [];
+  for (let w = 0; w < weeks; w++) for (let n = 0; n < perWeek; n++) {
+    const d = new Date(Date.UTC(2026, 0, 5) + w * 7 * 86400000 + n * 86400000);
+    out.push({ date: d.toISOString(), sets: [{ exercise: "barbell-bench-press", weight_kg: 60, reps: 8 }] });
+  }
+  return out;
+};
+
+check("graduatedStatus: a beginner with enough logged training age is promoted", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "beginner"), "intermediate");
+});
+
+check("graduatedStatus: not yet — each threshold is required on its own", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks - 1, 2), "beginner"), null, "enough sessions, too few distinct weeks");
+  // 26 distinct weeks but only ONE session each: showing up occasionally is not a
+  // training history, and the session floor is what says so.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 1), "beginner"), null, "enough weeks, too few sessions");
+});
+
+check("graduatedStatus: PROMOTES ONLY — a layoff or a quiet month never takes tools away", () => {
+  assert.equal(graduatedStatus(gradSessions(2, 2), "intermediate"), null, "a thin log never demotes a declared intermediate");
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "intermediate"), null, "already at what the log earned — no change");
+  assert.equal(graduatedStatus(gradSessions(300, 3), "advanced"), null, "advanced is the top — nothing above it to earn");
+});
+
+check("graduatedStatus: the advanced tier needs its own, much longer horizon", () => {
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks, 2), "intermediate"), "advanced");
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks - 1, 2), "intermediate"), null);
+  // A beginner whose log clears the advanced bar skips straight there — the log is
+  // the evidence, not a ladder that has to be climbed one rung at a time.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.advanced.weeks, 2), "beginner"), "advanced");
+});
+
+check("graduatedStatus: empty sessions don't count toward training age", () => {
+  const empty = gradSessions(GRADUATION.intermediate.weeks, 2).map((s) => ({ ...s, sets: [] }));
+  assert.equal(graduatedStatus(empty, "beginner"), null, "an emptied/voided session is not a trained day");
+  assert.equal(graduatedStatus([], "beginner"), null);
+  assert.equal(graduatedStatus(undefined, "beginner"), null, "no history never throws");
+});
+
+check("graduatedStatus: it is TRAINING AGE, not a reward for progressing", () => {
+  // Every session identical — zero progress across the whole history. A stalled
+  // lifter is exactly who needs the mesocycle wave and the volume tune, so the
+  // promotion must not be gated on results.
+  assert.equal(graduatedStatus(gradSessions(GRADUATION.intermediate.weeks, 2), "beginner"), "intermediate");
 });
 
 console.log(`\n${passed} test(s) passed.`);

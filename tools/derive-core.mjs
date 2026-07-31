@@ -203,6 +203,55 @@ export const sessionWeekKey = (s) => {
   return k.includes("NaN") ? isoWeekKey(s.date) : k;
 };
 
+// TRAINING-AGE GRADUATION. `training_status` was captured once at onboarding and
+// then never changed by anything — so a user who joined as a beginner and has
+// trained hard for eighteen months was STILL being fed beginner volume (mev.min),
+// a 12-set session cap, 3-set compounds, and a plan that had literally never
+// changed: beginners are exempt from the mesocycle wave (so, no deload EVER), the
+// block-boundary accessory rotation, the volume auto-tune, DUP, and the taper.
+// Goal 2's "never heard of a gym -> Mr. Olympia" arc was failing at its very first
+// transition, silently, for exactly the users who'd earned the next step.
+//
+// Training status is TRAINING AGE, so this reads time-under-the-bar and nothing
+// else. Deliberately NOT gated on progress: training age isn't a reward for
+// results, and gating it that way would withhold the mesocycle wave and the volume
+// tune from a stalled lifter — precisely the person those tools exist for.
+//
+// Weeks are DISTINCT TRAINED weeks, not calendar weeks since signup: six months of
+// showing up twice a week is a training history; six months of one session in
+// January is not. Sessions are counted too, so a single set on 26 scattered
+// Mondays can't graduate anyone.
+//
+// The thresholds are practice-based (KB training-status.md grades its own bands
+// B/D — "beginner 0-1yr, intermediate 1-3yr, advanced 3+yr" — and we only know the
+// training the user has logged WITH US, on top of whatever they declared). They
+// are set conservatively: promoting late costs a user some tools, promoting early
+// hands a novice a program they can't recover from.
+export const GRADUATION = {
+  // ~6 months of twice-a-week training, on top of a declared "0-1 years".
+  intermediate: { weeks: 26, sessions: 40 },
+  // ~2.5 years more, on top of a declared "1-3 years" -> comfortably past 3.
+  advanced: { weeks: 130, sessions: 250 },
+};
+const STATUS_RANK = { beginner: 0, intermediate: 1, advanced: 2 };
+
+// The status this person's logged history has earned, or null if it's unchanged.
+// PROMOTES ONLY — never demotes. A layoff, an injury, or a quiet month must never
+// take tools away from someone who has already earned them, and a user who
+// declared a status above their logged history keeps it (they told us their real
+// training age; our log only knows the part that happened here).
+export function graduatedStatus(sessions, currentStatus) {
+  const cur = STATUS_RANK[currentStatus] ?? 0;
+  if (cur >= STATUS_RANK.advanced) return null;
+  const real = (sessions ?? []).filter((s) => (s.sets ?? []).length > 0);
+  const weeks = new Set(real.map(sessionWeekKey)).size;
+  const earned = weeks >= GRADUATION.advanced.weeks && real.length >= GRADUATION.advanced.sessions ? "advanced"
+    : weeks >= GRADUATION.intermediate.weeks && real.length >= GRADUATION.intermediate.sessions ? "intermediate"
+    : null;
+  if (!earned || STATUS_RANK[earned] <= cur) return null;
+  return earned;
+}
+
 // Weekday keys for the weekly training-commitment device (Mon-first, matching
 // isoWeekKey's ISO convention) — the single source of truth so the API's
 // day-name validation and the push sweep's "is today a committed day" check

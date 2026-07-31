@@ -345,6 +345,18 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}`;
     coach_note = coach_note ? `${msg} ${coach_note}` : msg;
   }
+  // GRADUATION: the user's logged training age crossed a tier, so the plan just
+  // stepped up. Announce it as the win it is (Goal 4) rather than letting a bigger,
+  // differently-structured program appear unexplained. Rides the same
+  // announced-once window as the block rotation above (`rotated_at`), so it clears
+  // itself the moment a session is logged under the new block.
+  const graduatedTo = user.plan_meta?.graduated_to;
+  if (graduatedTo && rotatedAt && !sessions.some((s) => s.date && s.date > rotatedAt)) {
+    const win = graduatedTo === "advanced"
+      ? `🎓 You've trained long enough to be programmed as an ADVANCED lifter. Your volume targets step up, your hardest sessions get bigger, and your rep ranges now vary day to day. This is years of showing up, paying off.`
+      : `🎓 You're not a beginner any more — and I've stopped programming you like one. From today your volume steps up, your weeks build toward a peak and then deload, and your accessories refresh each block. You earned this by showing up.`;
+    coach_note = coach_note ? `${win} ${coach_note}` : win;
+  }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
   // Coach's "welcome back — I eased your weights" claim matches what's on the card.
   const lastSessionMs = Math.max(0, ...sessions.filter((s) => s.date).map((s) => +new Date(s.date)));
