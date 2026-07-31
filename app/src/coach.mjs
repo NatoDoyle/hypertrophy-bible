@@ -277,7 +277,22 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // Defaults to beginner (the safe, plainer default) when training_status is unset.
   const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
-  const block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
+  let block = blockPhase(now, user.plan_meta?.block_start ?? user.created_at, user.profile?.training_status);
+  // A REACTIVE deload, brought forward because training said so rather than
+  // because the calendar did (the KB's third plateau lever). /api/today decides
+  // whether one is due and stamps the ISO WEEK it fired in — a week, not a day, so
+  // the whole week deloads consistently no matter which days the user opens the app,
+  // and the stamp can't slide forward mid-week as new sessions change the signal.
+  // Rewrites the phase in place so every downstream deload branch (sets, RIR, load
+  // ease) applies unchanged — one mechanism, two triggers.
+  if (block && now && user.plan_meta?.reactive_deload?.week === isoWeekKey(now)) {
+    block = {
+      ...block,
+      phase: "deload",
+      setScale: 0.5,
+      note: `Deload week — brought forward. Your hardest lifts have gone flat at the top of what you can recover from, and at that point more sets is the one thing that can't help. Half the sets, ~10% lighter, well shy of failure: this is where the work you've already done turns into growth.`,
+    };
+  }
   // Is a goal event close enough to taper for? (null unless the user set one AND
   // it's inside the taper window — see taperPhase's comment for why this
   // OVERRIDES the mesocycle wave below rather than compounding with it.)
@@ -342,7 +357,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const tuned = bumped.length || eased.length
       ? ` Based on how you've been responding, I've ${[bumped.length ? `added volume for your ${bumped.join(", ")}` : "", eased.length ? `eased off your ${eased.join(", ")}` : ""].filter(Boolean).join(" and ")}.`
       : "";
-    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}`;
+    // If a lift got CHANGED because it plateaued (not just rotated for variety),
+    // name it — an exercise vanishing from your plan without explanation reads as
+    // the app losing track, and this one is a deliberate coaching decision.
+    const swapped = (user.plan_meta?.swapped_this_block ?? []).map((id) => name(id));
+    const swapNote = swapped.length
+      ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
+      : "";
+    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${swapNote}`;
     coach_note = coach_note ? `${msg} ${coach_note}` : msg;
   }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just
@@ -537,6 +559,52 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
 // is generated with volumeAdjust applied — a muscle that keeps stalling gets more
 // volume over time, one at its ceiling gets eased, all bounded to MEV↔MRV. Pure
 // derive-core does the math; this just resolves the muscle index + stalled muscles.
+// THE EXERCISE-VARIATION LEVER (considerations #2, finding 2B). The KB's plateau
+// playbook is an ORDER — volume → effort → deload → change exercise
+// (logging-and-plateaus.md, Grade C) — and the engine implemented only the first.
+// Accessories rotated every block UNCONDITIONALLY (variety, not a response to
+// anything) and compounds never rotated at all, so a stalled bench press could
+// never be swapped by any code path in the app.
+//
+// Which lifts to swap: the ones stallDetect flags AND that were actually trained
+// recently. The recency filter is load-bearing, not a nicety — stallDetect reads
+// the last N weeks that HAVE data, so an exercise that stops being trained keeps
+// its final flat weeks forever and stays flagged for good. Without this, one
+// plateau would exile a lift from the plan permanently.
+const STALE_STALL_DAYS = 21;
+export function stalledExerciseIds(sessions, customEx = [], now = null) {
+  const { index } = resolveEx(customEx);
+  const window = adaptiveStallWindow(progressionCadence(sessions, index));
+  const flagged = stallDetect(sessions, index, { minWeeks: window }).map((x) => x.exercise);
+  if (!now) return flagged;
+  const nowMs = +new Date(now);
+  return flagged.filter((exId) => {
+    const last = lastAnyDateForExercise(sessions, exId);
+    return last != null && (nowMs - +new Date(last)) / 86400000 <= STALE_STALL_DAYS;
+  });
+}
+
+// THE DELOAD LEVER (the same finding). The KB puts "manage fatigue (deload)"
+// third, BEFORE changing the exercise — but the only deloads that existed were the
+// calendar week-6 one and the layoff comeback ease, neither of which is a response
+// to how training is actually going, and the user couldn't ask for one either.
+//
+// Fires only for a muscle stalled AT its recoverable ceiling — `volumeResponse`'s
+// "change" signal, which the engine has been computing on every /api/progress call
+// and throwing away (nothing rendered it, nothing acted on it: a producer with no
+// consumer, lesson 15). Adding sets there is the one thing that can't help, which
+// is exactly why the KB reaches for a deload instead.
+//
+// Bounded hard: never in week 1-2 (a block that has barely started has no fatigue
+// to shed), never during a scheduled deload week, and at most ONCE per block.
+const REACTIVE_DELOAD_MIN_WEEK = 3;
+export function reactiveDeloadDue(responses, block, plan_meta, blockIndex) {
+  if (!block || block.phase === "deload") return false;
+  if (block.week < REACTIVE_DELOAD_MIN_WEEK) return false;
+  if ((plan_meta?.reactive_deload?.block ?? null) === blockIndex) return false; // once per block
+  return (responses ?? []).some((r) => r.signal === "change");
+}
+
 export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context = {}) {
   const { index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);

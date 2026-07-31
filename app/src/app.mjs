@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust } from "./coach.mjs";
+import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
@@ -384,11 +384,18 @@ export function createApp(store, config = {}) {
             bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
             eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
           };
-          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
+          // THE EXERCISE-CHANGE LEVER (the KB's 4th plateau lever, previously absent):
+          // lifts this person has genuinely plateaued on are demoted below every
+          // alternative for their muscle, so the new block offers a different angle
+          // rather than the same stalled movement. Recency-filtered, or a swapped-out
+          // lift would stay flagged forever and never come back (see stalledExerciseIds).
+          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO);
+          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
+            swapped_this_block: stalledExercises, // what got changed, for the coach note
             block_index: blockIndex,
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
@@ -398,6 +405,33 @@ export function createApp(store, config = {}) {
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
         if (updated) user = updated;
+      }
+    }
+    // REACTIVE DELOAD (considerations #2, finding 2B — the KB's third plateau lever,
+    // "manage fatigue", which had no code path at all). Fires when a muscle is
+    // stalled AT its recoverable ceiling — `volumeResponse`'s "change" signal, which
+    // the engine has been computing on every progress read and discarding (nothing
+    // rendered it, nothing acted on it). Adding sets there is the one response that
+    // can't help, which is exactly why the KB reaches for a deload instead.
+    //
+    // Read from progressReport rather than re-deriving: one definition of the signal,
+    // not two that can drift (the maintenance/hold filtering matters here too — a
+    // muscle a specialization block deliberately holds low must never trigger this).
+    const rdBlockStart = user.plan_meta?.block_start;
+    const rdBlock = blockPhase(nowISO, rdBlockStart ?? user.created_at, user.profile?.training_status);
+    if (rdBlock && rdBlockStart && !user.program?.custom) {
+      const rdBlockIndex = Math.max(0, Math.floor((Date.now() - +new Date(rdBlockStart)) / (7 * 6 * 86400000)));
+      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins);
+      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex)) {
+        const stamped = await store.updateUser(id, (u) => {
+          // Precondition re-checked inside the CAS against the FRESH read — a
+          // concurrent request may have stamped this block already, and stamping
+          // twice would move the week forward and deload two weeks running.
+          if ((u.plan_meta?.reactive_deload?.block ?? null) === rdBlockIndex) return u;
+          u.plan_meta = { ...(u.plan_meta ?? {}), reactive_deload: { block: rdBlockIndex, week: isoWeekKey(nowISO) } };
+          return u;
+        }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+        if (stamped) user = stamped; // act on what was PERSISTED, not the local guess (lesson 21)
       }
     }
     const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === clientDay));

@@ -491,5 +491,45 @@ ok("#D2 a SEVERELY short muscle (< 0.6×MEV) is still a warn even for a beginner
   critiquePlan({ sessions: [{ name: "D", exercises: [{ exercise: "cable-crunch", sets: 1, rep_range: "10-15" }] }] }, kb, { experience: "beginner" })
     .findings.some((f) => f.severity === "warn" && /below MEV/.test(f.msg) && f.muscle === "abs"));
 
+// --- the exercise-change lever (Wave 165) --------------------------------
+// The KB's plateau playbook is an ORDER — volume → effort → deload → change
+// exercise (logging-and-plateaus.md) — and only the first was implemented.
+// Accessories rotated every block unconditionally (variety, not a response to
+// anything) and compounds never rotated at all, so a stalled bench press could not
+// be swapped by any code path in the app.
+const stallProfile = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "stall-test" };
+const pickedOf = (plan) => plan.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+const stallBase = generatePlan(stallProfile, kb, {});
+const stallPicked = pickedOf(stallBase);
+const stallAfter = pickedOf(generatePlan(stallProfile, kb, { stalledExercises: stallPicked }));
+const stallUnchanged = stallAfter.filter((id) => stallPicked.includes(id));
+// Some muscles genuinely have only one accessible exercise, so a few legitimately
+// stay — what must not happen is the plan coming back unchanged.
+ok("stalled lifts are replaced by alternatives for the same muscle", stallPicked.length > 0 && stallUnchanged.length < stallPicked.length);
+
+const exByIdT = new Map(exercises.map((e) => [e.id, e]));
+const stallCompounds = stallPicked.filter((id) => exByIdT.get(id)?.mechanic === "compound");
+const rotatedOnly = pickedOf(generatePlan(stallProfile, kb, { blockIndex: 1 }));
+ok("block rotation alone still never moves a compound (the documented behaviour this lever bypasses)",
+  stallCompounds.length > 0 && stallCompounds.every((id) => rotatedOnly.includes(id)));
+const swappedCompounds = pickedOf(generatePlan(stallProfile, kb, { stalledExercises: stallCompounds }));
+ok("but a STALLED compound is swappable — the gap that left a plateaued bench unchangeable",
+  stallCompounds.some((id) => !swappedCompounds.includes(id)));
+
+// Demotion, not exclusion: stalling every option a thin pool has must still yield
+// a real plan rather than an empty one.
+const thinProfile = { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 45,
+  available_equipment: ["bodyweight"], user_id: "stall-thin" };
+const thinPicked = pickedOf(generatePlan(thinProfile, kb, {}));
+const thinAfter = generatePlan(thinProfile, kb, { stalledExercises: thinPicked });
+ok("a muscle's ONLY option is still prescribed — demotion, not exclusion",
+  thinAfter.program.sessions.reduce((a, s) => a + s.exercises.length, 0) > 0);
+
+const detProfile = { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 75,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], user_id: "stall-determinism" };
+ok("absent, the plan is byte-identical — the determinism guarantee holds",
+  JSON.stringify(generatePlan(detProfile, kb, {})) === JSON.stringify(generatePlan(detProfile, kb, { stalledExercises: [] })));
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

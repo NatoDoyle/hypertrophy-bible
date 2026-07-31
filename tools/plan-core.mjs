@@ -201,7 +201,13 @@ const EQUIP_TIER_STRENGTH = { barbell: -1.2, dumbbell: -0.5, kettlebell: -0.3, m
 // it refines ties without burying a great high-CNS lift; works WITH the ≤2
 // high-CNS-per-session cap. Strength embraces heavy systemic work, so it opts out.
 const CNS_PENALTY = { high: 0.6, moderate: 0.25, low: 0 };
-function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy" }) {
+const EMPTY_SET = new Set();
+// Bigger than every other ranking signal combined (lengthened −2, equipment −1.4,
+// bodyweight +2.5, difficulty +3), so a stalled lift always sorts behind a
+// non-stalled alternative regardless of how good it otherwise looks.
+const STALLED_DEMOTION = 12;
+
+function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy", stalled = EMPTY_SET }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
   const equipTier = goal === "strength" ? EQUIP_TIER_STRENGTH : EQUIP_TIER_HYPERTROPHY;
@@ -226,6 +232,17 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
       // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
       // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
       if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
+      // THE EXERCISE-VARIATION LEVER (KB logging-and-plateaus.md: volume → effort →
+      // deload → CHANGE EXERCISE). A lift the user has genuinely plateaued on sinks
+      // below every alternative for that muscle, so the next block gives them a
+      // different angle instead of the same stalled movement. Decisive by design —
+      // larger than any quality signal above — because "keep doing the thing that
+      // stopped working" is the one outcome this lever exists to prevent. It's a
+      // demotion, not an exclusion: if a muscle has only one accessible exercise,
+      // that exercise is still last in a pool of one and still gets picked.
+      // Applies to COMPOUNDS too, which rotateTopK deliberately never touches — a
+      // stalled bench press could previously never be swapped by anything.
+      if (stalled.has(e.id)) score += STALLED_DEMOTION;
       // #1/#5: prefer stable, low-fatigue equipment (machines/cables) for growth —
       // more effective tension per unit of systemic fatigue; barbell for strength.
       score += equipTier[e.equipment] ?? 0;
@@ -286,6 +303,11 @@ export function generatePlan(profile, kb, opts = {}) {
   const seed = seedFromProfile(profile);
   const specialization = !!profile.specialization; // all-in block: priorities to the ceiling, the rest to maintenance
   const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
+  // Lifts this person has genuinely plateaued on — demoted below every alternative
+  // for their muscle so the next block offers a different angle (the KB's
+  // change-exercise lever). Empty by default, so a plan generated without it is
+  // byte-identical to before and the determinism guarantee holds.
+  const stalled = new Set(opts.stalledExercises ?? []);
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
   const scheme = repScheme(goal);
@@ -385,7 +407,7 @@ export function generatePlan(profile, kb, opts = {}) {
       }
       return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
     };
-    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal });
+    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled });
     // Progressive-overload guard: a loaded user never rotates onto a non-loadable
     // bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already
     // sorts these last, but the block-rotation counter still periodically lands on
@@ -406,7 +428,7 @@ export function generatePlan(profile, kb, opts = {}) {
     // by more than a score-jitter could flip, an explicit top-K rotation is what
     // actually varies them (jitter alone left the single best-equipment move
     // pinned every block). Compounds keep their stable ranking (double-progression).
-    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal }), blockIndex);
+    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled }), blockIndex);
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));

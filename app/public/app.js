@@ -1554,9 +1554,20 @@ async function renderProgress() {
   // an e1RM there would be guesswork, but the dumbbell you hold is not.
   const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
+  // The plateau card now says which lever the engine is ACTUALLY pulling, instead
+  // of the same three-line playbook regardless of cause. `p.adaptive` carries
+  // volumeResponse's per-muscle signal — computed on every progress read since it
+  // was written and never once rendered (a producer with no consumer, lesson 15).
+  const atCeiling = (p.adaptive || []).filter((a) => a.signal === "change");
+  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
-        <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable. In order: 1) check sleep and food first, 2) swap the exercise for a cousin (same muscle, new angle) in the plan editor, 3) push those sets a rep closer to failure. ${""}</p>
+        <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
+        ${atCeiling.length
+          ? `<p class="muted">Your ${esc(atCeiling.map((a) => a.muscle_name).join(", "))} ${atCeiling.length === 1 ? "is" : "are"} already at the top of what you can recover from, so more sets is the one thing that won't help. I'm easing the volume back and bringing a deload forward, then changing the stalled lift for a different angle next block.</p>`
+          : canAddMore.length
+            ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
+            : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
   // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your

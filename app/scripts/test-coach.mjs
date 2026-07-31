@@ -1,8 +1,8 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
-import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir } from "../src/coach.mjs";
-import { isLuckySet, LUCKY_SET_XP, bodyweightTrend } from "../../tools/derive-core.mjs";
+import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, stalledExerciseIds, blockPhase } from "../src/coach.mjs";
+import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey } from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -708,6 +708,71 @@ check("buildToday: a PER-EXERCISE comeback ease inside a taper (session-level la
   assert.equal(t.exercises.find((e) => e.exercise === Y)?.eased, true, "the untrained lift is per-exercise eased");
   assert.ok(!/stays real|stays where it is/i.test(t.taper.note), "taper note no longer claims the weight holds");
   assert.ok(/eased|haven't trained/i.test(t.taper.note), "taper note acknowledges the partial ease");
+});
+
+// --- the deload lever (Wave 165) -----------------------------------------
+// The KB puts "manage fatigue (deload)" THIRD in its plateau order, before
+// changing the exercise — but the only deloads that existed were the calendar
+// week-6 one and the layoff comeback ease, neither of which responds to how
+// training is actually going, and the user couldn't ask for one either.
+const atCeiling = [{ muscle: "chest", signal: "change" }];
+const roomToAdd = [{ muscle: "chest", signal: "add" }];
+const blk = (week) => ({ week, of: 6, phase: week === 6 ? "deload" : week >= 4 ? "peak" : "build", setScale: 1 });
+
+check("reactiveDeloadDue: fires for a muscle stalled AT its recoverable ceiling", () => {
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), {}, 0), true);
+});
+
+check("reactiveDeloadDue: does NOT fire when there's still room below the ceiling", () => {
+  // More sets is the right answer there — that's the volume lever, not this one.
+  assert.equal(reactiveDeloadDue(roomToAdd, blk(4), {}, 0), false);
+  assert.equal(reactiveDeloadDue([], blk(4), {}, 0), false);
+});
+
+check("reactiveDeloadDue: never in the first weeks of a block — there's no fatigue to shed yet", () => {
+  assert.equal(reactiveDeloadDue(atCeiling, blk(1), {}, 0), false);
+  assert.equal(reactiveDeloadDue(atCeiling, blk(2), {}, 0), false);
+  assert.equal(reactiveDeloadDue(atCeiling, blk(3), {}, 0), true, "week 3 is the floor");
+});
+
+check("reactiveDeloadDue: never doubles up on a scheduled deload week", () => {
+  assert.equal(reactiveDeloadDue(atCeiling, blk(6), {}, 0), false);
+});
+
+check("reactiveDeloadDue: at most ONCE per block", () => {
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), { reactive_deload: { block: 0, week: "2026-W30" } }, 0), false, "already fired this block");
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), { reactive_deload: { block: 0, week: "2026-W30" } }, 1), true, "a NEW block may fire again");
+});
+
+check("reactiveDeloadDue: beginners have no block at all, so nothing to bring forward", () => {
+  assert.equal(reactiveDeloadDue(atCeiling, null, {}, 0), false);
+});
+
+check("buildToday: a stamped reactive-deload week actually deloads the session", () => {
+  const now = new Date().toISOString();
+  const wk = isoWeekKey(now);
+  const prog = selectProgram({ training_status: "intermediate", days_per_week: 4 });
+  const base = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4 }, program: prog };
+  // Mid-block (week 3) so the scheduled wave is NOT a deload — any deload seen here
+  // can only have come from the reactive stamp.
+  const blockStart = new Date(Date.now() - 15 * 86400000).toISOString();
+  const normal = buildToday({ ...base, plan_meta: { block_start: blockStart } }, [], null, [], now);
+  const reactive = buildToday({ ...base, plan_meta: { block_start: blockStart, reactive_deload: { block: 0, week: wk } } }, [], null, [], now);
+  assert.notEqual(normal.block.phase, "deload", "fixture sanity: the scheduled wave is not a deload this week");
+  assert.equal(reactive.block.phase, "deload");
+  assert.ok(/brought forward/i.test(reactive.block.note), "the card must explain WHY it arrived early");
+  // Every downstream deload branch must follow, not just the label.
+  assert.ok(reactive.exercises.every((e) => e.rir === "3-4"), "effort eases");
+  const setsOf = (t) => t.exercises.reduce((a, e) => a + e.sets, 0);
+  assert.ok(setsOf(reactive) < setsOf(normal), "volume drops");
+});
+
+check("buildToday: a stamp from a DIFFERENT week doesn't deload this one", () => {
+  const now = new Date().toISOString();
+  const prog = selectProgram({ training_status: "intermediate", days_per_week: 4 });
+  const t = buildToday({ profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4 }, program: prog,
+    plan_meta: { block_start: new Date(Date.now() - 15 * 86400000).toISOString(), reactive_deload: { block: 0, week: "2020-W01" } } }, [], null, [], now);
+  assert.notEqual(t.block.phase, "deload");
 });
 
 console.log(`\n${passed} coach test(s) passed.`);
