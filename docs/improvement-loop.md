@@ -175,7 +175,11 @@ These are real failures from previous iterations. Each is now a standing check.
    repair. → **Standing rule:** never gate a required mutation (version bump, migration, write) behind a
    `grep`/`test`/`diff` in an `&&` chain — those exit non-zero as a normal *answer*, not an error. Run
    mutations as their own statements, and after shipping a `public/` asset verify the invariant directly
-   (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end.
+   (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end. (Wave-171
+   refinement: the custom domain's edge cache can serve the OLD asset for a few seconds after a
+   successful deploy — a failing first curl is not yet a failed deploy. Re-check with a cache-buster
+   (`?nocache=…`) or against the workers.dev origin before diagnosing; only a stale ORIGIN is a real
+   failure.)
 
 18b. **`npm run deploy` ships the WORKING TREE, not `main` — never let it run from an unmerged
    branch.** Reconciling a cloud PR: a `git merge` (no conflicts) auto-committed, then a follow-up
