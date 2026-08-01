@@ -442,6 +442,38 @@ check("progressionCadence learns the personal rhythm; adaptiveStallWindow scales
   assert.equal(adaptiveStallWindow(20), 10);
 });
 
+check("progressionCadence: a top-set-plus-backoff exercise does not double-count its own gaps (regression)", () => {
+  const wkDate = (i) => { const d = new Date(Date.UTC(2026, 0, 5)); d.setUTCDate(d.getUTCDate() + i * 7); return d.toISOString().slice(0, 10); };
+  // bench: logged with BOTH a reliable top set (e1RM path) and a pump-band backoff set
+  // (load path) every week, same as a real top-set-plus-backoff session — the top set
+  // improves at week 2, the backoff set improves at week 10. Both paths share the exact
+  // same week keys (a tie), so the majority-of-weeks guard (mirrors stallDetect +
+  // progressionByExercise) must route bench through exactly ONE path — e1RM, per the
+  // shared tie-goes-to-e1RM convention — never both.
+  const benchSessions = [];
+  for (let i = 0; i <= 10; i++) {
+    benchSessions.push({
+      local_date: wkDate(i),
+      sets: [
+        { exercise: "bench", set_type: "work", weight_kg: 100 + (i >= 2 ? 10 : 0), reps: 8 },  // reliable band
+        { exercise: "bench", set_type: "work", weight_kg: 40 + (i >= 10 ? 10 : 0), reps: 15 },  // pump band
+      ],
+    });
+  }
+  // squat: single-logged (e1RM path only), improves once at week 8.
+  const squatSessions = [];
+  for (let i = 0; i <= 8; i++) {
+    squatSessions.push({
+      local_date: wkDate(i),
+      sets: [{ exercise: "squat", set_type: "work", weight_kg: 100 + (i >= 8 ? 10 : 0), reps: 5 }],
+    });
+  }
+  // Without the guard, bench's e1RM gap (2) AND its own backoff gap (10) both land in the
+  // pool alongside squat's gap (8): median of [2, 8, 10] = 8. With the guard, bench
+  // contributes only its e1RM-path gap (2): median of [2, 8] = 5.
+  assert.equal(progressionCadence([...benchSessions, ...squatSessions], new Map()), 5);
+});
+
 check("detectPersonalRecords: e1rm PR on heavy work, with a noise margin", () => {
   const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]; // e1rm ~116.67
   const beat = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6 }] };     // e1rm ~120

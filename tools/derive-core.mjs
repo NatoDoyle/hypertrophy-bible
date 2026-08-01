@@ -924,8 +924,17 @@ export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps 
       }
     }
   };
-  for (const m of Object.values(byEx)) collect(m);
-  for (const m of Object.values(byExLoad)) collect(m);
+  // Majority-of-weeks rule (mirrors stallDetect + progressionByExercise): without this
+  // reciprocal guard, an exercise logged with BOTH a reliable top set and a pump-band
+  // backoff set every session (the common top-set-plus-backoff pattern) contributed its
+  // improvement gaps into the shared median-gap pool from BOTH paths, doubling that one
+  // lift's influence over the personal cadence estimate relative to every other exercise.
+  // Ties go to e1RM (the stronger signal), same as the other two functions.
+  for (const ex of new Set([...Object.keys(byEx), ...Object.keys(byExLoad)])) {
+    const loadWeeks = Object.keys(byExLoad[ex] ?? {}).length;
+    const e1rmWeeks = Object.keys(byEx[ex] ?? {}).length;
+    collect(loadWeeks > e1rmWeeks ? byExLoad[ex] : byEx[ex]);
+  }
   if (gaps.length < minGaps) return null;
   gaps.sort((a, b) => a - b);
   const mid = Math.floor(gaps.length / 2);
