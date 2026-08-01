@@ -440,6 +440,36 @@ check("computeVolumeAdjust individualized patience (Increment B): a slow respond
   assert.equal(computeVolumeAdjust({}, full.slice(9)).chest, 2);
 });
 
+check("computeVolumeAdjust effort gate (Increment C): a sandbagged stall HOLDS — the fix is effort, not sets", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, rir) => ({ date: day(n), sets: Array.from({ length: 12 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, ...(rir != null ? { rir } : {}) })) });
+  // chest stalled at 12 sets/wk with room below MAV.max, 5 flat weeks — the Increment-A baseline fixture.
+  const noRir = [wk(35), wk(28), wk(21), wk(14), wk(7)];
+  const easy = [wk(35, 4), wk(28, 4), wk(21, 4), wk(14, 4), wk(7, 4)];
+  // no effort data → +2 exactly as today (the binder-level absent-data guard)
+  assert.equal(computeVolumeAdjust({ chest: 2 }, noRir).chest, 4);
+  // 60 recent sets averaging rir 4 vs bench's tier target 3 (stability "moderate" → heavy band "1-3")
+  // → clear logged surplus → the add is HELD; more sets would just be more easy sets
+  assert.equal(computeVolumeAdjust({ chest: 2 }, easy).chest, 2);
+  // compliant effort (rir 3 = the band top) never trips the gate — the bump still fires
+  const compliant = [wk(35, 3), wk(28, 3), wk(21, 3), wk(14, 3), wk(7, 3)];
+  assert.equal(computeVolumeAdjust({ chest: 2 }, compliant).chest, 4);
+});
+
+check("progressReport effort lever (Increment C): a too-easy stall reads 'effort'; the same history without rir reads 'add'", () => {
+  const now = "2026-06-10T10:00:00Z"; // Wed of 2026-W24 → latest full week is W23
+  const user = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const wkDates = ["2026-05-04", "2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01"]; // W19..W23
+  const week = (d, rir) => ({ session_id: "e" + d, date: d, sets: Array.from({ length: 12 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, ...(rir != null ? { rir } : {}) })) });
+  const easy = wkDates.map((d) => week(d, 4));
+  const noRir = wkDates.map((d) => week(d));
+  const effRow = progressReport(user, easy, [], [], now).adaptive.find((a) => a.muscle === "chest");
+  assert.equal(effRow?.signal, "effort");
+  assert.ok(/closer|failure|reserve/i.test(effRow.advice), "the advice names the effort fix");
+  const addRow = progressReport(user, noRir, [], [], now).adaptive.find((a) => a.muscle === "chest");
+  assert.equal(addRow?.signal, "add"); // absent effort data → today's behavior, untouched
+});
+
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
   const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };

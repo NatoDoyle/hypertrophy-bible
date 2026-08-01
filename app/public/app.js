@@ -921,7 +921,7 @@ function loadSess() {
     if (!Number.isInteger(s.i) || s.i < 0) s.i = 0;
     if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
     if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
-    s.weights ??= {}; s.reps ??= {}; s.rir ??= {};
+    s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
     return s;
   } catch { return null; }
 }
@@ -938,13 +938,39 @@ let quitPending = false;    // two-tap guard on ending a workout early
 // index-keyed flag would then suppress the warning for whatever lift inherited that
 // slot. Cleared by any stepper touch (they've re-read the number) and once banked.
 let confirmSet = null;
-const rirOn = () => localStorage.getItem("hb_rir") === "1"; // optional effort logging
+// Effort chips (Wave 171): tri-state hb_rir — "1" force-on, "0" force-off, unset =
+// on for everyone past the beginner stage (beginners are never asked: the KB says
+// novice RIR calls are noise, and the design spec forbids demanding effort of them;
+// Wave-164 graduation flips them in automatically). The chips never pre-select —
+// an unanswered set sends NO rir at all, because a fabricated default would read
+// as "at target" forever and permanently blind the adaptive effort lever.
+const rirOn = () => { const v = localStorage.getItem("hb_rir"); return v === "1" ? true : v === "0" ? false : !(sess?.beginner); };
+// One-tap effort capture, shared by the player and the superset station. Tapping
+// the selected chip clears it (a mis-tap escape) — only a deliberate answer is
+// ever logged. "4+" stores 4: still counted by isHardSet (rir > 4 wouldn't be),
+// and far enough past every prescribed band top to read as clearly-too-easy.
+const effChips = (idx) => !rirOn() ? "" : `<div class="effrow" role="group" aria-label="reps left in the tank">
+    <label>Reps left in the tank?</label>
+    <div class="effchips">${[0, 1, 2, 3, 4].map((v) => `<button data-eff="${v}" data-i="${idx}" class="effchip${sess.eff[idx] === v ? " sel" : ""}" aria-pressed="${sess.eff[idx] === v}">${v === 4 ? "4+" : v}</button>`).join("")}</div>
+  </div>`;
+// The shared chip-tap behavior; the caller passes its own repaint (player vs station).
+const effTap = (b, repaintFn) => {
+  quitPending = false;
+  const repaint = clearSetConfirm();
+  const i = +b.dataset.i, v = +b.dataset.eff;
+  if (sess.eff[i] === v) delete sess.eff[i]; else sess.eff[i] = v;
+  saveSess();
+  if (repaint) return repaintFn();
+  b.closest(".effrow").querySelectorAll("[data-eff]").forEach((c) => { const on = +c.dataset.eff === sess.eff[i]; c.classList.toggle("sel", on); c.setAttribute("aria-pressed", String(on)); });
+};
 function startSession(templateSession) {
   sess = {
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
     beginner: templateSession.beginner === true, // plain-effort language on the set screen — no "RIR" jargon for a true novice
     deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
-    logged: [], weights: {}, reps: {}, rir: {},
+    // eff (NOT the old `rir` map): a deliberately fresh key, so crash-mirror blobs
+    // from builds that auto-seeded rir 2 can never leak fabricated effort data.
+    logged: [], weights: {}, reps: {}, eff: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
     // after a reload, the server's ON CONFLICT dedupe sees the SAME id and the
     // workout can never be double-saved.
@@ -1122,8 +1148,8 @@ function renderPlayer(resting = 0) {
   // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
   if (sess.weights[sess.i] == null) sess.weights[sess.i] = dispWeight(startWeightDefault(e));
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
-  if (sess.rir[sess.i] == null) sess.rir[sess.i] = 2;
-  const w = sess.weights[sess.i], reps = sess.reps[sess.i], rir = sess.rir[sess.i];
+  // sess.eff is NEVER seeded — no answer means no rir on the logged set.
+  const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
 
   if (resting > 0) {
@@ -1159,8 +1185,7 @@ function renderPlayer(resting = 0) {
     <div class="card">
       ${weightStepper(w, e.equipment === "bodyweight", null)}
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
-      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" aria-label="more RIR">+</button></div>
-        <p class="muted">RIR = reps left in the tank. 2 = you could've done ~2 more.</p>` : ""}
+      ${effChips(sess.i)}
       ${confirmSet === e.exercise ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done">${confirmSet === e.exercise ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
@@ -1206,7 +1231,7 @@ function renderPlayer(resting = 0) {
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.rir[sess.i] = Math.max(0, Math.min(5, sess.rir[sess.i] + +b.dataset.rir)); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.rir[sess.i]); });
+  app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderPlayer()));
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -1227,8 +1252,9 @@ function renderPlayer(resting = 0) {
     confirmSet = null;
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
-    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(rirOn() ? { rir: sess.rir[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
+    delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -1292,8 +1318,8 @@ function renderSupersetStation(L, P, resting = 0) {
     const m = sess.ex[idx];
     if (sess.weights[idx] == null) sess.weights[idx] = dispWeight(startWeightDefault(m));
     if (sess.reps[idx] == null) sess.reps[idx] = topReps(m.rep_range);
-    if (sess.rir[idx] == null) sess.rir[idx] = 2;
-    const w = sess.weights[idx], reps = sess.reps[idx], rir = sess.rir[idx];
+    // sess.eff is NEVER seeded — no answer means no rir on the logged set.
+    const w = sess.weights[idx], reps = sess.reps[idx];
     return `<div class="card">
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
@@ -1303,7 +1329,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
-      ${rirOn() ? `<div class="stepper"><label>RIR</label><button data-rir="-1" data-i="${idx}" aria-label="less RIR">–</button><div class="val" aria-live="polite">${rir}</div><button data-rir="1" data-i="${idx}" aria-label="more RIR">+</button></div>` : ""}
+      ${effChips(idx)}
       ${confirmSet === m.exercise ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
@@ -1331,7 +1357,7 @@ function renderSupersetStation(L, P, resting = 0) {
     setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
   });
   app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); });
-  app.querySelectorAll("[data-rir]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.rir[i] = Math.max(0, Math.min(5, sess.rir[i] + +b.dataset.rir)); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.rir[i]); });
+  app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderSupersetStation(L, P, 0)));
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -1348,8 +1374,9 @@ function renderSupersetStation(L, P, resting = 0) {
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
-      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(rirOn() ? { rir: sess.rir[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
       sess.logged.push(loggedSet);
+      delete sess.eff[idx]; // each set is its own call — an answer never carries over
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
@@ -1487,7 +1514,7 @@ async function renderSwap() {
       movement_pattern: chosen?.movement_pattern ?? null,
       superset_with: undefined, superset_with_name: undefined,
     };
-    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.rir[sess.i];
+    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.eff[sess.i];
     saveSess();
     say(`Swapped to ${name}.`);
     renderPlayer(0);
@@ -1497,7 +1524,7 @@ async function renderSwap() {
 // "Do this later" (mid-workout reorder): the machine's busy, so push the current
 // UNSTARTED exercise to the end of the queue and move on. Only reachable at set 0
 // of a non-superset lift with a later exercise to land on (guarded in the player).
-// sess.weights/reps/rir are keyed by ARRAY INDEX, so moving an item must REMAP those
+// sess.weights/reps/eff are keyed by ARRAY INDEX, so moving an item must REMAP those
 // caches or the steppers would show the wrong defaults. Logged sets are keyed by
 // exercise id, so they stay valid — no data is ever at risk here.
 function deferCurrentExercise() {
@@ -1517,7 +1544,7 @@ function deferCurrentExercise() {
     }
     return out;
   };
-  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.rir = remap(sess.rir);
+  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.eff = remap(sess.eff);
   // sess.i stays put — it now points at the exercise that was next; the deferred lift
   // waits at the end. Resume its cursor from however many of its sets are already
   // banked (0 in the normal unstarted case), matching how advancing resolves the set
@@ -1634,15 +1661,21 @@ async function renderProgress() {
         <button class="btn ghost" data-learn="stimulus-fatigue-adaptation">Read: recovery &amp; adaptation</button></div>`
     : "";
   const atCeiling = (p.adaptive || []).filter((a) => a.signal === "change");
+  // Effort lever (Increment C): stalled + your own logged effort clearly above
+  // target → the fix is effort, not sets. Sits between the ceiling read (deload
+  // still wins) and the add-volume read (never add sets to a sandbagged stall).
+  const pushHarder = (p.adaptive || []).filter((a) => a.signal === "effort");
   const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
         <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
         ${atCeiling.length
           ? `<p class="muted">Your ${esc(atCeiling.map((a) => a.muscle_name).join(", "))} ${atCeiling.length === 1 ? "is" : "are"} already at the top of what you can recover from, so more sets is the one thing that won't help. I'm easing the volume back and bringing a deload forward, then changing the stalled lift for a different angle next block.</p>`
-          : canAddMore.length
-            ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
-            : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
+          : pushHarder.length
+            ? `<p class="muted">Your own effort logs show plenty left in the tank on your ${esc(pushHarder.map((a) => a.muscle_name).join(", "))} sets. Before adding volume, take the last set of each lift closer to failure — about 1–2 reps in reserve. Effort is the cheapest fix there is, so I'm holding your sets steady until it's in.</p>`
+            : canAddMore.length
+              ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
+              : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
   // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your
@@ -1943,10 +1976,10 @@ function renderMe() {
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
       <button class="btn secondary" id="settings">Update my settings &amp; rebuild plan</button></div>
-    <div class="card"><p class="muted">Effort logging (RIR)</p>
-      <p><b>RIR = reps in reserve</b> — how many more reps you could have done before failing. Stop a couple short of failure; that's a hard set, not a max effort.</p>
-      <p class="muted">Turn this on to log RIR each set so the coach fine-tunes your weights. Off by default — simple progression works great, especially for beginners.</p>
-      <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to turn off" : "Off — tap to turn on"}</button></div>
+    <div class="card"><p class="muted">Effort chips (reps left in the tank)</p>
+      <p>After each set, one optional tap: how many more reps you had in you. It's how the coach knows a weight has gotten too easy — skipping a set never counts against you.</p>
+      <p class="muted">${localStorage.getItem("hb_rir") === "1" ? "Always on." : localStorage.getItem("hb_rir") === "0" ? "Off." : "Auto — the chips appear once you're past the beginner stage."}</p>
+      <button class="btn secondary" id="rirtoggle">${localStorage.getItem("hb_rir") === "1" ? "Always on — tap to switch off" : localStorage.getItem("hb_rir") === "0" ? "Off — tap to switch to auto" : "Auto — tap to force always on"}</button></div>
     <div class="card"><p class="muted">Units</p>
       <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
@@ -1955,7 +1988,10 @@ function renderMe() {
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
   $("#viewplan").onclick = () => renderPlanExplain(false);
   $("#settings").onclick = renderSettings;
-  $("#rirtoggle").onclick = () => { localStorage.setItem("hb_rir", rirOn() ? "0" : "1"); renderMe(); };
+  // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
+  // default keys off training status, so a graduating beginner inherits the chips
+  // with nothing to configure (minimal-customization: no mandatory setting).
+  $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
   $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
 
   if (!email) {

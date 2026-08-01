@@ -168,7 +168,7 @@ locale. **Everything else in the schema is deferred.**
 
 **Deferred, collected just-in-time (never in onboarding):** `height_cm`, `bodyweight_kg`, `birth_year`,
 `injuries`, `wearable`, `priority_muscles`, `dietary_pattern`, `menstrual_tracking`, `experience_years`,
-`session_length_min`, `rir_calibrated`. Collection triggers:
+`session_length_min`. Collection triggers:
 
 - **Bodyweight** → first optional weigh-in prompt (trend-only framing).
 - **Injuries** → only when a user skips or flinches at an exercise ("that one bugging you? I'll swap it").
@@ -224,9 +224,14 @@ timer.
 **only** inputs. Rest timer auto-starts (learned from the user's real `restTimes`), buzzes on completion
 so you never watch the screen, and shows the next target. Total taps per set: ~2.
 
-**4. Effort is invisible for beginners.** Proximity-to-failure is inferred from rep drop-off
-(`proximityFromRepDropoff`); RIR/RPE is **never** demanded. Advanced users (post-calibration) see an
-optional 1-tap RIR chip after the last set.
+**4. Effort is invisible for beginners.** RIR/RPE is **never** demanded of a novice (the KB:
+beginner RIR calls are noise). Past the beginner stage (Wave-164 graduation, or force-on via the
+Me-screen tri-state), every set shows an optional 1-tap "reps left in the tank?" chip row —
+**never pre-selected; an unanswered set logs no effort at all** (a fabricated default would read
+"at target" forever and blind the effort lever). Shipped Wave 171; the original
+calibration-gated design ("post-calibration") is superseded — instead of gating trust in the
+*person*, the lever gates on the *direction that is robust to miscalibration* (a called "4+" is
+far from failure whichever way it's wrong).
 
 **5. Live in-set nudges (autoregulation in the moment).** After a set, if rep drop-off says reps barely
 fell: *"Looked like you had more in the tank — let's add 2.5 kg next set."* If a heavy compound is next, a
@@ -300,9 +305,10 @@ Depth unlocks as the user demonstrates competence and accrues data — progressi
 
 - **Weeks 0–4:** double-progression, full-body template, dense safety/how-to Coach Moments, effort
   inferred from rep drop-off. Pure Beginner Mode.
-- **~Weeks 4–12:** RIR calibration mini-game offered → passing sets `rir_calibrated: true` and unlocks the
-  optional RIR effort chip and RIR-autoregulation progression
-  (`data/progressions/rir-autoregulation.json`).
+- **On graduation past beginner:** the optional effort chips appear automatically (Wave 171) and
+  RIR-autoregulation (`data/progressions/rir-autoregulation.json`, live in `suggestWeight`) starts
+  reading them. (The original "calibration mini-game" gate was dropped — see §"Effort is invisible
+  for beginners" — in favor of direction-robust thresholds that tolerate miscalibrated calls.)
 - **Intermediate:** split graduates (e.g. `upper-lower-4day`, `push-pull-legs-6day`) as frequency capacity
   grows; readiness-based autoregulation becomes visible; priority-muscle specialization
   (`specialization-delts-arms-4day`) once the base is built.
@@ -393,8 +399,9 @@ job**, never per-user real-time ML, keeping the stack cheap (§13).
 
 ### 9.5 Confidence-tiering as UX, and trust
 
-The scale trend always beats anything typed about food; self-reported RIR is **distrusted**
-(`rir_calibrated: false`) until the calibration mini-game passes; a low-confidence check-in never overrides
+The scale trend always beats anything typed about food; self-reported RIR moves a prescription
+only through thresholds robust to miscalibration (a clear multi-week surplus vs the KB tier band —
+Wave 171 — never a single optimistic call); a low-confidence check-in never overrides
 high-confidence objective data. Every silent change carries a one-sentence **"why,"** attributed to the
 user's own data, with a **"why did you change this?"** tap available on any adjustment — the antidote to
 the "the app just decided" trust gap.
@@ -481,7 +488,7 @@ Every app surface reads and writes the existing data contract; **no knowledge is
 | Today card | — | `onboarding-profile`, `program-template`, `progression-rule` | `readinessIndex`, `volumeVsLandmarks`, `progressionByExercise`, `buildFeatureReport` |
 | Session Player | `workout-session` (`sets`: `exercise`, `weight_kg`, `reps`, `set_type`, `completed_at`) | `data/exercises/*` (muscle map, cues), `double-progression` | `progressionByExercise`, `estimate1RM` (prefill); `proximityFromRepDropoff` (live nudge); `restTimes` (timer) |
 | Starting-weight finder | `workout-session` (feeler + work sets) | `choosing-your-starting-weight.md` | — (sets the first-session priors) |
-| Effort chip (advanced) | `workout-session` `set.rpe` / `set.rir`; `onboarding-profile.rir_calibrated` | `rir-autoregulation` | `isHardSet` (effort gate), `confidenceTier` |
+| Effort chips (non-beginner) | `workout-session` `set.rpe` / `set.rir` | `rir-autoregulation` | `isHardSet` (effort gate), `suggestWeight` (load autoregulation), `effortSignal` (the Increment-C lever) |
 | Session Summary | optional `daily-checkin.energy` | `workout-session` | `estimate1RM` (PRs), `progressionByExercise`, `volumeVsLandmarks`, `proximityFromRepDropoff` |
 | Progress tab | `body-metric` (photos, measurements) | `workout-session`, `daily-checkin` | `perMuscleWeeklyVolume`, `volumeVsLandmarks`, `progressionByExercise`, `bodyweightTrend` |
 | Nerd Mode | — | all streams | `buildFeatureReport` (full) |
@@ -515,7 +522,9 @@ Directly inherits the data-and-learning spec's minimum-viable-data-set roadmap.
 ### High-value add-ons (opt-in, post-MVP)
 
 - Wearable sleep/HRV/RHR → `readinessIndex` and readiness-trimmed sessions.
-- RIR calibration mini-game → `rir_calibrated` → RIR effort chip + RIR-autoregulation.
+- ~~RIR calibration mini-game → RIR effort chip + RIR-autoregulation~~ — superseded: the effort
+  chips shipped default-on for non-beginners (Wave 171) with direction-robust thresholds instead
+  of a per-user calibration gate.
 - Protein adherence (yes/roughly/no), soreness taps.
 - Advanced/Nerd Mode, manual overrides, custom exercises (mapped to muscles so volume isn't under-counted).
 

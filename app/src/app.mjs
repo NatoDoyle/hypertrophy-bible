@@ -51,8 +51,11 @@ const normalizeSet = (s) => ({
   set_type: s.set_type ?? "work",
   weight_kg: boundedNum(s.weight_kg, MAX_SET_WEIGHT_KG),
   reps: Math.round(boundedNum(s.reps, MAX_SET_REPS)),
-  ...(s.rpe != null ? { rpe: Number(s.rpe) } : {}),
-  ...(s.rir != null ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
+  // Effort fields: finite-or-dropped, never NaN (Number("x") used to survive the
+  // rir clamp as NaN → JSON null), and rpe clamped beside rir — lesson 27's exact
+  // pattern was recurring three lines from where it was learned.
+  ...(s.rpe != null && Number.isFinite(Number(s.rpe)) ? { rpe: Math.max(0, Math.min(10, Number(s.rpe))) } : {}),
+  ...(s.rir != null && Number.isFinite(Number(s.rir)) ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
   ...(s.deload ? { deload: true } : {}),
   completed_at: s.completed_at ?? new Date().toISOString(),
 });

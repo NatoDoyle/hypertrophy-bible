@@ -122,15 +122,46 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
   of its five rows were live, one was explicitly deferred, and one had quietly
   never been built — a design doc's own decision table is only honest if each row
   is periodically grepped for a live code path.
-- **[deferred · Increment C] Effort-aware lever** — the idea: when a stall coincides with
-  effort consistently *below* target (leaving too many reps in reserve), prescribe
-  effort/intensity, not volume. Both available signals were evaluated and **neither clears
-  the bar yet**: explicit RIR logging is off by default (niche), and the rep-drop-off proxy
-  (`proximityFromRepDropoff`) is *ambiguous in the direction this needs* — "no drop-off"
-  reads identically for "trained too easy" and for a disciplined trainee who correctly stops
-  ~2 reps short (10/10/10 on purpose). Gating a volume increase on that would wrongly
-  withhold volume a well-executing lifter actually needs. Revisit if RIR adoption rises or a
-  cleaner effort signal appears.
+- **[done · Increment C] Effort-aware lever** — when a stall coincides with effort
+  consistently easier than target (too many reps left in reserve), prescribe effort, not
+  volume. This was deferred for waves with the recorded rationale that neither available
+  signal cleared the bar: explicit RIR logging was off by default (niche), and the
+  rep-drop-off proxy (`proximityFromRepDropoff`) is *ambiguous in the direction this
+  needs* — "no drop-off" reads identically for "trained too easy" and for a disciplined
+  trainee who correctly stops ~2 reps short. That inference rationale still stands (the
+  proxy remains a recap flourish only); what changed is the explicit signal (Wave 171):
+  - **The unblock — one-tap effort chips, default-visible for non-beginners.** The old
+    buried opt-in stepper became a plain-language "Reps left in the tank?" chip row
+    (0/1/2/3/4+) on every set screen, on by default past the beginner stage (`hb_rir` is
+    now tri-state: force-on / force-off / auto-by-training-status). Two honesty rules:
+    **no chip is ever pre-selected — an unanswered set sends NO `rir`** (the old code
+    auto-seeded 2, which would have mass-fabricated "at target" and blinded the lever
+    forever); and beginners are never asked (the KB: novice RIR calls are noise; they
+    inherit the chips at Wave-164 graduation). "4+" stores 4, not 5 — `isHardSet` drops
+    `rir > 4`, so 5 would erase the too-easy sets from volume and set the volume card
+    ("add sets") against the effort card ("too easy") from a single tap.
+  - **The lever** — `effortSignal` (derive-core): over the last 6 distinct trained weeks
+    (the same window the volume tune samples), the average logged surplus above each
+    set's KB tier target (`effortBandTop`: heavy compound 3, supported/stable compound 2,
+    isolation 1 — the classifier is shared with plan-core's prescription, single source
+    of truth). A muscle is "too easy" only on **positive evidence**: ≥10 logged sets AND
+    avg surplus ≥ +1 (the same +1 distance `suggestWeight`'s per-lift bump already uses).
+    Deload/eased sets are excluded (an easy band is *prescribed* there — compliance, not
+    sandbagging). Absent data → empty set → every consumer byte-identical to before,
+    locked by regression test — the deferral's "never withhold volume from a disciplined
+    lifter on ambiguous data" concern, honored by construction. Consumers: the block
+    tune (`deriveVolumeAdjust` holds a too-easy stalled muscle instead of +2 sets) and
+    `volumeResponse`'s new `"effort"` signal, which the Progress plateau card renders as
+    "push closer to failure before we add volume" (the KB's own lever order:
+    volume → effort → deload → variation).
+  - **Honesty notes.** The direction is robust to miscalibration — a called "4+" is far
+    from failure whichever way it's wrong, which is exactly the miscalibration mode the
+    KB documents (most people underestimate reps left). This also superseded the spec'd
+    "RIR calibration mini-game" gate (`rir_calibrated`, removed from the onboarding
+    schema — it had zero readers/writers, lesson 14): instead of gating trust in the
+    person, the thresholds tolerate the error. Known conservatism: the tier target is
+    static while `waveRir` tightens prescribed bands in peak weeks, so the lever
+    under-fires slightly during peaks — the safe direction for a hold-volume lever.
 - **[far vision] Cross-user learning** — aggregate (privacy-preserving) response data to
   refine the priors themselves, under the honesty guardrail above.
 

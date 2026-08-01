@@ -957,6 +957,55 @@ try {
   ok("#bounds /api/today carries last_kg, the reference the player's typo guard needs",
     boundCard != null && typeof boundCard.last_kg === "number" && boundCard.last_kg > 0);
 
+  // ---- Wave 171: the effort door + the effort lever end-to-end -----------
+  // normalizeSet's effort fields, through the REAL door. Before this wave a
+  // non-numeric rir survived the clamp as NaN (stored as JSON null) and rpe was
+  // entirely unclamped beside the clamped rir — lesson 27 recurring three lines
+  // from where it was learned.
+  const effGuardId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const effGuardRes = await json("POST", "/api/session", { user_id: effGuardId, session_id: "eff-guard", date: new Date().toISOString(),
+    sets: [
+      { exercise: "barbell-bench-press", weight_kg: 100, reps: 8, rir: "x", rpe: "y" },
+      { exercise: "barbell-bench-press", weight_kg: 100, reps: 8, rpe: 14, rir: 22 },
+      { exercise: "barbell-bench-press", weight_kg: 100, reps: 8, rir: 2 },
+    ] });
+  ok("#effort a garbage-effort session is still accepted (clamp/drop, never 400)", effGuardRes.status === 200);
+  const effStored = (await store.listSessions(effGuardId)).find((s) => s.session_id === "eff-guard")?.sets ?? [];
+  ok("#effort non-numeric rir/rpe are DROPPED — no key, no NaN, no null", !("rir" in effStored[0]) && !("rpe" in effStored[0]));
+  ok("#effort rpe is clamped 0-10 beside rir (lesson 27's sibling field)", effStored[1]?.rpe === 10 && effStored[1]?.rir === 10);
+  // A valid rir must round-trip the EDIT route too (the history screen re-sends
+  // stored sets whole; the whitelist dropping it would silently erase effort data).
+  const effEdit = await json("POST", "/api/session/update", { user_id: effGuardId, session_id: "eff-guard",
+    sets: [{ exercise: "barbell-bench-press", weight_kg: 102.5, reps: 8, rir: 2 }] });
+  ok("#effort a valid rir survives the edit route's re-normalize", effEdit.status === 200 && effEdit.data?.session?.sets?.[0]?.rir === 2);
+
+  // The lever end-to-end: identical flat histories, one with logged rir 4 (a clear
+  // surplus over bench's heavy band top 3), one without. The rir user's stalled
+  // chest must read "effort" (push closer to failure); the silent user keeps
+  // today's "add" — absent data must change nothing (the Increment-C rationale).
+  const effWeek = (uid, n, prefix, rir) => json("POST", "/api/session", { user_id: uid, session_id: `${prefix}-${n}`, date: new Date(Date.now() - n * 86400000).toISOString(),
+    sets: Array.from({ length: 12 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, ...(rir != null ? { rir } : {}) })) });
+  const effEasyId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  for (const n of [35, 28, 21, 14, 7]) await effWeek(effEasyId, n, "easy", 4);
+  const effProg = await (await app.request("/api/progress", { headers: { "X-HB-User": effEasyId } })).json();
+  const effRow = (effProg.adaptive ?? []).find((a) => a.muscle === "chest");
+  ok("#effort a stalled muscle with logged-surplus effort reads 'effort', not 'add'", effRow?.signal === "effort");
+  ok("#effort the advice names the fix (closer to failure), not more volume", /closer|reserve|failure/i.test(effRow?.advice ?? ""));
+  const effQuietId = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 2, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  for (const n of [35, 28, 21, 14, 7]) await effWeek(effQuietId, n, "quiet", null);
+  const quietProg2 = await (await app.request("/api/progress", { headers: { "X-HB-User": effQuietId } })).json();
+  const quietRow = (quietProg2.adaptive ?? []).find((a) => a.muscle === "chest");
+  ok("#effort the SAME history without rir keeps today's 'add' — absent data changes nothing", quietRow?.signal === "add");
+
   // ---- Wave 163: correcting the log --------------------------------------
   // A bad set used to be permanent (no edit/delete route existed at all). These
   // drive the full loop through the real door: log -> it counts -> void it -> it

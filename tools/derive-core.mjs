@@ -345,6 +345,67 @@ export function volumeVsLandmarks(weekVolume, muscleIndex) {
   return out;
 }
 
+// THE KB EFFORT TABLE'S THREE ROWS (proximity-to-failure page), keyed off exercise
+// metadata. Moved here from plan-core (which imports it back) so the prescription
+// and the effort lever below can never disagree about an exercise's target band.
+// `stability: "high"` resolves to exactly the leg presses, hack squats, machine
+// presses and chest-supported rows the KB page names; the `cns_cost` half keeps a
+// stable-but-systemically-heavy machine on the conservative heavy reserve.
+export const supportedCompound = (ex) =>
+  ex?.mechanic === "compound" && ex?.stability === "high" && ex?.cns_cost !== "high";
+// Band TOP (the target the effort lever measures surplus against): heavy compound 3
+// ("1-3"), supported/stable compound 2 ("0-2"), isolation 1 ("0-1"). Unknown
+// metadata (custom exercises never carry `stability`) → 3, the most conservative
+// tier: the hardest for the lever to call "too easy".
+export const effortBandTop = (ex) =>
+  ex?.mechanic === "isolation" ? 1 : supportedCompound(ex) ? 2 : 3;
+
+// EFFORT READ (Increment C). Per primary muscle, over the last `recentWeeks`
+// DISTINCT trained weeks present in the data (the same window computeVolumeAdjust
+// samples peak volume over; no Date.now — deterministic), the average LOGGED rir
+// surplus above each set's exercise-tier band top. POSITIVE EVIDENCE ONLY: a muscle
+// appears in the result only when effort was actually logged, and absent data
+// returns {} so every caller behaves byte-identically to before — the recorded
+// Increment-C deferral rationale (docs/adaptive-algorithm.md): gating volume on
+// ambiguous/absent effort would wrongly withhold sets from a disciplined lifter.
+// Deload/eased sets are excluded (an easy band is PRESCRIBED there — compliance,
+// not sandbagging), warm-ups excluded, non-numeric rir ignored. Known conservatism:
+// the tier top is static metadata while waveRir tightens the prescribed band in
+// peak weeks, so the lever under-fires slightly during peaks — the safe direction
+// for a hold-volume lever. `minSurplus` is deliberately the same +1 distance
+// suggestWeight uses for its own load bump, so the two effort surfaces share one
+// definition of "more in the tank than asked". `byId` is the full exercise map
+// (mechanic/stability/cns_cost + primary_muscles), the same shape plan-core uses.
+export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, minSurplus = 1 } = {}) {
+  const weeks = new Set();
+  for (const s of sessions ?? []) if ((s.sets ?? []).length) weeks.add(sessionWeekKey(s));
+  const recent = new Set([...weeks].sort().slice(-recentWeeks));
+  const acc = {};
+  for (const s of sessions ?? []) {
+    if (!(s.sets ?? []).length || !recent.has(sessionWeekKey(s))) continue;
+    for (const set of s.sets) {
+      if ((set.set_type ?? "work") === "warmup" || set.deload) continue;
+      if (typeof set.rir !== "number" || !Number.isFinite(set.rir)) continue;
+      const ex = byId.get(set.exercise);
+      if (!ex) continue; // unknown exercise: skip rather than guess
+      const surplus = set.rir - effortBandTop(ex);
+      for (const m of ex.primary_muscles ?? []) {
+        acc[m] ??= { n: 0, rirSum: 0, surplusSum: 0 };
+        acc[m].n += 1;
+        acc[m].rirSum += set.rir;
+        acc[m].surplusSum += surplus;
+      }
+    }
+  }
+  const out = {};
+  for (const [m, a] of Object.entries(acc)) {
+    const avg_rir = Math.round((a.rirSum / a.n) * 10) / 10;
+    const avg_surplus = Math.round((a.surplusSum / a.n) * 10) / 10;
+    out[m] = { n: a.n, avg_rir, avg_surplus, too_easy: a.n >= minSets && avg_surplus >= minSurplus };
+  }
+  return out;
+}
+
 // ADAPTIVE VOLUME RESPONSE — the foundation of the self-learning plan. For each
 // trained muscle it combines the user's CURRENT weekly volume (vs the KB MEV/MAV/MRV
 // landmarks) with whether a lift for that muscle has STALLED, into an honest,
@@ -354,8 +415,11 @@ export function volumeVsLandmarks(weekVolume, muscleIndex) {
 // pushes a target above MAV.max, and once a muscle is stalled AT its ceiling it says
 // "change/deload", not "add more", so volume can never run away.
 // `weekVolume` is { muscleId: sets } (effective sets); `stalledMuscleIds` is the set
-// of muscle ids whose primary lift stallDetect flagged. Returns one entry per muscle.
-export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new Set()) {
+// of muscle ids whose primary lift stallDetect flagged. `tooEasyMuscleIds` (Increment
+// C) marks muscles whose LOGGED effort sits clearly above the KB target — a stall
+// there gets "push closer to failure" BEFORE "add sets" (the KB's own lever order:
+// volume → effort → deload → variation, judged per lever). Returns one entry per muscle.
+export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new Set(), tooEasyMuscleIds = new Set()) {
   const out = [];
   for (const [m, sets] of Object.entries(weekVolume)) {
     const lm = muscleIndex.get(m);
@@ -369,6 +433,9 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
     } else if (sets > mrvMax) {
       signal = "reduce";
       advice = `~${sets} sets/wk is above your recoverable ceiling (~${mrvMax}) — trim a set or two.`;
+    } else if (stalled && sets < mavMax && tooEasyMuscleIds.has(m)) {
+      signal = "effort";
+      advice = `progress has stalled, but your logged effort says you're stopping well short of failure — take your last sets closer (~1-2 reps in reserve) before adding volume.`;
     } else if (stalled && sets < mavMax) {
       signal = "add";
       advice = `progress has stalled and you're at ~${sets} of a possible ${mavMax} productive sets — try adding ~2 sets here.`;
@@ -381,8 +448,8 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
     }
     out.push({ muscle: m, sets, signal, advice });
   }
-  // Surface the actionable ones first (add/reduce/change before hold).
-  const rank = { reduce: 0, change: 1, add: 2, hold: 3 };
+  // Surface the actionable ones first (reduce/change/effort/add before hold).
+  const rank = { reduce: 0, change: 1, effort: 2, add: 3, hold: 4 };
   return out.sort((a, b) => (rank[a.signal] - rank[b.signal]) || (b.sets - a.sets));
 }
 
@@ -396,7 +463,10 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
 // response signal (it's a plan-fit/time constraint, surfaced as a warning), so it
 // never drives an adjustment. `prevAdjust` is the accumulated map so far (or {}).
 // `context` (Increment A) carries a recovery/energy read: `{ underRecovered,
-// inDeficit }`. A stall while persistently under-recovered or in an energy deficit
+// inDeficit }`, plus two per-muscle Sets: `regressingMuscleIds` (Wave 166) and
+// `tooEasyMuscleIds` (Increment C — effortSignal's too-easy muscles, which hold
+// instead of adding because the fix is effort, not sets).
+// A stall while persistently under-recovered or in an energy deficit
 // is a recovery/fuel problem, not a volume one — adding sets you can't recover makes
 // it worse — so the "add volume" response is SUPPRESSED then (the muscle holds).
 // Easing (over-ceiling, stalled-at-ceiling) always still fires: pulling back is safe
@@ -410,13 +480,19 @@ export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledM
   // recovery/energy one, which is a whole-athlete state): a regressing chest must
   // not be given more sets while a fine back legitimately still can be.
   const regressing = context.regressingMuscleIds ?? new Set();
+  // Increment C: a muscle whose LOGGED effort sits clearly above the KB target is
+  // stalling because the sets are too easy, not too few — adding volume to a
+  // sandbagged stall wastes recovery on more easy sets. Hold instead; the plateau
+  // card says "push closer to failure". Per-muscle, positive-evidence-only (an
+  // empty set here leaves every path byte-identical).
+  const tooEasy = context.tooEasyMuscleIds ?? new Set();
   for (const [m, sets] of Object.entries(weekVolume || {})) {
     const lm = muscleIndex.get(m);
     if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
-    const mayAdd = canAdd && !regressing.has(m);
+    const mayAdd = canAdd && !regressing.has(m) && !tooEasy.has(m);
     let step = 0;
     if (sets > lm.mrv.max) step = -2;                                              // over the ceiling → ease
-    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (mayAdd ? 2 : 0) : -2; // stalled: add if room AND recovered AND not declining, else hold/ease
+    else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (mayAdd ? 2 : 0) : -2; // stalled: add if room AND recovered AND not declining AND not too-easy, else hold/ease
     // not stalled and within range → progressing fine → hold (no change)
     const prev = prevAdjust?.[m] ?? 0;
     const range = lm.mrv.max - lm.mev.min;
