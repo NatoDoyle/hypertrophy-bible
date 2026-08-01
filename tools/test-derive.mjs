@@ -37,6 +37,9 @@ import {
   isLuckySet,
   luckySetsInSession,
   LUCKY_SET_XP,
+  supportedCompound,
+  effortBandTop,
+  effortSignal,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -824,6 +827,130 @@ check("deriveVolumeAdjust: EASING still fires for a regressing muscle at its cei
   // Pulling volume back is always safe — only the ADD branch is gated.
   const idx = new Map([["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }]]);
   assert.deepEqual(deriveVolumeAdjust({}, { chest: 24 }, idx, new Set(["chest"]), { regressingMuscleIds: new Set(["chest"]) }), { chest: -2 });
+});
+
+// --- the effort lever (Increment C, Wave 171) -----------------------------
+// A stalled muscle whose LOGGED effort sits clearly above the KB target needs
+// effort, not sets. Positive evidence only: absent rir leaves everything
+// byte-identical (the recorded deferral rationale, now enforced by test).
+
+check("effortBandTop: the KB effort table's three tiers, conservative on unknowns", () => {
+  // heavy compound (barbell bench: stability moderate) → top 3 ("1-3")
+  assert.equal(effortBandTop({ mechanic: "compound", stability: "moderate", cns_cost: "moderate" }), 3);
+  // supported/stable compound (leg press) → top 2 ("0-2")
+  assert.equal(effortBandTop({ mechanic: "compound", stability: "high", cns_cost: "low" }), 2);
+  assert.equal(supportedCompound({ mechanic: "compound", stability: "high", cns_cost: "low" }), true);
+  // isolation → top 1 ("0-1")
+  assert.equal(effortBandTop({ mechanic: "isolation", stability: "high", cns_cost: "low" }), 1);
+  // stable but systemically heavy → stays on the heavy reserve
+  assert.equal(effortBandTop({ mechanic: "compound", stability: "high", cns_cost: "high" }), 3);
+  // missing metadata (custom exercises never carry stability) → most conservative tier
+  assert.equal(effortBandTop({ mechanic: "compound" }), 3);
+  assert.equal(effortBandTop(undefined), 3);
+});
+
+// Fixture: full exercise objects (the byId shape), sessions in distinct ISO weeks.
+const effById = new Map([
+  ["bench", { mechanic: "compound", stability: "moderate", cns_cost: "moderate", primary_muscles: ["chest"] }],
+  ["legpress", { mechanic: "compound", stability: "high", cns_cost: "low", primary_muscles: ["quadriceps"] }],
+  ["curl", { mechanic: "isolation", stability: "high", cns_cost: "low", primary_muscles: ["biceps"] }],
+]);
+const effSess = (date, exercise, rir, extra = {}) => ({
+  date,
+  sets: Array.from({ length: 4 }, () => ({
+    exercise, set_type: "work", weight_kg: 100, reps: 8,
+    ...(rir != null ? { rir } : {}), ...extra,
+  })),
+});
+
+check("effortSignal: fires at ≥10 sets with avg surplus ≥ +1, silent below either bar", () => {
+  // 12 bench sets over 3 weeks at rir 4 (tier top 3 → surplus 1) → too easy
+  const s3 = [effSess("2026-01-05", "bench", 4), effSess("2026-01-12", "bench", 4), effSess("2026-01-19", "bench", 4)];
+  assert.deepEqual(effortSignal(s3, effById).chest, { n: 12, avg_rir: 4, avg_surplus: 1, too_easy: true });
+  // only 8 sets → below minSets, reported but not actionable
+  assert.equal(effortSignal(s3.slice(0, 2), effById).chest.too_easy, false);
+  // 12 sets AT the band top (rir 3, surplus 0) → compliant, not too easy
+  const atTarget = [effSess("2026-01-05", "bench", 3), effSess("2026-01-12", "bench", 3), effSess("2026-01-19", "bench", 3)];
+  assert.equal(effortSignal(atTarget, effById).chest.too_easy, false);
+});
+
+check("effortSignal: tier-aware — a supported compound or isolation fires at its own lower top", () => {
+  const lp = [effSess("2026-01-05", "legpress", 3), effSess("2026-01-12", "legpress", 3), effSess("2026-01-19", "legpress", 3)];
+  assert.equal(effortSignal(lp, effById).quadriceps.too_easy, true); // top 2, rir 3 → surplus 1
+  const cu = [effSess("2026-01-05", "curl", 2), effSess("2026-01-12", "curl", 2), effSess("2026-01-19", "curl", 2)];
+  assert.equal(effortSignal(cu, effById).biceps.too_easy, true); // top 1, rir 2 → surplus 1
+});
+
+check("effortSignal: deload/eased sets, warm-ups, non-numeric rir and unknown exercises contribute nothing", () => {
+  // an eased band is PRESCRIBED easy — compliance, not sandbagging
+  const deload = [effSess("2026-01-05", "bench", 4, { deload: true }), effSess("2026-01-12", "bench", 4, { deload: true }), effSess("2026-01-19", "bench", 4, { deload: true })];
+  assert.deepEqual(effortSignal(deload, effById), {});
+  const warm = [effSess("2026-01-05", "bench", 4, { set_type: "warmup" })];
+  assert.deepEqual(effortSignal(warm, effById), {});
+  const bogus = [effSess("2026-01-05", "bench", "x"), effSess("2026-01-12", "bench", null)];
+  assert.deepEqual(effortSignal(bogus, effById), {});
+  const unknown = [effSess("2026-01-05", "mystery-lift", 4)];
+  assert.deepEqual(effortSignal(unknown, effById), {});
+});
+
+check("effortSignal: only the last 6 trained weeks count — stale easy weeks age out", () => {
+  // rir logged only in the OLDEST of 7 trained weeks → outside the window → silence
+  const weeks = ["2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26", "2026-02-02", "2026-02-09", "2026-02-16"];
+  const sessions = [effSess(weeks[0], "bench", 4), ...weeks.slice(1).map((d) => effSess(d, "bench", null))];
+  assert.deepEqual(effortSignal(sessions, effById), {});
+  // absent data entirely → {}
+  assert.deepEqual(effortSignal([], effById), {});
+});
+
+check("volumeResponse: a too-easy stall says EFFORT, not add — and the rails still outrank it", () => {
+  const mIndex = new Map([
+    ["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+    ["biceps", { mev: { min: 8 }, mav: { max: 16 }, mrv: { max: 20 } }],
+  ]);
+  const tooEasy = new Set(["chest"]);
+  // stalled with headroom + too easy → "effort" (the KB's lever order: effort before more volume)
+  const eff = volumeResponse({ chest: 12 }, mIndex, new Set(["chest"]), tooEasy).find((x) => x.muscle === "chest");
+  assert.equal(eff.signal, "effort");
+  // stalled AT the ceiling + too easy → still "change" (deload precedence unchanged)
+  const ceil = volumeResponse({ chest: 22 }, mIndex, new Set(["chest"]), tooEasy).find((x) => x.muscle === "chest");
+  assert.equal(ceil.signal, "change");
+  // below MEV + too easy → still "add" (under-stimulus is the primary deficiency)
+  const below = volumeResponse({ chest: 6 }, mIndex, new Set(), tooEasy).find((x) => x.muscle === "chest");
+  assert.equal(below.signal, "add");
+  // rank-map regression guard: effort sorts between change and add, never NaN
+  const order = volumeResponse({ chest: 12, biceps: 4 }, mIndex, new Set(["chest"]), tooEasy);
+  assert.deepEqual(order.map((x) => x.signal), ["effort", "add"]);
+});
+
+check("volumeResponse/deriveVolumeAdjust: NO effort data is byte-identical to before (the crux guard)", () => {
+  const mIndex = new Map([
+    ["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+    ["biceps", { mev: { min: 8 }, mav: { max: 16 }, mrv: { max: 20 } }],
+  ]);
+  for (const wv of [{ chest: 6 }, { chest: 12 }, { chest: 22 }, { chest: 26 }, { chest: 14, biceps: 4 }]) {
+    for (const stalled of [new Set(), new Set(["chest"])]) {
+      assert.deepEqual(volumeResponse(wv, mIndex, stalled), volumeResponse(wv, mIndex, stalled, new Set()));
+      assert.deepEqual(
+        deriveVolumeAdjust({ chest: 2 }, wv, mIndex, stalled, {}),
+        deriveVolumeAdjust({ chest: 2 }, wv, mIndex, stalled, { tooEasyMuscleIds: new Set() })
+      );
+    }
+  }
+});
+
+check("deriveVolumeAdjust: a too-easy stalled muscle HOLDS (per-muscle), easing untouched", () => {
+  const idx = new Map([
+    ["chest", { mev: { min: 8 }, mav: { max: 18 }, mrv: { max: 22 } }],
+    ["back", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }],
+  ]);
+  const stalled = new Set(["chest", "back"]);
+  // chest too easy → holds; back earns its +2 (per-muscle, like the regression gate)
+  const out = deriveVolumeAdjust({}, { chest: 12, back: 12 }, idx, stalled, { tooEasyMuscleIds: new Set(["chest"]) });
+  assert.deepEqual(out, { back: 2 }, "the fix for a sandbagged stall is effort, not sets");
+  // accumulated value carried unchanged, not reset
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, idx, new Set(["chest"]), { tooEasyMuscleIds: new Set(["chest"]) }).chest, 2);
+  // easing still fires at the ceiling regardless of effort
+  assert.deepEqual(deriveVolumeAdjust({}, { chest: 24 }, idx, new Set(["chest"]), { tooEasyMuscleIds: new Set(["chest"]) }), { chest: -2 });
 });
 
 // --- the mesocycle clock (Wave 167) --------------------------------------

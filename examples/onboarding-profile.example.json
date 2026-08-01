@@ -16,6 +16,5 @@
   "injuries": [{ "region": "shoulder", "severity": "mild", "note": "left side — avoid heavy overhead pressing" }],
   "wearable": "oura",
   "menstrual_tracking": false,
-  "dietary_pattern": "omnivore",
-  "rir_calibrated": true
+  "dietary_pattern": "omnivore"
 }

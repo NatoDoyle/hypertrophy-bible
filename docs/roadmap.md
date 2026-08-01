@@ -65,14 +65,28 @@ The considerations #1/#2 audit (Waves 162–169) refilled it and then cleared it
 ten confirmed findings are all shipped; see `docs/considerations.md` for the write-up. What
 that audit leaves genuinely open, in priority order:
 
-- **[Goal 2 elite] The effort/RIR lever** (`adaptive-algorithm.md` Increment C) — still
-  deferred for the same recorded reason: RIR logging is opt-in and off by default
-  (`app.js`'s `hb_rir`), so the signal isn't there. The cheapest unblock is not building the
-  lever, it's **making effort logging default-on or inferable** — revisit that question
-  first, and only then the lever.
-- **[Goal 1] Cross-user learning** (`adaptive-algorithm.md` far vision) — still needs a
-  multi-user dataset that doesn't exist yet, under the honesty guardrail (noisy aggregates
-  must never override a Grade-A landmark).
+- **[Goal 2 elite] The effort/RIR lever — SHIPPED (Wave 171).** Both halves in one wave,
+  exactly in the order this item prescribed (signal first, then the lever). The signal:
+  the buried `hb_rir` opt-in became a one-tap "Reps left in the tank?" chip row (0/1/2/3/4+),
+  default-visible for non-beginners (tri-state `hb_rir`: force-on/force-off/auto), **never
+  pre-selected — an unanswered set sends no `rir` at all** (the old stepper auto-seeded 2,
+  which would have fabricated "at target" data and blinded the lever permanently; a new
+  `sess.eff` state key makes old crash-mirror blobs' seeds unreachable). Beginners never see
+  it (KB: novice RIR calls are noise) and inherit it at Wave-164 graduation. The lever:
+  `effortSignal` (derive-core, shared-classifier `effortBandTop` with plan-core's
+  prescription) marks a muscle "too easy" only on positive evidence (≥10 logged sets in the
+  last 6 trained weeks averaging ≥+1 over the KB tier target, deload sets excluded);
+  `deriveVolumeAdjust` then HOLDS a too-easy stalled muscle instead of adding sets, and the
+  plateau card says "push closer to failure" via `volumeResponse`'s new `"effort"` signal —
+  the KB's own volume → effort → deload → variation order, finally complete. Absent effort
+  data is byte-identical to before, locked by regression tests at all three layers
+  (derive/coach/routes). Also in the wave: `normalizeSet` now clamps `rpe` and drops
+  non-finite effort values (lesson 27's sibling fields), and the never-read `rir_calibrated`
+  came out of the onboarding schema (lesson 14). Design record: `adaptive-algorithm.md`
+  Increment C.
+- **[Goal 1] Cross-user learning** (`adaptive-algorithm.md` far vision) — now the top open
+  item. Still needs a multi-user dataset that doesn't exist yet, under the honesty guardrail
+  (noisy aggregates must never override a Grade-A landmark).
 - **[Goal 4] Social** remains the biggest untouched retention lever (Tier 3 #10).
 - **Audit follow-through:** the graduation thresholds (Wave 164) and the reactive-deload
   bounds (Wave 165) are practice-based Grade-D choices made on no direct evidence. They're

@@ -48,10 +48,6 @@
     "wearable": { "enum": ["none", "apple-health", "garmin", "oura", "whoop", "fitbit", "other"] },
     "menstrual_tracking": { "type": "boolean" },
     "dietary_pattern": { "enum": ["omnivore", "vegetarian", "vegan", "pescatarian", "other"] },
-    "rir_calibrated": {
-      "type": "boolean",
-      "description": "Whether the user has demonstrated reliable RIR estimation (gates trust in self-reported effort)."
-    },
     "goal_event_date": {
       "type": ["string", "null"],
       "format": "date",

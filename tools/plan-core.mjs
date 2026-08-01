@@ -6,7 +6,7 @@
 // Currency is EFFECTIVE weekly hard sets (primary muscle = 1.0/set, secondary =
 // 0.5/set) — the exact same model as derive-core's perMuscleWeeklyVolume, which
 // we reuse for a closed-loop self-check so plan-time and log-time volume agree.
-import { perMuscleWeeklyVolume, volumeVsLandmarks } from "./derive-core.mjs";
+import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound } from "./derive-core.mjs";
 
 // --- session archetypes: which muscles a session may train ---
 const ARCH = {
@@ -84,7 +84,10 @@ const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
 // distinct from technically risky) — it binds nothing in today's data, where every
 // high-stability compound is low or moderate CNS, but a stable yet systemically
 // heavy machine (a belt squat, say) must not be pushed to 0-2 just for being stable.
-const supported = (ex) => ex.mechanic === "compound" && ex.stability === "high" && ex.cns_cost !== "high";
+// The classifier itself (`supportedCompound`) lives in derive-core (Wave 171), the
+// single source of truth shared with the effort lever — prescription and diagnosis
+// can never disagree about an exercise's target band.
+const supported = supportedCompound;
 // One notch closer to failure than the goal's own heavy-compound band, floored at 0
 // — derived rather than four more literal tuples, so it can never drift from them.
 const easeToward = (band) => {

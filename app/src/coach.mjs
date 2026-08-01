@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock,
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal,
 } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
@@ -628,8 +628,14 @@ export function reactiveDeloadDue(responses, block, plan_meta, blockIndex) {
   return (responses ?? []).some((r) => r.signal === "change");
 }
 
+// The too-easy Set effortSignal's per-muscle read reduces to: only muscles with
+// POSITIVE logged evidence of surplus effort (≥10 recent sets averaging ≥1 rep
+// above their tier target). Shared by the tune and the Progress card so the two
+// can never disagree about who's sandbagging.
+const tooEasySet = (eff) => new Set(Object.entries(eff).filter(([, v]) => v.too_easy).map(([m]) => m));
+
 export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context = {}) {
-  const { index } = resolveEx(customEx);
+  const { byId, index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
   if (!weeks.length) return prevAdjust || {};
@@ -660,11 +666,15 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // the pre-drop weeks roll out of the stall window) and earns +2 sets — piling work
   // onto someone already failing to recover from what they were doing.
   const regressingMuscleIds = new Set(regressionDetect(sessions, index).flatMap((x) => index.get(x.exercise)?.primary ?? []));
-  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds });
+  // Effort gate (Increment C): a stall whose logged effort sits clearly above the
+  // KB target is sandbagged — the fix is effort, not sets. Positive evidence only;
+  // with no logged rir the Set is empty and the tune is byte-identical to before.
+  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId));
+  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
 }
 
 export function progressReport(user, sessions, bodyweights, customEx = [], now = null, checkins = []) {
-  const { index, name } = resolveEx(customEx);
+  const { byId, index, name } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
   // Pick the REFERENCE week honestly: the raw latest ISO week understates
@@ -729,7 +739,11 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // and until now nothing anywhere could see it (stallDetect structurally can't: a
   // real decline blows past its noise band).
   const regressions = regressionDetect(sessions, index).map((r) => ({ ...r, name: name(r.exercise) }));
-  const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds)
+  // Effort lever (Increment C): the same positive-evidence effort read the auto-tune
+  // uses, so the card and the tune can never disagree about who's sandbagging. A
+  // stalled muscle with clear logged-effort surplus reads "effort", not "add".
+  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId));
+  const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
     .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
