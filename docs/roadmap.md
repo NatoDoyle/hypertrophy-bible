@@ -597,6 +597,38 @@ The citation-network outage (PubMed/Crossref/generic WebFetch, all `403` at the 
 been independently confirmed by at least 6 sessions across 3+ days — worth flagging to a human as
 a persistent environment issue, not a transient blip, since it fully blocks the overdue Goal-1 KB
 gap audit.
+## Audit fix (Cloud loop wave, outside the tiers above)
+**The proactive weekly-commitment push (Tier-1 #2, Goal 4's flagship "when will you train
+this week?" nudge) silently never fired for west-of-UTC users on the day it exists to catch.**
+External citation verification (PubMed E-utilities, Crossref, and generic WebFetch) was down
+for this whole session — even a plain fetch to example.com returned 403 and direct `curl` to
+eutils.ncbi.nlm.nih.gov/api.crossref.org was blocked at the proxy gateway (`recentRelayFailures`
+confirmed a `connect_rejected` policy denial, not a transient blip) — so, per CLAUDE.md's "never
+fabricate a citation" rule, this wave deliberately did NOT add or touch any KB citation and
+scoped to a code-only fix instead, following the roadmap's own fallback ("run the largest safe
+UNCLAIMED slice"). `app/src/push.mjs`'s `shouldPushForCommitment` computed "is today one of the
+committed days" via `weekDayKey(now)`/`isoWeekKey(now)` on the RAW UTC sweep instant — unlike its
+siblings in the same file (`isUserPushHour`, `isSocialPushQuietHours`), which already localize
+`now` by the user's stored `tz_offset_min` before reading UTC calendar fields (lesson 1/16: a
+scoping fix landed on some call sites, not this sibling one). For any `tzOffsetMin <= -420`
+(US Mountain/Pacific/Alaska/Hawaii), the sweep's own `PUSH_TARGET_LOCAL_HOUR` (17:00 local) falls
+on the NEXT UTC calendar day, so `weekDayKey` read tomorrow's weekday and a Tuesday commitment
+could never match on a real Tuesday — silently dead for the entire lifetime of that offset, for
+every affected user, not an occasional miss. The same unlocalized `now` also broke the "already
+trained today" check (`toISOString().slice(0,10)` compares UTC dates, not the user's local
+calendar day). Fixed by localizing both `now` and `lastSessionAt` with the same
+`+new Date(x) + tzOffsetMin*60000` pattern `isUserPushHour` already uses, falling back to raw
+UTC when `tzOffsetMin` is unknown (same "don't starve delivery over missing data" choice the
+sibling functions make); `runPushSweep`'s call site now passes `user.profile?.tz_offset_min`
+through. 5 new regression tests in `app/scripts/test-push.mjs`: the pure-function bug reproduced
+directly (a Mountain-time Tuesday commitment now matches; a regression guard confirms it fails
+without `tzOffsetMin`), the localized "already trained"/"trained yesterday" cases, and a full
+`runPushSweep` end-to-end test proving the actual plumbing (not just the pure function) fires the
+push at the user's real local hour. The existing UTC+12 end-to-end test never caught this because
+a positive offset at the 17:00-local target hour never rolls the UTC calendar day backward — only
+a negative offset does, which is exactly why this shipped unnoticed. App `npm test` (full suite)
+and root `npm test` + `npm run check`: both green. No `data/`/`content/`/`public/` file touched,
+so no `build-data` regen or SW `VERSION` bump needed.
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

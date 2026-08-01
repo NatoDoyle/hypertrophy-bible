@@ -137,6 +137,18 @@ ok("UTC+12 (+720) fires at ~17:00 local (05:00 UTC) — the 3am-nudge case this 
 ok("UTC+12 (+720) silent at 16:00 UTC (04:00 local — the old bad slot)", isUserPushHour(720, atUtc("2026-07-10T16:00:00Z")) === false);
 ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPushHour(0, atUtc("2026-07-10T17:00:00Z")) === true && isUserPushHour(0, atUtc("2026-07-10T16:00:00Z")) === false);
 
+// --- shouldPushForCommitment must localize `now`/`lastSessionAt` by tzOffsetMin —
+// a west-of-UTC user's PUSH_TARGET_LOCAL_HOUR (17:00) can fall on the NEXT UTC
+// calendar day (offset <= -420: US Mountain/Pacific/Alaska/Hawaii), so reading
+// raw UTC weekday fields silently never matches "today"'s commitment. ---
+const MOUNTAIN = -420; // UTC-7
+const WED_UTC_INSTANT = atUtc("2026-07-15T02:00:00Z"); // UTC Wed 02:00 = local Tue 19:00
+const LOCAL_TUE_WEEK = isoWeekKey(WED_UTC_INSTANT + MOUNTAIN * 60000);
+ok("west-of-UTC: local day (Tue) matches a Tue commitment even though the UTC instant is already Wednesday", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: null, now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === true);
+ok("regression guard: without tzOffsetMin the same instant reads as Wednesday and never matches", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: null, now: WED_UTC_INSTANT }) === false);
+ok("already trained earlier the same LOCAL day -> no push, even though the UTC dates differ", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: "2026-07-14T17:00:00Z", now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === false);
+ok("trained the LOCAL day before -> still pushes today (localized, not a raw-UTC same-day match)", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: "2026-07-13T17:00:00Z", now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === true);
+
 // --- quiet hours: discrete social pushes (nudge/challenge/cheer/result) must not
 // wake a subscriber overnight — BLOCKERS.md #4's promised "quiet hours", delivered
 // for these events (the daily/commitment reminder already gets its own single
@@ -182,6 +194,23 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     const h2 = []; await runPushSweep(tzStore, vapid, atUtc("2026-07-10T05:00:00Z"), async (u) => { h2.push(u); return { ok: true, status: 201 }; });
     ok("sweep at their 17:00 local (05:00 UTC) DOES push the UTC+12 user", h2.length === 1);
   } finally { try { rmSync(tzPath); } catch {} }
+}
+
+// End-to-end: a west-of-UTC user's commitment push actually fires at their local
+// 17:00 even though that instant is already the NEXT calendar day in UTC — the
+// real regression guard for the tzOffsetMin plumbing through runPushSweep's own
+// call site (the pure-function tests above cover shouldPushForCommitment in
+// isolation; this proves the binder actually passes the user's stored offset).
+{
+  const mtPath = join(tmpdir(), `hb-push-mt-commit-test-${process.pid}.json`);
+  const mtStore = createFileStore(mtPath);
+  try {
+    const MT_NOW = atUtc("2026-07-15T00:00:00Z"); // UTC Wed 00:00 == Mountain (UTC-7) Tue 17:00
+    await mtStore.saveUser("mtu", { profile: { tz_offset_min: MOUNTAIN, commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] } } });
+    await mtStore.savePushSubscription("mtu", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/mt", keys: { p256dh: "k", auth: "a" } });
+    const r = await runPushSweep(mtStore, vapid, MT_NOW, async () => ({ ok: true, status: 201 }));
+    ok("a Mountain-time user's Tuesday commitment fires at their local 17:00, even though the UTC instant is already Wednesday", r.sent === 1);
+  } finally { try { rmSync(mtPath); } catch {} }
 }
 
 // --- runPushSweep: a pending training-partner nudge sends an ENCRYPTED, content-bearing
