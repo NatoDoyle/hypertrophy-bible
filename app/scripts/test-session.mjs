@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -384,6 +384,35 @@ check("isImplausibleSet: silent on real training, however strong the lifter", ()
   assert.equal(isImplausibleSet(250, 3, { lastKg: 240 }), false, "an elite lifter is never second-guessed — it judges against THEIR history");
   assert.equal(isImplausibleSet(7.5, 15, { lastKg: 2.5 }), false, "3x on a lateral raise is normal: the absolute-jump floor keeps it quiet");
   assert.equal(isImplausibleSet(20, 12, { lastKg: 10 }), false, `2x but only a 10 kg jump — under the ${IMPLAUSIBLE_MIN_JUMP_KG} kg floor`);
+});
+
+// The confirm SLOT, not the flag itself (Wave 174). A superset round banks two sets
+// at once, and the confirmation used to be a single exercise id: when both members
+// looked implausible, confirming one un-confirmed the other, so "Tap again — log the
+// round as entered" just moved the warning across and the round could NEVER be
+// banked. Replaying the player's real loop is the only way to catch that — the flag
+// itself was correct at every step.
+check("unconfirmedFlagged: a round with TWO suspect entries banks after ONE confirming tap", () => {
+  const ex = ["bench", "row"];
+  const confirmed = new Set();
+  const keyOf = (i) => ex[i];
+  const bothLookWrong = () => true; // an lb/kg mix-up hits both lifts of a round at once
+  // Tap 1: both flagged, so both are confirmed together and the round re-renders.
+  const first = unconfirmedFlagged([0, 1], keyOf, bothLookWrong, confirmed);
+  assert.deepEqual(first, [0, 1], "both members are questioned, not just the first");
+  for (const i of first) confirmed.add(keyOf(i));
+  // Tap 2: nothing is still owed, so the caller falls through and banks the round.
+  assert.deepEqual(unconfirmedFlagged([0, 1], keyOf, bothLookWrong, confirmed), [],
+    "the round must be bankable on the next tap — the old single-slot confirm looped forever");
+});
+
+check("unconfirmedFlagged: confirming one lift does not wave an unconfirmed partner through", () => {
+  const ex = ["bench", "row"];
+  const keyOf = (i) => ex[i];
+  // Only the partner is suspect; the already-confirmed first lift stays quiet.
+  assert.deepEqual(unconfirmedFlagged([0, 1], keyOf, (i) => i === 1, new Set(["bench"])), [1]);
+  // Confirmation is keyed by exercise id, so a renumbering swap can't inherit it.
+  assert.deepEqual(unconfirmedFlagged([0, 1], keyOf, () => true, new Set(["squat"])), [0, 1]);
 });
 
 check("isImplausibleSet: BOTH the ratio and the absolute jump must be exceeded", () => {

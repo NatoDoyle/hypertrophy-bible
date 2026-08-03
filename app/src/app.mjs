@@ -38,6 +38,51 @@ const boundedNum = (v, max) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
 };
 
+// The same door, for a WEIGH-IN — lesson 27's "look at the validated field's
+// siblings", one level up: `/api/checkin` regex-validated its `date` while
+// `/api/bodyweight` passed the identical field through untouched, and neither
+// bounded `kg`. A weigh-in is stored ONE PER DATE and read newest-last, so a
+// client-supplied `date: "9999-12-31"` (auth is possession-of-UUID — any client can
+// post) becomes the permanently-latest weigh-in: it feeds nutritionInputs' current
+// weight, the bodyweight trend and the energy-balance read forever, and unlike a bad
+// set it could never be taken back, because the correction path is "log that same
+// date again" and no UI can reach a date the calendar doesn't offer.
+//
+// Falls back rather than 400s, matching /api/checkin and the set bounds above: a
+// rejected write strands a queued offline weigh-in, and losing logged data is the
+// worse failure. A day of future slack is deliberate — a user east of UTC really is
+// on tomorrow's date relative to the server, and that's a real weigh-in, not junk.
+export const MAX_BODYWEIGHT_KG = 500;
+export function sanitizeBodyweight(date, kg, nowMs = Date.now()) {
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const tomorrow = new Date(nowMs + 86400000).toISOString().slice(0, 10);
+  const ok = validLocalDate(date) && date <= tomorrow;
+  return { date: ok ? date : today, kg: Math.min(MAX_BODYWEIGHT_KG, Number(kg)) };
+}
+
+// The SAME door for injuries. `/api/profile/injury` checked the region against the
+// KB's own keys and whitelisted the severity — while `/api/onboard` and
+// `/api/plan/regenerate` (which spreads `body.profile` wholesale, `injuries` among
+// its TRAINING_FIELDS) took whatever a client sent (lesson 1: the guard landed on
+// the one call site the bug was found at). An unknown region is not inert: it sits
+// in the profile forever matching no contraindication rule, so it filters nothing
+// while the user believes they're being trained around it — and it poisons the
+// escalation ladder above, whose `rank[stored.severity]` reads `undefined` for a
+// junk severity, so a later honest report can never raise it.
+export const INJURY_SEVERITIES = ["mild", "moderate", "severe"];
+export function sanitizeInjuries(injuries) {
+  if (!Array.isArray(injuries)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const inj of injuries) {
+    const region = String(inj?.region ?? "");
+    if (!VALID_INJURY_REGIONS.has(region) || seen.has(region)) continue;
+    seen.add(region);
+    out.push({ ...inj, region, severity: INJURY_SEVERITIES.includes(inj?.severity) ? inj.severity : "moderate" });
+  }
+  return out;
+}
+
 // The ONE normalizer every write path for a logged set goes through — the log
 // route and the edit route both call it, so a bound tightened in one can never be
 // missing from the other (lesson 1: prefer a single source of truth to a fix
@@ -101,6 +146,7 @@ export function createApp(store, config = {}) {
     // any client can post): junk silently drops to null rather than corrupting the
     // taper engine with an un-parseable goalEventDate.
     if (profile.goal_event_date != null && !validLocalDate(profile.goal_event_date)) profile.goal_event_date = null;
+    if (profile.injuries != null) profile.injuries = sanitizeInjuries(profile.injuries);
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -145,6 +191,7 @@ export function createApp(store, config = {}) {
     if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
     // Same trust-boundary guard as /api/onboard: junk collapses to null.
     if (body.profile?.goal_event_date != null && !validLocalDate(body.profile.goal_event_date)) body.profile.goal_event_date = null;
+    if (body.profile?.injuries != null) body.profile.injuries = sanitizeInjuries(body.profile.injuries);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -486,7 +533,9 @@ export function createApp(store, config = {}) {
     // morning flow, not a separate trip to Progress). Weight is optional.
     let weight_logged = false;
     if (Number.isFinite(Number(b.weight_kg)) && Number(b.weight_kg) > 0) {
-      await store.addBodyweight(b.user_id, { date: day, kg: Number(b.weight_kg) });
+      // `day` is already validated above; sanitizeBodyweight re-checks it anyway and
+      // bounds the kg, so both weigh-in doors apply one identical guard (lesson 1).
+      await store.addBodyweight(b.user_id, sanitizeBodyweight(day, b.weight_kg));
       weight_logged = true;
     }
     return c.json({ ok: true, readiness: dailyReadiness(checkin), weight_logged });
@@ -1044,7 +1093,7 @@ export function createApp(store, config = {}) {
     const user = user_id && (await store.getUser(user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!Number.isFinite(Number(kg)) || Number(kg) <= 0) return c.json({ error: "bad-weight" }, 400);
-    await store.addBodyweight(user_id, { date: date ?? new Date().toISOString().slice(0, 10), kg: Number(kg) });
+    await store.addBodyweight(user_id, sanitizeBodyweight(date, kg));
     const all = await store.listBodyweights(user_id);
     // Same 42-day windowing as progressReport (lesson 1 — fix every call site of
     // bodyweightTrend, not just the one that showed the bug); a sparse window falls

@@ -116,6 +116,26 @@ export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = n
   return weightKg >= ref * IMPLAUSIBLE_RATIO && weightKg - ref >= IMPLAUSIBLE_MIN_JUMP_KG;
 }
 
+// Which of a station's exercises still owe a confirming tap: flagged as a possible
+// typo AND not yet confirmed. The single-lift player only ever asks about one lift,
+// but a SUPERSET banks two at once — and the confirm state used to be a single
+// exercise id, so when BOTH members looked implausible (one lb/kg mix-up hits both
+// lifts of a round at once) confirming one silently un-confirmed the other: every
+// tap of "Tap again — log the round as entered" just moved the warning across, and
+// the round could never be banked at all. A button whose label promises an action
+// it can never perform is worse than a blocked one — the user's only escape was
+// the unlink button, which nothing told them to use.
+//
+// Returning the whole list (not the first) is the fix: the caller confirms every
+// flagged member together, so one deliberate second tap always banks the round,
+// with a warning shown against each number it is questioning.
+//
+// Keyed by EXERCISE ID rather than position (`keyOf`) because Swap, "do this later"
+// and Unlink all renumber the array — an index-keyed confirmation would suppress the
+// warning for whatever lift inherited that slot.
+export const unconfirmedFlagged = (indices, keyOf, isFlagged, confirmed) =>
+  indices.filter((i) => !confirmed.has(keyOf(i)) && isFlagged(i));
+
 // Lucky-set XP + hash — DUPLICATES tools/derive-core.mjs's LUCKY_SET_XP/isLuckySet
 // (same reason as checkSetPR above: this file is a static browser asset and can't
 // reach outside public/). A cross-consistency test (test-session.mjs) replays many

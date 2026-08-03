@@ -311,7 +311,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
       }
 
-      // A share-card CHEER (roadmap Tier-3 #10's last un-wired social event): unlike
+      // A share-card CHEER (the last of Tier-3 #10's social events to reach push): unlike
       // nudge/challenge, a cheer has no single event instant to use as a high-water
       // mark — cheers accumulate as a running count on the share row (store.getShareCheers),
       // keyed by share_id, not by user. So the marker here is the COUNT itself

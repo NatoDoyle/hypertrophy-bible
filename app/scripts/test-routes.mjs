@@ -1307,6 +1307,55 @@ try {
     ok(`#injury ${region} — filterable by the engine all along, now reportable`, r.status === 200);
   }
 
+  // --- weigh-in trust boundary (Wave 174) ---------------------------------
+  // A weigh-in is stored one-per-date and read newest-last, so a far-future date
+  // becomes the permanently-latest weight: it drives the Fuel plan's current
+  // weight, the trend and the energy-balance read forever — and can never be
+  // corrected, because "log that date again" is the only correction path and no
+  // calendar UI reaches the year 9999. /api/checkin already regex-validated the
+  // identical field; /api/bodyweight passed it straight through.
+  const bwGuard = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  const bwGuardToday = new Date().toISOString().slice(0, 10);
+  await json("POST", "/api/bodyweight", { user_id: bwGuard, kg: 80, date: "9999-12-31" });
+  const bwRows = await store.listBodyweights(bwGuard);
+  ok("#bodyweight a far-future date is refused a permanent slot at the end of the series",
+    bwRows.length === 1 && bwRows[0].date === bwGuardToday);
+  await json("POST", "/api/bodyweight", { user_id: bwGuard, kg: 81, date: "not-a-date" });
+  ok("#bodyweight garbage date falls back to today rather than 400ing away a queued offline weigh-in",
+    (await store.listBodyweights(bwGuard)).every((b) => /^\d{4}-\d{2}-\d{2}$/.test(b.date)));
+  await json("POST", "/api/bodyweight", { user_id: bwGuard, kg: 5000 });
+  ok("#bodyweight an impossible weight is bounded, not banked as the latest truth",
+    (await store.listBodyweights(bwGuard)).every((b) => b.kg <= 500));
+  // The SAME guard on the sibling door — /api/checkin writes a weigh-in too.
+  await json("POST", "/api/checkin", { user_id: bwGuard, energy: 3, weight_kg: 9000, date: "9999-01-01" });
+  const afterCheckin = await store.listBodyweights(bwGuard);
+  ok("#bodyweight the check-in's weigh-in door applies the identical guard (lesson 1)",
+    afterCheckin.every((b) => b.kg <= 500 && b.date <= bwGuardToday));
+
+  // --- injury sanitization on EVERY write path (Wave 174) ------------------
+  // An unknown region isn't inert: it matches no contraindication rule, so it
+  // filters nothing while the user believes they're being trained around it.
+  const injGuard = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+    injuries: [{ region: "left-earlobe", severity: "catastrophic" }, { region: "knee", severity: "nonsense" }],
+  } })).data.user_id;
+  const injStored = (await store.getUser(injGuard)).profile.injuries;
+  ok("#injury /api/onboard drops an unknown region instead of storing a filter that matches nothing",
+    injStored.length === 1 && injStored[0].region === "knee");
+  ok("#injury /api/onboard normalizes a junk severity, so the escalation ladder can still raise it",
+    injStored[0].severity === "moderate");
+  await json("POST", "/api/plan/regenerate", { user_id: injGuard, profile: {
+    ...(await store.getUser(injGuard)).profile,
+    injuries: [{ region: "not-a-body-part", severity: "mild" }, { region: "shoulder", severity: "severe" }],
+  } });
+  const injAfter = (await store.getUser(injGuard)).profile.injuries;
+  ok("#injury /api/plan/regenerate sanitizes the wholesale profile spread too (lesson 1: every write path)",
+    injAfter.length === 1 && injAfter[0].region === "shoulder" && injAfter[0].severity === "severe");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
