@@ -332,6 +332,20 @@ These are real failures from previous iterations. Each is now a standing check.
    pause/layoff semantics usually fall out for free once the unit is right, instead of each
    needing its own special case.
 
+29. **A stale branch's FIX ages just like its premise — re-compute its blast radius against
+   code written after it.** Wave 172 landed a 16-PR backlog that predated ten newer waves.
+   Verdict-review caught what per-PR premise checks alone would not: PR #250 localized the
+   challenge-week STAMPS but its call-site list was frozen at authoring time, so the four
+   raw-UTC week COMPARISONS in `push.mjs` (written/kept since) would have become actively
+   wrong the moment the localized stamps landed — the invite/accept push could never fire for
+   the exact users the fix served. Landing a stale change means asking lesson 1's question
+   fresh: not "did the author fix every call site" but "what are the call sites NOW" — and a
+   frame/scope change (lesson 22/23/24) must land storage and consumption together, never
+   split across a merge boundary. Same review: two PRs were closed as obsolete because their
+   claims were point-in-time observations (an "outage" that was really a sandbox proxy
+   policy; a backlog description the landing itself dissolved) — a PR whose value is a status
+   report goes stale the way a fix does not, and should be re-expressed fresh, not merged.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
