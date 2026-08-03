@@ -91,6 +91,16 @@ tell the loop what to fix next. **Needs your call** — it's a values decision, 
 replies to a magic-link email, it goes nowhere. Set up forwarding (Cloudflare Email Routing is
 free) if you want to be reachable.
 
+### 9. Cloud-loop sandbox can't verify citations (environment, not the web)
+**Why:** the cloud/autonomous sessions' egress proxy denies CONNECT to
+`eutils.ncbi.nlm.nih.gov` and `api.crossref.org` (`connect_rejected` policy denial, confirmed
+across many cloud sessions in late July 2026). **Both endpoints verified working (HTTP 200) from
+the local environment on 2026-08-03** — so this is a sandbox proxy allowlist issue, not an
+outage. Effect: cloud iterations can't add or verify KB citations (correctly refusing to
+fabricate per the guardrail) and keep re-reporting the "outage". **What I need:** if you control
+the cloud environment's network policy, allowlist those two hosts; otherwise KB-citation work
+simply stays local-session-only (which is how it's being handled now — no loop work is blocked).
+
 
 Until both exist, the honest position holds: **the KB landmarks stay the priors; per-user signals
 move each plan *within* the recoverable range, never outside it.** Nothing here blocks the current

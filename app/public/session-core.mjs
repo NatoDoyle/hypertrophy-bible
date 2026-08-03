@@ -66,9 +66,13 @@ export const dropDelivered = (queue, id) => queue.filter((x) => x.id !== id);
 // thresholds without the other fails CI instead of silently letting the live
 // celebration and the recap disagree.
 // `priorBests` is the `pr_watch` object buildToday attaches to each exercise:
-// `{ e1rm_kg, load_kg }`, either possibly null (no qualifying history yet).
+// `{ e1rm_kg, load_kg }`, either possibly null (no qualifying history yet). `deload`
+// mirrors the server's `set.deload` check (derive-core.mjs's checkSetPR/detectPersonalRecords):
+// a planned-easy set is light on WEIGHT only, so Epley's rep-reward can still out-score a
+// true heavy best — never a real record.
 const RELIABLE_1RM_REPS = 12;
-export function checkSetPR(exercise, weightKg, reps, setType, priorBests) {
+export function checkSetPR(exercise, weightKg, reps, setType, priorBests, deload) {
+  if (deload) return null;
   if ((setType ?? "work") === "warmup") return null;
   if (!(typeof reps === "number" && reps > 0 && typeof weightKg === "number" && weightKg > 0)) return null;
   if (reps <= RELIABLE_1RM_REPS) {

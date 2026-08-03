@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -209,7 +209,12 @@ export async function settleChallenge(store, id, user, now = Date.now()) {
   const history = user.profile?.challenge_history ?? [];
   if (!ch) return { challenge: null, history, my_count: null, opponent_count: null, week_over: false, result: null };
   const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
-  const week_over = ch.week !== isoWeekKey(new Date(now).toISOString());
+  // Localized by THIS user's own tz (isoWeekKeyLocal) — a raw UTC "now" can
+  // already read as next week while it's still today for anyone west of UTC,
+  // ending (and auto-completing) their challenge up to a day before their own
+  // local week is actually over. Each side settles in its own local frame,
+  // same as isChallengeOpen/the propose-time week stamp in app.mjs.
+  const week_over = ch.week !== isoWeekKeyLocal(now, user.profile?.tz_offset_min);
   // Both sides' tallies up front (needed either way once an opponent exists) so a
   // completing challenge records its result with the SAME counts it reports.
   let my_count = null, opponent_count = null;
@@ -248,11 +253,21 @@ export async function settleChallenge(store, id, user, now = Date.now()) {
       return u;
     });
     const wrote = transitioned;
-    newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
-    if (wrote) {
-      ch.status = nextStatus;
-      if (entry) result = entry; // a result that genuinely landed just now
+    // The current SAME-id record — whether this call just wrote it, or a
+    // concurrent settle (the push sweep, or the opponent's own GET) already did
+    // — is the one true state; use it whenever the slot wasn't replaced out from
+    // under us, never our own possibly-stale local `ch`/`history` snapshot. This
+    // is lesson 21's sibling for the NO-OP branch: a raced write already
+    // correctly withheld `result` below (never fabricating a trophy), but it was
+    // still returning the CALLER's stale status/history even though the fresh,
+    // already-terminal record was sitting right there in `updated` — reachable
+    // any time this user's own GET races the push sweep or the opponent's GET
+    // for the same just-ended challenge.
+    if (updated?.profile?.challenge?.id === ch.id) {
+      ch.status = updated.profile.challenge.status;
+      newHistory = updated.profile?.challenge_history ?? history;
     }
+    if (wrote && entry) result = entry; // a result that genuinely landed just now
   }
   return { challenge: ch, opponentId, history: newHistory, my_count, opponent_count, week_over, result };
 }

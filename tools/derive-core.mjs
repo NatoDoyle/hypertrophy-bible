@@ -48,6 +48,7 @@ export const PR_XP = 50;
 export function priorPersonalBests(sessions) {
   const e1rm = {}, load = {};
   for (const s of sessions) for (const set of s.sets ?? []) {
+    if (set.deload) continue; // planned-easy sets can't anchor a real ceiling (mirrors stallDetect/progressionByExercise)
     if (countsForE1RM(set)) {
       const { e1rm: v } = estimate1RM(set.weight_kg, set.reps);
       if (v > (e1rm[set.exercise] ?? 0)) e1rm[set.exercise] = v;
@@ -70,13 +71,18 @@ export function priorPersonalBests(sessions) {
 //     raise could beat its best weight forever and be told nothing.
 // A first-EVER performance is not a PR (no prior best to beat) — the caller frames "first
 // time" separately if it wants. `priorSessions` = every session before the one checked.
-// Warm-ups never count; a deload is intentionally light so it can't out-lift a real best.
+// Warm-ups never count. A deload is intentionally light on WEIGHT only — Epley still
+// rewards reps, so an eased-weight set logged at the top of its rep range can out-score
+// a true heavy best (e.g. 90kg x10 deload vs a real 100kg x5 top set: e1rm 120 > 116.67).
+// Deload sets are excluded explicitly, mirroring stallDetect/progressionByExercise (which
+// already skip them via `if (set.deload) continue`) rather than trusting the math alone.
 // Pure and deterministic (no Date.now/Math.random).
 export function detectPersonalRecords(session, priorSessions = []) {
   const { e1rm: priorE1rm, load: priorLoad } = priorPersonalBests(priorSessions);
   // Best in the just-logged session per exercise.
   const newE1rm = {}, newLoad = {};
   for (const set of session.sets ?? []) {
+    if (set.deload) continue;
     if (countsForE1RM(set)) {
       const { e1rm } = estimate1RM(set.weight_kg, set.reps);
       const cur = newE1rm[set.exercise];
@@ -108,6 +114,7 @@ export function detectPersonalRecords(session, priorSessions = []) {
 // e1rm noise margin), so a mid-session "🎉" can never fire for a set the end-of-session
 // recap wouldn't also celebrate. `priorBests` is priorPersonalBests(sessions-before-today).
 export function checkSetPR(set, priorBests) {
+  if (set.deload) return null; // a planned-easy set never celebrates (see detectPersonalRecords)
   if (countsForE1RM(set)) {
     const { e1rm } = estimate1RM(set.weight_kg, set.reps);
     const prev = priorBests.e1rm[set.exercise];
@@ -192,6 +199,22 @@ export function isoWeekKey(dateStr) {
       ((date - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7
     );
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+// isoWeekKey of a raw instant, localized by tzOffsetMin (minutes EAST of UTC,
+// the same convention as push.mjs's isUserPushHour/isSocialPushQuietHours and
+// coach.mjs's taperPhase) before reading its calendar week — shifting the
+// instant by the offset and then reading its UTC fields is the same "treat the
+// shifted instant's UTC fields as local fields" trick those functions already
+// use. Without this, a raw `isoWeekKey(now)` reads the ISO week of the SERVER's
+// UTC instant, which can already be the next calendar week while it's still the
+// previous day for anyone west of UTC (any offset <= -1 crossing a week
+// boundary) — the 1v1 weekly challenge feature (#10 social) stamps and checks
+// its `week` this way and needs the user's own local week, not the server's.
+// Missing/unknown tzOffsetMin falls back to raw UTC (same "don't starve a
+// result over missing data" choice those sibling functions make).
+export function isoWeekKeyLocal(now, tzOffsetMin) {
+  return isoWeekKey(+new Date(now) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0));
 }
 
 // A session's week key, preferring the device's local calendar day but falling
@@ -924,8 +947,17 @@ export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps 
       }
     }
   };
-  for (const m of Object.values(byEx)) collect(m);
-  for (const m of Object.values(byExLoad)) collect(m);
+  // Majority-of-weeks rule (mirrors stallDetect + progressionByExercise): without this
+  // reciprocal guard, an exercise logged with BOTH a reliable top set and a pump-band
+  // backoff set every session (the common top-set-plus-backoff pattern) contributed its
+  // improvement gaps into the shared median-gap pool from BOTH paths, doubling that one
+  // lift's influence over the personal cadence estimate relative to every other exercise.
+  // Ties go to e1RM (the stronger signal), same as the other two functions.
+  for (const ex of new Set([...Object.keys(byEx), ...Object.keys(byExLoad)])) {
+    const loadWeeks = Object.keys(byExLoad[ex] ?? {}).length;
+    const e1rmWeeks = Object.keys(byEx[ex] ?? {}).length;
+    collect(loadWeeks > e1rmWeeks ? byExLoad[ex] : byEx[ex]);
+  }
   if (gaps.length < minGaps) return null;
   gaps.sort((a, b) => a - b);
   const mid = Math.floor(gaps.length / 2);

@@ -415,6 +415,41 @@ that audit leaves genuinely open, in priority order:
     list (icon/result/week/score) now renders beneath the aggregate record card; `formatWeekLabel`
     (pure, unit-tested) turns the internal ISO week key into a readable label. Only "multiple
     concurrent challenges" remains an unclaimed v1 follow-on (needs a real table, a bigger change).
+    **Referral loop closed (Cloud loop wave):** every prior social-layer wave assumed BOTH sides
+    already had an account — the public share card (`share.html`) had a "Start your own — free"
+    link that dumped a new visitor at `/` with zero memory of which friend's card sent them there,
+    and an EXISTING app user who opened a friend's card had no way to become their training partner
+    except leaving the page, finding the Coach tab, and pasting the URL back in by hand — real
+    friction on exactly the feature Goal 4 needs most (net-new users arriving with a built-in
+    accountability partner from session one). Two small, code-groundable additions, no new store
+    table: (1) `share.html` now checks `localStorage.getItem("hb_user")` (same-origin, so it's
+    already there for a returning app user) — if present, it shows a "🤝 Follow their progress"
+    button that calls the existing `POST /api/following` directly from the share page (one tap,
+    reuses `SOCIAL_ERROR_COPY`'s existing self-follow copy for the token's-your-own-card case);
+    if absent, the CTA link now carries the share token forward (`/?follow=TOKEN`) instead of
+    dropping it. (2) `app.js` stashes that token in `localStorage` (`tryPendingFollow`, consumed
+    once and removed so it can never re-fire into a follow loop) and auto-follows the instant a
+    `uid` exists — either immediately at boot (an existing user who opened the link directly) or
+    right after `submitOnboarding` succeeds (a brand-new signup). `POST /api/following` already had
+    no session-count gate (confirmed against the existing route tests, which follow with a
+    zero-session fresh account), so this needed no backend change at all. Best-effort throughout: a
+    dead/self/already-followed token silently no-ops, same posture as every other background social
+    action in this codebase. Real-browser-verified (Playwright, pre-installed Chromium) end to end:
+    an existing user landing on a friend's share card and tapping the button shows up as an active,
+    following partner server-side; a brand-new visitor arriving via `/?follow=TOKEN`, completing the
+    real onboarding wizard through the UI, ends up following that same friend with no manual paste
+    step. No `data/`/`content/` touched (no `build-data` regen needed); `public/app.js`,
+    `public/share.html` changed so `sw.js` `VERSION` bumped (v130→v131); no new imported file, so no
+    `SHELL` precache change needed. Root `npm test` + `npm run check` and app `npm test` (full
+    suite incl. `test-routes.mjs`) green — the feature is pure client glue over an already-tested
+    endpoint, so no new unit test was added beyond the existing `#following` coverage this reuses;
+    verified instead via the real-browser walkthrough above, per CLAUDE.md's UI-change rule.
+    Citation work was skipped again this wave: PubMed E-utilities and Crossref both still return
+    `403` for this session (re-confirmed directly via `WebFetch` against both hosts), so per
+    CLAUDE.md's "never fabricate a citation" rule no KB content was touched. Avoided the four other
+    open cloud-loop PRs' pattern (diff-scoped audit fixes inside `push.mjs`/`merge-profile.mjs`/
+    `adherence.mjs`, PRs #238-#241) by picking a genuinely new, unclaimed capability instead of a
+    fifth pass over the same small surface.
     **Audit fix (Cloud loop wave):** `GET /api/challenge`'s completion write reported the
     optimistically-computed win/loss to the client even when the CAS guard no-op'd the actual
     store write — reachable because `isChallengeOpen` (Wave 127) already treats a week-over
@@ -550,6 +585,88 @@ and build the next genuinely new slice once "multiple concurrent challenges" get
 something table-sized, or run a fresh, larger Goal-1 KB gap audit (the "Honest distance to each
 goal" section above is itself flagged as due for one now that Tier 1/2 have emptied) rather than
 re-running this same clean-audit pass a third time.
+
+## Audit fix (Cloud loop wave, outside the tiers above)
+**`/api/reminders` and `/api/pause` could 500 in prod instead of a clean 404 on a malformed
+request.** (Authored while 14 cloud-loop PRs were queued unreviewed — that backlog was cleared by
+Wave 172 below; the point-in-time backlog/citation-outage narration this section used to open with
+is superseded and was trimmed at land time.) This wave scoped a
+targeted Explore search to files NONE of the then-open PRs touch (`planner.mjs`, `movement-demo.mjs`,
+`kb.mjs`, `auth.mjs`'s core magic-link logic, the exercise-swap/custom-exercise/nutrition-log/
+share/following routes in `app.mjs`, and a fresh pass over `session-core.mjs`) and verified its one
+finding inline before fixing: `app.mjs`'s `/api/reminders` (line ~444) and `/api/pause` (line
+~456) both called `store.updateUser(b.user_id, ...)` with no guard on a missing `user_id` — unlike
+their siblings `/api/commitment` and `/api/streak/freeze`, which already carry the exact documented
+fix for this (Wave 82: `store.updateUser(undefined)` returns `null` on the file store, harmlessly
+producing a 404, but *throws* on D1 because `db.prepare(...).bind(id)` rejects an `undefined` bind
+param — confirmed directly against this project's own D1 shim, which raised exactly
+`"Provided value cannot be bound to SQLite parameter 1"`). A malformed or premature POST to either
+route (e.g. a client racing onboarding, or local storage not yet populated) would 200/404 locally
+but 500 in prod. Fixed with the identical one-line guard (`if (!b.user_id) return c.json({error:
+"unknown user"}, 404)`) the two sibling routes already use, at the same call-site position (before
+the store call). Added 4 new regression tests in `app/scripts/test-routes.mjs` (no-`user_id` 404
+for both routes, plus a normal-path sanity check for `/api/reminders`, which had no existing test
+coverage at all) — following the same file-store-only test pattern the sibling fixes used (the
+divergence is real only against D1, which this test harness doesn't exercise directly; the D1
+throw was verified separately, out-of-band, against the D1 shim). No `data/`/`content/`/`public/`
+file touched, so no `build-data` regen or SW `VERSION` bump needed. Root `npm test` + `npm run
+check` and app `npm test` (full suite incl. `test-routes.mjs`): all green.
+
+## Audit fix (Cloud loop wave, outside the tiers above)
+**The proactive weekly-commitment push (Tier-1 #2, Goal 4's flagship "when will you train
+this week?" nudge) silently never fired for west-of-UTC users on the day it exists to catch.**
+`app/src/push.mjs`'s `shouldPushForCommitment` computed "is today one of the
+committed days" via `weekDayKey(now)`/`isoWeekKey(now)` on the RAW UTC sweep instant — unlike its
+siblings in the same file (`isUserPushHour`, `isSocialPushQuietHours`), which already localize
+`now` by the user's stored `tz_offset_min` before reading UTC calendar fields (lesson 1/16: a
+scoping fix landed on some call sites, not this sibling one). For any `tzOffsetMin <= -420`
+(US Mountain/Pacific/Alaska/Hawaii), the sweep's own `PUSH_TARGET_LOCAL_HOUR` (17:00 local) falls
+on the NEXT UTC calendar day, so `weekDayKey` read tomorrow's weekday and a Tuesday commitment
+could never match on a real Tuesday — silently dead for the entire lifetime of that offset, for
+every affected user, not an occasional miss. The same unlocalized `now` also broke the "already
+trained today" check (`toISOString().slice(0,10)` compares UTC dates, not the user's local
+calendar day). Fixed by localizing both `now` and `lastSessionAt` with the same
+`+new Date(x) + tzOffsetMin*60000` pattern `isUserPushHour` already uses, falling back to raw
+UTC when `tzOffsetMin` is unknown (same "don't starve delivery over missing data" choice the
+sibling functions make); `runPushSweep`'s call site now passes `user.profile?.tz_offset_min`
+through. 5 new regression tests in `app/scripts/test-push.mjs`: the pure-function bug reproduced
+directly (a Mountain-time Tuesday commitment now matches; a regression guard confirms it fails
+without `tzOffsetMin`), the localized "already trained"/"trained yesterday" cases, and a full
+`runPushSweep` end-to-end test proving the actual plumbing (not just the pure function) fires the
+push at the user's real local hour. The existing UTC+12 end-to-end test never caught this because
+a positive offset at the 17:00-local target hour never rolls the UTC calendar day backward — only
+a negative offset does, which is exactly why this shipped unnoticed. App `npm test` (full suite)
+and root `npm test` + `npm run check`: both green. No `data/`/`content/`/`public/` file touched,
+so no `build-data` regen or SW `VERSION` bump needed.
+
+## Wave 172 — the cloud-loop PR backlog, reviewed and landed
+The 16 open cloud-loop PRs (2026-07-26/29, all predating the entire Waves 162–171 landing) were
+each re-reviewed against current main — premise re-verified with file:line evidence, staleness
+and conflicts mapped — then **14 landed** on one integration branch and **2 closed as obsolete**:
+- **Landed:** #251 (reminders/pause user_id guard — the D1 undefined-bind 500), #238
+  (commitment-push localized to the user's frame), #250 (challenge/commitment week keys stored
+  AND consumed in the user's local frame — `isoWeekKeyLocal`), #239/#241 (merge-profile lesson-16
+  gaps: pending partner nudge, Fuel nutrition stats), #240 (`settleChallenge` returns the
+  PERSISTED state on a raced no-op write, lesson 21), #245 (`progressionCadence` dual-path
+  double-count, the same majority-of-weeks guard its siblings had), #247 (deload/comeback-eased
+  sets can no longer fabricate an all-time PR — e1RM's rep bonus made a light 90×10 "beat" a real
+  100×5), #243 (bodyweight logs stamp the LOCAL day; Fuel form no longer crashes for non-female
+  users), #244 (honest "week in progress" note on a first Progress visit), #242 (share-card
+  referral loop: a visitor who taps "train with me" lands following the sharer), #248/#249
+  (permanent deterministic fuzz sweeps over plan-core and derive-core), #228 (email fallback so
+  push-less users still hear about nudges/challenges/cheers — rebased onto the quiet-hours
+  refactor; its "push may be inert" motivation was already disproven, the reach gap was real).
+- **Landing adjustments beyond the PRs themselves:** #250's fix was extended to the four
+  challenge-week CONSUMPTION sites in `push.mjs` it missed (a west-of-UTC Sunday-evening invite
+  stored the local week while the raw-UTC comparison had already rolled — the invite/accept push
+  could never fire; new boundary regression test in `test-push.mjs`); #249's sweep gained
+  Wave 171's `"effort"` signal in its allowed list; one SW bump to v144 for the whole batch.
+- **Closed:** #246 (its refuted store-parity finding has been durably recorded in
+  `test-store-d1.mjs` since Wave 141 — the dedup divergence is intentional and locked by the
+  collide-from/collide-to tests; do not re-investigate), #252 (its "citation network down" claim
+  is refuted from this environment — PubMed E-utilities and Crossref both return 200; the real
+  residue, that the CLOUD sandbox's egress proxy denies CONNECT to those hosts, moved to
+  BLOCKERS.md as an environment note).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified

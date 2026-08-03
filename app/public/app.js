@@ -98,6 +98,34 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
 
+// Referral loop (Goal 4): a friend's public share card (share.html) links back
+// here with ?follow=TOKEN instead of a bare "/". Stash it until we HAVE a uid
+// (existing user landing directly, or a brand-new signup finishing onboarding),
+// then auto-follow — closing the "saw a friend's streak → became accountability
+// partners" loop without the copy-paste-a-link friction the manual box still
+// exists for. Best-effort: a stale/self/dead token silently no-ops, same as any
+// other social action that isn't the thing the user came here to do.
+const REFERRAL_KEY = "hb_pending_follow";
+(() => {
+  let ref; try { ref = new URLSearchParams(location.search).get("follow"); } catch { ref = null; }
+  if (!ref || ref.length > 100) return;
+  try { localStorage.setItem(REFERRAL_KEY, ref); } catch {}
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete("follow");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  } catch {}
+})();
+async function tryPendingFollow() {
+  let token; try { token = localStorage.getItem(REFERRAL_KEY); } catch { token = null; }
+  if (!token || !uid) return;
+  try { localStorage.removeItem(REFERRAL_KEY); } catch {} // one attempt — never retries into a follow loop
+  try {
+    const r = await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
+    if (r && !r.error) say("Connected with the friend who invited you — see them on the Coach tab.");
+  } catch {}
+}
+
 // Rest-readiness self-check (considerations #7): between sets, teach people to
 // gauge their OWN recovery — the KB's rest-periods thesis is "rest by readiness,
 // not a stopwatch". Optional prompts, not mandatory ticking; the "I'm ready"
@@ -431,6 +459,7 @@ async function submitOnboarding() {
     uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name);
     localStorage.setItem("hb_units", profile.units); // remember display preference (only once onboarding actually succeeded)
     localStorage.removeItem(ONB_KEY); // answers safely handed off; stop persisting them
+    tryPendingFollow(); // no-op unless they arrived via a friend's share link
     return renderPlanExplain(true);
   }
   // Retry in place — never discard the eight answers the user just gave.
@@ -1079,9 +1108,9 @@ function showPrToast(text) {
 // attached to this exercise, computed from the SAME history the server will use at
 // recap time — checkSetPR duplicates the server's rules, cross-tested in
 // scripts/test-session.mjs, so the two surfaces can never disagree).
-function checkAndCelebratePR(exObj, weightKg, reps) {
+function checkAndCelebratePR(exObj, weightKg, reps, deload) {
   if (!exObj.pr_watch || sess.prCelebrated?.[exObj.exercise]) return false;
-  const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch);
+  const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch, deload);
   if (!pr) return false;
   sess.prCelebrated = sess.prCelebrated || {};
   sess.prCelebrated[exObj.exercise] = true;
@@ -1277,7 +1306,7 @@ function renderPlayer(resting = 0) {
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
-    const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps); // overrides the say() above if it's a PR — the bigger news
+    const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload); // overrides the say() above if it's a PR — the bigger news
     checkAndCelebrateLucky(e, loggedSet, wasPR);
     if (sess.complete) return finish();
     renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
@@ -1380,7 +1409,7 @@ function renderSupersetStation(L, P, resting = 0) {
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
-    for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps));
+    for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload));
     if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of
@@ -1746,9 +1775,12 @@ async function renderProgress() {
     // happened, or the tap reads as broken.
     if (!val || val <= 0) { say("Type your weight first."); $("#bw").placeholder = `type a number first (${unitLabel()})`; $("#bw").focus(); return; }
     const kg = toKg(val);
-    // Send today's date at log time so an offline weigh-in keeps its real date and
-    // a replayed POST replaces the same-day row instead of duplicating it.
-    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: new Date().toISOString().slice(0, 10) });
+    // Send today's LOCAL date at log time (not the UTC date — `addBodyweight`
+    // replaces same-date rows, so a UTC-mislabeled date for anyone west of UTC
+    // can silently collide with and overwrite a genuinely different day's
+    // weigh-in) so an offline weigh-in keeps its real date and a replayed POST
+    // replaces the same-day row instead of duplicating it.
+    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: localDay() });
     if (res.ok) return renderProgress();
     $("#bw").value = "";
     const note = document.createElement("p");
@@ -1886,7 +1918,10 @@ async function renderFuel() {
     wireLearnLinks();
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
     $("#f-save").onclick = async () => {
-      const g = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
+      // Null-safe: #f-hip only exists in the DOM for a female user (the Navy
+      // formula's hip measure), so reading it unconditionally for anyone else
+      // threw on `.value` of null and killed the save before the request fired.
+      const g = (id) => { const el = $(id); if (!el) return undefined; const v = parseFloat(el.value); return Number.isFinite(v) && v > 0 ? v : undefined; };
       const weightDisp = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck"), hip = g("#f-hip");
       // The weight field shows in the user's display unit like every other weight in the
       // app — convert to kg before it's stored, or an lb entry corrupts the trend + TDEE.
@@ -1898,8 +1933,11 @@ async function renderFuel() {
       // BMI-based estimate the adaptive TDEE later corrects, so no "add BF% or a tape measure"
       // gate (that wall bounced novices off the whole nutrition half of the app).
       try {
-        await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value }) });
+        // Same local-date requirement as the Progress-tab logger above — both
+        // writes below can record a bodyweight row, and the server only falls
+        // back to the UTC date when none is sent.
+        await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight, date: localDay() }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
@@ -2393,4 +2431,5 @@ function render() {
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") { learnSlug = null; learnStack = []; } render(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
+if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link
 render();

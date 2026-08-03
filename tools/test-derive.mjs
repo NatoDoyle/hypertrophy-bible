@@ -9,6 +9,7 @@ import {
   RELIABLE_1RM_REPS,
   stallDetect,
   isoWeekKey,
+  isoWeekKeyLocal,
   sessionWeekKey,
   graduatedStatus,
   trainedWeeksInBlock,
@@ -40,6 +41,9 @@ import {
   supportedCompound,
   effortBandTop,
   effortSignal,
+  buildFeatureReport,
+  loadExerciseIndex,
+  loadMuscleIndex,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -79,6 +83,22 @@ check("isHardSet gates warmups and sub-threshold effort", () => {
 check("isoWeekKey groups by ISO week", () => {
   assert.equal(isoWeekKey("2026-06-01T18:00:00Z"), isoWeekKey("2026-06-03T18:00:00Z"));
   assert.notEqual(isoWeekKey("2026-06-03T18:00:00Z"), isoWeekKey("2026-06-10T18:00:00Z"));
+});
+
+check("isoWeekKeyLocal: a raw UTC instant just past the week boundary reads as the NEXT week, but a west-of-UTC user's actual local day is still the PREVIOUS week (the bug the 1v1 challenge + weekly commitment features hit)", () => {
+  // 2026-06-01 is a Monday. 02:00 UTC on that Monday is 19:00 the PRIOR Sunday for
+  // a -420 (UTC-7, e.g. Mountain) offset — still the old ISO week locally, even
+  // though the raw UTC calendar day has already rolled to Monday.
+  const mondayEarlyUtc = "2026-06-01T02:00:00Z";
+  assert.equal(isoWeekKey(mondayEarlyUtc), "2026-W23"); // raw UTC: already the new week
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, -420), "2026-W22"); // localized: still the old week
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, -420), isoWeekKey("2026-05-31T18:00:00Z")); // agrees with the true local calendar day
+  // An epoch-ms number works identically to an ISO string (both are valid `new Date(...)` inputs).
+  assert.equal(isoWeekKeyLocal(new Date(mondayEarlyUtc).getTime(), -420), "2026-W22");
+  // East-of-UTC and unknown/missing offsets are unaffected by this boundary case.
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, 420), "2026-W23"); // already Monday both raw and local
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, undefined), isoWeekKey(mondayEarlyUtc)); // missing tz falls back to raw UTC
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, NaN), isoWeekKey(mondayEarlyUtc));
 });
 
 check("perMuscleWeeklyVolume: primary=1, secondary=0.5, warmups excluded", () => {
@@ -442,6 +462,38 @@ check("progressionCadence learns the personal rhythm; adaptiveStallWindow scales
   assert.equal(adaptiveStallWindow(20), 10);
 });
 
+check("progressionCadence: a top-set-plus-backoff exercise does not double-count its own gaps (regression)", () => {
+  const wkDate = (i) => { const d = new Date(Date.UTC(2026, 0, 5)); d.setUTCDate(d.getUTCDate() + i * 7); return d.toISOString().slice(0, 10); };
+  // bench: logged with BOTH a reliable top set (e1RM path) and a pump-band backoff set
+  // (load path) every week, same as a real top-set-plus-backoff session — the top set
+  // improves at week 2, the backoff set improves at week 10. Both paths share the exact
+  // same week keys (a tie), so the majority-of-weeks guard (mirrors stallDetect +
+  // progressionByExercise) must route bench through exactly ONE path — e1RM, per the
+  // shared tie-goes-to-e1RM convention — never both.
+  const benchSessions = [];
+  for (let i = 0; i <= 10; i++) {
+    benchSessions.push({
+      local_date: wkDate(i),
+      sets: [
+        { exercise: "bench", set_type: "work", weight_kg: 100 + (i >= 2 ? 10 : 0), reps: 8 },  // reliable band
+        { exercise: "bench", set_type: "work", weight_kg: 40 + (i >= 10 ? 10 : 0), reps: 15 },  // pump band
+      ],
+    });
+  }
+  // squat: single-logged (e1RM path only), improves once at week 8.
+  const squatSessions = [];
+  for (let i = 0; i <= 8; i++) {
+    squatSessions.push({
+      local_date: wkDate(i),
+      sets: [{ exercise: "squat", set_type: "work", weight_kg: 100 + (i >= 8 ? 10 : 0), reps: 5 }],
+    });
+  }
+  // Without the guard, bench's e1RM gap (2) AND its own backoff gap (10) both land in the
+  // pool alongside squat's gap (8): median of [2, 8, 10] = 8. With the guard, bench
+  // contributes only its e1RM-path gap (2): median of [2, 8] = 5.
+  assert.equal(progressionCadence([...benchSessions, ...squatSessions], new Map()), 5);
+});
+
 check("detectPersonalRecords: e1rm PR on heavy work, with a noise margin", () => {
   const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]; // e1rm ~116.67
   const beat = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6 }] };     // e1rm ~120
@@ -474,9 +526,39 @@ check("detectPersonalRecords: warm-ups and deloads never manufacture a PR", () =
   // a heavy WARM-UP single must not count as a PR
   const warmup = { session_id: "b", sets: [{ exercise: "bench", set_type: "warmup", weight_kg: 200, reps: 1 }, { exercise: "bench", set_type: "work", weight_kg: 90, reps: 5 }] };
   assert.equal(detectPersonalRecords(warmup, prior).length, 0);
-  // a deload week is intentionally light and can't out-lift a real best
+  // a same-reps deload is intentionally light and can't out-lift a real best
   const deload = { session_id: "c", sets: [{ exercise: "bench", set_type: "work", weight_kg: 60, reps: 5, deload: true }] };
   assert.equal(detectPersonalRecords(deload, prior).length, 0);
+});
+
+check("detectPersonalRecords: a deload eased on WEIGHT but logged at higher reps must not out-score a true best (Epley rewards reps)", () => {
+  // 100kg x5 -> e1rm 116.67 (the true, non-deload best). A 90kg x10 deload set
+  // (10% lighter weight, comfortably sub-maximal) scores 120.0 by Epley's formula
+  // alone — higher reps beat the weight cut. Without an explicit deload exclusion
+  // (mirroring stallDetect/progressionByExercise's `if (set.deload) continue`),
+  // this fabricates a "New personal record!" celebration + PR_XP for a planned-easy set.
+  const prior = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }];
+  const deload = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }] };
+  assert.equal(detectPersonalRecords(deload, prior).length, 0);
+  // the same set WITHOUT the deload flag genuinely is a PR — proves the fixture
+  // really would out-score the true best, so the assertion above is meaningful.
+  const notDeload = { session_id: "b", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10 }] };
+  assert.equal(detectPersonalRecords(notDeload, prior).length, 1);
+});
+
+check("checkSetPR: a deload set never fires the live in-player celebration, even when it would out-score the prior best", () => {
+  const prior = priorPersonalBests([{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }] }]);
+  assert.equal(checkSetPR({ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }, prior), null);
+  assert.ok(checkSetPR({ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10 }, prior)); // sanity: not-deload does fire
+});
+
+check("priorPersonalBests: a deload set never anchors the baseline ceiling future sets are compared against", () => {
+  // If the ONLY logged sets for an exercise are deload-tagged, there is no real
+  // ceiling yet — a later genuine work set must be judged as a first-ever
+  // performance (no prior best), not compared against an inflated deload baseline.
+  const sessions = [{ session_id: "a", sets: [{ exercise: "bench", set_type: "work", weight_kg: 90, reps: 10, deload: true }] }];
+  const { e1rm } = priorPersonalBests(sessions);
+  assert.equal(e1rm.bench, undefined);
 });
 
 check("priorPersonalBests: the shared ceiling detectPersonalRecords and checkSetPR both read", () => {
@@ -990,6 +1072,146 @@ check("trainedWeeksInBlock: missing/garbage inputs return 0 rather than throwing
   assert.equal(trainedWeeksInBlock([], null, "2026-01-26T00:00:00.000Z"), 0);
   assert.equal(trainedWeeksInBlock(undefined, BLK_START, "2026-01-26T00:00:00.000Z"), 0);
   assert.equal(trainedWeeksInBlock([{ date: "nonsense", sets: [{ exercise: "x" }] }], BLK_START, "2026-01-26T00:00:00.000Z"), 0);
+});
+
+// --- broad sweep: the pure derive engine (buildFeatureReport + the functions it
+// composes) must never throw or produce a structurally invalid report across the
+// input space, not just the hand-picked fixtures above. This is the derive-core
+// sibling of tools/test-plan.mjs's generatePlan sweep (a prior cloud-loop iteration
+// added that one; derive-core.mjs runs on every real /api/today call — the app's
+// actual daily coaching loop — and had no equivalent regression net) and follows
+// the same shape: a seeded (reproducible, no Math.random/Date.now — this is a test
+// file generating fixtures, not the pure engine itself) generator sweeps realistic
+// AND malformed training histories through the real KB's exercises/muscles.
+check("sweep: buildFeatureReport + siblings never throw across a wide input space", () => {
+  const realExIndex = loadExerciseIndex();
+  const realMuscleIndex = loadMuscleIndex();
+  const exIds = [...realExIndex.keys()];
+  assert.ok(exIds.length > 20, "expected the real exercise DB to be loadable");
+
+  // mulberry32: tiny deterministic PRNG so a failure is reproducible, not flaky.
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function rand() {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const pick = (rand, arr) => arr[Math.floor(rand() * arr.length)];
+
+  // Deliberately weird-but-plausible set shapes: missing rpe/rir, bodyweight (0kg)
+  // work, single-rep, high-rep, a warmup-only session, fractional rpe.
+  function makeSet(rand, exercise) {
+    const kind = rand();
+    if (kind < 0.15) return { exercise, set_type: "warmup", weight_kg: 20, reps: 8 };
+    if (kind < 0.3) return { exercise, set_type: "work", weight_kg: 0, reps: Math.floor(1 + rand() * 20) }; // bodyweight
+    if (kind < 0.45) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 200), reps: 1 }; // single-rep
+    if (kind < 0.6) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 40), reps: Math.floor(15 + rand() * 20) }; // high-rep
+    if (kind < 0.75) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 150 * 10) / 10, reps: Math.floor(4 + rand() * 8), rir: Math.floor(rand() * 5) }; // RIR, no rpe
+    return { exercise, set_type: "work", weight_kg: Math.round(rand() * 150 * 10) / 10, reps: Math.floor(4 + rand() * 8), rpe: Math.round((6 + rand() * 4) * 10) / 10 };
+  }
+
+  function makeHistory(rand, weeks, sessionsPerWeek) {
+    const sessions = [], checkins = [], bodyMetrics = [];
+    const startDay = Date.UTC(2026, 0, 5); // a Monday, fixed
+    let day = 0;
+    for (let w = 0; w < weeks; w++) {
+      for (let s = 0; s < sessionsPerWeek; s++) {
+        day += Math.floor(1 + rand() * 2);
+        const date = new Date(startDay + day * 86400000).toISOString();
+        const nEx = 1 + Math.floor(rand() * 6);
+        const sets = [];
+        for (let e = 0; e < nEx; e++) {
+          const exercise = pick(rand, exIds);
+          const nSets = Math.floor(rand() * 5); // can be 0 -> an exercise with no counted sets
+          for (let k = 0; k < nSets; k++) sets.push(makeSet(rand, exercise));
+        }
+        sessions.push({ session_id: `sweep-${w}-${s}-${Math.floor(rand() * 1e6)}`, date, sets });
+      }
+      // sparse, gap-prone check-ins: not every day, and fields drop out at random.
+      for (let d = 0; d < 7; d++) {
+        if (rand() < 0.3) continue; // missed day
+        const date = new Date(startDay + (w * 7 + d) * 86400000).toISOString().slice(0, 10);
+        const c = { date };
+        if (rand() < 0.8) c.bodyweight_kg = Math.round((70 + rand() * 40) * 10) / 10;
+        if (rand() < 0.7) c.sleep_hours = Math.round(rand() * 10 * 10) / 10;
+        if (rand() < 0.7) c.sleep_quality = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.hrv_ms = Math.floor(30 + rand() * 80);
+        if (rand() < 0.6) c.resting_hr = Math.floor(40 + rand() * 50);
+        if (rand() < 0.6) c.mood = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.motivation = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.stress = Math.floor(1 + rand() * 5);
+        checkins.push(c);
+      }
+      if (rand() < 0.4) bodyMetrics.push({ date: new Date(startDay + w * 7 * 86400000).toISOString().slice(0, 10), bodyweight_kg: Math.round((70 + rand() * 40) * 10) / 10 });
+    }
+    return { sessions, checkins, bodyMetrics };
+  }
+
+  const trainingStatuses = ["beginner", "intermediate", "advanced"];
+  const goals = ["hypertrophy", "strength", "fat-loss", "recomposition"];
+  let failure = null;
+  let ran = 0;
+  for (let seed = 0; seed < 40 && !failure; seed++) {
+    const rand = mulberry32(seed * 7919 + 13);
+    const weeks = Math.floor(rand() * 15); // 0..14, includes the empty/near-empty edge
+    const sessionsPerWeek = 1 + Math.floor(rand() * 5);
+    const { sessions, checkins, bodyMetrics } = makeHistory(rand, weeks, sessionsPerWeek);
+    const profile = { user_id: `sweep-${seed}`, training_status: pick(rand, trainingStatuses), primary_goal: pick(rand, goals) };
+    try {
+      ran++;
+      const report = buildFeatureReport({ profile, sessions, checkins, bodyMetrics }, realExIndex, realMuscleIndex);
+      assert.ok(report && typeof report === "object");
+      for (const [week, byMuscle] of Object.entries(report.weekly_volume_by_muscle)) {
+        for (const [muscle, sets] of Object.entries(byMuscle)) {
+          assert.ok(Number.isFinite(sets), `weekly_volume_by_muscle.${week}.${muscle} not finite`);
+          assert.ok(sets >= 0, `weekly_volume_by_muscle.${week}.${muscle} negative`);
+        }
+      }
+      for (const [muscle, v] of Object.entries(report.latest_week_vs_landmarks)) {
+        assert.ok(typeof v.status === "string", `latest_week_vs_landmarks.${muscle}.status not a string`);
+        assert.ok(Number.isFinite(v.sets), `latest_week_vs_landmarks.${muscle}.sets not finite`);
+      }
+      if (report.bodyweight_trend) {
+        assert.ok(Number.isFinite(report.bodyweight_trend.slope_kg_per_week));
+        assert.ok(Number.isFinite(report.bodyweight_trend.pct_per_week));
+      }
+      assert.ok(typeof report.energy_balance.direction === "string");
+      assert.ok(Array.isArray(report.progression));
+      for (const p of report.progression) {
+        if (p.basis === "load") assert.ok(Number.isFinite(p.first_load_kg) && Number.isFinite(p.last_load_kg));
+        else assert.ok(Number.isFinite(p.first_e1rm) && Number.isFinite(p.last_e1rm));
+        assert.ok(Number.isFinite(p.change_pct));
+      }
+      if (report.readiness) assert.ok(report.readiness.latest === null || (report.readiness.latest >= 0 && report.readiness.latest <= 100));
+
+      // Exercise the rest of the derive surface directly with the same weekly
+      // volume, mirroring what coach.mjs actually chains together each call.
+      const weekly = report.weekly_volume_by_muscle;
+      const stalls = stallDetect(sessions, realExIndex);
+      assert.ok(Array.isArray(stalls));
+      const cadence = progressionCadence(sessions, realExIndex);
+      assert.ok(cadence === null || Number.isFinite(cadence));
+      const window = adaptiveStallWindow(cadence);
+      assert.ok(Number.isFinite(window));
+      const stalledIds = new Set(stalls.map((s) => s.muscle).filter(Boolean));
+      const responses = volumeResponse(weekly, realMuscleIndex, stalledIds);
+      assert.ok(Array.isArray(responses));
+      for (const r of responses) assert.ok(["add", "reduce", "change", "effort", "hold"].includes(r.signal));
+      const recovery = recoverySignal(checkins, report.energy_balance);
+      assert.ok(recovery.avgReadiness === null || Number.isFinite(recovery.avgReadiness));
+      const adjust = deriveVolumeAdjust({}, weekly, realMuscleIndex, stalledIds, { underRecovered: recovery.underRecovered, inDeficit: recovery.inDeficit });
+      assert.ok(adjust && typeof adjust === "object");
+      for (const v of Object.values(adjust)) assert.ok(Number.isFinite(v));
+    } catch (err) {
+      failure = { seed, weeks, sessionsPerWeek, profile, err };
+    }
+  }
+  if (failure) console.error("  sweep failure:", JSON.stringify({ seed: failure.seed, weeks: failure.weeks, profile: failure.profile }), failure.err.stack);
+  assert.ok(!failure, `derive-core sweep failed on seed ${failure?.seed}: ${failure?.err?.message}`);
+  assert.ok(ran === 40, "sweep should attempt all 40 seeds");
 });
 
 console.log(`\n${passed} test(s) passed.`);

@@ -1,4 +1,4 @@
-import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState } from "./adherence.mjs";
 
@@ -155,18 +155,53 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 // (which also can't fire the day right after training, exactly when a same-day
 // commitment reminder should). A commitment from a PRIOR iso week is stale and
 // never fires — the user meant "this week", not forever.
-export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff }) {
+//
+// isoWeekKey/weekDayKey read UTC calendar fields off whatever they're handed —
+// correct for a bare local_date string, but `now` here is a raw UTC instant.
+// tzOffsetMin (minutes EAST of UTC, same convention as isUserPushHour/
+// isSocialPushQuietHours) localizes it first: without this, a west-of-UTC user
+// whose local PUSH_TARGET_LOCAL_HOUR falls after UTC midnight (offset <= -420 —
+// US Mountain/Pacific/Alaska/Hawaii) gets the NEXT calendar day's weekday here,
+// so a commitment for "today" never matches at all (lesson 1/16: a scoping fix
+// applied to this file's other tz-aware functions, but not this sibling call).
+// Missing tz falls back to raw UTC, same "don't starve delivery over missing
+// data" choice isUserPushHour makes for its own legacy slot.
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin }) {
   if (paused || remindersOff || !commitment?.days?.length) return false;
-  if (commitment.week !== isoWeekKey(now)) return false;
-  if (!commitment.days.includes(weekDayKey(now))) return false;
+  const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
+  const localNow = +new Date(now) + offsetMs;
+  if (commitment.week !== isoWeekKey(localNow)) return false;
+  if (!commitment.days.includes(weekDayKey(localNow))) return false;
   if (!lastSessionAt) return true;
-  return new Date(lastSessionAt).toISOString().slice(0, 10) !== new Date(now).toISOString().slice(0, 10);
+  const localLast = +new Date(lastSessionAt) + offsetMs;
+  return new Date(localLast).toISOString().slice(0, 10) !== new Date(localNow).toISOString().slice(0, 10);
 }
 
 // One daily sweep. Injectable sender/fetch so the whole thing unit-tests on the
-// file store; dead subscriptions (404/410) are pruned as we go.
-export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch) {
+// file store; dead subscriptions (404/410) are pruned as we go. `sendSocialEmail`
+// is optional (omitted call sites keep today's push-only behavior) — when given,
+// it's the email fallback for a user with NO live push subscription at all, for
+// the discrete per-event notifications only (nudge/challenge/cheer/streak-freeze).
+// The daily/commitment reminder stays push-only here; its own email equivalent is
+// nudge.mjs's twice-per-lapse comeback sweep, run separately — this fallback must
+// never duplicate that, so it only ever fires from the same event blocks that
+// already gate on paused/reminders_off/seen-once markers.
+export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch, sendSocialEmail = null) {
   const subs = await store.listPushSubscriptions();
+  const byUser = new Map();
+  for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
+  // Email-bound accounts with ZERO push subscriptions join the sweep too (empty
+  // device list), so the per-event blocks below still evaluate them and fall
+  // back to email — otherwise a user who never granted push permission is
+  // invisible to this whole sweep and hears about a challenge/nudge/cheer/streak-
+  // freeze event only if they happen to reopen the app.
+  const emailByUser = new Map();
+  if (sendSocialEmail) {
+    for (const a of await store.listAccountLastSessions()) {
+      emailByUser.set(a.user_id, a.email);
+      if (!byUser.has(a.user_id)) byUser.set(a.user_id, []);
+    }
+  }
   let checked = 0, sent = 0, pruned = 0;
   // Group subscriptions per USER first. The social seen-once markers
   // (nudge_pushed_at / challenge_pushed_at) are per-user, but sends are
@@ -177,20 +212,22 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
   // carries never heard about it). Social events now fan out to ALL of a user's
   // devices, then stamp ONCE — mirroring how the daily reminder already reaches
   // every subscription.
-  const byUser = new Map();
-  for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
   for (const [userId, userSubs] of byUser) {
     try {
       let user = await store.getUser(userId);
       if (!user) { for (const s of userSubs) { await store.deletePushSubscription(s.endpoint); pruned++; checked++; } continue; }
-      checked += userSubs.length;
+      const email = emailByUser.get(userId) ?? null;
+      checked += userSubs.length || (email ? 1 : 0);
       const paused = !!user.paused;
       const remindersOff = user.profile?.reminders_off === true;
       const quietHours = isSocialPushQuietHours(user.profile?.tz_offset_min, now);
       const gone = new Set(); // endpoints pruned mid-user; later sends skip them
       // Send an encrypted payload to every capable device; returns how many the
       // push service ACCEPTED. One dead endpoint prunes and moves on; one thrown
-      // send never blocks the user's other devices.
+      // send never blocks the user's other devices. A user with NO push devices
+      // at all falls back to email (never a user who merely had a send fail this
+      // tick — that case already retries via push next tick, so adding a second
+      // channel there would risk a duplicate notification for no reliability gain).
       const fanOut = async (payload) => {
         let ok = 0;
         for (const s of userSubs) {
@@ -200,6 +237,12 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
             if (res.gone) { await store.deletePushSubscription(s.endpoint); gone.add(s.endpoint); pruned++; continue; }
             if (res.ok) { ok++; sent++; }
           } catch { /* one bad subscription never blocks the rest */ }
+        }
+        if (ok === 0 && userSubs.length === 0 && email && sendSocialEmail) {
+          try {
+            const res = await sendSocialEmail(email, { subject: payload.subject ?? payload.title, body: payload.body });
+            if (res?.ok) { ok = 1; sent++; }
+          } catch { /* one bad send never blocks the rest of the sweep */ }
         }
         return ok;
       };
@@ -238,7 +281,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // `nudge_seen_at` (app.mjs /api/adherence): two surfaces, never gating each other.
       const pendingNudge = user.profile?.partner_nudge;
       if (!paused && !remindersOff && !quietHours && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
+        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your training partner nudged you", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
         if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
       }
 
@@ -248,9 +291,9 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // Only the opponent's own still-PENDING, current-week invite pushes.
       const pendingChallenge = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
-          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
           && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
+        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
       }
 
@@ -262,9 +305,9 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // push — the in-app card shows them, and a "they said no" notification
       // helps nobody train.
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
-          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
+        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
       }
 
@@ -288,7 +331,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
             const body = delta === 1
               ? "Someone cheered your progress on the Hypertrophy Bible — keep it up!"
               : `${delta} people cheered your progress on the Hypertrophy Bible — keep it up!`;
-            const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-cheer" });
+            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Someone cheered your progress", body, tag: "hb-cheer" });
             if (ok) await stamp("cheers_pushed", cheers);
           }
         }
@@ -299,7 +342,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // it here with the SAME shared logic (settleChallenge, never a second copy),
       // then push the result below off the PERSISTED fields.
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
-          && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString())) {
+          && pendingChallenge.week !== isoWeekKeyLocal(now, user.profile?.tz_offset_min)) {
         await settleChallenge(store, userId, user, now);
         user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
       }
@@ -314,7 +357,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // entry -> no push (never manufacture a trophy); declines stay silent.
       const settledCh = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
-          && settledCh.week === isoWeekKey(new Date(now - 7 * 86400e3).toISOString())) {
+          && settledCh.week === isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) {
         const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
         if (entry) {
           const body = entry.result === "win"
@@ -322,7 +365,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
             : entry.result === "lose"
               ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
               : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
-          const ok = await fanOut({ title: "The Hypertrophy Bible", body, tag: "hb-challenge" });
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your weekly challenge result is in", body, tag: "hb-challenge" });
           if (ok) {
             try {
               await store.updateUser(userId, (u) => {
@@ -352,7 +395,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         const freeze = streakFreezeState(sessions, now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
         if (freeze.balance > 0 && freeze.protectable_week && freeze.protectable_week !== (user.profile?.freeze_pushed_week ?? null)) {
           const week = freeze.protectable_week;
-          const ok = await fanOut({ title: "The Hypertrophy Bible", body: "You missed a week, but a streak freeze can still save it — protect it before it's gone.", tag: "hb-freeze" });
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Protect your streak before it's gone", body: "You missed a week, but a streak freeze can still save it — protect it before it's gone.", tag: "hb-freeze" });
           if (ok) await stampIfChanged("freeze_pushed_week", week);
         }
       }
@@ -365,7 +408,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         // (a brand-new device shouldn't be nagged on day one), so this stays in
         // the per-subscription loop.
         const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
-          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now });
+          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min });
         if (!hit) continue;
         // Never POST to a non-push-service host, even if an old row slipped one in.
         if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }

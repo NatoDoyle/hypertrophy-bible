@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours } from "../src/push.mjs";
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
-import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 
 // A fake browser subscription: a real UA-generated ECDH keypair + a random auth
 // secret (same pattern as test-push-encrypt.mjs), so sendPush's encryption runs
@@ -137,6 +137,18 @@ ok("UTC+12 (+720) fires at ~17:00 local (05:00 UTC) — the 3am-nudge case this 
 ok("UTC+12 (+720) silent at 16:00 UTC (04:00 local — the old bad slot)", isUserPushHour(720, atUtc("2026-07-10T16:00:00Z")) === false);
 ok("a tz-known UTC user shifts to 17:00 local, not the legacy 16:00", isUserPushHour(0, atUtc("2026-07-10T17:00:00Z")) === true && isUserPushHour(0, atUtc("2026-07-10T16:00:00Z")) === false);
 
+// --- shouldPushForCommitment must localize `now`/`lastSessionAt` by tzOffsetMin —
+// a west-of-UTC user's PUSH_TARGET_LOCAL_HOUR (17:00) can fall on the NEXT UTC
+// calendar day (offset <= -420: US Mountain/Pacific/Alaska/Hawaii), so reading
+// raw UTC weekday fields silently never matches "today"'s commitment. ---
+const MOUNTAIN = -420; // UTC-7
+const WED_UTC_INSTANT = atUtc("2026-07-15T02:00:00Z"); // UTC Wed 02:00 = local Tue 19:00
+const LOCAL_TUE_WEEK = isoWeekKey(WED_UTC_INSTANT + MOUNTAIN * 60000);
+ok("west-of-UTC: local day (Tue) matches a Tue commitment even though the UTC instant is already Wednesday", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: null, now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === true);
+ok("regression guard: without tzOffsetMin the same instant reads as Wednesday and never matches", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: null, now: WED_UTC_INSTANT }) === false);
+ok("already trained earlier the same LOCAL day -> no push, even though the UTC dates differ", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: "2026-07-14T17:00:00Z", now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === false);
+ok("trained the LOCAL day before -> still pushes today (localized, not a raw-UTC same-day match)", shouldPushForCommitment({ commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] }, lastSessionAt: "2026-07-13T17:00:00Z", now: WED_UTC_INSTANT, tzOffsetMin: MOUNTAIN }) === true);
+
 // --- quiet hours: discrete social pushes (nudge/challenge/cheer/result) must not
 // wake a subscriber overnight — BLOCKERS.md #4's promised "quiet hours", delivered
 // for these events (the daily/commitment reminder already gets its own single
@@ -182,6 +194,23 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     const h2 = []; await runPushSweep(tzStore, vapid, atUtc("2026-07-10T05:00:00Z"), async (u) => { h2.push(u); return { ok: true, status: 201 }; });
     ok("sweep at their 17:00 local (05:00 UTC) DOES push the UTC+12 user", h2.length === 1);
   } finally { try { rmSync(tzPath); } catch {} }
+}
+
+// End-to-end: a west-of-UTC user's commitment push actually fires at their local
+// 17:00 even though that instant is already the NEXT calendar day in UTC — the
+// real regression guard for the tzOffsetMin plumbing through runPushSweep's own
+// call site (the pure-function tests above cover shouldPushForCommitment in
+// isolation; this proves the binder actually passes the user's stored offset).
+{
+  const mtPath = join(tmpdir(), `hb-push-mt-commit-test-${process.pid}.json`);
+  const mtStore = createFileStore(mtPath);
+  try {
+    const MT_NOW = atUtc("2026-07-15T00:00:00Z"); // UTC Wed 00:00 == Mountain (UTC-7) Tue 17:00
+    await mtStore.saveUser("mtu", { profile: { tz_offset_min: MOUNTAIN, commitment: { week: LOCAL_TUE_WEEK, days: ["tue"] } } });
+    await mtStore.savePushSubscription("mtu", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/mt", keys: { p256dh: "k", auth: "a" } });
+    const r = await runPushSweep(mtStore, vapid, MT_NOW, async () => ({ ok: true, status: 201 }));
+    ok("a Mountain-time user's Tuesday commitment fires at their local 17:00, even though the UTC instant is already Wednesday", r.sent === 1);
+  } finally { try { rmSync(mtPath); } catch {} }
 }
 
 // --- runPushSweep: a pending training-partner nudge sends an ENCRYPTED, content-bearing
@@ -494,6 +523,75 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
 
 }
 
+// --- email fallback for users with NO push subscription (Cloud-loop wave):
+// discrete social events (nudge/challenge/cheer/streak-freeze) must still reach
+// someone who never granted push permission — the single biggest reach gap while
+// BLOCKERS.md #4 (the VAPID secret) is unresolved, since without it NO push send
+// can ever succeed at all. Only fires when a user has ZERO push subscriptions;
+// a user WITH push never gets a duplicate email for the same event. ---
+{
+  const emailPath = join(tmpdir(), `hb-push-email-test-${process.pid}.json`);
+  const emailStore = createFileStore(emailPath);
+  try {
+    const sentEmails = [];
+    const fakeSendSocialEmail = async (email, { subject, body }) => { sentEmails.push({ email, subject, body }); return { ok: true }; };
+
+    // A user with an email-bound account but NO push subscription at all.
+    await emailStore.saveUser("emailonly", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("emailonly@example.com", "emailonly", NOW);
+    const r1 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a push-less account gets the nudge via EMAIL instead", sentEmails.length === 1 && sentEmails[0].email === "emailonly@example.com" && /nudged you/.test(sentEmails[0].body));
+    ok("the email subject is distinct from the generic push title", sentEmails[0].subject === "Your training partner nudged you");
+    ok("nudge_pushed_at is stamped from the EMAIL fallback too (seen-once, channel-agnostic)", (await emailStore.getUser("emailonly")).profile.nudge_pushed_at === NOW);
+    ok("runPushSweep reports the email send in `sent`", r1.sent === 1);
+
+    // The same event never re-fires by email either.
+    sentEmails.length = 0;
+    await runPushSweep(emailStore, vapid, NOW + 3600e3, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("the same nudge is never emailed twice", sentEmails.length === 0);
+
+    // A user with a LIVE push subscription must NOT also get an email for the same event.
+    const ua = await fakeUaSubscription();
+    await emailStore.saveUser("bothchannels", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("bothchannels@example.com", "bothchannels", NOW);
+    await emailStore.savePushSubscription("bothchannels", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/both", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentEmails.length = 0;
+    const r2 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a user WITH a live push subscription gets push, not a duplicate email", r2.sent === 1 && sentEmails.length === 0);
+
+    // Paused / reminders_off push-less accounts are never emailed either — same
+    // guardrail as push, since the email path reuses the identical gated blocks.
+    await emailStore.saveUser("emailpaused", { profile: { partner_nudge: { at: NOW } }, paused: { from: daysAgo(1) } });
+    await emailStore.saveAccount("emailpaused@example.com", "emailpaused", NOW);
+    sentEmails.length = 0;
+    await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a paused push-less account is NOT emailed", sentEmails.length === 0);
+
+    // Without a sendSocialEmail function at all (the default), behavior is
+    // unchanged: a push-less account is simply skipped, exactly like before this
+    // feature existed — never a crash from a missing injected sender.
+    await emailStore.saveUser("noemailer", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("noemailer@example.com", "noemailer", NOW);
+    const r3 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }));
+    ok("omitting sendSocialEmail entirely never throws and sends nothing for the push-less account", r3.sent === 0);
+
+    // The daily/commitment reminder is deliberately NOT emailed here — that
+    // channel is nudge.mjs's own twice-per-lapse comeback sweep, run separately.
+    // A fresh store isolates this from the other accounts above (some of which
+    // have their own still-pending events that would otherwise confound the count).
+    const lapsedPath = join(tmpdir(), `hb-push-email-lapsed-test-${process.pid}.json`);
+    const lapsedStore = createFileStore(lapsedPath);
+    try {
+      await lapsedStore.saveUser("emaillapsed", { profile: {} });
+      await lapsedStore.saveAccount("emaillapsed@example.com", "emaillapsed", NOW);
+      await lapsedStore.addSession("emaillapsed", { session_id: "el1", date: daysAgo(4), sets: [] });
+      sentEmails.length = 0;
+      await runPushSweep(lapsedStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+      ok("the daily lapse reminder is NOT emailed by this fallback (owned by nudge.mjs instead)", sentEmails.length === 0);
+    } finally { try { rmSync(lapsedPath); } catch {} }
+  } finally { try { rmSync(emailPath); } catch {} }
+}
+
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the
 // FIRST device's successful send consume the event for every other device. ---
 {
@@ -586,6 +684,28 @@ try {
   await store.reassignUserData("mfrom", "mto");
   const moved = (await store.listPushSubscriptions()).find((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge");
   ok("#26 a merged-away device's push subscription follows to the surviving user", moved && moved.user_id === "mto");
+
+  // --- Wave 172 (PR #250 extension): the invite push judges the stored week in the
+  // RECIPIENT'S OWN frame. Propose now stamps the challenger's LOCAL week, so a
+  // west-of-UTC Sunday-evening invite stores the local (previous) week while raw UTC
+  // has already rolled to Monday — the old raw-UTC comparison made that invite
+  // unpushable for its entire pending life. ---
+  {
+    const tzChalPath = join(tmpdir(), `hb-push-chal-tz-test-${process.pid}.json`);
+    const tzChalStore = createFileStore(tzChalPath);
+    try {
+      const ua = await fakeUaSubscription();
+      const boundaryNow = +new Date("2026-07-13T02:00:00Z"); // UTC Monday; local Sunday 19:00 for tz -420
+      const localWeek = isoWeekKeyLocal(boundaryNow, -420);
+      ok("tz fixture sanity: local week genuinely differs from the raw UTC week here", localWeek !== isoWeekKey(boundaryNow));
+      await tzChalStore.saveUser("tz-opp", { profile: { tz_offset_min: -420, challenge: { id: "c-tz", role: "opponent", status: "pending", week: localWeek, created_at: boundaryNow } } });
+      await tzChalStore.savePushSubscription("tz-opp", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/chal-tz", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      let tzHits = 0;
+      const countFetch = async () => { tzHits++; return { ok: true, status: 201 }; };
+      const r = await runPushSweep(tzChalStore, vapid, boundaryNow, countFetch);
+      ok("a Sunday-evening invite (local frame) still pushes after UTC midnight rolls the raw week", r.sent === 1 && tzHits === 1);
+    } finally { try { rmSync(tzChalPath); } catch {} }
+  }
 
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

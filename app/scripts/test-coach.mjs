@@ -243,9 +243,13 @@ check("#19 Progress samples an honest reference week: deload and in-progress wee
   const rep2 = progressReport(user, inProg, [], [], now);
   assert.equal(rep2.latest_week, "2026-W23");
   assert.ok(rep2.volume_note && /in progress/i.test(rep2.volume_note));
-  // a lone first week is still shown (no earlier week to fall back to)
+  // a lone first week is still shown (no earlier week to fall back to) AND
+  // gets the same "still in progress" honesty note as the fallback case above —
+  // this is every brand-new user's very first Progress-tab visit.
   const lone = full(["2026-06-08", "2026-06-10"]);
-  assert.equal(progressReport(user, lone, [], [], now).latest_week, "2026-W24");
+  const repLone = progressReport(user, lone, [], [], now);
+  assert.equal(repLone.latest_week, "2026-W24");
+  assert.ok(repLone.volume_note && /in progress/i.test(repLone.volume_note));
 });
 
 check("#19 specialization maintenance muscles read 'holding steady', never 'add volume'", () => {
