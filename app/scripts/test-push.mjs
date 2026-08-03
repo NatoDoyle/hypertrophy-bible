@@ -523,6 +523,75 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
 
 }
 
+// --- email fallback for users with NO push subscription (Cloud-loop wave):
+// discrete social events (nudge/challenge/cheer/streak-freeze) must still reach
+// someone who never granted push permission — the single biggest reach gap while
+// BLOCKERS.md #4 (the VAPID secret) is unresolved, since without it NO push send
+// can ever succeed at all. Only fires when a user has ZERO push subscriptions;
+// a user WITH push never gets a duplicate email for the same event. ---
+{
+  const emailPath = join(tmpdir(), `hb-push-email-test-${process.pid}.json`);
+  const emailStore = createFileStore(emailPath);
+  try {
+    const sentEmails = [];
+    const fakeSendSocialEmail = async (email, { subject, body }) => { sentEmails.push({ email, subject, body }); return { ok: true }; };
+
+    // A user with an email-bound account but NO push subscription at all.
+    await emailStore.saveUser("emailonly", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("emailonly@example.com", "emailonly", NOW);
+    const r1 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a push-less account gets the nudge via EMAIL instead", sentEmails.length === 1 && sentEmails[0].email === "emailonly@example.com" && /nudged you/.test(sentEmails[0].body));
+    ok("the email subject is distinct from the generic push title", sentEmails[0].subject === "Your training partner nudged you");
+    ok("nudge_pushed_at is stamped from the EMAIL fallback too (seen-once, channel-agnostic)", (await emailStore.getUser("emailonly")).profile.nudge_pushed_at === NOW);
+    ok("runPushSweep reports the email send in `sent`", r1.sent === 1);
+
+    // The same event never re-fires by email either.
+    sentEmails.length = 0;
+    await runPushSweep(emailStore, vapid, NOW + 3600e3, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("the same nudge is never emailed twice", sentEmails.length === 0);
+
+    // A user with a LIVE push subscription must NOT also get an email for the same event.
+    const ua = await fakeUaSubscription();
+    await emailStore.saveUser("bothchannels", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("bothchannels@example.com", "bothchannels", NOW);
+    await emailStore.savePushSubscription("bothchannels", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/both", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentEmails.length = 0;
+    const r2 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a user WITH a live push subscription gets push, not a duplicate email", r2.sent === 1 && sentEmails.length === 0);
+
+    // Paused / reminders_off push-less accounts are never emailed either — same
+    // guardrail as push, since the email path reuses the identical gated blocks.
+    await emailStore.saveUser("emailpaused", { profile: { partner_nudge: { at: NOW } }, paused: { from: daysAgo(1) } });
+    await emailStore.saveAccount("emailpaused@example.com", "emailpaused", NOW);
+    sentEmails.length = 0;
+    await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+    ok("a paused push-less account is NOT emailed", sentEmails.length === 0);
+
+    // Without a sendSocialEmail function at all (the default), behavior is
+    // unchanged: a push-less account is simply skipped, exactly like before this
+    // feature existed — never a crash from a missing injected sender.
+    await emailStore.saveUser("noemailer", { profile: { partner_nudge: { at: NOW } } });
+    await emailStore.saveAccount("noemailer@example.com", "noemailer", NOW);
+    const r3 = await runPushSweep(emailStore, vapid, NOW, async () => ({ ok: true, status: 201 }));
+    ok("omitting sendSocialEmail entirely never throws and sends nothing for the push-less account", r3.sent === 0);
+
+    // The daily/commitment reminder is deliberately NOT emailed here — that
+    // channel is nudge.mjs's own twice-per-lapse comeback sweep, run separately.
+    // A fresh store isolates this from the other accounts above (some of which
+    // have their own still-pending events that would otherwise confound the count).
+    const lapsedPath = join(tmpdir(), `hb-push-email-lapsed-test-${process.pid}.json`);
+    const lapsedStore = createFileStore(lapsedPath);
+    try {
+      await lapsedStore.saveUser("emaillapsed", { profile: {} });
+      await lapsedStore.saveAccount("emaillapsed@example.com", "emaillapsed", NOW);
+      await lapsedStore.addSession("emaillapsed", { session_id: "el1", date: daysAgo(4), sets: [] });
+      sentEmails.length = 0;
+      await runPushSweep(lapsedStore, vapid, NOW, async () => ({ ok: true, status: 201 }), fakeSendSocialEmail);
+      ok("the daily lapse reminder is NOT emailed by this fallback (owned by nudge.mjs instead)", sentEmails.length === 0);
+    } finally { try { rmSync(lapsedPath); } catch {} }
+  } finally { try { rmSync(emailPath); } catch {} }
+}
+
 // --- multi-device fan-out (Wave 136): the per-USER social markers must not let the
 // FIRST device's successful send consume the event for every other device. ---
 {
