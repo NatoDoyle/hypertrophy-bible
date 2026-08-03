@@ -588,20 +588,10 @@ re-running this same clean-audit pass a third time.
 
 ## Audit fix (Cloud loop wave, outside the tiers above)
 **`/api/reminders` and `/api/pause` could 500 in prod instead of a clean 404 on a malformed
-request.** By this wave, 14 open "Cloud loop:" PRs already existed (dated back to 2026-07-26,
-none yet merged) claiming nearly every diff-scoped surface a fixed-cadence audit would normally
-reach: `push.mjs` (tz bugs, email fallback), `merge-profile.mjs` (nutrition-stats + partner-nudge
-merge gaps), `adherence.mjs` (`settleChallenge` race), `app.mjs`'s challenge/commitment/bodyweight/
-fuel routes, `derive-core.mjs` (`progressionCadence` double-count, deload-PR fabrication),
-`store.mjs`/`store-d1.mjs` parity (one candidate investigated and refuted), the share/referral
-loop, and permanent fuzz-test nets for both `plan-core.mjs` and `derive-core.mjs`. Citation
-verification was checked again and is STILL down for this session (`curl` to
-`eutils.ncbi.nlm.nih.gov`/`api.crossref.org` both `CONNECT tunnel failed, 403`; the proxy's own
-`$HTTPS_PROXY/__agentproxy/status` shows the same `connect_rejected` policy denial for both hosts,
-now confirmed persisting 3+ days across many independent sessions), so no KB content was touched
-this wave either, per CLAUDE.md's "never fabricate a citation" rule.
-Rather than add a 15th speculative pass over already-claimed territory, this wave scoped a
-targeted Explore search to files NONE of the 14 open PRs touch (`planner.mjs`, `movement-demo.mjs`,
+request.** (Authored while 14 cloud-loop PRs were queued unreviewed — that backlog was cleared by
+Wave 172 below; the point-in-time backlog/citation-outage narration this section used to open with
+is superseded and was trimmed at land time.) This wave scoped a
+targeted Explore search to files NONE of the then-open PRs touch (`planner.mjs`, `movement-demo.mjs`,
 `kb.mjs`, `auth.mjs`'s core magic-link logic, the exercise-swap/custom-exercise/nutrition-log/
 share/following routes in `app.mjs`, and a fresh pass over `session-core.mjs`) and verified its one
 finding inline before fixing: `app.mjs`'s `/api/reminders` (line ~444) and `/api/pause` (line
@@ -622,26 +612,10 @@ throw was verified separately, out-of-band, against the D1 shim). No `data/`/`co
 file touched, so no `build-data` regen or SW `VERSION` bump needed. Root `npm test` + `npm run
 check` and app `npm test` (full suite incl. `test-routes.mjs`): all green.
 
-**Standing note for the next iteration:** 14 "Cloud loop:" PRs are open and unmerged as of this
-wave (oldest dated 2026-07-26, three days old), plus this one — a real review/merge/deploy
-bottleneck, not a build-capacity one. Before picking the next slice, check which of them have
-merged and read what territory they leave behind; piling on further speculative audit passes
-without any of the backlog landing has sharply diminishing value (lesson 17's logic applies to the
-*queue*, not just the codebase: a full pipeline of unreviewed fixes is not the same as progress).
-The citation-network outage (PubMed/Crossref/generic WebFetch, all `403` at the proxy) has now
-been independently confirmed by at least 6 sessions across 3+ days — worth flagging to a human as
-a persistent environment issue, not a transient blip, since it fully blocks the overdue Goal-1 KB
-gap audit.
 ## Audit fix (Cloud loop wave, outside the tiers above)
 **The proactive weekly-commitment push (Tier-1 #2, Goal 4's flagship "when will you train
 this week?" nudge) silently never fired for west-of-UTC users on the day it exists to catch.**
-External citation verification (PubMed E-utilities, Crossref, and generic WebFetch) was down
-for this whole session — even a plain fetch to example.com returned 403 and direct `curl` to
-eutils.ncbi.nlm.nih.gov/api.crossref.org was blocked at the proxy gateway (`recentRelayFailures`
-confirmed a `connect_rejected` policy denial, not a transient blip) — so, per CLAUDE.md's "never
-fabricate a citation" rule, this wave deliberately did NOT add or touch any KB citation and
-scoped to a code-only fix instead, following the roadmap's own fallback ("run the largest safe
-UNCLAIMED slice"). `app/src/push.mjs`'s `shouldPushForCommitment` computed "is today one of the
+`app/src/push.mjs`'s `shouldPushForCommitment` computed "is today one of the
 committed days" via `weekDayKey(now)`/`isoWeekKey(now)` on the RAW UTC sweep instant — unlike its
 siblings in the same file (`isUserPushHour`, `isSocialPushQuietHours`), which already localize
 `now` by the user's stored `tz_offset_min` before reading UTC calendar fields (lesson 1/16: a
@@ -664,6 +638,35 @@ a positive offset at the 17:00-local target hour never rolls the UTC calendar da
 a negative offset does, which is exactly why this shipped unnoticed. App `npm test` (full suite)
 and root `npm test` + `npm run check`: both green. No `data/`/`content/`/`public/` file touched,
 so no `build-data` regen or SW `VERSION` bump needed.
+
+## Wave 172 — the cloud-loop PR backlog, reviewed and landed
+The 16 open cloud-loop PRs (2026-07-26/29, all predating the entire Waves 162–171 landing) were
+each re-reviewed against current main — premise re-verified with file:line evidence, staleness
+and conflicts mapped — then **14 landed** on one integration branch and **2 closed as obsolete**:
+- **Landed:** #251 (reminders/pause user_id guard — the D1 undefined-bind 500), #238
+  (commitment-push localized to the user's frame), #250 (challenge/commitment week keys stored
+  AND consumed in the user's local frame — `isoWeekKeyLocal`), #239/#241 (merge-profile lesson-16
+  gaps: pending partner nudge, Fuel nutrition stats), #240 (`settleChallenge` returns the
+  PERSISTED state on a raced no-op write, lesson 21), #245 (`progressionCadence` dual-path
+  double-count, the same majority-of-weeks guard its siblings had), #247 (deload/comeback-eased
+  sets can no longer fabricate an all-time PR — e1RM's rep bonus made a light 90×10 "beat" a real
+  100×5), #243 (bodyweight logs stamp the LOCAL day; Fuel form no longer crashes for non-female
+  users), #244 (honest "week in progress" note on a first Progress visit), #242 (share-card
+  referral loop: a visitor who taps "train with me" lands following the sharer), #248/#249
+  (permanent deterministic fuzz sweeps over plan-core and derive-core), #228 (email fallback so
+  push-less users still hear about nudges/challenges/cheers — rebased onto the quiet-hours
+  refactor; its "push may be inert" motivation was already disproven, the reach gap was real).
+- **Landing adjustments beyond the PRs themselves:** #250's fix was extended to the four
+  challenge-week CONSUMPTION sites in `push.mjs` it missed (a west-of-UTC Sunday-evening invite
+  stored the local week while the raw-UTC comparison had already rolled — the invite/accept push
+  could never fire; new boundary regression test in `test-push.mjs`); #249's sweep gained
+  Wave 171's `"effort"` signal in its allowed list; one SW bump to v144 for the whole batch.
+- **Closed:** #246 (its refuted store-parity finding has been durably recorded in
+  `test-store-d1.mjs` since Wave 141 — the dedup divergence is intentional and locked by the
+  collide-from/collide-to tests; do not re-investigate), #252 (its "citation network down" claim
+  is refuted from this environment — PubMed E-utilities and Crossref both return 200; the real
+  residue, that the CLOUD sandbox's egress proxy denies CONNECT to those hosts, moved to
+  BLOCKERS.md as an environment note).
 
 ## How the loop uses this
 Each iteration pulls the top unfinished item that fits its token budget, ships it as a verified
