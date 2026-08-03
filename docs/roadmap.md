@@ -415,6 +415,41 @@ that audit leaves genuinely open, in priority order:
     list (icon/result/week/score) now renders beneath the aggregate record card; `formatWeekLabel`
     (pure, unit-tested) turns the internal ISO week key into a readable label. Only "multiple
     concurrent challenges" remains an unclaimed v1 follow-on (needs a real table, a bigger change).
+    **Referral loop closed (Cloud loop wave):** every prior social-layer wave assumed BOTH sides
+    already had an account — the public share card (`share.html`) had a "Start your own — free"
+    link that dumped a new visitor at `/` with zero memory of which friend's card sent them there,
+    and an EXISTING app user who opened a friend's card had no way to become their training partner
+    except leaving the page, finding the Coach tab, and pasting the URL back in by hand — real
+    friction on exactly the feature Goal 4 needs most (net-new users arriving with a built-in
+    accountability partner from session one). Two small, code-groundable additions, no new store
+    table: (1) `share.html` now checks `localStorage.getItem("hb_user")` (same-origin, so it's
+    already there for a returning app user) — if present, it shows a "🤝 Follow their progress"
+    button that calls the existing `POST /api/following` directly from the share page (one tap,
+    reuses `SOCIAL_ERROR_COPY`'s existing self-follow copy for the token's-your-own-card case);
+    if absent, the CTA link now carries the share token forward (`/?follow=TOKEN`) instead of
+    dropping it. (2) `app.js` stashes that token in `localStorage` (`tryPendingFollow`, consumed
+    once and removed so it can never re-fire into a follow loop) and auto-follows the instant a
+    `uid` exists — either immediately at boot (an existing user who opened the link directly) or
+    right after `submitOnboarding` succeeds (a brand-new signup). `POST /api/following` already had
+    no session-count gate (confirmed against the existing route tests, which follow with a
+    zero-session fresh account), so this needed no backend change at all. Best-effort throughout: a
+    dead/self/already-followed token silently no-ops, same posture as every other background social
+    action in this codebase. Real-browser-verified (Playwright, pre-installed Chromium) end to end:
+    an existing user landing on a friend's share card and tapping the button shows up as an active,
+    following partner server-side; a brand-new visitor arriving via `/?follow=TOKEN`, completing the
+    real onboarding wizard through the UI, ends up following that same friend with no manual paste
+    step. No `data/`/`content/` touched (no `build-data` regen needed); `public/app.js`,
+    `public/share.html` changed so `sw.js` `VERSION` bumped (v130→v131); no new imported file, so no
+    `SHELL` precache change needed. Root `npm test` + `npm run check` and app `npm test` (full
+    suite incl. `test-routes.mjs`) green — the feature is pure client glue over an already-tested
+    endpoint, so no new unit test was added beyond the existing `#following` coverage this reuses;
+    verified instead via the real-browser walkthrough above, per CLAUDE.md's UI-change rule.
+    Citation work was skipped again this wave: PubMed E-utilities and Crossref both still return
+    `403` for this session (re-confirmed directly via `WebFetch` against both hosts), so per
+    CLAUDE.md's "never fabricate a citation" rule no KB content was touched. Avoided the four other
+    open cloud-loop PRs' pattern (diff-scoped audit fixes inside `push.mjs`/`merge-profile.mjs`/
+    `adherence.mjs`, PRs #238-#241) by picking a genuinely new, unclaimed capability instead of a
+    fifth pass over the same small surface.
     **Audit fix (Cloud loop wave):** `GET /api/challenge`'s completion write reported the
     optimistically-computed win/loss to the client even when the CAS guard no-op'd the actual
     store write — reachable because `isChallengeOpen` (Wave 127) already treats a week-over

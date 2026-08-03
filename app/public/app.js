@@ -98,6 +98,34 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // aria-live re-announced every repaint, making the player unusable by ear).
 const say = (msg) => { const el = $("#say"); if (el) el.textContent = msg; };
 
+// Referral loop (Goal 4): a friend's public share card (share.html) links back
+// here with ?follow=TOKEN instead of a bare "/". Stash it until we HAVE a uid
+// (existing user landing directly, or a brand-new signup finishing onboarding),
+// then auto-follow — closing the "saw a friend's streak → became accountability
+// partners" loop without the copy-paste-a-link friction the manual box still
+// exists for. Best-effort: a stale/self/dead token silently no-ops, same as any
+// other social action that isn't the thing the user came here to do.
+const REFERRAL_KEY = "hb_pending_follow";
+(() => {
+  let ref; try { ref = new URLSearchParams(location.search).get("follow"); } catch { ref = null; }
+  if (!ref || ref.length > 100) return;
+  try { localStorage.setItem(REFERRAL_KEY, ref); } catch {}
+  try {
+    const url = new URL(location.href);
+    url.searchParams.delete("follow");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  } catch {}
+})();
+async function tryPendingFollow() {
+  let token; try { token = localStorage.getItem(REFERRAL_KEY); } catch { token = null; }
+  if (!token || !uid) return;
+  try { localStorage.removeItem(REFERRAL_KEY); } catch {} // one attempt — never retries into a follow loop
+  try {
+    const r = await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
+    if (r && !r.error) say("Connected with the friend who invited you — see them on the Coach tab.");
+  } catch {}
+}
+
 // Rest-readiness self-check (considerations #7): between sets, teach people to
 // gauge their OWN recovery — the KB's rest-periods thesis is "rest by readiness,
 // not a stopwatch". Optional prompts, not mandatory ticking; the "I'm ready"
@@ -431,6 +459,7 @@ async function submitOnboarding() {
     uid = res.user_id; localStorage.setItem("hb_user", uid); localStorage.setItem("hb_program", res.program.name);
     localStorage.setItem("hb_units", profile.units); // remember display preference (only once onboarding actually succeeded)
     localStorage.removeItem(ONB_KEY); // answers safely handed off; stop persisting them
+    tryPendingFollow(); // no-op unless they arrived via a friend's share link
     return renderPlanExplain(true);
   }
   // Retry in place — never discard the eight answers the user just gave.
@@ -2402,4 +2431,5 @@ function render() {
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") { learnSlug = null; learnStack = []; } render(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
+if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link
 render();

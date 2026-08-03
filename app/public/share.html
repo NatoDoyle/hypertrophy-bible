@@ -18,11 +18,11 @@
     .stat { flex:1; background:#0f141b; border:1px solid var(--line); border-radius:14px; padding:14px 8px; }
     .stat b { display:block; font-size:1.5rem; }
     .stat span { color:var(--muted); font-size:.82rem; }
-    a.cta { display:inline-block; margin-top:22px; color:#06210f; background:var(--accent); text-decoration:none;
-      font-weight:700; padding:12px 20px; border-radius:12px; }
+    .cta { display:inline-block; margin-top:22px; color:#06210f; background:var(--accent); text-decoration:none;
+      font-weight:700; padding:12px 20px; border-radius:12px; border:none; font:inherit; cursor:pointer; }
     button.cheer { display:block; width:100%; margin-top:18px; padding:12px; border-radius:12px; cursor:pointer;
       background:#0f141b; border:1px solid var(--line); color:var(--text); font-size:1rem; font-weight:600; }
-    button.cheer:disabled { opacity:.7; cursor:default; }
+    button.cheer:disabled, button.cta:disabled { opacity:.7; cursor:default; }
     .muted { color:var(--muted); }
     .hidden { display:none; }
   </style>
@@ -37,7 +37,8 @@
         <div class="stat"><b id="sessions">0</b><span>sessions</span></div>
       </div>
       <button id="cheer" class="cheer">💪 Cheer them on · <span id="cheers">0</span></button>
-      <a class="cta" href="/">Start your own — free</a>
+      <a id="cta" class="cta" href="/">Start your own — free</a>
+      <button id="followcta" class="cta hidden">🤝 Follow their progress</button>
       <p class="muted" style="margin-top:16px;font-size:.82rem">Built with The Hypertrophy Bible — an evidence-based training coach.</p>
     </div>
     <div id="bad" class="hidden">
@@ -78,6 +79,31 @@
             else btn.disabled = false;
           } catch { btn.disabled = false; }
         };
+        // A visitor who already has the app (same-origin localStorage) can connect
+        // as a training partner in one tap instead of copy-pasting this link back
+        // into the Coach tab's "paste a share link" box. A brand-new visitor still
+        // gets the signup CTA, just carrying the token forward so onboarding can
+        // finish the connection automatically (app.js's tryPendingFollow).
+        let myUid = null; try { myUid = localStorage.getItem("hb_user"); } catch {}
+        const cta = document.getElementById("cta");
+        const followBtn = document.getElementById("followcta");
+        if (myUid) {
+          cta.classList.add("hidden");
+          followBtn.classList.remove("hidden");
+          followBtn.onclick = async () => {
+            if (followBtn.disabled) return;
+            followBtn.disabled = true;
+            try {
+              const fr = await fetch("/api/following", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_id: myUid, token }) });
+              const fj = await fr.json().catch(() => ({}));
+              if (fr.ok && !fj.error) followBtn.textContent = "✅ Following — see your Coach tab";
+              else if (fj.error === "cannot-follow-self") followBtn.textContent = "That's your own link!";
+              else { followBtn.disabled = false; followBtn.textContent = "🤝 Follow their progress"; }
+            } catch { followBtn.disabled = false; }
+          };
+        } else {
+          cta.href = "/?follow=" + encodeURIComponent(token);
+        }
         show("ok");
       } catch { show("bad"); }
     })();
