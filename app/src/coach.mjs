@@ -712,6 +712,14 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     }
   } else if (clean.length) {
     latest = clean[clean.length - 1];
+    // No earlier full week to fall back to, so the ONLY clean week shown is
+    // the in-progress one itself (every brand-new user's first-ever visit).
+    // Without this note, below-MEV/missing-muscle readings on literally the
+    // first Progress-tab view read as "the plan already isn't working" —
+    // the `full.length` branch above already explains the same situation
+    // when an earlier week exists to show instead; this is its sibling for
+    // when there isn't one.
+    if (latest === nowWeek) volume_note = "This week is still in progress — the numbers below fill in as you log more sessions.";
   } else if (newest) {
     latest = newest;
     volume_note = "Your recent weeks are deloads — volume is intentionally low, exactly as planned.";
