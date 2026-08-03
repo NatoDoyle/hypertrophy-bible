@@ -201,6 +201,22 @@ export function isoWeekKey(dateStr) {
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
+// isoWeekKey of a raw instant, localized by tzOffsetMin (minutes EAST of UTC,
+// the same convention as push.mjs's isUserPushHour/isSocialPushQuietHours and
+// coach.mjs's taperPhase) before reading its calendar week — shifting the
+// instant by the offset and then reading its UTC fields is the same "treat the
+// shifted instant's UTC fields as local fields" trick those functions already
+// use. Without this, a raw `isoWeekKey(now)` reads the ISO week of the SERVER's
+// UTC instant, which can already be the next calendar week while it's still the
+// previous day for anyone west of UTC (any offset <= -1 crossing a week
+// boundary) — the 1v1 weekly challenge feature (#10 social) stamps and checks
+// its `week` this way and needs the user's own local week, not the server's.
+// Missing/unknown tzOffsetMin falls back to raw UTC (same "don't starve a
+// result over missing data" choice those sibling functions make).
+export function isoWeekKeyLocal(now, tzOffsetMin) {
+  return isoWeekKey(+new Date(now) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0));
+}
+
 // A session's week key, preferring the device's local calendar day but falling
 // back to the UTC `date` if local_date is malformed (an "NaN-WNaN" key sorts
 // after every real ISO week and would hijack the "latest week" logic — and a

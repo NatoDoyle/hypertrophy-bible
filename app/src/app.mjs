@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { selectProgram, exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
@@ -66,8 +66,11 @@ const normalizeSet = (s) => ({
 // either side has read GET /api/challenge to self-transition it. Without this,
 // a propose could be wrongly refused as "opponent-busy" against a challenge
 // that's actually over but simply hasn't been read since.
-const isChallengeOpen = (challenge) =>
-  !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKey(new Date().toISOString());
+// tzOffsetMin localizes "now" to the SIDE being checked (a challenger and
+// opponent can be in different timezones; each side's own staleness is judged
+// in their own local week, matching settleChallenge's per-user week_over).
+const isChallengeOpen = (challenge, tzOffsetMin) =>
+  !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKeyLocal(Date.now(), tzOffsetMin);
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -496,8 +499,12 @@ export function createApp(store, config = {}) {
     const sessions = await store.listSessions(id);
     // Only surface a commitment for THE CURRENT iso week — a stale one from a
     // prior week reads back as unset so the client re-prompts naturally,
-    // without needing its own copy of the iso-week algorithm.
-    const curWeek = isoWeekKey(new Date().toISOString());
+    // without needing its own copy of the iso-week algorithm. Localized by the
+    // user's own tz (isoWeekKeyLocal) so this agrees with the commitment's own
+    // localized storage below AND with push.mjs's localized consumption check
+    // — a raw UTC week here would silently disagree with both near the
+    // UTC week boundary for anyone west of UTC.
+    const curWeek = isoWeekKeyLocal(Date.now(), user.profile?.tz_offset_min);
     const commitment = user.profile?.commitment?.week === curWeek ? user.profile.commitment : null;
     // Surface the cheer tally on the main Coach view (not just buried in the share
     // box) so the social validation actually lands where the user looks. Only an
@@ -529,7 +536,10 @@ export function createApp(store, config = {}) {
     if (!b.user_id) return c.json({ error: "unknown user" }, 404);
     const days = Array.isArray(b.days) ? [...new Set(b.days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : [];
     const updated = await store.updateUser(b.user_id, (u) => {
-      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKey(new Date().toISOString()), days } };
+      // Localized by the user's OWN stored tz (isoWeekKeyLocal) — a raw UTC stamp
+      // can already read as next week while it's still today for anyone west of
+      // UTC, silently disagreeing with push.mjs's own localized consumption check.
+      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKeyLocal(Date.now(), u.profile?.tz_offset_min), days } };
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
@@ -793,10 +803,13 @@ export function createApp(store, config = {}) {
     const myToken = await store.getShareIdForUser(b.user_id);
     const owner = await store.getUser(ownerId);
     if (!myToken || !(owner.profile?.following ?? []).includes(myToken)) return c.json({ error: "not-mutual" }, 403);
-    if (isChallengeOpen(sender.profile?.challenge)) return c.json({ error: "already-challenging" }, 409);
-    if (isChallengeOpen(owner.profile?.challenge)) return c.json({ error: "opponent-busy" }, 409);
+    if (isChallengeOpen(sender.profile?.challenge, sender.profile?.tz_offset_min)) return c.json({ error: "already-challenging" }, 409);
+    if (isChallengeOpen(owner.profile?.challenge, owner.profile?.tz_offset_min)) return c.json({ error: "opponent-busy" }, 409);
     const id = crypto.randomUUID();
-    const week = isoWeekKey(new Date().toISOString());
+    // The challenger's OWN local week — a raw UTC stamp can already read as the
+    // NEXT week while it's still today for anyone west of UTC (see
+    // isoWeekKeyLocal), silently shortening this week's challenge by up to a day.
+    const week = isoWeekKeyLocal(Date.now(), sender.profile?.tz_offset_min);
     const createdAt = Date.now();
     await store.updateUser(b.user_id, (u) => {
       u.profile = { ...(u.profile ?? {}), challenge: { id, role: "challenger", partner_token: token, week, status: "pending", created_at: createdAt } };
@@ -824,7 +837,7 @@ export function createApp(store, config = {}) {
     // "completed" result from training that happened before anyone had agreed to
     // compete over it — not the "never answered, no result to show" outcome the
     // design intends for an unanswered invite.
-    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKey(new Date().toISOString()))
+    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKeyLocal(Date.now(), responder.profile?.tz_offset_min))
       return c.json({ error: "no-pending-challenge" }, 400);
     const status = b.accept === true ? "active" : "declined";
     // On ACCEPT, stamp accepted_at on the CHALLENGER's copy: the push sweep uses it

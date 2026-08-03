@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey, GRADUATION } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 
 let pass = 0, fail = 0;
@@ -843,6 +843,33 @@ try {
   const henryVanished = await app.request("/api/challenge", { headers: { "X-HB-User": henry } });
   store.updateUser = realUpdateUser2;
   ok("#challenge-history a user row vanishing at write time returns 200, not a 500 (updated?. guard)", henryVanished.status === 200);
+
+  // --- Audit fix (Cloud loop wave): the 1v1 challenge feature (propose/respond/
+  // isChallengeOpen) and the weekly-commitment device stamped/compared their
+  // "current week" via a raw UTC instant — for anyone west of UTC, that instant
+  // can already read as the NEXT ISO week while it's still today locally,
+  // silently ending a challenge or losing a commitment up to a day early (the
+  // same class of bug PR #238 fixed for the commitment PUSH; this closes it for
+  // the STORAGE/read side too, and for challenges, via the new isoWeekKeyLocal).
+  // A real HTTP wiring check that tz_offset_min actually reaches both features
+  // (the deterministic UTC-boundary proof lives in the pure-function tests,
+  // since real Date.now() during a test run isn't controllably AT that boundary).
+  const jack = (await onboardBw("beginner")).data.user_id;
+  const kate = (await onboardBw("beginner")).data.user_id;
+  await store.updateUser(jack, (u) => { u.profile = { ...u.profile, tz_offset_min: -420 }; return u; });
+  const jackShare = (await json("POST", "/api/share", { user_id: jack })).data.share_id;
+  const kateShare = (await json("POST", "/api/share", { user_id: kate })).data.share_id;
+  await json("POST", "/api/following", { user_id: jack, token: kateShare });
+  await json("POST", "/api/following", { user_id: kate, token: jackShare });
+  const jackPropose = await json("POST", "/api/challenge", { user_id: jack, token: kateShare });
+  ok("#challenge tz: a challenger with a stored tz_offset_min gets a localized (not raw-UTC) week stamp",
+    jackPropose.data.week === isoWeekKeyLocal(Date.now(), -420));
+  const jackCommit = await json("POST", "/api/commitment", { user_id: jack, days: ["mon"] });
+  ok("#commitment tz: stamps the CALLER's own localized week, not a raw UTC one",
+    jackCommit.data.commitment.week === isoWeekKeyLocal(Date.now(), -420));
+  const jackAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": jack } })).json();
+  ok("#commitment tz: /api/adherence's freshness check agrees with the same localized week (storage and read never disagree)",
+    JSON.stringify(jackAdh.commitment) === JSON.stringify(jackCommit.data.commitment));
 
   // --- Goal-event taper (Tier-3 #9 first slice): /api/today reads the REAL
   // clock, so date the goal event RELATIVE to Date.now(), not a fixed calendar

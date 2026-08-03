@@ -1,4 +1,4 @@
-import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState } from "./adherence.mjs";
 
@@ -262,7 +262,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // Only the opponent's own still-PENDING, current-week invite pushes.
       const pendingChallenge = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
-          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
           && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
@@ -276,7 +276,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // push — the in-app card shows them, and a "they said no" notification
       // helps nobody train.
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
-          && pendingChallenge.week === isoWeekKey(new Date(now).toISOString())
+          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
@@ -313,7 +313,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // it here with the SAME shared logic (settleChallenge, never a second copy),
       // then push the result below off the PERSISTED fields.
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
-          && pendingChallenge.week !== isoWeekKey(new Date(now).toISOString())) {
+          && pendingChallenge.week !== isoWeekKeyLocal(now, user.profile?.tz_offset_min)) {
         await settleChallenge(store, userId, user, now);
         user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
       }
@@ -328,7 +328,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // entry -> no push (never manufacture a trophy); declines stay silent.
       const settledCh = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
-          && settledCh.week === isoWeekKey(new Date(now - 7 * 86400e3).toISOString())) {
+          && settledCh.week === isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) {
         const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
         if (entry) {
           const body = entry.result === "win"

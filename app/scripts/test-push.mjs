@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours } from "../src/push.mjs";
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
-import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 
 // A fake browser subscription: a real UA-generated ECDH keypair + a random auth
 // secret (same pattern as test-push-encrypt.mjs), so sendPush's encryption runs
@@ -615,6 +615,28 @@ try {
   await store.reassignUserData("mfrom", "mto");
   const moved = (await store.listPushSubscriptions()).find((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge");
   ok("#26 a merged-away device's push subscription follows to the surviving user", moved && moved.user_id === "mto");
+
+  // --- Wave 172 (PR #250 extension): the invite push judges the stored week in the
+  // RECIPIENT'S OWN frame. Propose now stamps the challenger's LOCAL week, so a
+  // west-of-UTC Sunday-evening invite stores the local (previous) week while raw UTC
+  // has already rolled to Monday — the old raw-UTC comparison made that invite
+  // unpushable for its entire pending life. ---
+  {
+    const tzChalPath = join(tmpdir(), `hb-push-chal-tz-test-${process.pid}.json`);
+    const tzChalStore = createFileStore(tzChalPath);
+    try {
+      const ua = await fakeUaSubscription();
+      const boundaryNow = +new Date("2026-07-13T02:00:00Z"); // UTC Monday; local Sunday 19:00 for tz -420
+      const localWeek = isoWeekKeyLocal(boundaryNow, -420);
+      ok("tz fixture sanity: local week genuinely differs from the raw UTC week here", localWeek !== isoWeekKey(boundaryNow));
+      await tzChalStore.saveUser("tz-opp", { profile: { tz_offset_min: -420, challenge: { id: "c-tz", role: "opponent", status: "pending", week: localWeek, created_at: boundaryNow } } });
+      await tzChalStore.savePushSubscription("tz-opp", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/chal-tz", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      let tzHits = 0;
+      const countFetch = async () => { tzHits++; return { ok: true, status: 201 }; };
+      const r = await runPushSweep(tzChalStore, vapid, boundaryNow, countFetch);
+      ok("a Sunday-evening invite (local frame) still pushes after UTC midnight rolls the raw week", r.sent === 1 && tzHits === 1);
+    } finally { try { rmSync(tzChalPath); } catch {} }
+  }
 
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

@@ -9,6 +9,7 @@ import {
   RELIABLE_1RM_REPS,
   stallDetect,
   isoWeekKey,
+  isoWeekKeyLocal,
   sessionWeekKey,
   graduatedStatus,
   trainedWeeksInBlock,
@@ -82,6 +83,22 @@ check("isHardSet gates warmups and sub-threshold effort", () => {
 check("isoWeekKey groups by ISO week", () => {
   assert.equal(isoWeekKey("2026-06-01T18:00:00Z"), isoWeekKey("2026-06-03T18:00:00Z"));
   assert.notEqual(isoWeekKey("2026-06-03T18:00:00Z"), isoWeekKey("2026-06-10T18:00:00Z"));
+});
+
+check("isoWeekKeyLocal: a raw UTC instant just past the week boundary reads as the NEXT week, but a west-of-UTC user's actual local day is still the PREVIOUS week (the bug the 1v1 challenge + weekly commitment features hit)", () => {
+  // 2026-06-01 is a Monday. 02:00 UTC on that Monday is 19:00 the PRIOR Sunday for
+  // a -420 (UTC-7, e.g. Mountain) offset — still the old ISO week locally, even
+  // though the raw UTC calendar day has already rolled to Monday.
+  const mondayEarlyUtc = "2026-06-01T02:00:00Z";
+  assert.equal(isoWeekKey(mondayEarlyUtc), "2026-W23"); // raw UTC: already the new week
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, -420), "2026-W22"); // localized: still the old week
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, -420), isoWeekKey("2026-05-31T18:00:00Z")); // agrees with the true local calendar day
+  // An epoch-ms number works identically to an ISO string (both are valid `new Date(...)` inputs).
+  assert.equal(isoWeekKeyLocal(new Date(mondayEarlyUtc).getTime(), -420), "2026-W22");
+  // East-of-UTC and unknown/missing offsets are unaffected by this boundary case.
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, 420), "2026-W23"); // already Monday both raw and local
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, undefined), isoWeekKey(mondayEarlyUtc)); // missing tz falls back to raw UTC
+  assert.equal(isoWeekKeyLocal(mondayEarlyUtc, NaN), isoWeekKey(mondayEarlyUtc));
 });
 
 check("perMuscleWeeklyVolume: primary=1, secondary=0.5, warmups excluded", () => {
