@@ -141,10 +141,19 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
     `rir > 4`, so 5 would erase the too-easy sets from volume and set the volume card
     ("add sets") against the effort card ("too easy") from a single tap.
   - **The lever** — `effortSignal` (derive-core): over the last 6 distinct trained weeks
-    (the same window the volume tune samples), the average logged surplus above each
-    set's KB tier target (`effortBandTop`: heavy compound 3, supported/stable compound 2,
-    isolation 1 — the classifier is shared with plan-core's prescription, single source
-    of truth). A muscle is "too easy" only on **positive evidence**: ≥10 logged sets AND
+    (the same window the volume tune samples), the average logged surplus above the band
+    **the plan actually prescribed** (`effortBandTop(ex, goal)`). Under the hypertrophy
+    family that is heavy compound 3, supported/stable compound 2, isolation 1; **strength
+    deliberately reserves more on accessories** (isolation "1-3", priority/pump "1-2"), so
+    the band is read per goal from `REP_SCHEMES` — which now lives in derive-core and is
+    imported *back* by plan-core, the same single-source-of-truth move Wave 171 made for
+    `supportedCompound`. Wave 171 shipped only the metadata classifier as shared and
+    described that as the whole story: the goal-specific rows were a second table in
+    plan-core, so a strength lifter obeying their own accessory prescription was scored
+    +1 over target and had volume held for sandbagging they never did (Wave 173).
+    Isolation reads the **most lenient** of the goal's three isolation rows, since a
+    logged set doesn't record which slot the plan filled it from — ambiguity can only
+    under-fire the lever. A muscle is "too easy" only on **positive evidence**: ≥10 logged sets AND
     avg surplus ≥ +1 (the same +1 distance `suggestWeight`'s per-lift bump already uses).
     Deload/eased sets are excluded (an easy band is *prescribed* there — compliance, not
     sandbagging). Absent data → empty set → every consumer byte-identical to before,

@@ -370,7 +370,7 @@ export function createApp(store, config = {}) {
       // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
       // reads, so the boundary that rotates the plan and the phase shown on the card
       // can never disagree about which block the user is in.
-      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO) / BLOCK_WEEKS);
+      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, user.profile?.tz_offset_min) / BLOCK_WEEKS);
       if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
         const updated = await store.updateUser(id, (u) => {
           // Re-check the FRESH CAS-read state: the outer guard (L203) saw a stale
@@ -434,7 +434,7 @@ export function createApp(store, config = {}) {
     // not two that can drift (the maintenance/hold filtering matters here too — a
     // muscle a specialization block deliberately holds low must never trigger this).
     const rdBlockStart = user.plan_meta?.block_start;
-    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO);
+    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO, user.profile?.tz_offset_min);
     const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
     if (rdBlock && rdBlockStart && !user.program?.custom) {
       const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
