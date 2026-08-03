@@ -248,11 +248,21 @@ export async function settleChallenge(store, id, user, now = Date.now()) {
       return u;
     });
     const wrote = transitioned;
-    newHistory = wrote ? (updated.profile?.challenge_history ?? history) : history;
-    if (wrote) {
-      ch.status = nextStatus;
-      if (entry) result = entry; // a result that genuinely landed just now
+    // The current SAME-id record — whether this call just wrote it, or a
+    // concurrent settle (the push sweep, or the opponent's own GET) already did
+    // — is the one true state; use it whenever the slot wasn't replaced out from
+    // under us, never our own possibly-stale local `ch`/`history` snapshot. This
+    // is lesson 21's sibling for the NO-OP branch: a raced write already
+    // correctly withheld `result` below (never fabricating a trophy), but it was
+    // still returning the CALLER's stale status/history even though the fresh,
+    // already-terminal record was sitting right there in `updated` — reachable
+    // any time this user's own GET races the push sweep or the opponent's GET
+    // for the same just-ended challenge.
+    if (updated?.profile?.challenge?.id === ch.id) {
+      ch.status = updated.profile.challenge.status;
+      newHistory = updated.profile?.challenge_history ?? history;
     }
+    if (wrote && entry) result = entry; // a result that genuinely landed just now
   }
   return { challenge: ch, opponentId, history: newHistory, my_count, opponent_count, week_over, result };
 }

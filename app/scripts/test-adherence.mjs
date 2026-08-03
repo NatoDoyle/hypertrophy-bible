@@ -215,6 +215,16 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   // push.mjs sends a push built directly from `settled.result`, so this would
   // have notified the user of a score that disagrees with `challenge_history`.
   ok("settleChallenge: a raced no-op write never fabricates a result", lost.result === null);
+  // The bug this wave fixes: the no-op branch withheld `result` correctly but
+  // still returned the CALLER's stale "active" status and empty history, even
+  // though the actual persisted "completed" record + its history entry were
+  // sitting right there in the mutator's own argument. GET /api/challenge would
+  // show a lapsed race as still "in progress" until some unrelated later request
+  // happened to re-fetch fresh state.
+  ok("settleChallenge: a raced no-op write still reflects the ACTUAL persisted status, not the caller's stale one",
+    lost.challenge.status === "completed");
+  ok("settleChallenge: a raced no-op write still reflects the ACTUAL persisted history, not the caller's stale (empty) one",
+    lost.history.length === 1 && lost.history[0].result === "win" && lost.history[0].my_count === 5);
 
   // Control: when this call's own write genuinely performs the transition (no
   // race), it correctly reports the result it just persisted.
