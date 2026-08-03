@@ -57,9 +57,14 @@ function runDemo() {
   console.log(`\nLatest week (${report.latest_week}) volume vs KB landmarks:`);
   for (const [m, v] of Object.entries(report.latest_week_vs_landmarks))
     console.log(`  ${m.padEnd(16)} ${String(v.sets).padStart(4)} sets  -> ${v.status}`);
-  console.log(`\nProgression (est. 1RM change across log):`);
-  for (const p of report.progression.slice(0, 6))
-    console.log(`  ${p.name.padEnd(30)} ${p.first_e1rm} -> ${p.last_e1rm} kg  (${p.change_pct >= 0 ? "+" : ""}${p.change_pct}%)`);
+  // Two bases share this array: est-1RM rows for reliable low-rep work and best-LOAD
+  // rows for pump-band work, which carry first_load_kg/last_load_kg instead. Printing
+  // the e1RM fields for every row rendered pump-band lifts as "undefined -> undefined".
+  console.log(`\nProgression (best-week change across log):`);
+  for (const p of report.progression.slice(0, 6)) {
+    const [first, last, basis] = p.basis === "load" ? [p.first_load_kg, p.last_load_kg, "top set"] : [p.first_e1rm, p.last_e1rm, "est. 1RM"];
+    console.log(`  ${p.name.padEnd(30)} ${first} -> ${last} kg ${basis.padEnd(9)} (${p.change_pct >= 0 ? "+" : ""}${p.change_pct}%)`);
+  }
   console.log("\n(full machine-readable report is the return value of buildFeatureReport)");
 }
 

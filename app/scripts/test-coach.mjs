@@ -474,6 +474,22 @@ check("progressReport effort lever (Increment C): a too-easy stall reads 'effort
   assert.equal(addRow?.signal, "add"); // absent effort data → today's behavior, untouched
 });
 
+// THE BINDER half of the goal-aware effort band. derive-core's own tests prove
+// effortBandTop reads the goal; only a test through the binder can prove coach.mjs
+// actually PASSES it (lesson 19: a scoping contract stated in a comment isn't
+// enforced, and the pure-core test can't catch it — it's handed the goal directly).
+check("progressReport effort lever is goal-aware THROUGH the binder: strength's reserved accessory band isn't sandbagging", () => {
+  const now = "2026-06-10T10:00:00Z"; // Wed of 2026-W24 → latest full week is W23
+  const wkDates = ["2026-05-04", "2026-05-11", "2026-05-18", "2026-05-25", "2026-06-01"]; // W19..W23
+  // rir 2 curls: compliant with strength's prescribed isolation band ("1-3"),
+  // genuinely under-effort against hypertrophy's ("0-1"). Same history both times.
+  const sessions = wkDates.map((d) => ({ session_id: "g" + d, date: d, sets: Array.from({ length: 12 }, () => ({ exercise: "band-biceps-curl", set_type: "work", weight_kg: 20, reps: 12, rir: 2 })) }));
+  const forGoal = (primary_goal) => progressReport({ profile: { training_status: "intermediate", primary_goal, days_per_week: 3 } }, sessions, [], [], now)
+    .adaptive.find((a) => a.muscle === "biceps");
+  assert.equal(forGoal("hypertrophy")?.signal, "effort", "0-1 band: rir 2 really is short of the prescription");
+  assert.notEqual(forGoal("strength")?.signal, "effort", "1-3 band: the same rir 2 is exactly what the plan asked for");
+});
+
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
   const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };

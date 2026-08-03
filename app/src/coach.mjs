@@ -285,7 +285,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // Defaults to beginner (the safe, plainer default) when training_status is unset.
   const beginner = (user.profile?.training_status ?? "beginner") === "beginner";
   // Where are we in the mesocycle? (null for beginners — flat, simple weeks.)
-  let block = blockPhase(trainedWeeksInBlock(sessions, user.plan_meta?.block_start ?? user.created_at, now), user.profile?.training_status);
+  let block = blockPhase(trainedWeeksInBlock(sessions, user.plan_meta?.block_start ?? user.created_at, now, user.profile?.tz_offset_min), user.profile?.training_status);
   // A REACTIVE deload, brought forward because training said so rather than
   // because the calendar did (the KB's third plateau lever). /api/today decides
   // whether one is due and stamps the ISO WEEK it fired in — a week, not a day, so
@@ -669,7 +669,10 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // Effort gate (Increment C): a stall whose logged effort sits clearly above the
   // KB target is sandbagged — the fix is effort, not sets. Positive evidence only;
   // with no logged rir the Set is empty and the tune is byte-identical to before.
-  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId));
+  // The goal MUST be passed: effortBandTop grades a logged rir against the band the
+  // plan prescribed, and strength deliberately reserves more on accessories — omit it
+  // and a compliant strength lifter's sets are withheld for "sandbagging" they never did.
+  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId, { goal }));
   return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
 }
 
@@ -750,7 +753,9 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // Effort lever (Increment C): the same positive-evidence effort read the auto-tune
   // uses, so the card and the tune can never disagree about who's sandbagging. A
   // stalled muscle with clear logged-effort surplus reads "effort", not "add".
-  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId));
+  // Same goal argument as computeVolumeAdjust's call, for the same reason — the two
+  // must grade against the identical band or the card and the tune diverge.
+  const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId, { goal: user.profile?.primary_goal ?? null }));
   const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle

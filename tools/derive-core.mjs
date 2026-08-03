@@ -217,6 +217,15 @@ export function isoWeekKeyLocal(now, tzOffsetMin) {
   return isoWeekKey(+new Date(now) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0));
 }
 
+// The CALENDAR DAY ("YYYY-MM-DD") an instant falls on in the user's own frame —
+// isoWeekKeyLocal's day-granularity sibling, same tzOffsetMin convention and same
+// fall-back-to-UTC-when-unknown choice. Returns null rather than "NaN-NaN-NaN" for
+// an unparseable input, so callers can skip bad data instead of comparing garbage.
+export function localDayKey(instant, tzOffsetMin) {
+  const ms = +new Date(instant) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : null;
+}
+
 // A session's week key, preferring the device's local calendar day but falling
 // back to the UTC `date` if local_date is malformed (an "NaN-WNaN" key sorts
 // after every real ISO week and would hijack the "latest week" logic — and a
@@ -224,6 +233,15 @@ export function isoWeekKeyLocal(now, tzOffsetMin) {
 export const sessionWeekKey = (s) => {
   const k = isoWeekKey(s.local_date ?? s.date);
   return k.includes("NaN") ? isoWeekKey(s.date) : k;
+};
+
+// The calendar day a session belongs to, in the SAME frame sessionWeekKey uses: the
+// device's own `local_date` when it's a well-formed date, else the UTC day of `date`.
+// Already-local `local_date` is taken verbatim — re-shifting it by tz would move a
+// day the device already resolved. Null when neither parses (hostile/garbage input).
+export const sessionDayKey = (s) => {
+  if (typeof s?.local_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.local_date) && Number.isFinite(+new Date(s.local_date))) return s.local_date;
+  return localDayKey(s?.date, null);
 };
 
 // TRAINED WEEKS INSIDE THE CURRENT BLOCK — the mesocycle's clock.
@@ -244,16 +262,28 @@ export const sessionWeekKey = (s) => {
 // Weeks STRICTLY BEFORE the current one, so the week in progress isn't counted as
 // finished the moment its first session lands: train on Monday of block-week 1 and
 // you are still in week 1 on Wednesday, with the rest of that week's work ahead.
-export function trainedWeeksInBlock(sessions, blockStartISO, nowISO) {
+// Everything here is compared as a CALENDAR DAY in the user's own frame, never as an
+// instant (lesson 22). Two distinct bugs came from mixing the two:
+//   (a) `+new Date(local_date) < +new Date(block_start)` — a date-only string parses to
+//       UTC MIDNIGHT while block_start is a mid-day timestamp, so the session logged on
+//       the very day a block starts sorted BEFORE its own block and was dropped. Train
+//       only on rotation day that week and the week vanished from the clock entirely,
+//       running the phase/rotation/deload a week late at every single block boundary.
+//   (b) session week keys are local (`sessionWeekKey` prefers `local_date`) while the
+//       "current week" was raw UTC, so around the ISO week boundary the two disagreed:
+//       a west-of-UTC user's still-in-progress local week read as finished (advancing
+//       the mesocycle early), and an east-of-UTC user's brand-new local week counted as
+//       a completed one for hours — then stopped, so the block index could go BACKWARDS.
+export function trainedWeeksInBlock(sessions, blockStartISO, nowISO, tzOffsetMin = null) {
   if (!blockStartISO || !nowISO) return 0;
-  const startMs = +new Date(blockStartISO);
-  if (!Number.isFinite(startMs)) return 0;
-  const nowWeek = isoWeekKey(nowISO);
+  const startDay = localDayKey(blockStartISO, tzOffsetMin);
+  if (!startDay) return 0;
+  const nowWeek = isoWeekKeyLocal(nowISO, tzOffsetMin);
   const weeks = new Set();
   for (const s of sessions ?? []) {
     if (!(s.sets ?? []).length) continue;              // an emptied/voided session isn't a trained week
-    const when = +new Date(s.local_date ?? s.date);
-    if (!Number.isFinite(when) || when < startMs) continue;
+    const day = sessionDayKey(s);
+    if (!day || day < startDay) continue;              // ISO day keys sort chronologically
     const wk = sessionWeekKey(s);
     if (wk !== nowWeek) weeks.add(wk);
   }
@@ -376,12 +406,65 @@ export function volumeVsLandmarks(weekVolume, muscleIndex) {
 // stable-but-systemically-heavy machine on the conservative heavy reserve.
 export const supportedCompound = (ex) =>
   ex?.mechanic === "compound" && ex?.stability === "high" && ex?.cns_cost !== "high";
-// Band TOP (the target the effort lever measures surplus against): heavy compound 3
-// ("1-3"), supported/stable compound 2 ("0-2"), isolation 1 ("0-1"). Unknown
-// metadata (custom exercises never carry `stability`) → 3, the most conservative
-// tier: the hardest for the lever to call "too easy".
-export const effortBandTop = (ex) =>
-  ex?.mechanic === "isolation" ? 1 : supportedCompound(ex) ? 2 : 3;
+
+// THE PRESCRIBED REP/RIR BANDS, per goal. Lives here rather than in plan-core (which
+// imports it back) for the same reason `supportedCompound` does: the effort lever
+// below measures a logged rir against the band the PLAN actually asked for, so the
+// two must read one table. Isolations run 0-1 across all growth goals — the KB's
+// proximity-to-failure page (Grade B): "take isolation and machine work to 0-1 RIR
+// (where failure is safe and cheap)"; heavy compounds keep 1-3 to protect technique
+// and recovery. Strength keeps a deliberate extra reserve on accessories (fatigue
+// budget goes to the heavy lifts, where the goal lives) — which is exactly the row
+// the effort lever used to be blind to.
+export const REP_SCHEMES = {
+  hypertrophy: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
+  recomposition: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
+  strength: { compound: ["3-6", "2-3"], isolation: ["6-10", "1-3"], priorityIso: ["8-12", "1-2"], pumpIso: ["10-15", "1-2"] },
+  "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-1"] },
+};
+// `general-fitness` is a valid goal in onboarding-profile.schema.json and had no
+// entry here, so it fell through `?? REP_SCHEMES.hypertrophy` — a silent fallback
+// for a DECLARED option (lesson 14). The shipped client only offers four goals, so
+// this is reachable only by a direct API post — and auth is possession-of-UUID, so
+// that's reachable. Made an EXPLICIT alias rather than an invented fifth scheme:
+// the KB gives no separate rep/effort prescription for general fitness, and making
+// one up would be worse than saying plainly that it's the same as hypertrophy.
+REP_SCHEMES["general-fitness"] = REP_SCHEMES.hypertrophy;
+export const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
+// Top of a "lo-hi" RIR band ("1-3" → 3). Non-numeric input falls back to the
+// caller's default rather than NaN-poisoning a surplus subtraction.
+const bandTop = (band, fallback) => {
+  const m = /^(\d+)-(\d+)$/.exec(band ?? "");
+  return m ? +m[2] : fallback;
+};
+
+// Band TOP (the target the effort lever measures surplus against), read off the
+// GOAL'S OWN prescription rather than static metadata. Under the hypertrophy family
+// the two agree (heavy compound 3 = "1-3", supported/stable compound 2 = "0-2",
+// isolation 1 = "0-1"), which is why the static version passed every test — but the
+// STRENGTH goal deliberately prescribes MORE reserve on accessories ("1-3" isolation,
+// "1-2" priority/pump), so a strength lifter logging a perfectly compliant rir 2 curl
+// was scored +1 over target and their biceps flagged "too easy": the lever told them
+// to push closer to failure than their own plan card asked for (lesson 10 — a derived
+// status contradicting what the app itself prescribed), and `deriveVolumeAdjust` then
+// HELD the sets a stalled, compliant muscle had earned. That is precisely the
+// "wrongly withhold sets from a disciplined lifter" failure the Increment-C deferral
+// rationale claimed was honoured by construction.
+//
+// The isolation family takes the MOST LENIENT (highest) top of the goal's three
+// isolation rows: `effortSignal` sees only a logged set, never which slot the plan
+// filled it from, so it cannot tell a priorityIso set from a plain isolation one.
+// Reading the loosest band means an ambiguous set can only ever UNDER-fire the
+// lever — the same safe direction the rest of this function already chooses.
+// `supported` mirrors plan-core's `easeToward`: one notch closer than the goal's own
+// compound band, floored at 0. Unknown metadata (custom exercises carry no
+// `stability`) lands on the compound band, the most conservative tier.
+export const effortBandTop = (ex, goal) => {
+  const sch = repScheme(goal);
+  if (ex?.mechanic === "isolation") return Math.max(bandTop(sch.isolation[1], 1), bandTop(sch.priorityIso[1], 1), bandTop(sch.pumpIso[1], 1));
+  const compoundTop = bandTop(sch.compound[1], 3);
+  return supportedCompound(ex) ? Math.max(0, compoundTop - 1) : compoundTop;
+};
 
 // EFFORT READ (Increment C). Per primary muscle, over the last `recentWeeks`
 // DISTINCT trained weeks present in the data (the same window computeVolumeAdjust
@@ -393,13 +476,17 @@ export const effortBandTop = (ex) =>
 // ambiguous/absent effort would wrongly withhold sets from a disciplined lifter.
 // Deload/eased sets are excluded (an easy band is PRESCRIBED there — compliance,
 // not sandbagging), warm-ups excluded, non-numeric rir ignored. Known conservatism:
-// the tier top is static metadata while waveRir tightens the prescribed band in
-// peak weeks, so the lever under-fires slightly during peaks — the safe direction
-// for a hold-volume lever. `minSurplus` is deliberately the same +1 distance
+// waveRir tightens the prescribed band in peak weeks while the band top read here is
+// the block's base band, so the lever under-fires slightly during peaks — the safe
+// direction for a hold-volume lever. `minSurplus` is deliberately the same +1 distance
 // suggestWeight uses for its own load bump, so the two effort surfaces share one
 // definition of "more in the tank than asked". `byId` is the full exercise map
 // (mechanic/stability/cns_cost + primary_muscles), the same shape plan-core uses.
-export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, minSurplus = 1 } = {}) {
+// `goal` is the user's `primary_goal`: the band top is the GOAL'S prescription, so
+// a strength lifter's deliberately-reserved accessory work is never read as slacking
+// (see effortBandTop). An omitted goal falls back to the hypertrophy family, which
+// is what every caller passed implicitly before this argument existed.
+export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, minSurplus = 1, goal = null } = {}) {
   const weeks = new Set();
   for (const s of sessions ?? []) if ((s.sets ?? []).length) weeks.add(sessionWeekKey(s));
   const recent = new Set([...weeks].sort().slice(-recentWeeks));
@@ -411,7 +498,7 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
       if (typeof set.rir !== "number" || !Number.isFinite(set.rir)) continue;
       const ex = byId.get(set.exercise);
       if (!ex) continue; // unknown exercise: skip rather than guess
-      const surplus = set.rir - effortBandTop(ex);
+      const surplus = set.rir - effortBandTop(ex, goal);
       for (const m of ex.primary_muscles ?? []) {
         acc[m] ??= { n: 0, rirSum: 0, surplusSum: 0 };
         acc[m].n += 1;

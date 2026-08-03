@@ -6,7 +6,7 @@
 // Currency is EFFECTIVE weekly hard sets (primary muscle = 1.0/set, secondary =
 // 0.5/set) — the exact same model as derive-core's perMuscleWeeklyVolume, which
 // we reuse for a closed-loop self-check so plan-time and log-time volume agree.
-import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound } from "./derive-core.mjs";
+import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, REP_SCHEMES, repScheme } from "./derive-core.mjs";
 
 // --- session archetypes: which muscles a session may train ---
 const ARCH = {
@@ -44,26 +44,11 @@ const SPLIT_NAME = (names) => {
 // place bigger / compound-driven muscles first within a session
 const PLACE_ORDER = ["quadriceps", "chest", "upper-back", "lats", "hamstrings", "glutes", "front-delts", "side-delts", "triceps", "biceps", "rear-delts", "spinal-erectors", "calves", "abs", "forearms", "neck"];
 
-// RIR: isolations run 0-1 across all growth goals — the KB's proximity-to-failure
-// page (Grade B): "take isolation and machine work to 0-1 RIR (where failure is
-// safe and cheap)"; heavy compounds keep 1-3 to protect technique and recovery.
-// Strength keeps a deliberate extra reserve on accessories (fatigue budget goes
-// to the heavy lifts, where the goal lives).
-const REP_SCHEMES = {
-  hypertrophy: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
-  recomposition: { compound: ["6-10", "1-3"], isolation: ["10-15", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["12-20", "0-1"] },
-  strength: { compound: ["3-6", "2-3"], isolation: ["6-10", "1-3"], priorityIso: ["8-12", "1-2"], pumpIso: ["10-15", "1-2"] },
-  "fat-loss": { compound: ["8-12", "1-3"], isolation: ["12-20", "0-1"], priorityIso: ["12-20", "0-1"], pumpIso: ["15-20", "0-1"] },
-};
-// `general-fitness` is a valid goal in onboarding-profile.schema.json and had no
-// entry here, so it fell through `?? REP_SCHEMES.hypertrophy` — a silent fallback
-// for a DECLARED option (lesson 14). The shipped client only offers four goals, so
-// this is reachable only by a direct API post — and auth is possession-of-UUID, so
-// that's reachable. Made an EXPLICIT alias rather than an invented fifth scheme:
-// the KB gives no separate rep/effort prescription for general fitness, and making
-// one up would be worse than saying plainly that it's the same as hypertrophy.
-REP_SCHEMES["general-fitness"] = REP_SCHEMES.hypertrophy;
-const repScheme = (goal) => REP_SCHEMES[goal] ?? REP_SCHEMES.hypertrophy;
+// RIR/rep bands per goal now live in derive-core (`REP_SCHEMES`/`repScheme`,
+// imported above) so the PRESCRIPTION here and the effort lever that grades logged
+// rir against it read one table — the same single-source-of-truth move Wave 171
+// made for `supportedCompound`. Keeping a second copy here is what let the effort
+// lever score strength-goal accessories against the hypertrophy band.
 
 // THE MIDDLE EFFORT TIER (considerations #1, finding 1B). The KB's effort table has
 // THREE rows — heavy compounds 1-3 RIR · "moderate compounds and most machine

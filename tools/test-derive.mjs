@@ -963,6 +963,44 @@ check("effortSignal: tier-aware — a supported compound or isolation fires at i
   assert.equal(effortSignal(cu, effById).biceps.too_easy, true); // top 1, rir 2 → surplus 1
 });
 
+// The lever grades a logged rir against the band the PLAN asked for, so the band it
+// reads must be the GOAL's. Strength deliberately reserves more on accessories
+// (isolation "1-3", priority/pump "1-2"), and reading the hypertrophy row instead
+// scored a perfectly compliant rir-2 curl as +1 over target: the plateau card told a
+// strength lifter to push closer to failure than their own plan card asked for, and
+// the auto-tune HELD the sets their stalled muscle had earned.
+check("effortBandTop: reads the goal's own prescribed band, not a static tier", () => {
+  const curl = { mechanic: "isolation", stability: "high", cns_cost: "low" };
+  const bench = { mechanic: "compound", stability: "moderate", cns_cost: "moderate" };
+  const legpress = { mechanic: "compound", stability: "high", cns_cost: "low" };
+  // Strength: isolation band is "1-3"/priority-pump "1-2" → the most lenient top, 3.
+  assert.equal(effortBandTop(curl, "strength"), 3);
+  // Every other goal keeps the hypertrophy-family bands, byte-identical to before.
+  for (const g of ["hypertrophy", "recomposition", "fat-loss", "general-fitness", undefined, null]) {
+    assert.equal(effortBandTop(curl, g), 1, `isolation top for ${g}`);
+    assert.equal(effortBandTop(bench, g), 3, `heavy compound top for ${g}`);
+    assert.equal(effortBandTop(legpress, g), 2, `supported compound top for ${g}`);
+  }
+  // Compound tiers are goal-stable here (strength's "2-3" tops at 3 like hypertrophy's
+  // "1-3"), and the supported tier stays one notch closer, mirroring plan-core's easeToward.
+  assert.equal(effortBandTop(bench, "strength"), 3);
+  assert.equal(effortBandTop(legpress, "strength"), 2);
+  // An unknown goal falls back to the hypertrophy family rather than NaN-poisoning a surplus.
+  assert.equal(effortBandTop(curl, "not-a-goal"), 1);
+});
+
+check("effortSignal: a strength lifter obeying their own accessory band is never 'too easy'", () => {
+  // rir 2 curls: dead centre of strength's prescribed isolation band ("1-3").
+  const compliant = [effSess("2026-01-05", "curl", 2), effSess("2026-01-12", "curl", 2), effSess("2026-01-19", "curl", 2)];
+  assert.equal(effortSignal(compliant, effById, { goal: "strength" }).biceps.too_easy, false);
+  assert.equal(effortSignal(compliant, effById, { goal: "strength" }).biceps.avg_surplus, -1);
+  // The lever still WORKS for strength — genuine sandbagging above the band fires.
+  const sandbag = [effSess("2026-01-05", "curl", 4), effSess("2026-01-12", "curl", 4), effSess("2026-01-19", "curl", 4)];
+  assert.equal(effortSignal(sandbag, effById, { goal: "strength" }).biceps.too_easy, true);
+  // Unchanged for the hypertrophy family, whose own band top really is 1.
+  assert.equal(effortSignal(compliant, effById, { goal: "hypertrophy" }).biceps.too_easy, true);
+});
+
 check("effortSignal: deload/eased sets, warm-ups, non-numeric rir and unknown exercises contribute nothing", () => {
   // an eased band is PRESCRIBED easy — compliance, not sandbagging
   const deload = [effSess("2026-01-05", "bench", 4, { deload: true }), effSess("2026-01-12", "bench", 4, { deload: true }), effSess("2026-01-19", "bench", 4, { deload: true })];
@@ -1066,6 +1104,34 @@ check("trainedWeeksInBlock: sessions before block_start belong to the previous b
 check("trainedWeeksInBlock: an emptied/voided session is not a trained week", () => {
   const sessions = [{ date: "2026-01-06T00:00:00.000Z", sets: [] }, { date: "2026-01-13T00:00:00.000Z", sets: [{ exercise: "x", weight_kg: 60, reps: 8 }] }];
   assert.equal(trainedWeeksInBlock(sessions, BLK_START, "2026-01-26T00:00:00.000Z"), 1);
+});
+
+// A date-only local_date parses to UTC MIDNIGHT while block_start is a mid-day
+// timestamp, so the session logged ON rotation day sorted before its own block and
+// vanished. Train only that day and the whole week was lost from the clock — the
+// phase, the accessory rotation and the deload all ran a week late, every block.
+check("trainedWeeksInBlock: a session on the block-start DAY belongs to the new block", () => {
+  const sets = [{ exercise: "x", weight_kg: 60, reps: 8 }];
+  const onStartDay = [{ date: "2026-07-06T18:00:00.000Z", local_date: "2026-07-06", sets }];
+  assert.equal(trainedWeeksInBlock(onStartDay, "2026-07-06T14:00:00.000Z", "2026-07-20T10:00:00.000Z"), 1);
+  // ...while the calendar day BEFORE the block start still belongs to the old one.
+  const dayBefore = [{ date: "2026-07-05T18:00:00.000Z", local_date: "2026-07-05", sets }];
+  assert.equal(trainedWeeksInBlock(dayBefore, "2026-07-06T14:00:00.000Z", "2026-07-20T10:00:00.000Z"), 0);
+});
+
+// Session week keys are LOCAL (sessionWeekKey prefers local_date) so the "current
+// week" must be too. Mixed frames let a west-of-UTC user's still-in-progress week
+// read as finished for the hours between UTC's rollover and their own.
+check("trainedWeeksInBlock: 'the current week' is the user's local week, not the server's", () => {
+  const sets = [{ exercise: "x", weight_kg: 60, reps: 8 }];
+  // Local Sunday evening in California (UTC-8); UTC has already rolled into Monday.
+  const s = [{ date: "2026-07-12T23:00:00.000Z", local_date: "2026-07-12", sets }];
+  assert.equal(trainedWeeksInBlock(s, "2026-07-01T00:00:00.000Z", "2026-07-13T02:00:00.000Z", -480), 0,
+    "the week the user is still training in must not advance the mesocycle");
+  // Once that week is genuinely over, it counts.
+  assert.equal(trainedWeeksInBlock(s, "2026-07-01T00:00:00.000Z", "2026-07-20T02:00:00.000Z", -480), 1);
+  // Unknown tz falls back to raw UTC, the same choice isoWeekKeyLocal itself makes.
+  assert.equal(trainedWeeksInBlock(s, "2026-07-01T00:00:00.000Z", "2026-07-20T02:00:00.000Z"), 1);
 });
 
 check("trainedWeeksInBlock: missing/garbage inputs return 0 rather than throwing", () => {
