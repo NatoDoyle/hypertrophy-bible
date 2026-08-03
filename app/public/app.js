@@ -1746,9 +1746,12 @@ async function renderProgress() {
     // happened, or the tap reads as broken.
     if (!val || val <= 0) { say("Type your weight first."); $("#bw").placeholder = `type a number first (${unitLabel()})`; $("#bw").focus(); return; }
     const kg = toKg(val);
-    // Send today's date at log time so an offline weigh-in keeps its real date and
-    // a replayed POST replaces the same-day row instead of duplicating it.
-    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: new Date().toISOString().slice(0, 10) });
+    // Send today's LOCAL date at log time (not the UTC date — `addBodyweight`
+    // replaces same-date rows, so a UTC-mislabeled date for anyone west of UTC
+    // can silently collide with and overwrite a genuinely different day's
+    // weigh-in) so an offline weigh-in keeps its real date and a replayed POST
+    // replaces the same-day row instead of duplicating it.
+    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: localDay() });
     if (res.ok) return renderProgress();
     $("#bw").value = "";
     const note = document.createElement("p");
@@ -1886,7 +1889,10 @@ async function renderFuel() {
     wireLearnLinks();
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
     $("#f-save").onclick = async () => {
-      const g = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v > 0 ? v : undefined; };
+      // Null-safe: #f-hip only exists in the DOM for a female user (the Navy
+      // formula's hip measure), so reading it unconditionally for anyone else
+      // threw on `.value` of null and killed the save before the request fired.
+      const g = (id) => { const el = $(id); if (!el) return undefined; const v = parseFloat(el.value); return Number.isFinite(v) && v > 0 ? v : undefined; };
       const weightDisp = g("#f-weight"), height = g("#f-height"), bf = g("#f-bf"), waist = g("#f-waist"), neck = g("#f-neck"), hip = g("#f-hip");
       // The weight field shows in the user's display unit like every other weight in the
       // app — convert to kg before it's stored, or an lb entry corrupts the trend + TDEE.
@@ -1898,8 +1904,11 @@ async function renderFuel() {
       // BMI-based estimate the adaptive TDEE later corrects, so no "add BF% or a tape measure"
       // gate (that wall bounced novices off the whole nutrition half of the app).
       try {
-        await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value }) });
+        // Same local-date requirement as the Progress-tab logger above — both
+        // writes below can record a bodyweight row, and the server only falls
+        // back to the UTC date when none is sent.
+        await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight, date: localDay() }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
