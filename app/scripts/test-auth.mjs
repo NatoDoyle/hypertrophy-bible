@@ -244,6 +244,31 @@ try {
   await store.reassignUserData("mp8-from", "mp8-to");
   const mp8To = await store.getUser("mp8-to");
   ok("merge adopts from's partner_nudge when to has none", mp8To.profile.partner_nudge.at === 500 && mp8To.profile.nudge_seen_at === 0);
+  // --- Cloud loop: nutrition profile stats (user.nutrition — height/neck/
+  // waist/hip/bf_pct/activity, the Fuel tab's inputs) must merge too, or a
+  // user who set them up on `from` has to re-measure everything post-merge.
+  await store.saveUser("mp9-to", { profile: {} });
+  await store.saveUser("mp9-from", { profile: {}, nutrition: { height_cm: 180, neck_cm: 38, waist_cm: 85, bf_pct: 15, activity: "active" } });
+  await store.reassignUserData("mp9-from", "mp9-to");
+  const mp9To = await store.getUser("mp9-to");
+  ok("merge adopts from's nutrition stats when to has none", mp9To.nutrition?.height_cm === 180 && mp9To.nutrition?.bf_pct === 15 && mp9To.nutrition?.activity === "active");
+
+  // to's OWN entered stats must never be clobbered by from's — but a field to
+  // never set should still be filled in from from's side (per-field, not a
+  // whole-object decision).
+  await store.saveUser("mp10-to", { profile: {}, nutrition: { height_cm: 170, bf_pct: 20 } });
+  await store.saveUser("mp10-from", { profile: {}, nutrition: { height_cm: 190, bf_pct: 12, activity: "sedentary" } });
+  await store.reassignUserData("mp10-from", "mp10-to");
+  const mp10To = await store.getUser("mp10-to");
+  ok("merge keeps to's own height/bf_pct over from's", mp10To.nutrition.height_cm === 170 && mp10To.nutrition.bf_pct === 20);
+  ok("merge fills in a field to never set (activity) from from's side", mp10To.nutrition.activity === "sedentary");
+
+  // to already has SOME nutrition object but from has nothing to add — must not throw / must leave to untouched.
+  await store.saveUser("mp11-to", { profile: {}, nutrition: { height_cm: 175 } });
+  await store.saveUser("mp11-from", { profile: {} });
+  await store.reassignUserData("mp11-from", "mp11-to");
+  const mp11To = await store.getUser("mp11-to");
+  ok("merge with no nutrition on from leaves to's nutrition untouched", mp11To.nutrition.height_cm === 175);
 
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });
