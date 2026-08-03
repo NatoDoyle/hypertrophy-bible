@@ -40,6 +40,9 @@ import {
   supportedCompound,
   effortBandTop,
   effortSignal,
+  buildFeatureReport,
+  loadExerciseIndex,
+  loadMuscleIndex,
 } from "./derive-metrics.mjs";
 
 let passed = 0;
@@ -1052,6 +1055,146 @@ check("trainedWeeksInBlock: missing/garbage inputs return 0 rather than throwing
   assert.equal(trainedWeeksInBlock([], null, "2026-01-26T00:00:00.000Z"), 0);
   assert.equal(trainedWeeksInBlock(undefined, BLK_START, "2026-01-26T00:00:00.000Z"), 0);
   assert.equal(trainedWeeksInBlock([{ date: "nonsense", sets: [{ exercise: "x" }] }], BLK_START, "2026-01-26T00:00:00.000Z"), 0);
+});
+
+// --- broad sweep: the pure derive engine (buildFeatureReport + the functions it
+// composes) must never throw or produce a structurally invalid report across the
+// input space, not just the hand-picked fixtures above. This is the derive-core
+// sibling of tools/test-plan.mjs's generatePlan sweep (a prior cloud-loop iteration
+// added that one; derive-core.mjs runs on every real /api/today call — the app's
+// actual daily coaching loop — and had no equivalent regression net) and follows
+// the same shape: a seeded (reproducible, no Math.random/Date.now — this is a test
+// file generating fixtures, not the pure engine itself) generator sweeps realistic
+// AND malformed training histories through the real KB's exercises/muscles.
+check("sweep: buildFeatureReport + siblings never throw across a wide input space", () => {
+  const realExIndex = loadExerciseIndex();
+  const realMuscleIndex = loadMuscleIndex();
+  const exIds = [...realExIndex.keys()];
+  assert.ok(exIds.length > 20, "expected the real exercise DB to be loadable");
+
+  // mulberry32: tiny deterministic PRNG so a failure is reproducible, not flaky.
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function rand() {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const pick = (rand, arr) => arr[Math.floor(rand() * arr.length)];
+
+  // Deliberately weird-but-plausible set shapes: missing rpe/rir, bodyweight (0kg)
+  // work, single-rep, high-rep, a warmup-only session, fractional rpe.
+  function makeSet(rand, exercise) {
+    const kind = rand();
+    if (kind < 0.15) return { exercise, set_type: "warmup", weight_kg: 20, reps: 8 };
+    if (kind < 0.3) return { exercise, set_type: "work", weight_kg: 0, reps: Math.floor(1 + rand() * 20) }; // bodyweight
+    if (kind < 0.45) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 200), reps: 1 }; // single-rep
+    if (kind < 0.6) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 40), reps: Math.floor(15 + rand() * 20) }; // high-rep
+    if (kind < 0.75) return { exercise, set_type: "work", weight_kg: Math.round(rand() * 150 * 10) / 10, reps: Math.floor(4 + rand() * 8), rir: Math.floor(rand() * 5) }; // RIR, no rpe
+    return { exercise, set_type: "work", weight_kg: Math.round(rand() * 150 * 10) / 10, reps: Math.floor(4 + rand() * 8), rpe: Math.round((6 + rand() * 4) * 10) / 10 };
+  }
+
+  function makeHistory(rand, weeks, sessionsPerWeek) {
+    const sessions = [], checkins = [], bodyMetrics = [];
+    const startDay = Date.UTC(2026, 0, 5); // a Monday, fixed
+    let day = 0;
+    for (let w = 0; w < weeks; w++) {
+      for (let s = 0; s < sessionsPerWeek; s++) {
+        day += Math.floor(1 + rand() * 2);
+        const date = new Date(startDay + day * 86400000).toISOString();
+        const nEx = 1 + Math.floor(rand() * 6);
+        const sets = [];
+        for (let e = 0; e < nEx; e++) {
+          const exercise = pick(rand, exIds);
+          const nSets = Math.floor(rand() * 5); // can be 0 -> an exercise with no counted sets
+          for (let k = 0; k < nSets; k++) sets.push(makeSet(rand, exercise));
+        }
+        sessions.push({ session_id: `sweep-${w}-${s}-${Math.floor(rand() * 1e6)}`, date, sets });
+      }
+      // sparse, gap-prone check-ins: not every day, and fields drop out at random.
+      for (let d = 0; d < 7; d++) {
+        if (rand() < 0.3) continue; // missed day
+        const date = new Date(startDay + (w * 7 + d) * 86400000).toISOString().slice(0, 10);
+        const c = { date };
+        if (rand() < 0.8) c.bodyweight_kg = Math.round((70 + rand() * 40) * 10) / 10;
+        if (rand() < 0.7) c.sleep_hours = Math.round(rand() * 10 * 10) / 10;
+        if (rand() < 0.7) c.sleep_quality = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.hrv_ms = Math.floor(30 + rand() * 80);
+        if (rand() < 0.6) c.resting_hr = Math.floor(40 + rand() * 50);
+        if (rand() < 0.6) c.mood = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.motivation = Math.floor(1 + rand() * 5);
+        if (rand() < 0.6) c.stress = Math.floor(1 + rand() * 5);
+        checkins.push(c);
+      }
+      if (rand() < 0.4) bodyMetrics.push({ date: new Date(startDay + w * 7 * 86400000).toISOString().slice(0, 10), bodyweight_kg: Math.round((70 + rand() * 40) * 10) / 10 });
+    }
+    return { sessions, checkins, bodyMetrics };
+  }
+
+  const trainingStatuses = ["beginner", "intermediate", "advanced"];
+  const goals = ["hypertrophy", "strength", "fat-loss", "recomposition"];
+  let failure = null;
+  let ran = 0;
+  for (let seed = 0; seed < 40 && !failure; seed++) {
+    const rand = mulberry32(seed * 7919 + 13);
+    const weeks = Math.floor(rand() * 15); // 0..14, includes the empty/near-empty edge
+    const sessionsPerWeek = 1 + Math.floor(rand() * 5);
+    const { sessions, checkins, bodyMetrics } = makeHistory(rand, weeks, sessionsPerWeek);
+    const profile = { user_id: `sweep-${seed}`, training_status: pick(rand, trainingStatuses), primary_goal: pick(rand, goals) };
+    try {
+      ran++;
+      const report = buildFeatureReport({ profile, sessions, checkins, bodyMetrics }, realExIndex, realMuscleIndex);
+      assert.ok(report && typeof report === "object");
+      for (const [week, byMuscle] of Object.entries(report.weekly_volume_by_muscle)) {
+        for (const [muscle, sets] of Object.entries(byMuscle)) {
+          assert.ok(Number.isFinite(sets), `weekly_volume_by_muscle.${week}.${muscle} not finite`);
+          assert.ok(sets >= 0, `weekly_volume_by_muscle.${week}.${muscle} negative`);
+        }
+      }
+      for (const [muscle, v] of Object.entries(report.latest_week_vs_landmarks)) {
+        assert.ok(typeof v.status === "string", `latest_week_vs_landmarks.${muscle}.status not a string`);
+        assert.ok(Number.isFinite(v.sets), `latest_week_vs_landmarks.${muscle}.sets not finite`);
+      }
+      if (report.bodyweight_trend) {
+        assert.ok(Number.isFinite(report.bodyweight_trend.slope_kg_per_week));
+        assert.ok(Number.isFinite(report.bodyweight_trend.pct_per_week));
+      }
+      assert.ok(typeof report.energy_balance.direction === "string");
+      assert.ok(Array.isArray(report.progression));
+      for (const p of report.progression) {
+        if (p.basis === "load") assert.ok(Number.isFinite(p.first_load_kg) && Number.isFinite(p.last_load_kg));
+        else assert.ok(Number.isFinite(p.first_e1rm) && Number.isFinite(p.last_e1rm));
+        assert.ok(Number.isFinite(p.change_pct));
+      }
+      if (report.readiness) assert.ok(report.readiness.latest === null || (report.readiness.latest >= 0 && report.readiness.latest <= 100));
+
+      // Exercise the rest of the derive surface directly with the same weekly
+      // volume, mirroring what coach.mjs actually chains together each call.
+      const weekly = report.weekly_volume_by_muscle;
+      const stalls = stallDetect(sessions, realExIndex);
+      assert.ok(Array.isArray(stalls));
+      const cadence = progressionCadence(sessions, realExIndex);
+      assert.ok(cadence === null || Number.isFinite(cadence));
+      const window = adaptiveStallWindow(cadence);
+      assert.ok(Number.isFinite(window));
+      const stalledIds = new Set(stalls.map((s) => s.muscle).filter(Boolean));
+      const responses = volumeResponse(weekly, realMuscleIndex, stalledIds);
+      assert.ok(Array.isArray(responses));
+      for (const r of responses) assert.ok(["add", "reduce", "change", "effort", "hold"].includes(r.signal));
+      const recovery = recoverySignal(checkins, report.energy_balance);
+      assert.ok(recovery.avgReadiness === null || Number.isFinite(recovery.avgReadiness));
+      const adjust = deriveVolumeAdjust({}, weekly, realMuscleIndex, stalledIds, { underRecovered: recovery.underRecovered, inDeficit: recovery.inDeficit });
+      assert.ok(adjust && typeof adjust === "object");
+      for (const v of Object.values(adjust)) assert.ok(Number.isFinite(v));
+    } catch (err) {
+      failure = { seed, weeks, sessionsPerWeek, profile, err };
+    }
+  }
+  if (failure) console.error("  sweep failure:", JSON.stringify({ seed: failure.seed, weeks: failure.weeks, profile: failure.profile }), failure.err.stack);
+  assert.ok(!failure, `derive-core sweep failed on seed ${failure?.seed}: ${failure?.err?.message}`);
+  assert.ok(ran === 40, "sweep should attempt all 40 seeds");
 });
 
 console.log(`\n${passed} test(s) passed.`);
