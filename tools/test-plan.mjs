@@ -620,6 +620,62 @@ ok("#1C and it gives the KB's own answer — another day, not a longer session",
 const gf = generatePlan({ ...rirProfile, primary_goal: "general-fitness", user_id: "gf" }, kb, {});
 ok("#1D general-fitness is now an explicit scheme, not a silent fallback",
   gf.program.sessions.flatMap((x) => x.exercises).every((e) => !!e.rir && !!e.rep_range));
+// --- broad sweep: generatePlan + critiquePlan must never throw or produce a
+// structurally invalid plan across the input space, not just the handful of
+// hand-picked profiles above. A prior cloud-loop iteration hand-tested a wide
+// cartesian sweep (training_status × days_per_week × primary_goal × equipment ×
+// priority × specialization × session_length, plus every injury region ×
+// severity) inline and found zero defects — this locks that coverage in as a
+// permanent regression net instead of letting the one-off finding evaporate.
+const regionList = Object.keys(contraindications.regions);
+const sweepProfiles = [];
+for (const training_status of ["beginner", "intermediate", "advanced"]) {
+  for (const days_per_week of [2, 3, 4, 5, 6]) {
+    for (const primary_goal of ["hypertrophy", "strength", "fat-loss", "recomposition"]) {
+      sweepProfiles.push({ user_id: `sweep-${training_status}-${days_per_week}-${primary_goal}`, training_status, days_per_week, primary_goal, session_length_min: 60 });
+    }
+  }
+}
+// injury contraindications: the dimension most likely to exhaust an exercise
+// pool (an equipment-restricted, injury-restricted advanced 6-day week) — swept
+// separately since crossing it with every status/day/goal above would be
+// combinatorially wasteful for a committed test.
+for (const region of regionList) {
+  for (const severity of ["mild", "moderate", "severe"]) {
+    sweepProfiles.push({ user_id: `sweep-inj-${region}-${severity}`, training_status: "advanced", days_per_week: 6, primary_goal: "hypertrophy", available_equipment: ["bodyweight"], injuries: [{ region, severity }], session_length_min: 45 });
+  }
+}
+// specialization + priority + a tight session, the other axis a pool can run dry on
+for (const priority_muscles of [["chest"], ["side-delts", "biceps"], ["calves", "forearms", "abs"]]) {
+  for (const specialization of [false, true]) {
+    sweepProfiles.push({ user_id: `sweep-spec-${priority_muscles.join("+")}-${specialization}`, training_status: "advanced", days_per_week: 6, primary_goal: "recomposition", priority_muscles, specialization, session_length_min: 45 });
+  }
+}
+
+let sweepThrew = null, sweepBadSets = null, sweepBadTargets = null, sweepCritiqueThrew = null;
+for (const profile of sweepProfiles) {
+  let sp;
+  try {
+    sp = generatePlan(profile, kb);
+  } catch (err) {
+    sweepThrew = { profile, err }; break;
+  }
+  const allEx = sp.program.sessions.flatMap((s) => s.exercises);
+  if (!allEx.every((e) => Number.isInteger(e.sets) && e.sets >= 1 && e.sets <= 10)) { sweepBadSets = profile; break; }
+  if (!Object.values(sp.rationale.volume_by_muscle).every((r) => Number.isFinite(r.target_sets) && r.target_sets >= 0)) { sweepBadTargets = profile; break; }
+  try {
+    const c = critiquePlan(sp.program, kb, { experience: profile.training_status });
+    if (!c || typeof c.summary !== "string") { sweepCritiqueThrew = { profile, err: new Error("no summary") }; break; }
+  } catch (err) {
+    sweepCritiqueThrew = { profile, err }; break;
+  }
+}
+if (sweepThrew) console.error("  sweep profile that threw:", JSON.stringify(sweepThrew.profile), sweepThrew.err.message);
+ok(`sweep (${sweepProfiles.length} profiles across status/days/goal/injury/specialization): generatePlan never throws`, !sweepThrew);
+ok("sweep: every generated set count is a 1-10 integer", !sweepBadSets);
+ok("sweep: every volume rationale target is a finite, non-negative number", !sweepBadTargets);
+if (sweepCritiqueThrew) console.error("  sweep profile whose critique threw:", JSON.stringify(sweepCritiqueThrew.profile), sweepCritiqueThrew.err.message);
+ok("sweep: critiquePlan never throws and always returns a summary", !sweepCritiqueThrew);
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
