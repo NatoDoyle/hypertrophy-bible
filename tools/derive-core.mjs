@@ -48,6 +48,7 @@ export const PR_XP = 50;
 export function priorPersonalBests(sessions) {
   const e1rm = {}, load = {};
   for (const s of sessions) for (const set of s.sets ?? []) {
+    if (set.deload) continue; // planned-easy sets can't anchor a real ceiling (mirrors stallDetect/progressionByExercise)
     if (countsForE1RM(set)) {
       const { e1rm: v } = estimate1RM(set.weight_kg, set.reps);
       if (v > (e1rm[set.exercise] ?? 0)) e1rm[set.exercise] = v;
@@ -70,13 +71,18 @@ export function priorPersonalBests(sessions) {
 //     raise could beat its best weight forever and be told nothing.
 // A first-EVER performance is not a PR (no prior best to beat) — the caller frames "first
 // time" separately if it wants. `priorSessions` = every session before the one checked.
-// Warm-ups never count; a deload is intentionally light so it can't out-lift a real best.
+// Warm-ups never count. A deload is intentionally light on WEIGHT only — Epley still
+// rewards reps, so an eased-weight set logged at the top of its rep range can out-score
+// a true heavy best (e.g. 90kg x10 deload vs a real 100kg x5 top set: e1rm 120 > 116.67).
+// Deload sets are excluded explicitly, mirroring stallDetect/progressionByExercise (which
+// already skip them via `if (set.deload) continue`) rather than trusting the math alone.
 // Pure and deterministic (no Date.now/Math.random).
 export function detectPersonalRecords(session, priorSessions = []) {
   const { e1rm: priorE1rm, load: priorLoad } = priorPersonalBests(priorSessions);
   // Best in the just-logged session per exercise.
   const newE1rm = {}, newLoad = {};
   for (const set of session.sets ?? []) {
+    if (set.deload) continue;
     if (countsForE1RM(set)) {
       const { e1rm } = estimate1RM(set.weight_kg, set.reps);
       const cur = newE1rm[set.exercise];
@@ -108,6 +114,7 @@ export function detectPersonalRecords(session, priorSessions = []) {
 // e1rm noise margin), so a mid-session "🎉" can never fire for a set the end-of-session
 // recap wouldn't also celebrate. `priorBests` is priorPersonalBests(sessions-before-today).
 export function checkSetPR(set, priorBests) {
+  if (set.deload) return null; // a planned-easy set never celebrates (see detectPersonalRecords)
   if (countsForE1RM(set)) {
     const { e1rm } = estimate1RM(set.weight_kg, set.reps);
     const prev = priorBests.e1rm[set.exercise];

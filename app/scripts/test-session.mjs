@@ -252,6 +252,14 @@ check("checkSetPR: higher-rep LOAD band", () => {
   assert.equal(checkSetPR("leg-curl", 40, 16, "work", priorBests), null); // same load again, not a PR
 });
 
+check("checkSetPR: a deload set never fires, even when the raw math would out-score the prior best", () => {
+  // 90kg x10 scores e1rm 120 via Epley — genuinely > the 116.67 prior best — so
+  // without the explicit deload check this WOULD fire (proven by the second assert).
+  const priorBests = { e1rm_kg: 116.67, load_kg: null };
+  assert.equal(checkSetPR("bench", 90, 10, "work", priorBests, true), null);
+  assert.ok(checkSetPR("bench", 90, 10, "work", priorBests, false));
+});
+
 check("checkSetPR (client) agrees with checkSetPR (server) across a battery of fixtures", () => {
   // Any drift between the browser copy and tools/derive-core.mjs would let the
   // in-player celebration and the end-of-session recap silently disagree.
@@ -267,11 +275,12 @@ check("checkSetPR (client) agrees with checkSetPR (server) across a battery of f
     { exercise: "leg-curl", weight_kg: 45, reps: 15, set_type: "work" },// load PR
     { exercise: "leg-curl", weight_kg: 35, reps: 15, set_type: "work" },// under prior best
     { exercise: "squat", weight_kg: 100, reps: 5, set_type: "work" },   // no history at all
+    { exercise: "bench", weight_kg: 90, reps: 10, set_type: "work", deload: true }, // deload: would out-score 116.67 by raw e1rm (120) but must never fire
   ];
   for (const f of fixtures) {
     const clientPriorBests = { e1rm_kg: bests.e1rm[f.exercise] ?? null, load_kg: bests.load[f.exercise] ?? null };
-    const clientVerdict = checkSetPR(f.exercise, f.weight_kg, f.reps, f.set_type, clientPriorBests);
-    const serverVerdict = checkSetPRServer({ exercise: f.exercise, weight_kg: f.weight_kg, reps: f.reps, set_type: f.set_type }, bests);
+    const clientVerdict = checkSetPR(f.exercise, f.weight_kg, f.reps, f.set_type, clientPriorBests, f.deload);
+    const serverVerdict = checkSetPRServer({ exercise: f.exercise, weight_kg: f.weight_kg, reps: f.reps, set_type: f.set_type, deload: f.deload }, bests);
     assert.deepEqual(clientVerdict, serverVerdict, `disagreement on ${JSON.stringify(f)}`);
     // and whichever fires must agree with what detectPersonalRecords would report if
     // this set were the session's only set — the actual end-of-session recap check.
