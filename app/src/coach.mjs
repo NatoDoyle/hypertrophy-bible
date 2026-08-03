@@ -613,10 +613,11 @@ export function stalledExerciseIds(sessions, customEx = [], now = null) {
 // to how training is actually going, and the user couldn't ask for one either.
 //
 // Fires only for a muscle stalled AT its recoverable ceiling — `volumeResponse`'s
-// "change" signal, which the engine has been computing on every /api/progress call
-// and throwing away (nothing rendered it, nothing acted on it: a producer with no
-// consumer, lesson 15). Adding sets there is the one thing that can't help, which
-// is exactly why the KB reaches for a deload instead.
+// "change" signal, which the engine computed on every /api/progress call and threw
+// away for several waves (nothing rendered it, nothing acted on it: lesson 15's
+// producer with no consumer). This function is what finally acts on it, and the
+// Progress plateau card renders it. Adding sets there is the one thing that can't
+// help, which is exactly why the KB reaches for a deload instead.
 //
 // Bounded hard: never in week 1-2 (a block that has barely started has no fatigue
 // to shed), never during a scheduled deload week, and at most ONCE per block.

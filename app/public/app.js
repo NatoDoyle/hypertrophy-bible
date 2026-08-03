@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -255,12 +255,23 @@ const STEPS = [
   // `severity === "mild"` branch unreachable from the shipped client — a whole
   // leniency path that existed in the engine and could never run. Asking one
   // question turns it on, and lets a niggle keep exercises a real injury removes.
-  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"], ["Serious — keep me well clear", "severe"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "This decides how much I hold back: a niggle only drops the worst offenders, serious clears everything that loads it." },
+  //
+  // TWO options, not three, because the engine has exactly two behaviours:
+  // `contraExcluded` branches on `severity !== "mild"`, and the KB's own data file
+  // says so ("exclude_patterns are avoided at any severity; caution_patterns are
+  // additionally avoided at moderate/severe"). A third "Serious — keep me well
+  // clear" choice filtered precisely what "moderate" filtered while the hint
+  // promised it "clears everything that loads it" — asking someone to make a
+  // distinction that changes nothing, and describing a tier that doesn't exist.
+  // "severe" stays a valid stored value (schema, sanitizeInjuries, and the
+  // /api/profile/injury escalation ladder all still accept it, and it behaves
+  // exactly as it always did) so nobody who already answered it needs migrating.
+  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
   { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
   { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
 ];
 // Onboarding answers persist to localStorage as they're picked, so a reload or a
-// failed submit never makes a nervous first-timer re-answer all eight questions.
+// failed submit never makes a nervous first-timer re-answer the whole wizard.
 const ONB_KEY = "hb_onboarding";
 let onbStep = 0, onbStarted = false, answers = {};
 // Settings reuses the SAME wizard the user already learned in onboarding —
@@ -337,7 +348,15 @@ function renderOnboarding() {
     return;
   }
   const step = STEPS[onbStep];
-  const dots = STEPS.map((_, i) => `<i class="${i <= onbStep ? "on" : ""}"></i>`).join("");
+  // One dot per question this user will ACTUALLY be asked — the same `showIf` the
+  // forward/back navigation uses, so the progress bar can't promise more steps than
+  // the wizard will ever show. Rendering a dot per STEPS entry meant a first-timer
+  // saw the settings-only goal-event question and both conditional follow-ups
+  // counted against them: twelve dots for a nine-question run, a finish line that
+  // visibly receded (the walked steps skip, so the trailing dots never light).
+  const visible = STEPS.filter((s, i) => i === onbStep || !s.showIf || s.showIf(answers));
+  const dotsDone = visible.findIndex((s) => s === STEPS[onbStep]);
+  const dots = visible.map((_, i) => `<i class="${i <= dotsDone ? "on" : ""}"></i>`).join("");
   let body;
   if (step.stepper) {
     const st = step.stepper;
@@ -462,7 +481,7 @@ async function submitOnboarding() {
     tryPendingFollow(); // no-op unless they arrived via a friend's share link
     return renderPlanExplain(true);
   }
-  // Retry in place — never discard the eight answers the user just gave.
+  // Retry in place — never discard the answers the user just gave.
   app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Hmm — that didn't go through.</h1>
     <p>Your answers are safe. Let's try again.</p>
     <button class="btn" id="retryonb">Try again</button>
@@ -512,7 +531,7 @@ async function renderPlanExplain(firstTime) {
        <div class="card"><div class="row"><div style="flex:1"><b>${pcRange(pc.steps_per_day)} steps/day</b>
          <div class="muted" style="font-size:.85rem">${esc(pc.note ?? "")}</div></div>
          <span class="chip">Grade ${esc(pc.evidence_grade)}</span></div>
-         <div class="row"><div style="flex:1"><b>${pcRange(pc.sessions_per_week)} sessions/week</b> <span class="muted">${pcRange(pc.minutes_per_session)} min each</span>
+         <div class="row"><div style="flex:1"><b>${pcRange(pc.sessions_per_week)} sessions/week</b> <span class="muted">${pcRange(pc.minutes_per_session)} min each${pc.structured_modality ? ` — ${esc(pc.structured_modality.name.toLowerCase())} interferes least` : ""}</span>
          <div class="muted" style="font-size:.85rem">${(pc.placement?.best_after ?? []).length
            ? `Best after: ${esc(pc.placement.best_after.join(", "))}. ${esc(pc.placement.rule ?? "")}`
            : `Every training day on this split sits next to leg work — put harder sessions on a rest day, or keep it to walking.`}</div></div></div>
@@ -808,7 +827,7 @@ async function renderToday() {
   const range = (r, unit = "") => r ? (r.min === r.max ? `${r.min}${unit}` : `${r.min}–${r.max}${unit}`) : "";
   const cardioCard = cd
     ? `<div class="card"><b>🚶 Cardio &amp; steps</b> <span class="chip">Grade ${esc(cd.evidence_grade)}</span>
-        <p class="muted"><b>${range(cd.steps_per_day)} steps</b> a day, plus <b>${range(cd.sessions_per_week)} sessions</b> of ${range(cd.minutes_per_session)} min a week. ${cd.modality ? `Walking costs your muscle nothing — it's the reason steps come first.` : ""}</p>
+        <p class="muted"><b>${range(cd.steps_per_day)} steps</b> a day, plus <b>${range(cd.sessions_per_week)} sessions</b> of ${range(cd.minutes_per_session)} min a week. ${cd.modality ? `Walking costs your muscle nothing — it's the reason steps come first.` : ""}${cd.structured_modality ? ` For those sessions, <b>${esc(cd.structured_modality.name.toLowerCase())}</b> interferes least with your lifting.` : ""}</p>
         <p class="muted">${cd.hard_cardio_ok
           ? `Today's a good day for a harder session — no leg work today or tomorrow.`
           : (cd.placement?.best_after ?? []).length
@@ -966,7 +985,10 @@ let quitPending = false;    // two-tap guard on ending a workout early
 // other through), and Swap / "do this later" / Unlink all renumber the array — an
 // index-keyed flag would then suppress the warning for whatever lift inherited that
 // slot. Cleared by any stepper touch (they've re-read the number) and once banked.
-let confirmSet = null;
+// A SET of confirmed exercise ids, not one id: a superset round banks two lifts at
+// once, and a single slot meant confirming one un-confirmed the other, so a round
+// with two suspect entries could never be banked at all (see unconfirmedFlagged).
+let confirmSet = new Set();
 // Effort chips (Wave 171): tri-state hb_rir — "1" force-on, "0" force-off, unset =
 // on for everyone past the beginner stage (beginners are never asked: the KB says
 // novice RIR calls are noise, and the design spec forbids demanding effort of them;
@@ -1067,15 +1089,19 @@ const nextExerciseIndex = (from) => nextUnfinishedIndex(sess.logged, sess.ex, fr
 // describing a number the user had already corrected — a status contradicting the
 // state it reports on, and a button whose label lied about what the next tap does.
 // Returns true when the caller must re-render.
-const clearSetConfirm = () => { const was = confirmSet !== null; confirmSet = null; return was; };
+const clearSetConfirm = () => { const was = confirmSet.size > 0; confirmSet.clear(); return was; };
 
 // Would banking index `idx` right now log something that looks like a typo? Binds
 // the live `sess` to session-core's pure isImplausibleSet, reading the same kg the
 // logger will actually send (sess.weights holds DISPLAY units — a lb user's "225"
 // must be judged as 102 kg, not 225, or every lb session would be questioned).
 // Returns false once the user has confirmed THIS index, so the second tap banks it.
-const needsSetConfirm = (idx) => confirmSet !== sess.ex[idx]?.exercise
-  && isImplausibleSet(toKg(sess.weights[idx]), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+const setExKey = (idx) => sess.ex[idx]?.exercise;
+const setLooksLikeTypo = (idx) => isImplausibleSet(toKg(sess.weights[idx]), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+// Which of these station members still owe a confirming tap. Both players go through
+// session-core's `unconfirmedFlagged` so "flagged and unconfirmed" has ONE definition.
+const stationNeedsConfirm = (indices) => unconfirmedFlagged(indices, setExKey, setLooksLikeTypo, confirmSet);
+const needsSetConfirm = (idx) => stationNeedsConfirm([idx]).length > 0;
 
 // The one-line warning shown in place of the usual button label. Names the number
 // it's questioning and what it's comparing against, so the answer is obvious at a
@@ -1215,8 +1241,8 @@ function renderPlayer(resting = 0) {
       ${weightStepper(w, e.equipment === "bodyweight", null)}
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${effChips(sess.i)}
-      ${confirmSet === e.exercise ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
-      <button class="btn" id="done">${confirmSet === e.exercise ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
+      ${confirmSet.has(e.exercise) ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
+      <button class="btn" id="done">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
@@ -1277,8 +1303,8 @@ function renderPlayer(resting = 0) {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
     // One stray stepper tap must not poison the log: a set that dwarfs this lift's
     // own history asks once first. Confirmed sets fall straight through.
-    if (needsSetConfirm(sess.i)) { confirmSet = e.exercise; return renderPlayer(0); }
-    confirmSet = null;
+    if (needsSetConfirm(sess.i)) { confirmSet.add(e.exercise); return renderPlayer(0); }
+    confirmSet.clear();
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
@@ -1359,7 +1385,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${effChips(idx)}
-      ${confirmSet === m.exercise ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
+      ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -1368,7 +1394,7 @@ function renderSupersetStation(L, P, resting = 0) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
-    <button class="btn" id="doner">${[L, P].some((i) => confirmSet === sess.ex[i]?.exercise) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
+    <button class="btn" id="doner">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
@@ -1395,11 +1421,12 @@ function renderSupersetStation(L, P, resting = 0) {
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
     // Same typo guard as the single-lift player, per MEMBER: a round banks two sets
-    // at once, so confirming one must not wave the other through (confirmSet holds
-    // one exercise id, and needsSetConfirm only clears for that exact lift).
-    const suspect = [L, P].find(needsSetConfirm);
-    if (suspect != null) { confirmSet = sess.ex[suspect].exercise; return renderSupersetStation(L, P, 0); }
-    confirmSet = null;
+    // at once, so confirming one must not wave the other through. Every flagged
+    // member is confirmed TOGETHER — confirming them one at a time made a round with
+    // two suspect entries unbankable, since each confirmation cleared the last.
+    const suspects = stationNeedsConfirm([L, P]);
+    if (suspects.length) { for (const i of suspects) confirmSet.add(sess.ex[i].exercise); return renderSupersetStation(L, P, 0); }
+    confirmSet.clear();
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
@@ -1676,8 +1703,10 @@ async function renderProgress() {
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
   // The plateau card now says which lever the engine is ACTUALLY pulling, instead
   // of the same three-line playbook regardless of cause. `p.adaptive` carries
-  // volumeResponse's per-muscle signal — computed on every progress read since it
-  // was written and never once rendered (a producer with no consumer, lesson 15).
+  // volumeResponse's per-muscle signal, which for several waves was computed on every
+  // progress read and never rendered — lesson 15's producer with no consumer, closed
+  // when this card started branching on it (and `reactiveDeloadDue` started acting
+  // on the same "change" signal server-side).
   // Going BACKWARDS is not a plateau and must not be dressed as one. Never shames
   // (a standing guardrail) — a decline is nearly always fuel, sleep or life, and
   // the app's job is to say that plainly and take the pressure off, not to imply
