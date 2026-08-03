@@ -75,6 +75,73 @@ export function extractPage({ slug, pillar, md }, knownSlugs) {
 // the same bar automatically — a new page that links to nothing fails the build.
 export const GATE = { minOut: 2, enforceMinOut: true };
 
+// ---------- depth grammar (Wave 175) ----------
+
+// The prose a reader actually reads, with everything that carries digits but conveys
+// no answer removed: footnote markers ([^smith-2017]), link TARGETS (../03-programming/
+// x.md — the link TEXT stays, it's rendered), code spans, and the non-rendered sections
+// stripNonRendered already drops. Without this, a densely-cited page scores as
+// "full of numbers" purely from its citation keys — measuring the bibliography
+// instead of the guidance, which is the exact self-deception lesson 25 warns about.
+export function renderedProse(md) {
+  return stripNonRendered(md)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/\[\^[^\]]+\]/g, " ")
+    .replace(/\]\([^)]*\)/g, "] ")
+    .replace(/^\s*\|[-: |]+\|\s*$/gm, " ");   // table separator rows are not prose
+}
+
+// A "number a reader can act on": any whitespace-delimited token carrying a digit.
+// Counts 7–9, 1.6, 20–40, 0.25–0.5%/wk once each. Deliberately generous — the point
+// is to separate pages that quantify from pages that gesture, not to grade precision.
+const NUMERIC_TOKEN = /(^|\s)[^\s]*\d[^\s]*/g;
+
+// Per-page DEPTH record. Depth is the axis Goal 1 is actually judged on and nothing
+// measured it: check-links proved the graph was connected, check-claim-coverage proved
+// graded claims carried citations, and both were green while pages answered the reader's
+// "how much / how long / how do I know" in adjectives. A green gate proves only what it
+// measures (lesson 25), so this computes the numbers that would falsify "deep enough".
+export function pageDepth({ slug, pillar, md }) {
+  const prose = renderedProse(md);
+  const words = (prose.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).length;
+  const numbers = (prose.match(NUMERIC_TOKEN) ?? []).length;
+  const tableRows = (prose.match(/^\s*\|.*\|\s*$/gm) ?? []).length;
+  return {
+    slug, pillar, words, numbers, tableRows,
+    // Numbers per 100 words: a long page and a short one are held to the same bar.
+    numericDensity: words ? Math.round((numbers / words) * 10000) / 100 : 0,
+  };
+}
+
+// The bar, and the single flip point (mirrors GATE above). Ships WARN-ONLY: lesson 25's
+// own corollary is to introduce a gate in warn mode in the wave that adds it and flip it
+// to fail only in the wave whose authoring makes it pass, so the bar never lands red.
+//
+// Thresholds are read OFF THE CORPUS, not invented. Measured over the 93 content pages
+// when this shipped: words p10/p25/median = 454/518/659, numeric density (numbers per
+// 100 words) p10/p25/median = 0.22/0.40/0.96. So both floors sit at roughly the 10th
+// percentile — they flag the genuine tail, not a round number that felt right. The
+// first draft of this file guessed minNumericDensity: 1.5, which would have flagged
+// ~65% of the KB and taught everyone to ignore the report; measuring first is the whole
+// discipline (a gate nobody believes is worse than no gate).
+export const DEPTH_GATE = { minWords: 450, minNumericDensity: 0.25, warnOnly: true };
+
+// The two tells the Waves 159-161 lessons named, TOGETHER: a page that is both thin (or
+// number-free) and poorly connected is what "nobody has revisited this" looks like.
+// Either alone is often legitimate — a focused rebuttal is short, a hub page is long and
+// links widely — so this AND is a priority shortlist, not a verdict.
+//
+// Because it is an AND it necessarily HIDES pages that fail one tell while passing the
+// other (alcohol.md: 363 words and 0.28 numbers/100w, but 3 outbound links, so it never
+// appears here — and it is the KB's clearest "dose page that gives no doses"). That is
+// this composition's blind spot stated plainly, which is why check-depth.mjs reports
+// each floor on its own line as well: a green gate proves only what it measures, and
+// that applies to gates I write too.
+export const isUnderDeveloped = (depth, outDegree, gate = DEPTH_GATE) =>
+  (depth.words < gate.minWords || depth.numericDensity < gate.minNumericDensity)
+  && outDegree <= GATE.minOut;
+
 // Records → the whole graph. Weights (integers, max 24) — every term a checkable fact:
 //   3·min(n_ab,2) + 3·min(n_ba,2)  direct links each way, diminishing after the 2nd
 // + 2 if linked both ways           bidirectionality bonus

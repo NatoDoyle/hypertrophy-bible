@@ -6,14 +6,15 @@
   "description": "An evidence-based, fully-cited knowledge base for hypertrophy and muscle-building optimization.",
   "scripts": {
     "validate": "node tools/validate.mjs",
-    "check": "node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/check-claim-coverage.mjs && node tools/check-links.mjs && node tools/check-markdown-emphasis.mjs",
+    "check": "node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/check-claim-coverage.mjs && node tools/check-links.mjs && node tools/check-markdown-emphasis.mjs && node tools/check-depth.mjs",
     "check-citations": "node tools/check-citations.mjs",
     "check-refs": "node tools/check-data-refs.mjs",
     "build-bib": "node tools/build-bibliography.mjs",
     "derive": "node tools/derive-metrics.mjs",
     "test-derive": "node tools/test-derive.mjs",
     "test-graph": "node tools/test-graph.mjs",
-    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs && node tools/test-plan.mjs && node tools/test-nutrition.mjs && node tools/test-graph.mjs"
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs && node tools/test-plan.mjs && node tools/test-nutrition.mjs && node tools/test-graph.mjs",
+    "depth": "node tools/check-depth.mjs"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

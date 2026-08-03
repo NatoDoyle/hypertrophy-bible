@@ -15,6 +15,10 @@ import {
   parseContentsIndex,
   formatReasons,
   GATE,
+  renderedProse,
+  pageDepth,
+  isUnderDeveloped,
+  DEPTH_GATE,
 } from "./graph-core.mjs";
 
 let passed = 0;
@@ -334,12 +338,15 @@ for (const dir of readdirSync(CONTENT)) {
     known.add(f.replace(/\.md$/, ""));
   }
 }
+const FILES = [];
 for (const dir of readdirSync(CONTENT)) {
   const p = join(CONTENT, dir);
   if (!statSync(p).isDirectory()) continue;
   for (const f of readdirSync(p)) {
     if (!f.endsWith(".md") || f === "index.md") continue;
-    records.push(extractPage({ slug: f.replace(/\.md$/, ""), pillar: dir, md: readFileSync(join(p, f), "utf8") }, known));
+    const page = { slug: f.replace(/\.md$/, ""), pillar: dir, md: readFileSync(join(p, f), "utf8") };
+    FILES.push(page);
+    records.push(extractPage(page, known));
   }
 }
 const G = buildGraph(records);
@@ -384,6 +391,55 @@ check("real KB: min-out-degree holds once GATE.enforceMinOut flips (Wave 160)", 
   if (GATE.enforceMinOut) {
     assert.deepEqual(G.metrics.underlinked, [], `underlinked: ${G.metrics.underlinked.join(", ")}`);
   }
+});
+
+// --- depth metrics (Wave 175) --------------------------------------------
+// Depth is the axis Goal 1 is judged on and nothing measured it; these lock the
+// measurement itself, since a metric that counts the wrong thing is worse than none.
+
+check("renderedProse: strips what carries digits but answers nothing", () => {
+  const md = [
+    "# Page", "", "Eat 1.6 g/kg of protein[^smith-2017].", "",
+    "See [volume](../01-training-variables/volume.md) for the dose.", "",
+    "## References", "", "[^smith-2017]: Smith 2017, J Sports Sci 45(3), 1-12.",
+  ].join("\n");
+  const prose = renderedProse(md);
+  assert.ok(prose.includes("1.6"), "a real recommendation survives");
+  assert.ok(!prose.includes("smith-2017"), "footnote markers are not prose");
+  assert.ok(!prose.includes("volume.md"), "link TARGETS are not prose");
+  assert.ok(prose.includes("volume"), "link TEXT is prose — the reader reads it");
+  assert.ok(!prose.includes("45(3)"), "the References section never renders in-app");
+});
+
+check("pageDepth: a densely-cited page cannot fake numeric density from its citation keys", () => {
+  const cited = { slug: "a", pillar: "p", md: "# A\n\nTrain hard[^a-2017] and rest well[^b-2021] and eat[^c-2019].\n" };
+  assert.equal(pageDepth(cited).numbers, 0, "citation years are bibliography, not guidance");
+  const real = { slug: "b", pillar: "p", md: "# B\n\nDo 3-5 sets at 8-12 reps, resting 2-3 min.\n" };
+  assert.equal(pageDepth(real).numbers, 3);
+  assert.ok(pageDepth(real).numericDensity > 0);
+});
+
+check("pageDepth: counts table rows but not their separator line", () => {
+  const md = "# T\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+  assert.equal(pageDepth({ slug: "t", pillar: "p", md }).tableRows, 2, "header + body row, not the |---| rule");
+});
+
+check("isUnderDeveloped: needs BOTH tells, and its blind spot is real", () => {
+  const thin = { words: 300, numericDensity: 0 };
+  assert.equal(isUnderDeveloped(thin, GATE.minOut), true, "thin AND poorly linked → shortlisted");
+  assert.equal(isUnderDeveloped(thin, GATE.minOut + 1), false,
+    "documented blind spot: a thin, number-free page escapes the AND if it links out well");
+  assert.equal(isUnderDeveloped({ words: 2000, numericDensity: 5 }, 1), false, "deep but poorly linked is not a depth problem");
+});
+
+check("DEPTH_GATE ships WARN-only, and its floors sit at the corpus tail", () => {
+  // The flip (warnOnly: false) is a deliberate future wave; this asserts the CURRENT
+  // state so flipping it fails here on purpose — update this test, never relax a floor.
+  assert.equal(DEPTH_GATE.warnOnly, true);
+  const depths = FILES.map(({ slug, pillar, md }) => pageDepth({ slug, pillar, md }));
+  const below = depths.filter((d) => d.words < DEPTH_GATE.minWords).length;
+  assert.ok(below / depths.length < 0.2,
+    `floors must flag a tail, not the corpus: ${below}/${depths.length} pages below minWords`);
 });
 
 console.log(`\ntest-graph: ${passed} checks passed.`);
