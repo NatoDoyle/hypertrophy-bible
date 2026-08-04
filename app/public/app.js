@@ -242,7 +242,14 @@ const STEPS = [
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
-  { key: "specialization", q: "How hard should I push those muscles?", opts: [["Extra volume (balanced)", false], ["All-in specialization block", true]], hint: "All-in: your picks get maximum volume and everything else drops to a maintenance dose. Best for one or two 6-week blocks, not forever.", showIf: (a) => (a.priority_muscles || []).length > 0 && a.training_status !== "beginner" },
+  // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
+  // it asked the user to make a programming decision (balanced vs an all-in block)
+  // that the app exists to make for them, and a lifter who could answer it wouldn't
+  // need us. WHICH muscles they care about is a preference only they have — that's the
+  // question above, and it stays. HOW HARD to push is now derived from the KB's own
+  // rule in plan-core's `deriveSpecialization` (past the beginner phase, one or two
+  // priorities → a real specialization block; three or more → the priority tilt
+  // without it, because you can't specialize everything at once).
   // Settings-ONLY (gated on settingsMode): a goal event date is a niche competitive-lifter
   // need, so it never appears in first-run onboarding (Goals 2 & 3: minimal customization,
   // zero cognitive load) — the taper engine is off by default. A non-beginner who wants it
@@ -305,7 +312,6 @@ async function renderSettings() {
     priority_muscles: (STEPS.find((s) => s.key === "priority_muscles")?.multi || [])
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
-    specialization: p.specialization === true,
     goal_event_date: p.goal_event_date || "",
     units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
   };
@@ -442,7 +448,9 @@ async function submitOnboarding() {
     training_status: answers.training_status, primary_goal: answers.primary_goal,
     days_per_week: answers.days_per_week, session_length_min: answers.session_length_min,
     available_equipment: answers.available_equipment, priority_muscles: priority,
-    specialization: priority.length ? answers.specialization === true : false,
+    // Deliberately NOT sent: an absent value is what lets plan-core derive it.
+    // Sending `false` here would store an explicit override and freeze every new
+    // user out of the derivation — the bug this change exists to remove.
     // Always sent (never omitted) so a settings edit can CLEAR a previously-set
     // date, not just add one — the regenerate route merges profile fields by
     // spreading the new object over the old, so an omitted key would never clear.
@@ -544,6 +552,18 @@ async function renderPlanExplain(firstTime) {
   // the generated science breakdown no longer matches the sessions shown. Rather
   // than render a stale/empty "why", point to the live editor critique.
   const hasRationale = !!(r.volume_by_muscle && Object.keys(r.volume_by_muscle).length);
+  // What YOUR answers changed. Deliberately NOT inside the collapsed "why" block
+  // below: the science was already explained there and nobody opened it, so the
+  // personalization read as absent ("10 questions and the plans don't change much").
+  // This states the answer and its consequence side by side, in the user's own terms.
+  const pz = d.personalization || [];
+  const personalizationBlock = pz.length
+    ? `<h2>What your answers changed</h2>
+       <div class="card">${pz.map((x) => `<div class="row" style="display:block;padding:8px 0">
+         <b>${esc(x.answer)}</b>
+         <div class="muted" style="font-size:.9rem;margin-top:2px">→ ${esc(x.effect)}</div></div>`).join("")}
+       <p class="muted" style="font-size:.85rem;margin-top:6px">Change any of these in Settings and the plan rebuilds around them.</p></div>`
+    : "";
   const whyBlock = hasRationale
     ? `<details class="why"><summary>Why this plan? <span class="muted">(the science)</span></summary>
     <p class="muted" style="margin-top:8px">${esc(r.split?.reason || "")} ${gradeChip("B")}</p>
@@ -562,6 +582,7 @@ async function renderPlanExplain(firstTime) {
         <p class="muted">These 2-minute reads make your first day easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
         <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
+      ${personalizationBlock}
       ${whyBlock}
       <button class="btn" id="explain-go">Start training</button>`;
   } else {
@@ -569,6 +590,7 @@ async function renderPlanExplain(firstTime) {
       <div class="card"><div class="big">${esc(d.program?.name || "Your program")}</div></div>
       <div class="card">${sessionRows}</div>
       ${cardioBlock}
+      ${personalizationBlock}
       ${whyBlock}
       <button class="btn secondary" id="edit-plan">Edit &amp; review my plan</button>
       <button class="btn" id="explain-go">Back</button>`;

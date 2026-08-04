@@ -372,6 +372,33 @@ function buildCardio(guideline, goal, sessionSpecs) {
   };
 }
 
+// WHICH muscles matter to you is a preference only you can supply. HOW HARD to push
+// them is a programming decision — and the app was asking the user to make it ("How
+// hard should I push those muscles?" → balanced vs all-in), which is exactly backwards
+// against Goal 2: ask the right questions at the start, then decide everything else
+// for them. A lifter who knew whether they wanted an all-in specialization block
+// wouldn't need the app to write their program.
+//
+// So it is derived, from the KB's own rule rather than an invented one:
+//   - "Once you're past the beginner phase" (weak-point-prioritization TL;DR) — a
+//     beginner grows everything on a general plan and has no lagging muscle to
+//     diagnose yet, so never.
+//   - "Specialize one or two areas at a time ... You can't specialize everything at
+//     once — that's just 'more volume everywhere', which recovery won't support"
+//     (variation-and-specialization). So 1-2 priorities → a real block; 3+ → the
+//     priority tilt without the maintenance trade, because there is nothing left to
+//     harvest the recovery budget FROM.
+// An explicitly stored value still wins (same respected-override shape as
+// `profile.periodization`), so nobody who answered the old question has their plan
+// silently rewritten underneath them.
+export function deriveSpecialization(profile) {
+  if (profile?.specialization != null) return !!profile.specialization;
+  const priorities = (profile?.priority_muscles ?? []).length;
+  if (!priorities) return false;
+  if ((profile?.training_status ?? "beginner") === "beginner") return false;
+  return priorities <= 2;
+}
+
 export function generatePlan(profile, kb, opts = {}) {
   const { exercises, muscles, contraindications } = kb;
   const experience = profile.training_status ?? "intermediate";
@@ -380,7 +407,7 @@ export function generatePlan(profile, kb, opts = {}) {
   const injuries = profile.injuries ?? [];
   const equip = new Set(profile.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
   const seed = seedFromProfile(profile);
-  const specialization = !!profile.specialization; // all-in block: priorities to the ceiling, the rest to maintenance
+  const specialization = deriveSpecialization(profile); // all-in block: priorities to the ceiling, the rest to maintenance
   const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
   // Lifts this person has genuinely plateaued on — demoted below every alternative
   // for their muscle so the next block offers a different angle (the KB's
@@ -1055,6 +1082,78 @@ export function generatePlan(profile, kb, opts = {}) {
 // Critique any program (generated OR user-built) against the KB: per-muscle
 // weekly volume vs MEV/MRV, missing major muscles, push/pull balance, and
 // compound-before-isolation order. Reuses the SAME volume model as the tracker.
+// WHAT YOUR ANSWERS CHANGED — the personalization, made visible.
+//
+// The engine already tailors hard: dumbbells-only shares only ~a third of its lifts
+// with a full-gym plan, a strength goal rewrites every rep range, 30-minute sessions
+// deliver 48 weekly sets where a 6-day week delivers 103. But NOTHING ever told the
+// user that, so the honest report from the owner was "there's like 10 questions and
+// the plans don't seem to change much" — invisible personalization is indistinguishable
+// from none, and it costs exactly the trust the questions were asked to earn.
+//
+// Every line below is READ OUT OF the plan and its rationale — never re-derived, never
+// asserted. If the engine stops doing a thing, the line describing it disappears with
+// it, so this can't become the "we do X" comment that outlives X (lesson 11/15).
+export function explainPersonalization(profile, rationale, program) {
+  const out = [];
+  const say = (input, answer, effect) => out.push({ input, answer, effect });
+  const p = profile ?? {}, r = rationale ?? {};
+
+  if (r.split?.reason) say("days_per_week", `${p.days_per_week} days a week`, r.split.reason);
+  const budget = r.goal_prescription?.session_budget;
+  if (budget?.hard_sets) {
+    say("session_length_min", `${budget.minutes ?? p.session_length_min}-minute sessions`,
+      `each session is capped at ${budget.hard_sets} hard sets — long enough to do the work, short enough that the last sets still count.`);
+  }
+  const scheme = r.goal_prescription?.rep_scheme;
+  if (scheme?.compound) {
+    say("primary_goal", GOAL_LABEL[r.goal_prescription.primary_goal] ?? r.goal_prescription.primary_goal,
+      `compounds run ${scheme.compound[0]} reps at ${scheme.compound[1]} reps in reserve, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
+  }
+
+  // The priority answer is the one the owner flagged: it must show its own arithmetic.
+  const priorities = p.priority_muscles ?? [];
+  if (priorities.length) {
+    const vol = r.volume_by_muscle ?? {};
+    // `projected_sets` (what the week ACTUALLY delivers), never `target_sets` — the
+    // target can exceed what the split can fit at quality (the engine's own
+    // frequency-capped warning says so), and a card promising a number the plan
+    // doesn't deliver is the derived-status-contradicting-reality trap, on the one
+    // surface built to prove the plan is honest.
+    const named = priorities.filter((m) => vol[m]).map((m) => `${MUSCLE_LABEL[m] ?? m} ${vol[m].projected_sets ?? vol[m].target_sets} sets/wk`);
+    const held = Object.entries(vol).filter(([, v]) => v.maintenance).map(([m]) => MUSCLE_LABEL[m] ?? m);
+    if (named.length) {
+      say("priority_muscles", `you want to grow ${priorities.map((m) => MUSCLE_LABEL[m] ?? m).join(" and ")}`,
+        held.length
+          ? `${named.join(", ")} — pushed toward the ceiling, and ${held.length} other muscle${held.length === 1 ? "" : "s"} held at a maintenance dose to pay for the recovery it costs.`
+          : `${named.join(", ")} — more volume than they'd otherwise get.`);
+    }
+  }
+
+  const equip = p.available_equipment ?? [];
+  if (equip.length && program?.sessions) {
+    const lifts = new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
+    say("available_equipment", equip.join(", "),
+      `all ${lifts.size} exercises in your week are ones you can actually do with this.`);
+  }
+
+  const injuries = (p.injuries ?? []).map((i) => i.region).filter(Boolean);
+  if (injuries.length) {
+    say("injuries", `training around ${injuries.join(", ")}`,
+      `movements that load ${injuries.length === 1 ? "it" : "them"} hardest are left out — the rest of your week is unchanged.`);
+  }
+  return out;
+}
+const GOAL_LABEL = {
+  hypertrophy: "building muscle", strength: "getting stronger",
+  "fat-loss": "losing fat while keeping muscle", recomposition: "recomposition",
+  "general-fitness": "general fitness",
+};
+const MUSCLE_LABEL = {
+  "upper-back": "upper back", "front-delts": "front delts", "side-delts": "side delts",
+  "rear-delts": "rear delts", "spinal-erectors": "spinal erectors",
+};
+
 export function critiquePlan(program, kb, { experience = "intermediate" } = {}) {
   const { exercises, muscles } = kb;
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
