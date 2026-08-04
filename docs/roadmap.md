@@ -102,6 +102,30 @@ that audit leaves genuinely open, in priority order:
   labelled as such in the KB, but they're the two numbers in this burst most worth
   revisiting once there's real usage data to check them against.
 
+**Waves 178–184 progress (2026-08-04, same day).** The iteration that followed did the
+diff-scoped lesson-3 review of its own predecessor and then pulled from this tier:
+
+- **KB depth (item 1): 4 of the named pages cleared.** `program-templates` (its five
+  template links rendered as PLAIN TEXT in the app — a page promising worked programs
+  gave an in-app reader five names and no prescription), `splits`, `what-to-track` and
+  `assessing-progress` are all off the report; `recovery-modalities-and-injury` gained
+  the verdict table it had been promising. **Depth: 17 pages / 23 flags → 14 / 17.**
+  Graph edges 314 → 334, median out-degree 3 → 4. Registry 131 → 134.
+- **Still open from item 1:** the `chest.md`/`shoulders.md` region-by-region rebuild
+  (still its own wave), and the 5 remaining shortlist entries — of which 3 need an
+  *exemption* rather than authoring, per the re-specified flip criterion below.
+- **Invisible-link baseline recorded:** 69 rendered-but-untraversable links across 13
+  pages, now reported by `npm run depth`. NOT a failure condition — `back.md`, the
+  roadmap's own exemplar, has the most of any page and degrades fine.
+- **New, from `docs/considerations.md`:** the specialization question is gone (derived
+  from the KB's own rule now), and the plan screen shows **"What your answers changed"**.
+  The owner's report that "the plans don't seem to change much" was mechanically refuted
+  (measured: chest 7→10 weekly sets on a priority, 7→14 in a block; dumbbell-only shares
+  ~33% of its lifts with a full-gym plan) — but nothing had ever *told* the user, and
+  invisible personalization is indistinguishable from none.
+- **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
+  and cloud-eligible** — unchanged and still correctly scoped.
+
 **Repopulated 2026-08-04 by the Waves 173–176 iteration** (a diff-scoped correctness audit
 of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
 
@@ -142,10 +166,17 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
      each with real `data/exercises` ids, so too large to author honestly inline alongside
      other work — its own wave. **Not** a coverage gap: all 16 `data/muscles` regions are
      already addressed across the 7 guides (verified), so don't add guides, deepen these two.
-   - **Flip criterion for the gate:** when the both-tells shortlist is empty, set
-     `DEPTH_GATE.warnOnly = false`. The test asserting the pre-flip state is *supposed* to
-     fail then — update it to lock the enforced state, never relax a floor to make a thin
-     page pass.
+   - **Flip criterion for the gate — RE-SPECIFIED 2026-08-04.** It used to read "when the
+     both-tells shortlist is empty". That is unreachable and was mis-specified: of the 5
+     remaining entries, two are **myth pages** and one is a returning-lifters page, and
+     `check-depth.mjs`'s own header says a rebuttal built on null findings has nothing to
+     quantify (lesson 13). "Empty the list" could then only be satisfied by authoring
+     numbers onto pages that legitimately have none — the exact pressure lesson 31 warns
+     about. Flip when every remaining entry is **either cleared or carries a recorded,
+     justified exemption**, the same pattern `check-claim-coverage` already uses for its
+     two by-reference synthesis pages. The test asserting the pre-flip state is *supposed*
+     to fail on the flip — update it to lock the enforced state, never relax a floor to
+     make a thin page pass.
 2. **[Goal 4] Multiple concurrent challenges — scoped, and the old blocker was wrong.**
    The roadmap has said for several waves that this "needs a real table". **It does not:**
    `app/schema.sql` stores the whole user as a JSON blob (`users.data`), so single-slot →
