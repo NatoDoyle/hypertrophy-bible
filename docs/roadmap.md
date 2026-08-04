@@ -6,13 +6,14 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-07-24** (a repo-wide, file-grounded gap audit; redo when a tier empties).
+Grounded assessment date: **2026-08-04** (Waves 173-176: a diff-scoped correctness audit of
+`5171a37..HEAD` plus the KB's first DEPTH measurement; redo when a tier empties).
 
 ## Honest distance to each goal
 
 **Goal 1 — world's best knowledge source: FAR.** The recently-waved "hot" pages
 (`mechanisms`, `volume`, `proximity-to-failure`) are genuinely world-class. But the whole KB
-rests on **~110 sources** (Wave 92–95 additions since this paragraph's original count of 99) —
+rests on **131 verified sources** (2026-08-04; this paragraph said ~110 for several waves) —
 MASS reviews ~150–200 studies/year; Schoenfeld's textbook cites hundreds. Coverage is bimodal:
 most of the 24-page `09-getting-started` pillar is practical/logistics content with no gradeable
 claims to cite (not a gap — see Tier-2 #6's reassessment); `energy-balance` and `sleep` are now
@@ -26,8 +27,11 @@ menopause/HRT and pregnancy/postpartum shipped (Waves 89/91). Supplements: 15 en
 (creatine, caffeine, protein, beta-alanine, citrulline, HMB, BCAAs, EAAs, vitamin D, omega-3,
 ashwagandha, glutamine, ZMA, tart cherry, testosterone-boosters) — this breadth item is done.
 "Every claim web-verified" is materially higher than "a third of the surface" now, but still
-short of comprehensive — this whole paragraph is due a fresh grounded re-audit, not incremental
-hand-edits, once Tier 1/2 next empties.
+short of comprehensive. **The re-audit this paragraph kept asking for happened (Waves 173-176)
+and changed the question**: coverage was never the binding constraint — DEPTH was, and nothing
+measured it. `npm run depth` now does (Wave 175), and it found 8 pages below the corpus word floor
+and 12 giving essentially no numbers at all, while every existing gate stayed green. Judge Goal 1
+against that report from here, not against a source count.
 
 **Goal 2 — best coaching app, novice → Mr. Olympia:**
 - *Bottom end + Goal 3 (zero cognitive load): the YouTube punt is gone.* Onboarding and the
@@ -52,9 +56,15 @@ will you train this week?" commitment device (Wave cloud loop), a **user-held st
 reuses the walker's neutral-week path so it can only bridge, never break), and **timezone-aware
 push timing** (Wave 97 — the commitment-day nudge now fires at ~17:00 the user's LOCAL time via an
 hourly sweep gated per-user, instead of 16:00 UTC for everyone; email cadence unchanged). The
-proactive habit-cue is now delivered (a commitment-day nudge at a sensible local hour). Biggest
-remaining Goal-4 lever: anything **social** (friends/accountability/challenges — needs multi-user
-infra, the one genuinely large build left here).
+proactive habit-cue is now delivered (a commitment-day nudge at a sensible local hour).
+
+**Social is no longer the untouched lever this paragraph used to call it** (verified against the
+code, 2026-08-04): share cards, cheers, training partners, a mini-leaderboard, mutual-only nudges,
+1v1 weekly challenges with history, the referral follow-loop, RFC 8291 payload-encrypted push for
+five social event types, quiet hours, and an email fallback for push-less users have all shipped.
+What is genuinely open is narrower and now scoped in Tier 1: **multiple concurrent challenges**
+(which does NOT need a new table — see Tier-1 #2) and **push for a new follower / PR / level-up /
+streak milestone**, none of which reach a device today.
 
 ## Build queue (pull from the top)
 
@@ -84,14 +94,78 @@ that audit leaves genuinely open, in priority order:
   non-finite effort values (lesson 27's sibling fields), and the never-read `rir_calibrated`
   came out of the onboarding schema (lesson 14). Design record: `adaptive-algorithm.md`
   Increment C.
-- **[Goal 1] Cross-user learning** (`adaptive-algorithm.md` far vision) — now the top open
-  item. Still needs a multi-user dataset that doesn't exist yet, under the honesty guardrail
-  (noisy aggregates must never override a Grade-A landmark).
-- **[Goal 4] Social** remains the biggest untouched retention lever (Tier 3 #10).
+- **[Goal 1] Cross-user learning** (`adaptive-algorithm.md` far vision) — still needs a
+  multi-user dataset that doesn't exist yet, under the honesty guardrail (noisy aggregates
+  must never override a Grade-A landmark).
 - **Audit follow-through:** the graduation thresholds (Wave 164) and the reactive-deload
   bounds (Wave 165) are practice-based Grade-D choices made on no direct evidence. They're
   labelled as such in the KB, but they're the two numbers in this burst most worth
   revisiting once there's real usage data to check them against.
+
+**Repopulated 2026-08-04 by the Waves 173–176 iteration** (a diff-scoped correctness audit
+of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
+
+1. **[Goal 1] KB depth backlog — now measurable, and the measure is in the build.**
+   `npm run depth` (`tools/check-depth.mjs`, Wave 175) reports per-page word count, numeric
+   density, table rows and out-degree; `DEPTH_GATE` ships **WARN-only** at corpus-derived
+   floors (words p10 = 454, density p10 = 0.22 numbers/100w). Wave 176 cleared `alcohol` and
+   `muscle-soreness-doms`; **23 warnings remain — 6 below the word floor, 11 below the
+   density floor, 6 on the both-tells shortlist.** In priority order, verified as real gaps
+   by the Waves 173–176 audit rather than assumed:
+   - `07-tracking/assessing-progress.md` (394w, 1 citation) — the page the Progress tab's
+     concepts rest on, and it gives no measurement-noise numbers: no normal day-to-day
+     bodyweight swing, no weigh-in cadence, no tape-change threshold, no photo interval. It
+     cites Haun 2019 — *a paper about measurement error* — and extracts only its qualitative
+     sentence. Also contradicts its own sibling on the assessment window (this page says
+     8–12+ weeks, `what-to-track.md` says 4–12+) and the two pages don't link each other.
+   - `07-tracking/what-to-track.md` (out-degree 1) — recommends logging load × reps and
+     "weekly hard sets" without ever saying how to turn them into one comparable number
+     (the engine's own est-1RM and its >0.5 kg noise margin appear nowhere in the KB), or
+     what counts as a hard set. Registry already holds verified `baz-valle-2021-counting-sets`
+     and `zourdos-2021-rir-accuracy`, uncited here.
+   - `03-programming/program-templates.md` — **routing is broken for app readers**: every
+     template link is `../../data/programs/*.json`, which the renderer shows as plain text,
+     so an in-app reader gets five names and no prescription. Says "three worked templates"
+     twice while listing five, and a rendered sentence still calls the plan engine "the
+     future app". The number a reader chooses a template BY — weekly sets per muscle — is in
+     neither the page nor the JSON.
+   - `03-programming/splits.md` — the per-session set ceiling is stated as "without any
+     single session becoming a quality-killing marathon", and the 3×/week threshold as "very
+     high volumes" while `frequency.md:40` already owns the number (20+ weekly sets). No
+     2-day row. Doesn't link `frequency.md`, which links to it.
+   - `05-recovery/recovery-modalities-and-injury.md` — promises a verdict on gadgets and
+     adjudicates two (foam rolling, cold water). Sauna, compression, massage guns and NSAIDs
+     appear **nowhere in `content/`** and have no registry citation — needs verification
+     first, and an honest "not yet reviewed" beats an invented verdict.
+   - `02-muscle-guides/chest.md` (430w) then `shoulders.md` — back.md is the exemplar
+     (region-by-region ranked picks with cues); these are 3-row tables. A ~600-word rebuild
+     each with real `data/exercises` ids, so too large to author honestly inline alongside
+     other work — its own wave. **Not** a coverage gap: all 16 `data/muscles` regions are
+     already addressed across the 7 guides (verified), so don't add guides, deepen these two.
+   - **Flip criterion for the gate:** when the both-tells shortlist is empty, set
+     `DEPTH_GATE.warnOnly = false`. The test asserting the pre-flip state is *supposed* to
+     fail then — update it to lock the enforced state, never relax a floor to make a thin
+     page pass.
+2. **[Goal 4] Multiple concurrent challenges — scoped, and the old blocker was wrong.**
+   The roadmap has said for several waves that this "needs a real table". **It does not:**
+   `app/schema.sql` stores the whole user as a JSON blob (`users.data`), so single-slot →
+   bounded N-slot array is a shape change with zero migration, and `settleChallenge` is
+   already stateless per-challenge (it re-derives from `sessionsInWeek` on read). What it
+   genuinely needs: `isChallengeOpen` becomes a count-of-open-slots busy check on both sides;
+   `POST /api/challenge/respond` needs a `challenge_id` in the body (no such param today);
+   **`challenge_pushed_at`/`challenge_accept_pushed_at` are per-USER scalars and must move
+   onto the slot** (as `result_pushed` already did) or two invites in one sweep tick collide
+   and one is suppressed forever — lesson 23 exactly; and the frontend's four mutually
+   exclusive cards become a list. **Cloud-eligible** (pure code, no citation network needed).
+3. **[Goal 4] Social events that still never reach a device.** Push covers nudge, challenge
+   invite/accept/result, cheers and streak-freeze (all with email fallback for push-less
+   users). **No push exists for a new follower, a PR, a level-up or a streak milestone**, and
+   the comeback nudge is email-only. Each needs the same marker-scope question lesson 23
+   asks. Cloud-eligible.
+4. **[Goal 1] Citation-network work is LOCAL-SESSION-ONLY** (`BLOCKERS.md` #9): PubMed
+   E-utilities and Crossref return 200 here and are CONNECT-denied in the cloud sandbox. So a
+   local session should spend itself on KB depth (items 1 and 4 above) and leave the pure-code
+   items (2, 3) to cloud iterations — that is a comparative-advantage rule, not a preference.
 
 
 1. **[Goal 4] Wins & PR celebration.** — *PARTIALLY SHIPPED (Wave 79 + 81 + this reconcile).* Done:

@@ -346,6 +346,64 @@ These are real failures from previous iterations. Each is now a standing check.
    policy; a backlog description the landing itself dissolved) — a PR whose value is a status
    report goes stale the way a fix does not, and should be re-expressed fresh, not merged.
 
+30. **A metric you invent measures your intent; a metric you calibrate measures the corpus.
+   Compute the distribution BEFORE choosing the threshold.** Waves 173–176 finally measured
+   KB depth (lesson 25's own prescription) — and the first draft of the gate was wrong twice,
+   in the two ways a new metric is always wrong. (a) It counted digits in the RAW markdown, so
+   citation keys (`[^smith-2017]`) and link targets (`../03-programming/x.md`) scored as
+   "numbers": the densest bibliographies would have measured as the most quantified guidance,
+   grading the reference list instead of the advice. Fixed by measuring only what the app
+   RENDERS, reusing the same `stripNonRendered` the graph gate already uses — the metric and
+   the product must agree about what the reader sees. (b) The thresholds were invented
+   (`minNumericDensity: 1.5`) and would have flagged **~65% of the KB**; the measured corpus
+   median was 0.96 and the 10th percentile 0.22. A gate that flags two-thirds of everything
+   teaches everyone to ignore it, which is strictly worse than no gate. Shipped floors are
+   the measured p10, flagging a real 7-page tail. → **Standing rule:** for any new metric,
+   run it over the whole corpus and read the percentiles FIRST, then set the bar; and state
+   in the code what the distribution was when you set it, so the next person can tell drift
+   from a bad threshold. Corollary, learned the same wave: an AND-composed shortlist
+   (`thin AND poorly-linked`) necessarily HIDES items failing one tell — `alcohol.md`, the
+   KB's clearest "dose page with no doses", escaped it purely by linking out well — so report
+   each component on its own line too. "A green gate proves only what it measures" applies to
+   the gates you write, in the wave you write them.
+
+31. **The audit's NUMBERS are hypotheses even when its diagnosis is right — and the honest
+   move when they don't verify is to ship the gap, not the number.** The KB-depth finder
+   correctly identified that `muscle-soreness-doms.md` contained no time value anywhere, and
+   supplied the familiar "onset 12–24 h, peaks 24–72 h, resolves 5–7 days" attributed to
+   Cheung 2003. Fetching that abstract showed it says none of those things (nor does Hyldahl
+   2017 quantify repeated-bout protection). The page shipped with the numbers that source
+   ACTUALLY gives — reduce intensity and duration for 1–2 days, phase novel eccentric work in
+   over 1–2 weeks — plus a Key Uncertainty stating plainly that the time course is not pinned
+   down here. This is lesson 9 recurring in its exact original form, three dozen waves later,
+   which is the tell that it is a *structural* hazard and not a one-off: a finder that has
+   correctly diagnosed a gap is at its most persuasive precisely when it hands you the
+   plausible number to fill it with. → **Standing rule:** verify every quoted figure against
+   the primary source before it enters the KB, and when it doesn't verify, write the
+   uncertainty — a page that says "we don't know the exact time course, judge by how you're
+   moving" is worth more than one that says a confident wrong number. (Same wave, same
+   shape: two new registry entries failed schema validation on an invented `population`
+   value — "athletes" is not in the enum. The gate caught what the author didn't.)
+
+32. **Ask what an ambiguous signal was PRESCRIBED to be, not what it looks like in
+   isolation.** Wave 171's effort lever graded every logged RIR against the hypertrophy band
+   table, because the exercise's own metadata (isolation/compound/supported) looked like
+   sufficient context. It isn't: the plan prescribes bands PER GOAL, and strength deliberately
+   reserves more on accessories (`isolation "1-3"`). So a strength lifter logging a compliant
+   RIR 2 curl was scored +1 over target — the plateau card told them to push closer to failure
+   than their own plan card had asked for (lesson 10 at the coaching layer), and the auto-tune
+   HELD the sets their stalled, compliant muscle had earned, which is precisely the
+   "never withhold volume from a disciplined lifter" failure the Increment-C deferral claimed
+   was honoured by construction. The tell was available and was misread: Wave 171's own
+   comment said the classifier was "shared with plan-core's prescription, single source of
+   truth" — true of the metadata tier it had just moved, and false of the goal-specific rows
+   still sitting in a second table. → **Standing lens:** when code judges a user's input
+   against a target, confirm the target is the one the app actually ASKED them for, through
+   the same table that asked; a "single source of truth" comment describes the half that was
+   unified, so grep for the other half. When the graded value is ambiguous (a logged set
+   doesn't record which plan slot it filled), read the most LENIENT applicable target — for a
+   lever that withholds, ambiguity must resolve toward doing nothing.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -367,6 +425,14 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+8. **Telemetry (Waves 173–176, 2026-08-04).** One workflow, 4 finders, **472k subagent
+   tokens** — against the July baseline of ~4.8M across six workflows. It returned 10 code
+   candidates (7 confirmed, 2 rescoped, 1 refuted) and a KB-depth shortlist, all verified
+   inline by the main loop in a handful of tool calls with **zero verify agents**, and all
+   authoring done inline. Rules 1–5 held and the iteration shipped four waves. The finding
+   that justifies the whole cadence: the highest-value defect of the burst (the effort lever
+   grading strength lifters against the wrong band) came from the diff-scoped lens over
+   genuinely un-audited new code — lesson 17's positive case, again.
 
 ## Guardrails (never traded away for a metric)
 
