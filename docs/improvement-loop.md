@@ -404,6 +404,74 @@ These are real failures from previous iterations. Each is now a standing check.
    doesn't record which plan slot it filled), read the most LENIENT applicable target — for a
    lever that withholds, ambiguity must resolve toward doing nothing.
 
+33. **A wave that CITES a lesson applies it exactly as far as the finding that prompted
+   it — and writing the citation is what stops the search.** Wave 174 added a weigh-in
+   guard, grepped `/api/bodyweight`, found two routes, wired both, and wrote *"both
+   weigh-in doors apply one identical guard (lesson 1)"*. There were **three**:
+   `POST /api/nutrition/profile` reaches `store.addBodyweight` from a route whose name
+   says nothing about weight, and shipped unguarded for a wave with the exact
+   uncorrectable-future-date hole the guard's own header documents. The comment's
+   confidence came from the grep, and the grep was of the wrong noun. → **Standing
+   rule:** grep the **SINK**, never the route or the caller — `addBodyweight` finds
+   three doors where `/api/bodyweight` finds two. And when a fix's comment claims
+   coverage ("both doors", "every call site", "single source of truth"), that claim
+   must be backed by an *enumerable check in the same wave* — a shared helper every
+   writer must route through, or a test that walks them — never by prose. This is
+   lesson 32's shape sighted a second time in consecutive bursts, which makes it
+   structural: **the moment you write the confident comment, you stop looking.**
+
+34. **A fix's reach is bounded by the population of the field it reads — and no test
+   can tell you, because the fixtures supply the field.** Wave 173's timezone work was
+   correct code: the mesocycle clock counted the user's own calendar days and weeks,
+   locked by tests at three layers. It reached almost nobody. `tz_offset_min` had
+   exactly ONE writer — `POST /api/push/subscribe` — so every user who declined or
+   never saw the notification prompt had `undefined`, every localizer silently fell
+   back to UTC, and half the fix was inert. Every test passed because each fixture set
+   the field by hand. → **Standing lens, the WRITER-side twin of lesson 15:** lesson 15
+   asks "for every status a surface renders, who produces it?" — for a *stored* field
+   the failure runs the other way: many readers, one narrow writer. So for every
+   profile field a decision depends on, grep its **writers** and ask *what fraction of
+   real users pass through that door*. Prefer capturing at a choke point every user
+   already crosses (here: the one `api()` helper, as a request header) over the one
+   door that happens to be nearby. A green test suite is evidence the logic is right,
+   never evidence the data exists.
+
+35. **"Absent from the metric" is not "measured as zero" — a gate that FILTERS an
+   input can never report on it.** `program-templates.md` linked all five of its
+   programs as `../../data/programs/*.json`; the renderer matches `.md` and silently
+   returns the bare label, so the shipped bundle rendered a table of names with no
+   prescription anywhere on the page. `check-links` could not have caught it: its
+   canonical check iterates a `.md`-only regex, so a `.json` link is verified to
+   **exist on disk** and never checked for **reachability** — green, while guaranteeing
+   the reader can't follow it. Sixty-nine such links were invisible to both that gate
+   and the depth report's out-degree. → **Standing rule:** when a gate narrows its
+   input, that narrowing is itself a blind spot and must be **reported as a count**,
+   not silently applied. Corollary from the fix: the rule for "will the app render this
+   as a link?" existed in THREE copies (the graph's regex, the gate's, and the
+   renderer's inline one) — which is precisely how the gate and the product were free
+   to disagree for waves. One exported predicate, imported by all three.
+   Second corollary, learned by writing it: the obvious "suspicious page" annotation
+   (dropped > live) fires on the three pages that are entirely legitimate, so it was
+   removed before shipping — **a flag that is usually wrong trains everyone to skip the
+   line it sits on**, which is worse than no flag.
+
+36. **When the owner reports a problem, measure all of it — the refuted parts are as
+   load-bearing as the confirmed one.** `considerations.md` said the specialization
+   question shouldn't be asked, that priority muscles don't change plan volume, and
+   that ten questions barely change the plan. Measured: the question **was** a real
+   Goal-2 violation (it asks a non-beginner to make a programming decision, and a
+   lifter who could answer it wouldn't need the app) — but priority muscles move chest
+   from 7 to 10 weekly sets, or 14 in a specialization block, and one changed answer
+   can rewrite every rep range or two-thirds of the exercise list. Had I "fixed" the
+   volume claim I'd have distorted a working engine to satisfy a complaint about
+   something else. The *perception* was still real data: nothing in the app ever told
+   the user what their answers changed, and **invisible personalization is
+   indistinguishable from none** — it costs exactly the trust the questions were asked
+   to earn. → **Standing rule:** measure every claim in a report separately before
+   acting on any of it, record the refutations in the wave so a later audit doesn't
+   re-raise them (lesson 13), and when a mechanism is right but unbelieved, the fix is
+   to **show the mechanism**, not to change it.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -425,7 +493,16 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
-8. **Telemetry (Waves 173–176, 2026-08-04).** One workflow, 4 finders, **472k subagent
+8. **Telemetry (Waves 178–184, 2026-08-04).** **ZERO workflows, zero finder agents,
+   zero verify agents** — six waves shipped. The audit was a diff-scoped lesson-3 read
+   of the previous burst's own diff (`4e42595..HEAD`) through two read-only Explore
+   agents, and every candidate was verified inline. The highest-severity finding of the
+   iteration (an uncorrectable weigh-in door) came from re-reading a diff with no
+   agents at all. Against the previous iteration's 472k and July's ~4.8M across six
+   workflows. **The scaling rule that falls out:** a 10-commit range does not need a
+   4-finder workflow; match the audit apparatus to the size of the un-audited surface,
+   not to the ambition of the iteration.
+9. **Telemetry (Waves 173–176, 2026-08-04).** One workflow, 4 finders, **472k subagent
    tokens** — against the July baseline of ~4.8M across six workflows. It returned 10 code
    candidates (7 confirmed, 2 rescoped, 1 refuted) and a KB-depth shortlist, all verified
    inline by the main loop in a handful of tool calls with **zero verify agents**, and all
