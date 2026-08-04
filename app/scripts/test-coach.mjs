@@ -490,6 +490,26 @@ check("progressReport effort lever is goal-aware THROUGH the binder: strength's 
   assert.notEqual(forGoal("strength")?.signal, "effort", "1-3 band: the same rir 2 is exactly what the plan asked for");
 });
 
+// The in-progress LOCAL week must never be read as the "last full week" (Wave 180).
+// Sunday 23:30 in California is already Monday 06:30 UTC: the user is mid-week, the
+// server's calendar has rolled. sessionWeekKey reads local_date, so the sessions sat
+// in the local week while nowWeek read the UTC one — the in-progress week wasn't
+// excluded, so a week with a single session became the reference the volume card
+// judges against, and a compliant lifter was told to add sets.
+check("progressReport: the current week is the USER's week, not the server's", () => {
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, tz_offset_min: -480 } };
+  const sess = (localDate, n) => ({ session_id: "w" + localDate, date: `${localDate}T20:00:00.000Z`, local_date: localDate,
+    sets: Array.from({ length: n }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  // Two full local weeks of real work, then ONE session in the week still in progress.
+  const sessions = [sess("2026-06-29", 12), sess("2026-07-06", 12), sess("2026-07-12", 2)];
+  const nowUTCMonday = "2026-07-13T06:30:00.000Z";  // Sun 23:30 local, Mon 06:30 UTC
+  const local = progressReport(u, sessions, [], [], nowUTCMonday, [], -480);
+  assert.notEqual(local.latest_week, "2026-W28", "the week the user is still training in must not be the reference");
+  // Without the frame it picks the in-progress week — the pre-fix behaviour.
+  const utc = progressReport({ profile: { ...u.profile, tz_offset_min: undefined } }, sessions, [], [], nowUTCMonday, [], null);
+  assert.equal(utc.latest_week, "2026-W28");
+});
+
 check("buildToday: comeback copy is TRUE — weights are actually eased on a layoff", () => {
   const u = { profile: { days_per_week: 3 }, program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };

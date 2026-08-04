@@ -65,7 +65,14 @@ function wireLearnLinks() { app.querySelectorAll("[data-learn]").forEach((b) => 
 const helpDot = (slug, label = "?") => `<button class="help" data-learn="${slug}"${label === "?" ? ' aria-label="Explain this term"' : ""}>${label}</button>`;
 
 const api = async (path, opts = {}) => {
-  const headers = { "content-type": "application/json", ...(uid ? { "X-HB-User": uid } : {}), ...(opts.headers || {}) };
+  // The device's clock rides EVERY authed call, from the one helper they all go
+  // through. It used to be captured only when a user enabled notifications, so all
+  // the timezone-correct week/day arithmetic on the server was quietly running in UTC
+  // for anyone who never allowed push. Recomputed per request, so DST and travel fix
+  // themselves on the next open. Minutes EAST of UTC, matching the server's convention.
+  // Deliberately NOT added to postOrQueue: a queued body replayed days later must not
+  // write the frame it had when it was queued.
+  const headers = { "content-type": "application/json", ...(uid ? { "X-HB-User": uid } : {}), "X-HB-TZ": String(-new Date().getTimezoneOffset()), ...(opts.headers || {}) };
   const r = await fetch(path, { ...opts, headers });
   return r.json();
 };

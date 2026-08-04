@@ -76,6 +76,29 @@ export function sanitizeBodyweight(date, kg, nowMs = Date.now()) {
 // while the user believes they're being trained around it — and it poisons the
 // escalation ladder above, whose `rank[stored.severity]` reads `undefined` for a
 // junk severity, so a later honest report can never raise it.
+// The device's UTC offset, in minutes EAST of UTC — the user's CLOCK.
+//
+// This used to be captured in exactly one place: `POST /api/push/subscribe`. Which
+// meant the timezone-correctness work of Wave 173 (the mesocycle clock counting the
+// user's own calendar days and weeks) was INERT for every user who never enabled
+// notifications, while its unit and route tests all passed because their fixtures
+// supplied the field. Correct code over data almost nobody had.
+//
+// Now every authed request carries it as a header, so the frame is a property of the
+// request rather than of one opt-in feature. Validated to the real ±14h range: an
+// out-of-range or non-numeric value returns null and the caller falls back to what's
+// stored, so a hostile header can't clobber a good value (auth is possession-of-UUID).
+export function parseTzOffset(v) {
+  // `Number("")` and `Number(null)` are both 0 — a perfectly valid offset (UTC). So an
+  // ABSENT or blank header would parse as "this user is in London" and overwrite a real
+  // stored clock, which a route test caught. Require digits before trusting the value.
+  if (typeof v !== "string" && typeof v !== "number") return null;
+  const raw = String(v).trim();
+  if (!/^-?\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && Math.abs(n) <= 840 ? n : null;
+}
+
 export const INJURY_SEVERITIES = ["mild", "moderate", "severe"];
 export function sanitizeInjuries(injuries) {
   if (!Array.isArray(injuries)) return [];
@@ -360,13 +383,30 @@ export function createApp(store, config = {}) {
     if (!id) return { error: c.json({ error: "no user" }, 400) };
     const user = await store.getUser(id);
     if (!user) return { error: c.json({ error: "unknown user" }, 404) };
-    return { id, user };
+    // The user's CLOCK, returned here so no route has to remember to ask for it.
+    // Prefers the live header (the device recomputes it every request, so DST and
+    // travel self-heal) and falls back to whatever was last stored. Null when neither
+    // exists, which every caller already treats as "use UTC".
+    const tz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min ?? null;
+    return { id, user, tz };
   };
 
   // Today: the one-decision card + the fully pre-filled session.
   app.get("/api/today", async (c) => {
-    let { id, user, error } = await requireUser(c);
+    let { id, user, tz, error } = await requireUser(c);
     if (error) return error;
+    // Persist the device's clock, ONLY when it differs from what's stored. This is the
+    // boot request, so it lands on first open and then only when DST shifts or the
+    // user moves — never a write per read. The hourly push sweep has no request
+    // context, so storage is the only way it can learn the frame at all.
+    if (tz != null && tz !== user.profile?.tz_offset_min) {
+      const moved = await store.updateUser(id, (u) => {
+        if (u.profile?.tz_offset_min === tz) return u;  // re-checked INSIDE the CAS
+        u.profile = { ...(u.profile ?? {}), tz_offset_min: tz };
+        return u;
+      }).catch((e) => { if (/conflict/i.test(e?.message ?? "")) return null; throw e; });
+      if (moved) user = moved;   // read-your-own-write, so this response uses the new frame
+    }
     const [sessions, checkins, bodyweights] = await Promise.all([store.listSessions(id), store.listCheckins(id), store.listBodyweights(id)]);
     const nowISO = new Date().toISOString();
     // The user's LOCAL calendar day (client passes ?d=YYYY-MM-DD; a date is not a
@@ -431,7 +471,7 @@ export function createApp(store, config = {}) {
       // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
       // reads, so the boundary that rotates the plan and the phase shown on the card
       // can never disagree about which block the user is in.
-      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, user.profile?.tz_offset_min) / BLOCK_WEEKS);
+      const blockIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, tz) / BLOCK_WEEKS);
       if (blockIndex !== (user.plan_meta.block_index ?? 0)) {
         const updated = await store.updateUser(id, (u) => {
           // Re-check the FRESH CAS-read state: the outer guard (L203) saw a stale
@@ -495,11 +535,11 @@ export function createApp(store, config = {}) {
     // not two that can drift (the maintenance/hold filtering matters here too — a
     // muscle a specialization block deliberately holds low must never trigger this).
     const rdBlockStart = user.plan_meta?.block_start;
-    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO, user.profile?.tz_offset_min);
+    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO, tz);
     const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
     if (rdBlock && rdBlockStart && !user.program?.custom) {
       const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
-      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins);
+      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
       if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex)) {
         const stamped = await store.updateUser(id, (u) => {
           // Precondition re-checked inside the CAS against the FRESH read — a
@@ -622,8 +662,10 @@ export function createApp(store, config = {}) {
     // Capture the device's UTC offset so the hourly push sweep can nudge at a sensible
     // LOCAL hour instead of 16:00 UTC for everyone. Stored on the profile (a JSON blob,
     // so no schema change); validated to the real ±14h timezone range.
-    if (Number.isFinite(b.tz_offset_min) && Math.abs(b.tz_offset_min) <= 840) {
-      await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), tz_offset_min: b.tz_offset_min }; return u; });
+    // Same validator as the X-HB-TZ header path (one definition, not two).
+    const subTz = parseTzOffset(b.tz_offset_min);
+    if (subTz != null) {
+      await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), tz_offset_min: subTz }; return u; });
     }
     return c.json({ subscribed: true });
   });
@@ -1093,12 +1135,12 @@ export function createApp(store, config = {}) {
 
   // Progress: everything derived, nothing asked.
   app.get("/api/progress", async (c) => {
-    const { id, user, error } = await requireUser(c);
+    const { id, user, tz, error } = await requireUser(c);
     if (error) return error;
     // Check-ins feed the concurrent-training read's readiness corroborator;
     // progressReport windows them to the same 42-day block as the bodyweight trend.
     const [sessions, bodyweights, checkins] = await Promise.all([store.listSessions(id), store.listBodyweights(id), store.listCheckins(id)]);
-    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins));
+    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz));
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).
