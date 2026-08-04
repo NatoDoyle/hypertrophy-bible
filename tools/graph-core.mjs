@@ -138,9 +138,28 @@ export const DEPTH_GATE = { minWords: 450, minNumericDensity: 0.25, warnOnly: tr
 // this composition's blind spot stated plainly, which is why check-depth.mjs reports
 // each floor on its own line as well: a green gate proves only what it measures, and
 // that applies to gates I write too.
-export const isUnderDeveloped = (depth, outDegree, gate = DEPTH_GATE) =>
+// `minOut` defaults from GATE but is read OFF THE PASSED GATE — the first version took
+// two thresholds from the argument and silently read the third from the module global,
+// so a caller injecting a custom gate got a half-overridden predicate with no error.
+export const DEPTH_DEFAULTS = () => ({ ...DEPTH_GATE, minOut: GATE.minOut });
+export const isUnderDeveloped = (depth, outDegree, gate = DEPTH_DEFAULTS()) =>
   (depth.words < gate.minWords || depth.numericDensity < gate.minNumericDensity)
-  && outDegree <= GATE.minOut;
+  && outDegree <= (gate.minOut ?? GATE.minOut);
+
+// The whole selection, in the pure core so it can be tested without a filesystem.
+//
+// `flaggedPages` is the honest headline: the shortlist is DERIVED from the two floors,
+// so summing the three list lengths counts a page failing everything three times. The
+// first version reported "23 depth warnings" for 17 distinct pages — a 35% overstatement
+// that would have landed in the FAILURE message the moment the gate flips to enforcing.
+// Count pages, report flags alongside.
+export function depthReport(depths, outDegreeBySlug, gate = DEPTH_DEFAULTS()) {
+  const belowWords = depths.filter((d) => d.words < gate.minWords);
+  const belowDensity = depths.filter((d) => d.numericDensity < gate.minNumericDensity);
+  const shortlist = depths.filter((d) => isUnderDeveloped(d, outDegreeBySlug.get(d.slug) ?? 0, gate));
+  const flaggedPages = new Set([...belowWords, ...belowDensity].map((d) => d.slug));
+  return { belowWords, belowDensity, shortlist, flaggedPages, flagCount: belowWords.length + belowDensity.length + shortlist.length };
+}
 
 // Records → the whole graph. Weights (integers, max 24) — every term a checkable fact:
 //   3·min(n_ab,2) + 3·min(n_ba,2)  direct links each way, diminishing after the 2nd

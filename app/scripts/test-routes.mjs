@@ -1334,6 +1334,17 @@ try {
   const afterCheckin = await store.listBodyweights(bwGuard);
   ok("#bodyweight the check-in's weigh-in door applies the identical guard (lesson 1)",
     afterCheckin.every((b) => b.kg <= 500 && b.date <= bwGuardToday));
+  // The THIRD door (Wave 178). The wave that added the guard grepped the ROUTE names,
+  // found /api/bodyweight and /api/checkin, and wrote "both weigh-in doors" — but the
+  // Fuel stats form reaches the same sink from a route whose name says nothing about
+  // weight. Grep the sink, not the route.
+  await json("POST", "/api/nutrition/profile", { user_id: bwGuard, height_cm: 180, weight_kg: 9000, date: "9999-12-31" });
+  const afterFuel = await store.listBodyweights(bwGuard);
+  ok("#bodyweight the THIRD door — the Fuel stats form — applies the identical guard",
+    afterFuel.every((b) => b.kg <= 500 && b.date <= bwGuardToday));
+  const fuelPlan = await json("POST", "/api/nutrition/profile", { user_id: bwGuard, height_cm: 180 });
+  ok("#bodyweight ...and the Fuel plan that reads it still returns a sane current weight",
+    !fuelPlan.data?.profile?.weight_kg || fuelPlan.data.profile.weight_kg <= 500);
 
   // --- injury sanitization on EVERY write path (Wave 174) ------------------
   // An unknown region isn't inert: it matches no contraindication rule, so it

@@ -1,7 +1,7 @@
 // The coach: decides today's session and prefills every weight, so the user just
 // confirms and taps Done. Reuses the KB's derive-core engine for all derivations.
 import {
-  estimate1RM, countsForE1RM, perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
+  perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
