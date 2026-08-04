@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
@@ -188,7 +188,14 @@ export function createApp(store, config = {}) {
     if (error) return error;
     // `cardio` must survive this whitelist — a dropped field silently disables its
     // whole surface (the deload-flag lesson, and the reason test-routes.mjs exists).
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null });
+    // `personalization` answers "what did my answers actually change?" — computed
+    // here rather than stored, so an old plan_rationale can never describe a newer
+    // program. Null when the plan is user-customised (its rationale is cleared then,
+    // and inventing an explanation for a plan the engine didn't build is the lie this
+    // card exists to prevent).
+    const personalization = user.plan_rationale
+      ? explainUserPlan(user.profile, user.plan_rationale, user.program) : null;
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).

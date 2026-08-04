@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan } from "./plan-core.mjs";
+import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, explainPersonalization } from "./plan-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
 const exercises = load("data/exercises");
@@ -676,6 +676,62 @@ ok("sweep: every generated set count is a 1-10 integer", !sweepBadSets);
 ok("sweep: every volume rationale target is a finite, non-negative number", !sweepBadTargets);
 if (sweepCritiqueThrew) console.error("  sweep profile whose critique threw:", JSON.stringify(sweepCritiqueThrew.profile), sweepCritiqueThrew.err.message);
 ok("sweep: critiquePlan never throws and always returns a summary", !sweepCritiqueThrew);
+
+// --- specialization is DERIVED, not asked (Wave 179, considerations #1) ----
+// The app used to ask "How hard should I push those muscles?". That is a programming
+// decision, and a lifter who could answer it wouldn't need the app to write their
+// program. WHICH muscles they want is still theirs; HOW HARD is now the KB's call.
+ok("deriveSpecialization: a beginner never gets a specialization block",
+  deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"] }) === false);
+ok("deriveSpecialization: no priority muscles → nothing to specialize",
+  deriveSpecialization({ training_status: "advanced", priority_muscles: [] }) === false);
+ok("deriveSpecialization: past the beginner phase, one or two priorities → a real block",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"] }) === true
+  && deriveSpecialization({ training_status: "advanced", priority_muscles: ["biceps", "triceps"] }) === true);
+// "You can't specialize everything at once — that's just more volume everywhere,
+// which recovery won't support" (variation-and-specialization.md).
+ok("deriveSpecialization: three or more priorities is NOT a specialization block",
+  deriveSpecialization({ training_status: "advanced", priority_muscles: ["chest", "lats", "quadriceps"] }) === false);
+ok("deriveSpecialization: an explicitly stored answer still wins, both ways",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"], specialization: false }) === false
+  && deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"], specialization: true }) === true);
+
+// The derivation must actually reach the plan — a pure predicate nothing calls is
+// the declared-but-unused shape (lesson 14).
+{
+  const prof = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] };
+  const { rationale } = generatePlan(prof, kb);
+  const held = Object.values(rationale.volume_by_muscle).filter((v) => v.maintenance).length;
+  ok("a priority muscle with NO specialization answer still gets a real block (derived)", held > 0);
+  const three = generatePlan({ ...prof, priority_muscles: ["chest", "lats", "quadriceps"] }, kb);
+  const heldThree = Object.values(three.rationale.volume_by_muscle).filter((v) => v.maintenance).length;
+  ok("...while three priorities tilt volume without holding everything else at maintenance", heldThree === 0);
+}
+
+// --- the personalization is VISIBLE (Wave 179, considerations #1) ---------
+{
+  const prof = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60,
+    available_equipment: ["dumbbell", "bodyweight"], priority_muscles: ["chest"], injuries: [{ region: "lower-back", severity: "moderate" }] };
+  const { program, rationale } = generatePlan(prof, kb);
+  const lines = explainPersonalization(prof, rationale, program);
+  const inputs = lines.map((l) => l.input);
+  ok("explainPersonalization names every answer that shaped the plan",
+    ["days_per_week", "session_length_min", "primary_goal", "priority_muscles", "available_equipment", "injuries"].every((k) => inputs.includes(k)));
+  const pri = lines.find((l) => l.input === "priority_muscles");
+  // It must quote what the week DELIVERS, not the target the split can't fit — this
+  // card exists to prove the plan is honest, so it cannot itself overstate.
+  const projected = rationale.volume_by_muscle.chest.projected_sets;
+  ok("...and quotes the sets the week actually delivers, not the unreachable target",
+    pri.effect.includes(`${projected} sets/wk`) && !pri.effect.includes(`${rationale.volume_by_muscle.chest.target_sets} sets/wk`));
+  ok("...and says what the specialization trade actually cost", /maintenance/.test(pri.effect));
+  // A profile that answered nothing optional still explains the answers it DID give.
+  const bare = { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 45, available_equipment: ["bodyweight"] };
+  const b = generatePlan(bare, kb);
+  const bareLines = explainPersonalization(bare, b.rationale, b.program);
+  ok("explainPersonalization never invents a line for an answer the user didn't give",
+    bareLines.length > 0 && !bareLines.some((l) => l.input === "priority_muscles" || l.input === "injuries"));
+}
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

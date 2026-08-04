@@ -1367,6 +1367,29 @@ try {
   ok("#injury /api/plan/regenerate sanitizes the wholesale profile spread too (lesson 1: every write path)",
     injAfter.length === 1 && injAfter[0].region === "shoulder" && injAfter[0].severity === "severe");
 
+
+  // --- the personalization reaches the CLIENT (Wave 179) -------------------
+  // Through the same door the plan screen uses. A pure explainer nobody serves is
+  // exactly the producer-with-no-consumer shape (lesson 15).
+  const pzUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 4, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"],
+    priority_muscles: ["chest"],
+  } })).data.user_id;
+  const explain = await app.request("/api/plan/explain", { headers: { "X-HB-User": pzUser } });
+  const pzData = await explain.json();
+  ok("#personalization GET /api/plan/explain carries what the answers changed",
+    Array.isArray(pzData.personalization) && pzData.personalization.length >= 4);
+  ok("#personalization it names the priority answer and its actual weekly sets",
+    pzData.personalization.some((x) => x.input === "priority_muscles" && /\d+ sets\/wk/.test(x.effect)));
+  // The question is GONE from onboarding, so the profile must carry no explicit
+  // answer — an explicit `false` would freeze the user out of the derivation.
+  const pzProfile = (await store.getUser(pzUser)).profile;
+  ok("#personalization onboarding stores NO specialization answer (it is derived now)",
+    pzProfile.specialization === undefined);
+  ok("#personalization ...and the derived block still ran (other muscles held at maintenance)",
+    Object.values((await store.getUser(pzUser)).plan_rationale.volume_by_muscle).some((v) => v.maintenance));
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
