@@ -513,6 +513,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30337463/"
     },
     {
+      "key": "dupuy-2018-recovery-meta",
+      "authors": [
+        "Dupuy O",
+        "Douzi W",
+        "Theurot D",
+        "Bosquet L",
+        "Dugu\u00e9 B"
+      ],
+      "year": 2018,
+      "title": "An Evidence-Based Approach for Choosing Post-exercise Recovery Techniques to Reduce Markers of Muscle Damage, Soreness, Fatigue, and Inflammation: A Systematic Review With Meta-Analysis.",
+      "source": "Frontiers in Physiology",
+      "volume": "9",
+      "pages": "403",
+      "doi": "10.3389/fphys.2018.00403",
+      "pmid": "29755363",
+      "study_type": "meta-analysis",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29755363/"
+    },
+    {
       "key": "egner-2013-muscle-memory",
       "authors": [
         "Egner IM",
@@ -1185,6 +1206,25 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33433148/"
+    },
+    {
+      "key": "lundberg-2018-nsaid-adaptations",
+      "authors": [
+        "Lundberg TR",
+        "Howatson G"
+      ],
+      "year": 2018,
+      "title": "Analgesic and anti-inflammatory drugs in sports: Implications for exercise performance and training adaptations.",
+      "source": "Scandinavian Journal of Medicine & Science in Sports",
+      "volume": "28",
+      "issue": "11",
+      "pages": "2252-2262",
+      "doi": "10.1111/sms.13275",
+      "pmid": "30102811",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/30102811/"
     },
     {
       "key": "lundberg-2022-fiber-hypertrophy",

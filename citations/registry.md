@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**132** verified references.
+**134** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -215,6 +215,14 @@ Davenport MH et al. (2018). Prenatal exercise for the prevention of gestational 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1136/bjsports-2018-099355](https://doi.org/10.1136/bjsports-2018-099355) · PMID: [30337463](https://pubmed.ncbi.nlm.nih.gov/30337463/)
+
+### dupuy-2018-recovery-meta
+Dupuy O et al. (2018). An Evidence-Based Approach for Choosing Post-exercise Recovery Techniques to Reduce Markers of Muscle Damage, Soreness, Fatigue, and Inflammation: A Systematic Review With Meta-Analysis.
+
+*Frontiers in Physiology*, 9, 403.
+
+- Type: meta-analysis · Population: mixed
+- DOI: [10.3389/fphys.2018.00403](https://doi.org/10.3389/fphys.2018.00403) · PMID: [29755363](https://pubmed.ncbi.nlm.nih.gov/29755363/)
 
 ### egner-2013-muscle-memory
 Egner IM & et al. (2013). A cellular memory mechanism aids overload hypertrophy in muscle long after an episodic exposure to anabolic steroids.
@@ -495,6 +503,14 @@ Lopez P & et al. (2021). Resistance Training Load Effects on Muscle Hypertrophy 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1249/MSS.0000000000002585](https://doi.org/10.1249/MSS.0000000000002585) · PMID: [33433148](https://pubmed.ncbi.nlm.nih.gov/33433148/)
+
+### lundberg-2018-nsaid-adaptations
+Lundberg TR & Howatson G (2018). Analgesic and anti-inflammatory drugs in sports: Implications for exercise performance and training adaptations.
+
+*Scandinavian Journal of Medicine & Science in Sports*, 28(11), 2252-2262.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1111/sms.13275](https://doi.org/10.1111/sms.13275) · PMID: [30102811](https://pubmed.ncbi.nlm.nih.gov/30102811/)
 
 ### lundberg-2022-fiber-hypertrophy
 Lundberg TR & et al. (2022). The Effects of Concurrent Aerobic and Strength Training on Muscle Fiber Hypertrophy: A Systematic Review and Meta-Analysis.
