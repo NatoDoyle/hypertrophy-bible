@@ -6,7 +6,7 @@
 // Currency is EFFECTIVE weekly hard sets (primary muscle = 1.0/set, secondary =
 // 0.5/set) — the exact same model as derive-core's perMuscleWeeklyVolume, which
 // we reuse for a closed-loop self-check so plan-time and log-time volume agree.
-import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, REP_SCHEMES, repScheme } from "./derive-core.mjs";
+import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, repScheme } from "./derive-core.mjs";
 
 // --- session archetypes: which muscles a session may train ---
 const ARCH = {

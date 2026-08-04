@@ -1,7 +1,7 @@
 // The API. Pure Hono, no filesystem, store injected — the SAME app runs on
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
-import { selectProgram, exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
+import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
@@ -52,6 +52,13 @@ const boundedNum = (v, max) => {
 // rejected write strands a queued offline weigh-in, and losing logged data is the
 // worse failure. A day of future slack is deliberate — a user east of UTC really is
 // on tomorrow's date relative to the server, and that's a real weigh-in, not junk.
+//
+// THERE ARE THREE DOORS, not two. The wave that added this guard wired it into
+// `/api/checkin` and `/api/bodyweight` and wrote "both weigh-in doors" — because it
+// had grepped the ROUTE names. The third, `/api/nutrition/profile` (the Fuel stats
+// form), reaches the same sink from a route whose name says nothing about weight, and
+// shipped unguarded for a wave. Grep the SINK (`addBodyweight`), never the route, and
+// note that `test-routes.mjs` now walks all three so this list can't silently grow.
 export const MAX_BODYWEIGHT_KG = 500;
 export function sanitizeBodyweight(date, kg, nowMs = Date.now()) {
   const today = new Date(nowMs).toISOString().slice(0, 10);
@@ -1154,7 +1161,10 @@ export function createApp(store, config = {}) {
         ...(num(b.waist_cm) ? { waist_cm: num(b.waist_cm) } : {}),
         ...(num(b.hip_cm) ? { hip_cm: num(b.hip_cm) } : {}),
         ...(bf(b.bf_pct) != null ? { bf_pct: bf(b.bf_pct) } : {}),
-        ...(num(b.weight_kg) ? { weight_kg: num(b.weight_kg) } : {}),
+        // Bounded like the weigh-in below (lesson 27 — the sibling in the same
+        // literal): this is a SECOND stored copy of "current weight", and two copies
+        // that can disagree is what produced this finding in the first place.
+        ...(num(b.weight_kg) ? { weight_kg: Math.min(MAX_BODYWEIGHT_KG, num(b.weight_kg)) } : {}),
         // Only a KNOWN activity level — an arbitrary string reaches baseTDEE's
         // multiplier lookup, and an Object.prototype key there poisons TDEE to NaN.
         ...(typeof b.activity === "string" && Object.hasOwn(ACTIVITY, b.activity) ? { activity: b.activity } : {}),
@@ -1165,10 +1175,10 @@ export function createApp(store, config = {}) {
     // becomes the LATEST bodyweight the plan reads. Without this, nutritionInputs takes
     // the most recent logged weigh-in even when it's months stale, and the value the
     // user just entered is silently ignored (the plan contradicts their own input).
-    if (num(b.weight_kg)) {
-      const day = (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) ? b.date : new Date().toISOString().slice(0, 10);
-      await store.addBodyweight(b.user_id, { date: day, kg: num(b.weight_kg) });
-    }
+    // Routed through the SAME guard as the other two doors rather than re-deriving a
+    // date check here — re-deriving it is exactly how this door came to be the one
+    // that was missed (see sanitizeBodyweight's header).
+    if (num(b.weight_kg)) await store.addBodyweight(b.user_id, sanitizeBodyweight(b.date, b.weight_kg));
     const { profile, history } = await nutritionInputs(updated, b.user_id);
     return c.json({ nutrition: nutritionPlan(profile, history), profile });
   });

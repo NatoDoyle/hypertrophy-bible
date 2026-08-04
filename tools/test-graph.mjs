@@ -9,7 +9,6 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  stripNonRendered,
   extractPage,
   buildGraph,
   parseContentsIndex,
@@ -18,6 +17,7 @@ import {
   renderedProse,
   pageDepth,
   isUnderDeveloped,
+  depthReport,
   DEPTH_GATE,
 } from "./graph-core.mjs";
 
@@ -440,6 +440,55 @@ check("DEPTH_GATE ships WARN-only, and its floors sit at the corpus tail", () =>
   const below = depths.filter((d) => d.words < DEPTH_GATE.minWords).length;
   assert.ok(below / depths.length < 0.2,
     `floors must flag a tail, not the corpus: ${below}/${depths.length} pages below minWords`);
+});
+
+// --- depth selection + repo hygiene (Wave 178) ---------------------------
+
+check("isUnderDeveloped honours the minOut of the gate it is HANDED", () => {
+  const thin = { words: 100, numericDensity: 0 };
+  // The first version read two thresholds from the argument and the third from the
+  // module global, so an injected gate was silently half-applied.
+  assert.equal(isUnderDeveloped(thin, 5, { minWords: 450, minNumericDensity: 0.25, minOut: 9 }), true);
+  assert.equal(isUnderDeveloped(thin, 5, { minWords: 450, minNumericDensity: 0.25, minOut: 2 }), false);
+  // Omitting minOut still falls back to the graph gate, so existing callers are unchanged.
+  assert.equal(isUnderDeveloped(thin, GATE.minOut, { minWords: 450, minNumericDensity: 0.25 }), true);
+});
+
+check("depthReport counts PAGES, not flags — the shortlist is derived, not additional", () => {
+  const depths = [
+    { slug: "a", pillar: "p", words: 100, numbers: 0, numericDensity: 0, tableRows: 0 },  // both floors + shortlist
+    { slug: "b", pillar: "p", words: 9000, numbers: 900, numericDensity: 10, tableRows: 0 }, // clean
+  ];
+  const r = depthReport(depths, new Map([["a", 1], ["b", 5]]));
+  assert.equal(r.flaggedPages.size, 1, "one page is in trouble");
+  assert.equal(r.flagCount, 3, "...and it appears on all three lists — summing them triples it");
+});
+
+// A knob that binds nothing hides the gap it names (lesson 14). This walks the repo
+// rather than trusting a comment, because the wave that unified REP_SCHEMES left it
+// imported-but-unused in plan-core and nobody noticed for two waves.
+check("no dead named imports anywhere in tools/ or app/src/", () => {
+  const roots = [join(root, "tools"), join(root, "app", "src"), join(root, "app", "scripts")];
+  const dead = [];
+  for (const dir of roots) {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".mjs")) continue;
+      const src = readFileSync(join(dir, f), "utf8");
+      // Strip comments FIRST. plan-core.mjs names REP_SCHEMES in a prose comment, so a
+      // raw scan reports the one offender that prompted this test as "used" — a green
+      // gate proving nothing, which is the exact failure this file exists to catch.
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ").replace(/([^:])\/\/.*$/gm, "$1");
+      for (const m of code.matchAll(/^import\s*\{([^}]+)\}\s*from\s*["'][^"']+["'];?/gm)) {
+        for (const raw of m[1].split(",")) {
+          const name = raw.trim().split(/\s+as\s+/).pop().trim();
+          if (!name) continue;
+          const uses = code.match(new RegExp(`\\b${name.replace(/[$]/g, "\\$")}\\b`, "g"))?.length ?? 0;
+          if (uses <= 1) dead.push(`${f}: ${name}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(dead, [], `dead imports: ${dead.join(", ")}`);
 });
 
 console.log(`\ntest-graph: ${passed} checks passed.`);

@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractPage, pageDepth, isUnderDeveloped, DEPTH_GATE, GATE } from "./graph-core.mjs";
+import { extractPage, pageDepth, depthReport, DEPTH_GATE, GATE } from "./graph-core.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = join(root, "content");
@@ -68,24 +68,25 @@ for (const [pillar, a] of [...byPillar].sort()) {
 // Each floor reported on its OWN line as well as in the combined shortlist: the
 // shortlist is an AND, so on its own it would hide a thin page that happens to be
 // well-linked (see isUnderDeveloped's note).
-let warnings = 0;
 const warn = (label, rows, fmt) => {
   if (!rows.length) return void console.log(`  ✓ ${label}: none`);
-  warnings += rows.length;
   console.log(`  ⚠ ${label} (${rows.length}):`);
   for (const r of rows) console.log(`      ${fmt(r)}`);
 };
 
+const report = depthReport(depths, outDegree);
+
 console.log(`\ndepth floors (WARN${DEPTH_GATE.warnOnly ? "" : " — ENFORCED"}): minWords=${DEPTH_GATE.minWords}, minNumericDensity=${DEPTH_GATE.minNumericDensity}/100w`);
-warn("below the word floor", depths.filter((d) => d.words < DEPTH_GATE.minWords),
-  (d) => `${d.pillar}/${d.slug} — ${d.words}w`);
-warn("below the numeric-density floor (answers in adjectives, not numbers)",
-  depths.filter((d) => d.numericDensity < DEPTH_GATE.minNumericDensity),
+warn("below the word floor", report.belowWords, (d) => `${d.pillar}/${d.slug} — ${d.words}w`);
+warn("below the numeric-density floor (answers in adjectives, not numbers)", report.belowDensity,
   (d) => `${d.pillar}/${d.slug} — ${d.numbers} numbers in ${d.words}w (${d.numericDensity}/100w)`);
-warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shortlist worth reading)`,
-  depths.filter((d) => isUnderDeveloped(d, outDegree.get(d.slug))),
+warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shortlist worth reading)`, report.shortlist,
   (d) => `${d.pillar}/${d.slug} — ${d.words}w, ${d.numericDensity}/100w, out=${outDegree.get(d.slug)}, ${d.tableRows} table rows`);
 
-const enforced = !DEPTH_GATE.warnOnly && warnings > 0;
-console.log(`\n${warnings} depth warning(s)${DEPTH_GATE.warnOnly ? " — advisory, not blocking (DEPTH_GATE.warnOnly)" : ""}.`);
+// PAGES, not flags. The shortlist is derived from the two floors above it, so summing
+// the three lists counts a page failing everything three times — this reported "23
+// warnings" for 17 distinct pages until Wave 178, and that inflated number would have
+// gone into the failure message the moment the gate starts enforcing.
+const enforced = !DEPTH_GATE.warnOnly && report.flaggedPages.size > 0;
+console.log(`\n${report.flaggedPages.size} page(s) below a depth floor (${report.flagCount} flags across 3 lists)${DEPTH_GATE.warnOnly ? " — advisory, not blocking (DEPTH_GATE.warnOnly)" : ""}.`);
 process.exit(enforced ? 1 : 0);
