@@ -43,6 +43,10 @@ Cardio also spends from the same recovery budget as lifting, alongside sleep deb
 
 Two rules matter more than the exact numbers. **In a gaining phase, do not drop to zero** — a maintenance floor of cardio costs you nothing measurable and keeps fitness (and appetite) where you want them. **In a fat-loss phase, add steps before you add sessions**, because steps buy expenditure at almost no recovery cost, and cardio you have to recover from competes directly with the lifting that protects your muscle.
 
+**The words people use for these intensities.** The 20–40 minute easy-to-moderate sessions above are what's usually sold as **"zone 2"** or **"LISS"** (low-intensity steady state): a conversational pace you could hold for the whole session and still speak in full sentences. **"HIIT"** means the opposite — short, hard intervals with recovery between them; on the evidence below it's hypertrophy-neutral but carries the small lower-body strength cost, so it's a reasonable pick when you're short on time and a worse one during a leg-priority block. **"VO2max"** is a lab measure of aerobic capacity, and **"NEAT"** is all the movement that isn't a workout — the walking, fidgeting and standing that your step target is really about (see [energy balance](../04-nutrition/energy-balance.md)). **[Grade D]** — these are definitions, not prescriptions.
+
+The labels don't change the advice. This page deliberately doses cardio by **time, steps and modality** rather than by heart-rate zone, because the levers that actually showed up in the evidence are *which modality*, *how much*, and *how close to leg day* — not which band your heart rate sat in. If you like training to a zone, the talk test above is close enough for this purpose.
+
 **Is cardio helping or hurting you? The self-check.** The honest answer is that nobody can hand you your personal ceiling, because it depends on your recovery capacity, your job, your sleep and your age. What you can do is read the signals.
 
 | What to watch | Cardio is paying off | Cardio is costing you |
