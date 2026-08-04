@@ -30,7 +30,7 @@ The back rewards treating it as regions with different best tools, not one undif
 
 *Cue:* let the shoulder blades spread at the front, then **retract them** and pull to the lower ribs; a brief pause at the squeeze beats heaving a heavier weight.
 
-**Region 3 — Upper traps.** Direct work is optional. Heavy [deadlifts](../../data/exercises/conventional-deadlift.json), carries, and rows already load the upper traps hard; if you specifically want more, add [barbell](../../data/exercises/barbell-shrug.json) or [dumbbell shrugs](../../data/exercises/dumbbell-shrug.json) and hold the top briefly.
+**Region 3 — Upper traps.** Direct work is optional. Heavy [deadlifts](../../data/exercises/conventional-deadlift.json), carries, and rows already load the upper traps hard; if you specifically want more, add [barbell](../../data/exercises/barbell-shrug.json) or [dumbbell shrugs](../../data/exercises/dumbbell-shrug.json) and hold the top briefly. The neck itself is a separate, optional job — see the [Neck guide](neck.md).
 
 **Region 4 — Rear delts.** They're small and rows alone tend to leave them under-stimulated, so give them a few dedicated sets of a [cable rear-delt fly](../../data/exercises/cable-rear-delt-fly.json), [reverse pec-deck](../../data/exercises/reverse-pec-deck.json), or [face-pull](../../data/exercises/face-pull.json). (More in the [Shoulders guide](shoulders.md).)
 

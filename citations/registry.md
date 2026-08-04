@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**128** verified references.
+**131** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -31,6 +31,14 @@ Attarieh P et al. (2025). Comparison Between Shoulder Flexed and Extended Positi
 
 - Type: RCT · Population: recreationally-active
 - DOI: [10.1002/ejsc.12279](https://doi.org/10.1002/ejsc.12279) · PMID: [40082069](https://pubmed.ncbi.nlm.nih.gov/40082069/)
+
+### barnes-2014-alcohol-recovery
+Barnes MJ (2014). Alcohol: impact on sports performance and recovery in male athletes.
+
+*Sports Medicine*, 44(7), 909-19.
+
+- Type: narrative-review · Population: trained
+- DOI: [10.1007/s40279-014-0192-8](https://doi.org/10.1007/s40279-014-0192-8) · PMID: [24748461](https://pubmed.ncbi.nlm.nih.gov/24748461/)
 
 ### baz-valle-2021-counting-sets
 Baz-Valle E & et al. (2021). Total Number of Sets as a Training Volume Quantification Method for Muscle Hypertrophy: A Systematic Review.
@@ -111,6 +119,14 @@ Carvalho L & et al. (2022). Muscle hypertrophy and strength gains after resistan
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1139/apnm-2021-0515](https://doi.org/10.1139/apnm-2021-0515) · PMID: [35015560](https://pubmed.ncbi.nlm.nih.gov/35015560/)
+
+### cheung-2003-doms
+Cheung K et al. (2003). Delayed onset muscle soreness: treatment strategies and performance factors.
+
+*Sports Medicine*, 33(2), 145-64.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.2165/00007256-200333020-00005](https://doi.org/10.2165/00007256-200333020-00005) · PMID: [12617692](https://pubmed.ncbi.nlm.nih.gov/12617692/)
 
 ### church-2020-eaa-synthesis
 Church DD et al. (2020). Essential Amino Acids and Protein Synthesis: Insights into Maximizing the Muscle and Whole-Body Response to Feeding.
@@ -343,6 +359,14 @@ Hubal MJ & et al. (2005). Variability in muscle size and strength gain after uni
 
 - Type: cohort · Population: untrained
 - PMID: [15947721](https://pubmed.ncbi.nlm.nih.gov/15947721/)
+
+### hyldahl-2017-repeated-bout
+Hyldahl RD et al. (2017). Mechanisms and Mediators of the Skeletal Muscle Repeated Bout Effect.
+
+*Exercise and Sport Sciences Reviews*, 45(1), 24-33.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1249/JES.0000000000000095](https://doi.org/10.1249/JES.0000000000000095) · PMID: [27782911](https://pubmed.ncbi.nlm.nih.gov/27782911/)
 
 ### iraki-2019-offseason-nutrition
 Iraki J et al. (2019). Nutrition Recommendations for Bodybuilders in the Off-Season: A Narrative Review.

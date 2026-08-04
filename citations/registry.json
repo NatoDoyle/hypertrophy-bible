@@ -58,6 +58,24 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40082069/"
     },
     {
+      "key": "barnes-2014-alcohol-recovery",
+      "authors": [
+        "Barnes MJ"
+      ],
+      "year": 2014,
+      "title": "Alcohol: impact on sports performance and recovery in male athletes.",
+      "source": "Sports Medicine",
+      "volume": "44",
+      "issue": "7",
+      "pages": "909-19",
+      "doi": "10.1007/s40279-014-0192-8",
+      "pmid": "24748461",
+      "study_type": "narrative-review",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/24748461/"
+    },
+    {
       "key": "baz-valle-2021-counting-sets",
       "authors": [
         "Baz-Valle E",
@@ -135,7 +153,7 @@
     {
       "key": "borsheim-2002-eaa-mps",
       "authors": [
-        "Børsheim E",
+        "B\u00f8rsheim E",
         "Tipton KD",
         "Wolf SE",
         "Wolfe RR"
@@ -251,6 +269,26 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/35015560/"
+    },
+    {
+      "key": "cheung-2003-doms",
+      "authors": [
+        "Cheung K",
+        "Hume P",
+        "Maxwell L"
+      ],
+      "year": 2003,
+      "title": "Delayed onset muscle soreness: treatment strategies and performance factors.",
+      "source": "Sports Medicine",
+      "volume": "33",
+      "issue": "2",
+      "pages": "145-64",
+      "doi": "10.2165/00007256-200333020-00005",
+      "pmid": "12617692",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/12617692/"
     },
     {
       "key": "church-2020-eaa-synthesis",
@@ -725,9 +763,9 @@
       "key": "henselmans-2022-carb-strength",
       "authors": [
         "Henselmans M",
-        "Bjørnsen T",
+        "Bj\u00f8rnsen T",
         "Hedderman R",
-        "Vårvik FT"
+        "V\u00e5rvik FT"
       ],
       "year": 2022,
       "title": "The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.",
@@ -818,6 +856,26 @@
       "population": "untrained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15947721/"
+    },
+    {
+      "key": "hyldahl-2017-repeated-bout",
+      "authors": [
+        "Hyldahl RD",
+        "Chen TC",
+        "Nosaka K"
+      ],
+      "year": 2017,
+      "title": "Mechanisms and Mediators of the Skeletal Muscle Repeated Bout Effect.",
+      "source": "Exercise and Sport Sciences Reviews",
+      "volume": "45",
+      "issue": "1",
+      "pages": "24-33",
+      "doi": "10.1249/JES.0000000000000095",
+      "pmid": "27782911",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27782911/"
     },
     {
       "key": "iraki-2019-offseason-nutrition",
@@ -1035,7 +1093,7 @@
     {
       "key": "lixandrao-2018-bfr-meta",
       "authors": [
-        "Lixandrão ME",
+        "Lixandr\u00e3o ME",
         "et al."
       ],
       "year": 2018,
@@ -1054,7 +1112,7 @@
     {
       "key": "lixandrao-2024-volume-nonresponders",
       "authors": [
-        "Lixandrão ME",
+        "Lixandr\u00e3o ME",
         "et al."
       ],
       "year": 2024,
@@ -1324,7 +1382,7 @@
       "key": "ortega-2021-tart-cherry-recovery",
       "authors": [
         "Ortega DR",
-        "López AM",
+        "L\u00f3pez AM",
         "Amaya HM",
         "de la Rosa FJB"
       ],
@@ -1344,7 +1402,7 @@
     {
       "key": "pallares-2021-rom-meta",
       "authors": [
-        "Pallarés JG",
+        "Pallar\u00e9s JG",
         "et al."
       ],
       "year": 2021,
@@ -1499,7 +1557,7 @@
     {
       "key": "ramirez-campillo-2013-spot-reduction",
       "authors": [
-        "Ramírez-Campillo R",
+        "Ram\u00edrez-Campillo R",
         "et al."
       ],
       "year": 2013,
@@ -2204,7 +2262,7 @@
     {
       "key": "varovic-2025-muscle-length-regional",
       "authors": [
-        "Varović D",
+        "Varovi\u0107 D",
         "et al."
       ],
       "year": 2025,
