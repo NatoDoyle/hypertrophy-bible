@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**131** verified references.
+**132** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -391,6 +391,14 @@ Kassiano W & et al. (2023). Which ROMs Lead to Rome? A Systematic Review of the 
 
 - Type: systematic-review · Population: mixed
 - DOI: [10.1519/JSC.0000000000004415](https://doi.org/10.1519/JSC.0000000000004415) · PMID: [36662126](https://pubmed.ncbi.nlm.nih.gov/36662126/)
+
+### kerr-2017-measurement-error
+Kerr A et al. (2017). Impact of food and fluid intake on technical and biological measurement error in body composition assessment methods in athletes.
+
+*British Journal of Nutrition*, 117(4), 591-601.
+
+- Type: non-RCT-trial · Population: trained
+- DOI: [10.1017/S0007114517000551](https://doi.org/10.1017/S0007114517000551) · PMID: [28382898](https://pubmed.ncbi.nlm.nih.gov/28382898/)
 
 ### konopka-2014-aerobic-hypertrophy
 Konopka AR & Harber MP (2014). Skeletal muscle hypertrophy after aerobic exercise training.

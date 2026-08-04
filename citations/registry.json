@@ -939,6 +939,26 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36662126/"
     },
     {
+      "key": "kerr-2017-measurement-error",
+      "authors": [
+        "Kerr A",
+        "Slater GJ",
+        "Byrne N"
+      ],
+      "year": 2017,
+      "title": "Impact of food and fluid intake on technical and biological measurement error in body composition assessment methods in athletes.",
+      "source": "British Journal of Nutrition",
+      "volume": "117",
+      "issue": "4",
+      "pages": "591-601",
+      "doi": "10.1017/S0007114517000551",
+      "pmid": "28382898",
+      "study_type": "non-RCT-trial",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28382898/"
+    },
+    {
       "key": "konopka-2014-aerobic-hypertrophy",
       "authors": [
         "Konopka AR",
