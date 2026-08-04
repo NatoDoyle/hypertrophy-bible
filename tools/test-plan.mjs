@@ -2,6 +2,7 @@
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, explainPersonalization } from "./plan-core.mjs";
+import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
 const exercises = load("data/exercises");
@@ -731,6 +732,44 @@ ok("deriveSpecialization: an explicitly stored answer still wins, both ways",
   const bareLines = explainPersonalization(bare, b.rationale, b.program);
   ok("explainPersonalization never invents a line for an answer the user didn't give",
     bareLines.length > 0 && !bareLines.some((l) => l.input === "priority_muscles" || l.input === "injuries"));
+}
+
+// --- the templates page must agree with the template DATA (Wave 181) ------
+// The page used to link each template as `../../data/programs/*.json`, which the
+// app renders as PLAIN TEXT — so an in-app reader of a page promising worked
+// programs got five names and no prescription. The fix inlines the numbers, which
+// is only safe if they can't drift: this parses them back out and recomputes them.
+{
+  const md = readFileSync("content/03-programming/program-templates.md", "utf8");
+  const NAME_TO_ID = {
+    "Beginner Full-Body": "beginner-full-body-3day", "Upper/Lower": "upper-lower-4day",
+    "5-Day Hybrid": "five-day-hybrid", "Push/Pull/Legs": "push-pull-legs-6day",
+    "Shoulders & Arms Specialization": "specialization-delts-arms-4day",
+  };
+  const idx = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
+  const GROUP = { chest: "chest", lats: "back", "upper-back": "back", quadriceps: "legs", hamstrings: "legs",
+    glutes: "legs", biceps: "arms", triceps: "arms", "side-delts": "delts", "front-delts": "delts", "rear-delts": "delts" };
+  let mismatches = [];
+  for (const [name, id] of Object.entries(NAME_TO_ID)) {
+    const row = md.split("\n").find((l) => l.startsWith(`| ${name} |`) && /\| \d+ \| \d+ \|/.test(l));
+    if (!row) { mismatches.push(`${name}: no numeric row on the page`); continue; }
+    const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+    const [, days, total, chest, back, legs, delts, arms] = cells;
+    const prog = JSON.parse(readFileSync(`data/programs/${id}.json`));
+    const rounds = Math.round(prog.days_per_week / prog.sessions.length);
+    const sets = [];
+    for (let r = 0; r < rounds; r++) for (const sn of prog.sessions) for (const e of sn.exercises)
+      for (let i = 0; i < e.sets; i++) sets.push({ exercise: e.exercise, set_type: "work", weight_kg: 50, reps: 10 });
+    const v = perMuscleWeeklyVolume([{ date: "2026-01-05", sets }], idx)["2026-W02"] || {};
+    const g = {};
+    for (const [m, n] of Object.entries(v)) { const k = GROUP[m]; if (k) g[k] = (g[k] || 0) + n; }
+    const want = { days: prog.days_per_week, total: sets.length, chest: Math.round(g.chest || 0),
+      back: Math.round(g.back || 0), legs: Math.round(g.legs || 0), delts: Math.round(g.delts || 0), arms: Math.round(g.arms || 0) };
+    const got = { days: +days, total: +total, chest: +chest, back: +back, legs: +legs, delts: +delts, arms: +arms };
+    for (const k of Object.keys(want)) if (want[k] !== got[k]) mismatches.push(`${name}.${k}: page ${got[k]} vs data ${want[k]}`);
+  }
+  ok("program-templates.md's set counts are recomputed from data/programs and match", mismatches.length === 0);
+  if (mismatches.length) console.error("   ", mismatches.join("; "));
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -75,6 +75,38 @@ export function extractPage({ slug, pillar, md }, knownSlugs) {
 // the same bar automatically — a new page that links to nothing fails the build.
 export const GATE = { minOut: 2, enforceMinOut: true };
 
+// ---------- invisible links (Wave 181) ----------
+
+// THE one rule for "will the app turn this link into a jump?". It lived in three
+// copies — PAGE_LINK_RE here, CANONICAL in check-links.mjs, and an inline regex in
+// gen-learn-data.mjs — which is how the gate and the renderer were free to disagree
+// for waves. gen-learn-data now imports this, so the graph, the gate and the shipped
+// HTML answer the question identically by construction.
+export const renderableLinkSlug = (url) => {
+  const m = String(url ?? "").match(/^(?:\.\.\/[a-z0-9-]+\/)?([a-z0-9-]+)\.md(?:#.*)?$/);
+  return m ? m[1] : null;
+};
+
+// Rendered-section links the app SILENTLY DROPS to plain text. `check-links` cannot
+// see this class at all: its canonical check iterates `.md`-only, so a
+// `../../data/programs/x.json` link is verified to exist on disk and never checked
+// for reachability — green, while guaranteeing the reader can't follow it.
+// `program-templates.md` shipped a table whose every row linked a `.json` prescription
+// and rendered as bare text: five names, no program.
+//
+// Reported, NOT forbidden (lesson 13). Most are fine: a muscle guide linking
+// `data/exercises/barbell-shrug.json` under the label "barbell shrugs" degrades to
+// ordinary prose, and back.md — the roadmap's own exemplar — has the most of any page.
+// The tell worth reading is a page where the DROPPED links outnumber the live ones,
+// which is what "the link was the content" looks like.
+export function droppedLinks(md) {
+  const out = [];
+  for (const m of stripNonRendered(md).matchAll(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
+    if (!renderableLinkSlug(m[2])) out.push({ label: m[1], url: m[2] });
+  }
+  return out;
+}
+
 // ---------- depth grammar (Wave 175) ----------
 
 // The prose a reader actually reads, with everything that carries digits but conveys

@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractPage, pageDepth, depthReport, DEPTH_GATE, GATE } from "./graph-core.mjs";
+import { extractPage, pageDepth, depthReport, droppedLinks, DEPTH_GATE, GATE } from "./graph-core.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = join(root, "content");
@@ -82,6 +82,30 @@ warn("below the numeric-density floor (answers in adjectives, not numbers)", rep
   (d) => `${d.pillar}/${d.slug} — ${d.numbers} numbers in ${d.words}w (${d.numericDensity}/100w)`);
 warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shortlist worth reading)`, report.shortlist,
   (d) => `${d.pillar}/${d.slug} — ${d.words}w, ${d.numericDensity}/100w, out=${outDegree.get(d.slug)}, ${d.tableRows} table rows`);
+
+// Links the reader can SEE but not follow — the class check-links is structurally
+// blind to (its canonical check is .md-only, so a data/*.json link is verified to
+// exist and never checked for reachability). Reported with counts, never forbidden:
+// most degrade fine because the label carries the meaning. Baseline when this shipped
+// (2026-08-04): 69 dropped links across 13 pages, led by back.md at 22 — the roadmap's
+// own exemplar page, which is exactly why this is not a failure condition.
+//
+// Deliberately NO per-page "this one is suspicious" annotation. The obvious candidate
+// (dropped > live) fires on back.md, supplements and core — all three legitimate, since
+// their labels are exercise and supplement NAMES that still read as prose once the link
+// is gone. A flag that is usually wrong trains everyone to skip the line it sits on.
+// What actually distinguished program-templates was that its dropped links were in
+// table cells whose other columns were pure metadata, so the prescription lived nowhere
+// else on the page — a judgement made by reading, which is what the counts are for.
+const dropped = pages
+  .map((pg) => ({ slug: pg.slug, pillar: pg.pillar, n: droppedLinks(pg.md).length, out: outDegree.get(pg.slug) ?? 0 }))
+  .filter((x) => x.n > 0)
+  .sort((a, b) => b.n - a.n);
+const droppedTotal = dropped.reduce((a, x) => a + x.n, 0);
+console.log(`\ninvisible links (rendered, but not traversable in-app): ${droppedTotal} across ${dropped.length} page(s)`);
+for (const x of dropped.slice(0, 8)) {
+  console.log(`      ${(x.pillar + "/" + x.slug).padEnd(46)} ${String(x.n).padStart(3)} dropped, ${x.out} live`);
+}
 
 // PAGES, not flags. The shortlist is derived from the two floors above it, so summing
 // the three lists counts a page failing everything three times — this reported "23
