@@ -3,7 +3,7 @@
 import {
   perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, sessionWeekKey,
+  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, isoWeekKeyLocal, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal,
 } from "../../tools/derive-core.mjs";
@@ -677,7 +677,14 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
 }
 
-export function progressReport(user, sessions, bodyweights, customEx = [], now = null, checkins = []) {
+// `tz` is the user's UTC offset in minutes east — REQUIRED for the week arithmetic
+// below to agree with itself. Session week keys come from `sessionWeekKey`, which
+// prefers the device's own `local_date`; comparing those against a raw-UTC "current
+// week" meant that around every ISO week boundary the in-progress week wasn't
+// excluded, so a week with one session became the "last full week" reference and the
+// card told a compliant lifter to add sets. Falls back to UTC when unknown, exactly
+// as before.
+export function progressReport(user, sessions, bodyweights, customEx = [], now = null, checkins = [], tz = null) {
   const { byId, index, name } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
   const weeks = Object.keys(weekly).sort();
@@ -696,7 +703,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     }
   }
   const isDeloadWeek = (wk) => (deloadFrac[wk]?.t ?? 0) > 0 && deloadFrac[wk].d / deloadFrac[wk].t > 0.5;
-  const nowWeek = now ? isoWeekKey(now) : null;
+  const nowWeek = now ? isoWeekKeyLocal(now, tz ?? user?.profile?.tz_offset_min) : null;
   // Prefer the newest CLEAN, FULL week; fall back to the newest clean week
   // (in-progress is better than nothing), then to the newest week of all with
   // an honest note — never the oldest (the old walk accepted index 0

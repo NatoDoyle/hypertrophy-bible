@@ -1390,6 +1390,44 @@ try {
   ok("#personalization ...and the derived block still ran (other muscles held at maintenance)",
     Object.values((await store.getUser(pzUser)).plan_rationale.volume_by_muscle).some((v) => v.maintenance));
 
+
+  // --- the user's clock reaches the server for EVERY user (Wave 180) -------
+  // tz_offset_min used to be written only by POST /api/push/subscribe, so Wave 173's
+  // timezone work was inert for anyone who never enabled notifications — while its
+  // tests passed because the fixtures supplied the field.
+  const tzUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  ok("#tz a fresh account has no stored clock (nothing has told us one yet)",
+    (await store.getUser(tzUser)).profile.tz_offset_min === undefined);
+  await app.request("/api/today", { headers: { "X-HB-User": tzUser, "X-HB-TZ": "-420" } });
+  ok("#tz GET /api/today captures it from the header — no push subscription involved",
+    (await store.getUser(tzUser)).profile.tz_offset_min === -420);
+  await app.request("/api/today", { headers: { "X-HB-User": tzUser, "X-HB-TZ": "-480" } });
+  ok("#tz a changed offset (DST, or the user moved) is re-captured on the next open",
+    (await store.getUser(tzUser)).profile.tz_offset_min === -480);
+  for (const bad of ["abc", "99999", ""]) {
+    await app.request("/api/today", { headers: { "X-HB-User": tzUser, "X-HB-TZ": bad } });
+  }
+  ok("#tz a junk or out-of-range header never clobbers a good stored value",
+    (await store.getUser(tzUser)).profile.tz_offset_min === -480);
+  const prog = await (await app.request("/api/progress", { headers: { "X-HB-User": tzUser, "X-HB-TZ": "-480" } })).json();
+  ok("#tz /api/progress accepts the frame and still answers", !prog.error);
+
+  // The frame MIGRATION hazard, stated honestly: the first time a clock is captured,
+  // week keys stamped in the old UTC frame start being compared in the local one. A
+  // commitment stamped this week must still read as this week for a west-of-UTC user.
+  const cmUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  await json("POST", "/api/commitment", { user_id: cmUser, days: ["mon", "wed"] });
+  await app.request("/api/today", { headers: { "X-HB-User": cmUser, "X-HB-TZ": "-480" } });
+  const tzAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cmUser, "X-HB-TZ": "-480" } })).json();
+  ok("#tz a commitment stamped before the clock was known survives the frame change",
+    Array.isArray(tzAdh.commitment?.days) && tzAdh.commitment.days.length === 2);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
