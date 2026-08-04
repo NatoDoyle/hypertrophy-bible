@@ -18,6 +18,8 @@ import {
   pageDepth,
   isUnderDeveloped,
   depthReport,
+  renderableLinkSlug,
+  droppedLinks,
   DEPTH_GATE,
 } from "./graph-core.mjs";
 
@@ -489,6 +491,24 @@ check("no dead named imports anywhere in tools/ or app/src/", () => {
     }
   }
   assert.deepEqual(dead, [], `dead imports: ${dead.join(", ")}`);
+});
+
+check("renderableLinkSlug: the ONE rule the graph, the gate and the renderer share", () => {
+  assert.equal(renderableLinkSlug("volume.md"), "volume");
+  assert.equal(renderableLinkSlug("../03-programming/splits.md#x"), "splits");
+  // The class that shipped invisible: resolves on disk, never renders as a jump.
+  assert.equal(renderableLinkSlug("../../data/programs/upper-lower-4day.json"), null);
+  assert.equal(renderableLinkSlug("sub/dir/deep.md"), null);
+});
+
+check("droppedLinks finds what the reader can see but not follow, ignoring non-rendered sections", () => {
+  const md = [
+    "# T", "", "Try [leg press](../../data/exercises/leg-press.json) and [volume](volume.md).", "",
+    "## Backing Data", "- [`data/programs/`](../../data/programs/)",
+  ].join("\n");
+  const d = droppedLinks(md);
+  assert.equal(d.length, 1, "the Backing Data link never renders, so it isn't a dropped link");
+  assert.equal(d[0].label, "leg press");
 });
 
 console.log(`\ntest-graph: ${passed} checks passed.`);
