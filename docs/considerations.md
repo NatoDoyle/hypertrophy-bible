@@ -4,8 +4,7 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented.
 
-1. Audit the program/training plan engine/system/algoritm against the kb.  Verify exercise selection, exercise order, sets, reps, intensity, daily volume, weekly volume, cardio pressciption, etc  
-2. audit the adaptive progression model. How does it deal with plateau's, injuries, missed workouts, strength jumps, strengths drops, etc. 
+1. when someone chooses what muscles they specifically want to grow, why are we asking them how hard should we push those muscles? they don't know. the app is supposed to tell them what to do, not the other way around. The plan volume also doesn't change when you select muscles you especially want to grow. I'm no mathematician but there's like 10 questions with atleast an average of 3+ possible answers on the plan questionnaire yet the plans don't seem change much. The training plans are supposed to be custom tailored plans based off every single data point the user feeds it. Every bit of data we gather is intentional and key to the success of the program.
 
 ---
 
@@ -133,3 +132,50 @@ path plus an old Node), and the program schema forbade `superset_with`, a field 
 has always emitted — so no generated plan had ever validated against its own schema. Both
 fixed.
 ---
+
+## Responses (Claude) — the specialization question & "the plans don't change much"
+
+*Waves 179–184, 2026-08-04.* All three claims measured against the real engine before
+anything was touched. One held, two didn't — and the two that didn't were the more
+useful findings.
+
+### Confirmed, and fixed: the specialization question is gone
+
+You were right, and the reasoning generalises. *"How hard should I push those muscles?"*
+asked a non-beginner to make a **programming decision** — and a lifter who could answer it
+wouldn't need the app to write their program. **Which** muscles you care about is a
+preference only you have, so that question stays. **How hard** to push them is now derived
+from the KB's own rule: beginners never specialize ("once you're past the beginner phase");
+one or two priorities get a real block ("specialize one or two areas at a time"); three or
+more get the priority tilt *without* the maintenance trade, because "you can't specialize
+everything at once — that's just more volume everywhere, which recovery won't support".
+An answer already stored is still respected, so nobody's existing plan was rewritten.
+
+### Refuted: "the plan volume doesn't change when you select priority muscles"
+
+It changes substantially. Measured on a 4-day intermediate plan:
+
+| | chest weekly sets |
+|---|---|
+| no priority | 7 |
+| chest prioritised | **10** |
+| chest + specialization block | **14** (everything else drops to maintenance) |
+
+Recorded here so a later audit doesn't re-raise it.
+
+### Refuted mechanically — but you were pointing at something real
+
+The plans change a *lot*. Dumbbells-only shares only ~33% of its exercises with a full-gym
+plan; switching the goal to strength rewrites **every** rep range; 30-minute sessions deliver
+48 weekly sets against 103 for a 6-day week.
+
+But **nothing in the app had ever told you that** — the only explanation was a collapsed
+"why this plan (the science)" panel that explained the evidence rather than *your answers*.
+Invisible personalization is indistinguishable from none, and it costs exactly the trust the
+ten questions were asked to earn. So the plan screen now opens with **"What your answers
+changed"**: each answer beside its actual consequence, in your words, read straight off the
+plan the engine built (so it can never describe something the engine stopped doing).
+
+**The honest read of your report:** the engine was working and the product was not
+communicating. That is a real defect, just not the one it looked like — which is why the
+refutations are written down rather than quietly dropped.
