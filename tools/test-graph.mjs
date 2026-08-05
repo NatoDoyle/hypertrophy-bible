@@ -19,6 +19,7 @@ import {
   isUnderDeveloped,
   depthReport,
   renderableLinkSlug,
+  rendersAsLink,
   droppedLinks,
   DEPTH_GATE,
 } from "./graph-core.mjs";
@@ -506,9 +507,32 @@ check("droppedLinks finds what the reader can see but not follow, ignoring non-r
     "# T", "", "Try [leg press](../../data/exercises/leg-press.json) and [volume](volume.md).", "",
     "## Backing Data", "- [`data/programs/`](../../data/programs/)",
   ].join("\n");
-  const d = droppedLinks(md);
+  const d = droppedLinks(md, new Set(["volume"]));
   assert.equal(d.length, 1, "the Backing Data link never renders, so it isn't a dropped link");
   assert.equal(d[0].label, "leg press");
+});
+
+// The half of the renderer's predicate this check used to be missing. A pillar index
+// link has a perfectly valid `.md` shape, so the shape test alone called it live —
+// while `gen-learn-data` drops it to plain text, because BUNDLED is built by skipping
+// `index`. 23 real links across 14 pages sat in that gap, invisible to the report
+// whose entire job is finding invisible links (lesson 35: a gate that narrows its own
+// input can never report on what it excluded).
+check("droppedLinks applies BOTH halves — a pillar index link renders as text, so it is dropped", () => {
+  const bundled = new Set(["volume", "frequency"]);
+  const md = "# T\n\nSee [Programming](../03-programming/index.md) and [volume](volume.md).";
+  const d = droppedLinks(md, bundled);
+  assert.equal(d.length, 1, "the index link is not traversable in-app and must be counted");
+  assert.equal(d[0].label, "Programming");
+});
+
+check("rendersAsLink is the ONE predicate: shape AND shipped-page, so gate and renderer agree", () => {
+  const bundled = new Set(["volume"]);
+  assert.equal(rendersAsLink("volume.md", bundled), "volume");
+  assert.equal(rendersAsLink("../01-training-variables/volume.md#x", bundled), "volume");
+  assert.equal(rendersAsLink("../03-programming/index.md", bundled), null, "index is never bundled");
+  assert.equal(rendersAsLink("splits.md", bundled), null, "a page we don't ship isn't a jump");
+  assert.equal(rendersAsLink("../../data/programs/x.json", bundled), null);
 });
 
 console.log(`\ntest-graph: ${passed} checks passed.`);

@@ -90,6 +90,13 @@ warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shor
 // (2026-08-04): 69 dropped links across 13 pages, led by back.md at 22 — the roadmap's
 // own exemplar page, which is exactly why this is not a failure condition.
 //
+// CORRECTED (Wave 186): that 69 was itself under-reported. The check duplicated only
+// half the renderer's predicate — the `.md` shape, not `BUNDLED.has(slug)` — so the 23
+// cross-pillar `index.md` links, which render as plain text, were counted as live
+// jumps by the report built to find exactly that. The true figure is 92 across 22
+// pages. A gate that narrows its own input is a blind spot (lesson 35), and this one
+// narrowed it in the direction that flattered the result.
+//
 // Deliberately NO per-page "this one is suspicious" annotation. The obvious candidate
 // (dropped > live) fires on back.md, supplements and core — all three legitimate, since
 // their labels are exercise and supplement NAMES that still read as prose once the link
@@ -98,13 +105,21 @@ warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shor
 // table cells whose other columns were pure metadata, so the prescription lived nowhere
 // else on the page — a judgement made by reading, which is what the counts are for.
 const dropped = pages
-  .map((pg) => ({ slug: pg.slug, pillar: pg.pillar, n: droppedLinks(pg.md).length, out: outDegree.get(pg.slug) ?? 0 }))
+  .map((pg) => ({ slug: pg.slug, pillar: pg.pillar, n: droppedLinks(pg.md, known).length, out: outDegree.get(pg.slug) ?? 0 }))
   .filter((x) => x.n > 0)
   .sort((a, b) => b.n - a.n);
 const droppedTotal = dropped.reduce((a, x) => a + x.n, 0);
 console.log(`\ninvisible links (rendered, but not traversable in-app): ${droppedTotal} across ${dropped.length} page(s)`);
-for (const x of dropped.slice(0, 8)) {
+const SHOWN = 8;
+for (const x of dropped.slice(0, SHOWN)) {
   console.log(`      ${(x.pillar + "/" + x.slug).padEnd(46)} ${String(x.n).padStart(3)} dropped, ${x.out} live`);
+}
+// Say what was withheld. Truncating the list is itself a narrowing of the report's
+// own input (lesson 35), and it stopped being harmless the moment the fixed predicate
+// grew this list from 13 pages to 22 — more than half of it below the fold.
+if (dropped.length > SHOWN) {
+  const rest = dropped.slice(SHOWN);
+  console.log(`      …and ${rest.length} more page(s) carrying ${rest.reduce((a, x) => a + x.n, 0)} dropped link(s).`);
 }
 
 // PAGES, not flags. The shortlist is derived from the two floors above it, so summing

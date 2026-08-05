@@ -60,11 +60,38 @@ const boundedNum = (v, max) => {
 // shipped unguarded for a wave. Grep the SINK (`addBodyweight`), never the route, and
 // note that `test-routes.mjs` now walks all three so this list can't silently grow.
 export const MAX_BODYWEIGHT_KG = 500;
-export function sanitizeBodyweight(date, kg, nowMs = Date.now()) {
+
+// The date half, on its own, because TWO kinds of dated row are written from the same
+// client-supplied `b.date` and only one of them used to be bounded.
+//
+// `/api/checkin` writes a CHECK-IN row and (optionally) a WEIGH-IN row, three lines
+// apart, both from `b.date`. The weigh-in went through sanitizeBodyweight; the check-in
+// carried a format-only regex and no ceiling — lesson 27 ("look at the validated field's
+// SIBLINGS") one level up again, at row scope rather than field scope, in the very
+// handler the guard below was added to. The inline comment saying `day` "is already
+// validated above" is what made it look covered: true of the FORMAT, silent about the
+// range, and lesson 33's confident-comment tell.
+//
+// It matters because every consumer window is open-ended at the top —
+// `inBlockWindow` is `date >= blockWindowStart` with no ceiling — so a future-dated
+// check-in never ages out of the 42-day block window that `recoverySignal` averages.
+// Four such rows below the midpoint pin `underRecovered: true` permanently, which
+// gates `deriveVolumeAdjust` from ever adding volume again. And check-ins are stored
+// ONE PER DATE, so the correction path is "check in again on that date" — unreachable
+// for a date no calendar will offer.
+//
+// The realistic vector is not an attacker: the client sends `date: localDay()` from
+// the DEVICE clock, so a phone with a wrong year posts it in the ordinary flow.
+export function boundLocalDate(date, nowMs = Date.now()) {
   const today = new Date(nowMs).toISOString().slice(0, 10);
   const tomorrow = new Date(nowMs + 86400000).toISOString().slice(0, 10);
-  const ok = validLocalDate(date) && date <= tomorrow;
-  return { date: ok ? date : today, kg: Math.min(MAX_BODYWEIGHT_KG, Number(kg)) };
+  // A day of future slack is deliberate — a user east of UTC really is on tomorrow's
+  // date relative to the server, and that's a real entry, not junk.
+  return validLocalDate(date) && date <= tomorrow ? date : today;
+}
+
+export function sanitizeBodyweight(date, kg, nowMs = Date.now()) {
+  return { date: boundLocalDate(date, nowMs), kg: Math.min(MAX_BODYWEIGHT_KG, Number(kg)) };
 }
 
 // The SAME door for injuries. `/api/profile/injury` checked the region against the
@@ -177,6 +204,7 @@ export function createApp(store, config = {}) {
     // taper engine with an un-parseable goalEventDate.
     if (profile.goal_event_date != null && !validLocalDate(profile.goal_event_date)) profile.goal_event_date = null;
     if (profile.injuries != null) profile.injuries = sanitizeInjuries(profile.injuries);
+    if (profile.tz_offset_min != null) profile.tz_offset_min = parseTzOffset(profile.tz_offset_min);
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -229,6 +257,15 @@ export function createApp(store, config = {}) {
     // Same trust-boundary guard as /api/onboard: junk collapses to null.
     if (body.profile?.goal_event_date != null && !validLocalDate(body.profile.goal_event_date)) body.profile.goal_event_date = null;
     if (body.profile?.injuries != null) body.profile.injuries = sanitizeInjuries(body.profile.injuries);
+    // The THIRD field in this literal that a client can set and the engines then treat
+    // as ground truth. `parseTzOffset` was built as the one canonical validator when
+    // the clock moved to a request header, and it reached the header and
+    // /api/push/subscribe — but a profile PUT spreads `body.profile` wholesale, so this
+    // door stayed open (lesson 27: guard the siblings, not just the field that exposed
+    // the class). It matters more here than at the header, because the hourly push
+    // sweep and settleChallenge read the STORED value with no request to re-derive
+    // from: a finite-but-absurd offset has no self-heal path.
+    if (body.profile?.tz_offset_min != null) body.profile.tz_offset_min = parseTzOffset(body.profile.tz_offset_min);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -579,7 +616,10 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
-    const day = (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) ? b.date : new Date().toISOString().slice(0, 10);
+    // ONE bound, applied before either row is written — the check-in row and the
+    // weigh-in row below it come from this same field, and the format-only regex that
+    // used to live here left the check-in permanently inside every block window.
+    const day = boundLocalDate(b.date);
     const checkin = { user_id: b.user_id, date: day, source: "manual" };
     for (const k of ["sleep_quality", "energy", "stress", "mood", "motivation"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
     await store.addCheckin(b.user_id, checkin);
@@ -587,8 +627,9 @@ export function createApp(store, config = {}) {
     // morning flow, not a separate trip to Progress). Weight is optional.
     let weight_logged = false;
     if (Number.isFinite(Number(b.weight_kg)) && Number(b.weight_kg) > 0) {
-      // `day` is already validated above; sanitizeBodyweight re-checks it anyway and
-      // bounds the kg, so both weigh-in doors apply one identical guard (lesson 1).
+      // `day` is already bounded above by the same helper sanitizeBodyweight uses, so
+      // the two rows this handler writes can no longer disagree about what a valid
+      // date is; sanitizeBodyweight still bounds the kg.
       await store.addBodyweight(b.user_id, sanitizeBodyweight(day, b.weight_kg));
       weight_logged = true;
     }
