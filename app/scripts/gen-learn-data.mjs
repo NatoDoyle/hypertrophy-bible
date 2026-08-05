@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 // page's ranked connections + "also connected" suggestions into the bundle, and parses
 // BOTH pillar-index formats (09's bullets, 00–08's tables) so curated order/descriptions
 // reach the Learn list.
-import { extractPage, buildGraph, formatReasons, parseContentsIndex, renderableLinkSlug } from "../../tools/graph-core.mjs";
+import { extractPage, buildGraph, formatReasons, parseContentsIndex, rendersAsLink } from "../../tools/graph-core.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTENT = join(here, "../../content");
@@ -52,10 +52,13 @@ function inline(text) {
     if (/^https?:\/\//.test(url)) return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
     // sibling (volume.md) OR cross-pillar (../03-programming/warm-up.md) — every
     // bundled page is a valid in-app jump now that all pillars ship
-    // Shared with the graph + the gate (graph-core's renderableLinkSlug) so the three
-    // can never drift about what the reader can actually click.
-    const slug = renderableLinkSlug(url);
-    if (slug && BUNDLED.has(slug)) return `<button class="learnlink" data-learn="${slug}">${label}</button>`;
+    // Shared with the graph + the gate (graph-core's `rendersAsLink`, which carries
+    // BOTH halves: the .md shape AND "we actually ship that page"). Importing the whole
+    // predicate rather than half of it is what makes the three agree by construction —
+    // when this file applied `BUNDLED.has` locally, the gate didn't, and index links
+    // rendered as text while being counted as live jumps.
+    const slug = rendersAsLink(url, BUNDLED);
+    if (slug) return `<button class="learnlink" data-learn="${slug}">${label}</button>`;
     return label;
   });
   t = t.replace(/\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, "<strong>$1</strong>"); // tolerates *italics* inside **bold** (11 pages rendered literal ** before)

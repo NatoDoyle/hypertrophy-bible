@@ -1334,6 +1334,16 @@ try {
   const afterCheckin = await store.listBodyweights(bwGuard);
   ok("#bodyweight the check-in's weigh-in door applies the identical guard (lesson 1)",
     afterCheckin.every((b) => b.kg <= 500 && b.date <= bwGuardToday));
+  // ...and the CHECK-IN ROW written from that same `b.date`, three lines earlier in the
+  // same handler, which carried a format-only regex and no ceiling (Wave 186). It never
+  // ages out of the 42-day block window recoverySignal averages, and one-row-per-date
+  // means no UI can ever reach the date to correct it.
+  const ckRows = await store.listCheckins(bwGuard);
+  ok("#checkin a far-future check-in can't park itself permanently inside the block window",
+    ckRows.length > 0 && ckRows.every((ck) => ck.date <= bwGuardToday));
+  await json("POST", "/api/checkin", { user_id: bwGuard, energy: 4, date: "not-a-date" });
+  ok("#checkin a garbage date still falls back to today rather than 400ing away a queued check-in",
+    (await store.listCheckins(bwGuard)).every((ck) => /^\d{4}-\d{2}-\d{2}$/.test(ck.date)));
   // The THIRD door (Wave 178). The wave that added the guard grepped the ROUTE names,
   // found /api/bodyweight and /api/checkin, and wrote "both weigh-in doors" — but the
   // Fuel stats form reaches the same sink from a route whose name says nothing about
@@ -1412,6 +1422,16 @@ try {
   }
   ok("#tz a junk or out-of-range header never clobbers a good stored value",
     (await store.getUser(tzUser)).profile.tz_offset_min === -480);
+  // The header is not the only door. A profile PUT spreads `body.profile` wholesale,
+  // so the canonical validator has to be applied there too (Wave 186) — and it matters
+  // MORE there: the hourly push sweep and settleChallenge read the stored value with no
+  // request to re-derive from, so an absurd-but-finite offset has no self-heal path.
+  await json("POST", "/api/plan/regenerate", { user_id: tzUser, profile: { tz_offset_min: 1e12 } });
+  ok("#tz an absurd offset posted through the profile door is rejected, not stored",
+    (await store.getUser(tzUser)).profile.tz_offset_min === null);
+  await json("POST", "/api/plan/regenerate", { user_id: tzUser, profile: { tz_offset_min: -300 } });
+  ok("#tz ...while a real offset posted the same way is still accepted",
+    (await store.getUser(tzUser)).profile.tz_offset_min === -300);
   const prog = await (await app.request("/api/progress", { headers: { "X-HB-User": tzUser, "X-HB-TZ": "-480" } })).json();
   ok("#tz /api/progress accepts the frame and still answers", !prog.error);
 

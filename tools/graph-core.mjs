@@ -87,6 +87,29 @@ export const renderableLinkSlug = (url) => {
   return m ? m[1] : null;
 };
 
+// ...and the SHAPE CHECK ABOVE IS ONLY HALF OF IT. The renderer's real condition is
+// `renderableLinkSlug(url) && BUNDLED.has(slug)`, and BUNDLED is built by skipping
+// `index` — so every `../0X-pillar/index.md` link passes the regex, renders as plain
+// text, and was counted LIVE by the very gate whose job is to find links the reader
+// can't follow. Measured at the time of the fix: the gate reported 69 dropped links;
+// the renderer actually drops 92. The 23-link gap was entirely cross-pillar index
+// links — the NAVIGATIONAL links most likely to be load-bearing, and the class
+// `check-links.mjs` separately documents as "tolerated navigation ... they render as
+// plain text by design".
+//
+// The comment above used to end "so the graph, the gate and the shipped HTML answer
+// the question identically by construction." That was lesson 33 in its exact recorded
+// form — the confident coverage claim, backed by prose rather than by an enumerable
+// check, written at the moment the search stopped. It is now true by construction
+// because there is ONE predicate and all three callers pass through it: the gate and
+// the report here, and `gen-learn-data.mjs`'s renderer, which imports it.
+//
+// `bundled` is the set of slugs the app actually ships a page for (index excluded).
+export const rendersAsLink = (url, bundled) => {
+  const slug = renderableLinkSlug(url);
+  return slug && bundled.has(slug) ? slug : null;
+};
+
 // Rendered-section links the app SILENTLY DROPS to plain text. `check-links` cannot
 // see this class at all: its canonical check iterates `.md`-only, so a
 // `../../data/programs/x.json` link is verified to exist on disk and never checked
@@ -99,10 +122,10 @@ export const renderableLinkSlug = (url) => {
 // ordinary prose, and back.md — the roadmap's own exemplar — has the most of any page.
 // The tell worth reading is a page where the DROPPED links outnumber the live ones,
 // which is what "the link was the content" looks like.
-export function droppedLinks(md) {
+export function droppedLinks(md, bundled) {
   const out = [];
   for (const m of stripNonRendered(md).matchAll(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
-    if (!renderableLinkSlug(m[2])) out.push({ label: m[1], url: m[2] });
+    if (!rendersAsLink(m[2], bundled)) out.push({ label: m[1], url: m[2] });
   }
   return out;
 }
