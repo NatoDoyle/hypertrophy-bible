@@ -601,7 +601,15 @@ if (specLower) {
   ok("#1C high-CNS compounds still lead — promotion doesn't bury a squat behind a raise", idxIso === -1 || idxHigh < idxIso);
 }
 // An ORDINARY priority plan (no specialization) is byte-identical to before.
-const priOnly = { ...specProfile, specialization: false, user_id: "spec-order-off" };
+// This fixture used to switch specialization off with a stored `specialization: false`.
+// Wave 187 stopped honouring that value (the old client wrote it for every user who was
+// never shown the question, which froze the derivation out of everyone who already had
+// an account), so the profile now reaches the no-block path the way a real user does:
+// THREE priority areas, which the KB says is a volume tilt and not a block —
+// "you can't specialize everything at once". The assertion is unchanged; only the route
+// into the state it tests is, and side-delts is still a priority, so this still proves
+// the promotion is gated on specialization rather than on priority.
+const priOnly = { ...specProfile, specialization: undefined, priority_muscles: ["side-delts", "chest", "quadriceps"], user_id: "spec-order-off" };
 ok("#1C without specialization the ordering is unchanged — the promotion is gated",
   generatePlan(priOnly, kb, {}).program.sessions.every((sn, i) => sn.exercises.every((e, j) => {
     const x = exByIdR.get(e.exercise);
@@ -683,19 +691,41 @@ ok("sweep: critiquePlan never throws and always returns a summary", !sweepCritiq
 // decision, and a lifter who could answer it wouldn't need the app to write their
 // program. WHICH muscles they want is still theirs; HOW HARD is now the KB's call.
 ok("deriveSpecialization: a beginner never gets a specialization block",
-  deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"] }) === false);
+  deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"] }, muscles) === false);
 ok("deriveSpecialization: no priority muscles → nothing to specialize",
-  deriveSpecialization({ training_status: "advanced", priority_muscles: [] }) === false);
-ok("deriveSpecialization: past the beginner phase, one or two priorities → a real block",
-  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"] }) === true
-  && deriveSpecialization({ training_status: "advanced", priority_muscles: ["biceps", "triceps"] }) === true);
+  deriveSpecialization({ training_status: "advanced", priority_muscles: [] }, muscles) === false);
+ok("deriveSpecialization: past the beginner phase, one or two areas → a real block",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"] }, muscles) === true
+  && deriveSpecialization({ training_status: "advanced", priority_muscles: ["biceps", "triceps"] }, muscles) === true);
 // "You can't specialize everything at once — that's just more volume everywhere,
 // which recovery won't support" (variation-and-specialization.md).
-ok("deriveSpecialization: three or more priorities is NOT a specialization block",
-  deriveSpecialization({ training_status: "advanced", priority_muscles: ["chest", "lats", "quadriceps"] }) === false);
-ok("deriveSpecialization: an explicitly stored answer still wins, both ways",
-  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"], specialization: false }) === false
-  && deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"], specialization: true }) === true);
+ok("deriveSpecialization: three or more AREAS is NOT a specialization block",
+  deriveSpecialization({ training_status: "advanced", priority_muscles: ["chest", "lats", "quadriceps"] }, muscles) === false);
+
+// AREAS, not ids (Wave 187). The client's chips map to id ARRAYS — "Back" is
+// ["lats","upper-back"], "Arms" is ["biceps","triceps"] — so counting ids made the
+// threshold depend on the chip→id mapping instead of the rule the code cites.
+ok("deriveSpecialization: Back alone is ONE area (two ids), so it still specializes",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["lats", "upper-back"] }, muscles) === true);
+ok("deriveSpecialization: Back + Arms is TWO areas (four ids) — the pairing the KB blesses",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["lats", "upper-back", "biceps", "triceps"] }, muscles) === true);
+// The falsifying case that proved this was a real defect and not a preference: the KB
+// SHIPS this exact block as a program template, and the engine refused to build it.
+const delrArms = ["side-delts", "biceps", "triceps"];
+ok("deriveSpecialization: the KB's own specialization-delts-arms-4day shape (3 ids, 2 areas) is a block",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: delrArms }, muscles) === true);
+ok("deriveSpecialization: an unknown id counts as its own area, never silently merged",
+  deriveSpecialization({ training_status: "advanced", priority_muscles: ["made-up-a", "made-up-b", "made-up-c"] }, muscles) === false);
+
+// The stored value (Wave 187). `true` was only reachable by an explicit tap, so it is
+// a real decision and still wins. `false` was written by the OLD client for every user
+// who skipped the optional priority question and every beginner (the step's showIf hid
+// it), so it cannot be told apart from silence — honouring it froze this derivation out
+// of the entire pre-existing population while every test passed on fresh fixtures.
+ok("deriveSpecialization: an explicit opt-IN still wins, even for a beginner",
+  deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"], specialization: true }, muscles) === true);
+ok("deriveSpecialization: a stored `false` no longer blocks the derivation — it was never necessarily an answer",
+  deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"], specialization: false }, muscles) === true);
 
 // The derivation must actually reach the plan — a pure predicate nothing calls is
 // the declared-but-unused shape (lesson 14).
@@ -726,12 +756,45 @@ ok("deriveSpecialization: an explicitly stored answer still wins, both ways",
   ok("...and quotes the sets the week actually delivers, not the unreachable target",
     pri.effect.includes(`${projected} sets/wk`) && !pri.effect.includes(`${rationale.volume_by_muscle.chest.target_sets} sets/wk`));
   ok("...and says what the specialization trade actually cost", /maintenance/.test(pri.effect));
+  // It must not count a muscle the plan never doses. `neck` carries the maintenance flag
+  // but no session archetype trains it (projected 0, status "not-reached").
+  {
+    const vol = rationale.volume_by_muscle;
+    const flagged = Object.values(vol).filter((v) => v.maintenance).length;
+    const dosed = Object.values(vol).filter((v) => v.maintenance && (v.projected_sets ?? 0) > 0).length;
+    const claimed = Number((pri.effect.match(/and (\d+) other muscles?/) ?? [])[1]);
+    ok("...and counts only the muscles it actually doses, never one projected at zero sets",
+      Number.isFinite(claimed) && claimed === dosed && (vol.neck?.maintenance ? dosed < flagged : true));
+  }
   // A profile that answered nothing optional still explains the answers it DID give.
   const bare = { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 45, available_equipment: ["bodyweight"] };
   const b = generatePlan(bare, kb);
   const bareLines = explainPersonalization(bare, b.rationale, b.program);
   ok("explainPersonalization never invents a line for an answer the user didn't give",
     bareLines.length > 0 && !bareLines.some((l) => l.input === "priority_muscles" || l.input === "injuries"));
+
+  // The rep band must match the plan rendered directly above it (Wave 187). An advanced
+  // hypertrophy lifter undulates: the generator discards `rep_scheme.compound`, so
+  // quoting it printed "6-10" above a session list reading 4-6 / 6-10 / 10-15.
+  const adv = { ...prof, training_status: "advanced", days_per_week: 6, session_length_min: 75,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable"] };
+  const a = generatePlan(adv, kb);
+  const advGoal = explainPersonalization(adv, a.rationale, a.program).find((l) => l.input === "primary_goal");
+  const shipped = new Set(a.program.sessions.flatMap((s) => s.exercises.map((e) => e.rep_range)));
+  ok("explainPersonalization: an undulating plan says so instead of quoting one discarded band",
+    a.rationale.goal_prescription.undulating === true
+    && a.rationale.goal_prescription.compound_bands.length > 1
+    && a.rationale.goal_prescription.compound_bands.every((b) => shipped.has(b))
+    && /cycle/.test(advGoal.effect));
+  ok("...and every band it names is genuinely present in the built week",
+    a.rationale.goal_prescription.compound_bands.every((b) => advGoal.effect.includes(b)));
+  // The non-undulating path must be byte-identical to before.
+  const lin = { ...prof, primary_goal: "strength" };
+  const l2 = generatePlan(lin, kb);
+  const linGoal = explainPersonalization(lin, l2.rationale, l2.program).find((l) => l.input === "primary_goal");
+  ok("...while a non-undulating plan still states one band with its RIR, exactly as before",
+    l2.rationale.goal_prescription.compound_bands.length === 1
+    && /reps in reserve/.test(linGoal.effect) && !/cycle/.test(linGoal.effect));
 }
 
 // --- the templates page must agree with the template DATA (Wave 181) ------

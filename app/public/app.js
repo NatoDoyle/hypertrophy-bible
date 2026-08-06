@@ -248,15 +248,23 @@ const STEPS = [
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
-  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional — we'll give these extra volume." },
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard, and everything else drops to a maintenance dose to pay for it. Pick three or more and we'll just tilt volume their way." },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
   // that the app exists to make for them, and a lifter who could answer it wouldn't
   // need us. WHICH muscles they care about is a preference only they have — that's the
   // question above, and it stays. HOW HARD to push is now derived from the KB's own
   // rule in plan-core's `deriveSpecialization` (past the beginner phase, one or two
-  // priorities → a real specialization block; three or more → the priority tilt
+  // AREAS → a real specialization block; three or more → the priority tilt
   // without it, because you can't specialize everything at once).
+  //
+  // The hint above carries the CONSEQUENCE, which the deleted question used to state
+  // and the replacement dropped: "Optional — we'll give these extra volume" described
+  // only what happens to the picks, while a single tap now silently holds every other
+  // muscle at a maintenance dose. Deriving the decision is right (Goal 2); leaving the
+  // user unable to see what one tap costs is not — that's a decision made FOR them,
+  // undisclosed, which is a different thing from a decision made WITHOUT them. Stating
+  // the trade adds no cognitive load: there's still nothing to answer.
   // Settings-ONLY (gated on settingsMode): a goal event date is a niche competitive-lifter
   // need, so it never appears in first-run onboarding (Goals 2 & 3: minimal customization,
   // zero cognitive load) — the taper engine is off by default. A non-beginner who wants it
