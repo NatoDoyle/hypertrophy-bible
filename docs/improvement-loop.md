@@ -472,6 +472,57 @@ These are real failures from previous iterations. Each is now a standing check.
    re-raise them (lesson 13), and when a mechanism is right but unbelieved, the fix is
    to **show the mechanism**, not to change it.
 
+37. **When you replace a QUESTION with a DERIVATION, the stored answers are mostly not
+   answers — and the consumers don't follow the field automatically.** Wave 179 deleted
+   the specialization question and derived the value from the KB's rule, keeping
+   `if (profile.specialization != null) return !!profile.specialization` so nobody who
+   had answered would have their plan rewritten. Humane, and it meant the derivation
+   reached **nobody who already had an account**: the old client wrote
+   `specialization: priority.length ? answers.specialization === true : false` — a hard
+   boolean on BOTH branches — so every user who skipped the optional priority question
+   and every beginner (the step's `showIf` hid it from them) had `false` stored *for*
+   them by a question that was never rendered. The override was honouring silence as if
+   it were consent, and the UI that could have changed it had been deleted in the same
+   commit. Every test passed throughout, on fresh fixtures that had no stored field —
+   lesson 34's exact shape, sighted one wave after lesson 34 was written, which makes it
+   structural. Two halves: (a) **read the OLD client's write** to find which stored
+   values were user input and which were client defaults, and only honour the ones a
+   user could actually have caused (here: `true`, reachable only by an explicit tap);
+   (b) **a field becoming derived is only the producer half** — `/api/today`'s
+   volume-auto-tune freeze still read the raw `profile.specialization`, so for every
+   account created after Wave 179 the freeze never engaged and the tune went on folding
+   in the by-design "stalls" of muscles the block holds at maintenance. Grep every raw
+   read of a field the moment it acquires a derivation, and give the answer one home.
+
+38. **A threshold's UNIT must be the unit the rule it cites is written in — and your own
+   data usually holds the falsification test.** `deriveSpecialization` cited the KB's
+   "specialize one or two **areas** at a time" and counted muscle **ids**. The client's
+   chips map to id arrays ("Back" = `["lats","upper-back"]`), so the threshold tracked
+   the chip→id mapping rather than the rule: Back alone (1 area, 2 ids) specialized,
+   Back + Arms (2 areas, 4 ids) did not. Counting ids is *defensible* as a recovery-budget
+   proxy, so first-principles argument could have gone either way and lesson 13 says not
+   to "fix" a tuned engine on a hunch. What settled it was the KB's own data: the shipped
+   `specialization-delts-arms-4day` template — described there as a real 4–6 week block —
+   is side-delts + biceps + triceps, **three ids across two areas**, and the engine
+   refused to build its own template's shape. → When a threshold's correctness is
+   arguable, **look for a worked example already in your data before arguing from first
+   principles**; a contradiction between the engine and the KB's own artifacts is
+   evidence, an opinion about physiology is not. (`data/muscles/*.json` already carried
+   `group`, so the fix needed no new constant — lesson 1's "one source of truth".)
+
+39. **The audit's NUMBERS are still hypotheses — including the ones two auditors agree a
+   defect exists about.** Both finders this iteration independently found that the
+   invisible-links gate duplicated only half the renderer's predicate. They reported the
+   size of the gap as **36** and **23**. Measuring it directly gave **23** (69 reported
+   vs 92 real). The diagnosis was right twice and one of the magnitudes was invented —
+   lesson 31 recurring, now with the refinement that *agreement between finders is not
+   corroboration of the number they disagree about*. Measure it yourself before it goes
+   in a commit message or a doc. Meta, and the reason this class keeps recurring: that
+   gate was written one wave earlier by an author who had *just* absorbed lesson 35 and
+   wrote "the graph, the gate and the shipped HTML answer the question identically by
+   construction" — a coverage claim in prose, over a predicate they had split in half.
+   Lesson 33 again: the confident comment is written at the exact moment the search stops.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -493,6 +544,21 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7b. **Telemetry (Waves 186–189, 2026-08-06).** **2 finder agents, ZERO verify agents,
+   zero workflows** — three shipping waves plus this one. The audit was a diff-scoped
+   read of `8f488cf..HEAD` (Waves 178–185, ~950 insertions) through two read-only
+   Explore finders run in parallel; one died mid-run on a session limit and its half was
+   simply not re-run, because the surviving finder plus inline verification already
+   produced more confirmed work than the iteration could ship. ~143k subagent tokens
+   against the previous iteration's zero and the 472k before that. Every candidate was
+   verified inline by the main loop — by reading the code, by running the real engine
+   against the real KB, and by measuring the disputed link count directly — and every
+   regression test was observed FAILING on pre-fix code before being committed
+   (temporarily reverting each fix individually), which is cheaper than a verify agent
+   and strictly better evidence. The one number both finders asserted and neither had
+   measured was wrong (lesson 39). Rule 1 held; the finders' value was entirely in
+   *pointing*, never in concluding.
+
 8. **Telemetry (Waves 178–184, 2026-08-04).** **ZERO workflows, zero finder agents,
    zero verify agents** — six waves shipped. The audit was a diff-scoped lesson-3 read
    of the previous burst's own diff (`4e42595..HEAD`) through two read-only Explore
