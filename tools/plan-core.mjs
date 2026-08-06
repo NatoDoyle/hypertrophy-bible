@@ -385,18 +385,43 @@ function buildCardio(guideline, goal, sessionSpecs) {
 //     diagnose yet, so never.
 //   - "Specialize one or two areas at a time ... You can't specialize everything at
 //     once — that's just 'more volume everywhere', which recovery won't support"
-//     (variation-and-specialization). So 1-2 priorities → a real block; 3+ → the
+//     (variation-and-specialization). So 1-2 areas → a real block; 3+ → the
 //     priority tilt without the maintenance trade, because there is nothing left to
 //     harvest the recovery budget FROM.
-// An explicitly stored value still wins (same respected-override shape as
-// `profile.periodization`), so nobody who answered the old question has their plan
-// silently rewritten underneath them.
-export function deriveSpecialization(profile) {
-  if (profile?.specialization != null) return !!profile.specialization;
-  const priorities = (profile?.priority_muscles ?? []).length;
-  if (!priorities) return false;
+//
+// AREAS, not muscle ids — and the distinction is not pedantic, it inverted the rule.
+// `priority_muscles` stores IDS: the client's "Back" chip is `["lats","upper-back"]`
+// and "Arms" is `["biceps","triceps"]`, so counting ids made the threshold depend on
+// an implementation detail of the chip→id mapping rather than on the rule it cites.
+// Back ALONE (one area, two ids) specialized; Back + Arms (the two areas the KB
+// blesses, four ids) did not. The falsifying case is in the KB's own data: the shipped
+// `specialization-delts-arms-4day` template — "Shoulders & Arms Specialization",
+// described there as a real 4-6 week block — is side-delts + biceps + triceps, THREE
+// ids across TWO areas, and the engine refused to build its own template's shape.
+// `data/muscles/*.json` already carries `group` (lats→back, triceps→arms), so the area
+// unit is the KB's, not a constant duplicated here (lesson 1). An id with no known
+// group counts as its own area, so an unrecognised entry can never silently merge.
+//
+// A stored `true` still wins: it was only ever reachable by an explicit tap on "All-in
+// specialization block", so it is unambiguously a decision, and honouring it means
+// nobody who deliberately opted in has it taken away. A stored `false` is NOT honoured,
+// because it was never necessarily an answer — the old client wrote
+// `specialization: priority.length ? answers.specialization === true : false`, so every
+// user who skipped the optional priority question, and every beginner (the step's
+// `showIf` hid it from them), had `false` written for them by a question they were
+// never shown. Treating that silence as a decision is what froze this derivation out
+// of the ENTIRE pre-existing population while every test passed on fresh fixtures —
+// lesson 34, one wave after lesson 34 was written: a fix's reach is bounded by the
+// population of the field it reads, and no test can tell you, because the fixtures
+// supply the field.
+export function deriveSpecialization(profile, muscles = []) {
+  if (profile?.specialization === true) return true;
+  const ids = profile?.priority_muscles ?? [];
+  if (!ids.length) return false;
   if ((profile?.training_status ?? "beginner") === "beginner") return false;
-  return priorities <= 2;
+  const groupOf = new Map((muscles ?? []).map((m) => [m.id, m.group]));
+  const areas = new Set(ids.map((id) => groupOf.get(id) ?? id));
+  return areas.size <= 2;
 }
 
 export function generatePlan(profile, kb, opts = {}) {
@@ -407,7 +432,7 @@ export function generatePlan(profile, kb, opts = {}) {
   const injuries = profile.injuries ?? [];
   const equip = new Set(profile.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
   const seed = seedFromProfile(profile);
-  const specialization = deriveSpecialization(profile); // all-in block: priorities to the ceiling, the rest to maintenance
+  const specialization = deriveSpecialization(profile, muscles); // all-in block: priorities to the ceiling, the rest to maintenance
   const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
   // Lifts this person has genuinely plateaued on — demoted below every alternative
   // for their muscle so the next block offers a different angle (the KB's
@@ -555,6 +580,7 @@ export function generatePlan(profile, kb, opts = {}) {
   const EX_SET_CAP = 5;   // no single exercise exceeds 5 sets
   const EX_BUDGET = 8;    // no session exceeds 8 exercises
   const exerciseChoices = [];
+  const compoundBands = [];     // the compound rep band each session actually got (see the push below)
   const weekServed = new Set(); // muscles with a direct exercise ANYWHERE this week
   const weekUseCount = {};      // exercise id → sessions used this week (variety: cap at 2)
   let weekKneeFlexion = false;  // has ANY session placed knee-flexion hamstring work yet?
@@ -569,6 +595,11 @@ export function generatePlan(profile, kb, opts = {}) {
     // there's no same-archetype exposure to vary, so fall back to the day's
     // absolute position for whatever incidental week-to-week variety that gives.
     const sessScheme = sessionRepScheme(scheme, undulating, spec.of > 1 ? spec.letter - 1 : sIdx);
+    // What the week ACTUALLY prescribes for compounds, banked as it is decided. The
+    // rationale used to carry only the pre-undulation base scheme, so the plan screen's
+    // "What your answers changed" panel told an advanced hypertrophy lifter "compounds
+    // run 6-10" while the session list directly above it read 4-6 / 6-10 / 10-15.
+    compoundBands.push(sessScheme.compound?.[0]);
     const credited = {};      // effective sets credited to each muscle THIS session
     const direct = {};        // DIRECT primary sets per muscle this session (KB session-quality cap)
     const isoCredited = {};   // DIRECT isolation sets per muscle this session (arm/delt floor)
@@ -1067,6 +1098,11 @@ export function generatePlan(profile, kb, opts = {}) {
     split: { choice: split, days_per_week: sessionSpecs.length, training_status: experience, reason: splitReason, citations: splitCites },
     goal_prescription: {
       primary_goal: goal, rep_scheme: scheme,
+      // The bands the week REALLY runs, in session order, deduped. Equal to
+      // [rep_scheme.compound[0]] unless daily undulation is active, in which case the
+      // base scheme alone understates the single most advanced thing the engine does.
+      compound_bands: [...new Set(compoundBands.filter(Boolean))],
+      undulating,
       // The session ceiling, stated so the plan can explain itself: quality beats quantity.
       session_budget: { hard_sets: setBudget, minutes: sessionMin,
         reason: `Capped at ${setBudget} hard sets per session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
@@ -1107,8 +1143,20 @@ export function explainPersonalization(profile, rationale, program) {
   }
   const scheme = r.goal_prescription?.rep_scheme;
   if (scheme?.compound) {
+    // Read the bands the plan ACTUALLY shipped, not the base scheme it started from.
+    // For an advanced hypertrophy lifter the generator undulates the compound band per
+    // exposure and discards `rep_scheme.compound` — so quoting it here printed "6-10"
+    // directly above a session list reading 4-6 / 6-10 / 10-15, on the one surface
+    // built to prove the plan is honest (lesson 10), and understated the most advanced
+    // personalization the engine performs on the very card meant to make it visible.
+    const bands = r.goal_prescription.compound_bands?.length
+      ? r.goal_prescription.compound_bands
+      : [scheme.compound[0]];
+    const compoundCopy = bands.length > 1
+      ? `compounds cycle ${bands.slice(0, -1).join(", ")} and ${bands[bands.length - 1]} reps across the week — each muscle gets a heavier and a lighter exposure instead of the same session twice`
+      : `compounds run ${bands[0]} reps at ${scheme.compound[1]} reps in reserve`;
     say("primary_goal", GOAL_LABEL[r.goal_prescription.primary_goal] ?? r.goal_prescription.primary_goal,
-      `compounds run ${scheme.compound[0]} reps at ${scheme.compound[1]} reps in reserve, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
+      `${compoundCopy}, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
   }
 
   // The priority answer is the one the owner flagged: it must show its own arithmetic.
@@ -1121,7 +1169,15 @@ export function explainPersonalization(profile, rationale, program) {
     // doesn't deliver is the derived-status-contradicting-reality trap, on the one
     // surface built to prove the plan is honest.
     const named = priorities.filter((m) => vol[m]).map((m) => `${MUSCLE_LABEL[m] ?? m} ${vol[m].projected_sets ?? vol[m].target_sets} sets/wk`);
-    const held = Object.entries(vol).filter(([, v]) => v.maintenance).map(([m]) => MUSCLE_LABEL[m] ?? m);
+    // `projected_sets > 0`, not just the `maintenance` flag — the same
+    // what-the-week-DELIVERS rule the line above documents, applied to the count. `neck`
+    // carries the flag but no session archetype trains it, so it projects 0 sets and its
+    // own status reads "not-reached": a plan cannot hold at a maintenance dose something
+    // it never doses. It was being counted, so this card claimed 15 muscles held when 14
+    // were. Small, and exactly the kind of overstatement this card exists not to make.
+    const held = Object.entries(vol)
+      .filter(([, v]) => v.maintenance && (v.projected_sets ?? 0) > 0)
+      .map(([m]) => MUSCLE_LABEL[m] ?? m);
     if (named.length) {
       say("priority_muscles", `you want to grow ${priorities.map((m) => MUSCLE_LABEL[m] ?? m).join(" and ")}`,
         held.length

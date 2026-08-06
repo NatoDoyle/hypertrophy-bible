@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
@@ -529,7 +529,7 @@ export function createApp(store, config = {}) {
           // Recovery-/energy-aware context (Increment A): the tune won't ADD volume to
           // a stalled muscle while the athlete is persistently under-recovered or in an
           // energy deficit — that stall needs recovery/fuel, not more sets.
-          const volumeAdjust = u.profile?.specialization
+          const volumeAdjust = isSpecializing(u.profile)
             ? prevAdjust
             : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
           // What CHANGED this block — so the new-block coach note announces the actual

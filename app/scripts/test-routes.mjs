@@ -235,6 +235,28 @@ try {
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
   ok("#2 the new block's chest target increased from the adaptive bump", atAfter.plan_rationale?.volume_by_muscle?.chest?.target_sets > chestBefore);
 
+  // ...and the SAME stall must NOT bump volume while a specialization block is running,
+  // because a non-priority muscle held at maintenance stalls BY DESIGN. The gate for
+  // that read the raw `profile.specialization` field, which Wave 179 stopped writing —
+  // so for every account created since (all of them derive it), the freeze never
+  // engaged and the block's deliberately-held muscles were spuriously bumped, landing
+  // the moment specialization ended. Lesson 1: the field became derived, the consumer
+  // didn't follow. `back` is non-priority here, so its stall is the held-by-design kind.
+  const specTune = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, priority_muscles: ["chest"],
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  ok("#spec-tune the fixture really is running a DERIVED specialization block (no stored field)",
+    (await store.getUser(specTune)).profile.specialization === undefined
+    && Object.values((await store.getUser(specTune)).plan_rationale.volume_by_muscle).some((v) => v.maintenance));
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: specTune, session_id: `st-${w}`, date: dayAgo(49 - w * 7),
+    sets: [{ exercise: "lat-pulldown", set_type: "work", weight_kg: 70, reps: 8 }] });
+  await store.updateUser(specTune, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": specTune } });
+  const stAfter = await store.getUser(specTune);
+  ok("#spec-tune a maintenance-held muscle's by-design stall does NOT bump volume during a derived block",
+    Object.values(stAfter.plan_meta?.volume_adjust ?? {}).every((v) => (v ?? 0) === 0));
+
   // Increment A (recovery-aware tune) through the SAME door the client uses: the
   // identical stall, but logged under persistent under-recovery, must NOT bump volume.
   // Guards the block-boundary wiring (check-ins + hoisted bodyweights threaded into the
