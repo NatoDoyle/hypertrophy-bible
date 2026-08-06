@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**134** verified references.
+**136** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -15,6 +15,14 @@ ACOG Committee on Obstetric Practice (2020). Physical Activity and Exercise Duri
 
 - Type: position-stand · Population: mixed
 - DOI: [10.1097/AOG.0000000000003772](https://doi.org/10.1097/AOG.0000000000003772) · PMID: [32217980](https://pubmed.ncbi.nlm.nih.gov/32217980/)
+
+### albarello-2022-bench-inclination-csa
+Albarello JCdS et al. (2022). Non-uniform excitation of pectoralis major induced by changes in bench press inclination leads to uneven variations in the cross-sectional area measured by panoramic ultrasonography.
+
+*Journal of Electromyography and Kinesiology*, 67, 102722.
+
+- Type: cross-sectional · Population: mixed
+- DOI: [10.1016/j.jelekin.2022.102722](https://doi.org/10.1016/j.jelekin.2022.102722) · PMID: [36334406](https://pubmed.ncbi.nlm.nih.gov/36334406/)
 
 ### ashtary-larky-2025-creatine-meta
 Ashtary-Larky D & et al. (2025). Creatine supplementation and resistance training: a comparison between novice and experienced lifters - a systematic review and dose-response meta-analysis.
@@ -743,6 +751,14 @@ Robinson ZP & et al. (2024). Exploring the Dose-Response Relationship Between Es
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-024-02069-2](https://doi.org/10.1007/s40279-024-02069-2) · PMID: [38970765](https://pubmed.ncbi.nlm.nih.gov/38970765/)
+
+### rodriguez-ridao-2020-bench-inclination-emg
+Rodríguez-Ridao D et al. (2020). Effect of Five Bench Inclinations on the Electromyographic Activity of the Pectoralis Major, Anterior Deltoid, and Triceps Brachii during the Bench Press Exercise.
+
+*International Journal of Environmental Research and Public Health*, 17(19), 7339.
+
+- Type: cross-sectional · Population: trained
+- DOI: [10.3390/ijerph17197339](https://doi.org/10.3390/ijerph17197339) · PMID: [33049982](https://pubmed.ncbi.nlm.nih.gov/33049982/)
 
 ### sabag-2018-hiit-concurrent-meta
 Sabag A & et al. (2018). The compatibility of concurrent high intensity interval training and resistance training for muscular strength and hypertrophy: a systematic review and meta-analysis.

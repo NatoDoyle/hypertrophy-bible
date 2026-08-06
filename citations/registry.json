@@ -19,6 +19,29 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32217980/"
     },
     {
+      "key": "albarello-2022-bench-inclination-csa",
+      "authors": [
+        "Albarello JCdS",
+        "Cabral HV",
+        "Leitão BFM",
+        "Halmenschlager GH",
+        "Lulic-Kuryllo T",
+        "Matta TTd"
+      ],
+      "year": 2022,
+      "title": "Non-uniform excitation of pectoralis major induced by changes in bench press inclination leads to uneven variations in the cross-sectional area measured by panoramic ultrasonography.",
+      "source": "Journal of Electromyography and Kinesiology",
+      "volume": "67",
+      "pages": "102722",
+      "doi": "10.1016/j.jelekin.2022.102722",
+      "pmid": "36334406",
+      "study_type": "cross-sectional",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/36334406/ + https://api.crossref.org/works/10.1016/j.jelekin.2022.102722",
+      "notes": "13 men, flat vs 45 deg incline bench. Inclined: clavicular RMS > sternocostal (P<0.001) and greater acute CSA increase in clavicular (P<0.001); flat: the reverse (P<0.001 EMG, P=0.046 CSA). ACUTE post-exercise architecture, NOT chronic regional hypertrophy."
+    },
+    {
       "key": "ashtary-larky-2025-creatine-meta",
       "authors": [
         "Ashtary-Larky D",
@@ -153,7 +176,7 @@
     {
       "key": "borsheim-2002-eaa-mps",
       "authors": [
-        "B\u00f8rsheim E",
+        "Børsheim E",
         "Tipton KD",
         "Wolf SE",
         "Wolfe RR"
@@ -519,7 +542,7 @@
         "Douzi W",
         "Theurot D",
         "Bosquet L",
-        "Dugu\u00e9 B"
+        "Dugué B"
       ],
       "year": 2018,
       "title": "An Evidence-Based Approach for Choosing Post-exercise Recovery Techniques to Reduce Markers of Muscle Damage, Soreness, Fatigue, and Inflammation: A Systematic Review With Meta-Analysis.",
@@ -784,9 +807,9 @@
       "key": "henselmans-2022-carb-strength",
       "authors": [
         "Henselmans M",
-        "Bj\u00f8rnsen T",
+        "Bjørnsen T",
         "Hedderman R",
-        "V\u00e5rvik FT"
+        "Vårvik FT"
       ],
       "year": 2022,
       "title": "The Effect of Carbohydrate Intake on Strength and Resistance Training Performance: A Systematic Review.",
@@ -1134,7 +1157,7 @@
     {
       "key": "lixandrao-2018-bfr-meta",
       "authors": [
-        "Lixandr\u00e3o ME",
+        "Lixandrão ME",
         "et al."
       ],
       "year": 2018,
@@ -1153,7 +1176,7 @@
     {
       "key": "lixandrao-2024-volume-nonresponders",
       "authors": [
-        "Lixandr\u00e3o ME",
+        "Lixandrão ME",
         "et al."
       ],
       "year": 2024,
@@ -1442,7 +1465,7 @@
       "key": "ortega-2021-tart-cherry-recovery",
       "authors": [
         "Ortega DR",
-        "L\u00f3pez AM",
+        "López AM",
         "Amaya HM",
         "de la Rosa FJB"
       ],
@@ -1462,7 +1485,7 @@
     {
       "key": "pallares-2021-rom-meta",
       "authors": [
-        "Pallar\u00e9s JG",
+        "Pallarés JG",
         "et al."
       ],
       "year": 2021,
@@ -1617,7 +1640,7 @@
     {
       "key": "ramirez-campillo-2013-spot-reduction",
       "authors": [
-        "Ram\u00edrez-Campillo R",
+        "Ramírez-Campillo R",
         "et al."
       ],
       "year": 2013,
@@ -1781,6 +1804,28 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/38970765/"
+    },
+    {
+      "key": "rodriguez-ridao-2020-bench-inclination-emg",
+      "authors": [
+        "Rodríguez-Ridao D",
+        "Antequera-Vique JA",
+        "Martín-Fuentes I",
+        "Muyor JM"
+      ],
+      "year": 2020,
+      "title": "Effect of Five Bench Inclinations on the Electromyographic Activity of the Pectoralis Major, Anterior Deltoid, and Triceps Brachii during the Bench Press Exercise.",
+      "source": "International Journal of Environmental Research and Public Health",
+      "volume": "17",
+      "issue": "19",
+      "pages": "7339",
+      "doi": "10.3390/ijerph17197339",
+      "pmid": "33049982",
+      "study_type": "cross-sectional",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33049982/ + https://api.crossref.org/works/10.3390/ijerph17197339",
+      "notes": "30 trained adults, bench press at 0/15/30/45/60 deg at 60% 1RM. Upper-pec EMG peaked at 30 deg; mid and lower portions highest at 0 deg; anterior deltoid highest at 60 deg. Acute EMG only, not a hypertrophy trial."
     },
     {
       "key": "sabag-2018-hiit-concurrent-meta",
@@ -2322,7 +2367,7 @@
     {
       "key": "varovic-2025-muscle-length-regional",
       "authors": [
-        "Varovi\u0107 D",
+        "Varović D",
         "et al."
       ],
       "year": 2025,
