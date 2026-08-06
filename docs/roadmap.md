@@ -6,7 +6,8 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-04** (Waves 173-176: a diff-scoped correctness audit of
+Grounded assessment date: **2026-08-06** (Waves 186-189: a diff-scoped correctness audit of
+`8f488cf..HEAD` plus the chest.md depth rebuild; the prior grounding was Waves 173-176:
 `5171a37..HEAD` plus the KB's first DEPTH measurement; redo when a tier empties).
 
 ## Honest distance to each goal
@@ -21,7 +22,13 @@ cited (Wave 92/95), and `weak-point-prioritization` picked up 4 citations (PR #1
 `breaking-advanced-plateaus` and `long-term-and-annual-planning` stay honestly Grade C/D —
 planning heuristics no trial has directly tested, not an oversight. The **7 muscle guides —
 the product backbone** — are 480–893-word quick cards for most regions (back.md is the
-exemplar depth upgrade, Wave 93), not yet authoritative treatments everywhere. Missing whole
+exemplar depth upgrade, Wave 93; **chest.md joined it at ~1300w, Wave 188**), not yet
+authoritative treatments everywhere — `shoulders.md` is now the only one still on the
+list. Worth carrying forward from the chest rebuild: its prose recommended a movement
+(“low-to-high cable fly”) that **has no entry in `data/exercises`**, so the app could
+never program its own KB's advice. Nothing measured that, and nothing does yet — a
+prose-recommends-a-liftable-movement check is a candidate gate whenever a guide is
+touched. Missing whole
 topics: fiber-type×rep-range and tendinopathy were checked and are NOT gaps (already covered);
 menopause/HRT and pregnancy/postpartum shipped (Waves 89/91). Supplements: 15 entries now
 (creatine, caffeine, protein, beta-alanine, citrulline, HMB, BCAAs, EAAs, vitamin D, omega-3,
@@ -111,9 +118,12 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   `assessing-progress` are all off the report; `recovery-modalities-and-injury` gained
   the verdict table it had been promising. **Depth: 17 pages / 23 flags → 14 / 17.**
   Graph edges 314 → 334, median out-degree 3 → 4. Registry 131 → 134.
-- **Still open from item 1:** the `chest.md`/`shoulders.md` region-by-region rebuild
-  (still its own wave), and the 5 remaining shortlist entries — of which 3 need an
-  *exemption* rather than authoring, per the re-specified flip criterion below.
+- **Still open from item 1** *(updated 2026-08-06)*: `chest.md` **is done** (Wave 188);
+  `shoulders.md` is the remaining muscle-guide rebuild and is still its own wave. The
+  both-tells shortlist is now **3** entries, and all three need a recorded *exemption*
+  rather than authoring (two myth pages and a returning-lifters page — a rebuttal built
+  on null findings has nothing to quantify, lesson 13), per the re-specified flip
+  criterion below.
 - **Invisible-link baseline recorded:** 69 rendered-but-untraversable links across 13
   pages, now reported by `npm run depth`. NOT a failure condition — `back.md`, the
   roadmap's own exemplar, has the most of any page and degrades fine.
@@ -126,6 +136,50 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
 
+**Waves 186–189 progress (2026-08-06).** A diff-scoped lesson-3 audit of the previous
+burst (`8f488cf..HEAD`, Waves 178–185) plus the next KB-depth pull. Three shipping waves,
+all deployed and prod-smoked:
+
+- **Wave 186 — two trust-boundary doors and a gate that flattered itself.**
+  `/api/checkin` bounded the weigh-in row it writes but not the CHECK-IN row, from the
+  same `b.date` three lines apart; since every consumer window is `date >= start` with no
+  ceiling, a future-dated check-in never aged out of the 42-day block window
+  `recoverySignal` averages, and one-row-per-date made it uncorrectable. The realistic
+  vector was a wrong DEVICE clock, not an attacker. `parseTzOffset` also didn't reach the
+  profile PUT. And the invisible-links report was under-counting **69 → 92** because it
+  duplicated only half the renderer's predicate (index links render as plain text).
+- **Wave 187 — the Wave-179 specialization derivation reached almost nobody.** It counted
+  muscle ids while citing a rule about areas (so it refused the KB's own
+  `specialization-delts-arms-4day` shape); it honoured a stored `false` the old client had
+  written for every user who was never shown the question; `/api/today`'s auto-tune freeze
+  still read the raw field; the "What your answers changed" card quoted a rep band the
+  generator discards for advanced lifters (`6-10` above a plan reading 4-6/6-10/10-15) and
+  counted `neck` among muscles "held at maintenance" though nothing trains it. See
+  lessons 37–39.
+- **Wave 188 — `chest.md` rebuilt** (the item below named it as needing its own wave):
+  430w → ~1300w, 3 → 7 live links, three regions with ranked picks from real
+  `data/exercises` ids, and the reader's actual question answered in degrees (~30° incline,
+  never past 45°) from two newly dual-verified sources — both labelled Grade C and set
+  directly against Varovic 2025, because both measured acute activation, not growth. It
+  also removed a prescribed "low-to-high cable fly" that **does not exist in the exercise
+  DB**, so the app could never program the movement its own KB recommended. Registry
+  134 → 136.
+- **Depth now: 13 flagged pages / 16 flags** (was 14/17), **2** below the word floor
+  (was 3), 11 below the density floor, shortlist still 3.
+- **Deliberately NOT done, recorded so it isn't re-raised as new:** (a) the depth-gate
+  FLIP stays deferred — enforcement is all-or-nothing (`!warnOnly && flaggedPages.size > 0`)
+  and there is still no per-page exemption mechanism, so flipping needs an exemption list
+  plus an individual judgement call on each of the 11 density-floor pages; forcing it
+  would land the bar red, which lesson 30 says is worse than no gate. (b) **A derived
+  specialization block never ENDS** — `deriveSpecialization` re-runs on every plan
+  generation with no block counter, while the KB (and the deleted question's own copy)
+  says a block is one or two 6-week runs, "not forever". Real, larger than this wave, and
+  the natural next pull: `plan_meta.block_index` already exists to hang it on. (c) One
+  finder claimed the first-ever tz capture could retroactively settle a challenge stamped
+  in the old UTC frame; the arithmetic is plausible and the window is a few hours per
+  week, but it was **not verified and not acted on** — treat it as an open hypothesis,
+  not a finding.
+
 **Repopulated 2026-08-04 by the Waves 173–176 iteration** (a diff-scoped correctness audit
 of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
 
@@ -133,9 +187,10 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
    `npm run depth` (`tools/check-depth.mjs`, Wave 175) reports per-page word count, numeric
    density, table rows and out-degree; `DEPTH_GATE` ships **WARN-only** at corpus-derived
    floors (words p10 = 454, density p10 = 0.22 numbers/100w). Wave 176 cleared `alcohol` and
-   `muscle-soreness-doms`; **23 warnings remain — 6 below the word floor, 11 below the
-   density floor, 6 on the both-tells shortlist.** In priority order, verified as real gaps
-   by the Waves 173–176 audit rather than assumed:
+   `muscle-soreness-doms`; Waves 181–183 and 188 cleared five more. **Current
+   (2026-08-06): 13 flagged pages / 16 flags — 2 below the word floor, 11 below the
+   density floor, 3 on the both-tells shortlist.** In priority order, verified as real gaps
+   by the Waves 173–176 audit rather than assumed (entries struck through below are done):
    - `07-tracking/assessing-progress.md` (394w, 1 citation) — the page the Progress tab's
      concepts rest on, and it gives no measurement-noise numbers: no normal day-to-day
      bodyweight swing, no weigh-in cadence, no tape-change threshold, no photo interval. It
@@ -161,11 +216,15 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
      adjudicates two (foam rolling, cold water). Sauna, compression, massage guns and NSAIDs
      appear **nowhere in `content/`** and have no registry citation — needs verification
      first, and an honest "not yet reviewed" beats an invented verdict.
-   - `02-muscle-guides/chest.md` (430w) then `shoulders.md` — back.md is the exemplar
-     (region-by-region ranked picks with cues); these are 3-row tables. A ~600-word rebuild
-     each with real `data/exercises` ids, so too large to author honestly inline alongside
-     other work — its own wave. **Not** a coverage gap: all 16 `data/muscles` regions are
-     already addressed across the 7 guides (verified), so don't add guides, deepen these two.
+   - ~~`02-muscle-guides/chest.md` (430w)~~ **DONE (Wave 188)** — then `shoulders.md`
+     (591w), which is the last of these. back.md is the exemplar (region-by-region ranked
+     picks with cues); shoulders is still a 3-row table. A ~600-word rebuild with real
+     `data/exercises` ids, so too large to author honestly inline alongside other work —
+     its own wave. **Not** a coverage gap: all 16 `data/muscles` regions are already
+     addressed across the 7 guides (verified), so don't add guides, deepen this one.
+     Chest's rebuild is the worked pattern to copy, including the part worth repeating:
+     check that every movement the prose recommends actually EXISTS in `data/exercises`
+     (chest's did not — it prescribed a "low-to-high cable fly" the engine cannot program).
    - **Flip criterion for the gate — RE-SPECIFIED 2026-08-04.** It used to read "when the
      both-tells shortlist is empty". That is unreachable and was mis-specified: of the 5
      remaining entries, two are **myth pages** and one is a returning-lifters page, and
