@@ -601,6 +601,36 @@ These are real failures from previous iterations. Each is now a standing check.
    is resolved by MERGING onto the pre-existing key (the one content already
    references), moving the richer verification notes onto it, never by a second key.
 
+45. **A shape migration's test suite is where the old shape survives — seed fixtures as
+   REAL legacy rows, and keep some that way forever.** Migrating `profile.challenge`
+   (scalar) → `profile.challenges` (array) broke 15 route tests, 3 push tests and 5
+   adherence tests — and almost every failure was a FIXTURE writing or reading the
+   legacy scalar, not the feature misbehaving. Two distinct values fell out of fixing
+   them properly instead of mechanically: (a) fixtures that mutate stored state must go
+   through the SAME normalization helper production writes use (a fixture writing the
+   retired field is silently inert — the test passes while testing nothing); (b) a few
+   fixtures should deliberately STAY in the legacy shape, because they are now the only
+   tests proving an un-migrated D1 row still works — the push suite's scalar-seeded
+   users are exactly that, and the route suite gained an explicit one (`#legacy`,
+   seeded byte-for-byte as a pre-migration row, watermark mapping asserted). A
+   migration with only migrated-shape tests has no evidence about the rows that
+   actually exist in prod. Corollary: when a behaviour-change wave DELETES a
+   limitation, the test that asserted the limitation flips into the test of the
+   feature — "a third party can't challenge a busy opponent" became "a second partner
+   CAN challenge an already-challenged opponent", same fixture, inverted assertion.
+
+46. **A two-sided write needs a rollback for the second side's refusal.** Propose
+   writes the challenger's slot, then the opponent's; the opponent's CAS mutator can
+   refuse (their slots filled in the race window). Without rolling back the
+   challenger's just-written half, the pair ends in a one-sided invite that later
+   settles as a phantom decline — a fabricated "they said no" nobody said. The
+   single-slot world never had this: its busy check was one global boolean read
+   pre-write on both sides, so the second write could only clobber, not refuse.
+   → **Standing lens:** when a logical operation writes N rows and any writer past the
+   first can refuse inside its mutator, either the operation is idempotent-retryable
+   or every earlier write needs an explicit compensating rollback — check which one
+   you shipped, and test the refusal path from BOTH directions.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -622,6 +652,16 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7y. **Telemetry (Waves 198–200, 2026-08-08).** Zero agents again — two feature waves
+   (Tier-1 #2 end to end: backend + frontend) plus this LEARN wave, all inline. The
+   self-audit of the prior burst found it clean in one read (it was 4 pages of content
+   and a well-tested mechanism), so no Wave-fix shipped and none was padded into
+   existence. The feature's correctness burden was carried by 23 new/updated tests and
+   a real-browser walkthrough, not by reviewers: the browser run caught nothing the
+   tests missed, which is the outcome you want and only get by writing the tests
+   first. Prod-smoked on real D1 including a respond-by-id against two live
+   concurrent slots.
+
 7z. **Telemetry (Waves 194–197, 2026-08-07).** **ZERO agents of any kind** — the first
    iteration with no finder launch at all, applying 7a's own conclusion instead of
    re-learning it. Four waves shipped: the self-audit ran inline (one confirmed defect
