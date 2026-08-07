@@ -1,5 +1,5 @@
 // Unit tests for the adherence & gamification engine (src/adherence.mjs).
-import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek, settleChallenge } from "../src/adherence.mjs";
+import { weeksConsistent, xpAndLevel, milestones, adherenceStatus, weeklySummary, adherenceReport, streakFreezeState, trainedWeekCount, STREAK_FREEZE_MAX, publicShareCard, sessionsInWeek, settleChallenge, celebrationEvent, celebrationCopy, STREAK_MILESTONE_WEEKS } from "../src/adherence.mjs";
 import { COMEBACK_GAP_DAYS } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
@@ -276,6 +276,70 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const noTzResult = await settleChallenge(tzStore, "me", noTzUser, MONDAY_EARLY_UTC);
   ok("control: without a stored tz_offset_min, the same instant falls back to raw UTC and DOES read as week-over",
     noTzResult.challenges[0].week_over === true);
+}
+
+// --- Celebration events (Tier-1 #3, Wave 201): the single top event a just-logged
+// session earned, and the push copy it renders as. Priority is rarest-first:
+// session-count milestone > streak milestone > PR > level.
+{
+  const exSess = (date, weight, hard = 3) => ({ date, sets: Array.from({ length: hard }, () => ({ exercise: "bench-press", set_type: "work", weight_kg: weight, reps: 8 })) });
+  const noUser = {};
+
+  // The thresholds are product decisions — pin the VALUES with literals (lesson 42),
+  // so silently disabling a milestone fails a test, not just an intent.
+  ok("STREAK_MILESTONE_WEEKS is literally [4, 12, 26, 52]",
+    JSON.stringify(STREAK_MILESTONE_WEEKS) === JSON.stringify([4, 12, 26, 52]));
+
+  // First-ever session: milestone [1] — and it wins even though everything is "new".
+  const first = exSess("2026-01-05", 100);
+  const c1 = celebrationEvent(first, [], noUser, "2026-01-05");
+  ok("first session fires the [1] session-count milestone", c1?.kind === "milestone" && c1.count === 1);
+
+  // Third session that is ALSO a PR: milestone outranks PR.
+  const twoPrior = [exSess("2026-01-05", 100), exSess("2026-01-06", 100)];
+  const c2 = celebrationEvent(exSess("2026-01-07", 110), twoPrior, noUser, "2026-01-07");
+  ok("a session-count milestone outranks a PR in the same session", c2?.kind === "milestone" && c2.count === 3);
+
+  // Fourth consecutive WEEK crossed (4 sessions — 4 is not a session milestone),
+  // heavier bar too: streak milestone outranks the PR.
+  const threeWeeks = [exSess("2026-01-05", 100), exSess("2026-01-12", 100), exSess("2026-01-19", 100)];
+  const c3 = celebrationEvent(exSess("2026-01-26", 110), threeWeeks, noUser, "2026-01-26");
+  ok("crossing a 4-week streak fires the streak milestone (and outranks a PR)", c3?.kind === "streak" && c3.weeks === 4);
+
+  // The SECOND session of the crossing week must not re-fire the streak.
+  const fourWeeks = [...threeWeeks, exSess("2026-01-26", 100)];
+  const c4 = celebrationEvent(exSess("2026-01-28", 100), fourWeeks, noUser, "2026-01-28");
+  ok("the streak milestone fires once — the crossing week's second session never re-fires it", c4?.kind !== "streak");
+
+  // A plain PR (5th session — not a milestone; same week — no streak): PR wins even
+  // though the same session ALSO crosses a level boundary (pr > level pinned).
+  const fourSame = [exSess("2026-01-05", 100), exSess("2026-01-05", 100), exSess("2026-01-06", 100), exSess("2026-01-06", 100)];
+  const c5 = celebrationEvent(exSess("2026-01-07", 110), fourSame, noUser, "2026-01-07");
+  ok("a PR outranks the level-up the same session caused", c5?.kind === "pr" && c5.count >= 1);
+
+  // Same shape WITHOUT the PR: the level-up is what's left and it fires.
+  const c6 = celebrationEvent(exSess("2026-01-07", 100), fourSame, noUser, "2026-01-07");
+  ok("a level-up fires when it's the only event", c6?.kind === "level" && c6.level === 2);
+
+  // An unremarkable session: nothing fires.
+  const c7 = celebrationEvent(exSess("2026-01-05", 100, 3), [exSess("2026-01-05", 100)], noUser, "2026-01-05");
+  ok("an unremarkable session earns no celebration (null, never filler praise)", c7 === null);
+
+  // Copy: producer kinds and renderer kinds can never disagree (lesson 15) — every
+  // kind celebrationEvent can emit renders to a subject+body+tag.
+  ok("milestone copy reuses the in-app badge copy (one source of truth)",
+    celebrationCopy({ kind: "milestone", count: 3 }).body.includes("habit is taking root")
+    && celebrationCopy({ kind: "milestone", count: 3 }).subject === "🏅 3 sessions logged");
+  ok("streak copy names the weeks; a year gets its own line",
+    celebrationCopy({ kind: "streak", weeks: 4 }).subject === "🔥 4-week streak"
+    && celebrationCopy({ kind: "streak", weeks: 52 }).body.includes("year"));
+  ok("PR copy: singular and plural bodies differ",
+    celebrationCopy({ kind: "pr", count: 1 }).body !== celebrationCopy({ kind: "pr", count: 3 }).body
+    && celebrationCopy({ kind: "pr", count: 2 }).body.includes("2"));
+  ok("level copy names the level",
+    celebrationCopy({ kind: "level", level: 7 }).subject === "⬆️ Level 7");
+  ok("every celebration renders the shared hb-celebrate tag",
+    ["milestone", "streak", "pr", "level"].every((kind) => celebrationCopy({ kind, count: 1, weeks: 4, level: 2 }).tag === "hb-celebrate"));
 }
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

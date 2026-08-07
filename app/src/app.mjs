@@ -6,7 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
-import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
@@ -875,11 +875,31 @@ export function createApp(store, config = {}) {
     const ownerId = await store.getShareUserId(token);           // must be a real, live share
     if (!ownerId) return c.json({ error: "not-found" }, 404);
     if (ownerId === b.user_id) return c.json({ error: "cannot-follow-self" }, 400);
+    // `isNew` decided INSIDE the mutator (CAS re-runs see fresh data): only a token
+    // not already on the list is a new-follower EVENT for the owner below.
+    let isNew = false;
     const updated = await store.updateUser(b.user_id, (u) => {
-      const list = (u.profile?.following ?? []).filter((t) => t !== token); // dedup, most-recent first, capped
+      const cur = u.profile?.following ?? [];
+      isNew = !cur.includes(token);
+      const list = cur.filter((t) => t !== token); // dedup, most-recent first, capped
       u.profile = { ...(u.profile ?? {}), following: [token, ...list].slice(0, 20) };
       return u;
     });
+    // New-follower event (Tier-1 #3, Wave 201): sharing is opt-in and the card is
+    // public by the owner's own choice, but nothing ever TOLD them someone started
+    // watching — the strongest "your streak has an audience" signal the app has, and
+    // it reached no device. A monotonic count on the owner's profile (same shape as
+    // share cheers) that the push sweep compares against followers_pushed; carries
+    // no identity because the follower has none to leak (following is anonymous by
+    // design). Best-effort: the follow itself must never fail on the owner's write.
+    if (isNew) {
+      try {
+        await store.updateUser(ownerId, (u) => {
+          u.profile = { ...(u.profile ?? {}), followers_count: (u.profile?.followers_count ?? 0) + 1 };
+          return u;
+        });
+      } catch { /* the follow stands; the owner hears about the next one */ }
+    }
     return c.json({ following: updated.profile.following.length });
   });
   app.post("/api/following/remove", async (c) => {
@@ -1116,8 +1136,54 @@ export function createApp(store, config = {}) {
     };
     await store.addSession(id, session);
     const all = await store.listSessions(id);
+    // Celebration marker (Tier-1 #3, Wave 201): the single most celebration-worthy
+    // event this session caused, stamped here — the ONE door every session enters
+    // through (lesson 33: this is the sink; addSession has no other caller) — and
+    // delivered later by the push sweep as a device-side echo of the in-app moment.
+    // Keyed to the session_id so a replayed offline POST (addSession dedups) can
+    // never re-arm a marker the sweep already pushed. Best-effort: a failed stamp
+    // must never fail the session save the user is waiting on.
+    try {
+      const prior = all.filter((s) => s.session_id !== session.session_id);
+      // The streak half of celebrationEvent compares week ordinals — computed in the
+      // SESSION'S own banked calendar day (local_date when the client sent one), the
+      // same frame the streak walker banks weeks in, never the server's UTC instant
+      // (lesson 22: a Sunday-evening session west of UTC must not read as next week).
+      const cel = celebrationEvent(session, prior, user, session.local_date ?? session.date);
+      if (cel) {
+        await store.updateUser(id, (u) => {
+          if (u.profile?.celebration?.session_id === session.session_id) return u; // replay — keep the original (possibly pushed) marker
+          u.profile = { ...(u.profile ?? {}), celebration: { session_id: session.session_id, at: Date.now(), ...cel } };
+          return u;
+        });
+      }
+    } catch { /* the echo is optional; the logged session is not */ }
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
   });
+
+  // An edit or void of the session a pending celebration points at must RE-EARN the
+  // celebration from the corrected data — the realistic edit is a fat-fingered
+  // weight that was wrongly celebrated as a PR (the exact hazard lesson 27's edit
+  // routes exist to correct), and pushing praise for a number the user just took
+  // back would teach them the celebrations are fake (lesson 10's sibling). Already-
+  // pushed markers are left alone: the notification is out, and rewriting history
+  // helps nobody. A voided session vanishes from listSessions, so `sess` is null
+  // and the marker clears.
+  const recomputeCelebration = async (userId, user, sessionId) => {
+    try {
+      if (user?.profile?.celebration?.session_id !== sessionId || user.profile.celebration.pushed) return;
+      const all = await store.listSessions(userId);
+      const sess = all.find((s) => s.session_id === sessionId) ?? null;
+      const cel = sess ? celebrationEvent(sess, all.filter((s) => s.session_id !== sessionId), user, sess.local_date ?? sess.date) : null;
+      await store.updateUser(userId, (u) => {
+        const cur = u.profile?.celebration;
+        if (cur?.session_id !== sessionId || cur.pushed) return u; // replaced or already delivered — don't touch
+        const { celebration, ...rest } = u.profile;
+        u.profile = cel ? { ...rest, celebration: { session_id: cur.session_id, at: cur.at, ...cel } } : rest;
+        return u;
+      });
+    } catch { /* best-effort, same as the stamp itself */ }
+  };
 
   // Report an injury from inside a workout (considerations #2, finding 2E).
   // docs/app-design-spec.md described this reactive path — "only when a user skips
@@ -1191,7 +1257,7 @@ export function createApp(store, config = {}) {
   // route uses, so an edit can't smuggle past a bound the original had to clear.
   app.post("/api/session/update", async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const { id, error } = await requireUser(c, body);
+    const { id, user, error } = await requireUser(c, body);
     if (error) return error;
     if (!body.session_id) return c.json({ error: "session_id required" }, 400);
     if (!Array.isArray(body.sets)) return c.json({ error: "sets required" }, 400);
@@ -1205,6 +1271,7 @@ export function createApp(store, config = {}) {
       return sess;
     });
     if (!updated) return c.json({ error: "unknown session" }, 404);
+    await recomputeCelebration(id, user, body.session_id);
     // Report what was PERSISTED, not the local guess (lesson 21).
     return c.json({ ok: true, session: updated });
   });
@@ -1213,7 +1280,7 @@ export function createApp(store, config = {}) {
   // rather than sliding it forward, so "when did I take this back" stays true.
   app.post("/api/session/void", async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const { id, error } = await requireUser(c, body);
+    const { id, user, error } = await requireUser(c, body);
     if (error) return error;
     if (!body.session_id) return c.json({ error: "session_id required" }, 400);
     const voided = body.voided !== false;
@@ -1223,6 +1290,7 @@ export function createApp(store, config = {}) {
       return sess;
     });
     if (!updated) return c.json({ error: "unknown session" }, 404);
+    await recomputeCelebration(id, user, body.session_id);
     return c.json({ ok: true, voided: !!updated.voided_at, session: updated });
   });
 

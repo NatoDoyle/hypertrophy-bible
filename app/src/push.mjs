@@ -1,6 +1,7 @@
 import { isoWeekKeyLocal, weekHasPassed, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
-import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile } from "./adherence.mjs";
+import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile, celebrationCopy } from "./adherence.mjs";
+import { comebackStage } from "./nudge.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -99,6 +100,7 @@ export async function sendPush(subscription, vapid, payload, fetchFn = fetch) {
 
 export const PUSH_MIN_LAPSE_DAYS = 2;   // don't nag someone who trained yesterday
 export const PUSH_MAX_LAPSE_DAYS = 21;  // after ~3 weeks the daily push goes quiet (email owns the long tail)
+export const CELEBRATION_MAX_AGE_MS = 48 * 3600e3; // praise older than 2 days is stale — stay silent
 export const PUSH_TARGET_LOCAL_HOUR = 17; // ~5pm local — late afternoon, actionable before evening training
 export const PUSH_LEGACY_UTC_HOUR = 16;   // users with no stored timezone keep the old single 16:00-UTC slot
 
@@ -233,7 +235,12 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // at all falls back to email (never a user who merely had a send fail this
       // tick — that case already retries via push next tick, so adding a second
       // channel there would risk a duplicate notification for no reliability gain).
-      const fanOut = async (payload) => {
+      // `emailFallback: false` keeps an event push-only: the celebration echo and the
+      // comeback push must never open a NEW email channel (the comeback EMAIL is
+      // nudge.mjs's own separately-swept job, and an emailed echo of the user's own
+      // in-app moment is spam, not signal). Genuinely-new-information events (nudge,
+      // challenge, cheer, new follower) keep the fallback.
+      const fanOut = async (payload, { emailFallback = true } = {}) => {
         let ok = 0;
         for (const s of userSubs) {
           if (gone.has(s.endpoint) || !isAllowedPushEndpoint(s.endpoint) || !s.p256dh || !s.auth) continue;
@@ -243,7 +250,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
             if (res.ok) { ok++; sent++; }
           } catch { /* one bad subscription never blocks the rest */ }
         }
-        if (ok === 0 && userSubs.length === 0 && email && sendSocialEmail) {
+        if (ok === 0 && emailFallback && userSubs.length === 0 && email && sendSocialEmail) {
           try {
             const res = await sendSocialEmail(email, { subject: payload.subject ?? payload.title, body: payload.body });
             if (res?.ok) { ok = 1; sent++; }
@@ -356,6 +363,52 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         }
       }
 
+      // A NEW FOLLOWER (Tier-1 #3, Wave 201): stamped by POST /api/following at the
+      // moment someone new follows (the one door a follow enters through), read here
+      // as the COUNT itself vs followers_pushed — the same monotonic high-water shape
+      // as cheers_pushed, because follows accumulate with no single event instant.
+      // Batches naturally: two follows between ticks are one "2 people" push, never
+      // two notifications. Email fallback stays ON — unlike the celebration echo
+      // below, a new follower is genuinely new information the user has no other way
+      // to hear about.
+      if (!paused && !remindersOff && !quietHours) {
+        const followers = user.profile?.followers_count ?? 0;
+        const followersPushed = user.profile?.followers_pushed ?? 0;
+        if (followers > followersPushed) {
+          const delta = followers - followersPushed;
+          const body = delta === 1
+            ? "Someone started following your training — your streak has an audience now."
+            : `${delta} people started following your training — your streak has an audience now.`;
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You have a new follower", body, tag: "hb-follower" });
+          if (ok) await stamp("followers_pushed", followers);
+        }
+      }
+
+      // The CELEBRATION echo (Tier-1 #3, Wave 201): the single top event the user's
+      // latest session earned — PR / level-up / session milestone / streak milestone —
+      // stamped by POST /api/session, delivered here as ONE notification on the next
+      // tick. Freshness-bounded: praise older than CELEBRATION_MAX_AGE_MS (a marker
+      // that outlived days of failed sends, or predates a long-dead subscription) is
+      // stale and stays silent — a happy event delivered a week late reads as a bug.
+      // The pushed flag lives ON the marker; the precondition inside the mutator keys
+      // on session_id so a newer session's marker is never mis-stamped (lesson 23's
+      // scope question: the marker is per-EVENT, so the stamp is too). Push-only by
+      // design (emailFallback:false) — the in-app recap already told this story.
+      const cel = user.profile?.celebration;
+      if (!paused && !remindersOff && !quietHours && cel && !cel.pushed
+          && now - (cel.at ?? 0) <= CELEBRATION_MAX_AGE_MS) {
+        const ok = await fanOut({ title: "The Hypertrophy Bible", ...celebrationCopy(cel) }, { emailFallback: false });
+        if (ok) {
+          try {
+            await store.updateUser(userId, (u) => {
+              if (u.profile?.celebration?.session_id !== cel.session_id) return u; // replaced — don't mark the newer one
+              u.profile = { ...u.profile, celebration: { ...u.profile.celebration, pushed: true } };
+              return u;
+            });
+          } catch { /* worst case: one repeat push next tick, never a lost event */ }
+        }
+      }
+
       // Challenge RESULTS (Waves 138/139, multi-slot): if a week ended and this user
       // never reopened the app, GET /api/challenge's self-transition never ran —
       // settle here with the SAME shared logic (settleChallenge settles every needy
@@ -421,7 +474,41 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       }
 
       const lastSessionAt = await store.latestSessionDate(userId);
+
+      // The COMEBACK, on the device channel (Tier-1 #3's last item — it was
+      // email-only): the same pure comebackStage the email sweep uses (one source
+      // of truth, lesson 1) with its own push-side marker (`comeback_push`, same
+      // {for_session_at, stage} shape), so neither channel gates the other — the
+      // same two-surface rule as nudge_pushed_at vs nudge_seen_at. Rides the
+      // user's one local push hour (a decent hour by construction), and REPLACES
+      // that day's generic empty reminder with the warmer staged copy instead of
+      // stacking a second notification beside it. Training again resets the
+      // anchor naturally, exactly like the email. Push-only (emailFallback:false):
+      // the email channel already runs this play on its own sweep.
+      let comebackSent = false;
+      if (!paused && !remindersOff) {
+        const hit = comebackStage({ lastSessionAt, nudge: user.profile?.comeback_push ?? null, paused, remindersOff, now });
+        if (hit) {
+          const copy = hit.stage === 2
+            ? { subject: "The door's open when you are", body: "A couple of weeks off is nothing in a training life. Your weights are already eased for re-entry — one session is all a comeback is." }
+            : { subject: "Your next session is ready when you are", body: "A few days off is part of training. Your next session is ready — it adjusts to wherever you're at today." };
+          const ok = await fanOut({ title: "The Hypertrophy Bible", ...copy, tag: "hb-comeback" }, { emailFallback: false });
+          if (ok) {
+            comebackSent = true;
+            try {
+              await store.updateUser(userId, (u) => {
+                const cur = u.profile?.comeback_push;
+                if (cur?.for_session_at === lastSessionAt && (cur.stage ?? 0) >= hit.stage) return u; // already claimed — never rewind
+                u.profile = { ...(u.profile ?? {}), comeback_push: { for_session_at: lastSessionAt, stage: hit.stage, at: new Date(now).toISOString() } };
+                return u;
+              });
+            } catch { /* worst case: one repeat push tomorrow, never a lost nudge */ }
+          }
+        }
+      }
+
       for (const sub of userSubs) {
+        if (comebackSent) break; // the comeback WAS today's reminder — never two notifications in one tick
         if (gone.has(sub.endpoint)) continue;
         // Two independent reasons to push, one send: lapse-reactive (shouldPush)
         // OR the user's own weekly commitment. subscribedAt is PER-SUBSCRIPTION

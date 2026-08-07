@@ -1597,6 +1597,62 @@ try {
   ok("#tz a challenge whose stored week reads as the FUTURE (frame skew) is not settled",
     chRead.challenge?.status === "pending" && chRead.week_over === false);
 
+  // --- Tier-1 #3 (Wave 201): the celebration marker is stamped at the SESSION DOOR
+  // and the new-follower count at the FOLLOW door — tested through the same HTTP
+  // surface the client uses, never by feeding the helpers directly. ---
+  const celU = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+
+  // First-ever session: the [1] milestone is the top event.
+  await json("POST", "/api/session", { user_id: celU, session_id: "cel-1", date: dAgo(3),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] });
+  const celP1 = (await store.getUser(celU)).profile.celebration;
+  ok("#celebrate the first session stamps the [1] milestone marker at the session door",
+    celP1?.kind === "milestone" && celP1.count === 1 && celP1.session_id === "cel-1" && typeof celP1.at === "number");
+
+  // A REPLAYED offline POST (same session_id) must not re-arm a delivered marker.
+  await store.updateUser(celU, (u) => { u.profile = { ...u.profile, celebration: { ...u.profile.celebration, pushed: true } }; return u; });
+  await json("POST", "/api/session", { user_id: celU, session_id: "cel-1", date: dAgo(3),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] });
+  ok("#celebrate a replayed session POST never re-arms a pushed marker",
+    (await store.getUser(celU)).profile.celebration.pushed === true);
+
+  // Second session, heavier: a PR (2 sessions is no milestone, same-week no streak).
+  await json("POST", "/api/session", { user_id: celU, session_id: "cel-2", date: dAgo(2),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 110, reps: 10 }] });
+  const celP2 = (await store.getUser(celU)).profile.celebration;
+  ok("#celebrate a heavier second session stamps a PR marker", celP2?.kind === "pr" && celP2.session_id === "cel-2" && celP2.pushed !== true);
+
+  // The lesson-27 edit: correcting the fat-fingered weight DOWN un-earns the PR.
+  await json("POST", "/api/session/update", { user_id: celU, session_id: "cel-2",
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] });
+  const celP3 = (await store.getUser(celU)).profile.celebration;
+  ok("#celebrate correcting the celebrated weight down re-earns (here: clears) the marker", celP3 == null || celP3.session_id !== "cel-2");
+
+  // Voiding the celebrated session clears its pending celebration outright.
+  await json("POST", "/api/session", { user_id: celU, session_id: "cel-3", date: dAgo(1),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 120, reps: 10 }] });
+  ok("#celebrate fixture sanity: the third session re-arms a PR marker", (await store.getUser(celU)).profile.celebration?.session_id === "cel-3");
+  await json("POST", "/api/session/void", { user_id: celU, session_id: "cel-3" });
+  ok("#celebrate voiding the celebrated session clears its pending marker", (await store.getUser(celU)).profile.celebration == null);
+
+  // New-follower event: the follow door bumps the OWNER's monotonic count once —
+  // a re-follow is not a new follower.
+  const folOwner = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "female", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 45, available_equipment: ["dumbbell"],
+  } })).data.user_id;
+  const folShare = (await json("POST", "/api/share", { user_id: folOwner })).data.share_id;
+  await json("POST", "/api/following", { user_id: celU, token: folShare });
+  ok("#follower a new follow bumps the owner's followers_count", (await store.getUser(folOwner)).profile.followers_count === 1);
+  await json("POST", "/api/following", { user_id: celU, token: folShare });
+  ok("#follower re-following is idempotent — no second event", (await store.getUser(folOwner)).profile.followers_count === 1);
+  await json("POST", "/api/following/remove", { user_id: celU, token: folShare });
+  await json("POST", "/api/following", { user_id: celU, token: folShare });
+  ok("#follower unfollow → refollow is a genuine new-follower event again", (await store.getUser(folOwner)).profile.followers_count === 2);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

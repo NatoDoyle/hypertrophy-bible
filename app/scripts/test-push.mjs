@@ -730,6 +730,114 @@ try {
     } finally { try { rmSync(tzChalPath); } catch {} }
   }
 
+  // --- Tier-1 #3 (Wave 201): a NEW FOLLOWER pushes, keyed to the count high-water
+  // (followers_count vs followers_pushed, the cheers_pushed shape) ---
+  {
+    const folPath = join(tmpdir(), `hb-push-follower-test-${process.pid}.json`);
+    const folStore = createFileStore(folPath);
+    try {
+      const ua = await fakeUaSubscription();
+      await folStore.saveUser("owner", { profile: { followers_count: 2, followers_pushed: 1 } });
+      await folStore.savePushSubscription("owner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/follower", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      let sentBody = "unset";
+      const captureFetch = async (url, opts) => { sentBody = opts.body ?? null; return { ok: true, status: 201 }; };
+      const r1 = await runPushSweep(folStore, vapid, NOW, captureFetch);
+      ok("a new follower pushes a content-bearing notification", r1.sent === 1 && sentBody instanceof Uint8Array);
+      const d1 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("the follower push carries the follower copy and its own tag", d1.tag === "hb-follower" && /following your training/.test(d1.body));
+      ok("followers_pushed advances to the count (high-water)", (await folStore.getUser("owner")).profile.followers_pushed === 2);
+      const r2 = await runPushSweep(folStore, vapid, NOW + 3600e3, captureFetch);
+      ok("the same follower never re-fires", r2.sent === 0);
+      await folStore.updateUser("owner", (u) => { u.profile = { ...u.profile, followers_count: 4 }; return u; });
+      sentBody = "unset";
+      const r3 = await runPushSweep(folStore, vapid, NOW + 7200e3, captureFetch);
+      const d3 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("two follows between ticks batch into ONE '2 people' push, never two notifications", r3.sent === 1 && /^2 people/.test(d3.body));
+    } finally { try { rmSync(folPath); } catch {} }
+  }
+
+  // --- Tier-1 #3 (Wave 201): the CELEBRATION echo — the session-door marker pushes
+  // once, respects quiet hours, and stale praise stays silent ---
+  {
+    const celPath = join(tmpdir(), `hb-push-celebrate-test-${process.pid}.json`);
+    const celStore = createFileStore(celPath);
+    try {
+      const ua = await fakeUaSubscription();
+      await celStore.saveUser("winner", { profile: { celebration: { session_id: "s1", at: NOW - 3600e3, kind: "pr", count: 1 } } });
+      await celStore.savePushSubscription("winner", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/celebrate", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      let sentBody = "unset";
+      const captureFetch = async (url, opts) => { sentBody = opts.body ?? null; return { ok: true, status: 201 }; };
+      const r1 = await runPushSweep(celStore, vapid, NOW, captureFetch);
+      ok("an unpushed celebration marker pushes ONE notification", r1.sent === 1 && sentBody instanceof Uint8Array);
+      const d1 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("the celebration push renders celebrationCopy (same producer/renderer pair)", d1.tag === "hb-celebrate" && /personal best/.test(d1.body));
+      ok("the pushed flag lands ON the marker (per-event scope)", (await celStore.getUser("winner")).profile.celebration.pushed === true);
+      const r2 = await runPushSweep(celStore, vapid, NOW + 3600e3, captureFetch);
+      ok("a pushed celebration never re-fires", r2.sent === 0);
+
+      // Stale praise: a marker older than the freshness bound stays silent forever.
+      await celStore.saveUser("late", { profile: { celebration: { session_id: "s9", at: NOW - 3 * 86400e3, kind: "level", level: 4 } } });
+      await celStore.savePushSubscription("late", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/celebrate-late", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      const r3 = await runPushSweep(celStore, vapid, NOW, captureFetch);
+      ok("a celebration older than 48h is stale praise and stays silent", r3.sent === 0);
+
+      // Quiet hours: deferred to the next decent local hour, never lost.
+      await celStore.saveUser("night", { profile: { tz_offset_min: 660, celebration: { session_id: "s2", at: NOW - 60e3, kind: "streak", weeks: 4 } } });
+      await celStore.savePushSubscription("night", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/celebrate-night", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      ok("fixture sanity: it is 3am local for this user right now", isSocialPushQuietHours(660, NOW) === true);
+      const r4 = await runPushSweep(celStore, vapid, NOW, captureFetch);
+      ok("a 3am celebration is deferred, not delivered", r4.sent === 0 && (await celStore.getUser("night")).profile.celebration.pushed !== true);
+      const r5 = await runPushSweep(celStore, vapid, NOW + 5 * 3600e3, captureFetch);
+      ok("...and delivers on the first tick outside quiet hours (nothing lost)", r5.sent === 1);
+    } finally { try { rmSync(celPath); } catch {} }
+  }
+
+  // --- Tier-1 #3 (Wave 201): the COMEBACK on the push channel — same pure
+  // comebackStage as the email sweep, own marker, and it REPLACES that day's
+  // generic empty reminder instead of stacking beside it ---
+  {
+    const cbPath = join(tmpdir(), `hb-push-comeback-test-${process.pid}.json`);
+    const cbStore = createFileStore(cbPath);
+    try {
+      const ua = await fakeUaSubscription();
+      const lastDate = new Date(NOW - 5 * 86400e3).toISOString();
+      await cbStore.saveUser("lapsed", { profile: {} });
+      await cbStore.addSession("lapsed", { session_id: "cb-s1", date: lastDate, sets: [{ exercise: "bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+      await cbStore.savePushSubscription("lapsed", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/comeback", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      let sentBody = "unset";
+      const captureFetch = async (url, opts) => { sentBody = opts.body ?? null; return { ok: true, status: 201 }; };
+      // NOW is 16:00 UTC — this no-tz user's one legacy push hour, where the 5-day
+      // lapse would otherwise send the generic EMPTY reminder.
+      const r1 = await runPushSweep(cbStore, vapid, NOW, captureFetch);
+      ok("day-5 lapse at the push hour sends ONE push — the comeback, not the generic reminder beside it", r1.sent === 1 && sentBody instanceof Uint8Array);
+      const d1 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("the stage-1 comeback carries the warm copy", d1.tag === "hb-comeback" && /ready when you are/i.test(d1.subject ?? "") || /ready/.test(d1.body));
+      const marker = (await cbStore.getUser("lapsed")).profile.comeback_push;
+      ok("the push-side marker records stage 1 against the lapse anchor", marker?.stage === 1 && marker.for_session_at === lastDate);
+      // Off the push hour: nothing fires (the comeback rides the one daily slot).
+      const r2 = await runPushSweep(cbStore, vapid, NOW + 3600e3, captureFetch);
+      ok("the comeback never fires outside the user's one push hour", r2.sent === 0);
+      // Next day, same hour: stage 1 already sent — the generic EMPTY reminder resumes.
+      sentBody = "unset";
+      const r3 = await runPushSweep(cbStore, vapid, NOW + 86400e3, captureFetch);
+      ok("the day after, the generic empty reminder resumes (stage 1 sent once)", r3.sent === 1 && sentBody === null);
+      // Day 15: stage 2 fires once, with the eased-re-entry copy — then quiet.
+      sentBody = "unset";
+      const r4 = await runPushSweep(cbStore, vapid, NOW + 10 * 86400e3, captureFetch);
+      const d4 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("day-15 lapse fires the stage-2 comeback (eased re-entry copy)", r4.sent === 1 && d4.tag === "hb-comeback" && /eased/.test(d4.body));
+      sentBody = "unset";
+      const r5 = await runPushSweep(cbStore, vapid, NOW + 11 * 86400e3, captureFetch);
+      ok("after both stages, the empty daily reminder is all that remains", r5.sent === 1 && sentBody === null);
+      // Training again resets the anchor: a fresh lapse starts over at stage 1.
+      await cbStore.addSession("lapsed", { session_id: "cb-s2", date: new Date(NOW + 12 * 86400e3).toISOString(), sets: [{ exercise: "bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+      sentBody = "unset";
+      const r6 = await runPushSweep(cbStore, vapid, NOW + 17 * 86400e3, captureFetch);
+      const d6 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
+      ok("training again resets the anchor — a fresh lapse re-earns stage 1", r6.sent === 1 && d6.tag === "hb-comeback" && /ready/.test(d6.body));
+    } finally { try { rmSync(cbPath); } catch {} }
+  }
+
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
