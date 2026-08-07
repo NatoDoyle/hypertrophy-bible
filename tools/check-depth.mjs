@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractPage, pageDepth, depthReport, droppedLinks, DEPTH_GATE, GATE } from "./graph-core.mjs";
+import { extractPage, pageDepth, depthReport, droppedLinks, DEPTH_GATE, DEPTH_EXEMPT, GATE } from "./graph-core.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = join(root, "content");
@@ -122,10 +122,30 @@ if (dropped.length > SHOWN) {
   console.log(`      …and ${rest.length} more page(s) carrying ${rest.reduce((a, x) => a + x.n, 0)} dropped link(s).`);
 }
 
+// Exemptions (Wave 196): every flagged-but-exempt page prints WITH its justification —
+// enforcement skips them, the report never does (a silently-filtered input is a blind
+// spot, lesson 35). A stale exemption (its page no longer flagged) is itself reported:
+// the wave that clears a page must clear its entry, or the escape hatch quietly widens.
+const exempted = [...report.flaggedPages].filter((s) => DEPTH_EXEMPT.has(s)).sort();
+if (exempted.length) {
+  console.log(`\nexempt from the floors, with recorded justifications (${exempted.length}):`);
+  for (const s of exempted) console.log(`      ${s} — ${DEPTH_EXEMPT.get(s)}`);
+}
+if (report.staleExemptions.length) {
+  console.log(`\n  ⚠ STALE exemption(s) — page cleared or renamed; remove the entry (${report.staleExemptions.length}): ${report.staleExemptions.join(", ")}`);
+}
+
 // PAGES, not flags. The shortlist is derived from the two floors above it, so summing
 // the three lists counts a page failing everything three times — this reported "23
 // warnings" for 17 distinct pages until Wave 178, and that inflated number would have
 // gone into the failure message the moment the gate starts enforcing.
-const enforced = !DEPTH_GATE.warnOnly && report.flaggedPages.size > 0;
-console.log(`\n${report.flaggedPages.size} page(s) below a depth floor (${report.flagCount} flags across 3 lists)${DEPTH_GATE.warnOnly ? " — advisory, not blocking (DEPTH_GATE.warnOnly)" : ""}.`);
+//
+// ENFORCED (Wave 196, DEPTH_GATE.warnOnly=false): a NON-EXEMPT page below a floor now
+// fails the build. Shipped only once every flagged page was either authored (Waves
+// 176/181-183/188/190/195) or carried a recorded exemption — the flip criterion the
+// roadmap re-specified on 2026-08-04. Stale exemptions also fail: an entry must not
+// outlive the flag that justified it.
+const enforced = !DEPTH_GATE.warnOnly && (report.enforceable.length > 0 || report.staleExemptions.length > 0);
+console.log(`\n${report.flaggedPages.size} page(s) below a depth floor (${report.flagCount} flags across 3 lists); ${exempted.length} exempt, ${report.enforceable.length} enforceable${DEPTH_GATE.warnOnly ? " — advisory, not blocking (DEPTH_GATE.warnOnly)" : report.enforceable.length || report.staleExemptions.length ? " — FAILING" : " — gate ENFORCED and green"}.`);
+if (enforced && report.enforceable.length) console.log(`  fix or justify: ${report.enforceable.join(", ")}`);
 process.exit(enforced ? 1 : 0);

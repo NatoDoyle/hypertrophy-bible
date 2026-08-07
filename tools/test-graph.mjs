@@ -22,6 +22,7 @@ import {
   rendersAsLink,
   droppedLinks,
   DEPTH_GATE,
+  DEPTH_EXEMPT,
 } from "./graph-core.mjs";
 
 let passed = 0;
@@ -435,14 +436,29 @@ check("isUnderDeveloped: needs BOTH tells, and its blind spot is real", () => {
   assert.equal(isUnderDeveloped({ words: 2000, numericDensity: 5 }, 1), false, "deep but poorly linked is not a depth problem");
 });
 
-check("DEPTH_GATE ships WARN-only, and its floors sit at the corpus tail", () => {
-  // The flip (warnOnly: false) is a deliberate future wave; this asserts the CURRENT
-  // state so flipping it fails here on purpose — update this test, never relax a floor.
-  assert.equal(DEPTH_GATE.warnOnly, true);
+check("DEPTH_GATE is ENFORCED, its floors sit at the corpus tail, and every flag is authored-or-justified", () => {
+  // Flipped by Wave 196, exactly as the pre-flip version of this test prescribed
+  // ("update this test, never relax a floor"). This now locks the ENFORCED state: the
+  // floors are the same measured-p10 values they were set at (never relaxed to make the
+  // flip land), warnOnly is off, and on the REAL corpus every below-floor page must be
+  // exempt with a recorded justification — 0 enforceable, 0 stale entries — which is
+  // precisely the roadmap's re-specified flip criterion, asserted rather than claimed.
+  assert.equal(DEPTH_GATE.warnOnly, false);
+  assert.equal(DEPTH_GATE.minWords, 450, "the word floor is the measured p10 — flipping must never come from relaxing it");
+  assert.equal(DEPTH_GATE.minNumericDensity, 0.25, "the density floor likewise");
   const depths = FILES.map(({ slug, pillar, md }) => pageDepth({ slug, pillar, md }));
   const below = depths.filter((d) => d.words < DEPTH_GATE.minWords).length;
   assert.ok(below / depths.length < 0.2,
     `floors must flag a tail, not the corpus: ${below}/${depths.length} pages below minWords`);
+  const known = new Set(FILES.map((f) => f.slug));
+  const outDeg = new Map(FILES.map((f) => [f.slug, Object.keys(extractPage(f, known).outbound).length]));
+  const report = depthReport(depths, outDeg);
+  assert.deepEqual(report.enforceable, [],
+    `every below-floor page needs authoring or a recorded exemption: ${report.enforceable.join(", ")}`);
+  assert.deepEqual(report.staleExemptions, [],
+    `an exemption must not outlive the flag that justified it: ${report.staleExemptions.join(", ")}`);
+  // Exemptions are verdicts with reasons, not a bare allowlist.
+  for (const [slug, why] of DEPTH_EXEMPT) assert.ok(typeof why === "string" && why.length >= 40, `exemption for ${slug} needs a real justification`);
 });
 
 // --- depth selection + repo hygiene (Wave 178) ---------------------------
