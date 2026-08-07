@@ -1115,6 +1115,32 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/31817252/"
     },
     {
+      "key": "larsen-2025-lateral-raise-dumbbell-cable",
+      "authors": [
+        "Larsen S",
+        "Wolf M",
+        "Schoenfeld BJ",
+        "Sandberg NØ",
+        "Fredriksen AB",
+        "Kristiansen BS",
+        "van den Tillaar R",
+        "Swinton PA",
+        "Falch HN"
+      ],
+      "year": 2025,
+      "title": "Dumbbell versus cable lateral raises for lateral deltoid hypertrophy: an experimental study.",
+      "source": "Frontiers in Physiology",
+      "volume": "16",
+      "pages": "1611468",
+      "doi": "10.3389/fphys.2025.1611468",
+      "pmid": "40692697",
+      "study_type": "RCT",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40692697/ + https://api.crossref.org/works/10.3389/fphys.2025.1611468",
+      "notes": "24 resistance-trained men and women, 8 weeks, 2 sessions/week, 5 sets of lateral raises to momentary failure. Within-participant design: each arm randomly allocated to cable or dumbbell. CRITICALLY, shoulder ab/adduction ROM was STANDARDISED AND MATCHED between conditions. Lateral deltoid thickness rose 3.3-4.6%; Bayesian analysis gave moderate support for the null univariately (BF=0.27 distal, 0.22 proximal) and extreme support multivariately (BF<0.01). Tests whether the IMPLEMENT matters with ROM held constant - it does not. Does NOT test whether loading the lengthened position matters, because equalizing ROM removes exactly that variable."
+    },
+    {
       "key": "larsen-2026-biceps-shoulder-angle",
       "authors": [
         "Larsen S",

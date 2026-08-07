@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**136** verified references.
+**137** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -463,6 +463,14 @@ Krzysztofik M & et al. (2019). Maximizing Muscle Hypertrophy: A Systematic Revie
 
 - Type: systematic-review · Population: mixed
 - DOI: [10.3390/ijerph16244897](https://doi.org/10.3390/ijerph16244897) · PMID: [31817252](https://pubmed.ncbi.nlm.nih.gov/31817252/)
+
+### larsen-2025-lateral-raise-dumbbell-cable
+Larsen S et al. (2025). Dumbbell versus cable lateral raises for lateral deltoid hypertrophy: an experimental study.
+
+*Frontiers in Physiology*, 16, 1611468.
+
+- Type: RCT · Population: trained
+- DOI: [10.3389/fphys.2025.1611468](https://doi.org/10.3389/fphys.2025.1611468) · PMID: [40692697](https://pubmed.ncbi.nlm.nih.gov/40692697/)
 
 ### larsen-2026-biceps-shoulder-angle
 Larsen S et al. (2026). The effects of shoulder extension angle on elbow flexor hypertrophy in the cable curl exercise.
