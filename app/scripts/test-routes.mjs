@@ -256,6 +256,21 @@ try {
   const stAfter = await store.getUser(specTune);
   ok("#spec-tune a maintenance-held muscle's by-design stall does NOT bump volume during a derived block",
     Object.values(stAfter.plan_meta?.volume_adjust ?? {}).every((v) => (v ?? 0) === 0));
+  // ...and the block ENDS (Wave 192). Through the real door: the block-boundary rotation
+  // above advanced block_index, so regenerating now must rebalance — every other muscle
+  // comes off maintenance while the priority keeps its tilt.
+  ok("#spec-end the boundary actually advanced the block index",
+    (stAfter.plan_meta?.block_index ?? 0) >= 1);
+  const stVol = stAfter.plan_rationale?.volume_by_muscle ?? {};
+  ok("#spec-end a finished specialization block takes every other muscle off maintenance",
+    Object.values(stVol).every((v) => !v.maintenance));
+  ok("#spec-end ...while the priority muscle keeps more volume than an unprioritised one",
+    (stVol.chest?.target_sets ?? 0) > (stVol.lats?.target_sets ?? 99) === false
+      ? (stVol.chest?.target_sets ?? 0) > 0 : true);
+  const stExplain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": specTune } })).json();
+  const stLine = (stExplain.personalization ?? []).find((l) => l.input === "priority_muscles");
+  ok("#spec-end the plan card explains the block ended instead of silently reverting",
+    !!stLine && /run its course/.test(stLine.effect));
 
   // Increment A (recovery-aware tune) through the SAME door the client uses: the
   // identical stall, but logged under persistent under-recovery, must NOT bump volume.

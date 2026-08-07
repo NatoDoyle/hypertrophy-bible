@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, explainPersonalization } from "./plan-core.mjs";
+import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization } from "./plan-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
@@ -726,6 +726,58 @@ ok("deriveSpecialization: an explicit opt-IN still wins, even for a beginner",
   deriveSpecialization({ training_status: "beginner", priority_muscles: ["chest"], specialization: true }, muscles) === true);
 ok("deriveSpecialization: a stored `false` no longer blocks the derivation — it was never necessarily an answer",
   deriveSpecialization({ training_status: "intermediate", priority_muscles: ["chest"], specialization: false }, muscles) === true);
+
+// --- a specialization block ENDS (Wave 192) ------------------------------
+// It used to re-derive on every generation with no counter, so one tap on one muscle
+// chip held every other muscle at a maintenance dose forever. The KB: "Specialize one
+// or two areas at a time, for ~4-8 weeks, then rebalance."
+{
+  const specProf = { user_id: "spec-expiry", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] };
+  ok("specializationActive: the profile still WANTS a block regardless of where it is",
+    deriveSpecialization(specProf, muscles) === true);
+  ok("specializationActive: block 0 is running one",
+    specializationActive(specProf, muscles, 0) === true);
+  ok("specializationActive: once SPEC_MAX_BLOCKS is reached the block is over",
+    specializationActive(specProf, muscles, SPEC_MAX_BLOCKS) === false
+    && specializationActive(specProf, muscles, SPEC_MAX_BLOCKS + 3) === false);
+  // LITERAL indices, deliberately not written in terms of SPEC_MAX_BLOCKS: a test that
+  // reads the same constant as the code cannot detect that constant being wrong. Found
+  // by raising it to 9999 and watching this whole block stay green. The KB's window is
+  // ~4-8 weeks and BLOCK_WEEKS is 6, so ONE block is the value being pinned here.
+  ok("specialization is over by block 1 — the constant itself is pinned, not just its use",
+    SPEC_MAX_BLOCKS === 1
+    && specializationActive(specProf, muscles, 0) === true
+    && specializationActive(specProf, muscles, 1) === false);
+  // ...and the PLAN must actually rebalance, not just the predicate flip.
+  const during = generatePlan(specProf, kb, { blockIndex: 0 });
+  const after = generatePlan(specProf, kb, { blockIndex: SPEC_MAX_BLOCKS });
+  const heldDuring = Object.values(during.rationale.volume_by_muscle).filter((v) => v.maintenance).length;
+  const heldAfter = Object.values(after.rationale.volume_by_muscle).filter((v) => v.maintenance).length;
+  ok("a finished specialization block takes every other muscle OFF maintenance",
+    heldDuring > 0 && heldAfter === 0);
+  // The priority tilt survives — ending the block must not cost them their priority.
+  const chestDuring = during.rationale.volume_by_muscle.chest.target_sets;
+  const chestAfter = after.rationale.volume_by_muscle.chest.target_sets;
+  const noPriority = generatePlan({ ...specProf, priority_muscles: [] }, kb, { blockIndex: SPEC_MAX_BLOCKS });
+  ok("...while the priority muscle still gets MORE than an unprioritised one",
+    chestAfter > noPriority.rationale.volume_by_muscle.chest.target_sets && chestDuring >= chestAfter);
+  // And the card explains the transition instead of silently dropping the holds.
+  const lineAfter = explainPersonalization(specProf, after.rationale, after.program).find((l) => l.input === "priority_muscles");
+  ok("...and the plan card SAYS the block ran its course rather than quietly reverting",
+    /run its course/.test(lineAfter.effect) && /back off maintenance/.test(lineAfter.effect));
+  const lineDuring = explainPersonalization(specProf, during.rationale, during.program).find((l) => l.input === "priority_muscles");
+  ok("...while a block still running says what it is costing, as before",
+    /maintenance dose/.test(lineDuring.effect) && !/run its course/.test(lineDuring.effect));
+  // A profile that never wanted a block is never held at maintenance in ANY block.
+  // (Not a byte-identical check: accessory rotation legitimately varies projected sets
+  // between block indices, which is what the first draft of this assertion caught.)
+  const plainA = generatePlan({ ...specProf, priority_muscles: [] }, kb, { blockIndex: 0 });
+  ok("a profile with no priorities is never maintenance-held, in either block",
+    Object.values(plainA.rationale.volume_by_muscle).every((v) => !v.maintenance)
+    && Object.values(noPriority.rationale.volume_by_muscle).every((v) => !v.maintenance)
+    && plainA.rationale.goal_prescription.specialization.wants === false);
+}
 
 // The derivation must actually reach the plan — a pure predicate nothing calls is
 // the declared-but-unused shape (lesson 14).
