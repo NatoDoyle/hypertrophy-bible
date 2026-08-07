@@ -90,8 +90,10 @@ const SOCIAL_ERROR_COPY = {
   "cannot-challenge-self": "That's your own share link — share it with a friend instead.",
   "not-following": "Refresh the page and try again.",
   "not-mutual": "You can only do that with a training partner who follows you back too.",
-  "already-challenging": "You already have a challenge in progress.",
-  "opponent-busy": "They're already in a challenge this week — try again later.",
+  "already-challenging": "You already have a challenge going with this partner.",
+  "opponent-busy": "They've got a full slate of challenges this week — try again later.",
+  "challenge-slots-full": "You're already running the maximum number of challenges this week.",
+  "challenge-id-required": "You have more than one invite waiting — answer them from the Coach tab.",
   "no-pending-challenge": "That challenge isn't waiting on you anymore.",
   "unknown user": "Refresh the page and try again.",
   "no-tokens": "You don't have a streak freeze to spend yet.",
@@ -2157,9 +2159,14 @@ async function renderCoach() {
     return;
   }
   let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
-  let cw = { challenge: null }; try { cw = await api(`/api/challenge`); } catch {}
-  const ch = cw.challenge;
-  const canChallenge = !ch || ch.status === "completed" || ch.status === "declined";
+  let cw = { challenges: [] }; try { cw = await api(`/api/challenge`); } catch {}
+  // Multi-challenge (Wave 199): `challenges` is a LIST — each slot carries its own
+  // per-slot counts/week_over. The ⚔️ button gates per PARTNER PAIR (you can run
+  // several races at once, one per partner) plus the server's open-slot cap.
+  const chList = cw.challenges ?? (cw.challenge ? [cw.challenge] : []);
+  const openCh = chList.filter((x) => x.status === "pending" || x.status === "active");
+  const busyTokens = new Set(openCh.map((x) => x.partner_token));
+  const canChallengeToken = (token) => !busyTokens.has(token) && openCh.length < 3;
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
   const paused = a.paused;
@@ -2188,24 +2195,29 @@ async function renderCoach() {
       ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) => {
         const race = r.isYou ? null : weeklyRaceStatus(a.week.sessions, r.sessions_this_week);
         const raceLabel = race === "ahead" ? "🏁 you're ahead this week" : race === "behind" ? "🏁 they're ahead this week" : race === "tied" ? "🏁 tied this week" : "";
-        return `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"}${!r.isYou && r.mutual ? " ✓" : ""} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}${raceLabel ? ` · ${raceLabel}` : ""}</span>${r.isYou ? "" : `${r.mutual && canChallenge ? `<button class="linkbtn challenge-send" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">⚔️ challenge</button>` : ""}${r.mutual ? `<button class="linkbtn nudge" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">👋 nudge</button>` : ""}<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`;
+        return `<div class="row" style="align-items:center;padding:5px 0${r.isYou ? ";color:var(--accent);font-weight:600" : ""}"><span style="width:26px">#${r.rank}</span><span style="flex:1">${r.isYou ? "You" : "A partner"}${!r.isYou && r.mutual ? " ✓" : ""} · 🔥 ${r.streak_weeks} wk${r.streak_weeks === 1 ? "" : "s"} · lvl ${r.level}${!r.isYou && r.cheers > 0 ? ` · 💪 ${r.cheers}` : ""}${raceLabel ? ` · ${raceLabel}` : ""}</span>${r.isYou ? "" : `${r.mutual && canChallengeToken(r.token) ? `<button class="linkbtn challenge-send" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">⚔️ challenge</button>` : ""}${r.mutual ? `<button class="linkbtn nudge" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--accent);cursor:pointer;margin-right:6px">👋 nudge</button>` : ""}<button class="linkbtn unfollow" data-token="${esc(r.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button>`}</div>`;
       }).join("")}</div>` : ""}
       ${(fw.partners || []).filter((p) => !p.active).map((p) =>
         `<div class="row" style="margin-top:8px;align-items:center"><span class="muted" style="flex:1">A partner stopped sharing.</span><button class="linkbtn unfollow" data-token="${esc(p.token)}" style="background:none;border:none;color:var(--muted);cursor:pointer">remove</button></div>`).join("")}</div>
-    ${ch && ch.status === "pending" && ch.role === "opponent" ? `<div class="card"><b>⚔️ A training partner challenged you</b>
+    ${chList.map((x) => {
+      // One card per slot, every state renderable at once — the four mutually
+      // exclusive cards were the single-slot world's UI; the API now produces a
+      // list, so the renderer carries a list (lesson 15, asked forward).
+      if (x.status === "pending" && x.role === "opponent") return `<div class="card"><b>⚔️ A training partner challenged you</b>
       <p class="muted" style="margin-top:8px">Most sessions logged by the end of this week wins. Are you in?</p>
-      <div class="row" style="gap:8px;margin-top:8px"><button class="btn" id="challenge-accept" style="width:auto">Accept</button><button class="btn secondary" id="challenge-decline" style="width:auto">Decline</button></div></div>`
-      : ch && ch.status === "pending" && ch.role === "challenger" ? `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`
-      : ch && ch.status === "active" ? (() => {
-          const race = weeklyRaceStatus(cw.my_count, cw.opponent_count);
-          const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "😤 you're behind" : "🤝 tied";
-          return `<div class="card"><b>⚔️ Challenge in progress</b><p class="muted" style="margin-top:8px">You ${cw.my_count} – ${cw.opponent_count} them · ${label} · decides at week's end</p></div>`;
-        })()
-      : ch && ch.status === "completed" && ch.opponent_active !== false ? (() => {
-          const result = cw.my_count > cw.opponent_count ? "🏆 You won" : cw.my_count < cw.opponent_count ? "😤 You lost" : "🤝 It was a tie";
-          return `<div class="card"><b>⚔️ Challenge result</b><p class="muted" style="margin-top:8px">${result} ${cw.my_count}–${cw.opponent_count}. Send a new challenge any time.</p></div>`;
-        })()
-      : ""}
+      <div class="row" style="gap:8px;margin-top:8px"><button class="btn challenge-accept" data-chid="${esc(x.id)}" style="width:auto">Accept</button><button class="btn secondary challenge-decline" data-chid="${esc(x.id)}" style="width:auto">Decline</button></div></div>`;
+      if (x.status === "pending" && x.role === "challenger") return `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`;
+      if (x.status === "active") {
+        const race = weeklyRaceStatus(x.my_count, x.opponent_count);
+        const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "😤 you're behind" : "🤝 tied";
+        return `<div class="card"><b>⚔️ Challenge in progress</b><p class="muted" style="margin-top:8px">You ${x.my_count} – ${x.opponent_count} them · ${label} · decides at week's end</p></div>`;
+      }
+      if (x.status === "completed" && x.opponent_active !== false) {
+        const result = x.my_count > x.opponent_count ? "🏆 You won" : x.my_count < x.opponent_count ? "😤 You lost" : "🤝 It was a tie";
+        return `<div class="card"><b>⚔️ Challenge result</b><p class="muted" style="margin-top:8px">${result} ${x.my_count}–${x.opponent_count}. Send a new challenge any time.</p></div>`;
+      }
+      return "";
+    }).join("")}
     ${(cw.history || []).length > 0 ? (() => {
         // A persisted win/lose/tie record across every challenge that's ever run its
         // course — separate from the single-slot `challenge` card above, which only
@@ -2339,24 +2351,24 @@ async function renderCoach() {
     }
     catch { b.disabled = false; alertBar("📴 Couldn't send that challenge — try again when connected."); }
   });
-  const challengeAccept = $("#challenge-accept");
-  if (challengeAccept) challengeAccept.onclick = async () => {
+  // Respond handlers carry the slot id from their own card — several invite cards
+  // can render at once, and each answer must name exactly the invite it came from.
+  app.querySelectorAll(".challenge-accept").forEach((btn) => btn.onclick = async () => {
     try {
-      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: true }) });
+      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, challenge_id: btn.dataset.chid, accept: true }) });
       if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
       say("Challenge accepted — good luck."); await renderCoach();
     }
     catch { alertBar("📴 Couldn't accept — try again when connected."); }
-  };
-  const challengeDecline = $("#challenge-decline");
-  if (challengeDecline) challengeDecline.onclick = async () => {
+  });
+  app.querySelectorAll(".challenge-decline").forEach((btn) => btn.onclick = async () => {
     try {
-      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, accept: false }) });
+      const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, challenge_id: btn.dataset.chid, accept: false }) });
       if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
       say("Challenge declined."); await renderCoach();
     }
     catch { alertBar("📴 Couldn't update — try again when connected."); }
-  };
+  });
   const nudgeBtn = $("#nudges");
   if (nudgeBtn) nudgeBtn.onclick = async () => {
     try {
