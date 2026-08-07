@@ -437,6 +437,33 @@ export function deriveSpecialization(profile, muscles = []) {
   return areas.size <= 2;
 }
 
+// A specialization block has to END. `deriveSpecialization` answers "does this profile
+// WANT one", and for several waves that was the whole answer — it was re-evaluated on
+// every plan generation with no counter, so a single tap on one muscle chip held every
+// other muscle at a maintenance dose indefinitely. The KB is explicit that this is
+// wrong: "Specialize one or two areas at a time, for ~4-8 weeks, then rebalance"
+// (variation-and-specialization.md), and the shipped `specialization-delts-arms-4day`
+// template calls itself "a 4-6 week specialization block ... Not a permanent program."
+// Holding everything but two muscles at maintenance forever is the "more volume
+// everywhere, which recovery won't support" failure inverted — permanent UNDER-dosing
+// of the whole body, and the Progress tab deliberately suppresses "add volume" advice
+// for exactly those muscles, so no surface would ever have surfaced it.
+//
+// ONE block, because BLOCK_WEEKS is 6 and 6 sits inside the KB's stated 4-8 week
+// window while two blocks (12 weeks) would sit well outside it. The page's TL;DR says
+// "a block or two", but where a prose range and an explicit number disagree the number
+// governs.
+//
+// No new state: `plan_meta.block_index` already counts completed mesocycles and already
+// resets to 0 whenever a TRAINING_FIELD changes — which includes `priority_muscles`. So
+// "how do I run another specialization block?" answers itself with "change which muscles
+// you're prioritising", the same act the KB describes as rotating priority across the
+// year, and a consistent lifter needs no new question and no new setting.
+export const SPEC_MAX_BLOCKS = 1;
+export function specializationActive(profile, muscles = [], blockIndex = 0) {
+  return deriveSpecialization(profile, muscles) && (blockIndex ?? 0) < SPEC_MAX_BLOCKS;
+}
+
 export function generatePlan(profile, kb, opts = {}) {
   const { exercises, muscles, contraindications } = kb;
   const experience = profile.training_status ?? "intermediate";
@@ -445,8 +472,12 @@ export function generatePlan(profile, kb, opts = {}) {
   const injuries = profile.injuries ?? [];
   const equip = new Set(profile.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
   const seed = seedFromProfile(profile);
-  const specialization = deriveSpecialization(profile, muscles); // all-in block: priorities to the ceiling, the rest to maintenance
   const blockIndex = opts.blockIndex ?? 0;         // rotates ACCESSORIES each mesocycle; compounds stay stable
+  // WANTS a block vs IS RUNNING one: the block expires after SPEC_MAX_BLOCKS mesocycles
+  // and the plan rebalances, as the KB prescribes. Both are banked in the rationale
+  // below so the plan card can explain the transition instead of silently reverting.
+  const wantsSpecialization = deriveSpecialization(profile, muscles);
+  const specialization = specializationActive(profile, muscles, blockIndex); // priorities to the ceiling, the rest to maintenance
   // Lifts this person has genuinely plateaued on — demoted below every alternative
   // for their muscle so the next block offers a different angle (the KB's
   // change-exercise lever). Empty by default, so a plan generated without it is
@@ -1115,6 +1146,9 @@ export function generatePlan(profile, kb, opts = {}) {
       // base scheme alone understates the single most advanced thing the engine does.
       compound_bands: [...new Set(compoundBands.filter(Boolean))],
       undulating,
+      // Banked so "What your answers changed" can say a block ENDED rather than
+      // quietly dropping the maintenance holds it described last block.
+      specialization: { wants: wantsSpecialization, active: specialization, block_index: blockIndex, max_blocks: SPEC_MAX_BLOCKS },
       // The session ceiling, stated so the plan can explain itself: quality beats quantity.
       session_budget: { hard_sets: setBudget, minutes: sessionMin,
         reason: `Capped at ${setBudget} hard sets per session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
@@ -1205,11 +1239,19 @@ export function explainPersonalization(profile, rationale, program) {
     const held = Object.entries(vol)
       .filter(([, v]) => v.maintenance && (v.projected_sets ?? 0) > 0)
       .map(([m]) => MUSCLE_LABEL[m] ?? m);
+    // A specialization block ENDS (SPEC_MAX_BLOCKS). When it does, the maintenance
+    // holds this line described last block simply vanish — so say so, rather than
+    // letting the plan quietly change underneath a card whose whole job is explaining
+    // what changed. `wants && !active` is exactly "the block ran its course".
+    const spec = r.goal_prescription?.specialization;
+    const blockEnded = spec ? spec.wants && !spec.active : false;
     if (named.length) {
       say("priority_muscles", `you want to grow ${priorities.map((m) => MUSCLE_LABEL[m] ?? m).join(" and ")}`,
         held.length
           ? `${named.join(", ")} — pushed toward the ceiling, and ${held.length} other muscle${held.length === 1 ? "" : "s"} held at a maintenance dose to pay for the recovery it costs.`
-          : `${named.join(", ")} — more volume than they'd otherwise get.`);
+          : blockEnded
+            ? `${named.join(", ")} — still your priority. Your specialization block has run its course, so everything else is back off maintenance and training normally again; change your priority muscles whenever you want to start another one.`
+            : `${named.join(", ")} — more volume than they'd otherwise get.`);
     }
   }
 

@@ -534,7 +534,14 @@ export function createApp(store, config = {}) {
           // Recovery-/energy-aware context (Increment A): the tune won't ADD volume to
           // a stalled muscle while the athlete is persistently under-recovered or in an
           // energy deficit — that stall needs recovery/fuel, not more sets.
-          const volumeAdjust = isSpecializing(u.profile)
+          // The index of the block whose data we're reading — the one that JUST
+          // COMPLETED — not the one being entered. The question is "were those stalls
+          // held-at-maintenance by design when they were logged?", so it must be
+          // answered against the block that produced them. Using the new index would
+          // un-freeze the tune exactly at the boundary where a specialization block
+          // ends, folding in a whole block of by-design stalls in one go.
+          const completedBlockIndex = u.plan_meta?.block_index ?? 0;
+          const volumeAdjust = isSpecializing(u.profile, completedBlockIndex)
             ? prevAdjust
             : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
           // What CHANGED this block — so the new-block coach note announces the actual

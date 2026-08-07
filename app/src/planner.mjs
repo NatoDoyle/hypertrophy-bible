@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { generatePlan, critiquePlan, accessibleExercises, explainPersonalization, deriveSpecialization } from "../../tools/plan-core.mjs";
+import { generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive } from "../../tools/plan-core.mjs";
 
 export function generateUserPlan(profile, opts = {}) {
   return generatePlan(profile, { exercises, muscles, contraindications, guidelines }, opts);
@@ -16,8 +16,13 @@ export function generateUserPlan(profile, opts = {}) {
 // block deliberately holds at maintenance, spuriously bumping their targets, which then
 // land the moment specialization ends. Precisely the failure that gate's own comment
 // describes. Anything asking "is this user specializing?" must come through here.
-export function isSpecializing(profile) {
-  return deriveSpecialization(profile, muscles);
+// `blockIndex` is required, not optional-with-a-default, because a specialization block
+// EXPIRES (plan-core's SPEC_MAX_BLOCKS): the answer is a function of where the user is in
+// their mesocycle, and a caller that forgets it would silently freeze the volume auto-tune
+// forever for anyone who ever picked a priority muscle — the same class of bug as reading
+// the raw `profile.specialization` field this helper was created to replace.
+export function isSpecializing(profile, blockIndex) {
+  return specializationActive(profile, muscles, blockIndex);
 }
 
 // "What your answers changed" — read straight off the plan the engine just built, so
