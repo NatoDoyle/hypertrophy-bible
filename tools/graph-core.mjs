@@ -180,7 +180,33 @@ export function pageDepth({ slug, pillar, md }) {
 // first draft of this file guessed minNumericDensity: 1.5, which would have flagged
 // ~65% of the KB and taught everyone to ignore the report; measuring first is the whole
 // discipline (a gate nobody believes is worse than no gate).
-export const DEPTH_GATE = { minWords: 450, minNumericDensity: 0.25, warnOnly: true };
+export const DEPTH_GATE = { minWords: 450, minNumericDensity: 0.25, warnOnly: false };
+
+// Pages EXEMPT from the depth floors, each with a recorded justification — the same
+// pattern check-claim-coverage uses for its by-reference synthesis pages. An exemption
+// says "this page is below a floor ON PURPOSE, and here is why that is the honest
+// state", so the gate can enforce on everything else without the bar landing red
+// (lesson 25's corollary) and without pressuring anyone to fabricate numbers onto
+// pages that legitimately have none (lessons 12/13/31).
+//
+// Every entry was read individually before being listed (Waves 195-196). The four
+// flagged pages NOT here — nutrient-timing, logging-and-plateaus,
+// connective-tissue-adaptation (all authored, Wave 195) and chest/shoulders before
+// them — were judged real gaps and fixed instead: an exemption is a verdict, not an
+// escape hatch, and the list must never be the cheaper path for a page that genuinely
+// owes the reader a number.
+export const DEPTH_EXEMPT = new Map([
+  ["mechanisms", "conceptual foundation: explains WHY (tension > damage/stress), not how much; every practical number lives one click away in the training-variables pages it links"],
+  ["stimulus-fatigue-adaptation", "the framework model the programming pages instantiate; its numbers (volume, deload timing, progression rates) belong to — and are in — those pages"],
+  ["stress-recovery-and-overtraining", "its durations are honest WORDS (days / weeks-to-months): the ECSS/ACSM consensus deliberately does not pin digits for OTS recovery, and the metric counts digits — forcing digits here would fabricate precision the literature refuses (lesson 31)"],
+  ["returning-lifters-and-special-populations", "muscle-memory magnitude varies too widely across studies to state one honest figure; the actionable guidance (ramp fast, don't start as a raw beginner) is unchanged by any number, and the app's comeback logic carries the practice values"],
+  ["genetics-and-expectations-myths", "a rebuttal of two opposite myths whose honest content is a qualitative RANGE; a null-finding rebuttal has nothing to quantify"],
+  ["timing-and-hormone-myths", "same class: the page's whole point is that the numbers people obsess over don't matter; its 429w say so completely (word floor exemption)"],
+  ["gym-etiquette", "behavioral/logistics content with no gradeable quantitative claims"],
+  ["what-to-wear-and-bring", "behavioral/logistics content with no gradeable quantitative claims"],
+  ["overcoming-gym-anxiety", "behavioral content; a prevalence statistic would change nothing the reader does"],
+  ["healthy-relationship-with-training-and-food", "behavioral/safety content; quantifying it would miss its point entirely"],
+]);
 
 // The two tells the Waves 159-161 lessons named, TOGETHER: a page that is both thin (or
 // number-free) and poorly connected is what "nobody has revisited this" looks like.
@@ -208,12 +234,20 @@ export const isUnderDeveloped = (depth, outDegree, gate = DEPTH_DEFAULTS()) =>
 // first version reported "23 depth warnings" for 17 distinct pages — a 35% overstatement
 // that would have landed in the FAILURE message the moment the gate flips to enforcing.
 // Count pages, report flags alongside.
-export function depthReport(depths, outDegreeBySlug, gate = DEPTH_DEFAULTS()) {
+export function depthReport(depths, outDegreeBySlug, gate = DEPTH_DEFAULTS(), exempt = DEPTH_EXEMPT) {
   const belowWords = depths.filter((d) => d.words < gate.minWords);
   const belowDensity = depths.filter((d) => d.numericDensity < gate.minNumericDensity);
   const shortlist = depths.filter((d) => isUnderDeveloped(d, outDegreeBySlug.get(d.slug) ?? 0, gate));
   const flaggedPages = new Set([...belowWords, ...belowDensity].map((d) => d.slug));
-  return { belowWords, belowDensity, shortlist, flaggedPages, flagCount: belowWords.length + belowDensity.length + shortlist.length };
+  // Exemptions are applied to ENFORCEMENT only, never to the report: every flagged
+  // page still prints (with its justification alongside), because a filtered input is
+  // a blind spot (lesson 35) — the gate must show what it is choosing to allow.
+  const enforceable = [...flaggedPages].filter((slug) => !exempt.has(slug));
+  // An exemption for a page no floor flags is STALE — the page got authored, or was
+  // renamed — and stale entries are how an escape hatch quietly widens. Reported so
+  // the wave that clears a page also clears its exemption.
+  const staleExemptions = [...exempt.keys()].filter((slug) => !flaggedPages.has(slug));
+  return { belowWords, belowDensity, shortlist, flaggedPages, enforceable, staleExemptions, flagCount: belowWords.length + belowDensity.length + shortlist.length };
 }
 
 // Records → the whole graph. Weights (integers, max 24) — every term a checkable fact:
