@@ -35,7 +35,10 @@ export function mergeUserProfile(fromU, toU) {
     toU.profile = { ...(toU.profile ?? {}), following: [...new Set([...toFollowing, ...fromFollowing])].slice(0, FOLLOWING_CAP) };
   }
   // Challenge history entries carry no cross-user token reference (unlike the live
-  // `challenge` slot below, deliberately left out) — safe to merge unconditionally.
+  // `challenges` slots, deliberately left out: each slot references a partner's share
+  // token, and the departing account's tokens don't survive its deletion — a merged
+  // live slot would be a challenge against a ghost). Wave 198's multi-slot shape
+  // changes nothing here: histories merge, live slots never did and still don't.
   // Newest-first by week, same order the entries are already stored in.
   const fromHistory = fromU.profile?.challenge_history ?? [];
   if (fromHistory.length) {

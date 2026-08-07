@@ -204,75 +204,121 @@ export function weeklySummary(sessions, now) {
 // what actually PERSISTED (lessons 10/21): a raced slot-replacement or a vanished
 // user row yields the un-fabricated current state, never an invented trophy.
 export const CHALLENGE_HISTORY_CAP = 20;
+
+// ---- multiple concurrent challenges (Tier-1 #2, Wave 198) -------------------
+// The single mirrored `profile.challenge` slot becomes a bounded `profile.challenges`
+// ARRAY. No new store table — the roadmap's old "needs a real table" blocker was
+// refuted on 2026-08-04: users.data is a JSON blob, so single-slot → N-slot is a shape
+// change with zero migration. What it genuinely needed, and what this wave does:
+//   - ONE normalization helper (this one) so every reader sees the same list whether
+//     the stored shape is legacy-scalar or array;
+//   - the per-USER push markers (challenge_pushed_at / challenge_accept_pushed_at)
+//     move ONTO the slot as booleans, the way result_pushed always was — two invites
+//     in one sweep tick used to collide on the shared scalar and one was suppressed
+//     forever (lesson 23, named by the roadmap when it scoped this);
+//   - history entries carry the challenge `id`, because two challenges can now end in
+//     the SAME week and a week-keyed lookup would collide.
+export const MAX_OPEN_CHALLENGES = 3;   // per user, either role — bounds fan-out and UI
+export const MAX_CHALLENGE_SLOTS = 6;   // open + recent terminal (terminal feed the result card)
+
+// Every challenge on this profile, normalized to the array world. Reads the legacy
+// scalar as a one-element list and maps the legacy per-user push watermarks onto the
+// slot's own booleans (high-water semantics preserved: pushed iff the scalar watermark
+// had reached this slot's event time) — so a migrated invite is never re-pushed and a
+// never-pushed one still fires. Pure read: persists nothing; writers persist the
+// normalized array and drop the legacy fields (normalizeChallengeProfile).
+export function challengeSlots(profile) {
+  if (Array.isArray(profile?.challenges)) return profile.challenges;
+  const legacy = profile?.challenge;
+  if (!legacy) return [];
+  return [{
+    ...legacy,
+    invite_pushed: legacy.created_at != null && legacy.created_at <= (profile?.challenge_pushed_at ?? 0),
+    accept_pushed: legacy.accepted_at != null && legacy.accepted_at <= (profile?.challenge_accept_pushed_at ?? 0),
+  }];
+}
+
+// The WRITE half: apply `slots` to a profile, migrating off the legacy fields in the
+// same write. Open slots are never pruned; terminal ones beyond the total cap drop
+// oldest-first (their results are already in challenge_history, so nothing is lost).
+export function normalizeChallengeProfile(profile, slots) {
+  const open = slots.filter((s) => s.status === "pending" || s.status === "active");
+  const terminal = slots.filter((s) => s.status !== "pending" && s.status !== "active")
+    .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+    .slice(0, Math.max(0, MAX_CHALLENGE_SLOTS - open.length));
+  const { challenge, challenge_pushed_at, challenge_accept_pushed_at, ...rest } = profile ?? {};
+  return { ...rest, challenges: [...open, ...terminal] };
+}
+
+// Settle EVERY slot that has reached its end — week passed (chronologically,
+// weekHasPassed) or opponent vanished — in one guarded write. The transition rules are
+// unchanged from the single-slot version and still live only here (shared by GET
+// /api/challenge and the push sweep, lesson 1): active → completed with a recorded
+// result only against a still-resolvable opponent; pending → declined with nothing
+// recorded; terminal is write-once; everything reported comes from what actually
+// PERSISTED (lessons 10/21), never the optimistic local guess.
 export async function settleChallenge(store, id, user, now = Date.now()) {
-  const ch = user.profile?.challenge;
+  const slots = challengeSlots(user.profile);
   const history = user.profile?.challenge_history ?? [];
-  if (!ch) return { challenge: null, history, my_count: null, opponent_count: null, week_over: false, result: null };
-  const opponentId = ch.partner_token && (await store.getShareUserId(ch.partner_token));
-  // Localized by THIS user's own tz (isoWeekKeyLocal) — a raw UTC "now" can
-  // already read as next week while it's still today for anyone west of UTC,
-  // ending (and auto-completing) their challenge up to a day before their own
-  // local week is actually over. Each side settles in its own local frame,
-  // same as isChallengeOpen/the propose-time week stamp in app.mjs.
-  // ...and CHRONOLOGICALLY, not merely "different": a `!==` here also fired when the
-  // freshly-computed key read EARLIER than the stamp, which is what a tz change between
-  // stamp and read looks like — settling a live challenge that had barely started.
-  const week_over = weekHasPassed(ch.week, now, user.profile?.tz_offset_min);
-  // Both sides' tallies up front (needed either way once an opponent exists) so a
-  // completing challenge records its result with the SAME counts it reports.
-  let my_count = null, opponent_count = null;
-  if (opponentId) {
-    const [mySessions, opponentSessions] = await Promise.all([store.listSessions(id), store.listSessions(opponentId)]);
-    my_count = sessionsInWeek(mySessions, ch.week);
-    opponent_count = sessionsInWeek(opponentSessions, ch.week);
+  if (!slots.length) return { challenges: [], history, results: [] };
+
+  // Resolve opponents + tallies per slot, once, before the write — a completing slot
+  // records its result with the SAME counts it reports. My sessions fetched once.
+  const mySessions = await store.listSessions(id);
+  const perSlot = [];
+  for (const ch of slots) {
+    const opponentId = ch.partner_token ? await store.getShareUserId(ch.partner_token) : null;
+    const week_over = weekHasPassed(ch.week, now, user.profile?.tz_offset_min);
+    let my_count = null, opponent_count = null;
+    if (opponentId) {
+      const opponentSessions = await store.listSessions(opponentId);
+      my_count = sessionsInWeek(mySessions, ch.week);
+      opponent_count = sessionsInWeek(opponentSessions, ch.week);
+    }
+    perSlot.push({ ch, opponentId, week_over, my_count, opponent_count });
   }
-  let newHistory = history;
-  let result = null;
-  if ((ch.status === "active" || ch.status === "pending") && (week_over || !opponentId)) {
-    const nextStatus = ch.status === "pending" ? "declined" : "completed";
-    const recordResult = nextStatus === "completed" && opponentId;
-    const entry = recordResult
-      ? { week: ch.week, result: my_count > opponent_count ? "win" : my_count < opponent_count ? "lose" : "tie", my_count, opponent_count }
-      : null;
-    const proposedHistory = entry ? [entry, ...history].slice(0, CHALLENGE_HISTORY_CAP) : newHistory;
-    // `transitioned` is set INSIDE the mutator, reset on every invocation (D1's
-    // updateUser retries the mutator on a CAS conflict, so only the LAST run's
-    // value matters) — it tracks whether THIS call's write actually performed the
-    // transition, never inferred by comparing the post-write status to our own
-    // locally-computed `nextStatus`. Two concurrent settles on the same terminal
-    // status (e.g. this user's own GET racing the push sweep) would otherwise
-    // both see a status match and both believe THEY wrote it, even though only
-    // one of them actually did — reporting a `result` (and firing a push) for a
-    // transition this call never performed, which can disagree with the entry
-    // the other caller actually persisted.
-    let transitioned = false;
+
+  const needsSettle = perSlot.filter((p) => (p.ch.status === "active" || p.ch.status === "pending") && (p.week_over || !p.opponentId));
+  let outSlots = slots, outHistory = history;
+  const results = [];
+  if (needsSettle.length) {
+    let wroteIds = [];
     const updated = await store.updateUser(id, (u) => {
-      transitioned = false;
-      const cur = u.profile?.challenge;
-      if (cur?.id !== ch.id) return u; // slot replaced mid-flight — don't resurrect
-      if (cur.status !== "active" && cur.status !== "pending") return u; // terminal is write-once
-      transitioned = true;
-      u.profile = { ...u.profile, challenge: { ...cur, status: nextStatus }, ...(entry ? { challenge_history: proposedHistory } : {}) };
+      wroteIds = []; // reset per CAS retry — only the LAST run's writes are real
+      const cur = challengeSlots(u.profile);
+      const curHist = u.profile?.challenge_history ?? [];
+      const entries = [];
+      const next = cur.map((slot) => {
+        const p = needsSettle.find((x) => x.ch.id === slot.id);
+        if (!p) return slot;
+        if (slot.status !== "active" && slot.status !== "pending") return slot; // terminal is write-once
+        const nextStatus = slot.status === "pending" ? "declined" : "completed";
+        if (nextStatus === "completed" && p.opponentId) {
+          entries.push({ id: slot.id, week: slot.week, result: p.my_count > p.opponent_count ? "win" : p.my_count < p.opponent_count ? "lose" : "tie", my_count: p.my_count, opponent_count: p.opponent_count });
+        }
+        wroteIds.push(slot.id);
+        return { ...slot, status: nextStatus };
+      });
+      u.profile = normalizeChallengeProfile({ ...u.profile, ...(entries.length ? { challenge_history: [...entries, ...curHist].slice(0, CHALLENGE_HISTORY_CAP) } : {}) }, next);
       return u;
     });
-    const wrote = transitioned;
-    // The current SAME-id record — whether this call just wrote it, or a
-    // concurrent settle (the push sweep, or the opponent's own GET) already did
-    // — is the one true state; use it whenever the slot wasn't replaced out from
-    // under us, never our own possibly-stale local `ch`/`history` snapshot. This
-    // is lesson 21's sibling for the NO-OP branch: a raced write already
-    // correctly withheld `result` below (never fabricating a trophy), but it was
-    // still returning the CALLER's stale status/history even though the fresh,
-    // already-terminal record was sitting right there in `updated` — reachable
-    // any time this user's own GET races the push sweep or the opponent's GET
-    // for the same just-ended challenge.
-    if (updated?.profile?.challenge?.id === ch.id) {
-      ch.status = updated.profile.challenge.status;
-      newHistory = updated.profile?.challenge_history ?? history;
+    if (updated) {
+      outSlots = challengeSlots(updated.profile);
+      outHistory = updated.profile?.challenge_history ?? history;
+      // Report only results THIS call genuinely landed (persisted + written here).
+      for (const idWritten of wroteIds) {
+        const entry = outHistory.find((h) => h.id === idWritten);
+        if (entry) results.push(entry);
+      }
     }
-    if (wrote && entry) result = entry; // a result that genuinely landed just now
   }
-  return { challenge: ch, opponentId, history: newHistory, my_count, opponent_count, week_over, result };
+
+  // Response rows: persisted slot state + the per-slot live context computed above.
+  const challenges = outSlots.map((slot) => {
+    const p = perSlot.find((x) => x.ch.id === slot.id);
+    return { ...slot, opponent_active: !!p?.opponentId, my_count: p?.my_count ?? null, opponent_count: p?.opponent_count ?? null, week_over: p?.week_over ?? false };
+  });
+  return { challenges, history: outHistory, results };
 }
 
 export function sessionsInWeek(sessions, weekKey) {

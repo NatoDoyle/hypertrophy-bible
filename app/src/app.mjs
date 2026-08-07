@@ -6,7 +6,7 @@ import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, co
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
-import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
+import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 
@@ -961,23 +961,50 @@ export function createApp(store, config = {}) {
     const myToken = await store.getShareIdForUser(b.user_id);
     const owner = await store.getUser(ownerId);
     if (!myToken || !(owner.profile?.following ?? []).includes(myToken)) return c.json({ error: "not-mutual" }, 403);
-    if (isChallengeOpen(sender.profile?.challenge, sender.profile?.tz_offset_min)) return c.json({ error: "already-challenging" }, 409);
-    if (isChallengeOpen(owner.profile?.challenge, owner.profile?.tz_offset_min)) return c.json({ error: "opponent-busy" }, 409);
+    // Multi-challenge (Wave 198): the busy check is now (a) at most ONE open challenge
+    // per partner PAIR — you can't stack invites on the same person — and (b) a
+    // per-user cap on open slots, both sides. Checked on the pre-write reads here for
+    // clean errors, and re-checked INSIDE each mutator (CAS) so a concurrent propose
+    // can't overshoot the cap in the race window.
+    const senderOpen = challengeSlots(sender.profile).filter((ch) => isChallengeOpen(ch, sender.profile?.tz_offset_min));
+    const ownerOpen = challengeSlots(owner.profile).filter((ch) => isChallengeOpen(ch, owner.profile?.tz_offset_min));
+    if (senderOpen.some((ch) => ch.partner_token === token)) return c.json({ error: "already-challenging" }, 409);
+    if (senderOpen.length >= MAX_OPEN_CHALLENGES) return c.json({ error: "challenge-slots-full" }, 409);
+    if (ownerOpen.some((ch) => ch.partner_token === myToken)) return c.json({ error: "already-challenging" }, 409);
+    if (ownerOpen.length >= MAX_OPEN_CHALLENGES) return c.json({ error: "opponent-busy" }, 409);
     const id = crypto.randomUUID();
     // The challenger's OWN local week — a raw UTC stamp can already read as the
     // NEXT week while it's still today for anyone west of UTC (see
     // isoWeekKeyLocal), silently shortening this week's challenge by up to a day.
     const week = isoWeekKeyLocal(Date.now(), sender.profile?.tz_offset_min);
     const createdAt = Date.now();
-    await store.updateUser(b.user_id, (u) => {
-      u.profile = { ...(u.profile ?? {}), challenge: { id, role: "challenger", partner_token: token, week, status: "pending", created_at: createdAt } };
+    // The slot is APPENDED, with the pair/cap preconditions re-checked inside the
+    // mutator on the fresh CAS read (a concurrent propose in the race window must
+    // lose cleanly, not overshoot the cap or double-book the pair). `refused` is
+    // reset per retry — only the last run's verdict is real.
+    let refused = null;
+    const addSlot = (slot, tz, pairToken) => (u) => {
+      refused = null;
+      const cur = challengeSlots(u.profile);
+      const open = cur.filter((ch) => isChallengeOpen(ch, tz));
+      if (open.some((ch) => ch.partner_token === pairToken)) { refused = "already-challenging"; return u; }
+      if (open.length >= MAX_OPEN_CHALLENGES) { refused = "challenge-slots-full"; return u; }
+      u.profile = normalizeChallengeProfile(u.profile, [...cur, slot]);
       return u;
-    });
-    await store.updateUser(ownerId, (u) => {
-      u.profile = { ...(u.profile ?? {}), challenge: { id, role: "opponent", partner_token: myToken, week, status: "pending", created_at: createdAt } };
-      return u;
-    });
-    return c.json({ challenged: true, week });
+    };
+    await store.updateUser(b.user_id, addSlot({ id, role: "challenger", partner_token: token, week, status: "pending", created_at: createdAt }, sender.profile?.tz_offset_min, token));
+    if (refused) return c.json({ error: refused }, 409);
+    await store.updateUser(ownerId, addSlot({ id, role: "opponent", partner_token: myToken, week, status: "pending", created_at: createdAt }, owner.profile?.tz_offset_min, myToken));
+    if (refused) {
+      // The opponent's side refused (their own race) — roll back our half so the
+      // pair can't end up with a one-sided invite that settles as a phantom decline.
+      await store.updateUser(b.user_id, (u) => {
+        u.profile = normalizeChallengeProfile(u.profile, challengeSlots(u.profile).filter((ch) => ch.id !== id));
+        return u;
+      });
+      return c.json({ error: refused === "challenge-slots-full" ? "opponent-busy" : refused }, 409);
+    }
+    return c.json({ challenged: true, week, challenge_id: id });
   });
   // Only the OPPONENT can respond (a challenger accepting their own proposal
   // would skip the consent step the whole feature exists to add).
@@ -985,38 +1012,44 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     const responder = b.user_id && (await store.getUser(b.user_id));
     if (!responder) return c.json({ error: "unknown user" }, 404);
-    const mine = responder.profile?.challenge;
+    // Multi-challenge (Wave 198): respond names WHICH invite via `challenge_id` —
+    // the parameter the roadmap noted didn't exist. Fallback for one stale cached
+    // client generation: with no id, respond to the single pending invite IF exactly
+    // one exists; with two or more, refuse rather than guess (answering an invite
+    // the user didn't see is the consent failure this route exists to prevent).
+    const pendingMine = challengeSlots(responder.profile).filter((ch) => ch.role === "opponent" && ch.status === "pending");
+    const mine = typeof b.challenge_id === "string"
+      ? pendingMine.find((ch) => ch.id === b.challenge_id)
+      : (pendingMine.length === 1 ? pendingMine[0] : null);
+    if (!mine && !b.challenge_id && pendingMine.length > 1) return c.json({ error: "challenge-id-required" }, 400);
     // The normal UI always calls GET /api/challenge first, which self-transitions a
     // pending-past-its-week challenge to "declined" before offering accept/decline
     // buttons — but this route is reachable directly (possession-of-UUID auth means
     // any client can call it), so it must enforce the SAME week-freshness rule
-    // itself. Without this, a late accept could revive a challenge whose week
-    // already ended into "active", which GET would then resolve into a fabricated
-    // "completed" result from training that happened before anyone had agreed to
-    // compete over it — not the "never answered, no result to show" outcome the
-    // design intends for an unanswered invite.
-    // Same chronological test as isChallengeOpen/settleChallenge — a `!==` here refused
-    // a legitimate accept whenever the responder's own clock had shifted since the
-    // invite was stamped.
-    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || weekHasPassed(mine.week, Date.now(), responder.profile?.tz_offset_min))
+    // itself (chronological, weekHasPassed). Without this, a late accept could revive
+    // a challenge whose week already ended into "active" — a fabricated "completed"
+    // result from training that predates any agreement to compete.
+    if (!mine || weekHasPassed(mine.week, Date.now(), responder.profile?.tz_offset_min))
       return c.json({ error: "no-pending-challenge" }, 400);
     const status = b.accept === true ? "active" : "declined";
     // On ACCEPT, stamp accepted_at on the CHALLENGER's copy: the push sweep uses it
-    // as the high-water mark to tell them the race is on (the same event-marker
-    // shape as challenge.created_at → the opponent's invite push). Declines don't
+    // as the per-slot event marker to tell them the race is on. Declines don't
     // stamp — nothing consumes it (the in-app card shows the decline, and a "they
     // said no" notification helps nobody train).
     const acceptedAt = Date.now();
-    await store.updateUser(b.user_id, (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, status } }; return u; });
+    const setStatus = (slotId, extra = {}) => (u) => {
+      const cur = challengeSlots(u.profile);
+      const slot = cur.find((ch) => ch.id === slotId);
+      if (!slot || (slot.status !== "pending")) return u; // replaced or already answered — don't resurrect
+      u.profile = normalizeChallengeProfile(u.profile, cur.map((ch) => ch.id === slotId ? { ...ch, status, ...extra } : ch));
+      return u;
+    };
+    await store.updateUser(b.user_id, setStatus(mine.id));
     const challengerId = mine.partner_token && (await store.getShareUserId(mine.partner_token));
     if (challengerId) {
-      await store.updateUser(challengerId, (u) => {
-        if (u.profile?.challenge?.id !== mine.id) return u; // challenger already moved on — don't resurrect a stale slot
-        u.profile = { ...u.profile, challenge: { ...u.profile.challenge, status, ...(status === "active" ? { accepted_at: acceptedAt } : {}) } };
-        return u;
-      });
+      await store.updateUser(challengerId, setStatus(mine.id, status === "active" ? { accepted_at: acceptedAt } : {}));
     }
-    return c.json({ status });
+    return c.json({ status, challenge_id: mine.id });
   });
   // Live (or final, once the target week has passed) state of the caller's own
   // challenge, incl. both sides' tallies for the challenge's OWN week — so this
@@ -1036,12 +1069,16 @@ export function createApp(store, config = {}) {
     // settleChallenge (adherence.mjs), shared with the push sweep so a result can
     // land even for a user who never reopens the app — never two copies (lesson 1).
     const s = await settleChallenge(store, id, user);
-    if (!s.challenge) return c.json({ challenge: null, history: s.history });
-    if (!s.opponentId) return c.json({ challenge: { ...s.challenge, opponent_active: false }, history: s.history });
+    // `challenges` is the real shape now: every slot, each carrying its own
+    // opponent_active / my_count / opponent_count / week_over. The legacy singular
+    // keys mirror the FIRST slot for one stale-cached-client generation (SW
+    // stale-while-revalidate serves the old app.js for at most one load).
+    const first = s.challenges[0] ?? null;
     return c.json({
-      challenge: { ...s.challenge, opponent_active: true },
-      my_count: s.my_count, opponent_count: s.opponent_count, week_over: s.week_over,
+      challenges: s.challenges,
       history: s.history,
+      challenge: first,
+      ...(first && first.opponent_active ? { my_count: first.my_count, opponent_count: first.opponent_count, week_over: first.week_over } : {}),
     });
   });
 

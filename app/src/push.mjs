@@ -1,6 +1,6 @@
 import { isoWeekKeyLocal, weekHasPassed, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
-import { settleChallenge, streakFreezeState } from "./adherence.mjs";
+import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile } from "./adherence.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -290,30 +290,44 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
       }
 
-      // A challenge PROPOSAL (Wave 126): the OPPONENT hears on the next hourly tick —
-      // a challenge only has until the end of ITS week to be answered. created_at
-      // (stamped at propose) is the high-water mark against challenge_pushed_at.
-      // Only the opponent's own still-PENDING, current-week invite pushes.
-      const pendingChallenge = user.profile?.challenge;
-      if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
-          && !weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)
-          && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
-        if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
-      }
-
-      // A challenge ACCEPT (Wave 137): the CHALLENGER hears the race is on —
-      // completing the propose→accept event loop the invite push above started.
-      // accepted_at (stamped on the challenger's copy at respond time) is the
-      // high-water mark vs challenge_accept_pushed_at. Pre-137 active challenges
-      // have no accepted_at and can never fire. Declines deliberately do NOT
-      // push — the in-app card shows them, and a "they said no" notification
-      // helps nobody train.
-      if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
-          && !weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)
-          && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
-        if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
+      // Challenge INVITE + ACCEPT pushes (Waves 126/137, multi-slot since Wave 198):
+      // iterate every slot. The pushed-markers live ON each slot as booleans
+      // (invite_pushed / accept_pushed) — the per-USER scalar watermarks collided the
+      // moment two invites could land in one sweep tick: a shared high-water mark
+      // stamped by the first send made the second invite's created_at read as already
+      // pushed, suppressing it forever (lesson 23, the exact failure the roadmap named
+      // when it scoped this feature). challengeSlots maps the legacy scalars onto the
+      // slot booleans for un-migrated rows, so nothing old re-fires and nothing
+      // un-pushed is lost. Stamp only on >= 1 delivered send (all-failed retries next
+      // tick), precondition inside the mutator so a raced slot replacement can't be
+      // mis-stamped.
+      const markSlot = async (slotId, key) => {
+        try {
+          await store.updateUser(userId, (u) => {
+            const cur = challengeSlots(u.profile);
+            if (!cur.some((ch) => ch.id === slotId)) return u; // slot replaced — nothing to mark
+            u.profile = normalizeChallengeProfile(u.profile, cur.map((ch) => ch.id === slotId ? { ...ch, [key]: true } : ch));
+            return u;
+          });
+        } catch { /* worst case: one repeat push next tick, never a lost event */ }
+      };
+      const slots = challengeSlots(user.profile);
+      for (const ch of slots) {
+        if (paused || remindersOff || quietHours) break;
+        // The invite: only the opponent's own still-PENDING, still-current invite.
+        if (ch.role === "opponent" && ch.status === "pending" && !ch.invite_pushed
+            && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
+          if (ok) await markSlot(ch.id, "invite_pushed");
+        }
+        // The accept: the CHALLENGER hears the race is on. accepted_at is stamped on
+        // their copy at respond time; a pre-137 active slot has none and never fires.
+        // Declines deliberately do NOT push.
+        if (ch.role === "challenger" && ch.status === "active" && ch.accepted_at != null && !ch.accept_pushed
+            && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
+          if (ok) await markSlot(ch.id, "accept_pushed");
+        }
       }
 
       // A share-card CHEER (the last of Tier-3 #10's social events to reach push): unlike
@@ -342,14 +356,15 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         }
       }
 
-      // A challenge RESULT (Waves 138/139): if the week ended and this user never
-      // reopened the app, GET /api/challenge's self-transition never ran — settle
-      // it here with the SAME shared logic (settleChallenge, never a second copy),
-      // then push the result below off the PERSISTED fields.
-      if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
-          && weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)) {
+      // Challenge RESULTS (Waves 138/139, multi-slot): if a week ended and this user
+      // never reopened the app, GET /api/challenge's self-transition never ran —
+      // settle here with the SAME shared logic (settleChallenge settles every needy
+      // slot in one call, never a second copy), then push results off the PERSISTED
+      // fields.
+      if (!paused && !remindersOff && slots.some((ch) => ch.status === "active"
+          && weekHasPassed(ch.week, now, user.profile?.tz_offset_min))) {
         await settleChallenge(store, userId, user, now);
-        user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
+        user = (await store.getUser(userId)) ?? user; // the push path reads the settled slots
       }
       // The result push itself (design adopted from PR #216): driven entirely off
       // persisted state — a COMPLETED challenge for the week that JUST ended, with
@@ -364,10 +379,15 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // "is this the week that JUST ended" (a one-week window that stops old completed
       // challenges firing retroactively), not "has this week passed" — the two other
       // comparisons in this file were the same shape as the bug and this one is not.
-      const settledCh = user.profile?.challenge;
-      if (!paused && !remindersOff && !quietHours && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
-          && settledCh.week === isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) {
-        const entry = (user.profile?.challenge_history ?? []).find((h) => h.week === settledCh.week);
+      for (const settledCh of challengeSlots(user.profile)) {
+        if (paused || remindersOff || quietHours) break;
+        if (settledCh.status !== "completed" || settledCh.result_pushed) continue;
+        if (settledCh.week !== isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) continue;
+        // Entry lookup by challenge ID first (two challenges can now end in the SAME
+        // week — a week-keyed lookup collides); legacy entries predate ids and fall
+        // back to the week, safe because the single-slot world couldn't collide.
+        const entry = (user.profile?.challenge_history ?? []).find((h) => h.id === settledCh.id)
+          ?? (user.profile?.challenge_history ?? []).find((h) => h.id == null && h.week === settledCh.week);
         if (entry) {
           const body = entry.result === "win"
             ? `🏆 You won this week's challenge ${entry.my_count}–${entry.opponent_count}!`
@@ -375,16 +395,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
               ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
               : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
           const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your weekly challenge result is in", body, tag: "hb-challenge" });
-          if (ok) {
-            try {
-              await store.updateUser(userId, (u) => {
-                if (u.profile?.challenge?.id !== settledCh.id) return u; // slot replaced — nothing to mark
-                u.profile = { ...u.profile, challenge: { ...u.profile.challenge, result_pushed: true } };
-                return u;
-              });
-            } catch { /* worst case: one repeat push next tick, never a lost result */ }
-
-          }
+          if (ok) await markSlot(settledCh.id, "result_pushed");
         }
       }
 
