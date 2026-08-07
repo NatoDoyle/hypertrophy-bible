@@ -6,7 +6,10 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-07** (Waves 194-197: Tier-1 #1 CLOSED — the depth
+Grounded assessment date: **2026-08-08** (Waves 198-200: Tier-1 #2 — multiple
+concurrent challenges — SHIPPED and prod-smoked; **Tier 1 now holds ONLY item #3**, and
+the goal-distance re-audit this file schedules "when a tier empties" is due the moment
+it lands. The prior grounding was Waves 194-197: Tier-1 #1 CLOSED — the depth
 gate now ENFORCES with every flag authored or justified; the prior grounding was
 Waves 190-193: a self-audit of the prior burst
 plus its two deferred items — the tz/challenge hypothesis and the never-ending
@@ -141,6 +144,28 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 198–200 progress (2026-08-08). Tier-1 #2 — multiple concurrent challenges —
+is SHIPPED,** exactly along the lines the 2026-08-04 scoping laid down (and that
+scoping held up: no real table needed, respond needed challenge_id, the per-user push
+markers were the lesson-23 trap):
+
+- **Wave 198 (backend):** `profile.challenges` bounded array with ONE normalization
+  helper reading legacy-scalar and array rows identically; per-slot push markers
+  (regression test: two invites in one sweep tick BOTH push — the collision the
+  scoping predicted); per-pair busy rule + 3-open cap, re-checked inside every CAS
+  mutator with a rollback when the opponent's side refuses (lesson 46); respond takes
+  `challenge_id` with a no-guessing rule for multiple pending invites; history entries
+  carry the challenge id (two challenges can end in the same week). Legacy rows are
+  covered by tests seeded byte-for-byte as un-migrated D1 rows (lesson 45).
+- **Wave 199 (frontend):** the four mutually exclusive cards became a per-slot list;
+  each invite card answers with its own id; the ⚔️ button gates per pair. Real-browser
+  verified: two concurrent invites rendered together, answered independently, server
+  state matching per side. Prod-smoked on real D1.
+- **Tier 1 now holds ONLY item #3** (social events with no push: new follower, PR,
+  level-up, streak milestone; comeback nudge is email-only). When it lands, Tier 1 is
+  EMPTY and the scheduled goal-distance re-audit fires — re-measure the honest
+  distance to all four goals rather than pulling filler (lesson 17).
 
 **Waves 194–197 progress (2026-08-07, same day). Tier-1 #1 — the KB depth backlog —
 is CLOSED.** The flip criterion re-specified on 2026-08-04 ("every remaining entry
@@ -306,7 +331,10 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
      two by-reference synthesis pages. The test asserting the pre-flip state is *supposed*
      to fail on the flip — update it to lock the enforced state, never relax a floor to
      make a thin page pass.
-2. **[Goal 4] Multiple concurrent challenges — scoped, and the old blocker was wrong.**
+2. ~~**[Goal 4] Multiple concurrent challenges**~~ — **SHIPPED (Waves 198-199).** The
+   2026-08-04 scoping below is kept because every one of its predictions held; see the
+   progress entry above for what landed.
+   *(Original scoping:)*
    The roadmap has said for several waves that this "needs a real table". **It does not:**
    `app/schema.sql` stores the whole user as a JSON blob (`users.data`), so single-slot →
    bounded N-slot array is a shape change with zero migration, and `settleChallenge` is
