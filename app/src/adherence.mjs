@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, isoWeekKeyLocal, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
+import { isoWeekKey, weekHasPassed, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -214,7 +214,10 @@ export async function settleChallenge(store, id, user, now = Date.now()) {
   // ending (and auto-completing) their challenge up to a day before their own
   // local week is actually over. Each side settles in its own local frame,
   // same as isChallengeOpen/the propose-time week stamp in app.mjs.
-  const week_over = ch.week !== isoWeekKeyLocal(now, user.profile?.tz_offset_min);
+  // ...and CHRONOLOGICALLY, not merely "different": a `!==` here also fired when the
+  // freshly-computed key read EARLIER than the stamp, which is what a tz change between
+  // stamp and read looks like — settling a live challenge that had barely started.
+  const week_over = weekHasPassed(ch.week, now, user.profile?.tz_offset_min);
   // Both sides' tallies up front (needed either way once an opponent exists) so a
   // completing challenge records its result with the SAME counts it reports.
   let my_count = null, opponent_count = null;

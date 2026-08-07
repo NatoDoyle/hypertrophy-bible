@@ -98,6 +98,19 @@ const easeToward = (band) => {
 const UNDULATION_COMPOUND = { heavy: ["4-6", "2-3"], light: ["10-15", "1-2"] }; // moderate = the goal's base compound
 const UNDULATION_ORDER = ["heavy", "moderate", "light"];
 const undulatesForGoal = (goal) => goal === "hypertrophy" || goal === "recomposition";
+
+// Whether a profile's plan undulates, as a PURE function of the profile — the same
+// condition generatePlan applies, in one place so the generator and the explanation
+// can't drift. Exported because `explainPersonalization` needs it for rationales stored
+// before `goal_prescription.undulating` existed (see its note on bounded reach).
+export function undulatesForProfile(profile) {
+  const goal = profile?.primary_goal ?? "hypertrophy";
+  const experience = profile?.training_status ?? "intermediate";
+  return undulatesForGoal(goal) && (
+    profile?.periodization === "undulating" ||
+    (profile?.periodization !== "linear" && experience === "advanced")
+  );
+}
 // Pick a session's scheme from its OCCURRENCE within its own archetype (Push A's
 // 1st exposure, Push B's 2nd, ...) — not the session's absolute index in the week.
 // Keying off the absolute index made every repeat of an archetype whose interval
@@ -449,10 +462,9 @@ export function generatePlan(profile, kb, opts = {}) {
   // while beginners/intermediates keep the simpler linear default. `profile.periodization`
   // is a respected OVERRIDE either way ("undulating" forces it on, "linear" forces it off),
   // but nothing needs to be set: the right default is chosen from training status.
-  const undulating = undulatesForGoal(goal) && (
-    profile.periodization === "undulating" ||
-    (profile.periodization !== "linear" && experience === "advanced")
-  );
+  // One predicate, shared with explainPersonalization's legacy-rationale path, so the
+  // generator and the explanation can never disagree about whether the week undulates.
+  const undulating = undulatesForProfile({ ...profile, primary_goal: goal, training_status: experience });
 
   const muscleById = new Map(muscles.map((m) => [m.id, m]));
   // Loaded carries (suitcase/bottoms-up) are a time-and-distance movement — there is
@@ -1149,12 +1161,27 @@ export function explainPersonalization(profile, rationale, program) {
     // directly above a session list reading 4-6 / 6-10 / 10-15, on the one surface
     // built to prove the plan is honest (lesson 10), and understated the most advanced
     // personalization the engine performs on the very card meant to make it visible.
-    const bands = r.goal_prescription.compound_bands?.length
-      ? r.goal_prescription.compound_bands
-      : [scheme.compound[0]];
-    const compoundCopy = bands.length > 1
+    // `compound_bands` is banked at generation time, so a rationale STORED BEFORE that
+    // field existed doesn't have it — and `/api/plan/explain` reads the stored rationale
+    // rather than regenerating, so those users would keep seeing the old, wrong single
+    // band until their next block boundary. That is the fix having bounded reach, which
+    // is lesson 37 recurring inside the wave that wrote lesson 37.
+    //
+    // The bands can't be recovered from the stored plan: the "light" undulation band is
+    // 10-15, which collides with the isolation band, and a small split never uses all
+    // three — so subtracting isolations from the shipped rep ranges is ambiguous, and
+    // reconstructing all three would overstate. Verified before attempting it.
+    //
+    // So for a legacy rationale, say what is certainly true and invent no numbers:
+    // `undulating` is a pure function of the profile, so we can always tell THAT the
+    // week cycles even when we can't tell exactly which bands it landed on.
+    const bands = r.goal_prescription.compound_bands?.length ? r.goal_prescription.compound_bands : null;
+    const undulates = r.goal_prescription.undulating ?? undulatesForProfile(p);
+    const compoundCopy = bands && bands.length > 1
       ? `compounds cycle ${bands.slice(0, -1).join(", ")} and ${bands[bands.length - 1]} reps across the week — each muscle gets a heavier and a lighter exposure instead of the same session twice`
-      : `compounds run ${bands[0]} reps at ${scheme.compound[1]} reps in reserve`;
+      : !bands && undulates
+        ? "compounds cycle through heavier and lighter rep ranges across the week — each muscle gets a different exposure each time rather than the same session twice"
+        : `compounds run ${(bands ?? [scheme.compound[0]])[0]} reps at ${scheme.compound[1]} reps in reserve`;
     say("primary_goal", GOAL_LABEL[r.goal_prescription.primary_goal] ?? r.goal_prescription.primary_goal,
       `${compoundCopy}, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
   }

@@ -792,6 +792,28 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
   const lin = { ...prof, primary_goal: "strength" };
   const l2 = generatePlan(lin, kb);
   const linGoal = explainPersonalization(lin, l2.rationale, l2.program).find((l) => l.input === "primary_goal");
+  // A rationale STORED BEFORE compound_bands existed: /api/plan/explain reads the stored
+  // rationale rather than regenerating, so those users kept seeing the old wrong single
+  // band. The card must not invent numbers it can't recover (the light band collides
+  // with the isolation band, and a small split never uses all three), but it CAN always
+  // tell that the week undulates, because that's a pure function of the profile.
+  {
+    const legacy = JSON.parse(JSON.stringify(a.rationale));
+    delete legacy.goal_prescription.compound_bands;
+    delete legacy.goal_prescription.undulating;
+    const line = explainPersonalization(adv, legacy, a.program).find((l) => l.input === "primary_goal");
+    ok("explainPersonalization: a pre-compound_bands rationale still says the week cycles",
+      /cycle/.test(line.effect));
+    ok("...and invents no band numbers it cannot recover from the stored plan",
+      !/\d+-\d+ reps at/.test(line.effect) && !/6-10 reps/.test(line.effect));
+    // The same legacy shape on a NON-undulating profile must keep the precise old copy.
+    const legacyLin = JSON.parse(JSON.stringify(l2.rationale));
+    delete legacyLin.goal_prescription.compound_bands;
+    delete legacyLin.goal_prescription.undulating;
+    const linLine = explainPersonalization(lin, legacyLin, l2.program).find((l) => l.input === "primary_goal");
+    ok("...while a legacy NON-undulating rationale is unchanged, numbers and all",
+      /reps in reserve/.test(linLine.effect) && !/cycle/.test(linLine.effect));
+  }
   ok("...while a non-undulating plan still states one band with its RIR, exactly as before",
     l2.rationale.goal_prescription.compound_bands.length === 1
     && /reps in reserve/.test(linGoal.effect) && !/cycle/.test(linGoal.effect));

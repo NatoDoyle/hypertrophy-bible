@@ -1470,6 +1470,36 @@ try {
   ok("#tz a commitment stamped before the clock was known survives the frame change",
     Array.isArray(tzAdh.commitment?.days) && tzAdh.commitment.days.length === 2);
 
+  // ...and the CHALLENGE equivalent, which the last iteration recorded as an unverified
+  // hypothesis and this one reproduced: a week key stamped in one frame, read in another,
+  // used to settle a live challenge because the comparison was `!==` (different) rather
+  // than `>` (passed). Simulated directly by rewriting the stored week key to the UTC
+  // frame the pre-clock stamp would have produced, then reading it back.
+  const chA = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  const chB = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  // A REAL opponent share token: with none, settleChallenge's `|| !opponentId` branch
+  // (the opponent-vanished path) fires regardless of the week, so the fixture would
+  // never exercise the week comparison at all. Caught by the test failing first.
+  const chBShare = (await json("POST", "/api/share", { user_id: chB })).data.share_id;
+  const skewWeek = (wk) => { const [y, w] = wk.split("-W"); return `${y}-W${String(Number(w) + 1).padStart(2, "0")}`; };
+  await store.updateUser(chA, (u) => {
+    const cur = isoWeekKeyLocal(Date.now(), -480);
+    u.profile = { ...u.profile, tz_offset_min: -480, challenge: {
+      id: "skew-1", role: "opponent", status: "pending", week: skewWeek(cur),
+      partner_token: chBShare, created_at: Date.now(),
+    } };
+    return u;
+  });
+  const chRead = await (await app.request("/api/challenge", { headers: { "X-HB-User": chA, "X-HB-TZ": "-480" } })).json();
+  ok("#tz a challenge whose stored week reads as the FUTURE (frame skew) is not settled",
+    chRead.challenge?.status === "pending" && chRead.week_over === false);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

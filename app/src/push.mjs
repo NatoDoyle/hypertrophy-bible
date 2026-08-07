@@ -1,4 +1,4 @@
-import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKeyLocal, weekHasPassed, weekDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState } from "./adherence.mjs";
 
@@ -170,7 +170,12 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   if (paused || remindersOff || !commitment?.days?.length) return false;
   const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
   const localNow = +new Date(now) + offsetMs;
-  if (commitment.week !== isoWeekKey(localNow)) return false;
+  // Chronological, not merely different: an equality test also dropped the reminder
+  // when the stored key read as the FUTURE relative to the freshly-computed one, which
+  // is what a tz change (first capture, DST, travel) looks like between stamp and read.
+  // For a Goal-4 reminder the user explicitly asked for, ambiguity resolves toward
+  // delivering it, not toward silence.
+  if (weekHasPassed(commitment.week, localNow, 0)) return false;
   if (!commitment.days.includes(weekDayKey(localNow))) return false;
   if (!lastSessionAt) return true;
   const localLast = +new Date(lastSessionAt) + offsetMs;
@@ -291,7 +296,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // Only the opponent's own still-PENDING, current-week invite pushes.
       const pendingChallenge = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "opponent" && pendingChallenge.status === "pending"
-          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
+          && !weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)
           && pendingChallenge.created_at > (user.profile?.challenge_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_pushed_at", pendingChallenge.created_at);
@@ -305,7 +310,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // push — the in-app card shows them, and a "they said no" notification
       // helps nobody train.
       if (!paused && !remindersOff && !quietHours && pendingChallenge && pendingChallenge.role === "challenger" && pendingChallenge.status === "active"
-          && pendingChallenge.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)
+          && !weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)
           && pendingChallenge.accepted_at > (user.profile?.challenge_accept_pushed_at ?? 0)) {
         const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
         if (ok) await stamp("challenge_accept_pushed_at", pendingChallenge.accepted_at);
@@ -342,7 +347,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // it here with the SAME shared logic (settleChallenge, never a second copy),
       // then push the result below off the PERSISTED fields.
       if (!paused && !remindersOff && pendingChallenge && pendingChallenge.status === "active"
-          && pendingChallenge.week !== isoWeekKeyLocal(now, user.profile?.tz_offset_min)) {
+          && weekHasPassed(pendingChallenge.week, now, user.profile?.tz_offset_min)) {
         await settleChallenge(store, userId, user, now);
         user = (await store.getUser(userId)) ?? user; // the push path reads the settled slot
       }
@@ -355,6 +360,10 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // the just-ended-week guard keeps pre-existing old completed challenges from
       // ever firing retroactively. A vanished-opponent completion has no history
       // entry -> no push (never manufacture a trophy); declines stay silent.
+      // NOTE: the guard below is a DELIBERATE exact match and must stay one. It asks
+      // "is this the week that JUST ended" (a one-week window that stops old completed
+      // challenges firing retroactively), not "has this week passed" — the two other
+      // comparisons in this file were the same shape as the bug and this one is not.
       const settledCh = user.profile?.challenge;
       if (!paused && !remindersOff && !quietHours && settledCh && settledCh.status === "completed" && !settledCh.result_pushed
           && settledCh.week === isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) {

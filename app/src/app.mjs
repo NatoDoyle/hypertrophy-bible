@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge } from "./adherence.mjs";
@@ -171,8 +171,13 @@ const normalizeSet = (s) => ({
 // tzOffsetMin localizes "now" to the SIDE being checked (a challenger and
 // opponent can be in different timezones; each side's own staleness is judged
 // in their own local week, matching settleChallenge's per-user week_over).
+// `!weekHasPassed`, not `===`: an equality test also called the challenge closed when
+// the freshly-computed key read EARLIER than the stamp (a tz change between stamp and
+// read — first capture, DST, travel), which here frees the slot early and lets a new
+// propose overwrite a live challenge. Chronological comparison makes that skew inert.
 const isChallengeOpen = (challenge, tzOffsetMin) =>
-  !!challenge && (challenge.status === "pending" || challenge.status === "active") && challenge.week === isoWeekKeyLocal(Date.now(), tzOffsetMin);
+  !!challenge && (challenge.status === "pending" || challenge.status === "active")
+  && !weekHasPassed(challenge.week, Date.now(), tzOffsetMin);
 
 export function createApp(store, config = {}) {
   const app = new Hono();
@@ -983,7 +988,10 @@ export function createApp(store, config = {}) {
     // "completed" result from training that happened before anyone had agreed to
     // compete over it — not the "never answered, no result to show" outcome the
     // design intends for an unanswered invite.
-    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || mine.week !== isoWeekKeyLocal(Date.now(), responder.profile?.tz_offset_min))
+    // Same chronological test as isChallengeOpen/settleChallenge — a `!==` here refused
+    // a legitimate accept whenever the responder's own clock had shifted since the
+    // invite was stamped.
+    if (!mine || mine.role !== "opponent" || mine.status !== "pending" || weekHasPassed(mine.week, Date.now(), responder.profile?.tz_offset_min))
       return c.json({ error: "no-pending-challenge" }, 400);
     const status = b.accept === true ? "active" : "declined";
     // On ACCEPT, stamp accepted_at on the CHALLENGER's copy: the push sweep uses it
