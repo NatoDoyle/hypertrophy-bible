@@ -523,6 +523,55 @@ These are real failures from previous iterations. Each is now a standing check.
    construction" — a coverage claim in prose, over a predicate they had split in half.
    Lesson 33 again: the confident comment is written at the exact moment the search stops.
 
+40. **An ORDINAL question asked with an EQUALITY test fires on skew in both
+   directions.** "Has this week finished?" was written six times as
+   `stored !== isoWeekKeyLocal(now, tz)`. That is true when the stamp is genuinely
+   past — and equally true when the freshly-computed key reads *earlier* than the
+   stamp, which is exactly what a change in the user's own tz offset looks like
+   between the stamp and the read (first capture, DST, travel). Reproduced: a UTC-8
+   user proposing at 18:00 their Sunday banks the UTC week, and the first read after
+   their clock is known computes the previous local week — settling a **one-hour-old**
+   challenge. The same `!==` also freed the challenge slot early (letting a new propose
+   overwrite a live one), refused a legitimate accept, and suppressed the invite,
+   accept and commitment pushes. → **Standing lens:** when a comparison's question is
+   "has X passed / is X still current", write it ordinally, not as equality, and make
+   the ambiguous direction the inert one — a branch that permanently ends something the
+   user did not ask to end must not fire on a tie-break it cannot justify (lesson 32's
+   "ambiguity resolves toward doing nothing", at the comparison operator). ISO week keys
+   are zero-padded so string order *is* chronological order; the ordinal form was always
+   available. Corollary learned in the same sweep: **not every instance of the pattern is
+   the same defect** — `settledCh.week === isoWeekKeyLocal(now - 7d, tz)` is a deliberate
+   one-week *window* ("the week that just ended"), and changing it would have broken it.
+   It now carries a comment saying so, so the next sweep doesn't "fix" it (lesson 13).
+
+41. **A fix that writes into a STORED artifact does not reach artifacts already
+   stored.** Lesson 37's twin, one layer down. Wave 187 fixed the plan card by banking
+   `compound_bands` at *generation* time — but `/api/plan/explain` reads the STORED
+   rationale rather than regenerating, so every user whose plan predated the wave kept
+   seeing the old wrong band until their next block boundary. The fix was correct and
+   inert, and every test passed because fixtures are always generated fresh. Note this
+   happened *inside the wave that wrote lesson 37*, which is the tell that "does this
+   reach existing rows?" has to be a checklist question, not a thing you notice in
+   hindsight. → **Standing lens:** for any fix that adds a field to a derived-and-stored
+   artifact, ask what the READ path does when the field is absent, and whether the
+   absence is silent. And when the old value genuinely cannot be reconstructed — here
+   the light undulation band collides with the isolation band, and small splits never
+   use all three, so any reconstruction would have been a guess — **say the part that is
+   certainly true and invent no numbers**, rather than reaching for the precise-looking
+   answer (lesson 31's shape, at the migration layer).
+
+42. **A test written in terms of the constant it is testing cannot falsify that
+   constant.** The specialization-expiry suite asserted
+   `specializationActive(profile, muscles, SPEC_MAX_BLOCKS) === false` and friends —
+   all of which stay green when `SPEC_MAX_BLOCKS` is changed to **9999**, i.e. when the
+   feature is entirely disabled. Discovered by accident, not by design (a `grep -c`
+   returning 0 exits non-zero and broke an `&&` chain mid-experiment — lesson 18 firing
+   live while testing something else). → **Standing rule:** when a constant encodes a
+   product decision, pin the VALUE with a literal in at least one assertion, and assert
+   the behaviour at literal boundaries either side of it, so the test fails if the
+   decision silently changes. The symbolic assertions are still worth keeping — they
+   document intent — but they verify the plumbing, not the number.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -544,6 +593,20 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7a. **Telemetry (Waves 190–193, 2026-08-07).** Two finder agents launched; **BOTH died
+   on session limits before returning a single candidate**, and the iteration shipped
+   three waves anyway. Every finding came from inline work: the challenge week-key bug
+   from writing a ten-line reproduction of a hypothesis the previous iteration had filed
+   as unverified; the stored-rationale reach gap from reading `/api/plan/explain` and
+   asking what it does when a new field is absent; the refutation of `boundLocalDate`
+   from running it across the full ±14h range. Zero verify agents, zero workflows.
+   **The lesson is not "agents are useless"** — it is that the finder's job is
+   *pointing*, and when the surface is a ~600-line diff you wrote yourself, you already
+   know where to point. Match the apparatus to the surface (rule 8): a self-review of
+   one burst does not need an agent at all, and the loop should stop launching one out
+   of habit. The two genuinely agent-shaped jobs remain broad un-audited surfaces and
+   independent domain judgment.
+
 7b. **Telemetry (Waves 186–189, 2026-08-06).** **2 finder agents, ZERO verify agents,
    zero workflows** — three shipping waves plus this one. The audit was a diff-scoped
    read of `8f488cf..HEAD` (Waves 178–185, ~950 insertions) through two read-only

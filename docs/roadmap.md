@@ -6,7 +6,10 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-06** (Waves 186-189: a diff-scoped correctness audit of
+Grounded assessment date: **2026-08-07** (Waves 190-193: a self-audit of the prior burst
+plus its two deferred items — the tz/challenge hypothesis and the never-ending
+specialization block — and the last muscle-guide rebuild; the prior grounding was
+Waves 186-189: a diff-scoped correctness audit of
 `8f488cf..HEAD` plus the chest.md depth rebuild; the prior grounding was Waves 173-176:
 `5171a37..HEAD` plus the KB's first DEPTH measurement; redo when a tier empties).
 
@@ -21,10 +24,11 @@ claims to cite (not a gap — see Tier-2 #6's reassessment); `energy-balance` an
 cited (Wave 92/95), and `weak-point-prioritization` picked up 4 citations (PR #184).
 `breaking-advanced-plateaus` and `long-term-and-annual-planning` stay honestly Grade C/D —
 planning heuristics no trial has directly tested, not an oversight. The **7 muscle guides —
-the product backbone** — are 480–893-word quick cards for most regions (back.md is the
-exemplar depth upgrade, Wave 93; **chest.md joined it at ~1300w, Wave 188**), not yet
-authoritative treatments everywhere — `shoulders.md` is now the only one still on the
-list. Worth carrying forward from the chest rebuild: its prose recommended a movement
+the product backbone** — were 480–893-word quick cards for most regions; the three that
+carry the most traffic are now full region-by-region treatments (back.md Wave 93,
+**chest.md ~1300w Wave 188, shoulders.md ~1640w Wave 190**), and **no muscle guide
+remains on the rebuild list** — the rest were reassessed as genuinely adequate
+(Waves 95/123). Worth carrying forward from those rebuilds: its prose recommended a movement
 (“low-to-high cable fly”) that **has no entry in `data/exercises`**, so the app could
 never program its own KB's advice. Nothing measured that, and nothing does yet — a
 prose-recommends-a-liftable-movement check is a candidate gate whenever a guide is
@@ -118,8 +122,8 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   `assessing-progress` are all off the report; `recovery-modalities-and-injury` gained
   the verdict table it had been promising. **Depth: 17 pages / 23 flags → 14 / 17.**
   Graph edges 314 → 334, median out-degree 3 → 4. Registry 131 → 134.
-- **Still open from item 1** *(updated 2026-08-06)*: `chest.md` **is done** (Wave 188);
-  `shoulders.md` is the remaining muscle-guide rebuild and is still its own wave. The
+- **Still open from item 1** *(updated 2026-08-07)*: the muscle-guide rebuilds are
+  **all done** — `chest.md` (Wave 188) and `shoulders.md` (Wave 190). The
   both-tells shortlist is now **3** entries, and all three need a recorded *exemption*
   rather than authoring (two myth pages and a returning-lifters page — a rebuttal built
   on null findings has nothing to quantify, lesson 13), per the re-specified flip
@@ -135,6 +139,37 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 190–193 progress (2026-08-07).** A self-audit of the previous burst plus the two
+items that burst had explicitly recorded as deferred. All deployed and prod-smoked.
+
+- **Wave 190 — `shoulders.md` rebuilt** (624w → ~1640w, 3 → 5 live links). The last
+  muscle guide on the depth list; **that whole sub-item is now closed.** The find that
+  mattered wasn't the word count: the old page implied cables beat dumbbells for side
+  delts, and Larsen 2025 tested exactly that — one arm each, ROM matched, 8 weeks — and
+  found **no difference**. The page now says so *and* says precisely what the result
+  does and doesn't license (it tested the implement with ROM held constant, so it can't
+  speak to lengthened-position loading, and the engine's lengthened-bias ranking stays
+  defensible). Registry 136 → 137. Searched for evidence on the page's strongest claim
+  (pressing covers the front delt) and found **none** — it stays Grade C inference and
+  now says so.
+- **Wave 191 — the deferred tz/challenge hypothesis was REAL.** Recorded last iteration
+  as "plausible arithmetic, not confirmed"; a ten-line reproduction settled a
+  **one-hour-old** challenge. Fixed at six sites via one ordinal `weekHasPassed`
+  predicate (lesson 40), with one lookalike deliberately left alone because it's a
+  genuine one-week window. Also: Wave 187's plan-card fix reached **nobody**, because
+  `/api/plan/explain` reads the stored rationale (lesson 41). And `boundLocalDate` was
+  **refuted** — tested across ±14h, it's correct as written.
+- **Wave 192 — a specialization block now ENDS**, the other deferred item. One 6-week
+  block, matching the KB's "~4–8 weeks, then rebalance"; **no new state** (the existing
+  `block_index` already resets when `priority_muscles` changes, so "start another block"
+  is "change your priorities" — the rotation the KB itself describes). The plan card
+  explains the transition rather than letting the maintenance holds silently vanish.
+- **Depth: 13 flagged pages / 16 flags**, unchanged from the last burst — shoulders was
+  never *below* a floor, it was thin relative to the exemplar. Registry 137.
+- **Still deliberately open:** the depth-gate flip (unchanged reasoning — all-or-nothing
+  enforcement, no per-page exemption mechanism, 11 density-floor pages each needing an
+  individual call). Nothing else from the previous burst's deferred list remains.
 
 **Waves 186–189 progress (2026-08-06).** A diff-scoped lesson-3 audit of the previous
 burst (`8f488cf..HEAD`, Waves 178–185) plus the next KB-depth pull. Three shipping waves,
@@ -216,8 +251,9 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
      adjudicates two (foam rolling, cold water). Sauna, compression, massage guns and NSAIDs
      appear **nowhere in `content/`** and have no registry citation — needs verification
      first, and an honest "not yet reviewed" beats an invented verdict.
-   - ~~`02-muscle-guides/chest.md` (430w)~~ **DONE (Wave 188)** — then `shoulders.md`
-     (591w), which is the last of these. back.md is the exemplar (region-by-region ranked
+   - ~~`02-muscle-guides/chest.md` (430w)~~ **DONE (Wave 188)**, ~~then `shoulders.md`~~
+     **DONE (Wave 190) — this sub-item is CLOSED; no muscle guide remains on the list.**
+     Kept for the pattern, which the next guide-touching wave should copy. back.md is the exemplar (region-by-region ranked
      picks with cues); shoulders is still a 3-row table. A ~600-word rebuild with real
      `data/exercises` ids, so too large to author honestly inline alongside other work —
      its own wave. **Not** a coverage gap: all 16 `data/muscles` regions are already
