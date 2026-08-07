@@ -171,7 +171,8 @@
       "study_type": "meta-analysis",
       "population": "mixed",
       "verified": true,
-      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27747846/"
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/27747846/ + https://api.crossref.org/works/10.1186/s40798-015-0009-9",
+      "notes": "27 studies, 37 interventions (Achilles/patellar, 264 participants), all >=8 weeks. Tendon stiffness SMD 0.70 (CI 0.51-0.88). Stiffness adaptation significantly depends on loading INTENSITY (p<0.05, I2=0%), not contraction type; SMD trend higher (not significant) for >=12-week interventions. Stiffness changes attributed to material more than morphological properties. Gives DURATION (>=8w, trend >=12w) and the intensity-dependence; does NOT give a tendon-vs-muscle adaptation-speed ratio."
     },
     {
       "key": "borsheim-2002-eaa-mps",
@@ -728,6 +729,25 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33388079/"
+    },
+    {
+      "key": "halson-2014-monitoring-fatigue",
+      "authors": [
+        "Halson SL"
+      ],
+      "year": 2014,
+      "title": "Monitoring training load to understand fatigue in athletes.",
+      "source": "Sports Medicine",
+      "volume": "44",
+      "issue": "Suppl 2",
+      "pages": "139-147",
+      "doi": "10.1007/s40279-014-0253-z",
+      "pmid": "25200666",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/25200666/ + https://pmc.ncbi.nlm.nih.gov/articles/PMC4213373/ (open access, phrase verified) + https://api.crossref.org/works/10.1007/s40279-014-0253-z",
+      "notes": "Open-access review. Verified phrase: describes non-functional overreaching as \"fatigue lasting weeks to months\" (appears twice). Used for exactly that duration claim and nothing stronger."
     },
     {
       "key": "haugen-2023-free-weights-machines",
@@ -1351,6 +1371,34 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32661839/"
+    },
+    {
+      "key": "meeusen-2013-overtraining-consensus",
+      "authors": [
+        "Meeusen R",
+        "Duclos M",
+        "Foster C",
+        "Fry A",
+        "Gleeson M",
+        "Nieman D",
+        "Raglin J",
+        "Rietjens G",
+        "Steinacker J",
+        "Urhausen A"
+      ],
+      "year": 2013,
+      "title": "Prevention, diagnosis, and treatment of the overtraining syndrome: joint consensus statement of the European College of Sport Science and the American College of Sports Medicine.",
+      "source": "Medicine & Science in Sports & Exercise",
+      "volume": "45",
+      "issue": "1",
+      "pages": "186-205",
+      "doi": "10.1249/MSS.0b013e318279a10a",
+      "pmid": "23247672",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23247672/ + https://api.crossref.org/works/10.1249/MSS.0b013e318279a10a",
+      "notes": "ECSS/ACSM joint consensus. Abstract-verified: functional overreaching = short-term decrement leading to improved performance after recovery; NFOR when training/recovery balance not respected; OTS keyword is PROLONGED maladaptation, diagnosis by exclusion (rule out disease, caloric restriction, insufficient carb/protein, iron/magnesium deficiency). The full-text recovery-duration table was NOT readable for verification — do not cite specific month figures to this key."
     },
     {
       "key": "moesgaard-2022-periodization",

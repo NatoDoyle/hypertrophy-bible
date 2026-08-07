@@ -15,7 +15,15 @@
 - When **dieting or [sleep](sleep.md)-deprived**, expect reduced recovery capacity and don't also push volume to new highs.
 - Count **[cardio](../03-programming/cardio-and-concurrent-training.md)** as a withdrawal from the same budget, not a free addition — particularly hard running, and particularly in the days around leg training.
 
-**Overreaching vs overtraining.** Short-term hard overreaching (a planned push before a deload) is a normal training tool. *Overtraining syndrome* — a prolonged, serious performance decline with systemic symptoms — is uncommon and usually the product of chronic excessive load with inadequate recovery over weeks to months. The practical takeaway is not fear of hard training, but respect for cumulative fatigue: back off before it becomes a hole.
+**Overreaching vs overtraining — the ladder, with the durations that are actually pinned down.** The ECSS/ACSM joint consensus distinguishes three states[^meeusen-2013-overtraining-consensus]:
+
+| State | What it is | How long |
+|-------|-----------|----------|
+| **Functional overreaching** | A planned hard push producing a *short-term* dip that turns into improved performance after recovery — a normal training tool | Days — resolved by a normal deload |
+| **Non-functional overreaching** | The dip that *doesn't* pay off, from training/recovery imbalance sustained too long | Fatigue lasting **weeks to months**[^halson-2014-monitoring-fatigue] |
+| **Overtraining syndrome** | "Prolonged maladaptation" — of performance *and* of hormonal/neurochemical regulation; a diagnosis of **exclusion** | Prolonged; the consensus deliberately doesn't fix a number |
+
+Two practical points fall out of the consensus. First, **before concluding you're "overtrained", exclude the mundane causes it lists**: caloric restriction, insufficient carbohydrate or protein, iron or magnesium deficiency, illness — most "overtraining" is one of these wearing a scarier name. Second, the difference between the ladder's rungs is **how long you kept digging**: the state that costs weeks-to-months is reached by ignoring the one that costs days. Back off at the first rung.
 
 ## The Evidence
 
@@ -34,4 +42,6 @@ None.
 
 ## References
 [^kreher-2012-overtraining]: Kreher JB, Schwartz JB (2012). *Overtraining syndrome: a practical guide.* Sports Health, 4(2), 128–138. DOI: [10.1177/1941738111434406](https://doi.org/10.1177/1941738111434406). PMID: 23016079.
+[^meeusen-2013-overtraining-consensus]: Meeusen R, Duclos M, Foster C, et al. (2013). *Prevention, diagnosis, and treatment of the overtraining syndrome: joint consensus statement of the European College of Sport Science and the American College of Sports Medicine.* Medicine & Science in Sports & Exercise, 45(1), 186–205. DOI: [10.1249/MSS.0b013e318279a10a](https://doi.org/10.1249/MSS.0b013e318279a10a). PMID: 23247672.
+[^halson-2014-monitoring-fatigue]: Halson SL (2014). *Monitoring training load to understand fatigue in athletes.* Sports Medicine, 44(Suppl 2), 139–147. DOI: [10.1007/s40279-014-0253-z](https://doi.org/10.1007/s40279-014-0253-z). PMID: 25200666.
 [^baz-valle-2022-volume-review]: Baz-Valle E, et al. (2022). *A Systematic Review of The Effects of Different Resistance Training Volumes on Muscle Hypertrophy.* Journal of Human Kinetics, 81, 199–210. DOI: [10.2478/hukin-2022-0017](https://doi.org/10.2478/hukin-2022-0017). PMID: 35291645.

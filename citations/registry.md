@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**137** verified references.
+**139** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -304,6 +304,14 @@ Guest NS & et al. (2021). International society of sports nutrition position sta
 - Type: position-stand
 - DOI: [10.1186/s12970-020-00383-4](https://doi.org/10.1186/s12970-020-00383-4) · PMID: [33388079](https://pubmed.ncbi.nlm.nih.gov/33388079/)
 
+### halson-2014-monitoring-fatigue
+Halson SL (2014). Monitoring training load to understand fatigue in athletes.
+
+*Sports Medicine*, 44(Suppl 2), 139-147.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.1007/s40279-014-0253-z](https://doi.org/10.1007/s40279-014-0253-z) · PMID: [25200666](https://pubmed.ncbi.nlm.nih.gov/25200666/)
+
 ### haugen-2023-free-weights-machines
 Haugen ME & et al. (2023). Effect of free-weight vs. machine-based strength training on maximal strength, hypertrophy and jump performance - a systematic review and meta-analysis.
 
@@ -559,6 +567,14 @@ McNulty KL & et al. (2020). The Effects of Menstrual Cycle Phase on Exercise Per
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1007/s40279-020-01319-3](https://doi.org/10.1007/s40279-020-01319-3) · PMID: [32661839](https://pubmed.ncbi.nlm.nih.gov/32661839/)
+
+### meeusen-2013-overtraining-consensus
+Meeusen R et al. (2013). Prevention, diagnosis, and treatment of the overtraining syndrome: joint consensus statement of the European College of Sport Science and the American College of Sports Medicine.
+
+*Medicine & Science in Sports & Exercise*, 45(1), 186-205.
+
+- Type: position-stand · Population: mixed
+- DOI: [10.1249/MSS.0b013e318279a10a](https://doi.org/10.1249/MSS.0b013e318279a10a) · PMID: [23247672](https://pubmed.ncbi.nlm.nih.gov/23247672/)
 
 ### moesgaard-2022-periodization
 Moesgaard L & et al. (2022). Effects of Periodization on Strength and Muscle Hypertrophy in Volume-Equated Resistance Training Programs: A Systematic Review and Meta-analysis.
