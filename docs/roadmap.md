@@ -6,10 +6,11 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-08** (Waves 198-200: Tier-1 #2 — multiple
-concurrent challenges — SHIPPED and prod-smoked; **Tier 1 now holds ONLY item #3**, and
-the goal-distance re-audit this file schedules "when a tier empties" is due the moment
-it lands. The prior grounding was Waves 194-197: Tier-1 #1 CLOSED — the depth
+Grounded assessment date: **2026-08-07** (Waves 201-202: Tier-1 #3 — every social
+event reaches a device — SHIPPED and prod-smoked; **Tier 1 emptied and the scheduled
+goal-distance re-audit RAN** — its verdict is the Waves 201-202 progress entry below,
+and Tier 1 is repopulated from it. The prior grounding was Waves 198-200: Tier-1 #2 —
+multiple concurrent challenges — shipped and prod-smoked. The prior grounding was Waves 194-197: Tier-1 #1 CLOSED — the depth
 gate now ENFORCES with every flag authored or justified; the prior grounding was
 Waves 190-193: a self-audit of the prior burst
 plus its two deferred items — the tz/challenge hypothesis and the never-ending
@@ -78,9 +79,12 @@ proactive habit-cue is now delivered (a commitment-day nudge at a sensible local
 code, 2026-08-04): share cards, cheers, training partners, a mini-leaderboard, mutual-only nudges,
 1v1 weekly challenges with history, the referral follow-loop, RFC 8291 payload-encrypted push for
 five social event types, quiet hours, and an email fallback for push-less users have all shipped.
-What is genuinely open is narrower and now scoped in Tier 1: **multiple concurrent challenges**
-(which does NOT need a new table — see Tier-1 #2) and **push for a new follower / PR / level-up /
-streak milestone**, none of which reach a device today.
+Both items that paragraph used to scope are now SHIPPED: **multiple concurrent
+challenges** (Waves 198-199) and **push for every remaining event — new follower,
+PR, level-up, streak milestone, plus the comeback on the push channel** (Wave 201).
+The mechanism layer of Goal 4 is built out; what the 2026-08-07 re-audit found
+genuinely open is that **nothing measures the goal itself** (BLOCKERS #7 — the
+owner's values call, sharpened there into a zero-new-collection proposal).
 
 ## Build queue (pull from the top)
 
@@ -145,6 +149,73 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
 
+**Waves 201–202 progress (2026-08-07). Tier-1 #3 — every social event reaches a
+device — is SHIPPED, Tier 1 emptied, and the scheduled goal-distance re-audit RAN.**
+
+- **Wave 201:** the celebration echo (PR / level-up / session-count milestone /
+  weeks-streak milestone at 4/12/26/52, literal-pinned) is stamped at the session
+  door as ONE consolidated marker and pushed on the next tick — never one
+  notification per event; edit/void re-earns it from corrected data, so a
+  fat-fingered PR weight taken back is never praised (lessons 27/10). A new
+  follower bumps a monotonic count on the owner (the cheers_pushed shape, batches
+  between ticks, carries no identity). The comeback reaches the push channel via
+  the SAME pure comebackStage the email sweep uses, rides the user's one local
+  push hour, and REPLACES that day's generic empty reminder rather than stacking
+  beside it. 43 new tests; sweep suite observed failing pre-feature; prod-smoked
+  on real D1. The push-notification layer now covers every event the app can
+  name: reminder, commitment, nudge, challenge invite/accept/result, cheer,
+  streak-freeze, follower, celebration, comeback.
+- **The goal-distance re-audit (scheduled "when a tier empties"), measured:**
+  - *Goal 1:* depth gate ENFORCED and green (10 flagged / 10 justified exemptions
+    / 0 enforceable); registry 139, all verified; graph gates green. The named
+    backlogs (depth, muscle guides, supplements, breadth) are all closed. What
+    remains is CURRENCY (re-checking hot pages as 2026+ literature lands —
+    local-session-only per BLOCKERS #9) and one carried-forward buildable gate:
+    nothing checks that a movement the PROSE recommends exists in
+    `data/exercises` (chest.md shipped a nonexistent "low-to-high cable fly" for
+    waves — the app could not program its own KB's advice). That gate is the new
+    Tier-1 #1.
+  - *Goal 2:* bottom end strong (v0 demos shipped; real footage = BLOCKERS #1).
+    Top end: the evidence-supported elite slices (DUP, taper/peak, specialization
+    blocks, volume auto-tune, effort lever) are ALL shipped; what remains
+    (contest-prep mode, velocity autoregulation) is blocked on elite ground truth
+    (BLOCKERS #6) and hardware the app can't collect — building either without
+    those inputs would assert what the KB can't back.
+  - *Goal 3:* every identified friction item is closed; no new ones surfaced this
+    audit. Watch, don't manufacture.
+  - *Goal 4 (the stated top priority):* after Wave 201 the MECHANISM layer is
+    genuinely built out — every event reaches a device, dual-channel, quiet-hours
+    aware. The honest gap is now lesson 25's: **the goal itself has no number.**
+    Nothing measures whether adherence is actually rising — and BLOCKERS #7
+    records that analytics is the OWNER'S values call, so the loop must not ship
+    it unilaterally. Sharpened #7 into a decision-ready zero-new-collection
+    proposal (aggregates over rows D1 already holds) and added the cheap
+    real-device push check as a new blocker ask. Also still open when usage data
+    exists: the two Grade-D tunables (graduation thresholds, reactive-deload
+    bounds) that have never been checked against a real user.
+  - **Verdict:** the buildable frontier has narrowed to one clean gate item
+    (below); the binding constraints on all four goals are now mostly HUMAN
+    inputs — BLOCKERS #1 (media), #5 (disclaimer), #6 (elite ground truth), #7
+    (analytics call), plus the new real-device push verification. Surfacing that
+    IS the work (lesson 17); filler would hide it.
+
+**Tier 1, repopulated by the 2026-08-07 re-audit:**
+
+1. **[Goal 1 + 2] The prose-recommends-a-liftable-movement gate.** A check (in
+   `npm run check`) that every exercise a content page RECOMMENDS resolves to a
+   real `data/exercises` id — the incident class is real (chest.md's
+   "low-to-high cable fly", caught only by a human read in Wave 188), the rule
+   already exists in prose ("check that every movement the prose recommends
+   actually EXISTS"), and lesson 25/33 say a rule that lives in prose is not
+   enforced. Needs a deliberate mapping layer (prose names ≠ ids), a measured
+   first run over the whole corpus BEFORE choosing strictness (lesson 30), and
+   ships WARN-first if it flags legitimate prose (lesson 25's flip rule).
+   Buildable now, local or cloud.
+
+*(Nothing else qualifies for Tier 1 without manufacturing: KB currency sweeps are
+Tier-2 cadence work gated on new literature; cross-user learning stays blocked on a
+dataset; everything else is in BLOCKERS.)*
+
 **Waves 198–200 progress (2026-08-08). Tier-1 #2 — multiple concurrent challenges —
 is SHIPPED,** exactly along the lines the 2026-08-04 scoping laid down (and that
 scoping held up: no real table needed, respond needed challenge_id, the per-user push
@@ -162,10 +233,8 @@ markers were the lesson-23 trap):
   each invite card answers with its own id; the ⚔️ button gates per pair. Real-browser
   verified: two concurrent invites rendered together, answered independently, server
   state matching per side. Prod-smoked on real D1.
-- **Tier 1 now holds ONLY item #3** (social events with no push: new follower, PR,
-  level-up, streak milestone; comeback nudge is email-only). When it lands, Tier 1 is
-  EMPTY and the scheduled goal-distance re-audit fires — re-measure the honest
-  distance to all four goals rather than pulling filler (lesson 17).
+- ~~Tier 1 now holds ONLY item #3~~ **superseded: #3 shipped (Wave 201), the
+  re-audit ran, and Tier 1 was repopulated — see the Waves 201-202 entry above.**
 
 **Waves 194–197 progress (2026-08-07, same day). Tier-1 #1 — the KB depth backlog —
 is CLOSED.** The flip criterion re-specified on 2026-08-04 ("every remaining entry
@@ -191,13 +260,9 @@ BUILD, not claimed by prose:
   Registry 139. Depth work is DONE as a backlog; it continues only as the gate
   catching regressions and new pages.
 
-**What Tier 1 still holds, in priority order:** items #2 (multiple concurrent
-challenges) and #3 (social events with no push) — both cloud-eligible, both scoped, and
-now the ONLY remaining Tier-1 items. A local session's comparative advantage (citation
-network) no longer has a standing Tier-1 outlet; per lesson 17, local iterations should
-now pull #2/#3 anyway rather than manufacture KB work, OR run the goal-distance
-re-audit this file schedules "when a tier empties" — Tier 1 will empty the moment
-#2/#3 land.
+~~What Tier 1 still holds: items #2 and #3~~ **superseded 2026-08-07: both shipped
+(Waves 198-199 and 201), the tier emptied, the goal-distance re-audit ran, and the
+current Tier 1 is the repopulated list in the Waves 201-202 entry above.**
 
 **Waves 190–193 progress (2026-08-07).** A self-audit of the previous burst plus the two
 items that burst had explicitly recorded as deferred. All deployed and prod-smoked.
@@ -345,11 +410,12 @@ of `5171a37..HEAD` plus the KB's first DEPTH measurement). Pull from the top:
    onto the slot** (as `result_pushed` already did) or two invites in one sweep tick collide
    and one is suppressed forever — lesson 23 exactly; and the frontend's four mutually
    exclusive cards become a list. **Cloud-eligible** (pure code, no citation network needed).
-3. **[Goal 4] Social events that still never reach a device.** Push covers nudge, challenge
-   invite/accept/result, cheers and streak-freeze (all with email fallback for push-less
-   users). **No push exists for a new follower, a PR, a level-up or a streak milestone**, and
-   the comeback nudge is email-only. Each needs the same marker-scope question lesson 23
-   asks. Cloud-eligible.
+3. ~~**[Goal 4] Social events that still never reach a device.**~~ — **SHIPPED
+   (Wave 201; see the Waves 201-202 entry above).** Every named event now reaches a
+   device: the celebration echo (PR/level-up/session milestone/streak milestone,
+   consolidated to one push), the new-follower event, and the comeback on the push
+   channel. The marker-scope question this item flagged (lesson 23) was answered
+   per event: per-session, count high-water, and per-lapse+stage respectively.
 4. **[Goal 1] Citation-network work is LOCAL-SESSION-ONLY** (`BLOCKERS.md` #9): PubMed
    E-utilities and Crossref return 200 here and are CONNECT-denied in the cloud sandbox. So a
    local session should spend itself on KB depth (items 1 and 4 above) and leave the pure-code

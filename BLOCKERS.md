@@ -42,6 +42,21 @@ _(Web-push VAPID secret — was #4 here — RESOLVED 2026-07-26; moved to Done b
 
 ## 🟡 Unlocks something
 
+### 2b. Verify a real push arrives on a real device *(5 minutes, added 2026-08-07)*
+**Why:** the push layer now carries almost every Goal-4 event (reminder, commitment,
+nudge, challenge invite/accept/result, cheer, streak-freeze, and since Wave 201 the
+celebration echo, new-follower and comeback pushes). Every layer is tested — VAPID JWTs
+verify cryptographically, RFC 8291 payloads round-trip against the published test
+vectors, the sweep suite decrypts every event's real ciphertext — **except the last
+hop: a live push service accepting a send (201) for a real browser subscription**,
+which is infeasible to create headless. This has been the one unverifiable gate since
+Wave 120.
+**What I need:** open https://hypertrophybible.com on your phone, allow notifications
+when the app offers, train (or just wait for a reminder window), and tell me whether
+notifications actually arrive — ideally once for the daily reminder and once for a
+social event (have a second device cheer your share card). If anything doesn't arrive,
+say which, and I'll have a confirmed live-path bug to chase instead of a hypothesis.
+
 ### 3. Donations / Open Collective
 **Blocked on:** you creating the account. `DONATE_URL` in `app/public/app.js` is `""`, so the
 support button stays hidden by design (never a dead or fake donation link). The copy is
@@ -81,10 +96,23 @@ accounts, no PII, recoverable by re-logging); (b) have me stop *deleting* the `f
 
 ## ⚪ Optional
 
-### 7. Analytics
-No telemetry exists (deliberate — no ads, no selling data). So I cannot see where users drop
-off. A privacy-respecting, self-hosted counter (e.g. anonymous funnel counts, no PII) would
-tell the loop what to fix next. **Needs your call** — it's a values decision, not a technical one.
+### 7. Analytics — sharpened into a concrete proposal *(2026-08-07)*
+No telemetry exists (deliberate — no ads, no selling data), so **Goal 4 — the stated top
+priority — has no number**: nothing can say whether adherence is actually rising, and the
+two Grade-D tunables (graduation thresholds, reactive-deload bounds) can never be checked
+against real usage. This stays your values call, so here is the smallest honest version to
+say yes or no to:
+- **Zero new collection.** No client-side tracking, no events, no funnels, nothing added to
+  the app. The report is computed entirely from rows D1 **already stores** (sessions,
+  users, push subscriptions).
+- **Aggregates only, owner-only.** Weekly active users, sessions/week, week-over-week
+  retention, push-permission rate — via a secret-gated `GET /api/stats` (or a cron line in
+  the Worker logs, your pick). No per-user view, no PII, nothing public.
+- **What it buys:** the loop can finally judge Goal-4 work by outcome instead of by
+  mechanism count, and the practice-based thresholds get their first reality check.
+Say "yes, stats endpoint" (or "no, drop it permanently") and I'll act accordingly. The
+fuller drop-off-funnel idea from the original item would be a separate, bigger call —
+this proposal deliberately excludes it.
 
 ### 8. Custom domain email replies
 `hello@hypertrophybible.com` sends via Resend but nothing receives. If a confused beginner
