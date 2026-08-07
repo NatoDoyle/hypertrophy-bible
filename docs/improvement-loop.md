@@ -572,6 +572,35 @@ These are real failures from previous iterations. Each is now a standing check.
    decision silently changes. The symbolic assertions are still worth keeping — they
    document intent — but they verify the plumbing, not the number.
 
+43. **A metric that counts DIGITS cannot see an answer written in WORDS — know which
+   blind spot you're looking at before you author.** Wave 195 genuinely quantified the
+   overtraining page (the FOR/NFOR/OTS ladder, with the one duration the open-access
+   literature verifiably states) and the depth report still scored it "0 numbers":
+   its durations are "days" and "weeks to months" because the ECSS/ACSM consensus
+   deliberately refuses digits, and `numericDensity` counts digits. Two wrong responses
+   were available — pad the page with digits the sources don't state (fabricating
+   precision, lesson 31), or teach the metric to count duration-words (chasing the
+   metric with complexity). The right one was a RECORDED EXEMPTION whose justification
+   states the mismatch: the page is quantified, the metric measures a proxy, and the
+   proxy is wrong exactly here. Lesson 30's family: a metric you calibrate measures the
+   corpus — and a page can be right while the proxy is wrong, provided the gate carries
+   a place to say so. Related, same burst: an exemption list must FAIL on a stale entry
+   (a page that no longer trips the floor), or the escape hatch quietly widens — the
+   same one-way-door logic as lesson 25's flip rule, applied to the allowlist itself.
+
+44. **When you verify citations by machine, key them by IDENTITY, not by name — the
+   registry nearly gained the same paper twice.** Wave 195 added `bohm-2015-tendon-
+   adaptation-meta` after dual-verifying it; the page it was written for turned out to
+   already cite the same PMID as `bohm-2015-tendon` from an earlier wave. `npm run
+   check` could not have caught it: both entries were real, verified, and referenced —
+   just the same paper under two keys, which would silently split the graph's
+   shared-citation coupling (the "neural network" weights) and overstate the registry
+   count. Caught only because the authoring read the page before writing to it. →
+   **Standing rule:** before adding a registry entry, grep the registry for the PMID
+   and the DOI, not just the key you were about to mint; and a duplicate found late
+   is resolved by MERGING onto the pre-existing key (the one content already
+   references), moving the richer verification notes onto it, never by a second key.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -593,6 +622,18 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7z. **Telemetry (Waves 194–197, 2026-08-07).** **ZERO agents of any kind** — the first
+   iteration with no finder launch at all, applying 7a's own conclusion instead of
+   re-learning it. Four waves shipped: the self-audit ran inline (one confirmed defect
+   — a tautological assertion — plus one accepted behaviour and four refuted
+   hypotheses, all from reading my own ~491-line diff); the 13 depth judgment calls
+   were made by reading 13 short pages inline (rule 5: small text tasks never needed
+   agents); the two new citations were dual-verified inline. Tier-1 #1 closed:
+   authored 4 pages, exempted 10 with recorded justifications, FLIPPED the depth gate
+   to enforcing with its floors untouched. The cost centre of this iteration was not
+   tokens at all — it was the discipline of reading pages before judging them, which
+   no fan-out can buy.
+
 7a. **Telemetry (Waves 190–193, 2026-08-07).** Two finder agents launched; **BOTH died
    on session limits before returning a single candidate**, and the iteration shipped
    three waves anyway. Every finding came from inline work: the challenge week-key bug
