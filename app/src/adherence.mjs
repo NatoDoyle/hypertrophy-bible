@@ -166,6 +166,66 @@ export function milestones(sessionCount) {
   return { reached, latest: reached[reached.length - 1] ?? null, next: next ? { at: next[0], msg: next[1] } : null };
 }
 
+// ---- celebration events (Tier-1 #3, Wave 201) -------------------------------
+// The user's OWN wins — a PR, a level-up, a session-count milestone, a streak
+// milestone — already celebrated in-app the moment they happen (player toast,
+// recap banner, Coach badges), but none of them ever reached a DEVICE: log a PR,
+// close the app, and the win is gone until you come back. This is the delayed
+// echo: POST /api/session computes the single most celebration-worthy event the
+// just-logged session caused and stamps it on the profile; the hourly push sweep
+// delivers it as ONE consolidated notification (never one per event — three
+// pushes for one workout is how users revoke notification permission, the
+// opposite of Goal 4).
+//
+// Weeks-streak milestones celebrate durations that mean something in a training
+// life: a month, a quarter, half a year, a year. Session-count milestones reuse
+// MILESTONES above (same numbers, same copy as the in-app badges — one source of
+// truth). Priority when one session triggers several: rarest first — a
+// session-count milestone (months apart) beats a streak milestone (weeks apart)
+// beats a PR (common, deliberately so for beginners) beats a level (~5 sessions).
+export const STREAK_MILESTONE_WEEKS = [4, 12, 26, 52];
+
+// The single top event the just-logged session caused, or null. `prior` is every
+// live session EXCEPT the new one; comparisons are before-vs-after so a replayed
+// offline POST (addSession dedups on session_id) recomputes the identical event.
+export function celebrationEvent(session, prior, user, now) {
+  const all = [...prior, session];
+  const hit = MILESTONES.find(([n]) => n === all.length);
+  if (hit) return { kind: "milestone", count: hit[0] };
+  const streakArgs = [now, user?.paused || null, user?.pause_history || [], user?.streak_freezes || []];
+  const before = weeksConsistent(prior, ...streakArgs);
+  const after = weeksConsistent(all, ...streakArgs);
+  const streakHit = [...STREAK_MILESTONE_WEEKS].reverse().find((w) => before < w && after >= w);
+  if (streakHit) return { kind: "streak", weeks: streakHit };
+  const prs = detectPersonalRecords(session, prior);
+  if (prs.length) return { kind: "pr", count: prs.length };
+  const levelAfter = xpAndLevel(all).level;
+  if (levelAfter > xpAndLevel(prior).level) return { kind: "level", level: levelAfter };
+  return null;
+}
+
+// The push copy for a stored celebration marker — kept beside celebrationEvent so
+// the producer and the renderer can never disagree about the kinds (lesson 15).
+// Values are server-computed at the session door; copy is plain text either way
+// (a notification body renders no markup).
+export function celebrationCopy(cel) {
+  if (cel?.kind === "milestone") {
+    const msg = MILESTONES.find(([n]) => n === cel.count)?.[1] ?? `${cel.count} sessions logged.`;
+    return { subject: `🏅 ${cel.count} sessions logged`, body: msg, tag: "hb-celebrate" };
+  }
+  if (cel?.kind === "streak") {
+    const body = cel.weeks >= 52 ? "A full year of showing up, week after week. That's who you are now."
+      : `That's ${cel.weeks} straight weeks of showing up.`;
+    return { subject: `🔥 ${cel.weeks}-week streak`, body, tag: "hb-celebrate" };
+  }
+  if (cel?.kind === "pr") {
+    const body = cel.count > 1 ? `${cel.count} new personal bests in one session — that strength is banked.`
+      : "A new personal best today — it's on your trophy shelf now.";
+    return { subject: "🎉 New personal record", body, tag: "hb-celebrate" };
+  }
+  return { subject: `⬆️ Level ${cel?.level}`, body: `You just reached level ${cel?.level}. Keep stacking.`, tag: "hb-celebrate" };
+}
+
 // Motivational state — powers the Today header. Suppressed to "paused" when the
 // user has flagged injury/illness (rail #1: no pressure, no guilt, ever).
 export function adherenceStatus(sessions, now, paused) {
