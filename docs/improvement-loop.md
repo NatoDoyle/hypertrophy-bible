@@ -652,6 +652,25 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7x. **Telemetry (Waves 201–202, 2026-08-07).** Zero agents again — third iteration
+   running. The diff-scoped self-audit of Waves 198–200 (~475 insertions) ran
+   inline in one read: five candidates raised and all five refuted against the
+   code (the legacy-watermark → slot-boolean mapping preserves high-water
+   semantics; the propose rollback's ghost-opponent edge self-heals through
+   settle; the null-updateUser fallback matches pre-existing single-slot
+   behavior; the respond tz-asymmetry predates the wave; the client's duplicated
+   cap literal is cosmetic with the server enforcing) — zero fix waves shipped
+   and none padded into existence. Wave 201 then closed Tier-1 #3 entirely
+   inline: 43 new tests across three suites, the sweep suite observed FAILING
+   against pre-feature push.mjs before commit, prod-smoked on real D1. With
+   Tier 1 empty, the scheduled goal-distance re-audit ran (recorded in the
+   roadmap): the buildable frontier has genuinely narrowed — one clean gate item
+   repopulates Tier 1, and the binding constraints on all four goals are now
+   mostly HUMAN inputs (demo media, the liability disclaimer, the analytics
+   values call, elite ground truth, a real-device push check). That is lesson
+   17's third branch — surface the human-blocked items — executed as written,
+   not treated as an excuse to manufacture filler.
+
 7y. **Telemetry (Waves 198–200, 2026-08-08).** Zero agents again — two feature waves
    (Tier-1 #2 end to end: backend + frontend) plus this LEARN wave, all inline. The
    self-audit of the prior burst found it clean in one read (it was 4 pages of content
