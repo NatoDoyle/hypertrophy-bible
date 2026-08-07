@@ -6,7 +6,9 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-07** (Waves 190-193: a self-audit of the prior burst
+Grounded assessment date: **2026-08-07** (Waves 194-197: Tier-1 #1 CLOSED — the depth
+gate now ENFORCES with every flag authored or justified; the prior grounding was
+Waves 190-193: a self-audit of the prior burst
 plus its two deferred items — the tz/challenge hypothesis and the never-ending
 specialization block — and the last muscle-guide rebuild; the prior grounding was
 Waves 186-189: a diff-scoped correctness audit of
@@ -139,6 +141,38 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 194–197 progress (2026-08-07, same day). Tier-1 #1 — the KB depth backlog —
+is CLOSED.** The flip criterion re-specified on 2026-08-04 ("every remaining entry
+either cleared or carries a recorded, justified exemption") is now ASSERTED BY THE
+BUILD, not claimed by prose:
+
+- **Wave 194** — self-audit of the prior burst, inline, zero agents: one confirmed
+  defect (a tautological test assertion), one accepted behaviour recorded, four
+  hypotheses refuted with evidence.
+- **Wave 195** — the authoring half of the 13 judgment calls: `nutrient-timing` got its
+  own source's numbers (0.4 g/kg/meal × ≥4 meals; 0.55 at the 2.2 g/kg/day bound);
+  `logging-and-plateaus` got "how flat is flat" (±2.5% × 4 weeks / −5% = decline, the
+  app's own thresholds, labelled practice); `connective-tissue-adaptation` got Bohm
+  2015's real findings (≥8-week interventions, intensity-dependent); the overtraining
+  page got the FOR/NFOR/OTS ladder with the ONE verifiable duration and no invented
+  month-figures. Registry 137 → 139 (a third add was caught as a duplicate of an
+  existing key and merged instead — lesson 44).
+- **Wave 196** — `DEPTH_EXEMPT`: per-page justifications (10 entries, each page read
+  before listing), enforcement-only (the report still prints everything), stale
+  entries fail the build, floors untouched and literal-pinned, warn-mode test replaced
+  by one locking the enforced state. Verified failing in both tamper directions.
+- **Current state: 10 flagged / 10 exempt / 0 enforceable — gate ENFORCED and green.**
+  Registry 139. Depth work is DONE as a backlog; it continues only as the gate
+  catching regressions and new pages.
+
+**What Tier 1 still holds, in priority order:** items #2 (multiple concurrent
+challenges) and #3 (social events with no push) — both cloud-eligible, both scoped, and
+now the ONLY remaining Tier-1 items. A local session's comparative advantage (citation
+network) no longer has a standing Tier-1 outlet; per lesson 17, local iterations should
+now pull #2/#3 anyway rather than manufacture KB work, OR run the goal-distance
+re-audit this file schedules "when a tier empties" — Tier 1 will empty the moment
+#2/#3 land.
 
 **Waves 190–193 progress (2026-08-07).** A self-audit of the previous burst plus the two
 items that burst had explicitly recorded as deferred. All deployed and prod-smoked.
