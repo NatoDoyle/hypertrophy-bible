@@ -24,6 +24,8 @@
 
 Most "plateaus" resolve at the first two rows — insufficient volume or effort — long before you're actually near your genetic ceiling.
 
+**How flat is "flat"? Put numbers on it.** Session-to-session strength wobbles for reasons that have nothing to do with muscle — sleep, stress, a colder gym. The working definitions this Bible's own app uses, and that you can apply to a paper log just as well: take each week's **best set per exercise** (converted to an [estimated 1RM](assessing-progress.md) for low-rep work, or just the top load for high-rep work), and call the lift **plateaued when four consecutive training weeks sit inside a ±2.5% band with no net rise across them**. One flat week is noise; four is a pattern. The mirror image matters just as much: a **drop of ~5% or more from your recent best that persists** isn't a plateau — it's a decline, and its causes are nearly always recovery, food, or life rather than lost muscle, so the answer is rest and fuel, never more volume. These thresholds are practice choices, not measured constants — but *some* explicit threshold is what stops you rewriting your program over one bad Tuesday. **[Grade C]**
+
 ## The Evidence
 
 **Progression is the requirement, and logging enables it.** Growth depends on progressively increasing the training stimulus (load, reps, or sets)[^schoenfeld-2017-volume-dose-response] — a log is simply the instrument that makes deliberate progression possible, so it's graded as high-value practice built on strong overload evidence. **[Grade A]** The specific **plateau-troubleshooting order** is a practical framework derived from the volume, effort, and fatigue evidence elsewhere in this Bible rather than a directly-tested protocol, hence the lower grade. **[Grade C]**

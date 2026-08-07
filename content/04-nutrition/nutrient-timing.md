@@ -4,7 +4,8 @@
 
 **Quick recommendations**
 - Prioritize **total daily [protein](protein.md) and calories** — timing is a minor refinement. **[Grade A]**
-- Eat protein **within a few hours before or after** training; the exact minute is unimportant. **[Grade B]**
+- The useful "timing" is **distribution**: about **0.4 g of protein per kg per meal across at least 4 meals** reaches the 1.6 g/kg/day baseline; at the literature's 2.2 g/kg/day upper intake that's up to **~0.55 g/kg per meal**[^schoenfeld-2018-protein-per-meal]. For an 80 kg lifter: **~32 g protein, 4 times a day**. **[Grade B]**
+- Eat protein **within a few hours before or after** training; the exact minute is unimportant. Four meals across a waking day lands one near your session anyway. **[Grade B]**
 - If you train **fasted**, have a protein-containing meal **reasonably soon after** (within a couple of hours). **[Grade C]**
 - Skip anxiety about **intra-workout shakes and fast carbs** unless training twice a day or very glycogen-depleting sessions. **[Grade C]**
 
@@ -16,7 +17,9 @@ What *doesn't* deserve worry for the general lifter: precise post-workout timing
 
 ## The Evidence
 
-**The anabolic window is wide, and total intake dominates.** Schoenfeld, Aragon, and Krieger's 2013 meta-analysis found that **protein timing had no significant independent effect on hypertrophy once total daily protein was accounted for** — apparent timing effects were largely explained by the timing groups simply eating more protein[^schoenfeld-2013-protein-timing-meta]. **[Grade A]** Combined with evidence that spreading protein across the day is sensible for hitting daily targets[^schoenfeld-2018-protein-per-meal] **[Grade B]**, the takeaway is that **daily protein distribution across meals** — not a post-workout sprint to the shaker — is the useful application of "timing."
+**The anabolic window is wide, and total intake dominates.** Schoenfeld, Aragon, and Krieger's 2013 meta-analysis found that **protein timing had no significant independent effect on hypertrophy once total daily protein was accounted for** — apparent timing effects were largely explained by the timing groups simply eating more protein[^schoenfeld-2013-protein-timing-meta]. **[Grade A]**
+
+**Distribution has actual numbers.** The per-meal review this page has always cited concludes that to maximize anabolism one should consume **a target of 0.4 g/kg per meal, across a minimum of four meals, to reach a minimum of 1.6 g/kg/day** — and that spreading the literature's upper daily figure of 2.2 g/kg over the same four meals gives a per-meal maximum of **0.55 g/kg**[^schoenfeld-2018-protein-per-meal]. **[Grade B]** The same review notes that doses above ~20 g do oxidise more of the extra amino acids but are **not wasted** — some of the surplus is still used to build tissue — so a big meal isn't "lost", it's just past the point of best per-gram return. The takeaway is that **daily protein distribution across meals** — not a post-workout sprint to the shaker — is the useful application of "timing."
 
 ## Key Uncertainties & Nuance
 - **Peri-workout nutrition may matter more at the extremes** — twice-daily training, [endurance-plus-lifting](../03-programming/cardio-and-concurrent-training.md), or fully fasted training — where glycogen and amino-acid availability around sessions carry more weight.
