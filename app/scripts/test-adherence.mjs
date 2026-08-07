@@ -214,7 +214,7 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   // call's own locally-computed nextStatus — even though its mutator no-op'd.
   // push.mjs sends a push built directly from `settled.result`, so this would
   // have notified the user of a score that disagrees with `challenge_history`.
-  ok("settleChallenge: a raced no-op write never fabricates a result", lost.result === null);
+  ok("settleChallenge: a raced no-op write never fabricates a result", (lost.results ?? []).length === 0);
   // The bug this wave fixes: the no-op branch withheld `result` correctly but
   // still returned the CALLER's stale "active" status and empty history, even
   // though the actual persisted "completed" record + its history entry were
@@ -222,7 +222,7 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   // show a lapsed race as still "in progress" until some unrelated later request
   // happened to re-fetch fresh state.
   ok("settleChallenge: a raced no-op write still reflects the ACTUAL persisted status, not the caller's stale one",
-    lost.challenge.status === "completed");
+    lost.challenges[0].status === "completed");
   ok("settleChallenge: a raced no-op write still reflects the ACTUAL persisted history, not the caller's stale (empty) one",
     lost.history.length === 1 && lost.history[0].result === "win" && lost.history[0].my_count === 5);
 
@@ -237,7 +237,7 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const freshUser = { profile: { challenge: { id: "c2", status: "active", partner_token: "tok-opp", week: "2020-W01" } } };
   const won = await settleChallenge(wonStore, "me", freshUser, Date.now());
   ok("settleChallenge: a genuine (unraced) write reports the result it actually persisted",
-    won.result?.result === "win" && won.history[0]?.result === "win");
+    won.results[0]?.result === "win" && won.history[0]?.result === "win");
 }
 
 // --- settleChallenge (tz bug): a raw-UTC week_over check can end a west-of-UTC
@@ -266,7 +266,7 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const tzUser = { profile: { challenge: { id: "c3", status: "active", partner_token: "tok-opp", week: localWeek }, tz_offset_min: MOUNTAIN } };
   const stillRunning = await settleChallenge(tzStore, "me", tzUser, MONDAY_EARLY_UTC);
   ok("settleChallenge: a west-of-UTC user's challenge stays open while it's still their OWN local week, even though the raw UTC instant already rolled to the next calendar week",
-    stillRunning.week_over === false && stillRunning.challenge.status === "active" && stillRunning.result === null);
+    stillRunning.challenges[0].week_over === false && stillRunning.challenges[0].status === "active" && (stillRunning.results ?? []).length === 0);
 
   // Control: the SAME instant, with no tz_offset_min on the CALLING user, falls
   // back to raw UTC (matching push.mjs's own "don't starve delivery over
@@ -275,7 +275,7 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
   const noTzUser = { profile: { challenge: { id: "c3", status: "active", partner_token: "tok-opp", week: localWeek } } };
   const noTzResult = await settleChallenge(tzStore, "me", noTzUser, MONDAY_EARLY_UTC);
   ok("control: without a stored tz_offset_min, the same instant falls back to raw UTC and DOES read as week-over",
-    noTzResult.week_over === true);
+    noTzResult.challenges[0].week_over === true);
 }
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

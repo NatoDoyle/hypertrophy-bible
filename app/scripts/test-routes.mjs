@@ -11,6 +11,7 @@ import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
 import { isoWeekKey, isoWeekKeyLocal, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
+import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -714,6 +715,13 @@ try {
   const carolShare = (await json("POST", "/api/share", { user_id: carol })).data.share_id;
   const daveShare = (await json("POST", "/api/share", { user_id: dave })).data.share_id;
   const getChallenge = (u) => app.request("/api/challenge", { headers: { "X-HB-User": u } }).then((r) => r.json());
+  // Multi-challenge (Wave 198): fixtures mutate the slot ARRAY, never the retired
+  // legacy scalar — writing `u.profile.challenge` here would leave the real slot
+  // untouched and the fixture silently inert.
+  const backdateChallenges = (uid, week) => store.updateUser(uid, (u) => {
+    u.profile = { ...u.profile, challenges: challengeSlotsT(u.profile).map((ch) => ({ ...ch, week })) };
+    return u;
+  });
   ok("#challenge not-following is refused (400)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 400);
   await json("POST", "/api/following", { user_id: carol, token: daveShare }); // one-directional so far
   ok("#challenge one-directional following is refused (403 not-mutual)", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 403);
@@ -730,7 +738,22 @@ try {
   const erinShare = (await json("POST", "/api/share", { user_id: erin })).data.share_id;
   await json("POST", "/api/following", { user_id: erin, token: daveShare });
   await json("POST", "/api/following", { user_id: dave, token: erinShare }); // erin is ALSO mutual with dave
-  ok("#challenge a third mutual party can't challenge a busy opponent (409)", (await json("POST", "/api/challenge", { user_id: erin, token: daveShare })).status === 409);
+  // THE FEATURE (Wave 198): a third mutual party CAN now challenge dave while his
+  // carol-challenge is open — concurrent challenges with different partners. The old
+  // assertion here (409 opponent-busy) was the single-slot limitation itself.
+  const erinPropose = await json("POST", "/api/challenge", { user_id: erin, token: daveShare });
+  ok("#multi a second partner CAN challenge an already-challenged opponent", erinPropose.status === 200);
+  const daveTwo = await getChallenge(dave);
+  ok("#multi the opponent sees BOTH pending invites, each with its own id",
+    (daveTwo.challenges ?? []).filter((ch) => ch.status === "pending").length === 2
+    && new Set(daveTwo.challenges.map((ch) => ch.id)).size === 2);
+  ok("#multi respond with NO challenge_id and TWO pending invites is refused, not guessed",
+    (await json("POST", "/api/challenge/respond", { user_id: dave, accept: true })).status === 400);
+  const erinChId = erinPropose.data.challenge_id;
+  const declineErin = await json("POST", "/api/challenge/respond", { user_id: dave, challenge_id: erinChId, accept: false });
+  ok("#multi respond BY ID answers exactly that invite", declineErin.status === 200 && declineErin.data.challenge_id === erinChId);
+  ok("#multi ...leaving the other invite untouched and still pending",
+    challengeSlotsT((await store.getUser(dave)).profile).some((ch) => ch.status === "pending" && ch.id !== erinChId));
 
   // Decline: both sides see it, and the slot reopens for a fresh propose.
   const decline = await json("POST", "/api/challenge/respond", { user_id: dave, accept: false });
@@ -767,8 +790,8 @@ try {
   // (computed relative to Date.now(), never a fixed calendar date — CLAUDE.md)
   // and confirm it self-completes with the frozen tally on next read.
   const pastWeek = isoWeekKey(new Date(Date.now() - 8 * 7 * 86400000).toISOString());
-  await store.updateUser(carol, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: pastWeek } }; return u; });
-  await store.updateUser(dave, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: pastWeek } }; return u; });
+  await backdateChallenges(carol, pastWeek);
+  await backdateChallenges(dave, pastWeek);
   const carolView3 = await getChallenge(carol);
   ok("#challenge self-completes once its week has ended", carolView3.challenge.status === "completed" && carolView3.week_over === true);
   ok("#challenge a completed challenge frees the slot for a new propose", (await json("POST", "/api/challenge", { user_id: carol, token: daveShare })).status === 200);
@@ -779,8 +802,8 @@ try {
   // challenge to "declined"), so it has to enforce the same week-freshness rule
   // itself or a late accept could revive an unanswered invite into "active".
   const stalePastWeek = isoWeekKey(new Date(Date.now() - 8 * 7 * 86400000).toISOString());
-  await store.updateUser(carol, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
-  await store.updateUser(dave, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: stalePastWeek } }; return u; });
+  await backdateChallenges(carol, stalePastWeek);
+  await backdateChallenges(dave, stalePastWeek);
   const staleAccept = await json("POST", "/api/challenge/respond", { user_id: dave, accept: true });
   ok("#challenge accepting a challenge whose week already ended is refused (400), not revived to active", staleAccept.status === 400 && staleAccept.data.error === "no-pending-challenge");
   // Reading it (which self-transitions the stale pending copy to "declined") proves
@@ -813,8 +836,8 @@ try {
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
   await json("POST", "/api/session", { user_id: grace, session_id: "fg-g1", date: fgPastDate,
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
-  await store.updateUser(frank, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
-  await store.updateUser(grace, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  await backdateChallenges(frank, fgPastWeek);
+  await backdateChallenges(grace, fgPastWeek);
   const frankFinal = await getChallenge(frank);
   ok("#challenge-history a completed challenge records a WIN for the side with more sessions", frankFinal.challenge.status === "completed"
     && frankFinal.history.length === 1 && frankFinal.history[0].result === "win"
@@ -833,8 +856,8 @@ try {
   await json("POST", "/api/challenge/respond", { user_id: grace, accept: true });
   await json("POST", "/api/session", { user_id: grace, session_id: "fg-g2", date: fgPastDate,
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
-  await store.updateUser(frank, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
-  await store.updateUser(grace, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: fgPastWeek } }; return u; });
+  await backdateChallenges(frank, fgPastWeek);
+  await backdateChallenges(grace, fgPastWeek);
   const frankCapped = await getChallenge(frank);
   ok("#challenge-history caps at 20 entries, dropping the oldest", frankCapped.history.length === 20 && frankCapped.history[0].week === fgPastWeek && frankCapped.history[19].week === "filler-18");
 
@@ -856,8 +879,8 @@ try {
   const hiPastWeek = isoWeekKey(hiPastDate);
   await json("POST", "/api/session", { user_id: henry, session_id: "hi-h1", date: hiPastDate,
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
-  await store.updateUser(henry, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: hiPastWeek } }; return u; });
-  await store.updateUser(iris, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, week: hiPastWeek } }; return u; });
+  await backdateChallenges(henry, hiPastWeek);
+  await backdateChallenges(iris, hiPastWeek);
   // Simulate the race: right as the route calls store.updateUser(henry, ...) to
   // persist the completion, a "concurrent" fresh propose has already swapped
   // henry's challenge id out from under it — one time only, mirroring exactly
@@ -867,7 +890,7 @@ try {
   store.updateUser = async (uid, mutator) => {
     if (uid === henry && !raced) {
       raced = true;
-      await realUpdateUser(henry, (u) => { u.profile = { ...u.profile, challenge: { ...u.profile.challenge, id: "raced-in-new-id" } }; return u; });
+      await realUpdateUser(henry, (u) => { u.profile = { ...u.profile, challenges: challengeSlotsT(u.profile).map((ch) => ({ ...ch, id: "raced-in-new-id" })) }; return u; });
     }
     return realUpdateUser(uid, mutator);
   };
@@ -894,6 +917,60 @@ try {
   // same class of bug PR #238 fixed for the commitment PUSH; this closes it for
   // the STORAGE/read side too, and for challenges, via the new isoWeekKeyLocal).
   // A real HTTP wiring check that tz_offset_min actually reaches both features
+  // --- Legacy single-slot migration (Wave 198) -----------------------------
+  // A pre-198 row stores `profile.challenge` (scalar) + per-USER pushed watermarks.
+  // Readers must see it as a one-slot array with the watermarks mapped onto the
+  // slot's own booleans; the first WRITE migrates the shape and drops the legacy
+  // fields. Seeded directly, exactly as a real un-migrated D1 row would look.
+  const leo = (await onboardBw("beginner")).data.user_id;
+  const mia = (await onboardBw("beginner")).data.user_id;
+  const leoShare = (await json("POST", "/api/share", { user_id: leo })).data.share_id;
+  const miaShare = (await json("POST", "/api/share", { user_id: mia })).data.share_id;
+  await json("POST", "/api/following", { user_id: leo, token: miaShare });
+  await json("POST", "/api/following", { user_id: mia, token: leoShare });
+  const legacyCreated = Date.now() - 3600e3;
+  const legacyWeek = isoWeekKeyLocal(Date.now(), null);
+  await store.updateUser(leo, (u) => {
+    delete u.profile.challenges;
+    u.profile = { ...u.profile,
+      challenge: { id: "legacy-1", role: "opponent", partner_token: miaShare, week: legacyWeek, status: "pending", created_at: legacyCreated },
+      challenge_pushed_at: legacyCreated + 60e3, // invite WAS pushed pre-migration
+    };
+    return u;
+  });
+  const leoView = await getChallenge(leo);
+  ok("#legacy a pre-198 scalar row reads as a one-slot array through GET",
+    (leoView.challenges ?? []).length === 1 && leoView.challenges[0].id === "legacy-1"
+    && leoView.challenge?.id === "legacy-1"); // the mirror key too
+  ok("#legacy the per-user pushed watermark maps onto the slot (never re-pushed after migration)",
+    challengeSlotsT((await store.getUser(leo)).profile)[0].invite_pushed === true);
+  const legacyAccept = await json("POST", "/api/challenge/respond", { user_id: leo, accept: true });
+  ok("#legacy respond with no challenge_id works on a single legacy invite", legacyAccept.status === 200 && legacyAccept.data.status === "active");
+  const leoStored = (await store.getUser(leo)).profile;
+  ok("#legacy the first write migrates the shape: challenges array present, legacy fields gone",
+    Array.isArray(leoStored.challenges) && leoStored.challenge === undefined && leoStored.challenge_pushed_at === undefined);
+
+  // --- The open-slot cap (Wave 198) ----------------------------------------
+  const hub = (await onboardBw("beginner")).data.user_id;
+  const hubShare = (await json("POST", "/api/share", { user_id: hub })).data.share_id;
+  const partners = [];
+  for (let i = 0; i < MAX_OPEN_T + 1; i++) {
+    const pid = (await onboardBw("beginner")).data.user_id;
+    const pShare = (await json("POST", "/api/share", { user_id: pid })).data.share_id;
+    await json("POST", "/api/following", { user_id: hub, token: pShare });
+    await json("POST", "/api/following", { user_id: pid, token: hubShare });
+    partners.push({ pid, pShare });
+  }
+  for (let i = 0; i < MAX_OPEN_T; i++) {
+    ok(`#cap open challenge ${i + 1}/${MAX_OPEN_T} proposes cleanly`,
+      (await json("POST", "/api/challenge", { user_id: hub, token: partners[i].pShare })).status === 200);
+  }
+  const overCap = await json("POST", "/api/challenge", { user_id: hub, token: partners[MAX_OPEN_T].pShare });
+  ok("#cap a propose past the open-slot cap is refused", overCap.status === 409 && overCap.data.error === "challenge-slots-full");
+  const intoFullHub = await json("POST", "/api/challenge", { user_id: partners[MAX_OPEN_T].pid, token: hubShare });
+  ok("#cap ...and a propose INTO a full user is refused as opponent-busy", intoFullHub.status === 409 && intoFullHub.data.error === "opponent-busy");
+  ok("#cap the pair rule is literal-pinned: MAX_OPEN_CHALLENGES is 3", MAX_OPEN_T === 3);
+
   // (the deterministic UTC-boundary proof lives in the pure-function tests,
   // since real Date.now() during a test run isn't controllably AT that boundary).
   const jack = (await onboardBw("beginner")).data.user_id;

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours } from "../src/push.mjs";
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
+import { challengeSlots } from "../src/adherence.mjs";
 import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 
 // A fake browser subscription: a real UA-generated ECDH keypair + a random auth
@@ -269,14 +270,17 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
     ok("the delivered push is the challenge copy, not the empty reminder", decrypted.tag === "hb-challenge" && /challenged you/.test(decrypted.body));
     const opponent = await chalStore.getUser("opponent");
-    ok("challenge_pushed_at is stamped with the challenge's own created_at (seen-once marker)", opponent.profile.challenge_pushed_at === NOW);
+    // The marker lives ON the slot now (invite_pushed) — the per-user watermark
+    // collided when two invites landed in one tick (lesson 23). The sweep also
+    // migrates the legacy scalar row to the array shape on its first write.
+    ok("the invite marker is stamped ON the slot (seen-once, per-slot)", challengeSlots(opponent.profile)[0]?.invite_pushed === true);
 
     sentBody = "unset";
     const r2 = await runPushSweep(chalStore, vapid, NOW + 3600e3, captureFetch);
     ok("the SAME challenge invite is never pushed twice", r2.sent === 0 && sentBody === "unset");
 
     // A fresh challenge (later created_at) fires again — proves it's keyed to the event.
-    await chalStore.updateUser("opponent", (u) => { u.profile = { ...(u.profile ?? {}), challenge: { ...u.profile.challenge, id: "c2", created_at: NOW + 7200e3 } }; return u; });
+    await chalStore.updateUser("opponent", (u) => { u.profile = { ...u.profile, challenges: [{ ...challengeSlots(u.profile)[0], id: "c2", created_at: NOW + 7200e3, invite_pushed: undefined }] }; return u; });
     const r3 = await runPushSweep(chalStore, vapid, NOW + 7200e3, captureFetch);
     ok("a NEW challenge event fires its own push", r3.sent === 1 && sentBody instanceof Uint8Array);
 
@@ -286,6 +290,25 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     sentBody = "unset";
     const r4 = await runPushSweep(chalStore, vapid, NOW, captureFetch);
     ok("the challenger's own pending half is NOT pushed", r4.sent === 0 && sentBody === "unset");
+
+    // THE LESSON-23 CASE THE ROADMAP NAMED when it scoped multi-challenge: two invites
+    // arriving in one sweep tick. Under the per-USER watermark, the first send stamped
+    // challenge_pushed_at to the newest created_at and the second invite read as
+    // already-pushed — suppressed forever. Per-slot markers make each invite its own
+    // event: BOTH push in the same tick, and neither re-fires on the next.
+    const twoWeek = isoWeekKey(new Date(NOW).toISOString());
+    await chalStore.saveUser("two-invites", { profile: { tz_offset_min: -300, challenges: [
+      { id: "t1", role: "opponent", status: "pending", week: twoWeek, created_at: NOW - 60e3 },
+      { id: "t2", role: "opponent", status: "pending", week: twoWeek, created_at: NOW },
+    ] } });
+    await chalStore.savePushSubscription("two-invites", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/two-invites", keys: { p256dh: ua.p256dh, auth: ua.auth } });
+    sentBody = "unset";
+    const rTwo = await runPushSweep(chalStore, vapid, NOW, captureFetch);
+    ok("TWO invites in ONE sweep tick BOTH push (per-slot markers, lesson 23)", rTwo.sent === 2);
+    const twoAfter = challengeSlots((await chalStore.getUser("two-invites")).profile);
+    ok("...and both slots carry their own invite_pushed marker", twoAfter.every((ch) => ch.invite_pushed === true));
+    const rTwoAgain = await runPushSweep(chalStore, vapid, NOW + 3600e3, captureFetch);
+    ok("...and neither re-fires on the next tick", rTwoAgain.sent === 0);
 
     // An ACTIVE (already-accepted) challenge is not a new invite — nothing to push.
     await chalStore.saveUser("active-opp", { profile: { challenge: { id: "c4", role: "opponent", status: "active", week, created_at: NOW } } });
@@ -318,7 +341,7 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     ok("an accepted challenge pushes 'challenge on' to the CHALLENGER, any hour", acceptHits === 1 && sentBody instanceof Uint8Array);
     const aMsg = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
     ok("the accept push carries the challenge-on copy", aMsg.tag === "hb-challenge" && /accepted/.test(aMsg.body));
-    ok("challenge_accept_pushed_at is stamped (seen-once)", (await chalStore.getUser("challenger")).profile.challenge_accept_pushed_at === NOW);
+    ok("the accept marker is stamped ON the slot (seen-once, per-slot)", challengeSlots((await chalStore.getUser("challenger")).profile)[0]?.accept_pushed === true);
     acceptHits = 0;
     await runPushSweep(chalStore, vapid, NOW + 3600e3, acceptFetch);
     ok("the SAME accept never pushes twice", acceptHits === 0);
@@ -369,9 +392,9 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     ok("an old completed challenge never fires retroactively (just-ended-week guard)", resBodies.old === undefined);
     const w = await chalStore.getUser("res-winner"), l = await chalStore.getUser("res-loser");
     ok("the sweep-settled result is PERSISTED like a GET settle (status + history both sides)",
-      w.profile.challenge.status === "completed" && w.profile.challenge_history[0].result === "win" &&
-      l.profile.challenge.status === "completed" && l.profile.challenge_history[0].result === "lose");
-    ok("result_pushed is stamped on the slot after a delivered push", w.profile.challenge.result_pushed === true && (await chalStore.getUser("res-read")).profile.challenge.result_pushed === true);
+      challengeSlots(w.profile)[0].status === "completed" && w.profile.challenge_history[0].result === "win" &&
+      challengeSlots(l.profile)[0].status === "completed" && l.profile.challenge_history[0].result === "lose");
+    ok("result_pushed is stamped on the slot after a delivered push", challengeSlots(w.profile)[0].result_pushed === true && challengeSlots((await chalStore.getUser("res-read")).profile)[0].result_pushed === true);
     delete resBodies.win; delete resBodies.lose; delete resBodies.read;
     await runPushSweep(chalStore, vapid, NOW + 3600e3, resFetch);
     ok("a delivered result never re-pushes and history never duplicates", resBodies.win === undefined && resBodies.lose === undefined && resBodies.read === undefined && (await chalStore.getUser("res-winner")).profile.challenge_history.length === 1);
@@ -383,10 +406,10 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     await chalStore.savePushSubscription("res-retry", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/res-retry", keys: { p256dh: ua.p256dh, auth: ua.auth } });
     await runPushSweep(chalStore, vapid, NOW, async (url) => url.includes("res-retry") ? (() => { throw new Error("net down"); })() : { ok: true, status: 201 });
     const rr = await chalStore.getUser("res-retry");
-    ok("a failed-send tick still SETTLES but leaves result_pushed unset", rr.profile.challenge.status === "completed" && !rr.profile.challenge.result_pushed);
+    ok("a failed-send tick still SETTLES but leaves result_pushed unset", challengeSlots(rr.profile)[0].status === "completed" && !challengeSlots(rr.profile)[0].result_pushed);
     let retryHit = null;
     await runPushSweep(chalStore, vapid, NOW + 3600e3, async (url, opts) => { if (url.includes("res-retry")) retryHit = opts.body; return { ok: true, status: 201 }; });
-    ok("the next tick retries the result push off the stored fields", retryHit instanceof Uint8Array && (await chalStore.getUser("res-retry")).profile.challenge.result_pushed === true);
+    ok("the next tick retries the result push off the stored fields", retryHit instanceof Uint8Array && challengeSlots((await chalStore.getUser("res-retry")).profile)[0].result_pushed === true);
   } finally { try { rmSync(chalPath); } catch {} }
 }
 
@@ -636,7 +659,7 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     await mdStore.savePushSubscription("multi4", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/m4-b", keys: { p256dh: ua.p256dh, auth: ua.auth } });
     let m4hits = [];
     const r4 = await runPushSweep(mdStore, vapid, NOW, async (url) => { m4hits.push(url); return { ok: true, status: 201 }; });
-    ok("a challenge invite fans out to BOTH devices too", m4hits.filter((u) => u.includes("m4-")).length === 2 && (await mdStore.getUser("multi4")).profile.challenge_pushed_at === NOW);
+    ok("a challenge invite fans out to BOTH devices too", m4hits.filter((u) => u.includes("m4-")).length === 2 && challengeSlots((await mdStore.getUser("multi4")).profile)[0]?.invite_pushed === true);
   } finally { try { rmSync(mdPath); } catch {} }
 }
 
