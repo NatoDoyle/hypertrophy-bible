@@ -264,9 +264,14 @@ try {
   const stVol = stAfter.plan_rationale?.volume_by_muscle ?? {};
   ok("#spec-end a finished specialization block takes every other muscle off maintenance",
     Object.values(stVol).every((v) => !v.maintenance));
-  ok("#spec-end ...while the priority muscle keeps more volume than an unprioritised one",
-    (stVol.chest?.target_sets ?? 0) > (stVol.lats?.target_sets ?? 99) === false
-      ? (stVol.chest?.target_sets ?? 0) > 0 : true);
+  // The first version of this assertion was TAUTOLOGICAL — `(chest > lats) === false ?
+  // chest > 0 : true` can only fail if chest is both <= lats and <= 0, so it asserted
+  // nothing its label claimed (caught by the Waves 190-193 self-audit). The engine's
+  // rule for an intermediate non-priority muscle is bottom-of-MAV, which for chest is
+  // 12 (data/muscles/chest.json mav.min) — a literal, per lesson 42, so this fails if
+  // either the tilt or the landmark silently changes.
+  ok("#spec-end ...while the priority muscle keeps more volume than the 12-set non-priority default",
+    (stVol.chest?.target_sets ?? 0) > 12);
   const stExplain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": specTune } })).json();
   const stLine = (stExplain.personalization ?? []).find((l) => l.input === "priority_muscles");
   ok("#spec-end the plan card explains the block ended instead of silently reverting",
