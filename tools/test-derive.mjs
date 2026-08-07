@@ -10,6 +10,7 @@ import {
   stallDetect,
   isoWeekKey,
   isoWeekKeyLocal,
+  weekHasPassed,
   sessionWeekKey,
   graduatedStatus,
   trainedWeeksInBlock,
@@ -83,6 +84,31 @@ check("isHardSet gates warmups and sub-threshold effort", () => {
 check("isoWeekKey groups by ISO week", () => {
   assert.equal(isoWeekKey("2026-06-01T18:00:00Z"), isoWeekKey("2026-06-03T18:00:00Z"));
   assert.notEqual(isoWeekKey("2026-06-03T18:00:00Z"), isoWeekKey("2026-06-10T18:00:00Z"));
+});
+
+check("weekHasPassed: chronological, so a tz change between stamp and read can't retire a live week", () => {
+  // The exact reproduction. A UTC-8 user proposing at 18:00 their Sunday is Monday
+  // 02:00 UTC. Stamped BEFORE their clock was known, it banks the UTC week; the first
+  // read AFTER the clock is known computes the local week, which is the PREVIOUS one.
+  const proposeUtc = "2026-05-11T02:00:00Z";              // Mon 02:00 UTC = Sun 18:00 at -480
+  const stamped = isoWeekKeyLocal(proposeUtc, undefined); // tz unknown at stamp time -> UTC frame
+  const readAt = +new Date(proposeUtc) + 3600000;         // one hour later
+  assert.equal(stamped, "2026-W20");
+  assert.equal(isoWeekKeyLocal(readAt, -480), "2026-W19"); // the frames genuinely disagree
+  // The old `!==` test fired here and permanently settled a one-hour-old challenge.
+  assert.equal(stamped !== isoWeekKeyLocal(readAt, -480), true, "the skew is real, not hypothetical");
+  // The chronological test treats it as still current.
+  assert.equal(weekHasPassed(stamped, readAt, -480), false);
+  // ...while a genuinely past week still passes, which is the behaviour being preserved.
+  assert.equal(weekHasPassed(stamped, Date.parse("2026-05-20T18:00:00Z"), -480), true);
+  // Same week, same frame: not passed.
+  assert.equal(weekHasPassed("2026-W20", Date.parse("2026-05-13T12:00:00Z"), 0), false);
+  // Year rollover sorts correctly (zero-padded keys are chronological as strings).
+  assert.equal(weekHasPassed("2026-W52", Date.parse("2027-01-15T12:00:00Z"), 0), true);
+  assert.equal(weekHasPassed("2027-W03", Date.parse("2026-12-28T12:00:00Z"), 0), false);
+  // A missing stamp is never "passed" (nothing to retire).
+  assert.equal(weekHasPassed(null, Date.now(), 0), false);
+  assert.equal(weekHasPassed(undefined, Date.now(), 0), false);
 });
 
 check("isoWeekKeyLocal: a raw UTC instant just past the week boundary reads as the NEXT week, but a west-of-UTC user's actual local day is still the PREVIOUS week (the bug the 1v1 challenge + weekly commitment features hit)", () => {

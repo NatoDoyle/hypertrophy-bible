@@ -217,6 +217,31 @@ export function isoWeekKeyLocal(now, tzOffsetMin) {
   return isoWeekKey(+new Date(now) + (Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0));
 }
 
+// "Has the week this thing was stamped in ACTUALLY finished?" — chronological, not
+// merely different.
+//
+// Three call sites asked this with `stored !== isoWeekKeyLocal(now, tz)`, which is true
+// in BOTH directions: it fires when the stored key is in the past (correct) and equally
+// when the stored key reads as the FUTURE relative to the freshly-computed one. The
+// second case is not hypothetical — it is what a change in the user's own tz offset
+// looks like between the stamp and the read. A challenge proposed at 18:00 Sunday local
+// for a UTC-8 user is Monday 02:00 UTC; stamped before the clock was known it banks the
+// UTC week, and the first read after the clock IS known computes the local week, which
+// is the PREVIOUS one. Reproduced directly: a one-hour-old challenge settled as
+// completed/declined. DST (a 60-minute shift, twice a year, for a large share of users)
+// and travel reach the same state near a local week boundary.
+//
+// ISO week keys are zero-padded `YYYY-Www`, so string order IS chronological order
+// (the same property merge-profile.mjs already relies on for its freeze markers).
+// Comparing with `>` therefore keeps the real behaviour — a genuinely past week still
+// settles — while making frame skew a no-op instead of a spurious terminal transition.
+// Ambiguity resolves toward doing nothing, which is the right default for a comparison
+// whose "true" branch permanently ends something the user did not ask to end.
+export function weekHasPassed(storedWeek, now, tzOffsetMin) {
+  if (!storedWeek) return false;
+  return isoWeekKeyLocal(now, tzOffsetMin) > storedWeek;
+}
+
 // The CALENDAR DAY ("YYYY-MM-DD") an instant falls on in the user's own frame —
 // isoWeekKeyLocal's day-granularity sibling, same tzOffsetMin convention and same
 // fall-back-to-UTC-when-unknown choice. Returns null rather than "NaN-NaN-NaN" for
