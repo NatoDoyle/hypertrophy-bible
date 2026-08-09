@@ -1161,23 +1161,29 @@ export function createApp(store, config = {}) {
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
   });
 
-  // An edit or void of the session a pending celebration points at must RE-EARN the
-  // celebration from the corrected data — the realistic edit is a fat-fingered
-  // weight that was wrongly celebrated as a PR (the exact hazard lesson 27's edit
-  // routes exist to correct), and pushing praise for a number the user just took
-  // back would teach them the celebrations are fake (lesson 10's sibling). Already-
-  // pushed markers are left alone: the notification is out, and rewriting history
-  // helps nobody. A voided session vanishes from listSessions, so `sess` is null
-  // and the marker clears.
-  const recomputeCelebration = async (userId, user, sessionId) => {
+  // ANY edit or void while a celebration is pending must RE-EARN it from the
+  // corrected data — the realistic edit is a fat-fingered weight that was wrongly
+  // celebrated as a PR (the exact hazard lesson 27's edit routes exist to correct),
+  // and pushing praise for a number the user just took back would teach them the
+  // celebrations are fake (lesson 10's sibling). The corrected session is NOT
+  // always the celebrated one: a typo'd 10 kg in a PRIOR session fabricates the
+  // next session's "PR", and voiding an older session drops the count a milestone
+  // marker still claims — so the trigger is "a pending marker exists", never "the
+  // edited session is the marker's" (Wave 201 shipped the narrower guard; the
+  // Wave-203 audit caught it — lesson 33's shape). Already-pushed markers are left
+  // alone: the notification is out, and rewriting history helps nobody. A voided
+  // celebrated session vanishes from listSessions, so `sess` is null and the
+  // marker clears.
+  const recomputeCelebration = async (userId, user) => {
     try {
-      if (user?.profile?.celebration?.session_id !== sessionId || user.profile.celebration.pushed) return;
+      const pending = user?.profile?.celebration;
+      if (!pending || pending.pushed) return;
       const all = await store.listSessions(userId);
-      const sess = all.find((s) => s.session_id === sessionId) ?? null;
-      const cel = sess ? celebrationEvent(sess, all.filter((s) => s.session_id !== sessionId), user, sess.local_date ?? sess.date) : null;
+      const sess = all.find((s) => s.session_id === pending.session_id) ?? null;
+      const cel = sess ? celebrationEvent(sess, all.filter((s) => s.session_id !== pending.session_id), user, sess.local_date ?? sess.date) : null;
       await store.updateUser(userId, (u) => {
         const cur = u.profile?.celebration;
-        if (cur?.session_id !== sessionId || cur.pushed) return u; // replaced or already delivered — don't touch
+        if (cur?.session_id !== pending.session_id || cur.pushed) return u; // replaced or already delivered — don't touch
         const { celebration, ...rest } = u.profile;
         u.profile = cel ? { ...rest, celebration: { session_id: cur.session_id, at: cur.at, ...cel } } : rest;
         return u;
@@ -1271,7 +1277,7 @@ export function createApp(store, config = {}) {
       return sess;
     });
     if (!updated) return c.json({ error: "unknown session" }, 404);
-    await recomputeCelebration(id, user, body.session_id);
+    await recomputeCelebration(id, user);
     // Report what was PERSISTED, not the local guess (lesson 21).
     return c.json({ ok: true, session: updated });
   });
@@ -1290,7 +1296,7 @@ export function createApp(store, config = {}) {
       return sess;
     });
     if (!updated) return c.json({ error: "unknown session" }, 404);
-    await recomputeCelebration(id, user, body.session_id);
+    await recomputeCelebration(id, user);
     return c.json({ ok: true, voided: !!updated.voided_at, session: updated });
   });
 

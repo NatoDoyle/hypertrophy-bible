@@ -1638,6 +1638,34 @@ try {
   await json("POST", "/api/session/void", { user_id: celU, session_id: "cel-3" });
   ok("#celebrate voiding the celebrated session clears its pending marker", (await store.getUser(celU)).profile.celebration == null);
 
+  // --- Wave 203: the corrected weight that un-earns a pending celebration can live
+  // in a PRIOR session, not the celebrated one — a typo'd 10 kg makes the next real
+  // session a fabricated "PR"; correcting the typo must take the praise back too. ---
+  const celV = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  await json("POST", "/api/session", { user_id: celV, session_id: "celv-1", date: dAgo(3),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 10, reps: 10 }] }); // fat-fingered: meant 100
+  await json("POST", "/api/session", { user_id: celV, session_id: "celv-2", date: dAgo(2),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 95, reps: 10 }] });
+  ok("#celebrate fixture sanity: beating the typo'd weight arms a PR marker",
+    (await store.getUser(celV)).profile.celebration?.kind === "pr" && (await store.getUser(celV)).profile.celebration?.session_id === "celv-2");
+  await json("POST", "/api/session/update", { user_id: celV, session_id: "celv-1",
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] });
+  const celV1 = (await store.getUser(celV)).profile.celebration;
+  ok("#celebrate correcting a PRIOR session's typo un-earns the fabricated pending PR", celV1?.kind !== "pr");
+
+  // Same class through the void door: a pending "[3] sessions" milestone must not
+  // survive voiding an OLDER session that drops the count below the milestone.
+  await json("POST", "/api/session", { user_id: celV, session_id: "celv-3", date: dAgo(1),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 90, reps: 10 }] });
+  ok("#celebrate fixture sanity: the third session arms the [3] milestone marker",
+    (await store.getUser(celV)).profile.celebration?.kind === "milestone" && (await store.getUser(celV)).profile.celebration?.count === 3);
+  await json("POST", "/api/session/void", { user_id: celV, session_id: "celv-1" });
+  const celV2 = (await store.getUser(celV)).profile.celebration;
+  ok("#celebrate voiding an OLDER session takes back the stale count-milestone praise", celV2?.kind !== "milestone");
+
   // New-follower event: the follow door bumps the OWNER's monotonic count once —
   // a re-follow is not a new follower.
   const folOwner = (await json("POST", "/api/onboard", { profile: {
