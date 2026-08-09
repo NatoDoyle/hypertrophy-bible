@@ -631,6 +631,23 @@ These are real failures from previous iterations. Each is now a standing check.
    or every earlier write needs an explicit compensating rollback — check which one
    you shipped, and test the refusal path from BOTH directions.
 
+47. **A recompute/invalidate hook must key on what the derived value READS, not on
+   what the request names.** Wave 201's celebration marker re-earned itself only when
+   the EDITED session was the celebrated one — but `celebrationEvent` reads the user's
+   whole history (a "PR" means *beats every prior session*), so correcting the
+   fat-fingered typo in the PRIOR session that fabricated the PR left the pending
+   praise armed, and voiding an older session left a stale "[3] sessions" milestone
+   claim standing. The wave's own comment named the exact hazard ("the realistic edit
+   is a fat-fingered weight wrongly celebrated as a PR") and guarded one of its two
+   doors — lesson 33's confident-comment shape, at the invalidation layer. →
+   **Standing lens:** for every stamped/cached derived value with an invalidation
+   hook, list what the derivation READS (its true dependency set) and confirm the
+   hook fires on writes to ALL of it. The tell is a guard comparing the request's id
+   to the marker's id when the derivation never took that id as its only input.
+   (Fixed Wave 203: the trigger is now "a pending unpushed marker exists", recomputing
+   the celebrated session against corrected history; two route-door regression tests
+   observed failing pre-fix.)
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -652,6 +669,28 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7w. **Telemetry (Waves 203–205, 2026-08-09).** Zero agents — fourth iteration
+   running. The diff-scoped audit of Waves 201–202 (~230 production insertions) ran
+   inline in one read: six candidates, five refuted against the code (the
+   celebration streak math matches `weeksConsistent`'s real week-frame and field
+   contracts; the comeback push IS hour-gated by the enclosing `isUserPushHour`
+   continue; a vanished-row follow can't phantom-bump the owner; the
+   `followers_pushed` stamp preconditions forward-only inside its mutator), one
+   CONFIRMED and shipped as Wave 203 (lesson 47), deployed and prod-smoked. Wave
+   204 then closed the repopulated Tier-1 #1 fully inline: the gate's measured
+   first run (125 candidates, 61 flags) was read flag-by-flag in context — 22
+   aliases, 16 justified generics, 1 tokenizer fix, ZERO real missing movements —
+   and enforced same-wave with 12 unit tests. Two meta-moments worth keeping:
+   (a) the first tamper test silently "passed" because the injected phrase landed
+   BELOW the References heading, in the region `stripNonRendered` drops — a tamper
+   must land inside the gate's measured region to prove anything; (b) a comment
+   claiming "block is deliberately absent from the vocab" shipped with the entry
+   still present for one run — the gate's own re-run caught the prose/enforcement
+   gap the gate exists to catch, in its own source file. Owner input processed
+   under the new considerations rule (implemented items get deleted from the
+   file): consideration #1 verified implemented (Waves 179–184) and removed; the
+   record lives in the roadmap and lessons 36–38.
+
 7x. **Telemetry (Waves 201–202, 2026-08-07).** Zero agents again — third iteration
    running. The diff-scoped self-audit of Waves 198–200 (~475 insertions) ran
    inline in one read: five candidates raised and all five refuted against the

@@ -6,7 +6,15 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-07** (Waves 201-202: Tier-1 #3 — every social
+Grounded assessment date: **2026-08-09** (Waves 203-205: the Waves 201-202 self-audit
+shipped one confirmed fix — lesson 47 — and **Tier-1 #1, the
+prose-recommends-a-liftable-movement gate, SHIPPED and ENFORCED (Wave 204), emptying
+Tier 1 again**. The 2026-08-07 goal-distance re-audit's verdict STANDS — two days and
+three waves changed nothing material about the frontier, so it was not re-run as
+churn: the binding constraints on all four goals remain the human inputs in
+BLOCKERS.md (#1 media, #5 disclaimer, #6 elite ground truth, #7 the analytics values
+call, 2b the real-device push check) plus Tier-2 cadence work gated on new
+literature. The prior grounding was 2026-08-07, Waves 201-202: Tier-1 #3 — every social
 event reaches a device — SHIPPED and prod-smoked; **Tier 1 emptied and the scheduled
 goal-distance re-audit RAN** — its verdict is the Waves 201-202 progress entry below,
 and Tier 1 is repopulated from it. The prior grounding was Waves 198-200: Tier-1 #2 —
@@ -149,6 +157,30 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
 
+**Waves 203–205 progress (2026-08-09). The Waves 201-202 self-audit shipped its one
+confirmed fix, and Tier-1 #1 — the movement gate — is SHIPPED and ENFORCED.**
+
+- **Wave 203 (from the diff-scoped audit; lesson 47):** a pending celebration push
+  now re-earns from corrected data on ANY session edit/void, not only when the
+  edited session is the celebrated one — the fat-fingered weight that fabricates a
+  "PR" can live in a PRIOR session, and voiding an older session invalidated a
+  pending count-milestone claim. Five other audit candidates were refuted inline
+  against the code and are recorded in telemetry 7w so they aren't re-raised.
+  Deployed and prod-smoked.
+- **Wave 204 (Tier-1 #1):** `npm run check` now fails when content prose recommends
+  a movement that resolves to no `data/exercises` id — the chest.md incident class,
+  enforced. `tools/movement-core.mjs` + `check-movements.mjs` + 12 unit tests;
+  measured-first calibration (125 candidates / 61 flags read in context / zero real
+  gaps); enforced same-wave under lesson 25's flip rule; tamper-verified both
+  directions. Worth carrying forward: the corpus's unlinked prose was CLEAN — the
+  gate's value from here is regression-catching on every future authored page.
+- **Wave 205 (LEARN):** lesson 47 + telemetry 7w written; the owner's new
+  considerations rule (delete once implemented) processed — consideration #1
+  verified implemented and removed from the file. **Tier 1 is empty again; the
+  2026-08-07 re-audit verdict stands** (not re-run after two days — that would be
+  churn, lesson 17): the frontier is the human-blocked BLOCKERS items and
+  literature-gated currency work.
+
 **Waves 201–202 progress (2026-08-07). Tier-1 #3 — every social event reaches a
 device — is SHIPPED, Tier 1 emptied, and the scheduled goal-distance re-audit RAN.**
 
@@ -199,22 +231,21 @@ device — is SHIPPED, Tier 1 emptied, and the scheduled goal-distance re-audit 
     (analytics call), plus the new real-device push verification. Surfacing that
     IS the work (lesson 17); filler would hide it.
 
-**Tier 1, repopulated by the 2026-08-07 re-audit:**
+**Tier 1, repopulated by the 2026-08-07 re-audit — and emptied again 2026-08-09:**
 
-1. **[Goal 1 + 2] The prose-recommends-a-liftable-movement gate.** A check (in
-   `npm run check`) that every exercise a content page RECOMMENDS resolves to a
-   real `data/exercises` id — the incident class is real (chest.md's
-   "low-to-high cable fly", caught only by a human read in Wave 188), the rule
-   already exists in prose ("check that every movement the prose recommends
-   actually EXISTS"), and lesson 25/33 say a rule that lives in prose is not
-   enforced. Needs a deliberate mapping layer (prose names ≠ ids), a measured
-   first run over the whole corpus BEFORE choosing strictness (lesson 30), and
-   ships WARN-first if it flags legitimate prose (lesson 25's flip rule).
-   Buildable now, local or cloud.
+1. ~~**[Goal 1 + 2] The prose-recommends-a-liftable-movement gate.**~~ — **SHIPPED
+   and ENFORCED (Wave 204; see the Waves 203-205 entry above).** Every prescription
+   the item made held: the mapping layer exists (22 aliases + 16 justified
+   generic-category entries, each placed by reading its corpus context), the
+   measured first run came BEFORE strictness (125 candidates / 61 flags / zero real
+   missing movements), and lesson 25's flip rule was satisfied same-wave because
+   the calibration landed the bar green honestly. Stale/dangling map entries fail
+   red; the extractor's blind spot is a printed count (17/171 names).
 
 *(Nothing else qualifies for Tier 1 without manufacturing: KB currency sweeps are
 Tier-2 cadence work gated on new literature; cross-user learning stays blocked on a
-dataset; everything else is in BLOCKERS.)*
+dataset; everything else is in BLOCKERS. The 2026-08-07 re-audit verdict stands —
+see the grounding note at the top of this file.)*
 
 **Waves 198–200 progress (2026-08-08). Tier-1 #2 — multiple concurrent challenges —
 is SHIPPED,** exactly along the lines the 2026-08-04 scoping laid down (and that
