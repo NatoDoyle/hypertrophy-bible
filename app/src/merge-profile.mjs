@@ -91,6 +91,24 @@ export function mergeUserProfile(fromU, toU) {
       nudge_seen_at: fromU.profile?.nudge_seen_at ?? 0,
     };
   }
+  // Pending celebration echo (`profile.celebration`, added Wave 201 — after this
+  // file's last lesson-16 sweep, the same post-dating gap as freeze_pushed_week
+  // and partner_nudge above). A pending UNPUSHED marker is a real Goal-4
+  // notification in flight: without adoption it dies with the deleted `from` row.
+  // Adopt it only when the survivor has no pending claim of its own (its own
+  // marker wins), treating `to`'s already-PUSHED marker like no marker — the
+  // arming door itself overwrites pushed markers freely. Never adopt a pushed
+  // marker from `from`: that notification is already out. The adopted claim was
+  // computed against `from`'s history alone and the merged timeline can refute
+  // it — POST /api/auth/merge re-earns any pending marker from the COMBINED
+  // history right after reassignUserData (lesson 47: the recompute keys on what
+  // celebrationEvent reads — the whole session history — and the merge just
+  // rewrote it), so a claim can never outrun the merged truth.
+  const fromCel = fromU.profile?.celebration;
+  const toCel = toU.profile?.celebration;
+  if (fromCel && !fromCel.pushed && (!toCel || toCel.pushed)) {
+    toU.profile = { ...(toU.profile ?? {}), celebration: fromCel };
+  }
   // Nutrition profile stats (`user.nutrition` — height/neck/waist/hip/bf_pct/
   // activity/weight_kg fallback, the Fuel tab's Navy-formula + Katch-McArdle
   // inputs) live on the user doc too, a sibling of `profile` like

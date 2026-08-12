@@ -177,7 +177,10 @@ export function normPhrase(s) {
 }
 
 // Tokenize prose into normalized tokens with "¶" boundaries at anything that ends
-// a phrase: punctuation, brackets, digits, slashes (alternation lists), newlines.
+// a phrase: punctuation, brackets, digits, slashes (alternation lists). Bare
+// whitespace — including a soft-wrapped newline mid-sentence — deliberately does
+// NOT break a phrase: markdown re-flows it, and every structural break (heading,
+// bullet, table pipe) carries its own punctuation boundary anyway.
 export function tokenize(text) {
   const out = [];
   for (const piece of text.split(/([a-zA-Z][a-zA-Z'-]*)/)) {
@@ -202,15 +205,30 @@ export function buildLexicon(exercises) {
   return lex;
 }
 
-// Exercises the extractor can never see because their name's final token isn't a
-// known head noun ("Good Morning", "Bird Dog", "Farmer's Walk") — the gate's blind
-// spot, reported as a count by the CLI (lesson 35: a narrowing must be a number,
-// never silent).
+// Exercises the extractor could never SEE AND RESOLVE from prose — the gate's
+// blind spot, reported as a count by the CLI (lesson 35: a narrowing must be a
+// number, never silent). Measured the honest way: run the extractor over the
+// exercise's own name (and its id written as words) and ask whether any
+// extracted phrase resolves. A name with no head noun anywhere ("Good Morning",
+// "Bird Dog", "Farmer's Walk") is blind — and so is one whose head noun is
+// UNREACHABLE ("Neck Curl": "curl" is a head noun, but "neck" extends no
+// phrase, so prose naming it always reads as a bare head noun and is skipped).
+// The first shipped version counted any-token head-noun presence and printed
+// 17/171 — a 3× under-report. This semantics measures 52/171 on the same corpus
+// (lesson 30: record the distribution at the moment the measure is set), in
+// three classes: no head noun anywhere (good-morning, pec-deck, skullcrusher);
+// names that ARE a bare head noun, which prose can only ever mention in the
+// deliberately-skipped bare form (pull-up, plank, face-pull); and a reachable
+// head noun behind a modifier the extractor doesn't know (arnold-press,
+// lat-pulldown, zottman-curl, neck-curl). All three are real narrowings — a
+// movement in these 52 could leave the DB while prose still recommends it and
+// this gate would stay green.
 export function extractorBlindSpot(exercises) {
+  const lex = buildLexicon(exercises);
   return exercises
     .filter((ex) => {
-      const toks = tokenize(ex.name ?? ex.id).filter((t) => t !== "¶");
-      return !toks.some((t) => HEAD_NOUNS.has(t));
+      const forms = [ex.name ?? ex.id, ex.id.replace(/-/g, " ")];
+      return !forms.some((form) => extractCandidates(form).some((p) => lex.has(p)));
     })
     .map((ex) => ex.id);
 }

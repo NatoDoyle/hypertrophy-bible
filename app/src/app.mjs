@@ -1161,8 +1161,9 @@ export function createApp(store, config = {}) {
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
   });
 
-  // ANY edit or void while a celebration is pending must RE-EARN it from the
-  // corrected data — the realistic edit is a fat-fingered weight that was wrongly
+  // ANY rewrite of history while a celebration is pending must RE-EARN it from
+  // the corrected data — an edit, a void, or a merge (all three doors call this)
+  // — the realistic edit is a fat-fingered weight that was wrongly
   // celebrated as a PR (the exact hazard lesson 27's edit routes exist to correct),
   // and pushing praise for a number the user just took back would teach them the
   // celebrations are fake (lesson 10's sibling). The corrected session is NOT
@@ -1521,6 +1522,13 @@ export function createApp(store, config = {}) {
     if (!from || !to) return c.json({ error: "unknown user" }, 404);
     if (await store.getAccountByUserId(from_user_id)) return c.json({ error: "from-user-has-account" }, 409);
     const moved = await store.reassignUserData(from_user_id, to_user_id);
+    // The merge just rewrote the survivor's session history, and merge-profile may
+    // have adopted a pending echo computed against the OTHER account's history —
+    // re-earn any pending marker from the combined truth before the sweep pushes
+    // it (the same recompute the edit/void doors run: lesson 47's dependency set
+    // has a third door, and this is it). Best-effort inside, like every
+    // celebration write — a failed echo must never fail the merge.
+    await recomputeCelebration(to_user_id, await store.getUser(to_user_id));
     return c.json({ merged: true, ...moved });
   });
 

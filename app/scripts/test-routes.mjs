@@ -1666,6 +1666,62 @@ try {
   const celV2 = (await store.getUser(celV)).profile.celebration;
   ok("#celebrate voiding an OLDER session takes back the stale count-milestone praise", celV2?.kind !== "milestone");
 
+  // --- Wave 206: the MERGE door also rewrites history under a pending marker —
+  // sessions the merge brings in can refute a "PR" armed against the survivor's
+  // shorter pre-merge history (lesson 47's dependency set, third door), and a
+  // pending echo on the merged-away device must follow the user instead of dying
+  // with the deleted row. Full magic-link merge flow, same as #15. ---
+  const celMProfile = { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"] };
+  const celTo = (await json("POST", "/api/onboard", { profile: celMProfile })).data.user_id;
+  const celFrom = (await json("POST", "/api/onboard", { profile: celMProfile })).data.user_id;
+  // The anonymous (merged-away) device holds the HEAVIER history…
+  await json("POST", "/api/session", { user_id: celFrom, session_id: "celm-b1", date: dAgo(40),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 120, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: celFrom, session_id: "celm-b2", date: dAgo(35),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 125, reps: 10 }] });
+  // …while the survivor arms a "PR" that is only a PR against its own short history.
+  await json("POST", "/api/session", { user_id: celTo, session_id: "celm-a1", date: dAgo(9),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: celTo, session_id: "celm-a2", date: dAgo(2),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 70, reps: 10 }] });
+  ok("#celebrate-merge fixture sanity: the survivor's second session arms a PR marker",
+    (await store.getUser(celTo)).profile.celebration?.kind === "pr");
+  const celLinkTo = await requestMagicLink(store, { email: "celmerge@t.com", anonUserId: celTo });
+  await json("POST", "/api/auth/consume", { token: celLinkTo.token });
+  const celLinkFrom = await requestMagicLink(store, { email: "celmerge@t.com", anonUserId: celFrom });
+  const celGrant = (await json("POST", "/api/auth/consume", { token: celLinkFrom.token })).data.merge_grant;
+  const celMergeRes = await app.request("/api/auth/merge", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-User": celFrom },
+    body: JSON.stringify({ grant: celGrant, from_user_id: celFrom, to_user_id: celTo }),
+  });
+  ok("#celebrate-merge the merge itself succeeds", (await celMergeRes.json()).merged === true);
+  ok("#celebrate-merge a 'PR' the merged-in history refutes is not left pending as a PR",
+    (await store.getUser(celTo)).profile.celebration?.kind !== "pr");
+
+  // The other direction: the pending echo lives on the merged-away device and the
+  // survivor has none — it must follow the user, and it still holds because the
+  // combined history doesn't refute it.
+  const celTo2 = (await json("POST", "/api/onboard", { profile: celMProfile })).data.user_id;
+  const celFrom2 = (await json("POST", "/api/onboard", { profile: celMProfile })).data.user_id;
+  await json("POST", "/api/session", { user_id: celFrom2, session_id: "celm-d1", date: dAgo(10),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
+  await json("POST", "/api/session", { user_id: celFrom2, session_id: "celm-d2", date: dAgo(2),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 10 }] });
+  ok("#celebrate-merge fixture sanity: the merged-away device holds a pending PR marker",
+    (await store.getUser(celFrom2)).profile.celebration?.kind === "pr");
+  const celLinkTo2 = await requestMagicLink(store, { email: "celmerge2@t.com", anonUserId: celTo2 });
+  await json("POST", "/api/auth/consume", { token: celLinkTo2.token });
+  const celLinkFrom2 = await requestMagicLink(store, { email: "celmerge2@t.com", anonUserId: celFrom2 });
+  const celGrant2 = (await json("POST", "/api/auth/consume", { token: celLinkFrom2.token })).data.merge_grant;
+  await app.request("/api/auth/merge", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-User": celFrom2 },
+    body: JSON.stringify({ grant: celGrant2, from_user_id: celFrom2, to_user_id: celTo2 }),
+  });
+  const celAdopted = (await store.getUser(celTo2)).profile.celebration;
+  ok("#celebrate-merge a pending echo follows the user through the merge and still holds",
+    celAdopted?.kind === "pr" && !celAdopted?.pushed);
+
   // New-follower event: the follow door bumps the OWNER's monotonic count once —
   // a re-follow is not a new follower.
   const folOwner = (await json("POST", "/api/onboard", { profile: {
