@@ -36,7 +36,7 @@ const blind = extractorBlindSpot(exercises);
 console.log(`movements: ${pages.length} pages scanned against ${exercises.length} exercises.`);
 console.log(`  ${r.candidates} modifier+noun phrases found; ${r.resolved} resolve (names/ids, ${MOVEMENT_ALIASES.size} aliases, ${MOVEMENT_GENERIC_OK.size} generic-category entries).`);
 // Lesson 35: a gate that narrows its input must report the narrowing as a count.
-console.log(`  blind spot: ${blind.length}/${exercises.length} exercise names end in no known head noun (invisible to this extractor).`);
+console.log(`  blind spot: ${blind.length}/${exercises.length} exercise names the extractor could never see and resolve in prose (no reachable head noun).`);
 
 const fail = [];
 if (r.dangling.length) {

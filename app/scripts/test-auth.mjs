@@ -270,6 +270,37 @@ try {
   const mp11To = await store.getUser("mp11-to");
   ok("merge with no nutrition on from leaves to's nutrition untouched", mp11To.nutrition.height_cm === 175);
 
+  // --- Wave 206: a pending (unpushed) celebration echo must follow the user
+  // through a merge — Wave 201 added the marker after this file's last lesson-16
+  // sweep, so a not-yet-delivered "PR!"/milestone push silently died with the
+  // deleted `from` row (the exact class partner_nudge above already fixed).
+  // Adoption is the pure half tested here; the route-level RE-EARN against the
+  // merged history lives in test-routes.mjs (sessions the merge brings in can
+  // refute the adopted claim). ---
+  await store.saveUser("cel1-to", { profile: {} });
+  await store.saveUser("cel1-from", { profile: { celebration: { session_id: "s-1", at: 500, kind: "pr", count: 1 } } });
+  await store.reassignUserData("cel1-from", "cel1-to");
+  ok("merge adopts from's pending celebration when to has none",
+    (await store.getUser("cel1-to")).profile.celebration?.session_id === "s-1");
+
+  await store.saveUser("cel2-to", { profile: { celebration: { session_id: "s-mine", at: 900, kind: "milestone", count: 3 } } });
+  await store.saveUser("cel2-from", { profile: { celebration: { session_id: "s-theirs", at: 500, kind: "pr", count: 1 } } });
+  await store.reassignUserData("cel2-from", "cel2-to");
+  ok("merge never stomps to's own pending celebration with from's",
+    (await store.getUser("cel2-to")).profile.celebration?.session_id === "s-mine");
+
+  await store.saveUser("cel3-to", { profile: {} });
+  await store.saveUser("cel3-from", { profile: { celebration: { session_id: "s-old", at: 500, kind: "pr", count: 1, pushed: true } } });
+  await store.reassignUserData("cel3-from", "cel3-to");
+  ok("merge never adopts an already-pushed celebration (that notification is out)",
+    (await store.getUser("cel3-to")).profile.celebration == null);
+
+  await store.saveUser("cel4-to", { profile: { celebration: { session_id: "s-done", at: 900, kind: "pr", count: 1, pushed: true } } });
+  await store.saveUser("cel4-from", { profile: { celebration: { session_id: "s-new", at: 500, kind: "milestone", count: 1 } } });
+  await store.reassignUserData("cel4-from", "cel4-to");
+  ok("merge adopts from's pending celebration over to's already-delivered one",
+    (await store.getUser("cel4-to")).profile.celebration?.session_id === "s-new");
+
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });
   await store.saveUser("p-from", { profile: {} });

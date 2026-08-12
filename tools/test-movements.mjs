@@ -80,8 +80,14 @@ check("a dangling alias fails, and an unused alias reads as stale", () => {
   assert.deepEqual(r.staleGeneric, ["unused fly"]);
 });
 
-check("the blind spot is reported: names ending in no head noun are counted, not hidden", () => {
-  assert.ok(extractorBlindSpot(EX).includes("good-morning"));
+check("the blind spot simulates the extractor: unreachable names are counted, not hidden", () => {
+  const blind = extractorBlindSpot([...EX, { id: "neck-curl", name: "Neck Curl" }]);
+  assert.ok(blind.includes("good-morning"), "no head noun anywhere -> blind");
+  // "curl" IS a head noun, but "neck" extends no phrase — prose naming this
+  // exercise always reads as a bare (skipped) head noun, so it is blind IN
+  // PRACTICE. The pre-fix any-token version missed exactly this class.
+  assert.ok(blind.includes("neck-curl"), "head noun present but unreachable -> still blind");
+  assert.ok(!blind.includes("barbell-back-squat"), "a fully-extendable name is visible");
 });
 
 check("the shipped maps are corpus-clean: no dangling targets (validated against real data in check-movements)", () => {
