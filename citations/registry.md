@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**139** verified references.
+**144** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -15,6 +15,14 @@ ACOG Committee on Obstetric Practice (2020). Physical Activity and Exercise Duri
 
 - Type: position-stand · Population: mixed
 - DOI: [10.1097/AOG.0000000000003772](https://doi.org/10.1097/AOG.0000000000003772) · PMID: [32217980](https://pubmed.ncbi.nlm.nih.gov/32217980/)
+
+### acsm-2026-position-stand
+Currier BS et al. (2026). American College of Sports Medicine Position Stand. Resistance Training Prescription for Muscle Function, Hypertrophy, and Physical Performance in Healthy Adults: An Overview of Reviews.
+
+*Medicine and Science in Sports and Exercise*, 58(4), 851-872.
+
+- Type: position-stand · Population: mixed
+- DOI: [10.1249/MSS.0000000000003897](https://doi.org/10.1249/MSS.0000000000003897) · PMID: [41843416](https://pubmed.ncbi.nlm.nih.gov/41843416/)
 
 ### albarello-2022-bench-inclination-csa
 Albarello JCdS et al. (2022). Non-uniform excitation of pectoralis major induced by changes in bench press inclination leads to uneven variations in the cross-sectional area measured by panoramic ultrasonography.
@@ -111,6 +119,14 @@ Byrne NM & et al. (2018). Intermittent energy restriction improves weight loss e
 
 - Type: RCT · Population: mixed
 - DOI: [10.1038/ijo.2017.206](https://doi.org/10.1038/ijo.2017.206) · PMID: [28925405](https://pubmed.ncbi.nlm.nih.gov/28925405/)
+
+### camargo-2025-volume-saturation
+Camargo JBB et al. (2025). Is there a volume saturation point for muscle hypertrophy in resistance-trained individuals? A narrative review.
+
+*European Journal of Applied Physiology*, 125(11), 3065-3081.
+
+- Type: narrative-review · Population: trained
+- DOI: [10.1007/s00421-025-05959-z](https://doi.org/10.1007/s00421-025-05959-z) · PMID: [40883636](https://pubmed.ncbi.nlm.nih.gov/40883636/)
 
 ### candow-2001-glutamine
 Candow DG et al. (2001). Effect of glutamine supplementation combined with resistance training in young adults.
@@ -295,6 +311,14 @@ Grgic J & et al. (2022). Effects of resistance training performed to repetition 
 
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1016/j.jshs.2021.01.007](https://doi.org/10.1016/j.jshs.2021.01.007) · PMID: [33497853](https://pubmed.ncbi.nlm.nih.gov/33497853/)
+
+### gschneidner-2025-lengthened-partials-rct
+Gschneidner D et al. (2025). The effects of lengthened-partial range of motion resistance training of the limbs on arm and thigh muscle area: A multi-site randomised trial.
+
+*Journal of Sports Sciences*, 43(23), 2963-2976.
+
+- Type: RCT · Population: mixed
+- DOI: [10.1080/02640414.2025.2567805](https://doi.org/10.1080/02640414.2025.2567805) · PMID: [41055237](https://pubmed.ncbi.nlm.nih.gov/41055237/)
 
 ### guest-2021-caffeine
 Guest NS & et al. (2021). International society of sports nutrition position stand: caffeine and exercise performance.
@@ -1008,6 +1032,14 @@ Tsartsapakis I et al. (2026). Effects of Advanced Resistance Training Systems on
 - Type: meta-analysis · Population: mixed
 - DOI: [10.3390/jfmk11010080](https://doi.org/10.3390/jfmk11010080) · PMID: [41718208](https://pubmed.ncbi.nlm.nih.gov/41718208/)
 
+### van-every-2025-mechanisms-myths
+Van Every DW et al. (2025). Load-induced human skeletal muscle hypertrophy: Mechanisms, myths, and misconceptions.
+
+*Journal of Sport and Health Science*, 15, 101104.
+
+- Type: narrative-review
+- DOI: [10.1016/j.jshs.2025.101104](https://doi.org/10.1016/j.jshs.2025.101104) · PMID: [41276164](https://pubmed.ncbi.nlm.nih.gov/41276164/)
+
 ### varovic-2025-muscle-length-regional
 Varović D & et al. (2025). Does Muscle Length Influence Regional Hypertrophy? A Systematic Review and Meta-Analysis.
 
@@ -1079,6 +1111,14 @@ Wilson JM & et al. (2013). International Society of Sports Nutrition Position St
 
 - Type: position-stand
 - DOI: [10.1186/1550-2783-10-6](https://doi.org/10.1186/1550-2783-10-6) · PMID: [23374455](https://pubmed.ncbi.nlm.nih.gov/23374455/)
+
+### wolf-2025-lml-longitudinal-sr
+Wolf M et al. (2025). Does longer-muscle length resistance training cause greater longitudinal growth in humans? A systematic review.
+
+*Sports Medicine and Health Science*, 8(1), 34-42.
+
+- Type: systematic-review · Population: mixed
+- DOI: [10.1016/j.smhs.2025.03.001](https://doi.org/10.1016/j.smhs.2025.03.001) · PMID: [41646176](https://pubmed.ncbi.nlm.nih.gov/41646176/)
 
 ### wolfe-2017-bcaa
 Wolfe RR (2017). Branched-chain amino acids and muscle protein synthesis in humans: myth or reality?.
