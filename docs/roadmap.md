@@ -6,7 +6,16 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-09** (Waves 203-205: the Waves 201-202 self-audit
+Grounded assessment date: **2026-08-13** (Waves 206-208: the Waves 203-205 self-audit
+shipped two confirmed fixes — the merge-door celebration re-earn and the honest
+movement-gate blind-spot measure — and **the first dedicated KB currency sweep ran
+(Wave 207)**: 8 topics, 75 PMIDs screened, 5 dual-verified additions across 4 hot
+pages, registry 139 → 144, honest nulls recorded for sleep/protein/frequency.
+**Currency horizon: PubMed swept 2026-08-13 over a 2025/06–2026/08 window** for
+volume / failure / muscle-length / frequency / protein / mechanisms / sleep /
+periodization — the next sweep is gated on literature NEWER than that window, not
+on the calendar. Tier 1 remains empty; the 2026-08-07 re-audit verdict still
+stands. The prior grounding was 2026-08-09, Waves 203-205: the Waves 201-202 self-audit
 shipped one confirmed fix — lesson 47 — and **Tier-1 #1, the
 prose-recommends-a-liftable-movement gate, SHIPPED and ENFORCED (Wave 204), emptying
 Tier 1 again**. The 2026-08-07 goal-distance re-audit's verdict STANDS — two days and
@@ -30,8 +39,11 @@ Waves 186-189: a diff-scoped correctness audit of
 ## Honest distance to each goal
 
 **Goal 1 — world's best knowledge source: FAR.** The recently-waved "hot" pages
-(`mechanisms`, `volume`, `proximity-to-failure`) are genuinely world-class. But the whole KB
-rests on **131 verified sources** (2026-08-04; this paragraph said ~110 for several waves) —
+(`mechanisms`, `volume`, `proximity-to-failure`) are genuinely world-class — and as of
+Wave 207 they carry the 2025/26 literature (the 2026 ACSM position stand, the
+297-participant lengthened-partials RCT, the Phillips-lab mechanisms review), with a
+recorded currency horizon so staleness is now tellable from done. The whole KB
+rests on **144 verified sources** (2026-08-13; 131 on 2026-08-04, ~110 for several waves before) —
 MASS reviews ~150–200 studies/year; Schoenfeld's textbook cites hundreds. Coverage is bimodal:
 most of the 24-page `09-getting-started` pillar is practical/logistics content with no gradeable
 claims to cite (not a gap — see Tier-2 #6's reassessment); `energy-balance` and `sleep` are now
@@ -156,6 +168,37 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 206–208 progress (2026-08-13). The Waves 203-205 self-audit shipped two
+confirmed fixes, and the first dedicated KB currency sweep ran.**
+
+- **Wave 206 (from the diff-scoped audit):** (a) the MERGE door now re-earns a
+  pending celebration from the combined history — a survivor's "PR" armed against
+  its short pre-merge history could be refuted by merged-in heavier sessions yet
+  still pushed, and the merged-away account's pending echo died with the deleted
+  row (lesson 47's third door + the partner_nudge lesson-16 class on Wave 201's
+  field). 9 new tests observed failing pre-fix. (b) The movement gate's blind-spot
+  count now simulates the real extractor: 17/171 → **52/171**, a 3× under-report
+  of the narrowing lesson 35 requires stating. Four other candidates refuted
+  inline and recorded in telemetry 7v. Deployed and prod-smoked.
+- **Wave 207 (the currency sweep — the 2026-08-07 re-audit's named frontier):**
+  8 topics via PubMed E-utilities over a 2025/06–2026/08 window, 75 PMIDs
+  screened, **5 dual-verified additions** on 4 hot pages: the **2026 ACSM
+  position stand** (consensus for ≥10 weekly sets on `volume.md` and for
+  failure-optional on `proximity-to-failure.md`), **Van Every 2025** (mechanisms:
+  hormones/metabolic stress/swelling not supported; sarcoplasmic hypertrophy
+  lacks evidence), the **Gschneidner 2025 multi-site RCT** (n=297: lengthened
+  partials ≈ full ROM — `range-of-motion.md`'s "sometimes superior" phrasing
+  removed, the honest direction), **Wolf 2025** (longitudinal growth: mixed),
+  **Camargo 2025** (volume saturation: not yet establishable). Honest nulls for
+  sleep/protein/frequency. Registry **139 → 144**. The mechanisms.md addition
+  cleared its depth floor and the stale DEPTH_EXEMPT entry failed red as
+  designed (lesson 43's guard, first live firing) — entry removed, 9 remain.
+- **Wave 208 (LEARN):** telemetry 7v; this grounding entry; no new numbered
+  lesson (the iteration's meta-moments were recurrences of 39/43/47, recorded
+  in telemetry). Tier 1 remains empty; the frontier is unchanged — the human
+  BLOCKERS items plus currency work now gated on literature newer than the
+  recorded horizon.
 
 **Waves 203–205 progress (2026-08-09). The Waves 201-202 self-audit shipped its one
 confirmed fix, and Tier-1 #1 — the movement gate — is SHIPPED and ENFORCED.**

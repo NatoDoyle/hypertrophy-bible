@@ -669,6 +669,45 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7v. **Telemetry (Waves 206–208, 2026-08-13).** Zero agents — fifth iteration
+   running. The diff-scoped audit of Waves 203–205 (~600 insertions, half
+   docs) ran inline: seven candidates, four refuted against the code (the
+   movement gate's one-level content scan — the tree is flat;
+   recomputeCelebration's pre-write user read — celebrationEvent reads only
+   pause/freeze fields no session edit touches; the followers_count/_pushed
+   merge reset — a consistent pair, no phantom push possible; comeback_push
+   post-merge — it recomputes from the true combined lapse, which is correct),
+   one comment nit fixed in passing (tokenize's "newlines end a phrase" —
+   they deliberately don't), and TWO CONFIRMED, both shipped as Wave 206:
+   (a) the MERGE door rewrote history under a pending celebration with no
+   re-earn — lesson 47's dependency-set rule at its third door, plus the
+   departing account's pending echo dying with the deleted row (the exact
+   partner_nudge class, recurring on the field Wave 201 added after
+   merge-profile's last lesson-16 sweep); (b) extractorBlindSpot counted
+   any-token head-noun presence against a comment claiming final-token
+   semantics — the honest simulate-the-extractor measure is 52/171, a 3×
+   under-report of the exact narrowing lesson 35 exists to state. Meta-moment,
+   lesson 39 recurring on MYSELF: the fix's first comment said "20/171", a
+   number predicted from a token heuristic before running the real measure —
+   the gate's own output (52) caught it before commit. Write the number the
+   run printed, never the one the prediction promised. Wave 207 then ran the
+   first dedicated KB currency sweep (the 2026-08-07 re-audit's named
+   frontier, local-session work per BLOCKERS #9): 8 topics queried, 75 PMIDs
+   screened, 5 dual-verified additions across 4 hot pages — the 2026 ACSM
+   position stand (137 reviews, consensus for ≥10 weekly sets AND for
+   failure-optional), Van Every 2025 (hormones/metabolic stress/swelling not
+   supported; sarcoplasmic hypertrophy lacks evidence), the 297-participant
+   Gschneidner lengthened-partials RCT (practical EQUIVALENCE — so
+   range-of-motion.md's "sometimes superior" phrasing came OUT, the honest
+   direction), Wolf 2025 (longitudinal growth: mixed), Camargo 2025
+   (saturation point: not yet establishable). Honest nulls recorded for
+   sleep/protein/frequency (every window hit was clinical/older-adult or
+   already held). Registry 139 → 144. And the mechanisms.md addition cleared
+   that page's depth floor, so its DEPTH_EXEMPT entry went STALE and failed
+   red — the first live firing of lesson 43's stale-exemption guard, in the
+   direction that shrinks the escape hatch. Both fix waves deployed and
+   prod-smoked same-day.
+
 7w. **Telemetry (Waves 203–205, 2026-08-09).** Zero agents — fourth iteration
    running. The diff-scoped audit of Waves 201–202 (~230 production insertions) ran
    inline in one read: six candidates, five refuted against the code (the
