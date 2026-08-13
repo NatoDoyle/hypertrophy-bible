@@ -196,7 +196,9 @@ export const DEPTH_GATE = { minWords: 450, minNumericDensity: 0.25, warnOnly: fa
 // escape hatch, and the list must never be the cheaper path for a page that genuinely
 // owes the reader a number.
 export const DEPTH_EXEMPT = new Map([
-  ["mechanisms", "conceptual foundation: explains WHY (tension > damage/stress), not how much; every practical number lives one click away in the training-variables pages it links"],
+  // "mechanisms" was exempted here from Wave 196 until Wave 207, when the
+  // van-every-2025 currency addition cleared its floor organically — the stale
+  // entry then failed red exactly as designed, and was removed.
   ["stimulus-fatigue-adaptation", "the framework model the programming pages instantiate; its numbers (volume, deload timing, progression rates) belong to — and are in — those pages"],
   ["stress-recovery-and-overtraining", "its durations are honest WORDS (days / weeks-to-months): the ECSS/ACSM consensus deliberately does not pin digits for OTS recovery, and the metric counts digits — forcing digits here would fabricate precision the literature refuses (lesson 31)"],
   ["returning-lifters-and-special-populations", "muscle-memory magnitude varies too widely across studies to state one honest figure; the actionable guidance (ramp fast, don't start as a raw beginner) is unchanged by any number, and the app's comeback logic carries the practice values"],

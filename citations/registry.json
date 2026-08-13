@@ -19,6 +19,28 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/32217980/"
     },
     {
+      "key": "acsm-2026-position-stand",
+      "authors": [
+        "Currier BS",
+        "D'Souza AC",
+        "Singh MAF",
+        "Lowisz CV",
+        "Phillips SM"
+      ],
+      "year": 2026,
+      "title": "American College of Sports Medicine Position Stand. Resistance Training Prescription for Muscle Function, Hypertrophy, and Physical Performance in Healthy Adults: An Overview of Reviews.",
+      "source": "Medicine and Science in Sports and Exercise",
+      "volume": "58",
+      "issue": "4",
+      "pages": "851-872",
+      "doi": "10.1249/MSS.0000000000003897",
+      "pmid": "41843416",
+      "study_type": "position-stand",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41843416/ + https://api.crossref.org/works/10.1249/MSS.0000000000003897"
+    },
+    {
       "key": "albarello-2022-bench-inclination-csa",
       "authors": [
         "Albarello JCdS",
@@ -253,6 +275,28 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/28925405/"
+    },
+    {
+      "key": "camargo-2025-volume-saturation",
+      "authors": [
+        "Camargo JBB",
+        "Bittencourt D",
+        "Silva DG",
+        "Bergamasco JGA",
+        "Libardi CA"
+      ],
+      "year": 2025,
+      "title": "Is there a volume saturation point for muscle hypertrophy in resistance-trained individuals? A narrative review.",
+      "source": "European Journal of Applied Physiology",
+      "volume": "125",
+      "issue": "11",
+      "pages": "3065-3081",
+      "doi": "10.1007/s00421-025-05959-z",
+      "pmid": "40883636",
+      "study_type": "narrative-review",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/40883636/ + https://api.crossref.org/works/10.1007/s00421-025-05959-z"
     },
     {
       "key": "candow-2001-glutamine",
@@ -710,6 +754,27 @@
       "population": "mixed",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33497853/"
+    },
+    {
+      "key": "gschneidner-2025-lengthened-partials-rct",
+      "authors": [
+        "Gschneidner D",
+        "Carlson L",
+        "Steele J",
+        "Fisher JP"
+      ],
+      "year": 2025,
+      "title": "The effects of lengthened-partial range of motion resistance training of the limbs on arm and thigh muscle area: A multi-site randomised trial.",
+      "source": "Journal of Sports Sciences",
+      "volume": "43",
+      "issue": "23",
+      "pages": "2963-2976",
+      "doi": "10.1080/02640414.2025.2567805",
+      "pmid": "41055237",
+      "study_type": "RCT",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41055237/ + https://api.crossref.org/works/10.1080/02640414.2025.2567805"
     },
     {
       "key": "guest-2021-caffeine",
@@ -2439,6 +2504,27 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41718208/"
     },
     {
+      "key": "van-every-2025-mechanisms-myths",
+      "authors": [
+        "Van Every DW",
+        "Lees MJ",
+        "Wilson B",
+        "Nippard J",
+        "Phillips SM"
+      ],
+      "year": 2025,
+      "title": "Load-induced human skeletal muscle hypertrophy: Mechanisms, myths, and misconceptions.",
+      "source": "Journal of Sport and Health Science",
+      "volume": "15",
+      "pages": "101104",
+      "doi": "10.1016/j.jshs.2025.101104",
+      "pmid": "41276164",
+      "study_type": "narrative-review",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41276164/ + https://api.crossref.org/works/10.1016/j.jshs.2025.101104"
+    },
+    {
       "key": "varovic-2025-muscle-length-regional",
       "authors": [
         "Varović D",
@@ -2612,6 +2698,28 @@
       "population": "na",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/23374455/"
+    },
+    {
+      "key": "wolf-2025-lml-longitudinal-sr",
+      "authors": [
+        "Wolf M",
+        "Korakakis PA",
+        "Roberts MD",
+        "Franchi MV",
+        "Schoenfeld BJ"
+      ],
+      "year": 2025,
+      "title": "Does longer-muscle length resistance training cause greater longitudinal growth in humans? A systematic review.",
+      "source": "Sports Medicine and Health Science",
+      "volume": "8",
+      "issue": "1",
+      "pages": "34-42",
+      "doi": "10.1016/j.smhs.2025.03.001",
+      "pmid": "41646176",
+      "study_type": "systematic-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/41646176/ + https://api.crossref.org/works/10.1016/j.smhs.2025.03.001"
     },
     {
       "key": "wolfe-2017-bcaa",
