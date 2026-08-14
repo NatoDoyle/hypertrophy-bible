@@ -12,9 +12,15 @@ const notVoided = (col = "data") => `json_extract(${col}, '$.voided_at') IS NULL
 
 export function createD1Store(db) {
   return {
+    // A merge TOMBSTONES the from-row instead of deleting it (BLOCKERS #6b,
+    // option (b), Wave 211) — every reader treats a tombstone as absent, so the
+    // app behaves exactly as if the row were gone (404 "unknown user"), but the
+    // destructive primitive is gone: nothing can permanently destroy a user row,
+    // and a mistaken or malicious merge leaves an audit trail (_merged_into).
     async getUser(id) {
       const row = await db.prepare("SELECT data FROM users WHERE id = ?").bind(id).first();
-      return row ? JSON.parse(row.data) : null;
+      const u = row ? JSON.parse(row.data) : null;
+      return !u || u._merged_into ? null : u;
     },
     async saveUser(id, user) {
       await db
@@ -30,7 +36,7 @@ export function createD1Store(db) {
     async updateUser(id, mutator) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const row = await db.prepare("SELECT data FROM users WHERE id = ?").bind(id).first();
-        if (!row) return null;
+        if (!row || JSON.parse(row.data)?._merged_into) return null; // tombstone = absent (parity with file store)
         const next = JSON.stringify(mutator(JSON.parse(row.data)));
         const res = await db.prepare("UPDATE users SET data = ? WHERE id = ? AND data = ?").bind(next, id, row.data).run();
         if ((res.meta?.changes ?? 0) === 1) return JSON.parse(next);
@@ -209,7 +215,9 @@ export function createD1Store(db) {
       // collision) — otherwise the merged-away device's reminders orphan onto a
       // deleted user and the sweep prunes them, silently killing reminders.
       stmts.push(db.prepare("UPDATE push_subscriptions SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
-      stmts.push(db.prepare("DELETE FROM users WHERE id = ?").bind(fromId));
+      // BLOCKERS #6b option (b): tombstone, never delete — see getUser above.
+      stmts.push(db.prepare("UPDATE users SET data = ? WHERE id = ?")
+        .bind(JSON.stringify({ _merged_into: toId, _merged_at: new Date().toISOString() }), fromId));
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
     },
@@ -257,7 +265,7 @@ export function createD1Store(db) {
         "SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ? AND user_id IN (SELECT user_id FROM sessions WHERE date >= ? AND date < ?)",
         d7, d14, d7);
       return {
-        users_total: await one("SELECT COUNT(*) c FROM users"),
+        users_total: await one("SELECT COUNT(*) c FROM users WHERE json_extract(data, '$._merged_into') IS NULL"), // tombstones aren't users
         users_with_session: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions"),
         active_7d: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ?", d7),
         active_prev_7d,

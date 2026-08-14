@@ -16,7 +16,7 @@ export function createEmailSender({ apiKey, from } = {}) {
       <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
       <p>Tap below to ${restore ? "restore your progress on this device" : "back up your progress"}. This link works once and expires in 30 minutes.</p>
       <p style="margin:20px 0"><a href="${link}" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">${restore ? "Restore progress" : "Back up progress"}</a></p>
-      <p style="color:#888;font-size:14px">If you didn't request this, you can safely ignore it.</p></div>`;
+      <p style="color:#888;font-size:14px">If you didn't request this, you can safely ignore it. Replies to this address aren't read — this mailbox only sends.</p></div>`;
 
     try {
       const res = await fetch("https://api.resend.com/emails", {
@@ -55,7 +55,7 @@ export function createComebackSender({ apiKey, from } = {}) {
       <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
       ${body}
       <p style="margin:20px 0"><a href="https://hypertrophybible.com" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">Open today's session</a></p>
-      <p style="color:#888;font-size:14px">You're getting this because your progress is backed up to this address. Turn reminders off any time: Coach tab → Reminders.</p></div>`;
+      <p style="color:#888;font-size:14px">You're getting this because your progress is backed up to this address. Turn reminders off any time: Coach tab → Reminders. Replies to this address aren't read — this mailbox only sends.</p></div>`;
     if (!apiKey) {
       console.log(`[dev comeback-nudge] stage ${stage} (${days}d) -> ${email}`);
       return { dev: true, ok: true };
@@ -97,7 +97,7 @@ export function createSocialEmailSender({ apiKey, from } = {}) {
       <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
       <p>${body}</p>
       <p style="margin:20px 0"><a href="https://hypertrophybible.com" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">Open the app</a></p>
-      <p style="color:#888;font-size:14px">Turn these off any time: Coach tab → Reminders.</p></div>`;
+      <p style="color:#888;font-size:14px">Turn these off any time: Coach tab → Reminders. Replies to this address aren't read — this mailbox only sends.</p></div>`;
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",

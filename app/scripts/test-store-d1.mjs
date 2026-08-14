@@ -382,6 +382,20 @@ try {
     && stFile.push_subscriptions - stBefore.push_subscriptions === 2
     && stFile.push_delivered_7d - stBefore.push_delivered_7d === 1);
 
+  // --- Wave 211 (BLOCKERS #6b): merge TOMBSTONES the from-row in both stores —
+  // reads as absent everywhere, but the raw row survives with the audit marker.
+  for (const s of [file, d1]) {
+    await s.saveUser("tb-from", { profile: { commitment: { week: "2026-W01", days: ["mon"] } } });
+    await s.saveUser("tb-to", { profile: {} });
+    await s.reassignUserData("tb-from", "tb-to");
+  }
+  same("tombstone: both stores read the merged-away user identically (absent)", await file.getUser("tb-from"), await d1.getUser("tb-from"));
+  ok("tombstone: reads as absent (null)", (await file.getUser("tb-from")) === null);
+  const tbRaw = await shim.prepare("SELECT data FROM users WHERE id = ?").bind("tb-from").first();
+  ok("tombstone: the D1 row still EXISTS, carrying the audit marker", JSON.parse(tbRaw?.data ?? "{}")._merged_into === "tb-to");
+  same("tombstone: stats users_total agrees across stores and excludes tombstones",
+    (await file.stats(S_NOW)).users_total, (await d1.stats(S_NOW)).users_total);
+
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(tmpPath); } catch {}

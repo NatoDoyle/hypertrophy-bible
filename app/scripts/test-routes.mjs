@@ -365,6 +365,10 @@ try {
     (await store.listPushSubscriptions()).some((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge26" && s.user_id === devP));
   ok("#26 the custom exercise survived the CAS merge onto the surviving user",
     ((await store.getUser(devP)).custom_exercises ?? []).some((x) => x.id === "custom-x"));
+  // Wave 211 (BLOCKERS #6b): the merged-away user is a TOMBSTONE — every route
+  // answers exactly as if the row were deleted, but nothing was destroyed.
+  const tbRes = await app.request("/api/today", { headers: { "X-HB-User": devQ } });
+  ok("#6b the merged-away user reads as gone through the real routes (tombstone, not delete)", tbRes.status === 404);
 
   // --- Wave 209: the health-note acceptance is stamped SERVER-side at onboard —
   // the welcome screen shows "By starting you agree…" before /api/onboard can be
