@@ -247,7 +247,9 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
           try {
             const res = await sendPush(s, vapid, payload, fetchFn);
             if (res.gone) { await store.deletePushSubscription(s.endpoint); gone.add(s.endpoint); pruned++; continue; }
-            if (res.ok) { ok++; sent++; }
+            // Delivery evidence (BLOCKERS #2b): a 2xx from the push service is
+            // the last hop we can observe headless — stamp it, best-effort.
+            if (res.ok) { ok++; sent++; try { await store.markPushDelivered(s.endpoint, +now); } catch { /* evidence is optional; the send is not */ } }
           } catch { /* one bad subscription never blocks the rest */ }
         }
         if (ok === 0 && emailFallback && userSubs.length === 0 && email && sendSocialEmail) {
@@ -521,7 +523,8 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
         const res = await sendEmptyPush(sub, vapid, fetchFn);
         if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
-        if (res.ok) sent++;
+        // Same delivery-evidence stamp as fanOut above — every send door (lesson 1).
+        if (res.ok) { sent++; try { await store.markPushDelivered(sub.endpoint, +now); } catch { /* evidence is optional */ } }
       }
     } catch {
       // one bad user must never abort the sweep

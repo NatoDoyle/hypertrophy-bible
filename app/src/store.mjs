@@ -198,6 +198,49 @@ export function createFileStore(path) {
       if (row && (userId == null || row.user_id === userId)) { delete db.push_subscriptions[endpoint]; flush(); }
     },
     async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
+    // Delivery evidence (BLOCKERS #2b): stamped by the push sweep ONLY when a
+    // real push service accepted a send (2xx). Kept in a separate map keyed by
+    // endpoint — the D1 store mirrors this as its own self-init table
+    // (push_deliveries), the share_cheers precedent. Stale rows for pruned
+    // subscriptions are harmless: stats() only counts deliveries whose
+    // subscription still exists.
+    async markPushDelivered(endpoint, at) {
+      (db.push_deliveries ??= {})[endpoint] = at;
+      flush();
+    },
+    // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
+    // computed entirely from rows this store already holds; counts only, no
+    // per-user view, no PII. Session counts are RAW rows (voided included —
+    // a voided session was still activity; D1 counts the same way, parity).
+    // ISO-8601 strings compare lexically as chronology, so string >= works.
+    async stats(now = Date.now()) {
+      const iso = (ms) => new Date(ms).toISOString();
+      const d7 = iso(now - 7 * 86400000), d14 = iso(now - 14 * 86400000), d28 = iso(now - 28 * 86400000);
+      const activeIn = (from, to) => {
+        const s = new Set();
+        for (const [uid, list] of Object.entries(db.sessions ?? {}))
+          if (list.some((x) => x.date && x.date >= from && (!to || x.date < to))) s.add(uid);
+        return s;
+      };
+      const cur = activeIn(d7, null), prev = activeIn(d14, d7);
+      let sessions_7d = 0, sessions_28d = 0, users_with_session = 0;
+      for (const list of Object.values(db.sessions ?? {})) {
+        if (list.length) users_with_session++;
+        for (const x of list) { if (x.date >= d7) sessions_7d++; if (x.date >= d28) sessions_28d++; }
+      }
+      const returned = [...prev].filter((u) => cur.has(u)).length;
+      const subs = Object.values(db.push_subscriptions ?? {});
+      return {
+        users_total: Object.keys(db.users ?? {}).length,
+        users_with_session,
+        active_7d: cur.size,
+        active_prev_7d: prev.size,
+        retention_wow: prev.size ? returned / prev.size : null,
+        sessions_7d, sessions_28d,
+        push_subscriptions: subs.length,
+        push_delivered_7d: subs.filter((s) => (db.push_deliveries?.[s.endpoint] ?? 0) >= now - 7 * 86400000).length,
+      };
+    },
     // Voided sessions must not count as "last trained" — a user who corrects away
     // their only recent workout genuinely hasn't trained, and the comeback nudge
     // should say so. Same exclusion as listSessions (D1 does it in SQL).

@@ -180,6 +180,11 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     ok("the same nudge fires on the next tick once outside quiet hours", r2.sent === 1 && sentBody instanceof Uint8Array);
     const decrypted = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
     ok("the deferred push is still the nudge copy", decrypted.tag === "hb-nudge");
+    // Wave 210: the 2xx from the push service stamped delivery evidence — the
+    // fanOut (social) door; the reminder door is asserted in the Mountain-time
+    // scenario below (lesson 1: both send doors).
+    ok("the successful social send stamped delivery evidence (stats sees it)",
+      (await qhStore.stats(NOW + 3600e3)).push_delivered_7d === 1);
   } finally { try { rmSync(qhPath); } catch {} }
 }
 
@@ -211,6 +216,10 @@ ok("unknown timezone is never gated (can't compute a local hour)", isSocialPushQ
     await mtStore.savePushSubscription("mtu", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/mt", keys: { p256dh: "k", auth: "a" } });
     const r = await runPushSweep(mtStore, vapid, MT_NOW, async () => ({ ok: true, status: 201 }));
     ok("a Mountain-time user's Tuesday commitment fires at their local 17:00, even though the UTC instant is already Wednesday", r.sent === 1);
+    // Wave 210: the reminder door stamps delivery evidence too, and the stamp
+    // ages out of the stats 7-day window instead of counting forever.
+    ok("the reminder send stamped delivery evidence", (await mtStore.stats(MT_NOW)).push_delivered_7d === 1);
+    ok("delivery evidence ages out of the 7-day stats window", (await mtStore.stats(MT_NOW + 8 * 86400000)).push_delivered_7d === 0);
   } finally { try { rmSync(mtPath); } catch {} }
 }
 

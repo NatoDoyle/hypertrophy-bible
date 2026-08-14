@@ -95,3 +95,13 @@ CREATE TABLE IF NOT EXISTS share_cheers (
   share_id TEXT PRIMARY KEY,
   count    INTEGER NOT NULL DEFAULT 0
 );
+
+-- Push delivery evidence (BLOCKERS #2b): last time a push service accepted (2xx)
+-- a send to this endpoint. Separate table, not a column on push_subscriptions
+-- (same reason as share_cheers: the base table already exists in prod and
+-- CREATE TABLE IF NOT EXISTS can't add a column). Also self-initialized at
+-- runtime by store-d1.mjs. Read only by the owner stats endpoint (aggregates).
+CREATE TABLE IF NOT EXISTS push_deliveries (
+  endpoint   TEXT PRIMARY KEY,
+  last_ok_at INTEGER NOT NULL
+);

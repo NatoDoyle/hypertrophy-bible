@@ -351,6 +351,37 @@ try {
   ok("updateSession: D1's date COLUMN followed the blob (the edited session now sorts first)", (await d1.listSessions("v1"))[0].session_id === "vb");
   same("latestSessionDate: both agree after the edit moved the newest session backwards", await file.latestSessionDate("v1"), await d1.latestSessionDate("v1"));
 
+  // --- Wave 210: stats() + markPushDelivered parity — the owner stats endpoint
+  // reads whichever store the runtime has, so the numbers must not depend on it.
+  // Assertions on the seeded scenario use DELTAS (before vs after) so earlier
+  // scenarios' fixtures in these long-lived stores can never pollute them.
+  const S_NOW = Date.now();
+  const dIso = (days) => new Date(S_NOW - days * 86400000).toISOString();
+  const stBefore = await file.stats(S_NOW);
+  same("stats: both stores agree BEFORE the scenario too", stBefore, await d1.stats(S_NOW));
+  for (const s of [file, d1]) {
+    await s.saveUser("st1", { profile: {} }); await s.saveUser("st2", { profile: {} }); await s.saveUser("st3", { profile: {} });
+    await s.addSession("st1", { session_id: "st1-a", date: dIso(2), sets: [] });
+    await s.addSession("st1", { session_id: "st1-b", date: dIso(10), sets: [] });
+    await s.addSession("st2", { session_id: "st2-a", date: dIso(10), sets: [] });
+    await s.addSession("st3", { session_id: "st3-a", date: dIso(40), sets: [] });
+    await s.savePushSubscription("st1", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/st1", keys: { p256dh: "k", auth: "a" } });
+    await s.savePushSubscription("st2", { endpoint: "https://updates.push.services.mozilla.com/wpush/v2/st2", keys: { p256dh: "k", auth: "a" } });
+    await s.markPushDelivered("https://updates.push.services.mozilla.com/wpush/v2/st1", S_NOW - 3600e3);
+    await s.markPushDelivered("https://updates.push.services.mozilla.com/wpush/v2/st2", S_NOW - 9 * 86400000); // aged out of the 7d window
+    await s.markPushDelivered("https://updates.push.services.mozilla.com/wpush/v2/ghost", S_NOW); // no subscription -> never counted
+  }
+  const stFile = await file.stats(S_NOW);
+  same("stats: byte-identical aggregates from both stores after the scenario", stFile, await d1.stats(S_NOW));
+  ok("stats deltas: actives, sessions, subscriptions and delivery evidence all read correctly",
+    stFile.users_total - stBefore.users_total === 3
+    && stFile.active_7d - stBefore.active_7d === 1
+    && stFile.active_prev_7d - stBefore.active_prev_7d === 2
+    && stFile.sessions_7d - stBefore.sessions_7d === 1
+    && stFile.sessions_28d - stBefore.sessions_28d === 3
+    && stFile.push_subscriptions - stBefore.push_subscriptions === 2
+    && stFile.push_delivered_7d - stBefore.push_delivered_7d === 1);
+
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(tmpPath); } catch {}
