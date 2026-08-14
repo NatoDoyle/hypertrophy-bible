@@ -378,6 +378,22 @@ try {
   ok("#209 onboard stamps disclaimer_ack server-side (v1, a real timestamp)",
     ackStored?.v === 1 && typeof ackStored?.at === "string" && ackStored.at !== "1999-01-01T00:00:00.000Z");
 
+  // --- Wave 210: the owner stats endpoint (BLOCKERS #7). Gated on a deploy
+  // secret: unconfigured -> 404 even with a key presented; configured -> exact
+  // match only, and the refusal is byte-identical to an unknown route. ---
+  const noCfg = await app.request("/api/stats", { headers: { "X-HB-Stats-Key": "anything" } });
+  ok("#210 /api/stats is a 404 when no STATS_KEY is configured", noCfg.status === 404);
+  const statsApp = createApp(store, { statsKey: "test-stats-key" });
+  ok("#210 /api/stats without the key is a 404", (await statsApp.request("/api/stats")).status === 404);
+  ok("#210 /api/stats with the WRONG key is a 404", (await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "wrong" } })).status === 404);
+  const statsRes = await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } });
+  const statsBody = await statsRes.json();
+  ok("#210 the right key returns the aggregate shape",
+    statsRes.status === 200 && statsBody.users_total >= 1 && typeof statsBody.sessions_7d === "number"
+    && typeof statsBody.push_subscriptions === "number" && typeof statsBody.push_delivered_7d === "number"
+    && "retention_wow" in statsBody);
+  ok("#210 the aggregates carry no per-user data (no ids, no emails)", !/user_id|email|@|[0-9a-f]{8}-[0-9a-f]{4}/.test(JSON.stringify(statsBody)));
+
   // #21: local_date must round-trip through the /api/session whitelist (the
   // deload-flag lesson: a silently dropped field disables its whole pipeline).
   const ldUser = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;

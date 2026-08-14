@@ -231,6 +231,45 @@ export function createD1Store(db) {
       const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();
       return results;
     },
+    // Delivery evidence (BLOCKERS #2b): stamped by the push sweep ONLY when a
+    // real push service accepted a send (2xx). Own self-init table (see
+    // ensurePushDeliveries); stale rows for pruned subscriptions are harmless —
+    // stats() only counts deliveries whose subscription still exists.
+    async markPushDelivered(endpoint, at) {
+      await ensurePushDeliveries(db);
+      await db.prepare("INSERT INTO push_deliveries (endpoint, last_ok_at) VALUES (?, ?) ON CONFLICT(endpoint) DO UPDATE SET last_ok_at = excluded.last_ok_at")
+        .bind(endpoint, at).run();
+    },
+    // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
+    // counts only, no per-user view, no PII. Session counts are RAW rows
+    // (voided included — a voided session was still activity; the file store
+    // counts the same way, parity). ISO strings compare lexically as chronology.
+    async stats(now = Date.now()) {
+      await ensurePushDeliveries(db);
+      const iso = (ms) => new Date(ms).toISOString();
+      const d7 = iso(now - 7 * 86400000), d14 = iso(now - 14 * 86400000), d28 = iso(now - 28 * 86400000);
+      const one = async (sql, ...binds) => {
+        const q = db.prepare(sql);
+        return (await (binds.length ? q.bind(...binds) : q).first())?.c ?? 0;
+      };
+      const active_prev_7d = await one("SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ? AND date < ?", d14, d7);
+      const returned = await one(
+        "SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ? AND user_id IN (SELECT user_id FROM sessions WHERE date >= ? AND date < ?)",
+        d7, d14, d7);
+      return {
+        users_total: await one("SELECT COUNT(*) c FROM users"),
+        users_with_session: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions"),
+        active_7d: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ?", d7),
+        active_prev_7d,
+        retention_wow: active_prev_7d ? returned / active_prev_7d : null,
+        sessions_7d: await one("SELECT COUNT(*) c FROM sessions WHERE date >= ?", d7),
+        sessions_28d: await one("SELECT COUNT(*) c FROM sessions WHERE date >= ?", d28),
+        push_subscriptions: await one("SELECT COUNT(*) c FROM push_subscriptions"),
+        push_delivered_7d: await one(
+          "SELECT COUNT(*) c FROM push_deliveries d WHERE d.last_ok_at >= ? AND EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.endpoint = d.endpoint)",
+          now - 7 * 86400000),
+      };
+    },
     // Voided sessions must not count as "last trained" (parity with the file store).
     async latestSessionDate(user_id) {
       const row = await db.prepare(`SELECT MAX(date) AS d FROM sessions WHERE user_id = ? AND ${notVoided()}`).bind(user_id).first();
@@ -342,6 +381,20 @@ export function createD1Store(db) {
 
 // One-time (per worker instance) creation of the shares table. Cached as a promise
 // so concurrent first-callers all await the same CREATE rather than racing it.
+let _deliveriesReady = null;
+function ensurePushDeliveries(db) {
+  if (!_deliveriesReady) {
+    // A separate table, NOT a column on push_subscriptions — that table already
+    // exists in prod and CREATE TABLE IF NOT EXISTS can't add a column to it
+    // (the exact share_cheers precedent below). Self-initialized at runtime so
+    // no CLI migration is needed (the D1 query CLI is unusable here anyway).
+    _deliveriesReady = db.batch([
+      db.prepare("CREATE TABLE IF NOT EXISTS push_deliveries (endpoint TEXT PRIMARY KEY, last_ok_at INTEGER NOT NULL)"),
+    ]).catch((e) => { _deliveriesReady = null; throw e; }); // don't cache a failure — let the next call retry
+  }
+  return _deliveriesReady;
+}
+
 let _sharesReady = null;
 function ensureShares(db) {
   if (!_sharesReady) {

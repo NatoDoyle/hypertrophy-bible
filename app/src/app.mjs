@@ -199,6 +199,21 @@ export function createApp(store, config = {}) {
 
   app.get("/api/health", (c) => c.json({ ok: true, programs: programs.length }));
 
+  // Owner-only aggregate stats (BLOCKERS #7 — the zero-new-collection proposal,
+  // authorized by the owner 2026-08-13: "attack all the blockers, do what you
+  // think is best"). Computed entirely from rows the store already holds:
+  // aggregates only, no per-user view, no PII, nothing added to the client.
+  // Gated on a deploy-time secret (STATS_KEY): unless it's configured AND the
+  // caller presents it exactly, the route answers the same 404 an unknown path
+  // would — never an auth hint. The one new stored byte in this feature is the
+  // push-delivery stamp (push_deliveries), which exists to answer BLOCKERS
+  // #2b's "does a live push service actually accept our sends" with recorded
+  // 2xx evidence instead of a human vigil.
+  app.get("/api/stats", async (c) => {
+    if (!config.statsKey || c.req.header("X-HB-Stats-Key") !== config.statsKey) return c.json({ error: "not found" }, 404);
+    return c.json(await store.stats(Date.now()));
+  });
+
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +
   // exercise DB + equipment/injuries), with a rationale we can explain.
   app.post("/api/onboard", async (c) => {

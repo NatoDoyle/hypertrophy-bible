@@ -18,6 +18,7 @@ export default {
     app ??= createApp(createD1Store(env.DB), {
       sendEmail: createEmailSender({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM }),
       vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
+      statsKey: env.STATS_KEY ?? null, // wrangler secret; absent -> /api/stats is a 404
     });
     return app.fetch(request, env, ctx);
   },
