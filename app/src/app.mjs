@@ -229,6 +229,12 @@ export function createApp(store, config = {}) {
     }
     const user_id = crypto.randomUUID();
     profile.user_id = user_id;
+    // Health-note acceptance (BLOCKERS #5): the welcome screen carries "By
+    // starting you agree this is training guidance, not medical advice" before
+    // this request can exist, so the acceptance is stamped HERE, server-side —
+    // never trusted from the client (overwrite whatever was posted), and never
+    // asked as a checkbox (Goal 3: zero cognitive load).
+    profile.disclaimer_ack = { v: 1, at: new Date().toISOString() };
     profile.units ??= "metric";
     profile.days_per_week ??= 3;
     const { program, rationale, meta } = generateUserPlan(profile);

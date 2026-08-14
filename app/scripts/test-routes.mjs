@@ -366,6 +366,18 @@ try {
   ok("#26 the custom exercise survived the CAS merge onto the surviving user",
     ((await store.getUser(devP)).custom_exercises ?? []).some((x) => x.id === "custom-x"));
 
+  // --- Wave 209: the health-note acceptance is stamped SERVER-side at onboard —
+  // the welcome screen shows "By starting you agree…" before /api/onboard can be
+  // reached, and a client-supplied stamp is hostile until overwritten. ---
+  const ackUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["bodyweight"],
+    disclaimer_ack: { v: 99, at: "1999-01-01T00:00:00.000Z" }, // client lies — must be overwritten
+  } })).data.user_id;
+  const ackStored = (await store.getUser(ackUser)).profile.disclaimer_ack;
+  ok("#209 onboard stamps disclaimer_ack server-side (v1, a real timestamp)",
+    ackStored?.v === 1 && typeof ackStored?.at === "string" && ackStored.at !== "1999-01-01T00:00:00.000Z");
+
   // #21: local_date must round-trip through the /api/session whitelist (the
   // deload-flag lesson: a silently dropped field disables its whole pipeline).
   const ldUser = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;

@@ -91,6 +91,14 @@ export function mergeUserProfile(fromU, toU) {
       nudge_seen_at: fromU.profile?.nudge_seen_at ?? 0,
     };
   }
+  // Disclaimer acknowledgement (`profile.disclaimer_ack`, added Wave 209): the
+  // merged-away device may be where the human actually tapped Start and accepted
+  // the health note. The survivor's own (usually earlier) stamp wins; adopt only
+  // to fill a gap — accounts created before Wave 209 have none, and the record
+  // should follow the person, not the row.
+  if (fromU.profile?.disclaimer_ack && !toU.profile?.disclaimer_ack) {
+    toU.profile = { ...(toU.profile ?? {}), disclaimer_ack: fromU.profile.disclaimer_ack };
+  }
   // Pending celebration echo (`profile.celebration`, added Wave 201 — after this
   // file's last lesson-16 sweep, the same post-dating gap as freeze_pushed_week
   // and partner_nudge above). A pending UNPUSHED marker is a real Goal-4

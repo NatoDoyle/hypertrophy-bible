@@ -301,6 +301,20 @@ try {
   ok("merge adopts from's pending celebration over to's already-delivered one",
     (await store.getUser("cel4-to")).profile.celebration?.session_id === "s-new");
 
+  // --- Wave 209: the disclaimer acknowledgement follows the person through a
+  // merge — adopt from's stamp only when the survivor has none (pre-209 rows). ---
+  await store.saveUser("ack1-to", { profile: {} });
+  await store.saveUser("ack1-from", { profile: { disclaimer_ack: { v: 1, at: "2026-08-14T00:00:00.000Z" } } });
+  await store.reassignUserData("ack1-from", "ack1-to");
+  ok("merge adopts from's disclaimer_ack when to has none",
+    (await store.getUser("ack1-to")).profile.disclaimer_ack?.v === 1);
+
+  await store.saveUser("ack2-to", { profile: { disclaimer_ack: { v: 1, at: "2026-01-01T00:00:00.000Z" } } });
+  await store.saveUser("ack2-from", { profile: { disclaimer_ack: { v: 1, at: "2026-08-14T00:00:00.000Z" } } });
+  await store.reassignUserData("ack2-from", "ack2-to");
+  ok("merge keeps to's own (earlier) disclaimer_ack",
+    (await store.getUser("ack2-to")).profile.disclaimer_ack?.at === "2026-01-01T00:00:00.000Z");
+
   // --- It2/W6: the merge respects idempotency invariants ---
   await store.saveUser("p-to", { profile: {} });
   await store.saveUser("p-from", { profile: {} });
