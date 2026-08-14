@@ -344,6 +344,7 @@ function renderOnboarding() {
       <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
       <button class="btn" id="go">Start</button>
       <p class="muted">Free · no ads · no account needed</p>
+      <p class="muted" style="font-size:.8rem">By starting you agree this is training guidance, not medical advice — <a href="#" id="healthnote" style="color:var(--muted);text-decoration:underline">the honest details</a></p>
       <button class="btn ghost" id="restore">Already have progress saved? Restore it</button>
       <div id="restorebox" hidden style="margin-top:6px">
         <input id="remail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your restore link" placeholder="you@email.com"
@@ -351,6 +352,7 @@ function renderOnboarding() {
         <button class="btn secondary" id="sendrestore">Email me a restore link</button>
         <p class="muted" id="rmsg"></p></div></div>`;
     $("#go").onclick = () => { onbStarted = true; onbStep = 0; saveOnb(); renderOnboarding(); };
+    $("#healthnote").onclick = (e) => { e.preventDefault(); renderHealthNote(renderOnboarding); };
     $("#restore").onclick = () => { const b = $("#restorebox"); b.hidden = !b.hidden; if (!b.hidden) $("#remail").focus(); };
     $("#sendrestore").onclick = async () => {
       const val = $("#remail").value.trim();
@@ -2053,6 +2055,26 @@ async function renderFuel() {
 }
 
 // ---------- Me ----------
+// The health & safety note (BLOCKERS #5): plain-English, honest, supportive —
+// shown from the welcome screen ("By starting you agree…") and always reachable
+// from the Me tab. The server stamps acceptance (profile.disclaimer_ack) at
+// onboard, because the welcome screen carries this note before /api/onboard can
+// ever be reached.
+function renderHealthNote(back) {
+  // nav visibility is the caller's state — the welcome screen already hides it,
+  // the Me tab keeps it; this screen changes nothing either way.
+  app.innerHTML = `<h1>Health &amp; safety</h1>
+    <div class="card"><p><b>This app is a coach, not a doctor.</b> Everything in it — plans, weights, effort targets, nutrition numbers — is general training guidance built from published research. It isn't medical advice, diagnosis, or treatment.</p></div>
+    <div class="card"><p><b>Check with a professional first if any of this is you:</b> a heart condition or other diagnosed illness, an injury currently being treated, you're pregnant or recently postpartum, you're returning to exercise after a long time away, or you're simply not sure. One conversation with a doctor or physio beats guessing.</p></div>
+    <div class="card"><p><b>Pain is a stop sign.</b> Muscles burning during a hard set is normal. Sharp pain, joint pain, chest pain, dizziness, or feeling faint is not — end the session. If it's chest pain or you feel seriously unwell, get medical help right away.</p></div>
+    <div class="card"><p><b>You lift at your own risk.</b> Training with weights carries a small but real risk of injury. Staying within your ability, following the form cues, and leaving reps in reserve keeps that risk low — but it's never zero, and you're the one in the room.</p></div>
+    <div class="card"><p><b>The injury guidance is a comfort feature, not treatment.</b> When you report an injury, the app steers exercises away from that region so you can keep training around it. A real injury deserves a real professional.</p></div>
+    <div class="card"><p><b>Fuel targets are estimates for healthy adults.</b> The calorie and macro numbers come from population formulas and adapt to your logged data — useful guidance, not a prescription. If you have a history of disordered eating or a medical condition affecting diet, please work with a professional instead of the tracker.</p></div>
+    <p class="muted">Train hard, be sensible, and when in doubt — ask a human who can see you. 💪</p>
+    <button class="btn ghost" id="healthback">‹ Back</button>`;
+  $("#healthback").onclick = back;
+}
+
 function renderMe() {
   const email = localStorage.getItem("hb_email");
   // This IS the account system — passwordless by design (an email-bound identity
@@ -2091,7 +2113,9 @@ function renderMe() {
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
     ${backup}
     ${funded}
+    <button class="btn ghost" id="healthnote-me">Health &amp; safety note</button>
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
+  $("#healthnote-me").onclick = () => renderHealthNote(() => { tab = "me"; render(); });
   $("#viewplan").onclick = () => renderPlanExplain(false);
   $("#settings").onclick = renderSettings;
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
