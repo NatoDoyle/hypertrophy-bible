@@ -25,14 +25,19 @@ export function createFileStore(path) {
     }).map((p) => p[0]);
 
   return {
-    async getUser(id) { return db.users[id] ?? null; },
+    // A merge TOMBSTONES the from-row instead of deleting it (BLOCKERS #6b,
+    // option (b), Wave 211) — every reader treats a tombstone as absent, so the
+    // app behaves exactly as if the row were gone (404 "unknown user"), but the
+    // destructive primitive is gone: nothing can permanently destroy a user row,
+    // and a mistaken or malicious merge leaves an audit trail (_merged_into).
+    async getUser(id) { const u = db.users[id]; return !u || u._merged_into ? null : u; },
     async saveUser(id, user) { db.users[id] = user; flush(); return user; },
     // Read-modify-write with last-writer-protection: mutate a copy and commit.
     // (Node is single-threaded so this can't interleave; the D1 store does a real
     // compare-and-swap. Same signature, so routes are identical on both.)
     async updateUser(id, mutator) {
       const cur = db.users[id];
-      if (cur === undefined || cur === null) return null;
+      if (cur === undefined || cur === null || cur._merged_into) return null; // tombstone = absent
       const next = mutator(JSON.parse(JSON.stringify(cur)));
       db.users[id] = next; flush(); return next;
     },
@@ -172,7 +177,8 @@ export function createFileStore(path) {
       delete db.sessions[fromId];
       delete db.bodyweights[fromId];
       delete db.checkins[fromId];
-      delete db.users[fromId];
+      // BLOCKERS #6b option (b): tombstone, never delete — see getUser above.
+      db.users[fromId] = { _merged_into: toId, _merged_at: new Date().toISOString() };
       flush();
       return moved;
     },
@@ -231,7 +237,7 @@ export function createFileStore(path) {
       const returned = [...prev].filter((u) => cur.has(u)).length;
       const subs = Object.values(db.push_subscriptions ?? {});
       return {
-        users_total: Object.keys(db.users ?? {}).length,
+        users_total: Object.values(db.users ?? {}).filter((u) => !u._merged_into).length, // tombstones aren't users
         users_with_session,
         active_7d: cur.size,
         active_prev_7d: prev.size,

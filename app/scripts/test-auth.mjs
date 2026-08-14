@@ -1,6 +1,6 @@
 // Unit tests for the passwordless email backup logic, exercised against the real
 // file store (so the store's account/magic-link methods are covered too).
-import { rmSync } from "node:fs";
+import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
@@ -282,6 +282,13 @@ try {
   await store.reassignUserData("cel1-from", "cel1-to");
   ok("merge adopts from's pending celebration when to has none",
     (await store.getUser("cel1-to")).profile.celebration?.session_id === "s-1");
+  // --- Wave 211 (BLOCKERS #6b, option b): the merge TOMBSTONES the from-row
+  // instead of deleting it — the app's only destructive primitive is gone. The
+  // row survives with an audit marker, but every reader sees it as absent.
+  ok("merge leaves a tombstone row (audit trail), not a deletion",
+    JSON.parse(readFileSync(path, "utf8")).users["cel1-from"]?._merged_into === "cel1-to");
+  ok("the tombstoned user reads as absent via getUser", (await store.getUser("cel1-from")) === null);
+  ok("updateUser on a tombstone is a null no-op", (await store.updateUser("cel1-from", (u) => u)) === null);
 
   await store.saveUser("cel2-to", { profile: { celebration: { session_id: "s-mine", at: 900, kind: "milestone", count: 3 } } });
   await store.saveUser("cel2-from", { profile: { celebration: { session_id: "s-theirs", at: 500, kind: "pr", count: 1 } } });
