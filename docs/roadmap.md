@@ -6,7 +6,15 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-13** (Waves 206-208: the Waves 203-205 self-audit
+Grounded assessment date: **2026-08-14** (Waves 209-212: under the owner's blanket
+go-ahead, four human-blocked items shipped as code — the health & safety note (#5),
+the owner stats endpoint (#7), recorded push-delivery evidence (#2b's server half),
+and the merge tombstone (#6b) — plus #8's honest email footers. **The stats
+endpoint's first live reading is the new ground truth for Goal 4:** 135 user rows ·
+13 ever logged a session · 1 active in the last 7 days · **0 push subscriptions**
+(lesson 48). The frontier is now adoption/distribution and the remaining human
+BLOCKERS (#1 media, #2b subscribe-on-a-phone, #3 donations, #6 elite ground truth),
+not more mechanism. The prior grounding was 2026-08-13, Waves 206-208: the Waves 203-205 self-audit
 shipped two confirmed fixes — the merge-door celebration re-earn and the honest
 movement-gate blind-spot measure — and **the first dedicated KB currency sweep ran
 (Wave 207)**: 8 topics, 75 PMIDs screened, 5 dual-verified additions across 4 hot
@@ -103,8 +111,17 @@ Both items that paragraph used to scope are now SHIPPED: **multiple concurrent
 challenges** (Waves 198-199) and **push for every remaining event — new follower,
 PR, level-up, streak milestone, plus the comeback on the push channel** (Wave 201).
 The mechanism layer of Goal 4 is built out; what the 2026-08-07 re-audit found
-genuinely open is that **nothing measures the goal itself** (BLOCKERS #7 — the
-owner's values call, sharpened there into a zero-new-collection proposal).
+genuinely open was that **nothing measures the goal itself** — closed Wave 210:
+`GET /api/stats` (BLOCKERS #7's proposal, shipped under the owner's go-ahead) now
+reports the goal's own numbers. **First reading, 2026-08-14:** 135 user rows ·
+13 ever logged a session · 1 active in the last 7 days · retention n/1 · **0 push
+subscriptions** — i.e. every push mechanism this section lists currently reaches
+nobody on the push channel (email fallback only), because no real device has ever
+subscribed (lesson 48). The honest conclusion: Goal 4's binding constraint is no
+longer mechanism *or* measurement — it is **adoption**, which is a distribution
+question mostly outside the loop's reach (BLOCKERS #1 demo media and the owner's
+own sharing of the app are the levers). Judge future Goal-4 work against these
+numbers moving, not against feature count.
 
 ## Build queue (pull from the top)
 
@@ -168,6 +185,23 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 209–212 progress (2026-08-14). The blocker burst: four human-blocked items
+became shipped code under the owner's blanket authorization.**
+
+- **Wave 209 (#5):** the health & safety note — welcome-screen agree-line + full
+  plain-English note (Me-tab reachable), acceptance stamped server-side at onboard
+  and carried through merges. Real-browser walkthrough green.
+- **Wave 210 (#7 + #2b server half):** `GET /api/stats` — secret-gated, aggregates
+  only, zero new collection — plus the sweep stamping every live push-service 2xx
+  into a self-init `push_deliveries` table (both send doors). Verified live against
+  prod D1 the same hour; first reading recorded in the grounding note above.
+- **Wave 211 (#6b + #8 half):** merge tombstones the from-row instead of deleting
+  it (the app's only destructive primitive removed; 94-test D1 parity on Node 25),
+  and every email footer states the mailbox only sends.
+- **Wave 212 (LEARN):** lesson 48 (measure the funnel's mouth before building more
+  tail), telemetry 7u, this grounding, and the BLOCKERS rewrite — #5/#6b/#7 moved
+  to Done; what remains open is genuinely human (#1, #2b, #3, #6, #8-routing, #9).
 
 **Waves 206–208 progress (2026-08-13). The Waves 203-205 self-audit shipped two
 confirmed fixes, and the first dedicated KB currency sweep ran.**

@@ -648,6 +648,22 @@ These are real failures from previous iterations. Each is now a standing check.
    the celebrated session against corrected history; two route-door regression tests
    observed failing pre-fix.)
 
+48. **Mechanisms compound only downstream of adoption — get the funnel's MOUTH into a
+   number before building more of its tail.** The push layer grew through ~15 waves
+   (reminders, commitment nudges, quiet hours, RFC 8291 encryption, per-event markers,
+   challenge/cheer/celebration/comeback events, an email fallback), every layer tested
+   against published vectors — and the FIRST live reading of `push_subscriptions`
+   (Wave 210's stats endpoint) returned **0**: in the app's entire life, no real device
+   had ever granted push permission. Nothing was wasted (the email fallback carries the
+   events, the code is sound, the tests are real) — but for months the loop kept
+   choosing "another push event" over "does anyone receive pushes," because mechanism
+   work is codable and adoption work is not. Lesson 25 said "turn a goal-adjective into
+   a number a gate can fail"; this is its sibling for FEATURES: → **Standing rule:**
+   when a feature's value is gated on an opt-in (push permission, account creation,
+   share links, a second device), surface the OPT-IN COUNT in an owner-visible number
+   in the same burst that ships the feature — and treat a zero there as gating further
+   mechanism work on that channel, the same way a red test gates a merge.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -669,6 +685,24 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7u. **Telemetry (Waves 209–212, 2026-08-14).** Zero agents — sixth iteration running.
+   The owner's blanket authorization ("attack all the blockers, do what you think is
+   best") converted four standing human-blocked items into shipped code in one burst,
+   each as its own tested wave: the health & safety note (#5 — welcome-screen line +
+   full note + server-side ack stamp, Playwright-walked), the owner stats endpoint
+   (#7 — the zero-new-collection proposal exactly as written, secret-gated, live
+   against prod D1 same day), recorded push-delivery evidence (#2b's server half —
+   the sweep stamps every live 2xx into a self-init push_deliveries table, both send
+   doors), and the merge tombstone (#6b option b — the app's only destructive
+   primitive removed, 94-test D1 parity on Node 25 since local Node 20 SKIPS that
+   suite; running it on the newer runtime was the difference between "parity asserted"
+   and "parity assumed"). Plus #8's honest half (email footers say the mailbox only
+   sends). The burst's defining moment is lesson 48: the stats endpoint's FIRST live
+   reading showed `push_subscriptions: 0` — the adoption number that reframes what
+   Goal-4 work is worth doing next. What remains in BLOCKERS is now genuinely and
+   only human: media (#1), donations (#3), elite ground truth (#6), the 5-minute
+   subscribe-on-a-real-phone (#2b), and optional email routing (#8).
+
 7v. **Telemetry (Waves 206–208, 2026-08-13).** Zero agents — fifth iteration
    running. The diff-scoped audit of Waves 203–205 (~600 insertions, half
    docs) ran inline: seven candidates, four refuted against the code (the
