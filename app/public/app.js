@@ -1019,6 +1019,7 @@ function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } c
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
 let historyEdit = null;     // session_id currently open for correction on the history screen
+let historyDateFix = null;  // session_id whose quarantined calendar date is being repaired
 let quitPending = false;    // two-tap guard on ending a workout early
 // Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
 // Keyed by the EXERCISE ID being confirmed, not its array index: the superset
@@ -1871,6 +1872,40 @@ async function renderProgress() {
 // voided sessions — you can't offer undo for something you refuse to display.
 const sessionVolume = (sess) => (sess.sets ?? []).filter((x) => (x.set_type ?? "work") !== "warmup").length;
 
+// Legacy logs can contain an impossible, malformed, or far-future timestamp. The
+// API deliberately returns those records with `time_quarantine` rather than
+// letting one bad device clock contaminate coaching. Date rendering must therefore
+// never trust `new Date(value)` blindly: "Invalid Date" is not an explanation or
+// a route back to a usable log.
+const HISTORY_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function validHistoryCalendarDate(value) {
+  if (typeof value !== "string") return null;
+  const m = HISTORY_DATE_RE.exec(value);
+  if (!m) return null;
+  const year = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day ? value : null;
+}
+function historyTomorrow() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function historyDateInputValue(sess) {
+  const local = validHistoryCalendarDate(sess?.local_date);
+  if (local && local <= historyTomorrow()) return local;
+  // A plain old `date` (or an ISO timestamp whose calendar part was valid) makes
+  // a useful default, but never pre-fills the very future date that caused the
+  // quarantine in the first place.
+  const fromDate = validHistoryCalendarDate(String(sess?.date ?? "").slice(0, 10));
+  return fromDate && fromDate <= historyTomorrow() ? fromDate : "";
+}
+function formatHistoryDate(sess) {
+  const calendar = validHistoryCalendarDate(sess?.local_date) || validHistoryCalendarDate(String(sess?.date ?? "").slice(0, 10));
+  const ms = calendar ? Date.parse(`${calendar}T12:00:00`) : Date.parse(sess?.date ?? "");
+  if (!Number.isFinite(ms)) return "Date needs correcting";
+  return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date(ms));
+}
+
 async function renderHistory() {
   app.innerHTML = `<h1>Your workouts</h1><p class="muted">Loading…</p>`;
   let d;
@@ -1894,8 +1929,10 @@ async function renderHistory() {
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
         style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
     </div>`).join("");
+    const quarantined = !!sess.time_quarantine;
     app.innerHTML = `<h1>Fix this workout</h1>
-      <p class="muted">${esc(sess.session_name || "Workout")} · ${esc(new Date(sess.date).toLocaleDateString())}</p>
+      <p class="muted">${esc(sess.session_name || "Workout")} · ${esc(formatHistoryDate(sess))}</p>
+      ${quarantined ? `<div class="card info"><b>🕒 Its date still needs correcting</b><p class="muted" style="margin-top:8px">This workout is safely kept out of your trends until you fix its calendar date from the workout list.</p></div>` : ""}
       <div class="card">${rows || `<p class="muted">No sets on this workout.</p>`}</div>
       <button class="btn" id="hsave">Save corrections</button>
       <button class="btn ghost" id="hcancel">Cancel</button>`;
@@ -1920,12 +1957,33 @@ async function renderHistory() {
   }
   const rows = list.map((sess) => {
     const voided = !!sess.voided_at;
-    const when = new Date(sess.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const quarantined = !!sess.time_quarantine;
+    const when = formatHistoryDate(sess);
+    const fixingDate = historyDateFix === sess.session_id;
+    // This is deliberately an in-place native date control, rather than a
+    // free-text prompt: it gives a keyboard/screen-reader label and prevents the
+    // user from having to learn the timestamp format that went wrong.
+    const timingRepair = quarantined
+      ? `<div class="card info" role="status" style="margin:10px 0 0"${fixingDate ? " data-date-fix-card" : ""}>
+          <b>🕒 Date needs correcting</b><span class="chip" style="margin-left:6px">not counted yet</span>
+          <p class="muted" style="margin:8px 0">This workout is safely saved, but its recorded time is not safe to use for your streak, progress, or coaching. Set the day you actually trained and it will count again.</p>
+          ${fixingDate
+            ? `<label class="muted" style="display:block" for="history-corrected-date">Actual workout date</label>
+               <input id="history-corrected-date" type="date" value="${esc(historyDateInputValue(sess))}" max="${historyTomorrow()}" aria-describedby="history-date-help"
+                 style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:4px 0 8px">
+               <p class="muted" id="history-date-help" style="font-size:.85rem;margin:0 0 8px">Choose the local calendar day you did this workout.</p>
+               <p class="muted" data-date-fix-message></p>
+               <button class="btn secondary" data-save-date="${esc(sess.session_id)}">Save actual date</button>
+               <button class="btn ghost" data-cancel-date="${esc(sess.session_id)}">Cancel</button>`
+            : `<button class="btn secondary" data-fix-date="${esc(sess.session_id)}">🗓 Fix date</button>`}
+        </div>`
+      : "";
     return `<div class="card"${voided ? ' style="opacity:.55"' : ""}>
       <div class="row"><div style="flex:1">
         <b>${esc(sess.session_name || "Workout")}</b>${voided ? ' <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' <span class="chip">edited</span>' : ""}
         <div class="muted" style="font-size:.85rem">${esc(when)} · ${sessionVolume(sess)} set${sessionVolume(sess) === 1 ? "" : "s"}</div>
       </div></div>
+      ${timingRepair}
       ${voided
         ? `<button class="btn ghost" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
         : `<button class="btn ghost" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
@@ -1937,7 +1995,33 @@ async function renderHistory() {
     ${rows}
     <button class="btn ghost" id="hback">‹ Back to progress</button>`;
   $("#hback").onclick = () => { tab = "progress"; render(); };
-  app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyEdit = b.dataset.edit; renderHistory(); });
+  app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDateFix = null; historyEdit = b.dataset.edit; renderHistory(); });
+  app.querySelectorAll("[data-fix-date]").forEach((b) => b.onclick = () => { historyEdit = null; historyDateFix = b.dataset.fixDate; renderHistory(); });
+  app.querySelectorAll("[data-cancel-date]").forEach((b) => b.onclick = () => { historyDateFix = null; renderHistory(); });
+  app.querySelectorAll("[data-save-date]").forEach((b) => b.onclick = async () => {
+    const box = b.closest("[data-date-fix-card]");
+    const input = box?.querySelector("#history-corrected-date");
+    const message = box?.querySelector("[data-date-fix-message]");
+    const corrected_local_date = input?.value || "";
+    if (!validHistoryCalendarDate(corrected_local_date) || corrected_local_date > historyTomorrow()) {
+      if (message) message.textContent = "Choose a real date up to tomorrow before saving.";
+      input?.focus();
+      return;
+    }
+    b.disabled = true;
+    if (message) message.textContent = "Saving…";
+    let res;
+    try { res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: b.dataset.saveDate, corrected_local_date }) }); }
+    catch { res = null; }
+    if (!res || res.error) {
+      b.disabled = false;
+      if (message) message.textContent = "Couldn't correct the date — check your connection and try again.";
+      return;
+    }
+    historyDateFix = null;
+    say("Workout date corrected. It now counts toward your trends.");
+    renderHistory();
+  });
   const setVoid = async (sessionId, voided) => {
     const res = await api("/api/session/void", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId, voided }) });
     if (res.error) { say("Couldn't do that — try again."); return; }
@@ -2075,6 +2159,212 @@ function renderHealthNote(back) {
   $("#healthback").onclick = back;
 }
 
+// A merge never has to be destructive. The API exposes only a deliberately
+// capability-free archive summary to the survivor; a restoration makes a fresh,
+// separate identity. Keep the response local to this page until the person makes
+// the separate, explicit choice to switch devices into that restored copy.
+const mergeArchiveCache = new Map();
+const mergeArchiveLoads = new Map();
+const mergeArchiveRestores = new Map();
+const mergeArchiveNotices = new Map();
+const mergeArchiveBusy = new Set();
+const mergeArchiveKey = (ownerId, archiveId) => `${ownerId}\u0000${archiveId}`;
+
+function safeMergeArchive(raw) {
+  if (!raw || typeof raw.archive_id !== "string" || !raw.archive_id) return null;
+  const count = (name) => {
+    const n = Number(raw.counts?.[name]);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+  };
+  return {
+    archive_id: raw.archive_id,
+    created_at: typeof raw.created_at === "string" ? raw.created_at : null,
+    // Unknown states intentionally collapse to the retryable, safe action rather
+    // than exposing implementation details or assuming a copy was restored.
+    state: raw.state === "restored" ? "restored" : raw.state === "restoring" ? "restoring" : "available",
+    restored_at: typeof raw.restored_at === "string" ? raw.restored_at : null,
+    counts: { sessions: count("sessions"), bodyweights: count("bodyweights"), checkins: count("checkins"), nutrition: count("nutrition_logs") },
+  };
+}
+function archiveWhen(value) {
+  const ms = Date.parse(value || "");
+  return Number.isFinite(ms) ? new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(ms)) : "an earlier merge";
+}
+function archiveCountSummary(counts) {
+  const parts = [
+    counts.sessions ? `${counts.sessions} workout${counts.sessions === 1 ? "" : "s"}` : "",
+    counts.bodyweights ? `${counts.bodyweights} weigh-in${counts.bodyweights === 1 ? "" : "s"}` : "",
+    counts.checkins ? `${counts.checkins} check-in${counts.checkins === 1 ? "" : "s"}` : "",
+    counts.nutrition ? `${counts.nutrition} food log${counts.nutrition === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "saved account data";
+}
+function restoreUnitsLabel(units) {
+  return units === "imperial" ? "pounds" : units === "metric" ? "kilograms" : null;
+}
+function loadMergeArchives(ownerId, force = false) {
+  if (!ownerId) return Promise.resolve([]);
+  if (!force && mergeArchiveCache.has(ownerId)) return Promise.resolve(mergeArchiveCache.get(ownerId));
+  if (mergeArchiveLoads.has(ownerId)) return mergeArchiveLoads.get(ownerId);
+  const request = api("/api/merge-archives")
+    .then((body) => {
+      if (body?.error) throw new Error("archive-list-failed");
+      const archives = Array.isArray(body?.archives) ? body.archives.map(safeMergeArchive).filter(Boolean) : [];
+      mergeArchiveCache.set(ownerId, archives);
+      return archives;
+    })
+    .catch(() => null)
+    .finally(() => { mergeArchiveLoads.delete(ownerId); });
+  mergeArchiveLoads.set(ownerId, request);
+  request.then((archives) => {
+    // Do not repaint a screen the person has already left, and do not let a late
+    // answer from the old account paint over a manually switched identity.
+    if (archives && uid === ownerId && tab === "me") renderMe();
+  });
+  return request;
+}
+function mergeArchiveCard(ownerId) {
+  const archives = mergeArchiveCache.get(ownerId);
+  if (!Array.isArray(archives) || !archives.length) return "";
+  const cards = archives.map((archive) => {
+    const key = mergeArchiveKey(ownerId, archive.archive_id);
+    const restored = mergeArchiveRestores.get(key);
+    const notice = mergeArchiveNotices.get(key);
+    const outcome = restored
+      ? `<div class="card info" style="margin:10px 0 0"><b>✓ Separate copy ready</b>
+          <p class="muted" style="margin:8px 0">${restored.program_name ? `Program: ${esc(restored.program_name)}.` : "Your saved program is ready."}${restoreUnitsLabel(restored.units) ? ` It uses ${restoreUnitsLabel(restored.units)}.` : ""} This account has not been changed.</p>
+          <p class="muted" style="margin:8px 0">The copy does not reactivate reminders, sharing, partners, cheers, or challenges. Switch only when you are ready to use that separate copy on this device.</p>
+          <button class="btn" data-switch-restored="${esc(archive.archive_id)}">Switch to this restored copy</button>
+        </div>`
+      : "";
+    const restoredLabel = archive.state === "restored"
+      ? `A separate copy was prepared${archive.restored_at ? ` on ${esc(archiveWhen(archive.restored_at))}` : ""}. You can safely reopen its switch option.`
+      : archive.state === "restoring"
+        ? "A restore was already started. Check its separate copy without creating another one."
+        : "Restore it as a separate copy; this account stays exactly as it is.";
+    const actionLabel = archive.state === "available" ? "Restore a separate copy" : "Show restored copy";
+    return `<div class="card" style="margin-top:10px"><b>↩︎ Merged account recovery</b>
+      <p class="muted" style="margin:8px 0">Archived ${esc(archiveWhen(archive.created_at))} · ${esc(archiveCountSummary(archive.counts))}</p>
+      <p class="muted" style="margin:8px 0">${restoredLabel}</p>
+      <p class="muted" style="font-size:.85rem;margin:8px 0">Training records and settings are copied. For safety, external capabilities stay off: no push reminders, public shares, follows, cheers, or challenges are reactivated.</p>
+      ${outcome || `<button class="btn secondary" data-restore-archive="${esc(archive.archive_id)}">${actionLabel}</button>`}
+      ${notice ? `<p class="muted" style="margin:8px 0" role="status">${esc(notice)}</p>` : ""}
+    </div>`;
+  }).join("");
+  return `<section aria-label="Merged account recovery"><h2>Recover a merged account</h2>
+    <p class="muted">A full recovery copy is available. It never replaces this account.</p>${cards}</section>`;
+}
+function updateMergeArchiveSummary(ownerId, summary) {
+  const safe = safeMergeArchive(summary);
+  if (!safe) return;
+  const current = mergeArchiveCache.get(ownerId) || [];
+  const next = current.map((archive) => archive.archive_id === safe.archive_id ? safe : archive);
+  mergeArchiveCache.set(ownerId, next);
+}
+async function restoreMergedArchive(ownerId, archiveId, button) {
+  const key = mergeArchiveKey(ownerId, archiveId);
+  if (mergeArchiveBusy.has(key) || ownerId !== uid) return;
+  const archive = (mergeArchiveCache.get(ownerId) || []).find((x) => x.archive_id === archiveId);
+  if (!archive) return;
+  if (archive.state === "available" && !confirm("Restore this archived account as a separate copy? Your current account will not be changed. The copy brings back training records and settings, but reminders, sharing, partners, cheers, and challenges stay off.")) return;
+  mergeArchiveBusy.add(key);
+  if (button) { button.disabled = true; button.textContent = "Preparing separate copy…"; }
+  mergeArchiveNotices.delete(key);
+  let result;
+  try { result = await api(`/api/merge-archives/${encodeURIComponent(archiveId)}/restore`, { method: "POST", body: JSON.stringify({}) }); }
+  catch { result = null; }
+  mergeArchiveBusy.delete(key);
+  if (!result?.restored || typeof result.user_id !== "string" || !result.user_id) {
+    mergeArchiveNotices.set(key, "Couldn't prepare the separate copy. Check your connection and try again — the current account is unchanged.");
+    if (uid === ownerId && tab === "me") renderMe();
+    return;
+  }
+  mergeArchiveRestores.set(key, { user_id: result.user_id, program_name: typeof result.program_name === "string" ? result.program_name : null, units: result.units });
+  updateMergeArchiveSummary(ownerId, result.archive);
+  // A dropped response is normal mobile behaviour. The restore route is
+  // idempotent, so the button can safely ask again and returns the same copy.
+  loadMergeArchives(ownerId, true);
+  say("A separate recovered copy is ready. Your current account has not changed.");
+  if (uid === ownerId && tab === "me") renderMe();
+}
+async function removePushBeforeAccountSwitch(ownerId) {
+  // A device subscription is both an external capability and tied to the current
+  // account. Delete the server record *first* (scoped by its owner + endpoint),
+  // then remove the browser subscription. Any failure leaves the current identity
+  // in place, so a retry cannot silently strand an active reminder on the old one.
+  if (!ownerId || !pushSupported()) return;
+  let registration, subscription;
+  try {
+    registration = await navigator.serviceWorker.ready;
+    subscription = await registration.pushManager.getSubscription();
+  } catch {
+    throw new Error("push-inspection-failed");
+  }
+  if (!subscription) return;
+  let server;
+  try { server = await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ user_id: ownerId, endpoint: subscription.endpoint }) }); }
+  catch { throw new Error("server-unsubscribe-failed"); }
+  if (!server || server.error) throw new Error("server-unsubscribe-failed");
+  try {
+    await subscription.unsubscribe();
+    // `unsubscribe()` may resolve false when another tab already did the work;
+    // prove the capability is gone instead of treating its boolean as an error.
+    if (await registration.pushManager.getSubscription()) throw new Error("browser-unsubscribe-failed");
+  } catch {
+    throw new Error("browser-unsubscribe-failed");
+  }
+}
+function clearAccountLocalState() {
+  // Keep the one deliberate device preference (RIR chips). Every other hb_* key
+  // has account-specific meaning: identity, plan, queue, in-progress session,
+  // reminder state, onboarding draft, units, and check-in state must not cross
+  // into the recovered identity.
+  clearSess();
+  const keys = [];
+  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
+  for (const key of keys) {
+    if (key?.startsWith("hb_") && key !== "hb_rir") {
+      try { localStorage.removeItem(key); } catch {}
+    }
+  }
+  onbStep = 0; onbStarted = false; answers = {}; settingsMode = false;
+  historyEdit = null; historyDateFix = null; learnSlug = null; learnStack = [];
+}
+async function switchToRestoredArchive(ownerId, archiveId, button) {
+  const key = mergeArchiveKey(ownerId, archiveId);
+  const restored = mergeArchiveRestores.get(key);
+  if (mergeArchiveBusy.has(key) || ownerId !== uid || !restored?.user_id) return;
+  const queued = getQueue().length;
+  const inProgress = sess?.logged?.length ?? 0;
+  const unsynced = [];
+  if (inProgress) unsynced.push("an in-progress workout");
+  if (queued) unsynced.push("unsynced data waiting on this device");
+  const warning = unsynced.length
+    ? `Switch to the separate restored copy? This clears ${unsynced.join(" and ")} from this device; it is not part of the restored copy. Your current training data stays untouched, and this device's old reminder will be turned off first.`
+    : "Switch to the separate restored copy on this device? Your current training data stays untouched. This device's reminder for the current account will be turned off first.";
+  if (!confirm(warning)) return;
+  mergeArchiveBusy.add(key);
+  if (button) { button.disabled = true; button.textContent = "Turning off old reminders…"; }
+  try { await removePushBeforeAccountSwitch(ownerId); }
+  catch {
+    mergeArchiveBusy.delete(key);
+    mergeArchiveNotices.set(key, "Couldn't safely turn off the current account's device reminder, so you are still on the current account. Check your connection and try again.");
+    if (uid === ownerId && tab === "me") renderMe();
+    return;
+  }
+  mergeArchiveBusy.delete(key);
+  clearAccountLocalState();
+  uid = restored.user_id;
+  try {
+    localStorage.setItem("hb_user", uid);
+    if (restored.program_name) localStorage.setItem("hb_program", restored.program_name);
+    if (restored.units === "metric" || restored.units === "imperial") localStorage.setItem("hb_units", restored.units);
+  } catch {}
+  pendingNotice = "You're now viewing a separate restored copy. Your previous training data was left untouched; this device's old reminder was turned off, and reminders and social sharing are off in this copy.";
+  tab = "today";
+  render();
+}
+
 function renderMe() {
   const email = localStorage.getItem("hb_email");
   // This IS the account system — passwordless by design (an email-bound identity
@@ -2098,6 +2388,7 @@ function renderMe() {
       ? `<a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a>`
       : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
   </div>`;
+  const recovery = mergeArchiveCard(uid);
   app.innerHTML = `<h1>Me</h1>
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
@@ -2112,6 +2403,7 @@ function renderMe() {
       <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
     ${backup}
+    ${recovery}
     ${funded}
     <button class="btn ghost" id="healthnote-me">Health &amp; safety note</button>
     <button class="btn ghost" id="reset">Reset (start over)</button>`;
@@ -2123,6 +2415,11 @@ function renderMe() {
   // with nothing to configure (minimal-customization: no mandatory setting).
   $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
   $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
+  app.querySelectorAll("[data-restore-archive]").forEach((b) => b.onclick = () => restoreMergedArchive(uid, b.dataset.restoreArchive, b));
+  app.querySelectorAll("[data-switch-restored]").forEach((b) => b.onclick = () => switchToRestoredArchive(uid, b.dataset.switchRestored, b));
+  // Start this non-critical lookup after the normal Me controls are usable. Until
+  // the API confirms an archive exists there is no recovery card at all.
+  if (!mergeArchiveCache.has(uid) && !mergeArchiveLoads.has(uid)) loadMergeArchives(uid);
 
   if (!email) {
     $("#sendlink").onclick = async () => {
@@ -2516,7 +2813,7 @@ async function renderLearnPage(slug) {
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
-  if (tab !== "history") historyEdit = null; // ...and an in-progress workout correction
+  if (tab !== "history") { historyEdit = null; historyDateFix = null; } // ...and an in-progress workout correction/date repair
   quitPending = false;
   discardPending = false; // an armed Discard must not survive a trip to another tab
   if (!uid) return renderOnboarding();

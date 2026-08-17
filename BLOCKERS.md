@@ -129,12 +129,19 @@ reading (2026-08-14):** 135 user rows · 13 ever logged a session · 1 active in
 If you'd rather this endpoint not exist after all, say so and I'll remove it and the
 STATS_KEY secret.
 
-### 6b. Merge/delete security model — option (b) SHIPPED *(Wave 211, 2026-08-14)*
+### 6b. Merge/delete security model — option (b) SHIPPED; safe archive/restore extension implemented locally *(Wave 211; local Waves 213–216, 2026-08-17)*
 The recorded lean, executed under the same go-ahead: `/api/auth/merge` no longer deletes
 the from-row — it tombstones it (`_merged_into` audit marker), and every reader treats a
 tombstone as absent, so route behavior is byte-identical. The app now has **no destructive
 primitive at all**: nothing any caller can do permanently destroys a user row. Option (c)
 (non-forgeable per-device tokens) remains a possible future hardening, not urgent.
+
+The local follow-up closes the recoverability gap a tombstone alone leaves: before a merge,
+the source account's full data graph is snapshotted into an owner-scoped archive; the Me tab
+can show only safe archive summaries and, after confirmation, restore a separate account copy.
+That copy deliberately starts capability-free — no revived push subscription, share, or social
+state — while leaving the surviving account untouched. Route and store-parity coverage has run
+locally. This extension is not yet deployed or represented as a PR.
 
 ### 4. Web-push reminders — the VAPID secret IS set *(verified 2026-07-26)*
 `npx wrangler secret list` on the prod Worker shows **both** `VAPID_PRIVATE_JWK` and

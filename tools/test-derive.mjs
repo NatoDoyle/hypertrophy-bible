@@ -683,6 +683,23 @@ check("luckySetsInSession: per-exercise hard-set index replays in logged order, 
   ].filter(Boolean).length;
   assert.equal(luckySetsInSession({ session_id: sid, sets }).length, expected);
 });
+check("luckySetsInSession: an archive-restored session keeps its original lucky seed", () => {
+  const sets = [
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 },
+    { exercise: "row", set_type: "work", weight_kg: 80, reps: 8 },
+    { exercise: "row", set_type: "work", weight_kg: 80, reps: 8 },
+  ];
+  const originalId = "archive-original-session";
+  const original = luckySetsInSession({ session_id: originalId, sets });
+  let replacementId = null;
+  for (let i = 0; i < 1000; i++) {
+    const candidate = `archive-copy-${i}`;
+    if (JSON.stringify(luckySetsInSession({ session_id: candidate, sets })) !== JSON.stringify(original)) { replacementId = candidate; break; }
+  }
+  assert.ok(replacementId, "test setup: a replacement id should alter this deterministic draw");
+  assert.deepEqual(luckySetsInSession({ session_id: replacementId, lucky_seed: originalId, sets }), original);
+});
 check("LUCKY_SET_XP is a positive flat bonus, smaller than the PR bonus", () => {
   assert.ok(LUCKY_SET_XP > 0 && LUCKY_SET_XP < 50);
 });

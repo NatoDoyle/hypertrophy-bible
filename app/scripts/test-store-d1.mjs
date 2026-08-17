@@ -132,6 +132,7 @@ try {
   await file.saveUser("px1", {}); await d1.saveUser("px1", {});
   const sub = { endpoint: "https://push/ep1", keys: { p256dh: "p", auth: "a" } };
   await file.savePushSubscription("px1", sub); await d1.savePushSubscription("px1", sub);
+  await file.markPushDelivered(sub.endpoint, 1234567890); await d1.markPushDelivered(sub.endpoint, 1234567890);
   sameSet("listPushSubscriptions matches after one save", (await file.listPushSubscriptions()).map(({ created_at, ...r }) => r), (await d1.listPushSubscriptions()).map(({ created_at, ...r }) => r));
   await file.deletePushSubscription("https://push/ep1", "wrong-owner"); await d1.deletePushSubscription("https://push/ep1", "wrong-owner");
   ok("deletePushSubscription: both no-op when userId doesn't match owner (file)", (await file.listPushSubscriptions()).length === 1);
@@ -139,6 +140,14 @@ try {
   await file.deletePushSubscription("https://push/ep1", "px1"); await d1.deletePushSubscription("https://push/ep1", "px1");
   ok("deletePushSubscription: both delete when userId matches (file)", (await file.listPushSubscriptions()).length === 0);
   ok("deletePushSubscription: both delete when userId matches (D1)", (await d1.listPushSubscriptions()).length === 0);
+  // Delivery evidence is opaque endpoint data. It must disappear with the
+  // subscription, and a late successful-send callback cannot recreate it after
+  // the person has unsubscribed.
+  await file.markPushDelivered(sub.endpoint, 1234567999); await d1.markPushDelivered(sub.endpoint, 1234567999);
+  const fileAfterUnsub = JSON.parse(readFileSync(tmpPath, "utf8"));
+  const d1AfterUnsub = await shim.prepare("SELECT endpoint FROM push_deliveries WHERE endpoint = ?").bind(sub.endpoint).first();
+  ok("push delivery evidence is deleted on unsubscribe and cannot be recreated without an active endpoint",
+    !fileAfterUnsub.push_deliveries?.[sub.endpoint] && !d1AfterUnsub);
 
   // --- latestSessionDate / listAccountLastSessions ---
   ok("latestSessionDate matches", (await file.latestSessionDate("s1")) === (await d1.latestSessionDate("s1")));
@@ -395,6 +404,277 @@ try {
   ok("tombstone: the D1 row still EXISTS, carrying the audit marker", JSON.parse(tbRaw?.data ?? "{}")._merged_into === "tb-to");
   same("tombstone: stats users_total agrees across stores and excludes tombstones",
     (await file.stats(S_NOW)).users_total, (await d1.stats(S_NOW)).users_total);
+
+  // --- Wave 215: recoverable merge archives ---------------------------------
+  // A normal merge deliberately keeps the survivor's same-day daily rows. That
+  // was safe for the survivor but previously made the source-side collision
+  // permanently unreachable. Archive the ENTIRE source graph before the move,
+  // expose only an owner-scoped summary, and materialize a separate, safe copy
+  // on restore. This fixture contains every private collection the archive owns
+  // plus a collision in every daily collection.
+  const ARC_ID = "archive-parity-1";
+  const ARC_MERGED_AT = "2026-08-17T12:34:56.000Z";
+  const ARC_RESTORED_AT = "2026-08-17T13:45:56.000Z";
+  const ARC_SOURCE_ID = "arc-from";
+  const ARC_SURVIVOR_ID = "arc-to";
+  const ARC_COPY_ID = "arc-safe-copy";
+  const copyFixture = (value) => JSON.parse(JSON.stringify(value));
+  const arcSourceUser = {
+    top_level_source_only: { proof: "full-document-preserved" },
+    custom_exercises: [{ id: "arc-curl", name: "Archive Curl" }],
+    program: { name: "Archived source programme" },
+    profile: {
+      user_id: ARC_SOURCE_ID,
+      units: "imperial",
+      disclaimer_ack: { version: "health-v1", acknowledged_at: "2026-08-01T00:00:00.000Z" },
+      // Live device/social state is intentionally archived but must not become
+      // active on a restored copy.
+      celebration: { at: "2026-08-16T00:00:00.000Z" },
+      commitment: { week: "2026-W33", days: ["mon"] },
+      following: ["someone-else"],
+      followers_count: 9,
+      challenges: [{ id: "challenge-1" }],
+      cheers_pushed: 2,
+      cheers_seen: 2,
+    },
+  };
+  const arcSurvivorUser = {
+    top_level_survivor_only: { proof: "survivor-must-not-change-on-restore" },
+    program: { name: "Survivor programme" },
+    profile: { user_id: ARC_SURVIVOR_ID, units: "metric" },
+  };
+  const arcSourceSessions = [
+    {
+      session_id: "arc-session-work",
+      date: "2026-06-14T10:00:00.000Z",
+      local_date: "2026-06-14",
+      sets: [{ exercise: "archive-bench", set_type: "work", weight_kg: 80, reps: 8 }],
+    },
+    {
+      session_id: "arc-session-voided",
+      date: "2026-06-15T10:00:00.000Z",
+      local_date: "2026-06-15",
+      sets: [],
+      voided_at: "2026-06-16T00:00:00.000Z",
+    },
+  ];
+  const arcSourceDaily = {
+    bodyweights: [{ date: "2026-06-13", kg: 70 }, { date: "2026-06-15", kg: 71 }],
+    checkins: [{ date: "2026-06-13", sleep: 5 }, { date: "2026-06-16", sleep: 4 }],
+    nutrition: [{ date: "2026-06-13", kcal: 1800 }, { date: "2026-06-17", kcal: 1900 }],
+  };
+  const arcSurvivorDaily = {
+    bodyweights: [{ date: "2026-06-15", kg: 99 }],
+    checkins: [{ date: "2026-06-16", sleep: 9 }],
+    nutrition: [{ date: "2026-06-17", kcal: 2500 }],
+  };
+  const arcPush = { endpoint: "https://push/archive-source", keys: { p256dh: "arc-p", auth: "arc-a" } };
+  const arcMagic = {
+    token_hash: "archive-source-magic", email: "archive@example.test", rl_key: "archive@example.test",
+    ip: "203.0.113.7", user_id: ARC_SOURCE_ID, purpose: "restore", expires_at: 9876543210,
+    used: 0, created_at: 1234567890,
+  };
+  for (const store of [file, d1]) {
+    await store.saveUser(ARC_SOURCE_ID, copyFixture(arcSourceUser));
+    await store.saveUser(ARC_SURVIVOR_ID, copyFixture(arcSurvivorUser));
+    for (const session of arcSourceSessions) await store.addSession(ARC_SOURCE_ID, copyFixture(session));
+    for (const row of arcSourceDaily.bodyweights) await store.addBodyweight(ARC_SOURCE_ID, copyFixture(row));
+    for (const row of arcSourceDaily.checkins) await store.addCheckin(ARC_SOURCE_ID, copyFixture(row));
+    for (const row of arcSourceDaily.nutrition) await store.addNutritionLog(ARC_SOURCE_ID, copyFixture(row));
+    for (const row of arcSurvivorDaily.bodyweights) await store.addBodyweight(ARC_SURVIVOR_ID, copyFixture(row));
+    for (const row of arcSurvivorDaily.checkins) await store.addCheckin(ARC_SURVIVOR_ID, copyFixture(row));
+    for (const row of arcSurvivorDaily.nutrition) await store.addNutritionLog(ARC_SURVIVOR_ID, copyFixture(row));
+    await store.savePushSubscription(ARC_SOURCE_ID, copyFixture(arcPush));
+    await store.markPushDelivered(arcPush.endpoint, 2222222222);
+    await store.createShare(ARC_SOURCE_ID, "archive-source-share", 3333333333);
+    await store.addShareCheer("archive-source-share");
+    await store.addShareCheer("archive-source-share");
+    await store.createMagicLink(copyFixture(arcMagic));
+  }
+  same("archive merge: both stores report the same rows moved",
+    await file.reassignUserData(ARC_SOURCE_ID, ARC_SURVIVOR_ID, { archiveId: ARC_ID, now: ARC_MERGED_AT }),
+    await d1.reassignUserData(ARC_SOURCE_ID, ARC_SURVIVOR_ID, { archiveId: ARC_ID, now: ARC_MERGED_AT }));
+
+  const expectedArchiveSummary = {
+    archive_id: ARC_ID, created_at: ARC_MERGED_AT, state: "available", restored_at: null,
+    counts: { sessions: 2, bodyweights: 2, checkins: 2, nutrition_logs: 2 },
+  };
+  const fileArchiveList = await file.listMergeArchives(ARC_SURVIVOR_ID);
+  const d1ArchiveList = await d1.listMergeArchives(ARC_SURVIVOR_ID);
+  same("archive list: file/D1 return the same owner-safe summary", fileArchiveList, d1ArchiveList);
+  same("archive list: the public summary has expected counts and state", fileArchiveList, [expectedArchiveSummary]);
+  ok("archive list: no raw snapshot, source identity, restored identity, push endpoint, or magic token leaks",
+    Object.keys(fileArchiveList[0] ?? {}).sort().join(",") === "archive_id,counts,created_at,restored_at,state"
+      && !JSON.stringify(fileArchiveList[0] ?? {}).includes(ARC_SOURCE_ID)
+      && !JSON.stringify(fileArchiveList[0] ?? {}).includes(arcPush.endpoint)
+      && !JSON.stringify(fileArchiveList[0] ?? {}).includes(arcMagic.token_hash));
+  same("archive list: a non-owner sees no archive in either store", await file.listMergeArchives("arc-not-owner"), await d1.listMergeArchives("arc-not-owner"));
+  ok("archive list: a non-owner receives an empty list", (await file.listMergeArchives("arc-not-owner")).length === 0 && (await d1.listMergeArchives("arc-not-owner")).length === 0);
+
+  // The public summary is intentionally small, but the raw archive and the
+  // source tombstone must retain the source document and every source-only row.
+  const fileRawDb = JSON.parse(readFileSync(tmpPath, "utf8"));
+  const fileRawArchive = fileRawDb.merge_archives?.[ARC_ID];
+  const d1RawArchive = await shim.prepare("SELECT snapshot FROM merge_archives WHERE archive_id = ?").bind(ARC_ID).first();
+  const d1Snapshot = JSON.parse(d1RawArchive?.snapshot ?? "{}");
+  const archiveGraphIsComplete = (snapshot) =>
+    snapshot.user?.top_level_source_only?.proof === "full-document-preserved"
+      && snapshot.user?.profile?.disclaimer_ack?.version === "health-v1"
+      && snapshot.sessions?.map((s) => s.session_id).join(",") === "arc-session-work,arc-session-voided"
+      && snapshot.bodyweights?.find((x) => x.date === "2026-06-15")?.kg === 71
+      && snapshot.checkins?.find((x) => x.date === "2026-06-16")?.sleep === 4
+      && snapshot.nutrition_logs?.find((x) => x.date === "2026-06-17")?.kcal === 1900
+      && snapshot.push_subscriptions?.[0]?.endpoint === arcPush.endpoint
+      && snapshot.push_deliveries?.[0]?.endpoint === arcPush.endpoint
+      && snapshot.push_deliveries?.[0]?.last_ok_at === 2222222222
+      && snapshot.shares?.[0]?.share_id === "archive-source-share"
+      && snapshot.shares?.[0]?.cheers === 2
+      && snapshot.magic_links?.[0]?.token_hash === arcMagic.token_hash;
+  ok("archive raw snapshot: file contains the complete pre-merge source graph", archiveGraphIsComplete(fileRawArchive?.snapshot));
+  ok("archive raw snapshot: D1 contains the complete pre-merge source graph", archiveGraphIsComplete(d1Snapshot));
+  const d1TombstoneRow = await shim.prepare("SELECT data FROM users WHERE id = ?").bind(ARC_SOURCE_ID).first();
+  const tombstonePreservesSource = (user) =>
+    user?.top_level_source_only?.proof === "full-document-preserved"
+      && user?.profile?.disclaimer_ack?.version === "health-v1"
+      && user?._merged_into === ARC_SURVIVOR_ID
+      && user?._merged_at === ARC_MERGED_AT
+      && user?._merge_archive_id === ARC_ID;
+  ok("archive tombstone: file keeps the full source document as an audit row", tombstonePreservesSource(fileRawDb.users?.[ARC_SOURCE_ID]));
+  ok("archive tombstone: D1 keeps the full source document as an audit row", tombstonePreservesSource(JSON.parse(d1TombstoneRow?.data ?? "{}")));
+
+  const survivorSnapshot = async (store) => ({
+    user: await store.getUser(ARC_SURVIVOR_ID),
+    sessions: await store.listSessions(ARC_SURVIVOR_ID, { includeVoided: true, includeQuarantined: true }),
+    bodyweights: await store.listBodyweights(ARC_SURVIVOR_ID),
+    checkins: await store.listCheckins(ARC_SURVIVOR_ID),
+    nutrition: await store.listNutritionLog(ARC_SURVIVOR_ID),
+    subscriptions: (await store.listPushSubscriptions()).filter((s) => s.user_id === ARC_SURVIVOR_ID),
+    share_id: await store.getShareIdForUser(ARC_SURVIVOR_ID),
+  });
+  const fileSurvivorBeforeRestore = await survivorSnapshot(file);
+  const d1SurvivorBeforeRestore = await survivorSnapshot(d1);
+  const survivorKeptItsCollisions = (state) =>
+    state.bodyweights.find((x) => x.date === "2026-06-15")?.kg === 99
+      && state.checkins.find((x) => x.date === "2026-06-16")?.sleep === 9
+      && state.nutrition.find((x) => x.date === "2026-06-17")?.kcal === 2500;
+  ok("archive fixture: the survivor retained its own collision rows before restore (file)", survivorKeptItsCollisions(fileSurvivorBeforeRestore));
+  ok("archive fixture: the survivor retained its own collision rows before restore (D1)", survivorKeptItsCollisions(d1SurvivorBeforeRestore));
+
+  const fileRestore = await file.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, ARC_COPY_ID, ARC_RESTORED_AT);
+  const d1Restore = await d1.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, ARC_COPY_ID, ARC_RESTORED_AT);
+  same("archive restore: file/D1 return the same new safe-copy identity and safe summary", fileRestore, d1Restore);
+  ok("archive restore: response names a fresh copy and marks the immutable archive restored",
+    fileRestore?.user_id === ARC_COPY_ID && fileRestore?.program_name === "Archived source programme"
+      && fileRestore?.units === "imperial" && fileRestore?.archive?.state === "restored"
+      && fileRestore?.archive?.restored_at === ARC_RESTORED_AT);
+  const fileRestoreRetry = await file.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, "must-not-create-a-second-copy", "2026-08-17T14:00:00.000Z");
+  const d1RestoreRetry = await d1.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, "must-not-create-a-second-copy", "2026-08-17T14:00:00.000Z");
+  same("archive restore: retries are idempotent and return the original safe-copy identity", fileRestoreRetry, d1RestoreRetry);
+  ok("archive restore: a retry did not mint a second user", fileRestoreRetry?.user_id === ARC_COPY_ID && d1RestoreRetry?.user_id === ARC_COPY_ID
+    && (await file.getUser("must-not-create-a-second-copy")) === null && (await d1.getUser("must-not-create-a-second-copy")) === null);
+
+  const restoredGraph = async (store) => ({
+    user: await store.getUser(ARC_COPY_ID),
+    sessions: await store.listSessions(ARC_COPY_ID, { includeVoided: true, includeQuarantined: true }),
+    bodyweights: await store.listBodyweights(ARC_COPY_ID),
+    checkins: await store.listCheckins(ARC_COPY_ID),
+    nutrition: await store.listNutritionLog(ARC_COPY_ID),
+  });
+  const fileRestoredGraph = await restoredGraph(file);
+  const d1RestoredGraph = await restoredGraph(d1);
+  same("archive restore: file/D1 materialize exactly the same safe source graph", fileRestoredGraph, d1RestoredGraph);
+  const recoveredEverySourceRow = (state) => {
+    const restoredWork = state.sessions.find((s) => s.lucky_seed === "arc-session-work");
+    return state.user?.top_level_source_only?.proof === "full-document-preserved"
+      && state.user?.custom_exercises?.[0]?.id === "arc-curl"
+      && state.user?.profile?.user_id === ARC_COPY_ID
+      && state.user?.profile?.disclaimer_ack?.version === "health-v1"
+      // No live subscription/social state follows a historical copy.
+      && !Object.hasOwn(state.user?.profile ?? {}, "celebration")
+      && !Object.hasOwn(state.user?.profile ?? {}, "commitment")
+      && !Object.hasOwn(state.user?.profile ?? {}, "following")
+      && !Object.hasOwn(state.user?.profile ?? {}, "challenges")
+      && state.sessions.length === 2
+      && !state.sessions.some((s) => s.session_id === "arc-session-work" || s.session_id === "arc-session-voided")
+      && restoredWork?.session_id !== "arc-session-work"
+      && restoredWork?.lucky_seed === "arc-session-work"
+      && state.bodyweights.find((x) => x.date === "2026-06-15")?.kg === 71
+      && state.checkins.find((x) => x.date === "2026-06-16")?.sleep === 4
+      && state.nutrition.find((x) => x.date === "2026-06-17")?.kcal === 1900;
+  };
+  ok("archive restore: the source document, sessions, and collision-losing daily rows are all recovered (file)", recoveredEverySourceRow(fileRestoredGraph));
+  ok("archive restore: the source document, sessions, and collision-losing daily rows are all recovered (D1)", recoveredEverySourceRow(d1RestoredGraph));
+  same("archive restore: the survivor is byte-for-byte unchanged by creating a separate copy (file)", fileSurvivorBeforeRestore, await survivorSnapshot(file));
+  same("archive restore: the survivor is byte-for-byte unchanged by creating a separate copy (D1)", d1SurvivorBeforeRestore, await survivorSnapshot(d1));
+  const noExternalCapabilitiesOnCopy = async (store) =>
+    !(await store.listPushSubscriptions()).some((s) => s.user_id === ARC_COPY_ID)
+      && (await store.getShareIdForUser(ARC_COPY_ID)) === null;
+  ok("archive restore: no push subscription or share is reactivated for the copy (file)", await noExternalCapabilitiesOnCopy(file));
+  ok("archive restore: no push subscription or share is reactivated for the copy (D1)", await noExternalCapabilitiesOnCopy(d1));
+
+  // `ensureExtensions` must be scoped to an individual D1 binding. The primary
+  // shim above has already initialized it; a fresh binding with all extension
+  // tables removed should still create shares, cheer tallies, deliveries, and
+  // merge archives rather than inheriting a stale module-global ready promise.
+  const extensionSchema = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8");
+  const secondShim = createD1Shim();
+  secondShim.exec(extensionSchema);
+  secondShim.exec("DROP TABLE merge_archives; DROP TABLE push_deliveries; DROP TABLE share_cheers; DROP TABLE shares;");
+  const secondD1 = createD1Store(secondShim);
+  let freshBindingError = null;
+  let freshBindingTables = [];
+  try {
+    await secondD1.saveUser("fresh-ext-from", {});
+    await secondD1.saveUser("fresh-ext-to", {});
+    await secondD1.createShare("fresh-ext-from", "fresh-ext-share", 1);
+    await secondD1.addShareCheer("fresh-ext-share");
+    await secondD1.savePushSubscription("fresh-ext-from", { endpoint: "https://push/fresh-binding", keys: {} });
+    await secondD1.markPushDelivered("https://push/fresh-binding", 1);
+    await secondD1.reassignUserData("fresh-ext-from", "fresh-ext-to", { archiveId: "fresh-ext-archive", now: "2026-08-17T15:00:00.000Z" });
+    await secondD1.listMergeArchives("fresh-ext-to");
+    freshBindingTables = (await secondShim.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('shares', 'share_cheers', 'push_deliveries', 'merge_archives') ORDER BY name").all()).results.map((r) => r.name);
+  } catch (error) {
+    freshBindingError = error;
+  }
+  ok("D1 extensions: a second binding recreates every extension table after they were dropped", !freshBindingError
+    && freshBindingTables.join(",") === "merge_archives,push_deliveries,share_cheers,shares");
+
+  // A stale device can have passed a route's getUser() check just before a merge
+  // commits. Child writers therefore fence tombstoned owners at the store boundary:
+  // they must not recreate a source-only record that the archive transaction could
+  // not have captured. Missing owner rows remain legal low-level fixture inputs;
+  // this specifically protects an existing _merged_into tombstone.
+  const FENCE_FROM = "fence-from", FENCE_TO = "fence-to";
+  for (const store of [file, d1]) {
+    await store.saveUser(FENCE_FROM, { profile: {} });
+    await store.saveUser(FENCE_TO, { profile: {} });
+    await store.reassignUserData(FENCE_FROM, FENCE_TO, { archiveId: "fence-archive", now: "2026-08-17T16:00:00.000Z" });
+  }
+  const staleChildWrites = async (store) => ({
+    session: await store.addSession(FENCE_FROM, { session_id: "fence-late-session", date: "2026-08-17T16:01:00.000Z", sets: [] }),
+    bodyweight: await store.addBodyweight(FENCE_FROM, { date: "2026-08-17", kg: 80 }),
+    checkin: await store.addCheckin(FENCE_FROM, { date: "2026-08-17", energy: 4 }),
+    nutrition: await store.addNutritionLog(FENCE_FROM, { date: "2026-08-17", kcal: 2000 }),
+    push: await store.savePushSubscription(FENCE_FROM, { endpoint: "https://push/fence-late", keys: {} }),
+    share: await store.createShare(FENCE_FROM, "fence-late-share", 1),
+  });
+  const fileStaleWrites = await staleChildWrites(file);
+  const d1StaleWrites = await staleChildWrites(d1);
+  same("tombstone writer fence: file/D1 refuse every stale child write identically", fileStaleWrites, d1StaleWrites);
+  ok("tombstone writer fence: stale writes cannot recreate source rows or capabilities (file)",
+    (await file.listSessions(FENCE_FROM, { includeVoided: true, includeQuarantined: true })).length === 0
+      && (await file.listBodyweights(FENCE_FROM)).length === 0
+      && (await file.listCheckins(FENCE_FROM)).length === 0
+      && (await file.listNutritionLog(FENCE_FROM)).length === 0
+      && !(await file.listPushSubscriptions()).some((s) => s.endpoint === "https://push/fence-late")
+      && (await file.getShareIdForUser(FENCE_FROM)) == null);
+  ok("tombstone writer fence: stale writes cannot recreate source rows or capabilities (D1)",
+    (await d1.listSessions(FENCE_FROM, { includeVoided: true, includeQuarantined: true })).length === 0
+      && (await d1.listBodyweights(FENCE_FROM)).length === 0
+      && (await d1.listCheckins(FENCE_FROM)).length === 0
+      && (await d1.listNutritionLog(FENCE_FROM)).length === 0
+      && !(await d1.listPushSubscriptions()).some((s) => s.endpoint === "https://push/fence-late")
+      && (await d1.getShareIdForUser(FENCE_FROM)) == null);
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

@@ -664,6 +664,24 @@ These are real failures from previous iterations. Each is now a standing check.
    in the same burst that ships the feature — and treat a zero there as gating further
    mechanism work on that channel, the same way a red test gates a merge.
 
+49. **Trust, recoverability, and capability are different boundaries — carry each one
+   through every bulk operation.** The local Waves 213–216 follow-up found five adjacent
+   holes in state that looked individually harmless: (a) a client wholesale-profile patch
+   could overwrite the server-owned `disclaimer_ack`; (b) a malformed or implausibly
+   future session timestamp could enter derived coaching and statistics; (c) a tombstone
+   retained a row but not the source account's recoverable graph; (d) unsubscribe could
+   leave delivery evidence behind, while an endpoint-only public unsubscribe could turn a
+   leaked endpoint into a capability; and (e) a process-global D1 self-init flag could
+   skip schema setup for a second binding. → **Standing rules:** strip server-owned fields
+   at every wholesale merge; treat client timestamps as a derived-data trust boundary,
+   preserving legacy rows but quarantining them from derivations until the user repairs
+   them; snapshot every source collection before a merge, expose only owner-safe archive
+   summaries, and restore a fresh capability-free copy rather than reviving the source;
+   delete delivery evidence with the subscription and scope public unsubscribe to its
+   owner; and cache D1 initialization per binding, never per process. Route and
+   store-parity regressions provide local evidence for this burst. It is recorded here as
+   local implementation only — no deployment or PR is claimed.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -685,6 +703,13 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7t. **Telemetry (Waves 213–216, 2026-08-17; local only).** This improvement burst hardened
+   the boundaries the prior safety waves left adjacent but incomplete: acknowledgement
+   ownership, session-time quarantine and repair, merge archive/restore, push evidence
+   lifecycle, and D1 initialization isolation. The durable lesson is 49: preservation is
+   not recovery, a timestamp is not trustworthy merely because it is stored, and an
+   endpoint is not safe merely because it is public. Route and store-parity regressions
+   were exercised locally; the work has not been deployed or represented as a PR.
 7u. **Telemetry (Waves 209–212, 2026-08-14).** Zero agents — sixth iteration running.
    The owner's blanket authorization ("attack all the blockers, do what you think is
    best") converted four standing human-blocked items into shipped code in one burst,

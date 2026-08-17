@@ -4,6 +4,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeUserProfile } from "./merge-profile.mjs";
+import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
+import { archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -15,6 +17,10 @@ export function createFileStore(path) {
   db.checkins ??= {};
   db.shares ??= {};          // opt-in shareable progress cards (share_id → user_id)
   db.share_cheers ??= {};    // public "cheer" tally per share (share_id → count)
+  db.push_subscriptions ??= {};
+  db.push_deliveries ??= {};
+  db.nutrition_logs ??= {};
+  db.merge_archives ??= {};  // immutable pre-merge source graphs (archive_id → archive)
   const flush = () => writeFileSync(path, JSON.stringify(db, null, 2));
   // Match the D1 store's "ORDER BY date ASC, rowid ASC": chronological, with
   // insertion order as a stable tiebreak. Keeps coach output identical on both.
@@ -23,6 +29,11 @@ export function createFileStore(path) {
       const da = a[0].date ?? "", db_ = b[0].date ?? "";
       return da < db_ ? -1 : da > db_ ? 1 : a[1] - b[1];
     }).map((p) => p[0]);
+  // A merge's source identity becomes a tombstone. Direct store callers exist in
+  // tests and background code, so do not rely solely on a route's earlier
+  // getUser() check: a stale device must not recreate a source-only child row
+  // after its complete graph has already been archived and moved.
+  const isTombstoned = (id) => !!db.users[id]?._merged_into;
 
   return {
     // A merge TOMBSTONES the from-row instead of deleting it (BLOCKERS #6b,
@@ -46,11 +57,18 @@ export function createFileStore(path) {
     // consumer forgotten = a corrected workout still counting toward a streak, a
     // stall, or a PR). `includeVoided` is for the history screen alone, which has to
     // show a voided session in order to offer un-voiding it.
-    async listSessions(id, { includeVoided = false } = {}) {
+    async listSessions(id, { includeVoided = false, includeQuarantined = false, nowMs = Date.now() } = {}) {
       const all = byDate(db.sessions[id]);
-      return includeVoided ? all : all.filter((s) => !s.voided_at);
+      return all
+        .filter((s) => includeVoided || !s.voided_at)
+        .filter((s) => includeQuarantined || isDerivableSession(s, nowMs))
+        .map((s) => {
+          const timing_issue = sessionTimingIssue(s, nowMs);
+          return timing_issue ? { ...s, timing_issue } : s;
+        });
     },
     async addSession(id, session) {
+      if (isTombstoned(id)) return null;
       const list = (db.sessions[id] ??= []);
       // Idempotent on session_id: a replayed offline workout is a no-op.
       if (session.session_id && list.some((s) => s.session_id === session.session_id)) return session;
@@ -62,6 +80,7 @@ export function createFileStore(path) {
     // session for this user — so a caller can tell "declined" from "not found".
     // session_id is the identity: never address a session by position (lesson 11).
     async updateSession(id, sessionId, mutator) {
+      if (isTombstoned(id)) return null;
       const list = db.sessions[id] ?? [];
       const i = list.findIndex((s) => s.session_id === sessionId);
       if (i < 0) return null;
@@ -71,6 +90,7 @@ export function createFileStore(path) {
     },
     async listBodyweights(id) { return byDate(db.bodyweights[id]); },
     async addBodyweight(id, entry) {
+      if (isTombstoned(id)) return null;
       // One weigh-in per day (mirrors check-ins): a replayed offline log with the
       // same date replaces rather than duplicating, so the trend can't be skewed.
       // Replace ALL same-date rows (parity with D1's DELETE-then-INSERT): a merge
@@ -82,6 +102,7 @@ export function createFileStore(path) {
     },
     async listCheckins(id) { return byDate(db.checkins[id]); },
     async addCheckin(id, entry) {
+      if (isTombstoned(id)) return null;
       const arr = (db.checkins[id] ??= []);
       const i = arr.findIndex((c) => c.date === entry.date); // one per day: replace
       if (i >= 0) arr[i] = entry; else arr.push(entry);
@@ -91,6 +112,7 @@ export function createFileStore(path) {
     // --- nutrition daily intake log (kcal + macros), one row per day ---
     async listNutritionLog(id) { return byDate(db.nutrition_logs?.[id]); },
     async addNutritionLog(id, entry) {
+      if (isTombstoned(id)) return null;
       db.nutrition_logs ??= {};
       const arr = (db.nutrition_logs[id] ??= []);
       const i = arr.findIndex((e) => e.date === entry.date); // one per day: replace
@@ -104,17 +126,46 @@ export function createFileStore(path) {
     async getAccountByUserId(userId) {
       return Object.values(db.accounts).find((a) => a.user_id === userId) ?? null;
     },
-    // Merge-on-restore: move ALL of one user's data onto another, then drop the
-    // empty shell. Sessions, bodyweights, checkins, AND the custom-exercise
-    // library are moved — otherwise moved sets reference custom-* ids that no
-    // longer resolve (silent volume/PR corruption) and today's check-in is lost.
-    async reassignUserData(fromId, toId) {
+    // Merge-on-restore: capture the COMPLETE source graph before moving anything.
+    // The survivor receives the same additive merge it always did; the archive is
+    // what makes collision-losing rows and source-only fields recoverable later.
+    async reassignUserData(fromId, toId, { archiveId = crypto.randomUUID(), now = new Date().toISOString() } = {}) {
       // Count what ACTUALLY lands on the target (after same-id / same-date dedup),
       // not the raw source lengths — otherwise this diverges from D1, which returns
       // the true rows changed. Parity matters the moment any surface shows "N imported".
       const moved = { sessions: 0, bodyweights: 0 };
-      // custom exercises live on the user doc → migrate before deleting it (dedup by id).
       const fromU = db.users[fromId], toU = db.users[toId];
+      if (!fromU || fromU._merged_into || !toU || toU._merged_into) return moved;
+
+      const sourceSubs = Object.values(db.push_subscriptions ?? {}).filter((s) => s.user_id === fromId);
+      const sourceShares = Object.entries(db.shares ?? {})
+        .filter(([, row]) => row.user_id === fromId)
+        .map(([share_id, row]) => ({ ...row, share_id, cheers: db.share_cheers?.[share_id] ?? 0 }));
+      db.merge_archives[archiveId] = {
+        archive_id: archiveId,
+        owner_user_id: toId,
+        source_user_id: fromId,
+        created_at: now,
+        state: "available",
+        restored_user_id: null,
+        restored_at: null,
+        snapshot: archiveSnapshot({
+          user: fromU,
+          sessions: db.sessions[fromId] ?? [],
+          bodyweights: db.bodyweights[fromId] ?? [],
+          checkins: db.checkins[fromId] ?? [],
+          nutrition_logs: db.nutrition_logs[fromId] ?? [],
+          push_subscriptions: sourceSubs,
+          push_deliveries: sourceSubs.map((s) => ({ endpoint: s.endpoint, last_ok_at: db.push_deliveries?.[s.endpoint] ?? null })).filter((x) => x.last_ok_at != null),
+          shares: sourceShares,
+          magic_links: Object.values(db.magic_links ?? {}).filter((l) => l.user_id === fromId),
+        }),
+      };
+      // A survivor may itself later merge into another account. Recovery rights
+      // follow that survivor, never the now-hidden intermediate identity.
+      for (const archive of Object.values(db.merge_archives)) if (archive.owner_user_id === fromId) archive.owner_user_id = toId;
+
+      // custom exercises live on the user doc → migrate before tombstoning it (dedup by id).
       if (fromU?.custom_exercises?.length && toU) {
         toU.custom_exercises = toU.custom_exercises || [];
         const have = new Set(toU.custom_exercises.map((x) => x.id));
@@ -177,10 +228,45 @@ export function createFileStore(path) {
       delete db.sessions[fromId];
       delete db.bodyweights[fromId];
       delete db.checkins[fromId];
-      // BLOCKERS #6b option (b): tombstone, never delete — see getUser above.
-      db.users[fromId] = { _merged_into: toId, _merged_at: new Date().toISOString() };
+      // A tombstone stays externally absent, but preserves the source document as
+      // a row-level audit trail in addition to the full graph archive.
+      db.users[fromId] = { ...clone(fromU), _merged_into: toId, _merged_at: now, _merge_archive_id: archiveId };
       flush();
       return moved;
+    },
+    async listMergeArchives(ownerId) {
+      return Object.values(db.merge_archives ?? {})
+        .filter((a) => a.owner_user_id === ownerId)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .map(archiveSummary);
+    },
+    async restoreMergeArchive(ownerId, archiveId, restoredUserId = crypto.randomUUID(), now = new Date().toISOString()) {
+      const archive = db.merge_archives?.[archiveId];
+      if (!archive || archive.owner_user_id !== ownerId) return null;
+      // Once claimed, every retry returns the same identity. The file store's
+      // synchronous mutation plus one flush is its all-or-nothing transaction.
+      const id = archive.restored_user_id ?? restoredUserId;
+      if (archive.state !== "restored") {
+        archive.restored_user_id = id;
+        archive.state = "restoring";
+        const snap = archive.snapshot ?? {};
+        if (!db.users[id]) {
+          db.users[id] = restoredUser(snap.user, id);
+          db.sessions[id] = (snap.sessions ?? []).map((s, i) => restoredSession(s, archiveId, id, i));
+          db.bodyweights[id] = clone(snap.bodyweights ?? []);
+          db.checkins[id] = clone(snap.checkins ?? []);
+          db.nutrition_logs[id] = clone(snap.nutrition_logs ?? []);
+        }
+        archive.state = "restored";
+        archive.restored_at ??= now;
+        flush();
+      }
+      return {
+        user_id: id,
+        program_name: db.users[id]?.program?.name ?? null,
+        units: db.users[id]?.profile?.units ?? null,
+        archive: archiveSummary(archive),
+      };
     },
     async saveAccount(email, user_id, verified_at) {
       db.accounts[email] = {
@@ -192,6 +278,7 @@ export function createFileStore(path) {
     },
     // --- Web Push subscriptions (device reminders) ---
     async savePushSubscription(user_id, sub) {
+      if (isTombstoned(user_id)) return null;
       db.push_subscriptions ??= {};
       db.push_subscriptions[sub.endpoint] = { endpoint: sub.endpoint, user_id, p256dh: sub.keys?.p256dh ?? null, auth: sub.keys?.auth ?? null, created_at: db.push_subscriptions[sub.endpoint]?.created_at ?? Date.now() };
       flush();
@@ -201,38 +288,42 @@ export function createFileStore(path) {
     // passes null to prune unconditionally. A userId that doesn't match is a no-op.
     async deletePushSubscription(endpoint, userId = null) {
       const row = db.push_subscriptions?.[endpoint];
-      if (row && (userId == null || row.user_id === userId)) { delete db.push_subscriptions[endpoint]; flush(); }
+      if (row && (userId == null || row.user_id === userId)) {
+        delete db.push_subscriptions[endpoint];
+        delete db.push_deliveries?.[endpoint];
+        flush();
+      }
     },
     async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
     // Delivery evidence (BLOCKERS #2b): stamped by the push sweep ONLY when a
     // real push service accepted a send (2xx). Kept in a separate map keyed by
-    // endpoint — the D1 store mirrors this as its own self-init table
-    // (push_deliveries), the share_cheers precedent. Stale rows for pruned
-    // subscriptions are harmless: stats() only counts deliveries whose
-    // subscription still exists.
+    // endpoint — the D1 store mirrors this as its own self-init table. Evidence
+    // exists only while that endpoint remains an active subscription.
     async markPushDelivered(endpoint, at) {
-      (db.push_deliveries ??= {})[endpoint] = at;
-      flush();
+      if (db.push_subscriptions?.[endpoint]) {
+        (db.push_deliveries ??= {})[endpoint] = at;
+        flush();
+      }
     },
     // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
     // computed entirely from rows this store already holds; counts only, no
-    // per-user view, no PII. Session counts are RAW rows (voided included —
-    // a voided session was still activity; D1 counts the same way, parity).
-    // ISO-8601 strings compare lexically as chronology, so string >= works.
+    // per-user view, no PII. Valid voided sessions still count as activity, but
+    // quarantined timing rows must not distort aggregate adoption/retention.
     async stats(now = Date.now()) {
-      const iso = (ms) => new Date(ms).toISOString();
-      const d7 = iso(now - 7 * 86400000), d14 = iso(now - 14 * 86400000), d28 = iso(now - 28 * 86400000);
+      const d7 = now - 7 * 86400000, d14 = now - 14 * 86400000, d28 = now - 28 * 86400000;
+      const safeMs = (s) => isDerivableSession(s, now) ? parseSessionInstant(s.date) : null;
       const activeIn = (from, to) => {
         const s = new Set();
         for (const [uid, list] of Object.entries(db.sessions ?? {}))
-          if (list.some((x) => x.date && x.date >= from && (!to || x.date < to))) s.add(uid);
+          if (list.some((x) => { const ms = safeMs(x); return ms != null && ms >= from && (!to || ms < to); })) s.add(uid);
         return s;
       };
       const cur = activeIn(d7, null), prev = activeIn(d14, d7);
       let sessions_7d = 0, sessions_28d = 0, users_with_session = 0;
       for (const list of Object.values(db.sessions ?? {})) {
-        if (list.length) users_with_session++;
-        for (const x of list) { if (x.date >= d7) sessions_7d++; if (x.date >= d28) sessions_28d++; }
+        const valid = list.map((x) => [x, safeMs(x)]).filter(([, ms]) => ms != null);
+        if (valid.length) users_with_session++;
+        for (const [, ms] of valid) { if (ms >= d7) sessions_7d++; if (ms >= d28) sessions_28d++; }
       }
       const returned = [...prev].filter((u) => cur.has(u)).length;
       const subs = Object.values(db.push_subscriptions ?? {});
@@ -251,15 +342,20 @@ export function createFileStore(path) {
     // their only recent workout genuinely hasn't trained, and the comeback nudge
     // should say so. Same exclusion as listSessions (D1 does it in SQL).
     async latestSessionDate(user_id) {
-      return (db.sessions[user_id] ?? []).reduce((m, s) => (s.date && !s.voided_at && (!m || s.date > m) ? s.date : m), null);
+      let latest = null, latestMs = null;
+      for (const s of db.sessions[user_id] ?? []) {
+        const ms = !s.voided_at && isDerivableSession(s) ? parseSessionInstant(s.date) : null;
+        if (ms != null && (latestMs == null || ms > latestMs)) { latest = s.date; latestMs = ms; }
+      }
+      return latest;
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
     async listAccountLastSessions() {
-      return Object.values(db.accounts).map((a) => ({
+      return Promise.all(Object.values(db.accounts).map(async (a) => ({
         email: a.email, user_id: a.user_id,
-        last_date: (db.sessions[a.user_id] ?? []).reduce((m, s) => (s.date && !s.voided_at && (!m || s.date > m) ? s.date : m), null),
-      }));
+        last_date: await this.latestSessionDate(a.user_id),
+      })));
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
     async getMagicLink(tokenHash) { return db.magic_links[tokenHash] ?? null; },
@@ -282,6 +378,7 @@ export function createFileStore(path) {
     // One share per user: creating rotates (revokes the old token) by first dropping
     // any existing row for this user, then inserting the new share_id.
     async createShare(userId, shareId, now) {
+      if (isTombstoned(userId)) return null;
       for (const [sid, row] of Object.entries(db.shares)) if (row.user_id === userId) delete db.shares[sid];
       db.shares[shareId] = { share_id: shareId, user_id: userId, created_at: now };
       flush(); return shareId;

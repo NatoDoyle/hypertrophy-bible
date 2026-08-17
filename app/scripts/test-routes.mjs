@@ -346,6 +346,10 @@ try {
   // devQ (the merged-away device) also has a push subscription + a custom exercise —
   // both must survive the merge onto devP (#26: push subs follow; CAS custom-ex merge).
   await json("POST", "/api/push/subscribe", { user_id: devQ, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/merge26", keys: { p256dh: "x", auth: "y" } } });
+  // Deliberately include an externally-capable share in the source graph too. The
+  // survivor keeps it during the merge, but a later safe-copy restore must never
+  // resurrect that public capability on the new account.
+  const devQShare = (await json("POST", "/api/share", { user_id: devQ })).data.share_id;
   await store.updateUser(devQ, (u) => { u.custom_exercises = [{ id: "custom-x", name: "My Move" }]; return u; });
   const linkP = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devP });
   const linkQ = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devQ });
@@ -370,6 +374,74 @@ try {
   const tbRes = await app.request("/api/today", { headers: { "X-HB-User": devQ } });
   ok("#6b the merged-away user reads as gone through the real routes (tombstone, not delete)", tbRes.status === 404);
 
+  // --- Wave 215: a merge is recoverable without exposing its source graph ---
+  // The archive index is deliberately only visible to the survivor. It is a small
+  // safe summary, never the source UUID, snapshot, push endpoint, share token, or
+  // account-link material that an owner could accidentally expose in the UI.
+  const ownerArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": devP } });
+  const ownerArchives = await ownerArchivesRes.json();
+  const devArchive = (ownerArchives.archives ?? []).find((a) => a.counts?.sessions === 1);
+  const devArchiveId = devArchive?.archive_id ?? "missing-archive";
+  const safeArchiveKeys = new Set(["archive_id", "created_at", "state", "restored_at", "counts"]);
+  ok("#215 the merge survivor sees a safe archive summary, never its source graph",
+    ownerArchivesRes.status === 200 && !!devArchive
+    && Object.keys(devArchive).every((key) => safeArchiveKeys.has(key))
+    && Object.keys(devArchive.counts ?? {}).sort().join(",") === "bodyweights,checkins,nutrition_logs,sessions"
+    && !/snapshot|source|endpoint|share|token|magic|user_id/i.test(JSON.stringify(devArchive)));
+
+  // An unrelated active identity gets an empty index, while the tombstoned source
+  // cannot even reach the endpoint. Neither response may disclose an archive id.
+  const otherArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": uid } });
+  const otherArchives = await otherArchivesRes.json();
+  const tombstoneArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": devQ } });
+  const tombstoneArchives = await tombstoneArchivesRes.json();
+  ok("#215 a non-owner and the tombstoned source cannot discover a merge archive",
+    otherArchivesRes.status === 200 && Array.isArray(otherArchives.archives) && otherArchives.archives.length === 0
+    && tombstoneArchivesRes.status === 404
+    && !JSON.stringify(otherArchives).includes(devArchive?.archive_id)
+    && !JSON.stringify(tombstoneArchives).includes(devArchive?.archive_id));
+
+  // Ownership is also enforced at the mutation door. The generic 404 is
+  // intentional: it does not distinguish an archive belonging to somebody else
+  // from an unknown id.
+  const otherRestoreRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": uid },
+  });
+  const otherRestore = await otherRestoreRes.json();
+  ok("#215 a non-owner cannot restore or learn about the archive",
+    otherRestoreRes.status === 404 && !JSON.stringify(otherRestore).includes(devArchiveId));
+
+  // Restore produces a fresh anonymous copy. Retrying it must point at the same
+  // copy (not make a second account), and it must leave the survivor byte-for-byte
+  // untouched while keeping device/browser and public-share capabilities inactive.
+  const survivorBeforeRestore = JSON.stringify(await store.getUser(devP));
+  const survivorSessionsBeforeRestore = JSON.stringify(await store.listSessions(devP, { includeVoided: true, includeQuarantined: true }));
+  const restoreRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": devP },
+  });
+  const restored = await restoreRes.json();
+  const restoredId = restored.user_id;
+  const restoreAgainRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": devP },
+  });
+  const restoredAgain = await restoreAgainRes.json();
+  ok("#215 restore creates a distinct anonymous copy and retry returns that same identity",
+    restoreRes.status === 200 && restored.restored === true && typeof restoredId === "string"
+    && restoredId !== devP && restoredId !== devQ
+    && restoreAgainRes.status === 200 && restoredAgain.restored === true && restoredAgain.user_id === restoredId);
+  ok("#215 restore leaves the survivor exactly unchanged",
+    JSON.stringify(await store.getUser(devP)) === survivorBeforeRestore
+    && JSON.stringify(await store.listSessions(devP, { includeVoided: true, includeQuarantined: true })) === survivorSessionsBeforeRestore);
+  const restoredSessions = await store.listSessions(restoredId, { includeVoided: true, includeQuarantined: true });
+  ok("#215 restored history is a separate safe copy with no account, push, or share reactivation",
+    restoredSessions.some((s) => s.session_id !== "q-1" && s.lucky_seed === "q-1")
+    && !(await store.getAccountByUserId(restoredId))
+    && !(await store.listPushSubscriptions()).some((s) => s.user_id === restoredId)
+    && (await store.getShareIdForUser(restoredId)) == null
+    // This proves the negative share check is meaningful: the source had one and
+    // the survivor retained it as part of the normal merge contract.
+    && (await store.getShareIdForUser(devP)) === devQShare);
+
   // --- Wave 209: the health-note acceptance is stamped SERVER-side at onboard —
   // the welcome screen shows "By starting you agree…" before /api/onboard can be
   // reached, and a client-supplied stamp is hostile until overwritten. ---
@@ -381,6 +453,33 @@ try {
   const ackStored = (await store.getUser(ackUser)).profile.disclaimer_ack;
   ok("#209 onboard stamps disclaimer_ack server-side (v1, a real timestamp)",
     ackStored?.v === 1 && typeof ackStored?.at === "string" && ackStored.at !== "1999-01-01T00:00:00.000Z");
+
+  // The generic profile-edit door must preserve evidence that was stamped at
+  // onboarding. Settings saves legitimately update preferences, but must never
+  // turn a client-supplied object into a replacement acknowledgement.
+  const originalAck = JSON.stringify(ackStored);
+  const forgedAckRegenerate = await json("POST", "/api/plan/regenerate", { user_id: ackUser, profile: {
+    units: "imperial",
+    disclaimer_ack: { v: 99, at: "1999-01-01T00:00:00.000Z", forged: true },
+  } });
+  const ackAfterRegenerate = (await store.getUser(ackUser)).profile;
+  ok("#213 a forged acknowledgement through plan regeneration cannot overwrite the server stamp",
+    forgedAckRegenerate.status === 200 && JSON.stringify(ackAfterRegenerate.disclaimer_ack) === originalAck
+    && ackAfterRegenerate.units === "imperial");
+
+  // Accounts created before the health note genuinely have no acknowledgement.
+  // A generic profile patch must not let a client mint one retroactively.
+  const legacyAckUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["bodyweight"],
+  } })).data.user_id;
+  await store.updateUser(legacyAckUser, (u) => { delete u.profile.disclaimer_ack; return u; });
+  const mintAckRegenerate = await json("POST", "/api/plan/regenerate", { user_id: legacyAckUser, profile: {
+    disclaimer_ack: { v: 1, at: "2099-01-01T00:00:00.000Z" },
+  } });
+  const legacyAfterRegenerate = (await store.getUser(legacyAckUser)).profile;
+  ok("#213 plan regeneration cannot mint an acknowledgement for a legacy account",
+    mintAckRegenerate.status === 200 && !Object.hasOwn(legacyAfterRegenerate, "disclaimer_ack"));
 
   // --- Wave 210: the owner stats endpoint (BLOCKERS #7). Gated on a deploy
   // secret: unconfigured -> 404 even with a key presented; configured -> exact
@@ -410,14 +509,84 @@ try {
   const ldBad = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-bad");
   ok("#27 a malformed local_date is rejected at the door (session still saved, field omitted)", ldBad && ldBad.local_date === undefined);
 
+  // Wave 214: an offline device's bad clock must not turn one workout into a
+  // permanent future event. The write remains queue-friendly (200) but uses the
+  // server instant and discards an invalid/far-future device calendar day.
+  const timingUser = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+  const timingWriteStarted = Date.now();
+  const malformedTiming = await json("POST", "/api/session", { user_id: timingUser, session_id: "time-malformed",
+    date: "not-a-real-instant", local_date: "2026-02-30", sets: [{ exercise: "push-up", set_type: "work", reps: 10 }] });
+  const futureTiming = await json("POST", "/api/session", { user_id: timingUser, session_id: "time-future",
+    date: "2099-01-01T12:00:00.000Z", local_date: "2099-01-01", sets: [{ exercise: "push-up", set_type: "work", reps: 8 }] });
+  const timingWriteFinished = Date.now();
+  const storedTiming = await store.listSessions(timingUser);
+  const hasServerFallback = (session) => {
+    const at = Date.parse(session?.date);
+    return Number.isFinite(at) && at >= timingWriteStarted - 1500 && at <= timingWriteFinished + 1500;
+  };
+  const malformedStored = storedTiming.find((s) => s.session_id === "time-malformed");
+  const futureStored = storedTiming.find((s) => s.session_id === "time-future");
+  ok("#214 malformed and far-future session instants fall back to server now; unsafe local dates are omitted",
+    malformedTiming.status === 200 && futureTiming.status === 200
+    && hasServerFallback(malformedStored) && hasServerFallback(futureStored)
+    && malformedStored?.local_date === undefined && futureStored?.local_date === undefined);
+
+  // A pre-Wave-214 record can already hold poisoned timing. Seed one directly to
+  // model that durable legacy state: ordinary store reads and every derived route
+  // must skip it, but History must show it (with a correction marker) rather than
+  // silently discard a real workout.
+  const timingProgressBefore = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  await store.addSession(timingUser, {
+    session_id: "time-legacy", user_id: timingUser, program_ref: (await store.getUser(timingUser)).program.id,
+    date: "2099-01-01T12:00:00.000Z", local_date: "2099-01-01",
+    sets: [{ exercise: "push-up", set_type: "work", reps: 12 }],
+  });
+  const timingDerived = await store.listSessions(timingUser);
+  const timingProgressAfterSeed = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  const timingHistoryBeforeFix = await (await app.request("/api/sessions", { headers: { "X-HB-User": timingUser } })).json();
+  const legacyInHistory = timingHistoryBeforeFix.sessions?.find((s) => s.session_id === "time-legacy");
+  ok("#214 a legacy poisoned-time session is excluded from derived reads but remains in History with a quarantine marker",
+    !timingDerived.some((s) => s.session_id === "time-legacy")
+    && timingProgressAfterSeed.sessions_logged === timingProgressBefore.sessions_logged
+    && legacyInHistory?.time_quarantine === "invalid-date");
+
+  // Unlike an offline write, correction is an intentional form action. Reject an
+  // impossible/future chosen day rather than silently moving history to server now.
+  const rejectedTimingFix = await json("POST", "/api/session/update", {
+    user_id: timingUser, session_id: "time-legacy", corrected_local_date: "2099-01-01",
+  });
+  const legacyAfterRejectedFix = (await store.listSessions(timingUser, { includeQuarantined: true })).find((s) => s.session_id === "time-legacy");
+  ok("#214 an invalid correction is refused without rewriting the quarantined workout",
+    rejectedTimingFix.status === 400 && legacyAfterRejectedFix?.date === "2099-01-01T12:00:00.000Z");
+
+  // The correction door intentionally accepts no `sets`: a person correcting a
+  // bad device clock should not have to retype their workout. A valid local day
+  // restores the exact same durable record to normal derived reads.
+  const correctedDay = dAgo(3).slice(0, 10);
+  const timingFix = await json("POST", "/api/session/update", {
+    user_id: timingUser, session_id: "time-legacy", corrected_local_date: correctedDay,
+  });
+  const timingDerivedAfterFix = await store.listSessions(timingUser);
+  const timingProgressAfterFix = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  const timingHistoryAfterFix = await (await app.request("/api/sessions", { headers: { "X-HB-User": timingUser } })).json();
+  const repairedHistory = timingHistoryAfterFix.sessions?.find((s) => s.session_id === "time-legacy");
+  ok("#214 a corrected_local_date-only update restores the quarantined session without changing its sets",
+    timingFix.status === 200 && timingFix.data.session?.local_date === correctedDay
+    && timingDerivedAfterFix.some((s) => s.session_id === "time-legacy" && s.sets?.[0]?.reps === 12)
+    && timingProgressAfterFix.sessions_logged === timingProgressBefore.sessions_logged + 1
+    && repairedHistory && !Object.hasOwn(repairedHistory, "time_quarantine"));
+
   // #23: push subscribe/unsubscribe round-trip through the real routes
   const pushSub = { endpoint: "https://fcm.googleapis.com/fcm/send/route-test", keys: { p256dh: "pk", auth: "ak" } };
   const subRes = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: pushSub });
   ok("#23 push subscribe stores the subscription", subRes.status === 200 && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint && s.user_id === ldUser));
   const badSub = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: { endpoint: "http://insecure" } });
   ok("#23 a non-https endpoint is rejected", badSub.status === 400);
-  await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint });
-  ok("#23 unsubscribe removes it", !(await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
+  const missingOwnerUnsub = await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint });
+  ok("#216 an endpoint alone cannot unsubscribe another device", missingOwnerUnsub.status === 404
+    && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
+  await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint, user_id: ldUser });
+  ok("#23 unsubscribe removes its owner's subscription", !(await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
 
   // #21: resuming a pause archives the window (the streak's neutral weeks survive)
   await json("POST", "/api/pause", { user_id: ldUser, on: true });
