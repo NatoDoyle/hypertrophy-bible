@@ -6,7 +6,27 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-14** (Waves 209-212: under the owner's blanket
+Grounded assessment date: **2026-08-18** (Waves 217-223: one full loop turn, ending
+with prod == main. The **un-landed Waves 213-216 burst** (draft PR #299, 1507
+insertions, never audited or deployed) was audited before it shipped — **ten
+confirmed defects** fixed as Waves 217-219, headed by a wholesale profile patch
+that could forge `following`/`challenges` past four route guards, and a D1 merge
+that ran its whole batch with no precondition. Then Waves 220-222 off fresh main:
+the citation gate's exclusion rule was disarming the anti-fabrication guardrail;
+`app npm test` was silently skipping the only coverage of the production store;
+and **the KB's densest cross-references became traversable** — the 7 muscle
+guides' ranked pick lists now open the app's own exercise sheet (invisible links
+**122 → 50 dropped + 72 traversable**, reconciled). **The new Goal-4 ground truth,
+read live 2026-08-18 after rotating STATS_KEY:** 135 users · 13 ever trained ·
+**122 onboarded and never trained — activation 9.6%** · 0 active/7d · **0 push
+subscriptions** still · and the one new signal, **median days-to-first-session = 0
+(n=5)**: whoever trains, trains the same day they onboard. The frontier is
+therefore **activation**, not retention mechanism — every adherence feature this
+project has built sits downstream of a door ~90% of people never walk through.
+Note `users_unclassified: 135`: the loop's own prod smokes have always used the
+same door that creates a user row, so the historical denominator cannot be split,
+and that split was deliberately not invented. Smoke traffic tags itself from now
+on. The prior grounding was 2026-08-14, Waves 209-212: under the owner's blanket
 go-ahead, four human-blocked items shipped as code — the health & safety note (#5),
 the owner stats endpoint (#7), recorded push-delivery evidence (#2b's server half),
 and the merge tombstone (#6b) — plus #8's honest email footers. **The stats
@@ -185,6 +205,39 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 217–223 progress (2026-08-18). One full loop turn; prod == main.**
+
+- **Waves 217–219 (the audit of the un-landed burst).** PR #299 had sat as a draft
+  with 1507 un-audited insertions. Ten confirmed defects, fixed before it landed:
+  a wholesale profile patch that could forge `following`/`challenges` past four
+  route guards (one shared `SERVER_OWNED_PROFILE_FIELDS`, walked by an enumerable
+  test); D1's `reassignUserData` running its whole batch with no precondition
+  (observed pre-fix moving a source graph onto an unreachable id); a merge refusal
+  indistinguishable from success with the grant already burnt; a timing-quarantine
+  repair path that was a dead end for far-east users and reported every rejection
+  as a network fault; a repair card promising voided workouts would count; and
+  quarantined rows sorted by the very field whose invalidity quarantined them.
+  Plus lesson 50 (archives kept capabilities revocation never reached) and a D1
+  query-shape regression that would have killed both cron sweeps at scale.
+- **Wave 220 (the gates).** The citation gate's `(?!:)` meant "not followed by a
+  colon", not "not a definition" — a fabricated key followed by a colon tripped
+  neither the dangling nor the missing-definition error (lesson 51). And
+  `app npm test` skipped the production store's only suite with exit 0 on Node 20;
+  it re-execs now (lesson 52).
+- **Wave 221 (the feature pull).** The 7 muscle guides' ranked pick lists are
+  tappable: 72 exercise references across 64 movements now open the app's own
+  exercise sheet, bundled (87 KB raw / 21 KB gzip) so they work offline. Exercise
+  refs are deliberately NOT page edges — a test asserts a page whose only links are
+  exercise refs still reads as under-linked. **Invisible links 122 → 50 dropped +
+  72 traversable, reconciled** (lesson 53).
+- **Wave 222 (Goal 4).** `stats()` reports activation separately; owner smoke
+  traffic tags itself, gated on `STATS_KEY` so nobody can opt themselves out of the
+  metric; historical rows are not retroactively classified.
+- **Wave 223 (LEARN).** Lessons 50–54, telemetry 7s, this entry, BLOCKERS.
+- **Evidence:** 339 route · 172 store/D1 parity · 14 learn-data · 13 session-time ·
+  8 citation tests; two browser walkthroughs (15/15, 13/13); deployed from clean
+  `main` and prod-smoked on the custom domain and the workers.dev origin.
 
 **Waves 209–212 progress (2026-08-14). The blocker burst: four human-blocked items
 became shipped code under the owner's blanket authorization.**
