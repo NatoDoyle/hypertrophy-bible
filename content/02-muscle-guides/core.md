@@ -29,7 +29,7 @@ Treat the core as regions with different tools. Picks are ordered for **hypertro
 
 *Cue:* move (or resist) from the trunk, not the arms; keep the hips square on anti-rotation work.
 
-**Region 3 — Deep core / bracing (transverse abdominis).** *Job: stiffen the trunk so force transfers.* Mostly trained **implicitly**: heavy [squats](../../data/exercises/barbell-back-squat.json), [deadlifts](../../data/exercises/conventional-deadlift.json), standing presses, and loaded [carries](../../data/exercises/kettlebell-suitcase-carry.json) all demand hard bracing. Add a [plank](../../data/exercises/plank.json), [dead bug](../../data/exercises/dead-bug.json), or suitcase carry only if you want dedicated stability work — these build *bracing*, not six-pack *size*.
+**Region 3 — Deep core / bracing (transverse abdominis).** *Job: stiffen the trunk so force transfers.* Mostly trained **implicitly**: heavy [back squats](../../data/exercises/barbell-back-squat.json), [conventional deadlifts](../../data/exercises/conventional-deadlift.json), standing presses, and loaded [suitcase carries](../../data/exercises/kettlebell-suitcase-carry.json) all demand hard bracing. Add a [plank](../../data/exercises/plank.json), [dead bug](../../data/exercises/dead-bug.json), or suitcase carry only if you want dedicated stability work — these build *bracing*, not six-pack *size*.
 
 **Putting a week together.** For most people: **2–4 loaded rectus sets** (a cable/machine crunch or hanging raise) plus **2–4 oblique sets** (a rotation or anti-rotation move), a couple of times a week, progressed like any lift. Your compounds cover the deep-core bracing. That's it — abs don't need special daily treatment.
 

@@ -25,7 +25,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractPage, pageDepth, depthReport, droppedLinks, DEPTH_GATE, DEPTH_EXEMPT, GATE } from "./graph-core.mjs";
+import { extractPage, pageDepth, depthReport, classifyRenderedLinks, DEPTH_GATE, DEPTH_EXEMPT, GATE } from "./graph-core.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTENT = join(root, "content");
@@ -104,11 +104,24 @@ warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shor
 // What actually distinguished program-templates was that its dropped links were in
 // table cells whose other columns were pure metadata, so the prescription lived nowhere
 // else on the page — a judgement made by reading, which is what the counts are for.
-const dropped = pages
-  .map((pg) => ({ slug: pg.slug, pillar: pg.pillar, n: droppedLinks(pg.md, known).length, out: outDegree.get(pg.slug) ?? 0 }))
+// Exercise refs became traversable in Wave 221 (a muscle guide's ranked picks now
+// open the app's exercise sheet), which REMOVES them from the dropped count. That
+// is exactly the movement a report must not make silently: "fixed" and "filtered
+// out of the metric" look identical in a shrinking total. So the classes are
+// itemised, the newly-traversable links are counted on their own line, and the two
+// are reconciled against the pre-change baseline below.
+const EX_IDS = new Set(readdirSync(join(root, "data", "exercises")).filter((f) => f.endsWith(".json")).map((f) => basename(f, ".json")));
+const classified = pages.map((pg) => ({ slug: pg.slug, pillar: pg.pillar, out: outDegree.get(pg.slug) ?? 0, ...classifyRenderedLinks(pg.md, known, EX_IDS) }));
+const dropped = classified
+  .map((x) => ({ ...x, n: x.dropped.length }))
   .filter((x) => x.n > 0)
   .sort((a, b) => b.n - a.n);
 const droppedTotal = dropped.reduce((a, x) => a + x.n, 0);
+const exJumps = classified.map((x) => x.jumps.filter((j) => j.kind === "exercise").length);
+const exJumpTotal = exJumps.reduce((a, n) => a + n, 0);
+const exJumpPages = exJumps.filter((n) => n > 0).length;
+const byClass = new Map();
+for (const pg of classified) for (const d of pg.dropped) byClass.set(d.cls, (byClass.get(d.cls) ?? 0) + 1);
 console.log(`\ninvisible links (rendered, but not traversable in-app): ${droppedTotal} across ${dropped.length} page(s)`);
 const SHOWN = 8;
 for (const x of dropped.slice(0, SHOWN)) {
@@ -121,6 +134,20 @@ if (dropped.length > SHOWN) {
   const rest = dropped.slice(SHOWN);
   console.log(`      …and ${rest.length} more page(s) carrying ${rest.reduce((a, x) => a + x.n, 0)} dropped link(s).`);
 }
+// The class breakdown is never truncated: it is small, and it is the line that
+// says WHY each remaining link is unreachable — which is what turns a number into
+// something a future wave can act on.
+console.log(`  by class — stated as counts so a narrowing can never hide inside a total:`);
+for (const [cls, n] of [...byClass].sort((a, b) => b[1] - a[1])) {
+  const why = cls === "pillar index TOC" ? "the app ships no index page; a pillar's ## Contents becomes the Learn list"
+    : cls === "data/exercises" ? "a DIRECTORY link carries no id, so there is nothing to open"
+    : "no in-app surface renders this data type yet";
+  console.log(`      ${cls.padEnd(22)} ${String(n).padStart(3)}   ${why}`);
+}
+console.log(`  now traversable — counted here because the renderer OPENS them, not because the gate stopped looking:`);
+console.log(`      ${"data/exercises".padEnd(22)} ${String(exJumpTotal).padStart(3)}   across ${exJumpPages} page(s) → the in-app exercise sheet`);
+console.log(`  reconciliation: ${droppedTotal} dropped + ${exJumpTotal} traversable = ${droppedTotal + exJumpTotal} rendered non-page links`);
+console.log(`      (baseline before Wave 221: ${droppedTotal + exJumpTotal} dropped, 0 traversable — the delta is renderer coverage, not a filtered input.)`);
 
 // Exemptions (Wave 196): every flagged-but-exempt page prints WITH its justification —
 // enforcement skips them, the report never does (a silently-filtered input is a blind

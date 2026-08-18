@@ -176,3 +176,7 @@ details.why h3{font-size:1rem;margin:1.1em 0 .3em}
 .learn th,.learn td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
 .learn th{background:var(--card2)}
 #nav button{font-size:.68rem}  /* five tabs — trim label size so they fit */
+
+/* A Learn link that opens an exercise SHEET rather than another page — same
+   affordance, visibly a different destination. */
+.learnlink.exlink { text-decoration-style: dotted; }

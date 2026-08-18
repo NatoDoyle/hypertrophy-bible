@@ -8,7 +8,7 @@
 - **Don't incline past 45°.** Beyond that the anterior deltoid's activation rises significantly and the pec's own contribution falls[^rodriguez-ridao-2020-bench-inclination-emg] — you're building front delts on a chest exercise. **[Grade C]**
 - **Prioritise the stretch.** Dumbbells, a pec deck and dips reach a deeper stretched position than a barbell, which the chest stops short of; longer-length work matches or beats short-range work for growth[^schoenfeld-2020-rom-review][^kassiano-2023-rom-review]. **[Grade B]**
 - Weekly volume: start near **8–10 sets**, work toward **12–18**, and treat **~20–22** as the ceiling ([`data/muscles/chest.json`](../../data/muscles/chest.json)). Model-based estimates, not measured constants. **[Grade C]**
-- **Count your pressing.** Heavy [bench pressing](../../data/exercises/barbell-bench-press.json) is chest volume — it goes *inside* the weekly total, not on top of it. **[Grade C]**
+- **Count your pressing.** Heavy [barbell bench press](../../data/exercises/barbell-bench-press.json) work is chest volume — it goes *inside* the weekly total, not on top of it. **[Grade C]**
 
 ## Practical Application
 

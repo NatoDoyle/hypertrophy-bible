@@ -110,6 +110,70 @@ export const rendersAsLink = (url, bundled) => {
   return slug && bundled.has(slug) ? slug : null;
 };
 
+// ---------- exercise refs (Wave 221) ----------
+
+// A link to ONE exercise's data file. The Learn renderer turns these into a
+// tappable control that opens the app's exercise sheet — an in-app jump that is
+// deliberately NOT a page edge.
+//
+// Why the separation is load-bearing: the KB graph measures how well the PROSE
+// cross-references itself (out-degree, orphans, dead ends, per-pillar density).
+// An exercise ref reaches no content page and leaves the reader in the same
+// page's context, so counting it as an edge would inflate every one of those
+// metrics — the muscle guides would leap to the top of the density table for
+// linking their own pick lists, and a page could satisfy the two-outbound-links
+// gate without pointing at a single other page. `rendersAsLink` therefore keeps
+// its exact meaning, and this answers a second, different question.
+//
+// The `[a-z0-9-]` alphabet is a safety property, not just tidiness: the id is
+// interpolated into a `data-ex` attribute, and nothing matching this pattern can
+// carry a quote, an angle bracket, or a `javascript:` scheme.
+export const exerciseRefId = (url) => {
+  const m = String(url ?? "").match(/^(?:\.\.\/)+data\/exercises\/([a-z0-9-]+)\.json$/);
+  return m ? m[1] : null;
+};
+
+// ...and the SECOND HALF, exactly as `rendersAsLink` has: shape AND "we actually
+// ship that exercise". A DIRECTORY link (`../../data/exercises/`) names no id and
+// is never a jump — it stays dropped, which is the cheapest possible proof that
+// this change made links traversable rather than making the gate stop looking.
+export const rendersAsExercise = (url, exercises) => {
+  const id = exerciseRefId(url);
+  return id && exercises?.has(id) ? id : null;
+};
+
+// THE one question the renderer asks. Page jumps and exercise jumps come back as
+// distinct KINDS so a caller cannot fold one into the other by accident.
+export const linkTarget = (url, bundled, exercises = new Set()) => {
+  const slug = rendersAsLink(url, bundled);
+  if (slug) return { kind: "page", id: slug };
+  const ex = rendersAsExercise(url, exercises);
+  return ex ? { kind: "exercise", id: ex } : null;
+};
+
+// What a DROPPED link actually is, so the report can name the class instead of
+// hiding it inside a total (lesson 35: a gate that narrows its input must report
+// the narrowing as a count).
+export const droppedClass = (url) => {
+  const u = String(url ?? "");
+  if (/(^|\/)index\.md(#|$)/.test(u)) return "pillar index TOC";
+  const m = u.match(/data\/([a-z-]+)\//);
+  return m ? `data/${m[1]}` : "other";
+};
+
+// ONE pass over a page's rendered links, returning both halves. `droppedLinks`
+// below is its thin wrapper, so the jumps the renderer makes and the links the
+// gate calls unreachable can never be computed from different rules.
+export function classifyRenderedLinks(md, bundled, exercises = new Set()) {
+  const jumps = [], dropped = [];
+  for (const m of stripNonRendered(md).matchAll(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
+    const t = linkTarget(m[2], bundled, exercises);
+    if (t) jumps.push({ label: m[1], url: m[2], ...t });
+    else dropped.push({ label: m[1], url: m[2], cls: droppedClass(m[2]) });
+  }
+  return { jumps, dropped };
+}
+
 // Rendered-section links the app SILENTLY DROPS to plain text. `check-links` cannot
 // see this class at all: its canonical check iterates `.md`-only, so a
 // `../../data/programs/x.json` link is verified to exist on disk and never checked
@@ -122,12 +186,8 @@ export const rendersAsLink = (url, bundled) => {
 // ordinary prose, and back.md — the roadmap's own exemplar — has the most of any page.
 // The tell worth reading is a page where the DROPPED links outnumber the live ones,
 // which is what "the link was the content" looks like.
-export function droppedLinks(md, bundled) {
-  const out = [];
-  for (const m of stripNonRendered(md).matchAll(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
-    if (!rendersAsLink(m[2], bundled)) out.push({ label: m[1], url: m[2] });
-  }
-  return out;
+export function droppedLinks(md, bundled, exercises = new Set()) {
+  return classifyRenderedLinks(md, bundled, exercises).dropped;
 }
 
 // ---------- depth grammar (Wave 175) ----------
