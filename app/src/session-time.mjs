@@ -36,25 +36,44 @@ export function parseSessionInstant(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function tomorrowLocalDate(nowMs = Date.now()) {
-  return new Date(nowMs + SESSION_FUTURE_SLACK_MS).toISOString().slice(0, 10);
+// The plausibility ceiling: the latest calendar day a workout may claim.
+//
+// Two callers, two different questions, so the frame is a parameter rather than
+// an assumption:
+//   - the WRITE door (a session arriving from a device) passes no tz and gets the
+//     flat +24h UTC slack. That is deliberately lenient — it covers every real
+//     offset out to UTC+14, so an honest workout is never quarantined merely for
+//     being logged in Kiritimati, and it is the rule every already-stored row was
+//     judged by. Changing it would silently re-judge history.
+//   - the CORRECTION door passes the user's own offset (`X-HB-TZ`, sent on every
+//     request) and gets THEIR local tomorrow. This is what the date picker offers,
+//     so the server stops refusing a day its own client had just presented as
+//     selectable — and stops accepting a date ~35 hours ahead of a west-of-UTC
+//     user's actual now. Compare calendar dates in the user's frame (lesson 22).
+export function tomorrowLocalDate(nowMs = Date.now(), tzOffsetMin = null) {
+  const shift = tzOffsetMin == null ? SESSION_FUTURE_SLACK_MS : tzOffsetMin * 60000 + SESSION_FUTURE_SLACK_MS;
+  return new Date(nowMs + shift).toISOString().slice(0, 10);
 }
 
-export function normalizeSessionInstant(value, nowMs = Date.now()) {
+export function normalizeSessionInstant(value, nowMs = Date.now(), tzOffsetMin = null) {
   const parsed = parseSessionInstant(value);
-  return parsed != null && new Date(parsed).toISOString().slice(0, 10) <= tomorrowLocalDate(nowMs)
+  return parsed != null && new Date(parsed).toISOString().slice(0, 10) <= tomorrowLocalDate(nowMs, tzOffsetMin)
     ? new Date(parsed).toISOString()
     : new Date(nowMs).toISOString();
 }
 
-export function normalizeSessionLocalDate(value, nowMs = Date.now()) {
-  return validLocalDate(value) && value <= tomorrowLocalDate(nowMs) ? value : null;
+export function normalizeSessionLocalDate(value, nowMs = Date.now(), tzOffsetMin = null) {
+  return validLocalDate(value) && value <= tomorrowLocalDate(nowMs, tzOffsetMin) ? value : null;
 }
 
-export function normalizeSessionTiming({ date, local_date } = {}, nowMs = Date.now()) {
+// The frame must reach BOTH halves. Accepting a correction against the user's
+// local ceiling and then normalizing it against the UTC one would drop the
+// local_date to null and silently re-stamp `date` as "now" — the correction would
+// appear to succeed while storing a different day than the one the user chose.
+export function normalizeSessionTiming({ date, local_date } = {}, nowMs = Date.now(), tzOffsetMin = null) {
   return {
-    date: normalizeSessionInstant(date, nowMs),
-    local_date: normalizeSessionLocalDate(local_date, nowMs),
+    date: normalizeSessionInstant(date, nowMs, tzOffsetMin),
+    local_date: normalizeSessionLocalDate(local_date, nowMs, tzOffsetMin),
   };
 }
 

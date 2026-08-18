@@ -1306,9 +1306,17 @@ export function createApp(store, config = {}) {
     const label = (exId) => custom.get(exId) ?? exerciseById.get(exId)?.name ?? exId;
     const quarantined = all.filter((s) => s.timing_issue);
     const ordinary = all.filter((s) => !s.timing_issue).slice(-60);
-    // Newest first for ordinary records; malformed dates still remain visible and
-    // carry their explicit marker rather than rendering as a silent omission.
-    const visible = [...quarantined, ...ordinary].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    // Newest first for ordinary records; quarantined rows stay PINNED above them.
+    // They used to be concatenated first and then re-sorted by `date` — the very
+    // field whose invalidity caused the quarantine. An unparseable or empty date
+    // collapses to "" and sorts LAST, so the rows carrying the only repair
+    // affordance landed beneath all sixty ordinary cards, contradicting the
+    // comment directly above them; a far-future date sorted first. Sorting only
+    // the rows whose sort key is trustworthy is the whole fix.
+    // `.reverse()` rather than a comparator: `all` arrives ordered date ASC then
+    // insertion order, so reversing keeps same-day siblings newest-first, which a
+    // stable sort on `date` alone would silently flip to oldest-first.
+    const visible = [...quarantined, ...ordinary.reverse()];
     return c.json({ sessions: visible.map(({ timing_issue, ...sess }) => ({
       ...sess,
       ...(timing_issue ? { time_quarantine: timing_issue } : {}),
@@ -1334,11 +1342,19 @@ export function createApp(store, config = {}) {
     // deliberate, small form with one field, so silently changing an invalid choice
     // to today would be misleading. Reject it and leave the raw record intact.
     const correctionNow = Date.now();
-    if (correctingDate && !normalizeSessionLocalDate(body.corrected_local_date, correctionNow)) {
+    // Judge the correction in the USER'S calendar frame, not UTC. `X-HB-TZ` rides
+    // every request from this client (and the stored offset is the fallback), and
+    // /api/today already reads it — this door did not, so its ceiling was a UTC
+    // date while the picker's `max` was the device's local tomorrow. A UTC+13 user
+    // was therefore OFFERED a day the server refused, and since this is the only
+    // exit from a timing quarantine, the repair was a dead end (lesson 22 on the
+    // frame, lesson 34 on a signal that was already at the choke point).
+    const correctionTz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min ?? null;
+    if (correctingDate && !normalizeSessionLocalDate(body.corrected_local_date, correctionNow, correctionTz)) {
       return c.json({ error: "bad-date" }, 400);
     }
     const timing = correctingDate
-      ? normalizeSessionTiming({ date: body.corrected_local_date, local_date: body.corrected_local_date }, correctionNow)
+      ? normalizeSessionTiming({ date: body.corrected_local_date, local_date: body.corrected_local_date }, correctionNow, correctionTz)
       : null;
     const updated = await store.updateSession(id, body.session_id, (sess) => {
       if (sets) {

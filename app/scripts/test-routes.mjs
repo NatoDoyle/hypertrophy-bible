@@ -2009,6 +2009,70 @@ try {
     (appSrc.match(/stripServerOwnedProfile\(/g) ?? []).length === 2
     && !/\.\.\.body\.profile|\{ \.\.\.body\.profile \}/.test(appSrc));
 
+  // --- the timing-quarantine repair path, through the real door ---------------
+  const qOn = await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } });
+  const qU = qOn.data.user_id;
+  const qSet = [{ exercise: "barbell-back-squat", weight_kg: 100, reps: 5, set_type: "work" }];
+  // Two ordinary sessions on the SAME day, logged in order, plus a legacy row with
+  // an unparseable date written straight to the store (no route can create one
+  // any more — that is the whole point of the write-door normalization).
+  // The SAME instant for both, so this is a genuine tie — the case the ordering
+  // regression is about. Two calls to Date.now() are milliseconds apart and would
+  // sort themselves, quietly testing nothing.
+  const qTie = new Date(Date.now() - 3 * 86400000).toISOString();
+  await json("POST", "/api/session", { user_id: qU, session_id: "q-day-a", date: qTie, sets: qSet });
+  await json("POST", "/api/session", { user_id: qU, session_id: "q-day-b", date: qTie, sets: qSet });
+  await store.addSession(qU, { session_id: "q-broken", date: "", session_name: "Legacy", sets: qSet });
+
+  const qList = await app.request("/api/sessions", { headers: { "X-HB-User": qU } });
+  const qRows = (await qList.json()).sessions;
+  // The route's own comment promises the cap can never hide a row the user needs
+  // in order to make it safe again. Sorting by `date` — the field whose invalidity
+  // caused the quarantine — buried exactly the malformed ones.
+  ok("#tq a row with an unparseable date is pinned FIRST, not sorted by the broken field",
+    qRows[0]?.session_id === "q-broken" && qRows[0]?.time_quarantine === "invalid-date");
+  ok("#tq quarantined rows are marked, ordinary rows are not",
+    qRows.filter((r) => r.time_quarantine).length === 1);
+  const dayA = qRows.findIndex((r) => r.session_id === "q-day-a");
+  const dayB = qRows.findIndex((r) => r.session_id === "q-day-b");
+  ok("#tq same-day siblings stay newest-first (a stable sort on `date` alone flips them)", dayB < dayA);
+
+  // The quarantined row must be invisible to every derivation, and visible only here.
+  const qAdh = await app.request("/api/adherence", { headers: { "X-HB-User": qU } });
+  ok("#tq the quarantined row reaches no derived surface",
+    (await qAdh.json()).sessions_logged === 2);
+
+  // The repair, in a FAR-EAST frame: the client's picker offers the user's local
+  // tomorrow, so the server must judge in that frame or the only exit from
+  // quarantine is a dead end. Send the header this client always sends.
+  const eastTz = String(13 * 60);
+  const localTomorrow = (tzMin) => {
+    const d = new Date(Date.now() + tzMin * 60000 + 86400000);
+    return d.toISOString().slice(0, 10);
+  };
+  const fixRes = await app.request("/api/session/update", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken", corrected_local_date: localTomorrow(13 * 60) }),
+  });
+  ok("#tq a UTC+13 user's own local tomorrow is ACCEPTED (it is what their picker offered)", fixRes.status === 200);
+  const fixedRow = (await store.listSessions(qU, { includeVoided: true, includeQuarantined: true })).find((x) => x.session_id === "q-broken");
+  ok("#tq the corrected day is STORED as the day chosen, not silently re-stamped as now",
+    fixedRow?.local_date === localTomorrow(13 * 60) && String(fixedRow?.date).slice(0, 10) === localTomorrow(13 * 60));
+
+  // ...and a genuinely impossible date is still refused, with a distinguishable
+  // error the client can turn into truthful copy instead of "check your connection".
+  await store.addSession(qU, { session_id: "q-broken-2", date: "", session_name: "Legacy 2", sets: qSet });
+  const farFuture = new Date(Date.now() + 400 * 86400000).toISOString().slice(0, 10);
+  const badRes = await app.request("/api/session/update", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken-2", corrected_local_date: farFuture }),
+  });
+  ok("#tq an impossible date is refused as `bad-date`, not as a network failure",
+    badRes.status === 400 && (await badRes.json()).error === "bad-date");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

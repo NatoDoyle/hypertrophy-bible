@@ -99,5 +99,51 @@ check("legacy timing faults are quarantined from all derivations until corrected
   assert.equal(isDerivableSession(invalidLocalDate, now), false);
 });
 
+// --- the ceiling's FRAME -----------------------------------------------------
+// The write door and the correction door ask different questions, so the frame is
+// an argument. These pin BOTH, because getting either wrong is silent: a too-tight
+// ceiling quarantines honest workouts, a too-loose one accepts a date the user
+// cannot possibly have trained on, and a MISMATCH between the two doors made the
+// only exit from quarantine a dead end.
+check("tomorrowLocalDate: no tz keeps the flat +24h UTC slack (the write door's rule, unchanged)", () => {
+  // 2026-08-18T22:00Z + 24h -> 2026-08-19
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-18T22:00:00.000Z")), "2026-08-19");
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-18T00:00:00.000Z")), "2026-08-19");
+});
+check("tomorrowLocalDate: a far-EAST user's ceiling is their own local tomorrow", () => {
+  // UTC 2026-08-18T22:00 is 2026-08-19T11:00 in UTC+13 -> their tomorrow is the 20th.
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-18T22:00:00.000Z"), 13 * 60), "2026-08-20");
+  // ...and the UTC-framed answer is a day earlier, which is exactly the mismatch:
+  // the picker offered the 20th and the server refused it.
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-18T22:00:00.000Z")), "2026-08-19");
+});
+check("tomorrowLocalDate: a far-WEST user cannot claim a day ~35h ahead of their now", () => {
+  // UTC 2026-08-19T05:00 is 2026-08-18T18:00 in UTC-11 -> their tomorrow is the 19th.
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-19T05:00:00.000Z"), -11 * 60), "2026-08-19");
+  assert.equal(tomorrowLocalDate(Date.parse("2026-08-19T05:00:00.000Z")), "2026-08-20"); // the old, looser answer
+});
+check("normalizeSessionLocalDate: the east user's local tomorrow is accepted WITH tz and refused without", () => {
+  const now = Date.parse("2026-08-18T22:00:00.000Z");
+  assert.equal(normalizeSessionLocalDate("2026-08-20", now, 13 * 60), "2026-08-20");
+  assert.equal(normalizeSessionLocalDate("2026-08-20", now), null);
+});
+check("normalizeSessionTiming: the frame reaches BOTH halves, so an accepted day is STORED as that day", () => {
+  const now = Date.parse("2026-08-18T22:00:00.000Z");
+  const t = normalizeSessionTiming({ date: "2026-08-20", local_date: "2026-08-20" }, now, 13 * 60);
+  assert.equal(t.local_date, "2026-08-20", "local_date must survive");
+  assert.equal(t.date.slice(0, 10), "2026-08-20", "the instant must be that day, not re-stamped as now");
+  // Without the frame, the same correction silently became "now" with a null
+  // local_date — a save that reports success and stores a different day.
+  const drifted = normalizeSessionTiming({ date: "2026-08-20", local_date: "2026-08-20" }, now);
+  assert.equal(drifted.local_date, null);
+  assert.equal(drifted.date.slice(0, 10), "2026-08-18");
+});
+check("a corrected row is DERIVABLE again — the whole point of the repair path", () => {
+  const now = Date.parse("2026-08-18T22:00:00.000Z");
+  const t = normalizeSessionTiming({ date: "2026-08-20", local_date: "2026-08-20" }, now, 13 * 60);
+  // judged by the write door's own (flat) rule, as every stored row is
+  assert.equal(isDerivableSession({ date: t.date, local_date: t.local_date }, Date.parse("2026-08-20T00:00:00.000Z")), true);
+});
+
 console.log(`\n${pass} session-time test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -1963,10 +1963,18 @@ async function renderHistory() {
     // This is deliberately an in-place native date control, rather than a
     // free-text prompt: it gives a keyboard/screen-reader label and prevents the
     // user from having to learn the timestamp format that went wrong.
+    // A voided workout is excluded from every trend by `voided_at`, whatever its
+    // date. Offering "set the day you actually trained and it will count again"
+    // there — and then announcing "it now counts toward your trends" on save —
+    // states the opposite of what the user themselves told the app when they took
+    // it back (lesson 10). The date still needs correcting, so the card stays; only
+    // the promise changes, and it names the real next step.
     const timingRepair = quarantined
       ? `<div class="card info" role="status" style="margin:10px 0 0"${fixingDate ? " data-date-fix-card" : ""}>
-          <b>🕒 Date needs correcting</b><span class="chip" style="margin-left:6px">not counted yet</span>
-          <p class="muted" style="margin:8px 0">This workout is safely saved, but its recorded time is not safe to use for your streak, progress, or coaching. Set the day you actually trained and it will count again.</p>
+          <b>🕒 Date needs correcting</b><span class="chip" style="margin-left:6px">${voided ? "taken back" : "not counted yet"}</span>
+          <p class="muted" style="margin:8px 0">${voided
+            ? "This workout is safely saved, but you've taken it back, so it isn't counting. Its recorded time also needs fixing — set the day you actually trained, then put it back if you want it to count."
+            : "This workout is safely saved, but its recorded time is not safe to use for your streak, progress, or coaching. Set the day you actually trained and it will count again."}</p>
           ${fixingDate
             ? `<label class="muted" style="display:block" for="history-corrected-date">Actual workout date</label>
                <input id="history-corrected-date" type="date" value="${esc(historyDateInputValue(sess))}" max="${historyTomorrow()}" aria-describedby="history-date-help"
@@ -2015,11 +2023,24 @@ async function renderHistory() {
     catch { res = null; }
     if (!res || res.error) {
       b.disabled = false;
-      if (message) message.textContent = "Couldn't correct the date — check your connection and try again.";
+      // api() resolves a 4xx as a normal body, so "no response" and "the server
+      // said no" arrive the same way here and used to be reported identically —
+      // as a connection problem. A rejected date is not a network fault, and
+      // telling someone to check their connection sends them to retry the exact
+      // value that will be refused again, on the one screen that is the only exit
+      // from a timing quarantine.
+      if (message) message.textContent = res?.error === "bad-date"
+        ? "That date can't be right — pick a day that isn't in the future."
+        : res?.error
+          ? "Couldn't correct the date — try again."
+          : "Couldn't reach the server — check your connection and try again.";
       return;
     }
     historyDateFix = null;
-    say("Workout date corrected. It now counts toward your trends.");
+    const wasVoided = !!list.find((x) => x.session_id === b.dataset.saveDate)?.voided_at;
+    say(wasVoided
+      ? "Workout date corrected. It's still taken back — put it back if you want it to count."
+      : "Workout date corrected. It now counts toward your trends.");
     renderHistory();
   });
   const setVoid = async (sessionId, voided) => {
