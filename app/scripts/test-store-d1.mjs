@@ -878,6 +878,45 @@ try {
   const d1Acc = (await d1.listAccountLastSessions(SHAPE_NOW)).find((a) => a.user_id === "shape-all");
   same("prefilter superset: listAccountLastSessions agrees across stores", fileAcc, d1Acc);
 
+  // --- the activation funnel must be identical in both stores -----------------
+  // Two implementations of one arithmetic is how the file store and D1 drift; both
+  // now call the same pure activationFunnel, and this asserts it end to end.
+  // On FRESH stores, deliberately. stats() is a whole-database aggregate, and by
+  // this point the shared pair carries the collide scenario — whose cross-user
+  // session_id divergence is analysed and locked in far above, and which shows up
+  // here as a one-session difference in users_with_session. Comparing global
+  // aggregates would therefore assert the wrong thing: it would either fail on a
+  // known, deliberate difference or invite someone to "fix" it. A clean pair
+  // isolates the arithmetic this block is actually about.
+  const FN_NOW = Date.parse("2026-09-01T12:00:00.000Z");
+  const fnFilePath = join(tmpdir(), `hb-funnel-${process.pid}.json`);
+  const fnFile = createFileStore(fnFilePath);
+  const fnShim = createD1Shim();
+  fnShim.exec(readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8"));
+  const fnD1 = createD1Store(fnShim);
+  for (const [uid, created, smoke] of [
+    ["fn-real", "2026-08-20T10:00:00.000Z", false],
+    ["fn-never", "2026-08-21T10:00:00.000Z", false],
+    ["fn-smoke", "2026-08-22T10:00:00.000Z", true],
+  ]) {
+    const doc = { profile: { user_id: uid, ...(smoke ? { smoke: true } : {}) }, created_at: created };
+    await fnFile.saveUser(uid, doc);
+    await fnD1.saveUser(uid, doc);
+  }
+  const fnSession = { session_id: "fn-s1", date: "2026-08-22T10:00:00.000Z", sets: [] };
+  await fnFile.addSession("fn-real", fnSession);
+  await fnD1.addSession("fn-real", fnSession);
+  const fStats = await fnFile.stats(FN_NOW), dStats = await fnD1.stats(FN_NOW);
+  for (const k of ["smoke_users", "users_unclassified", "onboarded_never_trained", "activation_rate", "days_to_first_session_median", "days_to_first_session_n"]) {
+    same(`stats parity: ${k}`, fStats[k], dStats[k]);
+  }
+  same("stats parity: the whole aggregate, on a clean pair", fStats, dStats);
+  ok("stats: only the key-minted row counts as smoke", fStats.smoke_users === 1);
+  ok("stats: the three rows split into 1 activated / 2 never-trained", fStats.onboarded_never_trained === 2 && Math.abs(fStats.activation_rate - 1 / 3) < 1e-9);
+  ok("stats: time-to-first-session is measured from the user's created_at (2 days here)",
+    fStats.days_to_first_session_n === 1 && fStats.days_to_first_session_median === 2);
+  try { rmSync(fnFilePath); } catch {}
+
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(tmpPath); } catch {}
