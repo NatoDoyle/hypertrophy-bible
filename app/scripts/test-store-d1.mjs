@@ -16,12 +16,36 @@ import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
 import { createD1Shim, sqliteAvailable } from "./d1-shim.mjs";
 
-// Node < 22.5 has no node:sqlite — skip cleanly (exit 0) rather than fail the
-// whole app gate on machines running older Node; the suite runs fully wherever
-// node:sqlite exists (Node 22+, incl. the cloud-loop environments).
+// This suite is the ONLY coverage of store-d1.mjs — the store production actually
+// runs on. It used to print "SKIPPED" and exit 0 on Node < 22.5 (no node:sqlite),
+// so on a machine running Node 20 the app gate went green having tested the prod
+// store not at all: a maintainer editing store-d1.mjs got a full-green `npm test`
+// as evidence about code no assertion had touched. A suite that skips on exit 0
+// reads as a suite that passed.
+//
+// So it no longer skips — it RE-EXECS itself under a Node that has node:sqlite.
+// Coverage, rather than a nag the reader learns to scroll past. Only if that is
+// impossible (offline, no npx) does it fail, loudly, naming the one command that
+// runs it. HB_D1_NO_REEXEC=1 opts out for a caller that genuinely cannot.
 if (!(await sqliteAvailable())) {
-  console.log("store-d1 parity suite SKIPPED — node:sqlite unavailable (requires Node >= 22.5; current " + process.version + ").");
-  process.exit(0);
+  const NODE_WITH_SQLITE = "node@25";
+  if (process.env.HB_D1_NO_REEXEC === "1") {
+    console.error(`store-d1 parity suite CANNOT RUN — node:sqlite needs Node >= 22.5 (current ${process.version}).`);
+    console.error(`This suite is the only coverage of the PRODUCTION store, so this is a failure, not a skip.`);
+    console.error(`Run: npx --yes ${NODE_WITH_SQLITE} app/scripts/test-store-d1.mjs`);
+    process.exit(1);
+  }
+  const { spawnSync } = await import("node:child_process");
+  console.log(`store-d1 parity suite: node:sqlite needs Node >= 22.5 (current ${process.version}) — re-running under ${NODE_WITH_SQLITE}.`);
+  const here = fileURLToPath(import.meta.url);
+  const r = spawnSync("npx", ["--yes", NODE_WITH_SQLITE, here], { stdio: "inherit", env: { ...process.env, HB_D1_NO_REEXEC: "1" } });
+  if (r.error || r.status == null) {
+    console.error(`store-d1 parity suite COULD NOT RE-EXEC (${r.error?.message ?? "no exit status"}).`);
+    console.error(`This suite is the only coverage of the PRODUCTION store, so this is a failure, not a skip.`);
+    console.error(`Run it yourself with: npx --yes ${NODE_WITH_SQLITE} app/scripts/test-store-d1.mjs`);
+    process.exit(1);
+  }
+  process.exit(r.status);
 }
 
 let pass = 0, fail = 0;

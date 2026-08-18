@@ -13,6 +13,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { definitionKeys, referenceKeys } from "./citation-core.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,14 +53,17 @@ for (const c of registryList) {
 
 // --- Prose references -------------------------------------------------------
 const usedKeys = new Set();
-const refRe = /\[\^([^\]]+)\](?!:)/g; // reference, not a definition
-const defRe = /^\s*\[\^([^\]]+)\]:/gm; // definition line
+// The reference/definition rule lives in citation-core.mjs and is unit-tested
+// there. It used to be an inline `(?!:)` lookahead meaning "not a definition",
+// which actually meant "not followed by a colon" — so an ordinary prose colon
+// hid a citation from every check below, including the dangling-key error that
+// enforces "never fabricate a citation".
 
 for (const file of walk(join(root, "content"), (p) => p.endsWith(".md"))) {
   const text = readFileSync(file, "utf8");
   const rel = relative(root, file);
-  const refs = new Set([...text.matchAll(refRe)].map((m) => m[1]));
-  const defs = new Set([...text.matchAll(defRe)].map((m) => m[1]));
+  const refs = referenceKeys(text);
+  const defs = definitionKeys(text);
   for (const k of refs) {
     usedKeys.add(k);
     if (!registryKeys.has(k)) {
