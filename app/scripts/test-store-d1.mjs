@@ -676,6 +676,96 @@ try {
       && !(await d1.listPushSubscriptions()).some((s) => s.endpoint === "https://push/fence-late")
       && (await d1.getShareIdForUser(FENCE_FROM)) == null);
 
+  // --- the merge PRECONDITION, in both stores ---------------------------------
+  // The file store gained "refuse if either side is missing or already a
+  // tombstone" and D1 did not, so D1's batch ran unconditionally: the whole source
+  // graph moved onto an id getUser resolves to null, and the source was tombstoned
+  // anyway. Reachable as a race between the route's getUser and this call.
+  for (const [label, s0] of [["file", file], ["D1", d1]]) {
+    await s0.saveUser("pre-live", { profile: { user_id: "pre-live" } });
+    await s0.saveUser("pre-src", { profile: { user_id: "pre-src" } });
+    await s0.addSession("pre-src", { session_id: `pre-s-${label}`, date: "2026-08-10T10:00:00.000Z", sets: [] });
+
+    // (a) target does not exist at all
+    ok(`merge precondition: a missing target is REFUSED, not merged into (${label})`,
+      (await s0.reassignUserData("pre-src", "pre-ghost")) === null);
+    ok(`merge precondition: a refused merge moves nothing and tombstones nobody (${label})`,
+      (await s0.listSessions("pre-src", { includeVoided: true, includeQuarantined: true })).length === 1
+      && (await s0.getUser("pre-src")) != null);
+
+    // (b) target is a tombstone
+    await s0.saveUser("pre-dead", { profile: { user_id: "pre-dead" } });
+    await s0.reassignUserData("pre-dead", "pre-live", { archiveId: `pre-arc-${label}`, now: "2026-08-11T10:00:00.000Z" });
+    ok(`merge precondition: a TOMBSTONED target is refused (${label})`,
+      (await s0.reassignUserData("pre-src", "pre-dead")) === null);
+
+    // (c) source is already a tombstone — the double merge. The archive INSERT was
+    // already guarded; the tombstone UPDATE beside it was not, so it re-pointed
+    // `_merge_archive_id` at an archive that had never been written.
+    const beforeArchives = (await s0.listMergeArchives("pre-live")).length;
+    ok(`merge precondition: an already-merged SOURCE is refused (${label})`,
+      (await s0.reassignUserData("pre-dead", "pre-live", { archiveId: `pre-arc2-${label}` })) === null);
+    ok(`merge precondition: a refused double merge writes no second archive (${label})`,
+      (await s0.listMergeArchives("pre-live")).length === beforeArchives);
+    // The surviving pointer must still name the archive that actually exists.
+    const arcIds = new Set((await s0.listMergeArchives("pre-live")).map((a) => a.archive_id));
+    ok(`merge precondition: the source's archive pointer still names a REAL archive (${label})`,
+      arcIds.has(`pre-arc-${label}`) && !arcIds.has(`pre-arc2-${label}`));
+
+    // A legitimate merge still succeeds and still reports counts (the refusal
+    // signal must not swallow the normal path).
+    const good = await s0.reassignUserData("pre-src", "pre-live", { archiveId: `pre-arc3-${label}`, now: "2026-08-12T10:00:00.000Z" });
+    ok(`merge precondition: a legitimate merge still returns its moved counts (${label})`,
+      good != null && good.sessions === 1);
+  }
+
+  // --- addSession's return must describe what the store ACTUALLY did -----------
+  // NOT a parity assertion, deliberately. The session_id SCOPE divergence is
+  // analysed and locked in above ("uniqueness is scoped PER USER" vs D1's
+  // database-wide PRIMARY KEY) and both stores still land on exactly one surviving
+  // copy of the event — that stays as recorded, and a later sweep should not
+  // "fix" it (attempting to, here, broke the two tests that exist to lock it in).
+  // What WAS wrong is narrower and was D1-only: on a cross-user collision D1
+  // absorbed the write via ON CONFLICT DO NOTHING and still returned the session,
+  // so the route built a full recap — day number, PRs, XP — from a row it had not
+  // stored. Each store must now answer the question truthfully ABOUT ITSELF.
+  for (const [label, s0] of [["file", file], ["D1", d1]]) {
+    await s0.saveUser(`col-a-${label}`, { profile: { user_id: `col-a-${label}` } });
+    await s0.saveUser(`col-b-${label}`, { profile: { user_id: `col-b-${label}` } });
+    const sid = `col-shared-${label}`;
+    const row = { session_id: sid, date: "2026-08-10T10:00:00.000Z", sets: [] };
+    ok(`addSession: a first write is reported as stored (${label})`,
+      (await s0.addSession(`col-a-${label}`, row)) != null);
+    ok(`addSession: the owner's own replay stays idempotent-success (${label})`,
+      (await s0.addSession(`col-a-${label}`, row)) != null);
+    // The invariant that matters, and it holds for BOTH stores: the return value
+    // and the stored state agree. Where the row lands the store says so; where it
+    // does not, the store says null — never "here is your workout" over nothing.
+    const returned = await s0.addSession(`col-b-${label}`, row);
+    const landed = (await s0.listSessions(`col-b-${label}`, { includeVoided: true, includeQuarantined: true })).length === 1;
+    ok(`addSession: the return value matches whether the row actually landed (${label})`,
+      (returned != null) === landed);
+  }
+
+  // --- restoreMergeArchive reads a tombstone as ABSENT, in both stores ---------
+  // A restored copy is anonymous, so it is itself a legal merge source. Once it is
+  // merged away, the file store used to read its retained document straight out of
+  // db.users and report a merged-away identity as live, while D1 returned null.
+  for (const [label, s0] of [["file", file], ["D1", d1]]) {
+    const src = `res-src-${label}`, own = `res-own-${label}`, arc = `res-arc-${label}`;
+    await s0.saveUser(own, { profile: { user_id: own } });
+    await s0.saveUser(src, { profile: { user_id: src, units: "imperial" }, program: { name: "Archived source programme" } });
+    await s0.reassignUserData(src, own, { archiveId: arc, now: "2026-08-13T10:00:00.000Z" });
+    const first = await s0.restoreMergeArchive(own, arc, `res-copy-${label}`, "2026-08-13T11:00:00.000Z");
+    ok(`restore: the fresh copy reports its own programme (${label})`, first?.program_name === "Archived source programme");
+    // now merge the restored copy away, then ask again
+    await s0.saveUser(`res-next-${label}`, { profile: { user_id: `res-next-${label}` } });
+    await s0.reassignUserData(first.user_id, `res-next-${label}`, { archiveId: `res-arc2-${label}`, now: "2026-08-14T10:00:00.000Z" });
+    const again = await s0.restoreMergeArchive(own, arc, `res-copy2-${label}`, "2026-08-14T11:00:00.000Z");
+    ok(`restore: a merged-away restored copy reads as absent, not live (${label})`,
+      again?.program_name === null && again?.units === null);
+  }
+
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(tmpPath); } catch {}

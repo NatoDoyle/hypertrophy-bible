@@ -76,13 +76,24 @@ export function createD1Store(db) {
     },
     async addSession(id, session) {
       // Idempotent on the session_id PK: a replayed offline workout is a no-op.
-      await db
+      const res = await db
         .prepare(`INSERT INTO sessions (session_id, user_id, date, data)
           SELECT ?, ?, ?, ? WHERE ${notTombstonedOwner}
           ON CONFLICT(session_id) DO NOTHING`)
         .bind(session.session_id, id, session.date ?? null, JSON.stringify(session), id)
         .run();
-      return (await isTombstoned(id)) ? null : session;
+      if (res?.meta?.changes) return session;                    // stored now
+      // Nothing was written. Two reasons, and only one of them used to be
+      // detected: a tombstoned owner (below), or `session_id` colliding with a row
+      // that already exists. `session_id` is a DATABASE-WIDE primary key here, so
+      // the collision can be this user's own replayed offline workout — genuinely
+      // idempotent, report success — or another user's row entirely, which is a
+      // write that silently did not happen. The route builds its recap from the
+      // returned value, so reporting success for the second case is exactly the
+      // optimistic lie the tombstone guard beside it was added to prevent.
+      const mine = await db.prepare("SELECT 1 AS ok FROM sessions WHERE session_id = ? AND user_id = ?")
+        .bind(session.session_id, id).first();
+      return mine ? session : null;
     },
     // Edit or void ONE logged session in place — parity with the file store,
     // including the null-means-not-found / unchanged-means-declined contract.
@@ -164,6 +175,17 @@ export function createD1Store(db) {
         db.prepare("SELECT data FROM users WHERE id = ?").bind(fromId).first(),
         db.prepare("SELECT data FROM users WHERE id = ?").bind(toId).first(),
       ]);
+      // The file store gained this precondition and this one did not — lesson 1
+      // inside the very commit that wrote the guard. Without it the batch below
+      // ran unconditionally: a `toId` that vanished or became a tombstone between
+      // the route's getUser and this call still received every session, weigh-in,
+      // check-in, nutrition log, push subscription and share, and `fromId` was
+      // still tombstoned — the whole graph moved onto an id getUser resolves to
+      // null, so neither account can ever reach it again. Refuse instead, with the
+      // same null the file store returns (see its note on refusal-vs-empty).
+      const fromDoc = fromRow ? JSON.parse(fromRow.data) : null;
+      const toDoc = toRow ? JSON.parse(toRow.data) : null;
+      if (!fromDoc || fromDoc._merged_into || !toDoc || toDoc._merged_into) return null;
       // Every state-changing statement below is in ONE db.batch. As seven
       // sequential awaits, a Worker death mid-sequence left a half-merged
       // account (sessions moved, checkins orphaned, or the from-user deleted
@@ -186,8 +208,8 @@ export function createD1Store(db) {
         db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(toId).first(),
       ]);
       const shareReassigns = !!(fromShareRow && !toShareRow);
-      if (fromRow && toRow) {
-        const fromU = JSON.parse(fromRow.data);
+      {
+        const fromU = fromDoc;
         await this.updateUser(toId, (u) => {
           if (fromU.custom_exercises?.length) {
             u.custom_exercises = u.custom_exercises || [];
@@ -257,7 +279,13 @@ export function createD1Store(db) {
       stmts.push(db.prepare("UPDATE push_subscriptions SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
       // Keep the raw document on the hidden tombstone too. json_set reads the
       // current row inside this transaction, so source-only future fields survive.
-      stmts.push(db.prepare("UPDATE users SET data = json_set(data, '$._merged_into', ?, '$._merged_at', ?, '$._merge_archive_id', ?) WHERE id = ?")
+      // The archive INSERT above is guarded by `_merged_into IS NULL`; this
+      // statement was not, so on an already-tombstoned source the INSERT would be
+      // skipped while this line still overwrote `_merge_archive_id` — pointing the
+      // row at an archive that was never written and destroying the pointer to the
+      // real one. Two halves of one transaction disagreeing about the same
+      // precondition. They agree now.
+      stmts.push(db.prepare("UPDATE users SET data = json_set(data, '$._merged_into', ?, '$._merged_at', ?, '$._merge_archive_id', ?) WHERE id = ? AND json_extract(data, '$._merged_into') IS NULL")
         .bind(toId, now, archiveId, fromId));
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };

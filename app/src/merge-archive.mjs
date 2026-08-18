@@ -4,7 +4,22 @@
 
 export const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
 
-const LIVE_PROFILE_FIELDS = new Set([
+// Server-owned live profile state: written ONLY by the routes that enforce the
+// rules attached to each field, never by a client and never revived by a restore.
+// ONE set, two consumers, because they are the same question asked twice:
+//   - restoredUser() strips these so a safe copy starts capability-free;
+//   - stripServerOwnedProfile() strips these at every wholesale client door, so a
+//     patch cannot forge state the owning route guards (a hand-written `following`
+//     entry skips the live-share check, the no-self-follow check, the 20-token cap
+//     AND the followers_count bump that is the only notification the share owner
+//     ever gets; a hand-written `challenges` array skips MAX_OPEN_CHALLENGES and
+//     bills a listSessions() per forged slot to every /api/challenge and every
+//     hourly push tick).
+// A previous wave guarded exactly ONE field here (`disclaimer_ack`) with a comment
+// citing "guard the siblings" — the sixteen beside it stayed open. The rule is only
+// real if it is enumerable, so `test-routes.mjs` walks this very set through both
+// doors rather than trusting a comment (lesson 33).
+export const LIVE_PROFILE_FIELDS = new Set([
   // Device/push delivery state.
   "celebration", "freeze_pushed_week", "comeback_push", "commitment",
   // Share-token and social state. A restored copy must deliberately opt in again.
@@ -12,6 +27,23 @@ const LIVE_PROFILE_FIELDS = new Set([
   "partner_nudge", "nudge_pushed_at", "nudge_seen_at",
   "challenges", "challenge", "challenge_pushed_at", "challenge_accept_pushed_at",
 ]);
+
+// The client-write set is the live set PLUS the acknowledgement stamp. The one
+// deliberate difference: a RESTORE keeps `disclaimer_ack` (it is the person's own
+// server-stamped acknowledgement, copied from an immutable archive — it travels
+// with them), while a CLIENT may never write it, because that would let a device
+// forge, replace, or mint the record the stamp exists to be.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack"]);
+
+// Every wholesale client->profile door passes through here. Returns a private
+// copy: callers then validate the remaining fields, so mutating the caller's
+// object (or the stored one) would be the bug this guard exists to stop.
+export function stripServerOwnedProfile(profile) {
+  if (profile == null) return profile;
+  const out = { ...profile };
+  for (const key of SERVER_OWNED_PROFILE_FIELDS) delete out[key];
+  return out;
+}
 
 export function archiveSummary(archive) {
   const snap = archive?.snapshot ?? {};

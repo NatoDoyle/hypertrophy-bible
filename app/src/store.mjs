@@ -135,7 +135,14 @@ export function createFileStore(path) {
       // the true rows changed. Parity matters the moment any surface shows "N imported".
       const moved = { sessions: 0, bodyweights: 0 };
       const fromU = db.users[fromId], toU = db.users[toId];
-      if (!fromU || fromU._merged_into || !toU || toU._merged_into) return moved;
+      // A REFUSAL, reported as null — never as an empty `moved`. Those two states
+      // are opposites that used to be byte-identical: "the source had nothing to
+      // move" is a successful merge, while "one side vanished or is already a
+      // tombstone" means nothing happened and the caller's single-use grant bought
+      // it nothing. The route can only roll back or apologise for what it can see
+      // (lesson 46), and `null` is the same not-possible signal `updateUser`
+      // already returns, so callers need no new vocabulary.
+      if (!fromU || fromU._merged_into || !toU || toU._merged_into) return null;
 
       const sourceSubs = Object.values(db.push_subscriptions ?? {}).filter((s) => s.user_id === fromId);
       const sourceShares = Object.entries(db.shares ?? {})
@@ -261,10 +268,16 @@ export function createFileStore(path) {
         archive.restored_at ??= now;
         flush();
       }
+      // Read the restored copy through the SAME tombstone rule getUser applies: a
+      // restored copy can itself later be merged away, and D1 resolves that row to
+      // null while this store used to read the retained document straight out of
+      // `db.users`, reporting a merged-away identity as live. Two stores, two
+      // answers, same inputs — the parity break CLAUDE.md names as a bug.
+      const restored = await this.getUser(id);
       return {
         user_id: id,
-        program_name: db.users[id]?.program?.name ?? null,
-        units: db.users[id]?.profile?.units ?? null,
+        program_name: restored?.program?.name ?? null,
+        units: restored?.profile?.units ?? null,
         archive: archiveSummary(archive),
       };
     },

@@ -12,6 +12,7 @@ import { requestMagicLink } from "../src/auth.mjs";
 import { isoWeekKey, isoWeekKeyLocal, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
+import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -1937,6 +1938,76 @@ try {
   await json("POST", "/api/following/remove", { user_id: celU, token: folShare });
   await json("POST", "/api/following", { user_id: celU, token: folShare });
   ok("#follower unfollow → refollow is a genuine new-follower event again", (await store.getUser(folOwner)).profile.followers_count === 2);
+
+  // --- server-owned profile fields: ENUMERABLE, at every wholesale door -------
+  // Not "we strip the sensitive one" in a comment — this walks the whole exported
+  // set through BOTH doors that accept a client-supplied profile object. A field
+  // added to the set without a guard fails here; a guard removed fails here; a
+  // THIRD wholesale door added later is caught by the door census below.
+  // Reachable by any client: auth is possession-of-UUID, so "attacker" means
+  // "anyone with their own account", and the damage lands on OTHER users
+  // (a forged `following` entry watches a share whose owner is never told).
+  const forged = {
+    celebration: { kind: "pr", at: 1 }, freeze_pushed_week: "2026-W01", comeback_push: { stage: 3 },
+    commitment: { week: "2026-W01", days: ["mon"] },
+    following: ["forged-share-token"], followers_count: 999, followers_pushed: 999,
+    cheers_pushed: 999, cheers_seen: 999,
+    partner_nudge: { at: 1 }, nudge_pushed_at: 1, nudge_seen_at: 1,
+    challenges: Array.from({ length: 50 }, (_, i) => ({ id: `forged-${i}`, week: "2026-W01", partner_token: "x", status: "open" })),
+    challenge: { id: "forged", week: "2026-W01" },
+    challenge_pushed_at: 1, challenge_accept_pushed_at: 1,
+    disclaimer_ack: { v: 99, at: "1970-01-01T00:00:00.000Z" },
+  };
+  // The fixture must COVER the set — otherwise this test silently shrinks the day
+  // someone adds a field (the "green gate proves only what it measures" trap).
+  ok("#owned the forged fixture covers every server-owned field",
+    [...SERVER_OWNED_PROFILE_FIELDS].every((k) => Object.hasOwn(forged, k))
+    && Object.keys(forged).every((k) => SERVER_OWNED_PROFILE_FIELDS.has(k)));
+
+  // DOOR 1 — onboard. An account must not be BORN holding forged state.
+  const ownedOnboard = await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    ...forged,
+  } });
+  const ownedU = ownedOnboard.data.user_id;
+  const bornProfile = (await store.getUser(ownedU)).profile;
+  const leakedAtOnboard = [...SERVER_OWNED_PROFILE_FIELDS].filter((k) => k !== "disclaimer_ack" && bornProfile[k] !== undefined);
+  ok("#owned POST /api/onboard strips every server-owned field", leakedAtOnboard.length === 0);
+  // disclaimer_ack is the one field the server REPLACES rather than drops: the
+  // stamp must be the server's own, never the client's forged v99.
+  ok("#owned onboard stamps its OWN disclaimer_ack over the posted one",
+    bornProfile.disclaimer_ack?.v === 1 && bornProfile.disclaimer_ack?.at !== "1970-01-01T00:00:00.000Z");
+
+  // DOOR 2 — plan/regenerate (the Settings save). Same set, same result.
+  const realAck = bornProfile.disclaimer_ack;
+  await json("POST", "/api/plan/regenerate", { user_id: ownedU, profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    ...forged,
+  } });
+  const patchedProfile = (await store.getUser(ownedU)).profile;
+  const leakedAtPatch = [...SERVER_OWNED_PROFILE_FIELDS].filter((k) => k !== "disclaimer_ack" && patchedProfile[k] !== undefined);
+  ok("#owned POST /api/plan/regenerate strips every server-owned field", leakedAtPatch.length === 0);
+  ok("#owned a settings save cannot forge or replace the acknowledgement stamp",
+    JSON.stringify(patchedProfile.disclaimer_ack) === JSON.stringify(realAck));
+  // The concrete harm, asserted rather than described: the forged follow must not
+  // be readable back as a partner, and the forged 50 slots must not have become
+  // challenge state that every sweep tick then pays for.
+  const forgedFollowing = await app.request("/api/following", { headers: { "X-HB-User": ownedU } });
+  ok("#owned a forged `following` never becomes a real partner",
+    ((await forgedFollowing.json()).partners ?? []).length === 0);
+  ok("#owned a forged `challenges` array never becomes challenge state",
+    challengeSlotsT(patchedProfile).length === 0);
+
+  // The door census: this test can only be as good as its list of doors, so assert
+  // the list. `body.profile` reaching a spread is what makes a door wholesale —
+  // if a third one appears, this count changes and someone has to look (lesson 33:
+  // the enumerable check, not the confident comment).
+  const appSrc = await (await import("node:fs/promises")).readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
+  ok("#owned there are exactly TWO wholesale client->profile doors, both guarded",
+    (appSrc.match(/stripServerOwnedProfile\(/g) ?? []).length === 2
+    && !/\.\.\.body\.profile|\{ \.\.\.body\.profile \}/.test(appSrc));
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

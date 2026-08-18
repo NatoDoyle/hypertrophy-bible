@@ -10,6 +10,7 @@ import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, c
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 import { normalizeSessionLocalDate, normalizeSessionTiming, validLocalDate } from "./session-time.mjs";
+import { stripServerOwnedProfile } from "./merge-archive.mjs";
 
 // The injury regions the ENGINE can actually act on, read from the KB rather than
 // hand-listed — a hand-listed copy is how the client came to offer 6 of the 8
@@ -214,7 +215,13 @@ export function createApp(store, config = {}) {
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +
   // exercise DB + equipment/injuries), with a rationale we can explain.
   app.post("/api/onboard", async (c) => {
-    const { profile } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
+    const { profile: posted } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
+    // The FIRST of the two wholesale client->profile doors. Whatever arrives here
+    // becomes the stored profile verbatim, so the server-owned set is stripped
+    // before any other line reads it — an account cannot be BORN holding forged
+    // social/push state any more than it can acquire it later (the sibling door
+    // below). One shared set, walked by an enumerable test (merge-archive.mjs).
+    const profile = stripServerOwnedProfile(posted);
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
     // A client-supplied date is hostile until parsed (possession-of-UUID auth means
     // any client can post): junk silently drops to null rather than corrupting the
@@ -278,12 +285,16 @@ export function createApp(store, config = {}) {
     const id = body.user_id;
     if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
     // A profile edit is a generic spread boundary, so make a private editable copy
-    // BEFORE validating or merging it. `disclaimer_ack` is evidence of the
-    // server-stamped onboarding acknowledgement, never a client-editable profile
-    // preference: retaining it here would let a later Settings save forge, replace,
-    // or mint that record for a legacy account.
-    const profilePatch = body.profile ? { ...body.profile } : null;
-    if (profilePatch) delete profilePatch.disclaimer_ack;
+    // BEFORE validating or merging it. This used to strip `disclaimer_ack` alone,
+    // under a comment citing "guard the siblings" — the sixteen server-owned
+    // fields beside it stayed writable, so a patch could forge `following`
+    // (skipping the live-share check, the self-follow check, the 20-token cap and
+    // the followers_count bump that is the share owner's ONLY notification) or an
+    // unbounded `challenges` array (skipping MAX_OPEN_CHALLENGES and billing a
+    // listSessions per forged slot to every sweep tick). Now both wholesale doors
+    // pass through one shared set, and a test walks it rather than a comment
+    // claiming coverage (lesson 33).
+    const profilePatch = stripServerOwnedProfile(body.profile ?? null);
     // Same trust-boundary guard as /api/onboard: junk collapses to null.
     if (profilePatch?.goal_event_date != null && !validLocalDate(profilePatch.goal_event_date)) profilePatch.goal_event_date = null;
     if (profilePatch?.injuries != null) profilePatch.injuries = sanitizeInjuries(profilePatch.injuries);
@@ -1585,13 +1596,23 @@ export function createApp(store, config = {}) {
     if (!link || link.used || link.purpose !== "merge-grant" || link.user_id !== to_user_id || Date.now() > link.expires_at) {
       return c.json({ error: "bad-grant" }, 403);
     }
-    // Atomically consume the grant: if a concurrent merge already spent it,
-    // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
-    if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
+    // Every refusable check runs BEFORE the grant is spent. It used to run after,
+    // so a plain 404 or a from-user-has-account 409 consumed a single-use grant and
+    // left the caller unable to retry a merge that had not happened — the grant is
+    // the scarce thing here, so nothing that can say "no" should cost one.
     const [from, to] = await Promise.all([store.getUser(from_user_id), store.getUser(to_user_id)]);
     if (!from || !to) return c.json({ error: "unknown user" }, 404);
     if (await store.getAccountByUserId(from_user_id)) return c.json({ error: "from-user-has-account" }, 409);
+    // Atomically consume the grant: if a concurrent merge already spent it,
+    // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
+    if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
     const moved = await store.reassignUserData(from_user_id, to_user_id);
+    // The store REFUSED (null): between the reads above and the write, a concurrent
+    // merge tombstoned one of the two rows. Nothing moved, so say nothing moved —
+    // `{merged:true, sessions:0}` is indistinguishable from a legitimately empty
+    // source, and the client acts on it by clearing the offline queue it was about
+    // to hand over. Report it and let the caller ask for a fresh link.
+    if (!moved) return c.json({ error: "merge-unavailable" }, 409);
     // The merge just rewrote the survivor's session history, and merge-profile may
     // have adopted a pending echo computed against the OTHER account's history —
     // re-earn any pending marker from the combined truth before the sweep pushes
