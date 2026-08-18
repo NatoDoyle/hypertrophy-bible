@@ -57,6 +57,10 @@ export function archiveSummary(archive) {
       bodyweights: snap.bodyweights?.length ?? 0,
       checkins: snap.checkins?.length ?? 0,
       nutrition_logs: snap.nutrition_logs?.length ?? 0,
+      // Recorded, never revived: what the source account had, without what it
+      // took to use any of it. A restore deliberately re-enables none of these.
+      push_subscriptions: snap.revoked_counts?.push_subscriptions ?? 0,
+      shares: snap.revoked_counts?.shares ?? 0,
     },
   };
 }
@@ -90,6 +94,34 @@ export function restoredUser(snapshotUser, restoredUserId) {
   return user;
 }
 
+// What an archive KEEPS is a different question from what a restore REVIVES, and
+// they were answered differently. A restore is deliberately capability-free: it
+// writes only the user document, sessions, weigh-ins, check-ins and nutrition
+// logs, and strips every live/social field on the way. The snapshot, meanwhile,
+// captured a permanent plaintext copy of push endpoints WITH their p256dh/auth
+// keys (a complete send capability), share_ids (which schema.sql itself calls "an
+// unguessable capability token"), and magic links with their token_hash, email and
+// IP. Nothing read them: not archiveSummary, not either restore path. And nothing
+// deletes a merge_archives row, so unsubscribing a device revoked the live
+// subscription while its archived twin outlived it indefinitely.
+//
+// So they are not captured. Recoverability is preserved in full — every collection
+// a restore can materialize is still here, byte for byte. What is dropped is only
+// the material a restore refuses to use, which was pure retention risk. The COUNTS
+// survive, because "this account had two devices and a share link" is honest audit
+// value that carries no authority; they are surfaced by archiveSummary, so they
+// are read rather than merely stored (a field nobody consumes is its own defect).
+//
+// This is the last moment it is free: the feature has never been deployed, so no
+// archive containing this material exists anywhere.
 export function archiveSnapshot({ user, sessions = [], bodyweights = [], checkins = [], nutrition_logs = [], push_subscriptions = [], push_deliveries = [], shares = [], magic_links = [] }) {
-  return clone({ user, sessions, bodyweights, checkins, nutrition_logs, push_subscriptions, push_deliveries, shares, magic_links });
+  return clone({
+    user, sessions, bodyweights, checkins, nutrition_logs,
+    revoked_counts: {
+      push_subscriptions: push_subscriptions.length,
+      push_deliveries: push_deliveries.length,
+      shares: shares.length,
+      magic_links: magic_links.length,
+    },
+  });
 }

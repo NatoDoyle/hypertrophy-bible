@@ -2204,7 +2204,14 @@ function safeMergeArchive(raw) {
     // than exposing implementation details or assuming a copy was restored.
     state: raw.state === "restored" ? "restored" : raw.state === "restoring" ? "restoring" : "available",
     restored_at: typeof raw.restored_at === "string" ? raw.restored_at : null,
+    // Split deliberately: `counts` is what a restore BRINGS BACK, `not_restored`
+    // is what the source account had that a restore will not revive. The archive
+    // records those as counts only — it never keeps the endpoint keys, share token
+    // or magic-link hash that would make them usable — so this is the most the
+    // client could ever say about them, and saying it is better than a user
+    // discovering their old reminders never came back.
     counts: { sessions: count("sessions"), bodyweights: count("bodyweights"), checkins: count("checkins"), nutrition: count("nutrition_logs") },
+    not_restored: { devices: count("push_subscriptions"), shares: count("shares") },
   };
 }
 function archiveWhen(value) {
@@ -2219,6 +2226,16 @@ function archiveCountSummary(counts) {
     counts.nutrition ? `${counts.nutrition} food log${counts.nutrition === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "saved account data";
+}
+// Names what the copy will be missing, so "capabilities stay off" is concrete
+// rather than abstract. Silent when the source had none, so nobody reads a
+// sentence about devices they never had.
+function archiveNotRestoredNote(notRestored) {
+  const parts = [
+    notRestored?.devices ? `${notRestored.devices} notification device${notRestored.devices === 1 ? "" : "s"}` : "",
+    notRestored?.shares ? "a public share link" : "",
+  ].filter(Boolean);
+  return parts.length ? ` That account had ${parts.join(" and ")} — you'd set ${parts.length > 1 ? "those" : "that"} up again on the copy.` : "";
 }
 function restoreUnitsLabel(units) {
   return units === "imperial" ? "pounds" : units === "metric" ? "kilograms" : null;
@@ -2267,7 +2284,7 @@ function mergeArchiveCard(ownerId) {
     return `<div class="card" style="margin-top:10px"><b>↩︎ Merged account recovery</b>
       <p class="muted" style="margin:8px 0">Archived ${esc(archiveWhen(archive.created_at))} · ${esc(archiveCountSummary(archive.counts))}</p>
       <p class="muted" style="margin:8px 0">${restoredLabel}</p>
-      <p class="muted" style="font-size:.85rem;margin:8px 0">Training records and settings are copied. For safety, external capabilities stay off: no push reminders, public shares, follows, cheers, or challenges are reactivated.</p>
+      <p class="muted" style="font-size:.85rem;margin:8px 0">Training records and settings are copied. For safety, external capabilities stay off: no push reminders, public shares, follows, cheers, or challenges are reactivated.${archiveNotRestoredNote(archive.not_restored)}</p>
       ${outcome || `<button class="btn secondary" data-restore-archive="${esc(archive.archive_id)}">${actionLabel}</button>`}
       ${notice ? `<p class="muted" style="margin:8px 0" role="status">${esc(notice)}</p>` : ""}
     </div>`;

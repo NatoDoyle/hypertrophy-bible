@@ -4,13 +4,31 @@
 // Rows hold a JSON blob per record — the app owns the shape, D1 is just durable
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile } from "./merge-profile.mjs";
-import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
+import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
 import { archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
 // logged data" — but must be invisible to every engine that reads history. The
 // flag lives in the JSON blob, so this predicate is how SQL asks about it.
 const notVoided = (col = "data") => `json_extract(${col}, '$.voided_at') IS NULL`;
+
+// A SQL prefilter for "this row could conceivably be derivable" — narrowing on
+// SHAPE only, never deciding derivability. isDerivableSession() in session-time.mjs
+// stays the single authority; this exists so the timing rules can be enforced
+// without pulling every session blob into the Worker.
+//
+// Why it is a provable superset of what the JS predicate accepts:
+//   - every date JS can parse begins with a literal YYYY-MM-DD, so the GLOB can
+//     only ever drop rows JS would reject anyway;
+//   - the ceiling is compared against the row's leading calendar day, which for a
+//     full ISO timestamp carrying a positive offset can read ONE DAY LATER than the
+//     UTC day JS judges. Hence the extra day of headroom: erring loose keeps this a
+//     filter, and lets the JS predicate remain the only thing that says "no".
+// A gate that narrows its input has to say so; a parity test asserts the SQL never
+// excludes a row the JS predicate would have kept.
+const DERIVABLE_SHAPE = `date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(date, 1, 10) <= ?`;
+const derivableShapeBound = (nowMs) =>
+  new Date(nowMs + SESSION_FUTURE_SLACK_MS + 86400000).toISOString().slice(0, 10);
 // A child write may race an account merge after the route performed its initial
 // getUser() check. Keep the guard in the SQL statement itself: a tombstoned
 // source must never grow a new, unarchived session/daily/device row. A missing
@@ -242,10 +260,11 @@ export function createD1Store(db) {
           'bodyweights', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM bodyweights WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
           'checkins', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM checkins WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
           'nutrition_logs', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM nutrition_logs WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
-          'push_subscriptions', json(COALESCE((SELECT json_group_array(json_object('endpoint', endpoint, 'user_id', user_id, 'p256dh', p256dh, 'auth', auth, 'created_at', created_at)) FROM push_subscriptions WHERE user_id = ?), '[]')),
-          'push_deliveries', json(COALESCE((SELECT json_group_array(json_object('endpoint', d.endpoint, 'last_ok_at', d.last_ok_at)) FROM push_deliveries d WHERE EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.endpoint = d.endpoint AND p.user_id = ?)), '[]')),
-          'shares', json(COALESCE((SELECT json_group_array(json_object('share_id', s.share_id, 'user_id', s.user_id, 'created_at', s.created_at, 'cheers', COALESCE(c.count, 0))) FROM shares s LEFT JOIN share_cheers c ON c.share_id = s.share_id WHERE s.user_id = ?), '[]')),
-          'magic_links', json(COALESCE((SELECT json_group_array(json_object('token_hash', token_hash, 'email', email, 'rl_key', rl_key, 'ip', ip, 'user_id', user_id, 'purpose', purpose, 'expires_at', expires_at, 'used', used, 'created_at', created_at)) FROM magic_links WHERE user_id = ?), '[]'))
+          'revoked_counts', json_object(
+            'push_subscriptions', (SELECT COUNT(*) FROM push_subscriptions WHERE user_id = ?),
+            'push_deliveries', (SELECT COUNT(*) FROM push_deliveries d WHERE EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.endpoint = d.endpoint AND p.user_id = ?)),
+            'shares', (SELECT COUNT(*) FROM shares WHERE user_id = ?),
+            'magic_links', (SELECT COUNT(*) FROM magic_links WHERE user_id = ?))
         ), 'available', NULL, NULL
         FROM users u
         WHERE u.id = ? AND json_extract(u.data, '$._merged_into') IS NULL
@@ -400,9 +419,15 @@ export function createD1Store(db) {
         const q = db.prepare(sql);
         return (await (binds.length ? q.bind(...binds) : q).first())?.c ?? 0;
       };
-      const { results } = await db.prepare("SELECT user_id, data FROM sessions").all();
-      const safe = results.map((r) => ({ user_id: r.user_id, session: JSON.parse(r.data) }))
-        .map((r) => ({ ...r, ms: isDerivableSession(r.session, now) ? parseSessionInstant(r.session.date) : null }))
+      // Same shape-narrowing as above: the aggregate needs a user_id and an
+      // instant, never a whole workout. `SELECT user_id, data FROM sessions` with
+      // no WHERE pulled every blob in the database into the Worker on each call.
+      const { results } = await db
+        .prepare(`SELECT user_id, date, json_extract(data, '$.local_date') AS local_date FROM sessions
+          WHERE ${DERIVABLE_SHAPE}`)
+        .bind(derivableShapeBound(now)).all();
+      const safe = results
+        .map((r) => ({ user_id: r.user_id, ms: isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, now) ? parseSessionInstant(r.date) : null }))
         .filter((r) => r.ms != null);
       const activeIn = (from, to = null) => new Set(safe.filter((r) => r.ms >= from && (to == null || r.ms < to)).map((r) => r.user_id));
       const cur = activeIn(d7), prev = activeIn(d14, d7);
@@ -423,21 +448,48 @@ export function createD1Store(db) {
       };
     },
     // Voided sessions must not count as "last trained" (parity with the file store).
-    async latestSessionDate(user_id) {
-      const { results } = await db.prepare("SELECT data FROM sessions WHERE user_id = ?").bind(user_id).all();
-      let latest = null, latestMs = null;
+    async latestSessionDate(user_id, nowMs = Date.now()) {
+      // Timing quarantine is a JS predicate, so this can no longer be a bare
+      // SQL MAX(date). It briefly became "pull every session blob and parse it",
+      // which is O(all sessions) per user and, through listAccountLastSessions
+      // below, ran once per email account on every cron tick. Neither extreme is
+      // needed: SQL narrows on shape and projects the only TWO fields the
+      // predicate reads, so no blob crosses the wire and the decision still
+      // belongs entirely to isDerivableSession.
+      const { results } = await db
+        .prepare(`SELECT date, json_extract(data, '$.local_date') AS local_date FROM sessions
+          WHERE user_id = ? AND ${notVoided()} AND ${DERIVABLE_SHAPE} ORDER BY date DESC`)
+        .bind(user_id, derivableShapeBound(nowMs)).all();
       for (const row of results) {
-        const s = JSON.parse(row.data);
-        const ms = !s.voided_at && isDerivableSession(s) ? parseSessionInstant(s.date) : null;
-        if (ms != null && (latestMs == null || ms > latestMs)) { latest = s.date; latestMs = ms; }
+        if (isDerivableSession({ date: row.date, local_date: row.local_date ?? null }, nowMs)) return row.date;
       }
-      return latest;
+      return null;
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Parity with the file store.
-    async listAccountLastSessions() {
-      const { results } = await db.prepare("SELECT email, user_id FROM accounts").all();
-      return Promise.all(results.map(async (r) => ({ email: r.email, user_id: r.user_id, last_date: await this.latestSessionDate(r.user_id) })));
+    async listAccountLastSessions(nowMs = Date.now()) {
+      // ONE round trip. This was a single LEFT JOIN ... GROUP BY, then became one
+      // latestSessionDate() call per account — and both the push sweep and the
+      // comeback sweep call it as their FIRST statement, outside the per-user
+      // try/catch each of them carefully builds. Past the subrequest budget the
+      // whole sweep dies for every user at once, which is the opposite of the
+      // isolation those loops were written for.
+      const bound = derivableShapeBound(nowMs);
+      const { results } = await db
+        .prepare(`SELECT a.email, a.user_id, s.date AS date, json_extract(s.data, '$.local_date') AS local_date
+          FROM accounts a
+          LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")}
+            AND s.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(s.date, 1, 10) <= ?
+          ORDER BY s.date DESC`)
+        .bind(bound).all();
+      const best = new Map();   // user_id -> {email, last_date}
+      for (const r of results) {
+        if (!best.has(r.user_id)) best.set(r.user_id, { email: r.email, user_id: r.user_id, last_date: null });
+        const acc = best.get(r.user_id);
+        if (acc.last_date == null && r.date != null
+          && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs)) acc.last_date = r.date;
+      }
+      return [...best.values()];
     },
     // created_at is written explicitly in the same ISO-8601 format the file
     // store uses (new Date().toISOString()), not left to the accounts table's

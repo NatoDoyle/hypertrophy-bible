@@ -497,7 +497,10 @@ try {
 
   const expectedArchiveSummary = {
     archive_id: ARC_ID, created_at: ARC_MERGED_AT, state: "available", restored_at: null,
-    counts: { sessions: 2, bodyweights: 2, checkins: 2, nutrition_logs: 2 },
+    // push_subscriptions/shares are RECORDED as counts and never as material, so
+    // the owner-facing summary can say what the source account had while the
+    // snapshot holds nothing that could act on their behalf.
+    counts: { sessions: 2, bodyweights: 2, checkins: 2, nutrition_logs: 2, push_subscriptions: 1, shares: 1 },
   };
   const fileArchiveList = await file.listMergeArchives(ARC_SURVIVOR_ID);
   const d1ArchiveList = await d1.listMergeArchives(ARC_SURVIVOR_ID);
@@ -524,14 +527,36 @@ try {
       && snapshot.bodyweights?.find((x) => x.date === "2026-06-15")?.kg === 71
       && snapshot.checkins?.find((x) => x.date === "2026-06-16")?.sleep === 4
       && snapshot.nutrition_logs?.find((x) => x.date === "2026-06-17")?.kcal === 1900
-      && snapshot.push_subscriptions?.[0]?.endpoint === arcPush.endpoint
-      && snapshot.push_deliveries?.[0]?.endpoint === arcPush.endpoint
-      && snapshot.push_deliveries?.[0]?.last_ok_at === 2222222222
-      && snapshot.shares?.[0]?.share_id === "archive-source-share"
-      && snapshot.shares?.[0]?.cheers === 2
-      && snapshot.magic_links?.[0]?.token_hash === arcMagic.token_hash;
+      // What the archive RECORDS about revoked-capability collections is a count,
+      // never the material. This assertion is the inverse of the one it replaces:
+      // it used to require the endpoint keys, share token and magic-link hash to be
+      // present, which is the state that made an unsubscribe survivable in a copy
+      // nothing purges. The flip is the point — never relax it back.
+      && snapshot.revoked_counts?.push_subscriptions === 1
+      && snapshot.revoked_counts?.push_deliveries === 1
+      && snapshot.revoked_counts?.shares === 1
+      && snapshot.revoked_counts?.magic_links >= 1
+      && snapshot.push_subscriptions === undefined
+      && snapshot.push_deliveries === undefined
+      && snapshot.shares === undefined
+      && snapshot.magic_links === undefined;
   ok("archive raw snapshot: file contains the complete pre-merge source graph", archiveGraphIsComplete(fileRawArchive?.snapshot));
   ok("archive raw snapshot: D1 contains the complete pre-merge source graph", archiveGraphIsComplete(d1Snapshot));
+
+  // The retention property stated as a string search over the RAW stored blob, not
+  // as a shape check: a capability that reappears under a different key name would
+  // pass the structural assertions above and still be a permanent plaintext copy of
+  // a credential in a row nothing ever deletes.
+  const rawArchiveText = (typeof fileRawArchive?.snapshot === "string" ? fileRawArchive.snapshot : JSON.stringify(fileRawArchive?.snapshot ?? {}))
+    + (d1RawArchive?.snapshot ?? "");
+  ok("archive raw snapshot: no push endpoint, encryption key, share token or magic-link hash is stored anywhere in it",
+    !rawArchiveText.includes(arcPush.endpoint)
+    && !rawArchiveText.includes(arcPush.p256dh) && !rawArchiveText.includes(arcPush.auth)
+    && !rawArchiveText.includes("archive-source-share")
+    && !rawArchiveText.includes(arcMagic.token_hash));
+  ok("archive summary: the owner still learns WHAT the source had, without what it took to use it",
+    (await file.listMergeArchives(ARC_SURVIVOR_ID))[0]?.counts?.push_subscriptions === 1
+    && (await d1.listMergeArchives(ARC_SURVIVOR_ID))[0]?.counts?.shares === 1);
   const d1TombstoneRow = await shim.prepare("SELECT data FROM users WHERE id = ?").bind(ARC_SOURCE_ID).first();
   const tombstonePreservesSource = (user) =>
     user?.top_level_source_only?.proof === "full-document-preserved"
@@ -765,6 +790,69 @@ try {
     ok(`restore: a merged-away restored copy reads as absent, not live (${label})`,
       again?.program_name === null && again?.units === null);
   }
+
+  // --- the SQL prefilter must be a SUPERSET of the JS predicate ---------------
+  // D1 narrows on SHAPE in SQL so the timing rules can be enforced without shipping
+  // every session blob to the Worker. That puts a second, weaker copy of a rule in
+  // a second language — the exact arrangement that lets a gate and its product
+  // drift apart. It is only safe while SQL never says "no" to a row the JS
+  // predicate would keep, so assert precisely that, over the awkward cases.
+  const shapeRows = [
+    ["plain calendar day", "2026-08-10", null],
+    ["full ISO in UTC", "2026-08-11T10:00:00.000Z", null],
+    // The reason the prefilter carries a day of headroom: this row's leading
+    // calendar day is the 12th while the instant it denotes is the 11th in UTC.
+    ["full ISO with a +13:00 offset", "2026-08-12T01:00:00+13:00", null],
+    ["a day that does not exist", "2026-02-29", null],
+    ["free text", "yesterday", null],
+    ["empty", "", null],
+    ["far future", "2099-01-01T00:00:00.000Z", null],
+    ["valid instant, impossible local_date", "2026-08-09T10:00:00.000Z", "2026-13-01"],
+    ["valid instant, valid local_date", "2026-08-08T10:00:00.000Z", "2026-08-08"],
+    // THE case the prefilter's day of headroom exists for, pinned to SHAPE_NOW's
+    // ceiling. Its leading calendar day (2030-06-03) is one past the UTC ceiling
+    // the JS predicate uses, while the instant it denotes (2030-06-02T12:00Z) is
+    // inside it — so JS keeps this row and a prefilter without headroom would drop
+    // it, breaking the superset property silently. Without this fixture the
+    // headroom can be deleted and every other assertion still passes.
+    ["at the ceiling, +13:00 offset — derivable, but its calendar prefix is a day later", "2030-06-03T01:00:00+13:00", null],
+  ];
+  // Deliberately NOT "around now": if both stores quietly used their own clock,
+  // a fixture dated today would agree by coincidence and prove nothing. Pinning it
+  // years ahead makes the far-future row genuinely far-future for D1 and — only if
+  // the parameter is really honoured — for the file store too.
+  const SHAPE_NOW = Date.parse("2030-06-01T12:00:00.000Z");
+  for (const [i, [label, date, local_date]] of shapeRows.entries()) {
+    const row = { session_id: `shape-${i}`, date, ...(local_date ? { local_date } : {}), sets: [] };
+    await file.saveUser(`shape-u-${i}`, { profile: { user_id: `shape-u-${i}` } });
+    await d1.saveUser(`shape-u-${i}`, { profile: { user_id: `shape-u-${i}` } });
+    await file.addSession(`shape-u-${i}`, row);
+    await d1.addSession(`shape-u-${i}`, row);
+    const f = await file.latestSessionDate(`shape-u-${i}`, SHAPE_NOW);
+    const d = await d1.latestSessionDate(`shape-u-${i}`, SHAPE_NOW);
+    ok(`prefilter superset: file and D1 agree on "${label}" (${JSON.stringify(f)})`, f === d);
+  }
+  // ...and the same over ONE user holding all of them at once, so the winner is
+  // chosen from a mixed set rather than each row being judged in isolation.
+  await file.saveUser("shape-all", { profile: { user_id: "shape-all" } });
+  await d1.saveUser("shape-all", { profile: { user_id: "shape-all" } });
+  for (const [i, [, date, local_date]] of shapeRows.entries()) {
+    const row = { session_id: `shape-all-${i}`, date, ...(local_date ? { local_date } : {}), sets: [] };
+    await file.addSession("shape-all", row);
+    await d1.addSession("shape-all", row);
+  }
+  const fileAll = await file.latestSessionDate("shape-all", SHAPE_NOW);
+  const d1All = await d1.latestSessionDate("shape-all", SHAPE_NOW);
+  ok("prefilter superset: the latest derivable row is the same in both stores", fileAll === d1All);
+  ok("prefilter superset: it is a REAL answer, not both stores returning null (a vacuous pass)", fileAll != null);
+  ok("prefilter superset: the far-future and malformed rows never win", fileAll === "2030-06-03T01:00:00+13:00");
+
+  // listAccountLastSessions is the sweep's first statement; it must agree too.
+  await file.saveAccount("shape@example.com", "shape-all", "2026-08-01T00:00:00.000Z");
+  await d1.saveAccount("shape@example.com", "shape-all", "2026-08-01T00:00:00.000Z");
+  const fileAcc = (await file.listAccountLastSessions(SHAPE_NOW)).find((a) => a.user_id === "shape-all");
+  const d1Acc = (await d1.listAccountLastSessions(SHAPE_NOW)).find((a) => a.user_id === "shape-all");
+  same("prefilter superset: listAccountLastSessions agrees across stores", fileAcc, d1Acc);
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

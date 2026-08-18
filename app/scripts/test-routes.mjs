@@ -384,11 +384,19 @@ try {
   const devArchive = (ownerArchives.archives ?? []).find((a) => a.counts?.sessions === 1);
   const devArchiveId = devArchive?.archive_id ?? "missing-archive";
   const safeArchiveKeys = new Set(["archive_id", "created_at", "state", "restored_at", "counts"]);
+  // `counts` now also records how many push subscriptions and share links the
+  // source account HAD — numbers only; the archive deliberately no longer stores
+  // the endpoint keys or the share token that would make either usable. So the
+  // leak check moved from the whole object to its VALUES: a key literally named
+  // "shares" is not a leak, a share token is. Checking the serialized object
+  // wholesale conflated the two and would have blocked an honest count forever.
+  const countValues = Object.values(devArchive?.counts ?? {});
   ok("#215 the merge survivor sees a safe archive summary, never its source graph",
     ownerArchivesRes.status === 200 && !!devArchive
     && Object.keys(devArchive).every((key) => safeArchiveKeys.has(key))
-    && Object.keys(devArchive.counts ?? {}).sort().join(",") === "bodyweights,checkins,nutrition_logs,sessions"
-    && !/snapshot|source|endpoint|share|token|magic|user_id/i.test(JSON.stringify(devArchive)));
+    && Object.keys(devArchive.counts ?? {}).sort().join(",") === "bodyweights,checkins,nutrition_logs,push_subscriptions,sessions,shares"
+    && countValues.length === 6 && countValues.every((v) => typeof v === "number")
+    && !/snapshot|source|endpoint|token|magic|user_id/i.test(JSON.stringify({ ...devArchive, counts: countValues })));
 
   // An unrelated active identity gets an empty index, while the tombstoned source
   // cannot even reach the endpoint. Neither response may disclose an archive id.

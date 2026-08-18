@@ -354,20 +354,24 @@ export function createFileStore(path) {
     // Voided sessions must not count as "last trained" — a user who corrects away
     // their only recent workout genuinely hasn't trained, and the comeback nudge
     // should say so. Same exclusion as listSessions (D1 does it in SQL).
-    async latestSessionDate(user_id) {
+    // `nowMs` is a real parameter, not decoration: derivability depends on the
+    // clock (a far-future row stops being far-future once time reaches it), and D1
+    // takes one. A store that silently used its own clock while the other honoured
+    // the argument would make every parity test agree only on the day it was run.
+    async latestSessionDate(user_id, nowMs = Date.now()) {
       let latest = null, latestMs = null;
       for (const s of db.sessions[user_id] ?? []) {
-        const ms = !s.voided_at && isDerivableSession(s) ? parseSessionInstant(s.date) : null;
+        const ms = !s.voided_at && isDerivableSession(s, nowMs) ? parseSessionInstant(s.date) : null;
         if (ms != null && (latestMs == null || ms > latestMs)) { latest = s.date; latestMs = ms; }
       }
       return latest;
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
-    async listAccountLastSessions() {
+    async listAccountLastSessions(nowMs = Date.now()) {
       return Promise.all(Object.values(db.accounts).map(async (a) => ({
         email: a.email, user_id: a.user_id,
-        last_date: await this.latestSessionDate(a.user_id),
+        last_date: await this.latestSessionDate(a.user_id, nowMs),
       })));
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
