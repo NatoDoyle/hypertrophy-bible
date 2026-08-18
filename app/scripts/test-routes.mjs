@@ -12,6 +12,7 @@ import { requestMagicLink } from "../src/auth.mjs";
 import { isoWeekKey, isoWeekKeyLocal, GRADUATION } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
+import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -346,6 +347,10 @@ try {
   // devQ (the merged-away device) also has a push subscription + a custom exercise —
   // both must survive the merge onto devP (#26: push subs follow; CAS custom-ex merge).
   await json("POST", "/api/push/subscribe", { user_id: devQ, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/merge26", keys: { p256dh: "x", auth: "y" } } });
+  // Deliberately include an externally-capable share in the source graph too. The
+  // survivor keeps it during the merge, but a later safe-copy restore must never
+  // resurrect that public capability on the new account.
+  const devQShare = (await json("POST", "/api/share", { user_id: devQ })).data.share_id;
   await store.updateUser(devQ, (u) => { u.custom_exercises = [{ id: "custom-x", name: "My Move" }]; return u; });
   const linkP = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devP });
   const linkQ = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devQ });
@@ -370,6 +375,82 @@ try {
   const tbRes = await app.request("/api/today", { headers: { "X-HB-User": devQ } });
   ok("#6b the merged-away user reads as gone through the real routes (tombstone, not delete)", tbRes.status === 404);
 
+  // --- Wave 215: a merge is recoverable without exposing its source graph ---
+  // The archive index is deliberately only visible to the survivor. It is a small
+  // safe summary, never the source UUID, snapshot, push endpoint, share token, or
+  // account-link material that an owner could accidentally expose in the UI.
+  const ownerArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": devP } });
+  const ownerArchives = await ownerArchivesRes.json();
+  const devArchive = (ownerArchives.archives ?? []).find((a) => a.counts?.sessions === 1);
+  const devArchiveId = devArchive?.archive_id ?? "missing-archive";
+  const safeArchiveKeys = new Set(["archive_id", "created_at", "state", "restored_at", "counts"]);
+  // `counts` now also records how many push subscriptions and share links the
+  // source account HAD — numbers only; the archive deliberately no longer stores
+  // the endpoint keys or the share token that would make either usable. So the
+  // leak check moved from the whole object to its VALUES: a key literally named
+  // "shares" is not a leak, a share token is. Checking the serialized object
+  // wholesale conflated the two and would have blocked an honest count forever.
+  const countValues = Object.values(devArchive?.counts ?? {});
+  ok("#215 the merge survivor sees a safe archive summary, never its source graph",
+    ownerArchivesRes.status === 200 && !!devArchive
+    && Object.keys(devArchive).every((key) => safeArchiveKeys.has(key))
+    && Object.keys(devArchive.counts ?? {}).sort().join(",") === "bodyweights,checkins,nutrition_logs,push_subscriptions,sessions,shares"
+    && countValues.length === 6 && countValues.every((v) => typeof v === "number")
+    && !/snapshot|source|endpoint|token|magic|user_id/i.test(JSON.stringify({ ...devArchive, counts: countValues })));
+
+  // An unrelated active identity gets an empty index, while the tombstoned source
+  // cannot even reach the endpoint. Neither response may disclose an archive id.
+  const otherArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": uid } });
+  const otherArchives = await otherArchivesRes.json();
+  const tombstoneArchivesRes = await app.request("/api/merge-archives", { headers: { "X-HB-User": devQ } });
+  const tombstoneArchives = await tombstoneArchivesRes.json();
+  ok("#215 a non-owner and the tombstoned source cannot discover a merge archive",
+    otherArchivesRes.status === 200 && Array.isArray(otherArchives.archives) && otherArchives.archives.length === 0
+    && tombstoneArchivesRes.status === 404
+    && !JSON.stringify(otherArchives).includes(devArchive?.archive_id)
+    && !JSON.stringify(tombstoneArchives).includes(devArchive?.archive_id));
+
+  // Ownership is also enforced at the mutation door. The generic 404 is
+  // intentional: it does not distinguish an archive belonging to somebody else
+  // from an unknown id.
+  const otherRestoreRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": uid },
+  });
+  const otherRestore = await otherRestoreRes.json();
+  ok("#215 a non-owner cannot restore or learn about the archive",
+    otherRestoreRes.status === 404 && !JSON.stringify(otherRestore).includes(devArchiveId));
+
+  // Restore produces a fresh anonymous copy. Retrying it must point at the same
+  // copy (not make a second account), and it must leave the survivor byte-for-byte
+  // untouched while keeping device/browser and public-share capabilities inactive.
+  const survivorBeforeRestore = JSON.stringify(await store.getUser(devP));
+  const survivorSessionsBeforeRestore = JSON.stringify(await store.listSessions(devP, { includeVoided: true, includeQuarantined: true }));
+  const restoreRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": devP },
+  });
+  const restored = await restoreRes.json();
+  const restoredId = restored.user_id;
+  const restoreAgainRes = await app.request(`/api/merge-archives/${encodeURIComponent(devArchiveId)}/restore`, {
+    method: "POST", headers: { "X-HB-User": devP },
+  });
+  const restoredAgain = await restoreAgainRes.json();
+  ok("#215 restore creates a distinct anonymous copy and retry returns that same identity",
+    restoreRes.status === 200 && restored.restored === true && typeof restoredId === "string"
+    && restoredId !== devP && restoredId !== devQ
+    && restoreAgainRes.status === 200 && restoredAgain.restored === true && restoredAgain.user_id === restoredId);
+  ok("#215 restore leaves the survivor exactly unchanged",
+    JSON.stringify(await store.getUser(devP)) === survivorBeforeRestore
+    && JSON.stringify(await store.listSessions(devP, { includeVoided: true, includeQuarantined: true })) === survivorSessionsBeforeRestore);
+  const restoredSessions = await store.listSessions(restoredId, { includeVoided: true, includeQuarantined: true });
+  ok("#215 restored history is a separate safe copy with no account, push, or share reactivation",
+    restoredSessions.some((s) => s.session_id !== "q-1" && s.lucky_seed === "q-1")
+    && !(await store.getAccountByUserId(restoredId))
+    && !(await store.listPushSubscriptions()).some((s) => s.user_id === restoredId)
+    && (await store.getShareIdForUser(restoredId)) == null
+    // This proves the negative share check is meaningful: the source had one and
+    // the survivor retained it as part of the normal merge contract.
+    && (await store.getShareIdForUser(devP)) === devQShare);
+
   // --- Wave 209: the health-note acceptance is stamped SERVER-side at onboard —
   // the welcome screen shows "By starting you agree…" before /api/onboard can be
   // reached, and a client-supplied stamp is hostile until overwritten. ---
@@ -381,6 +462,33 @@ try {
   const ackStored = (await store.getUser(ackUser)).profile.disclaimer_ack;
   ok("#209 onboard stamps disclaimer_ack server-side (v1, a real timestamp)",
     ackStored?.v === 1 && typeof ackStored?.at === "string" && ackStored.at !== "1999-01-01T00:00:00.000Z");
+
+  // The generic profile-edit door must preserve evidence that was stamped at
+  // onboarding. Settings saves legitimately update preferences, but must never
+  // turn a client-supplied object into a replacement acknowledgement.
+  const originalAck = JSON.stringify(ackStored);
+  const forgedAckRegenerate = await json("POST", "/api/plan/regenerate", { user_id: ackUser, profile: {
+    units: "imperial",
+    disclaimer_ack: { v: 99, at: "1999-01-01T00:00:00.000Z", forged: true },
+  } });
+  const ackAfterRegenerate = (await store.getUser(ackUser)).profile;
+  ok("#213 a forged acknowledgement through plan regeneration cannot overwrite the server stamp",
+    forgedAckRegenerate.status === 200 && JSON.stringify(ackAfterRegenerate.disclaimer_ack) === originalAck
+    && ackAfterRegenerate.units === "imperial");
+
+  // Accounts created before the health note genuinely have no acknowledgement.
+  // A generic profile patch must not let a client mint one retroactively.
+  const legacyAckUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["bodyweight"],
+  } })).data.user_id;
+  await store.updateUser(legacyAckUser, (u) => { delete u.profile.disclaimer_ack; return u; });
+  const mintAckRegenerate = await json("POST", "/api/plan/regenerate", { user_id: legacyAckUser, profile: {
+    disclaimer_ack: { v: 1, at: "2099-01-01T00:00:00.000Z" },
+  } });
+  const legacyAfterRegenerate = (await store.getUser(legacyAckUser)).profile;
+  ok("#213 plan regeneration cannot mint an acknowledgement for a legacy account",
+    mintAckRegenerate.status === 200 && !Object.hasOwn(legacyAfterRegenerate, "disclaimer_ack"));
 
   // --- Wave 210: the owner stats endpoint (BLOCKERS #7). Gated on a deploy
   // secret: unconfigured -> 404 even with a key presented; configured -> exact
@@ -410,14 +518,84 @@ try {
   const ldBad = (await store.listSessions(ldUser)).find((s) => s.session_id === "ld-bad");
   ok("#27 a malformed local_date is rejected at the door (session still saved, field omitted)", ldBad && ldBad.local_date === undefined);
 
+  // Wave 214: an offline device's bad clock must not turn one workout into a
+  // permanent future event. The write remains queue-friendly (200) but uses the
+  // server instant and discards an invalid/far-future device calendar day.
+  const timingUser = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+  const timingWriteStarted = Date.now();
+  const malformedTiming = await json("POST", "/api/session", { user_id: timingUser, session_id: "time-malformed",
+    date: "not-a-real-instant", local_date: "2026-02-30", sets: [{ exercise: "push-up", set_type: "work", reps: 10 }] });
+  const futureTiming = await json("POST", "/api/session", { user_id: timingUser, session_id: "time-future",
+    date: "2099-01-01T12:00:00.000Z", local_date: "2099-01-01", sets: [{ exercise: "push-up", set_type: "work", reps: 8 }] });
+  const timingWriteFinished = Date.now();
+  const storedTiming = await store.listSessions(timingUser);
+  const hasServerFallback = (session) => {
+    const at = Date.parse(session?.date);
+    return Number.isFinite(at) && at >= timingWriteStarted - 1500 && at <= timingWriteFinished + 1500;
+  };
+  const malformedStored = storedTiming.find((s) => s.session_id === "time-malformed");
+  const futureStored = storedTiming.find((s) => s.session_id === "time-future");
+  ok("#214 malformed and far-future session instants fall back to server now; unsafe local dates are omitted",
+    malformedTiming.status === 200 && futureTiming.status === 200
+    && hasServerFallback(malformedStored) && hasServerFallback(futureStored)
+    && malformedStored?.local_date === undefined && futureStored?.local_date === undefined);
+
+  // A pre-Wave-214 record can already hold poisoned timing. Seed one directly to
+  // model that durable legacy state: ordinary store reads and every derived route
+  // must skip it, but History must show it (with a correction marker) rather than
+  // silently discard a real workout.
+  const timingProgressBefore = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  await store.addSession(timingUser, {
+    session_id: "time-legacy", user_id: timingUser, program_ref: (await store.getUser(timingUser)).program.id,
+    date: "2099-01-01T12:00:00.000Z", local_date: "2099-01-01",
+    sets: [{ exercise: "push-up", set_type: "work", reps: 12 }],
+  });
+  const timingDerived = await store.listSessions(timingUser);
+  const timingProgressAfterSeed = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  const timingHistoryBeforeFix = await (await app.request("/api/sessions", { headers: { "X-HB-User": timingUser } })).json();
+  const legacyInHistory = timingHistoryBeforeFix.sessions?.find((s) => s.session_id === "time-legacy");
+  ok("#214 a legacy poisoned-time session is excluded from derived reads but remains in History with a quarantine marker",
+    !timingDerived.some((s) => s.session_id === "time-legacy")
+    && timingProgressAfterSeed.sessions_logged === timingProgressBefore.sessions_logged
+    && legacyInHistory?.time_quarantine === "invalid-date");
+
+  // Unlike an offline write, correction is an intentional form action. Reject an
+  // impossible/future chosen day rather than silently moving history to server now.
+  const rejectedTimingFix = await json("POST", "/api/session/update", {
+    user_id: timingUser, session_id: "time-legacy", corrected_local_date: "2099-01-01",
+  });
+  const legacyAfterRejectedFix = (await store.listSessions(timingUser, { includeQuarantined: true })).find((s) => s.session_id === "time-legacy");
+  ok("#214 an invalid correction is refused without rewriting the quarantined workout",
+    rejectedTimingFix.status === 400 && legacyAfterRejectedFix?.date === "2099-01-01T12:00:00.000Z");
+
+  // The correction door intentionally accepts no `sets`: a person correcting a
+  // bad device clock should not have to retype their workout. A valid local day
+  // restores the exact same durable record to normal derived reads.
+  const correctedDay = dAgo(3).slice(0, 10);
+  const timingFix = await json("POST", "/api/session/update", {
+    user_id: timingUser, session_id: "time-legacy", corrected_local_date: correctedDay,
+  });
+  const timingDerivedAfterFix = await store.listSessions(timingUser);
+  const timingProgressAfterFix = await (await app.request("/api/progress", { headers: { "X-HB-User": timingUser } })).json();
+  const timingHistoryAfterFix = await (await app.request("/api/sessions", { headers: { "X-HB-User": timingUser } })).json();
+  const repairedHistory = timingHistoryAfterFix.sessions?.find((s) => s.session_id === "time-legacy");
+  ok("#214 a corrected_local_date-only update restores the quarantined session without changing its sets",
+    timingFix.status === 200 && timingFix.data.session?.local_date === correctedDay
+    && timingDerivedAfterFix.some((s) => s.session_id === "time-legacy" && s.sets?.[0]?.reps === 12)
+    && timingProgressAfterFix.sessions_logged === timingProgressBefore.sessions_logged + 1
+    && repairedHistory && !Object.hasOwn(repairedHistory, "time_quarantine"));
+
   // #23: push subscribe/unsubscribe round-trip through the real routes
   const pushSub = { endpoint: "https://fcm.googleapis.com/fcm/send/route-test", keys: { p256dh: "pk", auth: "ak" } };
   const subRes = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: pushSub });
   ok("#23 push subscribe stores the subscription", subRes.status === 200 && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint && s.user_id === ldUser));
   const badSub = await json("POST", "/api/push/subscribe", { user_id: ldUser, subscription: { endpoint: "http://insecure" } });
   ok("#23 a non-https endpoint is rejected", badSub.status === 400);
-  await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint });
-  ok("#23 unsubscribe removes it", !(await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
+  const missingOwnerUnsub = await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint });
+  ok("#216 an endpoint alone cannot unsubscribe another device", missingOwnerUnsub.status === 404
+    && (await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
+  await json("POST", "/api/push/unsubscribe", { endpoint: pushSub.endpoint, user_id: ldUser });
+  ok("#23 unsubscribe removes its owner's subscription", !(await store.listPushSubscriptions()).some((s) => s.endpoint === pushSub.endpoint));
 
   // #21: resuming a pause archives the window (the streak's neutral weeks survive)
   await json("POST", "/api/pause", { user_id: ldUser, on: true });
@@ -1768,6 +1946,140 @@ try {
   await json("POST", "/api/following/remove", { user_id: celU, token: folShare });
   await json("POST", "/api/following", { user_id: celU, token: folShare });
   ok("#follower unfollow → refollow is a genuine new-follower event again", (await store.getUser(folOwner)).profile.followers_count === 2);
+
+  // --- server-owned profile fields: ENUMERABLE, at every wholesale door -------
+  // Not "we strip the sensitive one" in a comment — this walks the whole exported
+  // set through BOTH doors that accept a client-supplied profile object. A field
+  // added to the set without a guard fails here; a guard removed fails here; a
+  // THIRD wholesale door added later is caught by the door census below.
+  // Reachable by any client: auth is possession-of-UUID, so "attacker" means
+  // "anyone with their own account", and the damage lands on OTHER users
+  // (a forged `following` entry watches a share whose owner is never told).
+  const forged = {
+    celebration: { kind: "pr", at: 1 }, freeze_pushed_week: "2026-W01", comeback_push: { stage: 3 },
+    commitment: { week: "2026-W01", days: ["mon"] },
+    following: ["forged-share-token"], followers_count: 999, followers_pushed: 999,
+    cheers_pushed: 999, cheers_seen: 999,
+    partner_nudge: { at: 1 }, nudge_pushed_at: 1, nudge_seen_at: 1,
+    challenges: Array.from({ length: 50 }, (_, i) => ({ id: `forged-${i}`, week: "2026-W01", partner_token: "x", status: "open" })),
+    challenge: { id: "forged", week: "2026-W01" },
+    challenge_pushed_at: 1, challenge_accept_pushed_at: 1,
+    disclaimer_ack: { v: 99, at: "1970-01-01T00:00:00.000Z" },
+  };
+  // The fixture must COVER the set — otherwise this test silently shrinks the day
+  // someone adds a field (the "green gate proves only what it measures" trap).
+  ok("#owned the forged fixture covers every server-owned field",
+    [...SERVER_OWNED_PROFILE_FIELDS].every((k) => Object.hasOwn(forged, k))
+    && Object.keys(forged).every((k) => SERVER_OWNED_PROFILE_FIELDS.has(k)));
+
+  // DOOR 1 — onboard. An account must not be BORN holding forged state.
+  const ownedOnboard = await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    ...forged,
+  } });
+  const ownedU = ownedOnboard.data.user_id;
+  const bornProfile = (await store.getUser(ownedU)).profile;
+  const leakedAtOnboard = [...SERVER_OWNED_PROFILE_FIELDS].filter((k) => k !== "disclaimer_ack" && bornProfile[k] !== undefined);
+  ok("#owned POST /api/onboard strips every server-owned field", leakedAtOnboard.length === 0);
+  // disclaimer_ack is the one field the server REPLACES rather than drops: the
+  // stamp must be the server's own, never the client's forged v99.
+  ok("#owned onboard stamps its OWN disclaimer_ack over the posted one",
+    bornProfile.disclaimer_ack?.v === 1 && bornProfile.disclaimer_ack?.at !== "1970-01-01T00:00:00.000Z");
+
+  // DOOR 2 — plan/regenerate (the Settings save). Same set, same result.
+  const realAck = bornProfile.disclaimer_ack;
+  await json("POST", "/api/plan/regenerate", { user_id: ownedU, profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+    ...forged,
+  } });
+  const patchedProfile = (await store.getUser(ownedU)).profile;
+  const leakedAtPatch = [...SERVER_OWNED_PROFILE_FIELDS].filter((k) => k !== "disclaimer_ack" && patchedProfile[k] !== undefined);
+  ok("#owned POST /api/plan/regenerate strips every server-owned field", leakedAtPatch.length === 0);
+  ok("#owned a settings save cannot forge or replace the acknowledgement stamp",
+    JSON.stringify(patchedProfile.disclaimer_ack) === JSON.stringify(realAck));
+  // The concrete harm, asserted rather than described: the forged follow must not
+  // be readable back as a partner, and the forged 50 slots must not have become
+  // challenge state that every sweep tick then pays for.
+  const forgedFollowing = await app.request("/api/following", { headers: { "X-HB-User": ownedU } });
+  ok("#owned a forged `following` never becomes a real partner",
+    ((await forgedFollowing.json()).partners ?? []).length === 0);
+  ok("#owned a forged `challenges` array never becomes challenge state",
+    challengeSlotsT(patchedProfile).length === 0);
+
+  // The door census: this test can only be as good as its list of doors, so assert
+  // the list. `body.profile` reaching a spread is what makes a door wholesale —
+  // if a third one appears, this count changes and someone has to look (lesson 33:
+  // the enumerable check, not the confident comment).
+  const appSrc = await (await import("node:fs/promises")).readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
+  ok("#owned there are exactly TWO wholesale client->profile doors, both guarded",
+    (appSrc.match(/stripServerOwnedProfile\(/g) ?? []).length === 2
+    && !/\.\.\.body\.profile|\{ \.\.\.body\.profile \}/.test(appSrc));
+
+  // --- the timing-quarantine repair path, through the real door ---------------
+  const qOn = await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } });
+  const qU = qOn.data.user_id;
+  const qSet = [{ exercise: "barbell-back-squat", weight_kg: 100, reps: 5, set_type: "work" }];
+  // Two ordinary sessions on the SAME day, logged in order, plus a legacy row with
+  // an unparseable date written straight to the store (no route can create one
+  // any more — that is the whole point of the write-door normalization).
+  // The SAME instant for both, so this is a genuine tie — the case the ordering
+  // regression is about. Two calls to Date.now() are milliseconds apart and would
+  // sort themselves, quietly testing nothing.
+  const qTie = new Date(Date.now() - 3 * 86400000).toISOString();
+  await json("POST", "/api/session", { user_id: qU, session_id: "q-day-a", date: qTie, sets: qSet });
+  await json("POST", "/api/session", { user_id: qU, session_id: "q-day-b", date: qTie, sets: qSet });
+  await store.addSession(qU, { session_id: "q-broken", date: "", session_name: "Legacy", sets: qSet });
+
+  const qList = await app.request("/api/sessions", { headers: { "X-HB-User": qU } });
+  const qRows = (await qList.json()).sessions;
+  // The route's own comment promises the cap can never hide a row the user needs
+  // in order to make it safe again. Sorting by `date` — the field whose invalidity
+  // caused the quarantine — buried exactly the malformed ones.
+  ok("#tq a row with an unparseable date is pinned FIRST, not sorted by the broken field",
+    qRows[0]?.session_id === "q-broken" && qRows[0]?.time_quarantine === "invalid-date");
+  ok("#tq quarantined rows are marked, ordinary rows are not",
+    qRows.filter((r) => r.time_quarantine).length === 1);
+  const dayA = qRows.findIndex((r) => r.session_id === "q-day-a");
+  const dayB = qRows.findIndex((r) => r.session_id === "q-day-b");
+  ok("#tq same-day siblings stay newest-first (a stable sort on `date` alone flips them)", dayB < dayA);
+
+  // The quarantined row must be invisible to every derivation, and visible only here.
+  const qAdh = await app.request("/api/adherence", { headers: { "X-HB-User": qU } });
+  ok("#tq the quarantined row reaches no derived surface",
+    (await qAdh.json()).sessions_logged === 2);
+
+  // The repair, in a FAR-EAST frame: the client's picker offers the user's local
+  // tomorrow, so the server must judge in that frame or the only exit from
+  // quarantine is a dead end. Send the header this client always sends.
+  const eastTz = String(13 * 60);
+  const localTomorrow = (tzMin) => {
+    const d = new Date(Date.now() + tzMin * 60000 + 86400000);
+    return d.toISOString().slice(0, 10);
+  };
+  const fixRes = await app.request("/api/session/update", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken", corrected_local_date: localTomorrow(13 * 60) }),
+  });
+  ok("#tq a UTC+13 user's own local tomorrow is ACCEPTED (it is what their picker offered)", fixRes.status === 200);
+  const fixedRow = (await store.listSessions(qU, { includeVoided: true, includeQuarantined: true })).find((x) => x.session_id === "q-broken");
+  ok("#tq the corrected day is STORED as the day chosen, not silently re-stamped as now",
+    fixedRow?.local_date === localTomorrow(13 * 60) && String(fixedRow?.date).slice(0, 10) === localTomorrow(13 * 60));
+
+  // ...and a genuinely impossible date is still refused, with a distinguishable
+  // error the client can turn into truthful copy instead of "check your connection".
+  await store.addSession(qU, { session_id: "q-broken-2", date: "", session_name: "Legacy 2", sets: qSet });
+  const farFuture = new Date(Date.now() + 400 * 86400000).toISOString().slice(0, 10);
+  const badRes = await app.request("/api/session/update", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken-2", corrected_local_date: farFuture }),
+  });
+  ok("#tq an impossible date is refused as `bad-date`, not as a network failure",
+    badRes.status === 400 && (await badRes.json()).error === "bad-date");
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

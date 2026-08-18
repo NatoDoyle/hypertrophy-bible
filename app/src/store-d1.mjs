@@ -4,13 +4,43 @@
 // Rows hold a JSON blob per record — the app owns the shape, D1 is just durable
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile } from "./merge-profile.mjs";
+import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
+import { archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
 // logged data" — but must be invisible to every engine that reads history. The
 // flag lives in the JSON blob, so this predicate is how SQL asks about it.
 const notVoided = (col = "data") => `json_extract(${col}, '$.voided_at') IS NULL`;
 
+// A SQL prefilter for "this row could conceivably be derivable" — narrowing on
+// SHAPE only, never deciding derivability. isDerivableSession() in session-time.mjs
+// stays the single authority; this exists so the timing rules can be enforced
+// without pulling every session blob into the Worker.
+//
+// Why it is a provable superset of what the JS predicate accepts:
+//   - every date JS can parse begins with a literal YYYY-MM-DD, so the GLOB can
+//     only ever drop rows JS would reject anyway;
+//   - the ceiling is compared against the row's leading calendar day, which for a
+//     full ISO timestamp carrying a positive offset can read ONE DAY LATER than the
+//     UTC day JS judges. Hence the extra day of headroom: erring loose keeps this a
+//     filter, and lets the JS predicate remain the only thing that says "no".
+// A gate that narrows its input has to say so; a parity test asserts the SQL never
+// excludes a row the JS predicate would have kept.
+const DERIVABLE_SHAPE = `date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(date, 1, 10) <= ?`;
+const derivableShapeBound = (nowMs) =>
+  new Date(nowMs + SESSION_FUTURE_SLACK_MS + 86400000).toISOString().slice(0, 10);
+// A child write may race an account merge after the route performed its initial
+// getUser() check. Keep the guard in the SQL statement itself: a tombstoned
+// source must never grow a new, unarchived session/daily/device row. A missing
+// user remains permitted for low-level fixture/backfill compatibility; routes
+// already require a real active user.
+const notTombstonedOwner = "NOT EXISTS (SELECT 1 FROM users WHERE id = ? AND json_extract(data, '$._merged_into') IS NOT NULL)";
+
 export function createD1Store(db) {
+  const isTombstoned = async (id) => {
+    const row = await db.prepare("SELECT data FROM users WHERE id = ?").bind(id).first();
+    return !!row && !!JSON.parse(row.data)?._merged_into;
+  };
   return {
     // A merge TOMBSTONES the from-row instead of deleting it (BLOCKERS #6b,
     // option (b), Wave 211) — every reader treats a tombstone as absent, so the
@@ -49,20 +79,39 @@ export function createD1Store(db) {
     // below can reuse it inside their aggregates without pulling every blob.
     // `voided_at` lives in the JSON blob, so no column and no migration is needed —
     // SQLite's JSON1 (built into D1) reads it directly.
-    async listSessions(id, { includeVoided = false } = {}) {
+    async listSessions(id, { includeVoided = false, includeQuarantined = false, nowMs = Date.now() } = {}) {
       const { results } = await db
         .prepare(`SELECT data FROM sessions WHERE user_id = ?${includeVoided ? "" : " AND " + notVoided()} ORDER BY date ASC, rowid ASC`)
         .bind(id)
         .all();
-      return results.map((r) => JSON.parse(r.data));
+      return results
+        .map((r) => JSON.parse(r.data))
+        .filter((s) => includeQuarantined || isDerivableSession(s, nowMs))
+        .map((s) => {
+          const timing_issue = sessionTimingIssue(s, nowMs);
+          return timing_issue ? { ...s, timing_issue } : s;
+        });
     },
     async addSession(id, session) {
       // Idempotent on the session_id PK: a replayed offline workout is a no-op.
-      await db
-        .prepare("INSERT INTO sessions (session_id, user_id, date, data) VALUES (?, ?, ?, ?) ON CONFLICT(session_id) DO NOTHING")
-        .bind(session.session_id, id, session.date ?? null, JSON.stringify(session))
+      const res = await db
+        .prepare(`INSERT INTO sessions (session_id, user_id, date, data)
+          SELECT ?, ?, ?, ? WHERE ${notTombstonedOwner}
+          ON CONFLICT(session_id) DO NOTHING`)
+        .bind(session.session_id, id, session.date ?? null, JSON.stringify(session), id)
         .run();
-      return session;
+      if (res?.meta?.changes) return session;                    // stored now
+      // Nothing was written. Two reasons, and only one of them used to be
+      // detected: a tombstoned owner (below), or `session_id` colliding with a row
+      // that already exists. `session_id` is a DATABASE-WIDE primary key here, so
+      // the collision can be this user's own replayed offline workout — genuinely
+      // idempotent, report success — or another user's row entirely, which is a
+      // write that silently did not happen. The route builds its recap from the
+      // returned value, so reporting success for the second case is exactly the
+      // optimistic lie the tombstone guard beside it was added to prevent.
+      const mine = await db.prepare("SELECT 1 AS ok FROM sessions WHERE session_id = ? AND user_id = ?")
+        .bind(session.session_id, id).first();
+      return mine ? session : null;
     },
     // Edit or void ONE logged session in place — parity with the file store,
     // including the null-means-not-found / unchanged-means-declined contract.
@@ -70,16 +119,16 @@ export function createD1Store(db) {
     // never edit someone else's workout. `date` is kept in sync with the blob
     // because the ORDER BY and the MAX() aggregates read the column, not the JSON.
     async updateSession(id, sessionId, mutator) {
-      const row = await db.prepare("SELECT data FROM sessions WHERE session_id = ? AND user_id = ?").bind(sessionId, id).first();
+      const row = await db.prepare(`SELECT data FROM sessions WHERE session_id = ? AND user_id = ? AND ${notTombstonedOwner}`).bind(sessionId, id, id).first();
       if (!row) return null;
       const cur = JSON.parse(row.data);
       const next = mutator(JSON.parse(row.data));
       if (next == null) return cur;
-      await db
-        .prepare("UPDATE sessions SET data = ?, date = ? WHERE session_id = ? AND user_id = ?")
-        .bind(JSON.stringify(next), next.date ?? null, sessionId, id)
+      const res = await db
+        .prepare(`UPDATE sessions SET data = ?, date = ? WHERE session_id = ? AND user_id = ? AND ${notTombstonedOwner}`)
+        .bind(JSON.stringify(next), next.date ?? null, sessionId, id, id)
         .run();
-      return next;
+      return (res.meta?.changes ?? 0) === 1 ? next : null;
     },
     async listBodyweights(id) {
       const { results } = await db
@@ -95,10 +144,10 @@ export function createD1Store(db) {
       // batch = one implicit transaction: a Worker death between a lone DELETE
       // and INSERT would erase the day's existing weigh-in without replacing it.
       await db.batch([
-        db.prepare("DELETE FROM bodyweights WHERE user_id = ? AND date = ?").bind(id, entry.date ?? null),
-        db.prepare("INSERT INTO bodyweights (user_id, date, data) VALUES (?, ?, ?)").bind(id, entry.date ?? null, JSON.stringify(entry)),
+        db.prepare(`DELETE FROM bodyweights WHERE user_id = ? AND date = ? AND ${notTombstonedOwner}`).bind(id, entry.date ?? null, id),
+        db.prepare(`INSERT INTO bodyweights (user_id, date, data) SELECT ?, ?, ? WHERE ${notTombstonedOwner}`).bind(id, entry.date ?? null, JSON.stringify(entry), id),
       ]);
-      return entry;
+      return (await isTombstoned(id)) ? null : entry;
     },
     async listCheckins(id) {
       const { results } = await db.prepare("SELECT data FROM checkins WHERE user_id = ? ORDER BY date ASC").bind(id).all();
@@ -107,10 +156,10 @@ export function createD1Store(db) {
     async addCheckin(id, entry) {
       // one per user per day: replace on the (user_id, date) primary key
       await db
-        .prepare("INSERT INTO checkins (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
-        .bind(id, entry.date, JSON.stringify(entry))
+        .prepare(`INSERT INTO checkins (user_id, date, data) SELECT ?, ?, ? WHERE ${notTombstonedOwner} ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data`)
+        .bind(id, entry.date, JSON.stringify(entry), id)
         .run();
-      return entry;
+      return (await isTombstoned(id)) ? null : entry;
     },
     // --- nutrition daily intake log (kcal + macros), one row per day (parity) ---
     async listNutritionLog(id) {
@@ -119,10 +168,10 @@ export function createD1Store(db) {
     },
     async addNutritionLog(id, entry) {
       await db
-        .prepare("INSERT INTO nutrition_logs (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
-        .bind(id, entry.date, JSON.stringify(entry))
+        .prepare(`INSERT INTO nutrition_logs (user_id, date, data) SELECT ?, ?, ? WHERE ${notTombstonedOwner} ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data`)
+        .bind(id, entry.date, JSON.stringify(entry), id)
         .run();
-      return entry;
+      return (await isTombstoned(id)) ? null : entry;
     },
 
     // --- passwordless email backup ---
@@ -135,17 +184,27 @@ export function createD1Store(db) {
     async getAccountByUserId(userId) {
       return (await db.prepare("SELECT email, user_id, verified_at, created_at FROM accounts WHERE user_id = ?").bind(userId).first()) ?? null;
     },
-    // Merge-on-restore: move ALL of one user's data onto another, then drop the
-    // empty shell. Sessions, bodyweights, checkins, AND the custom-exercise
-    // library move — otherwise moved sets reference custom-* ids that no longer
-    // resolve (silent volume/PR corruption) and check-in history is orphaned.
-    async reassignUserData(fromId, toId) {
+    // Merge-on-restore: archive the complete source graph in the SAME D1
+    // transaction that transfers it. A JavaScript pre-read here would race a
+    // last-minute device write and silently omit collision-losing history.
+    async reassignUserData(fromId, toId, { archiveId = crypto.randomUUID(), now = new Date().toISOString() } = {}) {
       // custom exercises live on the user doc → migrate before deleting it (dedup by id).
       const [fromRow, toRow] = await Promise.all([
         db.prepare("SELECT data FROM users WHERE id = ?").bind(fromId).first(),
         db.prepare("SELECT data FROM users WHERE id = ?").bind(toId).first(),
       ]);
-      // Every statement in ONE db.batch = one implicit transaction. As seven
+      // The file store gained this precondition and this one did not — lesson 1
+      // inside the very commit that wrote the guard. Without it the batch below
+      // ran unconditionally: a `toId` that vanished or became a tombstone between
+      // the route's getUser and this call still received every session, weigh-in,
+      // check-in, nutrition log, push subscription and share, and `fromId` was
+      // still tombstoned — the whole graph moved onto an id getUser resolves to
+      // null, so neither account can ever reach it again. Refuse instead, with the
+      // same null the file store returns (see its note on refusal-vs-empty).
+      const fromDoc = fromRow ? JSON.parse(fromRow.data) : null;
+      const toDoc = toRow ? JSON.parse(toRow.data) : null;
+      if (!fromDoc || fromDoc._merged_into || !toDoc || toDoc._merged_into) return null;
+      // Every state-changing statement below is in ONE db.batch. As seven
       // sequential awaits, a Worker death mid-sequence left a half-merged
       // account (sessions moved, checkins orphaned, or the from-user deleted
       // early) with the single-use grant already burnt — no retry possible.
@@ -161,14 +220,14 @@ export function createD1Store(db) {
       // before building the batch (and before the profile merge below, which needs
       // to know whether a share is about to be inherited); the shares table may not
       // exist yet if neither user ever shared, so ensure it first.
-      await ensureShares(db);
+      await ensureExtensions(db);
       const [fromShareRow, toShareRow] = await Promise.all([
         db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(fromId).first(),
         db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(toId).first(),
       ]);
       const shareReassigns = !!(fromShareRow && !toShareRow);
-      if (fromRow && toRow) {
-        const fromU = JSON.parse(fromRow.data);
+      {
+        const fromU = fromDoc;
         await this.updateUser(toId, (u) => {
           if (fromU.custom_exercises?.length) {
             u.custom_exercises = u.custom_exercises || [];
@@ -191,6 +250,28 @@ export function createD1Store(db) {
         });
       }
       const stmts = [];
+      // JSON1 constructs the snapshot from the source rows at transaction time,
+      // before any move/drop statement can make a losing collision unrecoverable.
+      stmts.push(db.prepare(`
+        INSERT INTO merge_archives (archive_id, owner_user_id, source_user_id, created_at, snapshot, state, restored_user_id, restored_at)
+        SELECT ?, ?, ?, ?, json_object(
+          'user', json(u.data),
+          'sessions', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM sessions WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
+          'bodyweights', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM bodyweights WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
+          'checkins', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM checkins WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
+          'nutrition_logs', json(COALESCE((SELECT json_group_array(json(data)) FROM (SELECT data FROM nutrition_logs WHERE user_id = ? ORDER BY date ASC, rowid ASC)), '[]')),
+          'revoked_counts', json_object(
+            'push_subscriptions', (SELECT COUNT(*) FROM push_subscriptions WHERE user_id = ?),
+            'push_deliveries', (SELECT COUNT(*) FROM push_deliveries d WHERE EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.endpoint = d.endpoint AND p.user_id = ?)),
+            'shares', (SELECT COUNT(*) FROM shares WHERE user_id = ?),
+            'magic_links', (SELECT COUNT(*) FROM magic_links WHERE user_id = ?))
+        ), 'available', NULL, NULL
+        FROM users u
+        WHERE u.id = ? AND json_extract(u.data, '$._merged_into') IS NULL
+      `).bind(archiveId, toId, fromId, now, fromId, fromId, fromId, fromId, fromId, fromId, fromId, fromId, fromId));
+      // Archives belonging to an intermediate survivor remain recoverable after
+      // that survivor itself is merged into a later canonical account.
+      stmts.push(db.prepare("UPDATE merge_archives SET owner_user_id = ? WHERE owner_user_id = ?").bind(toId, fromId));
       if (fromShareRow) {
         if (toShareRow) {
           stmts.push(db.prepare("DELETE FROM share_cheers WHERE share_id = ?").bind(fromShareRow.share_id));
@@ -215,63 +296,151 @@ export function createD1Store(db) {
       // collision) — otherwise the merged-away device's reminders orphan onto a
       // deleted user and the sweep prunes them, silently killing reminders.
       stmts.push(db.prepare("UPDATE push_subscriptions SET user_id = ? WHERE user_id = ?").bind(toId, fromId));
-      // BLOCKERS #6b option (b): tombstone, never delete — see getUser above.
-      stmts.push(db.prepare("UPDATE users SET data = ? WHERE id = ?")
-        .bind(JSON.stringify({ _merged_into: toId, _merged_at: new Date().toISOString() }), fromId));
+      // Keep the raw document on the hidden tombstone too. json_set reads the
+      // current row inside this transaction, so source-only future fields survive.
+      // The archive INSERT above is guarded by `_merged_into IS NULL`; this
+      // statement was not, so on an already-tombstoned source the INSERT would be
+      // skipped while this line still overwrote `_merge_archive_id` — pointing the
+      // row at an archive that was never written and destroying the pointer to the
+      // real one. Two halves of one transaction disagreeing about the same
+      // precondition. They agree now.
+      stmts.push(db.prepare("UPDATE users SET data = json_set(data, '$._merged_into', ?, '$._merged_at', ?, '$._merge_archive_id', ?) WHERE id = ? AND json_extract(data, '$._merged_into') IS NULL")
+        .bind(toId, now, archiveId, fromId));
       const results = await db.batch(stmts);
       return { sessions: results[sIdx]?.meta?.changes ?? 0, bodyweights: results[bIdx]?.meta?.changes ?? 0 };
+    },
+    async listMergeArchives(ownerId) {
+      await ensureExtensions(db);
+      const { results } = await db.prepare("SELECT archive_id, owner_user_id, source_user_id, created_at, snapshot, state, restored_user_id, restored_at FROM merge_archives WHERE owner_user_id = ? ORDER BY created_at DESC")
+        .bind(ownerId).all();
+      return results.map((r) => archiveSummary({ ...r, snapshot: JSON.parse(r.snapshot) }));
+    },
+    async restoreMergeArchive(ownerId, archiveId, restoredUserId = crypto.randomUUID(), now = new Date().toISOString()) {
+      await ensureExtensions(db);
+      let archive = await db.prepare("SELECT archive_id, owner_user_id, source_user_id, created_at, snapshot, state, restored_user_id, restored_at FROM merge_archives WHERE archive_id = ? AND owner_user_id = ?")
+        .bind(archiveId, ownerId).first();
+      if (!archive) return null;
+      if (!archive.restored_user_id) {
+        const claim = await db.prepare("UPDATE merge_archives SET restored_user_id = ?, state = 'restoring' WHERE archive_id = ? AND owner_user_id = ? AND restored_user_id IS NULL AND state = 'available'")
+          .bind(restoredUserId, archiveId, ownerId).run();
+        if ((claim.meta?.changes ?? 0) === 1) archive = { ...archive, restored_user_id: restoredUserId, state: "restoring" };
+        else {
+          archive = await db.prepare("SELECT archive_id, owner_user_id, source_user_id, created_at, snapshot, state, restored_user_id, restored_at FROM merge_archives WHERE archive_id = ? AND owner_user_id = ?")
+            .bind(archiveId, ownerId).first();
+          if (!archive) return null;
+        }
+      }
+      const id = archive.restored_user_id;
+      if (archive.state === "restored") {
+        const existing = await this.getUser(id);
+        return {
+          user_id: id,
+          program_name: existing?.program?.name ?? null,
+          units: existing?.profile?.units ?? null,
+          archive: archiveSummary({ ...archive, snapshot: JSON.parse(archive.snapshot) }),
+        };
+      }
+      const snapshot = JSON.parse(archive.snapshot);
+      const user = restoredUser(snapshot.user, id);
+      const sessions = (snapshot.sessions ?? []).map((s, i) => restoredSession(s, archiveId, id, i));
+      // The archive's durable `restoring` claim makes this batch safe to retry
+      // after an interrupted Worker invocation. Every child write is idempotent
+      // or replaces the fresh copy's complete collection in the same transaction.
+      const stmts = [
+        db.prepare("INSERT INTO users (id, data) VALUES (?, ?) ON CONFLICT(id) DO NOTHING").bind(id, JSON.stringify(user)),
+        db.prepare("DELETE FROM bodyweights WHERE user_id = ?").bind(id),
+        db.prepare("DELETE FROM checkins WHERE user_id = ?").bind(id),
+        db.prepare("DELETE FROM nutrition_logs WHERE user_id = ?").bind(id),
+      ];
+      for (const s of sessions) stmts.push(db.prepare("INSERT INTO sessions (session_id, user_id, date, data) VALUES (?, ?, ?, ?) ON CONFLICT(session_id) DO NOTHING")
+        .bind(s.session_id, id, s.date ?? null, JSON.stringify(s)));
+      for (const row of snapshot.bodyweights ?? []) stmts.push(db.prepare("INSERT INTO bodyweights (user_id, date, data) VALUES (?, ?, ?)")
+        .bind(id, row.date ?? null, JSON.stringify(row)));
+      for (const row of snapshot.checkins ?? []) stmts.push(db.prepare("INSERT INTO checkins (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
+        .bind(id, row.date, JSON.stringify(row)));
+      for (const row of snapshot.nutrition_logs ?? []) stmts.push(db.prepare("INSERT INTO nutrition_logs (user_id, date, data) VALUES (?, ?, ?) ON CONFLICT(user_id, date) DO UPDATE SET data = excluded.data")
+        .bind(id, row.date, JSON.stringify(row)));
+      stmts.push(db.prepare("UPDATE merge_archives SET state = 'restored', restored_at = COALESCE(restored_at, ?) WHERE archive_id = ? AND owner_user_id = ? AND restored_user_id = ?")
+        .bind(now, archiveId, ownerId, id));
+      await db.batch(stmts);
+      const finalArchive = await db.prepare("SELECT archive_id, owner_user_id, source_user_id, created_at, snapshot, state, restored_user_id, restored_at FROM merge_archives WHERE archive_id = ? AND owner_user_id = ?")
+        .bind(archiveId, ownerId).first();
+      return {
+        user_id: id,
+        program_name: user.program?.name ?? null,
+        units: user.profile?.units ?? null,
+        archive: archiveSummary({ ...finalArchive, snapshot: JSON.parse(finalArchive.snapshot) }),
+      };
     },
     // --- Web Push subscriptions (device reminders) — parity with the file store ---
     async savePushSubscription(user_id, sub) {
       await db
-        .prepare("INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth")
-        .bind(sub.endpoint, user_id, sub.keys?.p256dh ?? null, sub.keys?.auth ?? null, Date.now())
+        .prepare(`INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at)
+          SELECT ?, ?, ?, ?, ? WHERE ${notTombstonedOwner}
+          ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`)
+        .bind(sub.endpoint, user_id, sub.keys?.p256dh ?? null, sub.keys?.auth ?? null, Date.now(), user_id)
         .run();
-      return { endpoint: sub.endpoint, user_id };
+      return (await isTombstoned(user_id)) ? null : { endpoint: sub.endpoint, user_id };
     },
     // userId scopes the delete to its owner (route callers); the internal sweep
     // passes null to prune unconditionally. Parity with the file store.
     async deletePushSubscription(endpoint, userId = null) {
-      if (userId == null) { await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").bind(endpoint).run(); }
-      else { await db.prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?").bind(endpoint, userId).run(); }
+      await ensureExtensions(db);
+      const scoped = userId == null
+        ? { where: "endpoint = ?", binds: [endpoint] }
+        : { where: "endpoint = ? AND user_id = ?", binds: [endpoint, userId] };
+      // Delete evidence first, guarded by the same owner predicate. If a caller
+      // guesses another user's endpoint, neither record changes.
+      await db.batch([
+        db.prepare(`DELETE FROM push_deliveries WHERE endpoint = ? AND EXISTS (SELECT 1 FROM push_subscriptions WHERE ${scoped.where})`)
+          .bind(endpoint, ...scoped.binds),
+        db.prepare(`DELETE FROM push_subscriptions WHERE ${scoped.where}`).bind(...scoped.binds),
+      ]);
     },
     async listPushSubscriptions() {
       const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();
       return results;
     },
-    // Delivery evidence (BLOCKERS #2b): stamped by the push sweep ONLY when a
-    // real push service accepted a send (2xx). Own self-init table (see
-    // ensurePushDeliveries); stale rows for pruned subscriptions are harmless —
-    // stats() only counts deliveries whose subscription still exists.
+    // Delivery evidence is stamped only while the endpoint is still subscribed;
+    // an in-flight 2xx must not recreate a retention row after an unsubscribe.
     async markPushDelivered(endpoint, at) {
-      await ensurePushDeliveries(db);
-      await db.prepare("INSERT INTO push_deliveries (endpoint, last_ok_at) VALUES (?, ?) ON CONFLICT(endpoint) DO UPDATE SET last_ok_at = excluded.last_ok_at")
-        .bind(endpoint, at).run();
+      await ensureExtensions(db);
+      await db.prepare("INSERT INTO push_deliveries (endpoint, last_ok_at) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM push_subscriptions WHERE endpoint = ?) ON CONFLICT(endpoint) DO UPDATE SET last_ok_at = excluded.last_ok_at")
+        .bind(endpoint, at, endpoint).run();
     },
     // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
-    // counts only, no per-user view, no PII. Session counts are RAW rows
-    // (voided included — a voided session was still activity; the file store
-    // counts the same way, parity). ISO strings compare lexically as chronology.
+    // counts only, no per-user view, no PII. Valid voided sessions remain
+    // activity; quarantined timing rows are deliberately absent from all
+    // derived telemetry just as they are from coaching and reminders.
     async stats(now = Date.now()) {
-      await ensurePushDeliveries(db);
-      const iso = (ms) => new Date(ms).toISOString();
-      const d7 = iso(now - 7 * 86400000), d14 = iso(now - 14 * 86400000), d28 = iso(now - 28 * 86400000);
+      await ensureExtensions(db);
+      const d7 = now - 7 * 86400000, d14 = now - 14 * 86400000, d28 = now - 28 * 86400000;
       const one = async (sql, ...binds) => {
         const q = db.prepare(sql);
         return (await (binds.length ? q.bind(...binds) : q).first())?.c ?? 0;
       };
-      const active_prev_7d = await one("SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ? AND date < ?", d14, d7);
-      const returned = await one(
-        "SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ? AND user_id IN (SELECT user_id FROM sessions WHERE date >= ? AND date < ?)",
-        d7, d14, d7);
+      // Same shape-narrowing as above: the aggregate needs a user_id and an
+      // instant, never a whole workout. `SELECT user_id, data FROM sessions` with
+      // no WHERE pulled every blob in the database into the Worker on each call.
+      const { results } = await db
+        .prepare(`SELECT user_id, date, json_extract(data, '$.local_date') AS local_date FROM sessions
+          WHERE ${DERIVABLE_SHAPE}`)
+        .bind(derivableShapeBound(now)).all();
+      const safe = results
+        .map((r) => ({ user_id: r.user_id, ms: isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, now) ? parseSessionInstant(r.date) : null }))
+        .filter((r) => r.ms != null);
+      const activeIn = (from, to = null) => new Set(safe.filter((r) => r.ms >= from && (to == null || r.ms < to)).map((r) => r.user_id));
+      const cur = activeIn(d7), prev = activeIn(d14, d7);
+      const active_prev_7d = prev.size;
+      const returned = [...prev].filter((id) => cur.has(id)).length;
       return {
         users_total: await one("SELECT COUNT(*) c FROM users WHERE json_extract(data, '$._merged_into') IS NULL"), // tombstones aren't users
-        users_with_session: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions"),
-        active_7d: await one("SELECT COUNT(DISTINCT user_id) c FROM sessions WHERE date >= ?", d7),
+        users_with_session: new Set(safe.map((r) => r.user_id)).size,
+        active_7d: cur.size,
         active_prev_7d,
         retention_wow: active_prev_7d ? returned / active_prev_7d : null,
-        sessions_7d: await one("SELECT COUNT(*) c FROM sessions WHERE date >= ?", d7),
-        sessions_28d: await one("SELECT COUNT(*) c FROM sessions WHERE date >= ?", d28),
+        sessions_7d: safe.filter((r) => r.ms >= d7).length,
+        sessions_28d: safe.filter((r) => r.ms >= d28).length,
         push_subscriptions: await one("SELECT COUNT(*) c FROM push_subscriptions"),
         push_delivered_7d: await one(
           "SELECT COUNT(*) c FROM push_deliveries d WHERE d.last_ok_at >= ? AND EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.endpoint = d.endpoint)",
@@ -279,17 +448,48 @@ export function createD1Store(db) {
       };
     },
     // Voided sessions must not count as "last trained" (parity with the file store).
-    async latestSessionDate(user_id) {
-      const row = await db.prepare(`SELECT MAX(date) AS d FROM sessions WHERE user_id = ? AND ${notVoided()}`).bind(user_id).first();
-      return row?.d ?? null;
+    async latestSessionDate(user_id, nowMs = Date.now()) {
+      // Timing quarantine is a JS predicate, so this can no longer be a bare
+      // SQL MAX(date). It briefly became "pull every session blob and parse it",
+      // which is O(all sessions) per user and, through listAccountLastSessions
+      // below, ran once per email account on every cron tick. Neither extreme is
+      // needed: SQL narrows on shape and projects the only TWO fields the
+      // predicate reads, so no blob crosses the wire and the decision still
+      // belongs entirely to isDerivableSession.
+      const { results } = await db
+        .prepare(`SELECT date, json_extract(data, '$.local_date') AS local_date FROM sessions
+          WHERE user_id = ? AND ${notVoided()} AND ${DERIVABLE_SHAPE} ORDER BY date DESC`)
+        .bind(user_id, derivableShapeBound(nowMs)).all();
+      for (const row of results) {
+        if (isDerivableSession({ date: row.date, local_date: row.local_date ?? null }, nowMs)) return row.date;
+      }
+      return null;
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Parity with the file store.
-    async listAccountLastSessions() {
+    async listAccountLastSessions(nowMs = Date.now()) {
+      // ONE round trip. This was a single LEFT JOIN ... GROUP BY, then became one
+      // latestSessionDate() call per account — and both the push sweep and the
+      // comeback sweep call it as their FIRST statement, outside the per-user
+      // try/catch each of them carefully builds. Past the subrequest budget the
+      // whole sweep dies for every user at once, which is the opposite of the
+      // isolation those loops were written for.
+      const bound = derivableShapeBound(nowMs);
       const { results } = await db
-        .prepare(`SELECT a.email, a.user_id, MAX(s.date) AS last_date FROM accounts a LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")} GROUP BY a.email, a.user_id`)
-        .all();
-      return results.map((r) => ({ email: r.email, user_id: r.user_id, last_date: r.last_date ?? null }));
+        .prepare(`SELECT a.email, a.user_id, s.date AS date, json_extract(s.data, '$.local_date') AS local_date
+          FROM accounts a
+          LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")}
+            AND s.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(s.date, 1, 10) <= ?
+          ORDER BY s.date DESC`)
+        .bind(bound).all();
+      const best = new Map();   // user_id -> {email, last_date}
+      for (const r of results) {
+        if (!best.has(r.user_id)) best.set(r.user_id, { email: r.email, user_id: r.user_id, last_date: null });
+        const acc = best.get(r.user_id);
+        if (acc.last_date == null && r.date != null
+          && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs)) acc.last_date = r.date;
+      }
+      return [...best.values()];
     },
     // created_at is written explicitly in the same ISO-8601 format the file
     // store uses (new Date().toISOString()), not left to the accounts table's
@@ -345,25 +545,27 @@ export function createD1Store(db) {
     // because the D1 query CLI can't run a migration in this project (7403). Memoized
     // per worker instance so it's a one-time cost, not per request.
     async createShare(userId, shareId, now) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       // One share per user (UNIQUE user_id): opting in again ROTATES the token and
       // revokes the old link in a single write.
-      await db.prepare("INSERT INTO shares (share_id, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET share_id = excluded.share_id, created_at = excluded.created_at")
-        .bind(shareId, userId, now).run();
-      return shareId;
+      await db.prepare(`INSERT INTO shares (share_id, user_id, created_at)
+        SELECT ?, ?, ? WHERE ${notTombstonedOwner}
+        ON CONFLICT(user_id) DO UPDATE SET share_id = excluded.share_id, created_at = excluded.created_at`)
+        .bind(shareId, userId, now, userId).run();
+      return (await isTombstoned(userId)) ? null : shareId;
     },
     async getShareUserId(shareId) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       const row = await db.prepare("SELECT user_id FROM shares WHERE share_id = ?").bind(shareId).first();
       return row?.user_id ?? null;
     },
     async getShareIdForUser(userId) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       const row = await db.prepare("SELECT share_id FROM shares WHERE user_id = ?").bind(userId).first();
       return row?.share_id ?? null;
     },
     async deleteShare(userId) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       // Drop the cheer tally with the share (the count belongs to that share_id).
       // One implicit transaction so a Worker death can't leave a half-revoke.
       await db.batch([
@@ -374,45 +576,35 @@ export function createD1Store(db) {
     // A public "cheer" tally on a share card (social proof). Bounded so it can't grow
     // absurdly; the caller validates the share_id resolves before incrementing.
     async addShareCheer(shareId) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       await db.prepare("INSERT INTO share_cheers (share_id, count) VALUES (?, 1) ON CONFLICT(share_id) DO UPDATE SET count = MIN(count + 1, 1000000)").bind(shareId).run();
       const row = await db.prepare("SELECT count FROM share_cheers WHERE share_id = ?").bind(shareId).first();
       return row?.count ?? 0;
     },
     async getShareCheers(shareId) {
-      await ensureShares(db);
+      await ensureExtensions(db);
       const row = await db.prepare("SELECT count FROM share_cheers WHERE share_id = ?").bind(shareId).first();
       return row?.count ?? 0;
     },
   };
 }
 
-// One-time (per worker instance) creation of the shares table. Cached as a promise
-// so concurrent first-callers all await the same CREATE rather than racing it.
-let _deliveriesReady = null;
-function ensurePushDeliveries(db) {
-  if (!_deliveriesReady) {
-    // A separate table, NOT a column on push_subscriptions — that table already
-    // exists in prod and CREATE TABLE IF NOT EXISTS can't add a column to it
-    // (the exact share_cheers precedent below). Self-initialized at runtime so
-    // no CLI migration is needed (the D1 query CLI is unusable here anyway).
-    _deliveriesReady = db.batch([
-      db.prepare("CREATE TABLE IF NOT EXISTS push_deliveries (endpoint TEXT PRIMARY KEY, last_ok_at INTEGER NOT NULL)"),
-    ]).catch((e) => { _deliveriesReady = null; throw e; }); // don't cache a failure — let the next call retry
-  }
-  return _deliveriesReady;
-}
-
-let _sharesReady = null;
-function ensureShares(db) {
-  if (!_sharesReady) {
-    // Both tables self-init together. `share_cheers` is SEPARATE (not a column on
-    // `shares`) because the shares table already exists in prod without it, and
-    // CREATE TABLE IF NOT EXISTS can't add a column to an existing table.
-    _sharesReady = db.batch([
+// Extension tables are self-initialized because this project cannot rely on a
+// production D1 migration CLI. Readiness is PER BINDING: a module-global promise
+// incorrectly declared an unrelated test/preview database ready after the first
+// Worker binding had run its CREATE statements.
+const extensionReady = new WeakMap();
+function ensureExtensions(db) {
+  let ready = extensionReady.get(db);
+  if (!ready) {
+    ready = db.batch([
       db.prepare("CREATE TABLE IF NOT EXISTS shares (share_id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)"),
       db.prepare("CREATE TABLE IF NOT EXISTS share_cheers (share_id TEXT PRIMARY KEY, count INTEGER NOT NULL DEFAULT 0)"),
-    ]).catch((e) => { _sharesReady = null; throw e; }); // don't cache a failure — let the next call retry
+      db.prepare("CREATE TABLE IF NOT EXISTS push_deliveries (endpoint TEXT PRIMARY KEY, last_ok_at INTEGER NOT NULL)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS merge_archives (archive_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, source_user_id TEXT NOT NULL, created_at TEXT NOT NULL, snapshot TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'available', restored_user_id TEXT, restored_at TEXT)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_merge_archives_owner ON merge_archives(owner_user_id, created_at)"),
+    ]).catch((e) => { extensionReady.delete(db); throw e; });
+    extensionReady.set(db, ready);
   }
-  return _sharesReady;
+  return ready;
 }

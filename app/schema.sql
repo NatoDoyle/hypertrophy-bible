@@ -105,3 +105,19 @@ CREATE TABLE IF NOT EXISTS push_deliveries (
   endpoint   TEXT PRIMARY KEY,
   last_ok_at INTEGER NOT NULL
 );
+
+-- Immutable pre-merge source graphs. `snapshot` is intentionally private to
+-- the store: the owner-facing API returns only a non-sensitive summary, while a
+-- restore can materialize a separate anonymous copy without reviving credentials
+-- or external capabilities.
+CREATE TABLE IF NOT EXISTS merge_archives (
+  archive_id       TEXT PRIMARY KEY,
+  owner_user_id    TEXT NOT NULL,
+  source_user_id   TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  snapshot         TEXT NOT NULL,
+  state            TEXT NOT NULL DEFAULT 'available',
+  restored_user_id TEXT,
+  restored_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_merge_archives_owner ON merge_archives(owner_user_id, created_at);

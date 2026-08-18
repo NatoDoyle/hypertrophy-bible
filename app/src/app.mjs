@@ -9,15 +9,13 @@ import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isS
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
+import { normalizeSessionLocalDate, normalizeSessionTiming, validLocalDate } from "./session-time.mjs";
+import { stripServerOwnedProfile } from "./merge-archive.mjs";
 
-// A client-supplied local calendar day is trusted only if it's a real
-// YYYY-MM-DD (format AND a finite parse) — otherwise it's dropped, never stored.
 // The injury regions the ENGINE can actually act on, read from the KB rather than
 // hand-listed — a hand-listed copy is how the client came to offer 6 of the 8
 // regions data/injury-contraindications.json supports.
 const VALID_INJURY_REGIONS = new Set(Object.keys(contraindications?.regions ?? {}));
-
-const validLocalDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(+new Date(d));
 
 // Hard bounds on a logged set's numbers. `rir` has been clamped at this door for
 // waves — `weight_kg` and `reps` sitting unbounded right beside it is lesson 16
@@ -217,7 +215,13 @@ export function createApp(store, config = {}) {
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +
   // exercise DB + equipment/injuries), with a rationale we can explain.
   app.post("/api/onboard", async (c) => {
-    const { profile } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
+    const { profile: posted } = await c.req.json().catch(() => ({})); // empty/non-JSON -> clean 400, not a 500
+    // The FIRST of the two wholesale client->profile doors. Whatever arrives here
+    // becomes the stored profile verbatim, so the server-owned set is stripped
+    // before any other line reads it — an account cannot be BORN holding forged
+    // social/push state any more than it can acquire it later (the sibling door
+    // below). One shared set, walked by an enumerable test (merge-archive.mjs).
+    const profile = stripServerOwnedProfile(posted);
     if (!profile?.training_status || !profile?.primary_goal) return c.json({ error: "missing profile fields" }, 400);
     // A client-supplied date is hostile until parsed (possession-of-UUID auth means
     // any client can post): junk silently drops to null rather than corrupting the
@@ -280,9 +284,20 @@ export function createApp(store, config = {}) {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
     if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
+    // A profile edit is a generic spread boundary, so make a private editable copy
+    // BEFORE validating or merging it. This used to strip `disclaimer_ack` alone,
+    // under a comment citing "guard the siblings" — the sixteen server-owned
+    // fields beside it stayed writable, so a patch could forge `following`
+    // (skipping the live-share check, the self-follow check, the 20-token cap and
+    // the followers_count bump that is the share owner's ONLY notification) or an
+    // unbounded `challenges` array (skipping MAX_OPEN_CHALLENGES and billing a
+    // listSessions per forged slot to every sweep tick). Now both wholesale doors
+    // pass through one shared set, and a test walks it rather than a comment
+    // claiming coverage (lesson 33).
+    const profilePatch = stripServerOwnedProfile(body.profile ?? null);
     // Same trust-boundary guard as /api/onboard: junk collapses to null.
-    if (body.profile?.goal_event_date != null && !validLocalDate(body.profile.goal_event_date)) body.profile.goal_event_date = null;
-    if (body.profile?.injuries != null) body.profile.injuries = sanitizeInjuries(body.profile.injuries);
+    if (profilePatch?.goal_event_date != null && !validLocalDate(profilePatch.goal_event_date)) profilePatch.goal_event_date = null;
+    if (profilePatch?.injuries != null) profilePatch.injuries = sanitizeInjuries(profilePatch.injuries);
     // The THIRD field in this literal that a client can set and the engines then treat
     // as ground truth. `parseTzOffset` was built as the one canonical validator when
     // the clock moved to a request header, and it reached the header and
@@ -291,7 +306,7 @@ export function createApp(store, config = {}) {
     // the class). It matters more here than at the header, because the hourly push
     // sweep and settleChallenge read the STORED value with no request to re-derive
     // from: a finite-but-absurd offset has no self-heal path.
-    if (body.profile?.tz_offset_min != null) body.profile.tz_offset_min = parseTzOffset(body.profile.tz_offset_min);
+    if (profilePatch?.tz_offset_min != null) profilePatch.tz_offset_min = parseTzOffset(profilePatch.tz_offset_min);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -304,7 +319,7 @@ export function createApp(store, config = {}) {
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;
-      const next = body.profile ? { ...u.profile, ...body.profile, user_id: id } : u.profile;
+      const next = profilePatch ? { ...u.profile, ...profilePatch, user_id: id } : u.profile;
       const trainingChanged = TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
       // Cosmetic edit (units, sex): keep the CURRENT block's accessory rotation and
       // mesocycle position. Training change: fresh block 0 (week-1 ramp, rebased rotation).
@@ -655,7 +670,7 @@ export function createApp(store, config = {}) {
     const day = boundLocalDate(b.date);
     const checkin = { user_id: b.user_id, date: day, source: "manual" };
     for (const k of ["sleep_quality", "energy", "stress", "mood", "motivation"]) if (b[k] != null) checkin[k] = Math.max(1, Math.min(5, Math.round(Number(b[k]))));
-    await store.addCheckin(b.user_id, checkin);
+    if (!(await store.addCheckin(b.user_id, checkin))) return c.json({ error: "unknown user" }, 404);
     // The morning check-in is also where weight is logged (considerations #6 — one
     // morning flow, not a separate trip to Progress). Weight is optional.
     let weight_logged = false;
@@ -663,7 +678,7 @@ export function createApp(store, config = {}) {
       // `day` is already bounded above by the same helper sanitizeBodyweight uses, so
       // the two rows this handler writes can no longer disagree about what a valid
       // date is; sanitizeBodyweight still bounds the kg.
-      await store.addBodyweight(b.user_id, sanitizeBodyweight(day, b.weight_kg));
+      if (!(await store.addBodyweight(b.user_id, sanitizeBodyweight(day, b.weight_kg)))) return c.json({ error: "unknown user" }, 404);
       weight_logged = true;
     }
     return c.json({ ok: true, readiness: dailyReadiness(checkin), weight_logged });
@@ -732,7 +747,7 @@ export function createApp(store, config = {}) {
     const user = b.user_id && (await store.getUser(b.user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!b.subscription?.endpoint || !isAllowedPushEndpoint(b.subscription.endpoint)) return c.json({ error: "bad-subscription" }, 400);
-    await store.savePushSubscription(b.user_id, b.subscription);
+    if (!(await store.savePushSubscription(b.user_id, b.subscription))) return c.json({ error: "unknown user" }, 404);
     // Capture the device's UTC offset so the hourly push sweep can nudge at a sensible
     // LOCAL hour instead of 16:00 UTC for everyone. Stored on the profile (a JSON blob,
     // so no schema change); validated to the real ±14h timezone range.
@@ -748,9 +763,12 @@ export function createApp(store, config = {}) {
     if (!b.endpoint) return c.json({ error: "missing endpoint" }, 400);
     // Scope the delete to the caller's own user_id: the endpoint is possession-
     // based, but if one leaks (a log, a shared device) an attacker must ALSO
-    // hold the matching user_id to kill a victim's reminders. Missing user_id
-    // -> the delete matches nothing (a no-op), never someone else's row.
-    await store.deletePushSubscription(b.endpoint, b.user_id ?? null);
+    // hold the matching, still-active user_id to kill a victim's reminders. The
+    // unscoped store deletion is reserved for the internal 410-pruning sweep;
+    // exposing it here would turn a leaked endpoint into a public unsubscribe
+    // capability and let a merged-away identity act on the survivor's device.
+    if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
+    await store.deletePushSubscription(b.endpoint, b.user_id);
     return c.json({ subscribed: false });
   });
 
@@ -821,7 +839,10 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id || !(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
     let shareId = await store.getShareIdForUser(b.user_id);
-    if (!shareId) shareId = await store.createShare(b.user_id, crypto.randomUUID(), Date.now());
+    if (!shareId) {
+      shareId = await store.createShare(b.user_id, crypto.randomUUID(), Date.now());
+      if (!shareId) return c.json({ error: "unknown user" }, 404);
+    }
     const cheers = await store.getShareCheers(shareId);
     // Surface how many cheers arrived SINCE the user last looked — the motivating
     // signal (a total that never visibly grows is easy to ignore) — then mark seen.
@@ -1138,24 +1159,31 @@ export function createApp(store, config = {}) {
     const id = body.user_id;
     const user = id && (await store.getUser(id));
     if (!user) return c.json({ error: "unknown user" }, 404);
+    // One shared trust boundary for both the instant and the device calendar
+    // day. Invalid clocks fall back to server now rather than strand an offline
+    // workout; a valid historical local day remains intact for week banking.
+    const nowMs = Date.now();
+    const timing = normalizeSessionTiming({ date: body.date, local_date: body.local_date }, nowMs);
     const session = {
       session_id: body.session_id ?? crypto.randomUUID(),
       user_id: id,
-      date: body.date ?? new Date().toISOString(),
+      date: timing.date,
       // The device's LOCAL calendar day — streak/volume weeks bank to the day
       // the user experienced, not the UTC instant (a Monday-morning session in
       // UTC+12 must not land in last week). Whitelisted explicitly (the deload
       // lesson below: a dropped field silently disables its whole pipeline).
-      // VALIDATED at the door: only a real YYYY-MM-DD is stored, else omitted so
-      // the engines fall back to `date` — an unparseable local_date makes an
-      // "NaN-WNaN" week key that sorts after every real week and hijacks the
-      // "latest week" logic (and any client can post, auth being possession).
-      ...(validLocalDate(body.local_date) ? { local_date: String(body.local_date).slice(0, 10) } : {}),
+      // Only a real and server-tomorrow-bounded local day is stored. Otherwise
+      // engines fall back to the sanitized instant rather than accepting a
+      // rollover date or a far-future week key.
+      ...(timing.local_date ? { local_date: timing.local_date } : {}),
       program_ref: user.program.id,
       session_name: body.session_name ?? null,
       sets: (body.sets ?? []).map(normalizeSet),
     };
-    await store.addSession(id, session);
+    // The store repeats the tombstone fence in its atomic write. A merge can land
+    // after the read above; reporting a recap for a row that was safely refused
+    // would be an optimistic lie, so surface the lost identity instead.
+    if (!(await store.addSession(id, session))) return c.json({ error: "unknown user" }, 404);
     const all = await store.listSessions(id);
     // Celebration marker (Tier-1 #3, Wave 201): the single most celebration-worthy
     // event this session caused, stamped here — the ONE door every session enters
@@ -1267,15 +1295,31 @@ export function createApp(store, config = {}) {
   app.get("/api/sessions", async (c) => {
     const { id, user, error } = await requireUser(c);
     if (error) return error;
-    const all = await store.listSessions(id, { includeVoided: true });
+    // History is the correction surface, so it alone receives quarantined raw
+    // rows. Never let the usual recent-history cap hide a record the user needs
+    // in order to make it safe for coaching again.
+    const all = await store.listSessions(id, { includeVoided: true, includeQuarantined: true });
     // Resolve display names here rather than shipping the exercise DB to a screen
     // that only needs labels — and include custom exercises, or a user's own lift
     // would show as a raw slug on the one screen where they have to recognise it.
     const custom = new Map((user.custom_exercises || []).map((e) => [e.id, e.name]));
     const label = (exId) => custom.get(exId) ?? exerciseById.get(exId)?.name ?? exId;
-    // Newest first, capped — this is a correction surface, not an archive browser.
-    return c.json({ sessions: all.slice(-60).reverse().map((sess) => ({
+    const quarantined = all.filter((s) => s.timing_issue);
+    const ordinary = all.filter((s) => !s.timing_issue).slice(-60);
+    // Newest first for ordinary records; quarantined rows stay PINNED above them.
+    // They used to be concatenated first and then re-sorted by `date` — the very
+    // field whose invalidity caused the quarantine. An unparseable or empty date
+    // collapses to "" and sorts LAST, so the rows carrying the only repair
+    // affordance landed beneath all sixty ordinary cards, contradicting the
+    // comment directly above them; a far-future date sorted first. Sorting only
+    // the rows whose sort key is trustworthy is the whole fix.
+    // `.reverse()` rather than a comparator: `all` arrives ordered date ASC then
+    // insertion order, so reversing keeps same-day siblings newest-first, which a
+    // stable sort on `date` alone would silently flip to oldest-first.
+    const visible = [...quarantined, ...ordinary.reverse()];
+    return c.json({ sessions: visible.map(({ timing_issue, ...sess }) => ({
       ...sess,
+      ...(timing_issue ? { time_quarantine: timing_issue } : {}),
       sets: (sess.sets ?? []).map((set) => ({ ...set, name: label(set.exercise) })),
     })) });
   });
@@ -1288,14 +1332,44 @@ export function createApp(store, config = {}) {
     const { id, user, error } = await requireUser(c, body);
     if (error) return error;
     if (!body.session_id) return c.json({ error: "session_id required" }, 400);
-    if (!Array.isArray(body.sets)) return c.json({ error: "sets required" }, 400);
+    const correctingDate = Object.hasOwn(body, "corrected_local_date");
+    if (!Array.isArray(body.sets) && !correctingDate) return c.json({ error: "sets required" }, 400);
     // A session with no sets left is a session that didn't happen — void it rather
     // than storing an empty husk that still counts as a trained day for the streak.
-    const sets = body.sets.map(normalizeSet).filter((x) => x.exercise);
+    const sets = Array.isArray(body.sets) ? body.sets.map(normalizeSet).filter((x) => x.exercise) : null;
+    // A new session is intentionally lenient: a temporarily wrong offline clock
+    // falls back to server time so the workout is not stranded. A correction is a
+    // deliberate, small form with one field, so silently changing an invalid choice
+    // to today would be misleading. Reject it and leave the raw record intact.
+    const correctionNow = Date.now();
+    // Judge the correction in the USER'S calendar frame, not UTC. `X-HB-TZ` rides
+    // every request from this client (and the stored offset is the fallback), and
+    // /api/today already reads it — this door did not, so its ceiling was a UTC
+    // date while the picker's `max` was the device's local tomorrow. A UTC+13 user
+    // was therefore OFFERED a day the server refused, and since this is the only
+    // exit from a timing quarantine, the repair was a dead end (lesson 22 on the
+    // frame, lesson 34 on a signal that was already at the choke point).
+    const correctionTz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min ?? null;
+    if (correctingDate && !normalizeSessionLocalDate(body.corrected_local_date, correctionNow, correctionTz)) {
+      return c.json({ error: "bad-date" }, 400);
+    }
+    const timing = correctingDate
+      ? normalizeSessionTiming({ date: body.corrected_local_date, local_date: body.corrected_local_date }, correctionNow, correctionTz)
+      : null;
     const updated = await store.updateSession(id, body.session_id, (sess) => {
-      sess.sets = sets;
-      sess.edited_at = new Date().toISOString(); // an edited record says so
-      if (!sets.length) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      if (sets) {
+        sess.sets = sets;
+        sess.edited_at = new Date().toISOString(); // an edited record says so
+        if (!sets.length) sess.voided_at = sess.voided_at ?? new Date().toISOString();
+      }
+      if (timing) {
+        sess.date = timing.date;
+        // corrected_local_date is required to pass through the same strict
+        // calendar guard; it is never silently replaced with today.
+        if (timing.local_date) sess.local_date = timing.local_date;
+        else delete sess.local_date;
+        sess.timing_corrected_at = new Date().toISOString();
+      }
       return sess;
     });
     if (!updated) return c.json({ error: "unknown session" }, 404);
@@ -1338,7 +1412,7 @@ export function createApp(store, config = {}) {
     const user = user_id && (await store.getUser(user_id));
     if (!user) return c.json({ error: "unknown user" }, 404);
     if (!Number.isFinite(Number(kg)) || Number(kg) <= 0) return c.json({ error: "bad-weight" }, 400);
-    await store.addBodyweight(user_id, sanitizeBodyweight(date, kg));
+    if (!(await store.addBodyweight(user_id, sanitizeBodyweight(date, kg)))) return c.json({ error: "unknown user" }, 404);
     const all = await store.listBodyweights(user_id);
     // Same 42-day windowing as progressReport (lesson 1 — fix every call site of
     // bodyweightTrend, not just the one that showed the bug); a sparse window falls
@@ -1409,6 +1483,7 @@ export function createApp(store, config = {}) {
       };
       return u;
     });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
     // A weight typed into the stats form is a fresh weigh-in — record it as one so it
     // becomes the LATEST bodyweight the plan reads. Without this, nutritionInputs takes
     // the most recent logged weigh-in even when it's months stale, and the value the
@@ -1416,7 +1491,7 @@ export function createApp(store, config = {}) {
     // Routed through the SAME guard as the other two doors rather than re-deriving a
     // date check here — re-deriving it is exactly how this door came to be the one
     // that was missed (see sanitizeBodyweight's header).
-    if (num(b.weight_kg)) await store.addBodyweight(b.user_id, sanitizeBodyweight(b.date, b.weight_kg));
+    if (num(b.weight_kg) && !(await store.addBodyweight(b.user_id, sanitizeBodyweight(b.date, b.weight_kg)))) return c.json({ error: "unknown user" }, 404);
     const { profile, history } = await nutritionInputs(updated, b.user_id);
     return c.json({ nutrition: nutritionPlan(profile, history), profile });
   });
@@ -1444,13 +1519,13 @@ export function createApp(store, config = {}) {
     // value (possession-of-UUID auth), and a negative protein_g would render as a
     // negative intake bar, a huge kcal as an absurd "today so far". Clamp at the door.
     const macro = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(2000, Math.round(n))) : undefined; };
-    await store.addNutritionLog(b.user_id, {
+    if (!(await store.addNutritionLog(b.user_id, {
       date: (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : new Date().toISOString().slice(0, 10)),
       kcal: Math.min(20000, Math.round(Number(b.kcal))),
       ...(macro(b.protein_g) != null ? { protein_g: macro(b.protein_g) } : {}),
       ...(macro(b.carbs_g) != null ? { carbs_g: macro(b.carbs_g) } : {}),
       ...(macro(b.fat_g) != null ? { fat_g: macro(b.fat_g) } : {}),
-    });
+    }))) return c.json({ error: "unknown user" }, 404);
     const { profile, history } = await nutritionInputs(user, b.user_id);
     return c.json({ logged: true, nutrition: nutritionPlan(profile, history), logged_days: history.filter((h) => h.kcal).length });
   });
@@ -1517,8 +1592,9 @@ export function createApp(store, config = {}) {
   app.post("/api/auth/merge", async (c) => {
     const { from_user_id, to_user_id, grant } = await c.req.json().catch(() => ({}));
     if (!from_user_id || !to_user_id || from_user_id === to_user_id || !grant) return c.json({ error: "bad-request" }, 400);
-    // Merge is the ONLY route that permanently DELETES a user (its final step drops
-    // the from-user row). Its REAL boundaries are two: (1) the grant below is bound
+    // Merge is the only route that retires an active identity. Its final store step
+    // archives the complete source graph and hides a provenance tombstone; it never
+    // drops user data. Its REAL boundaries are two: (1) the grant below is bound
     // to `to`, so only a caller who just restored `to` can merge into it; (2) the
     // from-user must be anonymous (no email account), so an email-bound account can
     // never be merged away. The X-HB-User === from_user_id check below is a
@@ -1526,9 +1602,9 @@ export function createApp(store, config = {}) {
     // the bare-UUID possession model, an attacker who already KNOWS an anonymous
     // victim's UUID can set both the header and the body to it. That is an accepted
     // residual risk of the possession model (such an attacker can already read/write
-    // that user); the only EXTRA power merge grants is deleting the anonymous row.
-    // Genuinely hardening this (a non-forgeable possession token for `from`, or not
-    // deleting the row at all) is a security-design decision tracked in BLOCKERS.md.
+    // that user); the only EXTRA power merge grants is retiring the anonymous row.
+    // Genuinely hardening this (a non-forgeable possession token for `from`) is a
+    // security-design decision tracked in BLOCKERS.md.
     if (c.req.header("X-HB-User") !== from_user_id) return c.json({ error: "from-not-authorized" }, 403);
     // Require a valid merge grant tied to to_user_id: only a caller who just
     // restored `to` can merge into it (not anyone holding two UUIDs).
@@ -1536,13 +1612,23 @@ export function createApp(store, config = {}) {
     if (!link || link.used || link.purpose !== "merge-grant" || link.user_id !== to_user_id || Date.now() > link.expires_at) {
       return c.json({ error: "bad-grant" }, 403);
     }
-    // Atomically consume the grant: if a concurrent merge already spent it,
-    // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
-    if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
+    // Every refusable check runs BEFORE the grant is spent. It used to run after,
+    // so a plain 404 or a from-user-has-account 409 consumed a single-use grant and
+    // left the caller unable to retry a merge that had not happened — the grant is
+    // the scarce thing here, so nothing that can say "no" should cost one.
     const [from, to] = await Promise.all([store.getUser(from_user_id), store.getUser(to_user_id)]);
     if (!from || !to) return c.json({ error: "unknown user" }, 404);
     if (await store.getAccountByUserId(from_user_id)) return c.json({ error: "from-user-has-account" }, 409);
+    // Atomically consume the grant: if a concurrent merge already spent it,
+    // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
+    if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
     const moved = await store.reassignUserData(from_user_id, to_user_id);
+    // The store REFUSED (null): between the reads above and the write, a concurrent
+    // merge tombstoned one of the two rows. Nothing moved, so say nothing moved —
+    // `{merged:true, sessions:0}` is indistinguishable from a legitimately empty
+    // source, and the client acts on it by clearing the offline queue it was about
+    // to hand over. Report it and let the caller ask for a fresh link.
+    if (!moved) return c.json({ error: "merge-unavailable" }, 409);
     // The merge just rewrote the survivor's session history, and merge-profile may
     // have adopted a pending echo computed against the OTHER account's history —
     // re-earn any pending marker from the combined truth before the sweep pushes
@@ -1551,6 +1637,26 @@ export function createApp(store, config = {}) {
     // celebration write — a failed echo must never fail the merge.
     await recomputeCelebration(to_user_id, await store.getUser(to_user_id));
     return c.json({ merged: true, ...moved });
+  });
+
+  // The survivor, and only the survivor, can see that a recoverable source
+  // exists. Summaries intentionally omit source UUIDs, snapshots, endpoints,
+  // email/token metadata, and every other capability-like value.
+  app.get("/api/merge-archives", async (c) => {
+    const { id, error } = await requireUser(c);
+    if (error) return error;
+    return c.json({ archives: await store.listMergeArchives(id) });
+  });
+
+  // Restore makes a separate anonymous account. It never rewrites the survivor,
+  // never reactivates push/share/social capability records, and is idempotent so
+  // a retry after a dropped response cannot create a second copy.
+  app.post("/api/merge-archives/:archiveId/restore", async (c) => {
+    const { id, error } = await requireUser(c);
+    if (error) return error;
+    const restored = await store.restoreMergeArchive(id, c.req.param("archiveId"));
+    if (!restored) return c.json({ error: "not found" }, 404);
+    return c.json({ restored: true, ...restored });
   });
 
   // Exercise detail (the "how do I do this?" tap) — resolves custom exercises too.

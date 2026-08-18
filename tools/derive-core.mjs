@@ -177,11 +177,15 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
 export function luckySetsInSession(session) {
   const seen = {};
   const hits = [];
+  // A recoverable account merge restores sessions under fresh ids (D1 owns a
+  // global session-id PK). Retain the original deterministic seed so cloning a
+  // user's history never changes which historical sets earned lucky XP.
+  const luckySeed = session.lucky_seed ?? session.session_id;
   for (const set of session.sets ?? []) {
     if (!isHardSet(set)) continue;
     const idx = seen[set.exercise] ?? 0;
     seen[set.exercise] = idx + 1;
-    if (isLuckySet(session.session_id, set.exercise, idx)) hits.push({ exercise: set.exercise, index: idx });
+    if (isLuckySet(luckySeed, set.exercise, idx)) hits.push({ exercise: set.exercise, index: idx });
   }
   return hits;
 }
