@@ -5,7 +5,7 @@
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
-import { archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
 // logged data" — but must be invisible to every engine that reads history. The
@@ -433,9 +433,32 @@ export function createD1Store(db) {
       const cur = activeIn(d7), prev = activeIn(d14, d7);
       const active_prev_7d = prev.size;
       const returned = [...prev].filter((id) => cur.has(id)).length;
+      // ACTIVATION — two small columns per live user, never the blobs (same rule as
+      // the queries above). See activationFunnel's note: the historical denominator
+      // is contaminated by the loop's own prod smokes, which now tag themselves.
+      const { results: userRows } = await db
+        .prepare("SELECT id, json_extract(data, '$.created_at') AS created_at, json_extract(data, '$.profile.smoke') AS smoke FROM users WHERE json_extract(data, '$._merged_into') IS NULL")
+        .all();
+      const firstMs = new Map();
+      for (const r of safe) {
+        const cur2 = firstMs.get(r.user_id);
+        if (cur2 == null || r.ms < cur2) firstMs.set(r.user_id, r.ms);
+      }
+      const lags = userRows
+        .map((u) => [Date.parse(u.created_at ?? ""), firstMs.get(u.id)])
+        .filter(([c, f]) => Number.isFinite(c) && f != null && f >= c)
+        .map(([c, f]) => (f - c) / 86400000)
+        .sort((a, b) => a - b);
+      const usersWithSession = new Set(safe.map((r) => r.user_id)).size;
+      const funnel = activationFunnel({
+        liveCount: userRows.length,
+        smokeCount: userRows.filter((u) => u.smoke === 1 || u.smoke === true).length,
+        usersWithSession, lags,
+      });
       return {
-        users_total: await one("SELECT COUNT(*) c FROM users WHERE json_extract(data, '$._merged_into') IS NULL"), // tombstones aren't users
-        users_with_session: new Set(safe.map((r) => r.user_id)).size,
+        users_total: userRows.length, // tombstones aren't users
+        users_with_session: usersWithSession,
+        ...funnel,
         active_7d: cur.size,
         active_prev_7d,
         retention_wow: active_prev_7d ? returned / active_prev_7d : null,

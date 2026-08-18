@@ -16,12 +16,36 @@ import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
 import { createD1Shim, sqliteAvailable } from "./d1-shim.mjs";
 
-// Node < 22.5 has no node:sqlite — skip cleanly (exit 0) rather than fail the
-// whole app gate on machines running older Node; the suite runs fully wherever
-// node:sqlite exists (Node 22+, incl. the cloud-loop environments).
+// This suite is the ONLY coverage of store-d1.mjs — the store production actually
+// runs on. It used to print "SKIPPED" and exit 0 on Node < 22.5 (no node:sqlite),
+// so on a machine running Node 20 the app gate went green having tested the prod
+// store not at all: a maintainer editing store-d1.mjs got a full-green `npm test`
+// as evidence about code no assertion had touched. A suite that skips on exit 0
+// reads as a suite that passed.
+//
+// So it no longer skips — it RE-EXECS itself under a Node that has node:sqlite.
+// Coverage, rather than a nag the reader learns to scroll past. Only if that is
+// impossible (offline, no npx) does it fail, loudly, naming the one command that
+// runs it. HB_D1_NO_REEXEC=1 opts out for a caller that genuinely cannot.
 if (!(await sqliteAvailable())) {
-  console.log("store-d1 parity suite SKIPPED — node:sqlite unavailable (requires Node >= 22.5; current " + process.version + ").");
-  process.exit(0);
+  const NODE_WITH_SQLITE = "node@25";
+  if (process.env.HB_D1_NO_REEXEC === "1") {
+    console.error(`store-d1 parity suite CANNOT RUN — node:sqlite needs Node >= 22.5 (current ${process.version}).`);
+    console.error(`This suite is the only coverage of the PRODUCTION store, so this is a failure, not a skip.`);
+    console.error(`Run: npx --yes ${NODE_WITH_SQLITE} app/scripts/test-store-d1.mjs`);
+    process.exit(1);
+  }
+  const { spawnSync } = await import("node:child_process");
+  console.log(`store-d1 parity suite: node:sqlite needs Node >= 22.5 (current ${process.version}) — re-running under ${NODE_WITH_SQLITE}.`);
+  const here = fileURLToPath(import.meta.url);
+  const r = spawnSync("npx", ["--yes", NODE_WITH_SQLITE, here], { stdio: "inherit", env: { ...process.env, HB_D1_NO_REEXEC: "1" } });
+  if (r.error || r.status == null) {
+    console.error(`store-d1 parity suite COULD NOT RE-EXEC (${r.error?.message ?? "no exit status"}).`);
+    console.error(`This suite is the only coverage of the PRODUCTION store, so this is a failure, not a skip.`);
+    console.error(`Run it yourself with: npx --yes ${NODE_WITH_SQLITE} app/scripts/test-store-d1.mjs`);
+    process.exit(1);
+  }
+  process.exit(r.status);
 }
 
 let pass = 0, fail = 0;
@@ -853,6 +877,45 @@ try {
   const fileAcc = (await file.listAccountLastSessions(SHAPE_NOW)).find((a) => a.user_id === "shape-all");
   const d1Acc = (await d1.listAccountLastSessions(SHAPE_NOW)).find((a) => a.user_id === "shape-all");
   same("prefilter superset: listAccountLastSessions agrees across stores", fileAcc, d1Acc);
+
+  // --- the activation funnel must be identical in both stores -----------------
+  // Two implementations of one arithmetic is how the file store and D1 drift; both
+  // now call the same pure activationFunnel, and this asserts it end to end.
+  // On FRESH stores, deliberately. stats() is a whole-database aggregate, and by
+  // this point the shared pair carries the collide scenario — whose cross-user
+  // session_id divergence is analysed and locked in far above, and which shows up
+  // here as a one-session difference in users_with_session. Comparing global
+  // aggregates would therefore assert the wrong thing: it would either fail on a
+  // known, deliberate difference or invite someone to "fix" it. A clean pair
+  // isolates the arithmetic this block is actually about.
+  const FN_NOW = Date.parse("2026-09-01T12:00:00.000Z");
+  const fnFilePath = join(tmpdir(), `hb-funnel-${process.pid}.json`);
+  const fnFile = createFileStore(fnFilePath);
+  const fnShim = createD1Shim();
+  fnShim.exec(readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8"));
+  const fnD1 = createD1Store(fnShim);
+  for (const [uid, created, smoke] of [
+    ["fn-real", "2026-08-20T10:00:00.000Z", false],
+    ["fn-never", "2026-08-21T10:00:00.000Z", false],
+    ["fn-smoke", "2026-08-22T10:00:00.000Z", true],
+  ]) {
+    const doc = { profile: { user_id: uid, ...(smoke ? { smoke: true } : {}) }, created_at: created };
+    await fnFile.saveUser(uid, doc);
+    await fnD1.saveUser(uid, doc);
+  }
+  const fnSession = { session_id: "fn-s1", date: "2026-08-22T10:00:00.000Z", sets: [] };
+  await fnFile.addSession("fn-real", fnSession);
+  await fnD1.addSession("fn-real", fnSession);
+  const fStats = await fnFile.stats(FN_NOW), dStats = await fnD1.stats(FN_NOW);
+  for (const k of ["smoke_users", "users_unclassified", "onboarded_never_trained", "activation_rate", "days_to_first_session_median", "days_to_first_session_n"]) {
+    same(`stats parity: ${k}`, fStats[k], dStats[k]);
+  }
+  same("stats parity: the whole aggregate, on a clean pair", fStats, dStats);
+  ok("stats: only the key-minted row counts as smoke", fStats.smoke_users === 1);
+  ok("stats: the three rows split into 1 activated / 2 never-trained", fStats.onboarded_never_trained === 2 && Math.abs(fStats.activation_rate - 1 / 3) < 1e-9);
+  ok("stats: time-to-first-session is measured from the user's created_at (2 days here)",
+    fStats.days_to_first_session_n === 1 && fStats.days_to_first_session_median === 2);
+  try { rmSync(fnFilePath); } catch {}
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

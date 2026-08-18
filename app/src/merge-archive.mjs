@@ -33,7 +33,10 @@ export const LIVE_PROFILE_FIELDS = new Set([
 // server-stamped acknowledgement, copied from an immutable archive — it travels
 // with them), while a CLIENT may never write it, because that would let a device
 // forge, replace, or mint the record the stamp exists to be.
-export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack"]);
+// `smoke` marks owner smoke-test traffic so it can be excluded from the activation
+// metric. It must be server-owned in the strictest sense: a client that could set it
+// could remove itself from the app's own numbers.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke"]);
 
 // Every wholesale client->profile door passes through here. Returns a private
 // copy: callers then validate the remaining fields, so mutating the caller's
@@ -124,4 +127,38 @@ export function archiveSnapshot({ user, sessions = [], bodyweights = [], checkin
       magic_links: magic_links.length,
     },
   });
+}
+
+// ---------- activation funnel (Wave 222) ----------
+//
+// Lives here beside the other store-shared pure helpers so BOTH stores compute the
+// funnel from one definition rather than each doing its own arithmetic.
+//
+// Why this exists: `push_subscriptions: 0` (Wave 210's first live reading) said the
+// push channel reached nobody, and the loop learned to measure a feature's opt-in
+// before building more of its tail. This is that lesson one level UP. The app's
+// headline numbers were 135 user rows and 13 that ever logged a session — which
+// reads as a 90% activation failure, except a user row is created ONLY by
+// POST /api/onboard, and every prod smoke test in ~40 waves called exactly that.
+// So the denominator is contaminated by an unknown amount of our own traffic, and
+// nobody had separated the two before drawing conclusions from the ratio.
+//
+// From now on the owner's own smoke traffic identifies itself. Rows that predate
+// this are NOT retroactively classified: there is no signal that distinguishes them,
+// and a plausible-looking split would be a number nobody measured.
+export function activationFunnel({ liveCount, smokeCount, usersWithSession, lags }) {
+  const real = liveCount - smokeCount;
+  const median = lags.length
+    ? (lags.length % 2 ? lags[(lags.length - 1) / 2] : (lags[lags.length / 2 - 1] + lags[lags.length / 2]) / 2)
+    : null;
+  return {
+    // Tagged rows only — this is 0 until the first tagged smoke lands, and it says
+    // so rather than pretending to have cleaned the history.
+    smoke_users: smokeCount,
+    users_unclassified: real,
+    onboarded_never_trained: Math.max(0, liveCount - usersWithSession),
+    activation_rate: liveCount ? usersWithSession / liveCount : null,
+    days_to_first_session_median: median == null ? null : Math.round(median * 10) / 10,
+    days_to_first_session_n: lags.length,
+  };
 }

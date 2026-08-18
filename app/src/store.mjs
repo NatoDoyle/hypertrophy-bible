@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeUserProfile } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
-import { archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -340,9 +340,31 @@ export function createFileStore(path) {
       }
       const returned = [...prev].filter((u) => cur.has(u)).length;
       const subs = Object.values(db.push_subscriptions ?? {});
+      // ACTIVATION — the mouth of the funnel. A user row exists only after someone
+      // finishes onboarding, so "onboarded but never trained" is a real, separable
+      // number, and it is the one every retention mechanism is downstream of.
+      // It is also the number the loop's own prod smokes pollute: every smoke test
+      // POSTs /api/onboard against prod, so an unknown share of the historical
+      // denominator is us. Rows minted with the owner's stats key from now on say
+      // so; rows created BEFORE this wave carry no marker and are NOT retroactively
+      // guessed at (inventing that split would be a fabricated number).
+      const live = Object.entries(db.users ?? {}).filter(([, u]) => !u._merged_into);
+      const smoke = live.filter(([, u]) => u.profile?.smoke === true);
+      const firstMs = new Map();
+      for (const [uid, list] of Object.entries(db.sessions ?? {})) {
+        const ms = list.map(safeMs).filter((x) => x != null).sort((a, b) => a - b)[0];
+        if (ms != null) firstMs.set(uid, ms);
+      }
+      const lags = live
+        .map(([uid, u]) => [Date.parse(u.created_at ?? ""), firstMs.get(uid)])
+        .filter(([c, f]) => Number.isFinite(c) && f != null && f >= c)
+        .map(([c, f]) => (f - c) / 86400000)
+        .sort((a, b) => a - b);
+      const funnel = activationFunnel({ liveCount: live.length, smokeCount: smoke.length, usersWithSession: users_with_session, lags });
       return {
-        users_total: Object.values(db.users ?? {}).filter((u) => !u._merged_into).length, // tombstones aren't users
+        users_total: live.length, // tombstones aren't users
         users_with_session,
+        ...funnel,
         active_7d: cur.size,
         active_prev_7d: prev.size,
         retention_wow: prev.size ? returned / prev.size : null,

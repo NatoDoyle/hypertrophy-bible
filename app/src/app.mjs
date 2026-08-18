@@ -254,6 +254,15 @@ export function createApp(store, config = {}) {
     // never trusted from the client (overwrite whatever was posted), and never
     // asked as a checkbox (Goal 3: zero cognitive load).
     profile.disclaimer_ack = { v: 1, at: new Date().toISOString() };
+    // Owner smoke traffic identifies itself. Every prod smoke across ~40 waves has
+    // POSTed this route — the only thing that creates a user row — so the app's own
+    // activation number counts an unknown amount of us in its denominator, and
+    // nothing separated the two before conclusions were drawn from the ratio.
+    // Gated on the STATS_KEY rather than a plain header on purpose: a flag any
+    // client could set would let anyone quietly remove themselves from the metric,
+    // which is the same defect pointed the other way. `smoke` is in the
+    // server-owned strip set, so the ONLY way to acquire it is this line.
+    if (config.statsKey && c.req.header("X-HB-Stats-Key") === config.statsKey) profile.smoke = true;
     profile.units ??= "metric";
     profile.days_per_week ??= 3;
     const { program, rationale, meta } = generateUserPlan(profile);

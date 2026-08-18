@@ -9,10 +9,11 @@ import { dirname, join } from "node:path";
 // page's ranked connections + "also connected" suggestions into the bundle, and parses
 // BOTH pillar-index formats (09's bullets, 00–08's tables) so curated order/descriptions
 // reach the Learn list.
-import { extractPage, buildGraph, formatReasons, parseContentsIndex, rendersAsLink } from "../../tools/graph-core.mjs";
+import { extractPage, buildGraph, formatReasons, parseContentsIndex, linkTarget } from "../../tools/graph-core.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTENT = join(here, "../../content");
+const EXERCISES_DIR = join(here, "../../data/exercises");
 const OUT = join(here, "../public/learn-data.js");
 
 // Every pillar ships. The beginner on-ramp leads (tier "start", curated
@@ -37,6 +38,16 @@ const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, 
 // Populated before conversion runs.
 const BUNDLED = new Set();
 
+// Every exercise the KB could link to. Read from disk rather than importing
+// app/src/kb-data.mjs so the two generators have no run-order dependency.
+// Populated up front for the same reason BUNDLED is: `inline()` consults it.
+const EX_IDS = new Set(readdirSync(EXERCISES_DIR).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
+// Only the exercises the prose actually references get bundled — all 171 would
+// cost ~235 KB raw where the referenced 64 cost ~87 KB, on an asset the service
+// worker precaches. Collected while rendering.
+const EX_REFS = new Set();
+let exRefTotal = 0;
+
 // Inline markdown → HTML on already-escaped text.
 //   - links to a SIBLING page we bundle  → a tappable in-app deep link (data-learn)
 //   - external http links                → kept, opened in a new tab
@@ -57,8 +68,16 @@ function inline(text) {
     // predicate rather than half of it is what makes the three agree by construction —
     // when this file applied `BUNDLED.has` locally, the gate didn't, and index links
     // rendered as text while being counted as live jumps.
-    const slug = rendersAsLink(url, BUNDLED);
-    if (slug) return `<button class="learnlink" data-learn="${slug}">${label}</button>`;
+    // ONE classifier for both kinds of in-app jump. A muscle guide's ranked pick
+    // list links `../../data/exercises/<id>.json`; those used to render as bare
+    // label text, so the region-by-region recommendations those guides exist for
+    // were unreachable from inside the app (back.md alone dropped 22 of them).
+    // The id is `[a-z0-9-]+` by construction, so it cannot carry anything into
+    // the attribute — the safety property comes from the predicate's alphabet,
+    // not from trusting the source.
+    const t = linkTarget(url, BUNDLED, EX_IDS);
+    if (t?.kind === "page") return `<button class="learnlink" data-learn="${t.id}">${label}</button>`;
+    if (t?.kind === "exercise") { EX_REFS.add(t.id); exRefTotal++; return `<button class="learnlink exlink" data-ex="${t.id}">${label}</button>`; }
     return label;
   });
   t = t.replace(/\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, "<strong>$1</strong>"); // tolerates *italics* inside **bold** (11 pages rendered literal ** before)
@@ -205,6 +224,36 @@ for (const [slug, pg] of Object.entries(pages)) {
 }
 if (connectedTotal === 0) throw new Error("graph produced zero connections — extractor/renderer drift?");
 
+// ---------- the exercise sheets those refs open ----------
+// EXACTLY the field set GET /api/exercise/:id returns, so the sheet the Learn tab
+// renders offline and the sheet the player fetches are the same sheet. A parity
+// test walks both, because "identical by construction" is the kind of claim this
+// project has learned not to make in prose.
+const MUSCLE_NAME = new Map(readdirSync(join(here, "../../data/muscles")).filter((f) => f.endsWith(".json"))
+  .map((f) => { const m = JSON.parse(readFileSync(join(here, "../../data/muscles", f), "utf8")); return [m.id, m.name]; }));
+const muscleNames = (ids) => (ids ?? []).map((id) => MUSCLE_NAME.get(id) ?? id);
+const learnExercises = {};
+for (const id of [...EX_REFS].sort()) {
+  const e = JSON.parse(readFileSync(join(EXERCISES_DIR, `${id}.json`), "utf8"));
+  learnExercises[id] = {
+    id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [],
+    equipment: e.equipment ?? null,
+    primary_muscles: muscleNames(e.primary_muscles), secondary_muscles: muscleNames(e.secondary_muscles),
+    execution_steps: e.execution_steps ?? [], good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],
+    loading_bias: e.loading_bias ?? null, cns_cost: e.cns_cost ?? null, difficulty: e.difficulty ?? null,
+    resistance_profile: e.resistance_profile ?? null, movement_pattern: e.movement_pattern ?? null,
+  };
+}
+// Drift tripwires, in this file's existing style: a predicate change that silently
+// stops matching would otherwise ship a bundle whose buttons all vanished, and the
+// page HTML would look fine.
+if (exRefTotal === 0) throw new Error("zero exercise refs rendered — predicate/renderer drift?");
+for (const [slug, pg] of Object.entries(pages)) {
+  for (const m of pg.html.matchAll(/data-ex="([a-z0-9-]+)"/g)) {
+    if (!learnExercises[m[1]]) throw new Error(`page "${slug}" links exercise "${m[1]}" with no bundled sheet`);
+  }
+}
+
 const banner = "// AUTO-GENERATED by app/scripts/gen-learn-data.mjs — do not edit by hand.\n";
-writeFileSync(OUT, `${banner}export const LEARN_INDEX = ${JSON.stringify(index)};\nexport const LEARN_PAGES = ${JSON.stringify(pages)};\n`);
-console.log(`Wrote public/learn-data.js — ${Object.keys(pages).length} pages, ${index.length} categories, ${graph.metrics.edgeCount} graph edges.`);
+writeFileSync(OUT, `${banner}export const LEARN_INDEX = ${JSON.stringify(index)};\nexport const LEARN_PAGES = ${JSON.stringify(pages)};\nexport const LEARN_EXERCISES = ${JSON.stringify(learnExercises)};\n`);
+console.log(`Wrote public/learn-data.js — ${Object.keys(pages).length} pages, ${index.length} categories, ${graph.metrics.edgeCount} graph edges, ${exRefTotal} exercise refs → ${Object.keys(learnExercises).length} sheets.`);

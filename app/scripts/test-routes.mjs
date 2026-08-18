@@ -1965,6 +1965,7 @@ try {
     challenge: { id: "forged", week: "2026-W01" },
     challenge_pushed_at: 1, challenge_accept_pushed_at: 1,
     disclaimer_ack: { v: 99, at: "1970-01-01T00:00:00.000Z" },
+    smoke: true,
   };
   // The fixture must COVER the set — otherwise this test silently shrinks the day
   // someone adds a field (the "green gate proves only what it measures" trap).
@@ -2080,6 +2081,37 @@ try {
   });
   ok("#tq an impossible date is refused as `bad-date`, not as a network failure",
     badRes.status === 400 && (await badRes.json()).error === "bad-date");
+
+  // --- the activation funnel, and who may mark themselves as noise -------------
+  // A user row is created ONLY by POST /api/onboard, which is also what every prod
+  // smoke test calls — so the app's headline activation ratio counts an unknown
+  // amount of the loop's own traffic. Owner traffic now tags itself; nobody else can.
+  const funnelApp = createApp(createFileStore(join(tmpdir(), `hb-stats-test-${process.pid}.json`)), { statsKey: "s3cret" });
+  const sJson = async (url, body, headers = {}) => {
+    const res = await funnelApp.request(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+    return { status: res.status, data: await res.json().catch(() => null) };
+  };
+  const P = { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const realU = (await sJson("/api/onboard", { profile: P })).data.user_id;
+  const liarU = (await sJson("/api/onboard", { profile: { ...P, smoke: true } })).data.user_id;   // self-declared
+  const smokeU = (await sJson("/api/onboard", { profile: P }, { "X-HB-Stats-Key": "s3cret" })).data.user_id;
+  const funnelRes = await funnelApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "s3cret" } });
+  const st = await funnelRes.json();
+  ok("#funnel only the owner's key can mark a row as smoke traffic", st.smoke_users === 1, `smoke_users=${st.smoke_users}`);
+  ok("#funnel a client that DECLARES itself smoke is not believed", st.users_total === 3 && st.users_unclassified === 2);
+  ok("#funnel onboarded-but-never-trained is reported on its own", st.onboarded_never_trained === 3);
+  ok("#funnel activation_rate is 0 before anyone trains", st.activation_rate === 0);
+  ok("#funnel time-to-first-session is null while nobody has one (never a fabricated 0)",
+    st.days_to_first_session_median === null && st.days_to_first_session_n === 0);
+
+  await sJson("/api/session", { user_id: realU, session_id: "fn-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-back-squat", weight_kg: 100, reps: 5, set_type: "work" }] });
+  const st2 = await (await funnelApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "s3cret" } })).json();
+  ok("#funnel one activation moves the rate and the never-trained count together",
+    st2.users_with_session === 1 && st2.onboarded_never_trained === 2 && Math.abs(st2.activation_rate - 1 / 3) < 1e-9);
+  ok("#funnel a same-day activation reports a real lag, not null",
+    st2.days_to_first_session_n === 1 && st2.days_to_first_session_median != null);
+  ok("#funnel the stats route stays owner-only", (await funnelApp.request("/api/stats")).status === 404);
+  void liarU; void smokeU;
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

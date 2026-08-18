@@ -9,6 +9,11 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
+let learnExercise = null; // an exercise sheet open OVER a Learn page (null = no sheet)
+// Learn nav state is now three fields across five reset sites. One sink, so a
+// fourth field added later cannot be forgotten at four of them (lesson 1 at
+// state scope — the shape that produced the "fix one call site" lesson).
+const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; };
 
 // Plain-English muscle names — a beginner expects "shoulders", not "side-delts".
 const MUSCLE_LABEL = {
@@ -51,12 +56,16 @@ function openLearn(slug) {
   } else if (tab !== "learn") {
     learnStack = [];
   }
+  learnExercise = null;   // navigating to a page closes any sheet open over it
   learnSlug = slug || null;
   tab = "learn";
   render();
 }
 // Wire any [data-learn="slug"] element on the current screen to open that page.
-function wireLearnLinks() { app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn)); }
+function wireLearnLinks() {
+  app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn));
+  app.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => openLearnExercise(b.dataset.ex));
+}
 // A small inline "?" that opens a learn page — decodes jargon in place.
 // The accessible name must MATCH the visible text (WCAG 2.5.3): a hard-coded
 // aria-label="Explain" hid descriptive labels like "what's RIR?" from screen
@@ -1332,7 +1341,7 @@ function renderPlayer(resting = 0) {
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
-    renderExerciseSheet(e, d);
+    renderExerciseSheet(e, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   };
   $("#quit").onclick = () => {
     // One stray tap must not end a workout: confirm on the second tap.
@@ -1458,7 +1467,8 @@ function renderSupersetStation(L, P, resting = 0) {
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
-    renderExerciseSheet(m, d); // its "Back" calls renderPlayer(0), which re-routes here
+    // renderPlayer(0) re-routes back into this station, as it always has.
+    renderExerciseSheet(m, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   });
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
@@ -1522,7 +1532,12 @@ function renderSupersetStation(L, P, resting = 0) {
 // inline line-art movement demo (real per-exercise footage is BLOCKERS.md #1 —
 // blocked on licensed/filmed media; this is the honest, self-buildable v0).
 const BIAS_LABEL = { lengthened: "loads the stretch 🎯", shortened: "loads the squeeze", "mid-range": "hardest mid-range", uniform: "even resistance" };
-function renderExerciseSheet(ex, d) {
+// ONE exercise sheet, two entrances: mid-workout from the player, and from a
+// muscle guide in Learn. `back` is REQUIRED and has no default on purpose — the
+// old hard-wired renderPlayer(0) does not throw when there is no live session, it
+// silently drops the reader on the Today tab, so a forgotten argument would fail
+// quietly. A required parameter makes the contract enumerable instead.
+function renderExerciseSheet(ex, d, back) {
   const name = d?.name ?? ex.name;
   const steps = (d?.execution_steps ?? []).map((s, i) => `<div class="win"><b>${i + 1}.</b> ${esc(s)}</div>`).join("");
   const cues = (d?.cues ?? []).map((c) => `<div class="win">✅ ${esc(c)}</div>`).join("");
@@ -1546,8 +1561,8 @@ function renderExerciseSheet(ex, d) {
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
     ${good ? `<h2>Good pick when</h2>${good}` : ""}
     ${bad ? `<h2>Maybe skip when</h2>${bad}` : ""}
-    <button class="btn" id="back">Back to workout</button>`;
-  $("#back").onclick = () => renderPlayer(0);
+    <button class="btn" id="back">${esc(back.label)}</button>`;
+  $("#back").onclick = back.onClick;
 }
 
 // Mid-workout swap: the machine's taken, or you just want a different lift today.
@@ -2366,7 +2381,7 @@ function clearAccountLocalState() {
     }
   }
   onbStep = 0; onbStarted = false; answers = {}; settingsMode = false;
-  historyEdit = null; historyDateFix = null; learnSlug = null; learnStack = [];
+  historyEdit = null; historyDateFix = null; resetLearnNav();
 }
 async function switchToRestoredArchive(ownerId, archiveId, button) {
   const key = mergeArchiveKey(ownerId, archiveId);
@@ -2778,8 +2793,7 @@ async function renderCoach() {
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
 async function renderLearn() {
-  learnSlug = null;
-  learnStack = [];
+  resetLearnNav();
   app.innerHTML = `<h1>Learn</h1><p class="muted">Loading…</p>`;
   let LEARN_INDEX;
   try { ({ LEARN_INDEX } = await learnData()); }
@@ -2800,6 +2814,35 @@ async function renderLearn() {
   wireLearnLinks();
   window.scrollTo(0, 0);
 }
+// A muscle guide's ranked pick list is the KB's densest, most actionable prose —
+// and in the app it used to be plain text, because the renderer only made `.md`
+// links tappable. Tapping a lift now opens the SAME sheet the player shows
+// mid-workout: demo, cues, common errors, what it works.
+//
+// The data rides the already-precached learn-data bundle rather than the API, so
+// the sheet works exactly as well offline as the page that linked to it — which is
+// the promise the Learn tab already makes on screen, and the reader most likely to
+// tap a lift is standing in a gym.
+async function renderLearnExercise(id) {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let LEARN_EXERCISES, LEARN_PAGES;
+  try { ({ LEARN_EXERCISES, LEARN_PAGES } = await learnData()); }
+  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that movement.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
+  const d = LEARN_EXERCISES?.[id];
+  // A page can only emit a button whose sheet was bundled (the generator throws
+  // otherwise), so this is belt-and-braces: fall back to the page rather than
+  // leaving a blank screen if an old cached bundle meets a new page.
+  if (!d) { learnExercise = null; return renderLearnPage(learnSlug); }
+  const from = LEARN_PAGES?.[learnSlug];
+  renderExerciseSheet(
+    { exercise: id, name: d.name, movement_pattern: d.movement_pattern },
+    d,
+    { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } },
+  );
+  window.scrollTo(0, 0);
+}
+const openLearnExercise = (id) => { learnExercise = id; renderLearnExercise(id); };
+
 async function renderLearnPage(slug) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let LEARN_PAGES;
@@ -2832,7 +2875,7 @@ async function renderLearnPage(slug) {
     ${connCard}
     ${workoutBack ? `<button class="btn" id="backToWorkout2">◀ Back to workout</button>` : ""}
     <button class="btn ghost" id="learnback2">${backLabel2}</button>`;
-  const backToPlayer = () => { tab = "today"; learnSlug = null; learnStack = []; nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab)); renderPlayer(0); };
+  const backToPlayer = () => { tab = "today"; resetLearnNav(); nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab)); renderPlayer(0); };
   if ($("#backToWorkout")) $("#backToWorkout").onclick = backToPlayer;
   if ($("#backToWorkout2")) $("#backToWorkout2").onclick = backToPlayer;
   // ‹ Back walks the traversal trail one page at a time (without re-pushing);
@@ -2862,10 +2905,10 @@ function render() {
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();
-  else if (tab === "learn") { learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
+  else if (tab === "learn") { learnExercise ? renderLearnExercise(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
-nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") { learnSlug = null; learnStack = []; } render(); });
+nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") resetLearnNav(); render(); });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link

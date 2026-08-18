@@ -21,9 +21,18 @@ import {
   renderableLinkSlug,
   rendersAsLink,
   droppedLinks,
+  exerciseRefId,
+  rendersAsExercise,
+  linkTarget,
+  droppedClass,
+  classifyRenderedLinks,
   DEPTH_GATE,
   DEPTH_EXEMPT,
 } from "./graph-core.mjs";
+import * as fsMod from "node:fs";
+import * as pathMod from "node:path";
+import { fileURLToPath as _fu } from "node:url";
+const ROOT = pathMod.join(pathMod.dirname(_fu(import.meta.url)), "..");
 
 let passed = 0;
 function check(name, fn) {
@@ -549,6 +558,97 @@ check("rendersAsLink is the ONE predicate: shape AND shipped-page, so gate and r
   assert.equal(rendersAsLink("../03-programming/index.md", bundled), null, "index is never bundled");
   assert.equal(rendersAsLink("splits.md", bundled), null, "a page we don't ship isn't a jump");
   assert.equal(rendersAsLink("../../data/programs/x.json", bundled), null);
+});
+
+// ---------- exercise refs: an in-app jump that is NOT a page edge -------------
+
+check("exerciseRefId: one id, strictly — a directory link has none", () => {
+  assert.equal(exerciseRefId("../../data/exercises/barbell-row.json"), "barbell-row");
+  assert.equal(exerciseRefId("../../../data/exercises/pull-up.json"), "pull-up");
+  assert.equal(exerciseRefId("../../data/exercises/"), null, "a directory names no exercise");
+  assert.equal(exerciseRefId("../../data/programs/upper-lower-4day.json"), null);
+  assert.equal(exerciseRefId("volume.md"), null);
+  // The alphabet is a safety property: the id lands in a data-ex attribute.
+  assert.equal(exerciseRefId('../../data/exercises/a"onerror=x.json'), null);
+  assert.equal(exerciseRefId("../../data/exercises/../../etc/passwd.json"), null);
+});
+
+check("rendersAsExercise carries BOTH halves: the shape AND an exercise we ship", () => {
+  const ex = new Set(["barbell-row"]);
+  assert.equal(rendersAsExercise("../../data/exercises/barbell-row.json", ex), "barbell-row");
+  assert.equal(rendersAsExercise("../../data/exercises/not-shipped.json", ex), null,
+    "shape alone is not enough — the same second half rendersAsLink applies to pages");
+  assert.equal(rendersAsExercise("../../data/exercises/", ex), null);
+  assert.equal(rendersAsExercise("../../data/exercises/barbell-row.json", new Set()), null);
+});
+
+check("linkTarget returns a KIND, so a page jump and an exercise jump can't be confused", () => {
+  const bundled = new Set(["volume"]), ex = new Set(["barbell-row"]);
+  assert.deepEqual(linkTarget("volume.md", bundled, ex), { kind: "page", id: "volume" });
+  assert.deepEqual(linkTarget("../../data/exercises/barbell-row.json", bundled, ex), { kind: "exercise", id: "barbell-row" });
+  assert.equal(linkTarget("../03-programming/index.md", bundled, ex), null, "index pages still aren't jumps");
+  assert.equal(linkTarget("../../data/exercises/not-shipped.json", bundled, ex), null, "an id we don't ship isn't a jump");
+});
+
+check("droppedLinks: a shipped exercise ref is no longer dropped; an unknown one still is", () => {
+  const md = "See [rows](../../data/exercises/barbell-row.json) and [x](../../data/exercises/nope.json).";
+  const bundled = new Set();
+  assert.equal(droppedLinks(md, bundled, new Set(["barbell-row"])).length, 1);
+  assert.equal(droppedLinks(md, bundled, new Set(["barbell-row"]))[0].url, "../../data/exercises/nope.json");
+  // Called WITHOUT the third argument (the pre-Wave-221 signature) both are dropped,
+  // so existing callers cannot silently acquire the new behaviour.
+  assert.equal(droppedLinks(md, bundled).length, 2);
+});
+
+check("droppedClass names each remaining class, so the report can itemise rather than total", () => {
+  assert.equal(droppedClass("../03-programming/index.md"), "pillar index TOC");
+  assert.equal(droppedClass("../../data/supplements/creatine.json"), "data/supplements");
+  assert.equal(droppedClass("../../data/muscles/lats.json"), "data/muscles");
+  assert.equal(droppedClass("../../data/exercises/"), "data/exercises");
+  assert.equal(droppedClass("weird"), "other");
+});
+
+check("THE separation invariant: an exercise ref is a jump but never a page edge", () => {
+  const md = "# T\n\nSee [rows](../../data/exercises/barbell-row.json) and [pulls](../../data/exercises/pull-up.json).\n";
+  const ex = new Set(["barbell-row", "pull-up"]);
+  const rec = extractPage({ slug: "t", pillar: "02-muscle-guides", md }, new Set());
+  assert.deepEqual(Object.keys(rec.outbound), [], "exercise refs must not become graph edges");
+  const { jumps, dropped } = classifyRenderedLinks(md, new Set(), ex);
+  assert.equal(jumps.length, 2, "...while still being real in-app jumps");
+  assert.equal(dropped.length, 0);
+  // A page whose ONLY links are exercise refs must still fail the out-degree bar:
+  // linking your own pick list is not cross-referencing the knowledge base.
+  assert.equal(Object.keys(rec.outbound).length, 0);
+  assert.ok(isUnderDeveloped(pageDepth({ slug: "t", pillar: "02-muscle-guides", md }), 0, DEPTH_GATE),
+    "out-degree 0 must still read as under-linked — exercise refs cannot buy a page out of the graph gate");
+});
+
+check("the real corpus reconciles: dropped + traversable equals what used to be dropped", () => {
+  const { readdirSync, readFileSync, statSync } = fsMod;
+  const walkMd = (dir) => readdirSync(dir).flatMap((n) => {
+    const p2 = pathMod.join(dir, n);
+    return statSync(p2).isDirectory() ? walkMd(p2) : (p2.endsWith(".md") ? [p2] : []);
+  });
+  const contentDir = pathMod.join(ROOT, "content");
+  const files = walkMd(contentDir).filter((f) => !f.endsWith("index.md"));
+  const bundled = new Set(files.map((f) => pathMod.basename(f, ".md")));
+  const exIds = new Set(readdirSync(pathMod.join(ROOT, "data", "exercises")).filter((f) => f.endsWith(".json")).map((f) => pathMod.basename(f, ".json")));
+  let dropped = 0, exJumps = 0;
+  const byClass = new Map();
+  for (const f of files) {
+    const { jumps, dropped: d } = classifyRenderedLinks(readFileSync(f, "utf8"), bundled, exIds);
+    exJumps += jumps.filter((j) => j.kind === "exercise").length;
+    dropped += d.length;
+    for (const x of d) byClass.set(x.cls, (byClass.get(x.cls) ?? 0) + 1);
+  }
+  // The measured baseline this wave started from. If a future change moves either
+  // number, the SUM says whether links were fixed or merely filtered out of view.
+  assert.equal(exJumps, 72, "exercise refs the renderer now opens");
+  assert.equal(dropped + exJumps, 122, "the pre-Wave-221 dropped total must be conserved");
+  // One data/exercises link stays dropped — the DIRECTORY link, which names no id.
+  // It is the cheapest available proof that the class was not silently excluded.
+  assert.equal(byClass.get("data/exercises"), 1);
+  assert.equal(byClass.get("pillar index TOC"), 23);
 });
 
 console.log(`\ntest-graph: ${passed} checks passed.`);
