@@ -61,6 +61,24 @@ PWAs), then open it from the home screen — and allow notifications when the ap
 offers. Then just live your life; the stats numbers flip on their own, and the only
 thing left for a human to confirm is that the notification actually *displays*.
 Tell me if it doesn't.
+**Still 0 as of 2026-08-18** (fresh reading, second one ever). Unchanged since the
+first — so every push mechanism still reaches nobody on that channel.
+
+### 2c. The number that now matters more than push — activation *(new 2026-08-18)*
+The same reading says **135 people finished onboarding and 122 of them never logged
+a single workout** (activation 9.6%; 0 active in the last 7 days). And the one new
+signal: **median days-to-first-session is 0** across the 5 users where it's
+measurable — whoever trains, trains the *same day* they onboard. Small sample,
+stated as such, but if it holds it means there is no nurture window to work with:
+the entire adherence layer this project has built sits downstream of a door ~90% of
+people never walk through, and no notification can reach someone who never started.
+**Caveat I can't resolve alone:** every prod smoke test the loop has ever run used
+the same route that creates a user row, so an unknown share of those 135 is *me*.
+Smoke traffic tags itself from today; the history can't be split and I haven't
+invented a split. **What would help most:** tell me how the app has actually been
+shared — was it linked somewhere, did a batch of people arrive at once? That's the
+difference between "the first session is too hard to start" (which I can fix) and
+"135 curious clicks from one link" (which I can't, and shouldn't try to).
 
 ### 3. Donations / Open Collective
 **Blocked on:** you creating the account. `DONATE_URL` in `app/public/app.js` is `""`, so the

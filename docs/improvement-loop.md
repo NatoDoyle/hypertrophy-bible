@@ -682,6 +682,87 @@ These are real failures from previous iterations. Each is now a standing check.
    store-parity regressions provide local evidence for this burst. It is recorded here as
    local implementation only — no deployment or PR is claimed.
 
+50. **A capability-free RESTORE is not capability-free STORAGE — revocation has to
+   reach the copy.** Lesson 49 shipped a merge archive whose restore path was
+   carefully capability-free: it strips every live/social field, revives no push
+   subscription, no share, no magic link. The SNAPSHOT, meanwhile, kept a permanent
+   plaintext copy of push endpoints **with their `p256dh`/`auth` keys** (a complete
+   send capability), `share_id`s (which `schema.sql` itself calls "an unguessable
+   capability token"), and magic links with `token_hash`, email and IP. Nothing read
+   any of it — not `archiveSummary`, not either restore path — and **nothing deletes
+   a `merge_archives` row**, so unsubscribing a device revoked the live subscription
+   while its archived twin outlived it indefinitely. The read path's discipline had
+   been mistaken for the artifact's. → **Standing lens:** when a feature stores a
+   snapshot "for recoverability", list what a restore can actually USE and drop the
+   rest — anything captured but never restored is pure retention risk with no
+   recoverability to trade against it. Then ask the revocation question directly:
+   *when the user takes this away, what copies of it survive?* Corollary that made
+   the fix free: this was caught before the feature had ever deployed, so there was
+   no migration — **audit a burst before it ships, not after**, and the difference
+   between a fix and a data-migration is the merge boundary.
+51. **An exclusion rule must never key on something that also appears in valid
+   input — and a warning that is ALWAYS wrong is a disabled gate.** The citation
+   checker's reference scan was `/\[\^([^\]]+)\](?!:)/g`, commented "reference, not a
+   definition". The intent was to skip definition lines. What it delivered was *skip
+   any marker followed by a colon* — and a colon is ordinary prose. So
+   `…distinguishes three states[^meeusen-2013-overtraining-consensus]:` contained no
+   reference at all as far as the gate could see. The visible symptom was harmless
+   and therefore ignored for ten waves: that entry printed as a never-referenced
+   **orphan** on every `npm run check`. The invisible symptom was not: the same
+   expression feeds the **dangling-reference** and **missing-definition** errors, so
+   a *fabricated* key followed by a colon tripped **neither** — a hole in "never
+   fabricate a citation", the first guardrail in this file. → **Standing rule:** when
+   a predicate excludes a class, exclude it by the property that actually defines it
+   (a definition is a marker at LINE START — the `^` its own regex already carries),
+   never by a neighbouring character that valid input may also contain. And treat a
+   warning that has never once been right as a **failing gate, not noise**: the line
+   was printed every run for ten waves and read as clutter, which is exactly how
+   lesson 35's "a flag that is usually wrong trains everyone to skip it" plays out
+   from the inside.
+52. **A suite that skips on exit 0 reads as a suite that passed.** `app npm test`
+   ran `test-store-d1.mjs`, which needs `node:sqlite` (Node ≥ 22.5), printed
+   "SKIPPED" on older Node and **exited 0**. Local Node here is 20 — so on the
+   maintainer's own machine the app gate went fully green having exercised the
+   PRODUCTION store with zero assertions, while a burst changed 302 lines of it.
+   The skip was written as a kindness and became the only place the prod store
+   wasn't covered. It now **re-execs itself** under a Node that has `node:sqlite`
+   and actually runs (162 → 172 tests locally), failing loudly only when that is
+   impossible. → **Standing rule:** a conditional skip must be justified by what it
+   costs to run, not by what it costs to fix the environment; if the skipped suite
+   is the only coverage of a production path, the honest states are "ran" and
+   "failed", never "skipped, exit 0". Prefer making it run over making it complain.
+53. **When a metric improves, prove WHY — "fixed" and "filtered out of the metric"
+   move the number identically.** `npm run depth` had reported 122
+   rendered-but-untraversable links for waves. Making the 72 exercise references
+   traversable *removes* them from that count — which is indistinguishable, in the
+   headline number, from having quietly excluded the class. Lesson 35 says a gate
+   that narrows its input must report the narrowing as a count; this is its sibling
+   for the moment a number gets BETTER. The report now itemises every remaining
+   class, counts the newly traversable links on their own line, and prints a
+   reconciliation (`50 dropped + 72 traversable = 122`) against the recorded
+   baseline. The load-bearing detail is that **one `data/exercises` link stays
+   dropped** — a *directory* link that names no id — because a class that went to
+   exactly zero is the shape an accidental exclusion also makes. → **Standing rule:**
+   when a wave improves a measured number, ship the reconciliation with it, and be
+   suspicious of any category that reaches zero.
+54. **A regression test must be checked for whether it reaches the case it NAMES —
+   failing is not the same as failing for the right reason.** Twice in one
+   iteration, a test written to lock a fix in was verified red-then-green and was
+   still vacuous. (a) An ordering test asserted "same-day siblings stay
+   newest-first" using two `Date.now()` calls milliseconds apart — never a tie, so
+   it exercised nothing; it passed on the *pre-fix* code, which is what exposed it.
+   (b) A SQL-prefilter superset test ran nine awkward date shapes and **survived
+   deleting the very day of headroom it existed to protect**, because no fixture sat
+   at the ceiling where the headroom matters. Both were fixed by constructing the
+   exact condition (one shared instant; one row whose calendar prefix is a day past
+   the UTC day the predicate judges) and re-tampering. This is lesson 42's neighbour
+   — 42 is about a test written in terms of its own constant, this is about a
+   FIXTURE that never reaches the branch. → **Standing rule:** for every regression
+   test, tamper with the specific line it defends and confirm THAT test goes red;
+   a suite that stays green under the tamper is documentation, not a guard. (Same
+   iteration, the positive case: an enumerable "the fixture covers every field in
+   this exported set" assertion fired the instant a new field joined the set.)
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -703,6 +784,50 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7s. **Telemetry (Waves 217–223, 2026-08-18).** One full loop turn, end to end:
+   AUDIT → VERIFY → PRIORITISE → IMPLEMENT → TEST → DEPLOY → LEARN, finishing with
+   prod == main. **2 finder agents + 1 design agent (~464k subagent tokens), ZERO
+   verify agents, zero workflows.** The audit surface was the un-landed Waves
+   213–216 burst sitting on draft PR #299 — 1507 insertions that had never been
+   audited, merged or deployed. Two read-only Explore finders pointed; every one of
+   their candidates was then verified inline by reading the code, per rule 1. **Ten
+   confirmed defects**, all fixed before that burst landed (prod never saw the
+   intermediate, which is also why lesson 50's fix needed no migration).
+   The finders earned their cost on a surface none of us had written: the
+   highest-severity finding — a wholesale profile patch that could forge `following`
+   and `challenges`, bypassing four guards on the follow route — came from a finder
+   pointing at a strip list one field long, sitting beside a comment citing "guard
+   the siblings". Rule 3 held (diff-scoped, `main..HEAD`), rule 4 held (2 finders),
+   rule 1 held absolutely (no verify fan-out; the parity suite and a real browser
+   were cheaper and better evidence). The **design** agent was the genuinely new
+   apparatus, and it paid for itself in a way a finder cannot: it **corrected three
+   of my own measured numbers** (73 → 72 exercise refs, 15 → 7 linking pages, a
+   250 KB bundle estimate → 87 KB) — after which I re-measured all three myself
+   rather than adopting them, which is lesson 39 applied to an agent that was right.
+   Meta worth carrying: **lesson 33 recurred TWICE inside a single commit** (a
+   "guard the siblings" comment beside a one-field guard; a precondition added to
+   one store while parity was asserted in prose) — the confident comment really is
+   written at the moment the search stops, and the answer this iteration shipped is
+   an *enumerable* check in both cases rather than a better sentence. And lesson 13
+   fired against ME: my own B4 fix started to propagate into the file store, broke
+   two tests that exist to lock in a deliberate, analysed divergence, and was
+   reverted — the tests did their job.
+   Evidence: 339 route · 172 store/D1 parity · 14 learn-data · 13 session-time · 8
+   citation tests, plus **two browser walkthroughs (15/15 and 13/13)** covering the
+   two flows PR #299's own body named as its outstanding gate. Deployed from clean
+   `main` as its own step and prod-smoked on both the custom domain and the
+   workers.dev origin (`hb-shell-v162`).
+   **The live Goal-4 reading, 2026-08-18** (after rotating `STATS_KEY`): 135 users ·
+   13 ever trained · **122 onboarded and never trained (activation 9.6%)** · 0
+   active in 7 days · **0 push subscriptions** still. The one genuinely new signal:
+   **median days-to-first-session is 0 (n=5)** — the people who ever train, train
+   the same day they onboard. Small n, stated as such; but if it holds, the
+   activation window is the first session, not a nurture sequence, and every
+   retention mechanism this project has built sits downstream of a door 90% of
+   people never walk through. `users_unclassified: 135` — none of the historical
+   rows can be attributed to real users vs the loop's own prod smokes, and that
+   split was deliberately NOT invented (lesson 31).
+
 7t. **Telemetry (Waves 213–216, 2026-08-17; local only).** This improvement burst hardened
    the boundaries the prior safety waves left adjacent but incomplete: acknowledgement
    ownership, session-time quarantine and repair, merge archive/restore, push evidence
