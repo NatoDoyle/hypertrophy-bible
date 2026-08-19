@@ -649,6 +649,12 @@ async function renderPlanExplain(firstTime) {
         <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
       ${personalizationBlock}
       ${whyBlock}
+      ${localStorage.getItem("hb_email") ? "" : `<div class="card"><b>📩 Want this plan in your inbox?</b>
+        <p class="muted" style="margin:4px 0 8px">One email, no password. I'll send your week — the sessions, the exercises, the sets — so it's there when you're standing in the gym. It also keeps your progress if you change phone.</p>
+        <input id="plan-email" type="email" inputmode="email" autocomplete="email" aria-label="Email address"
+          placeholder="you@email.com" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
+        <button class="btn secondary" id="plan-email-go">Send me my plan</button>
+        <p class="muted" id="plan-email-msg" style="font-size:.85rem">No spam, and you can turn emails off any time.</p></div>`}
       <button class="btn" id="explain-go">Start training</button>`;
   } else {
     app.innerHTML = `<h1>Your plan</h1>
@@ -862,7 +868,13 @@ function commitmentCard(commitment) {
   // has real value unreminded — it is an implementation intention — and the .ics
   // below needs no permission and no server (lesson 24: the assertion's trigger
   // must cover every path that can flip it).
-  const canRemind = localStorage.getItem("hb_push") === "1" || !!localStorage.getItem("hb_email");
+  // PUSH ONLY. An email address does not make this deliverable: push.mjs states
+  // outright that "the daily/commitment reminder stays push-only here" — the email
+  // fallback covers the discrete social events and the comeback sweep, never this.
+  // Including `hb_email` here would have re-created the exact false promise this
+  // change exists to remove, for every user who gave an address. Caught by the
+  // browser walkthrough, which is the only place the two halves meet.
+  const canRemind = localStorage.getItem("hb_push") === "1";
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
     <p class="muted" style="margin:4px 0 8px">${canRemind
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
