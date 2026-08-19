@@ -275,6 +275,42 @@ export function dailyReadiness(checkin) {
 
 // Build today's session card: every exercise pre-filled with a suggested weight.
 // A low-readiness check-in trims the last accessory and adds a caring coach note.
+// Dropping an exercise can orphan half a superset pair, and the player reads
+// `superset_with` to build its station — a dangling reference renders "🔗 superset
+// with undefined" and the post-station advance can skip the survivor. Any code
+// path that shortens a session must run its result through this. It exists as a
+// function because there are now two such paths (a low-readiness trim and the
+// first-session trim below), and a second copy is how they drift apart.
+const unlinkOrphanSupersets = (list) => {
+  const ids = new Set(list.map((e) => e.exercise));
+  return list.map((e) => (e.superset_with && !ids.has(e.superset_with) ? { ...e, superset_with: undefined } : e));
+};
+
+// The KB's own beginner page (`09-getting-started/your-first-session.md`) says
+// plainly: "Short is fine. A first session of 20–40 minutes is plenty. You're
+// establishing a pattern, not setting records." The engine did not know that — it
+// built the same 7-exercise, 14-set session on day one as on day one hundred, and
+// beginners are exempt from the mesocycle wave (`blockPhase` returns null for
+// them), so the least experienced user was the ONLY one who got no ramp at all.
+// At the engine's own ~3 min/set that is ~36 minutes of counted work before a
+// warm-up, ramp-up sets on five different stations, or finding those stations for
+// the first time.
+//
+// This is a coaching correctness fix, not a funnel tweak: the app was contradicting
+// its own knowledge base on the single most important session a user ever does.
+// It lives in buildToday — the layer that already decides "what should today
+// actually be" (readiness trims, comeback eases, deload and taper scaling) — so
+// plan-core is untouched: the programme still has 7 exercises and the plan screen
+// still shows the real week.
+//
+// The head, not the tail: exercises are emitted in lift order, so the first four
+// are the pattern-coverage compounds the generator worked to place.
+//
+// Weekly volume check, which is what actually matters: a beginner's week 1 goes
+// 14+14+12 = 40 sets to 8+14+12 = 34, i.e. 0.85x — still LESS eased than the
+// intermediate's by-design week-1 BLOCK_SET_SCALE of 0.70x.
+const FIRST_SESSION_EXERCISES = 4;
+
 export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
@@ -322,10 +358,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // awful sleep/energy that they're "in their normal range" (that fabricates a
     // status against their own input and teaches them the check-in is fake).
     if (templateExercises.length > 3) {
-      templateExercises = templateExercises.slice(0, -1); // drop the last accessory
-      // the dropped accessory may have been half a superset pair — unlink survivors
-      const ids = new Set(templateExercises.map((e) => e.exercise));
-      templateExercises = templateExercises.map((e) => e.superset_with && !ids.has(e.superset_with) ? { ...e, superset_with: undefined } : e);
+      templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, -1)); // drop the last accessory
       coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
     } else {
       coach_note = "You flagged low sleep/energy today. It's already a short session, so keep it — but take a little extra rest and stop 2–3 reps short of failure. Showing up is the win.";
@@ -415,6 +448,17 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // yet). Carried onto each exercise below as `pr_watch` so the live player can celebrate
   // a personal record the moment it happens, not only after the whole session ends.
   const prBests = priorPersonalBests(sessions);
+  // First-ever session for a true beginner. Applied AFTER the readiness branch so
+  // the two levers can never both narrate: a low-readiness day already has its own
+  // honest note, and printing "deliberately short" beside "I trimmed the last
+  // accessory" would be two true mechanisms describing each other's opposite. The
+  // trim still applies; only the note defers.
+  const firstSession = beginner && sessions.length === 0 && templateExercises.length > FIRST_SESSION_EXERCISES;
+  const firstSessionFull = templateExercises.length;
+  if (firstSession) {
+    templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, FIRST_SESSION_EXERCISES));
+    coach_note ??= `Your first session is deliberately short — ${FIRST_SESSION_EXERCISES} exercises instead of ${firstSessionFull}. Day one is for finding the machines and learning how they feel, not for setting records. Your full session is back next time.`;
+  }
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     // The rir band shown to the user IS the prescription the autoregulation
@@ -507,7 +551,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const cardio = program.cardio
     ? { ...program.cardio, hard_cardio_ok: (program.cardio.placement?.best_after ?? []).includes(templateSession.name) }
     : null;
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note, readiness: readiness?.level ?? null, block: taper ? null : block, taper: taper ? { days_until: taper.daysUntil, note: taper.note } : null, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner, cardio };
+  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note,
+    // Told, not silently done: the plan screen says 7 and Today would say 4, and an
+    // unexplained gap between them is exactly the kind of thing that makes an app
+    // feel broken. Rendered by the existing first-timer card.
+    first_session: firstSession ? { shown: templateExercises.length, full: firstSessionFull } : null, readiness: readiness?.level ?? null, block: taper ? null : block, taper: taper ? { days_until: taper.daysUntil, note: taper.note } : null, comeback: layoffDays >= COMEBACK_GAP_DAYS, beginner, cardio };
 }
 
 // The Today card state machine: one decision only.

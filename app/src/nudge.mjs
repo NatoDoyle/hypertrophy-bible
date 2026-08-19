@@ -15,9 +15,34 @@
 
 export const NUDGE_STAGE_1_DAYS = 4;  // "your next session is ready when you are"
 export const NUDGE_STAGE_2_DAYS = 14; // "the door's open — re-entry is eased" (final)
+// Stage 0 is the ACTIVATION nudge: never trained, anchored on account creation.
+// Two days, because the measured median time-to-first-session is 0 — whoever
+// trains, trains the same day they onboard — so someone still at zero after two
+// days did not merely fail to get round to it.
+export const NUDGE_STAGE_0_DAYS = 2;
 
-export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now }) {
-  if (paused || remindersOff || !lastSessionAt) return null; // never-trained users are onboarding's job, not email's
+export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now, createdAt = null }) {
+  // The pause promise and the opt-out are absolute, and stay the first line.
+  if (paused || remindersOff) return null;
+  if (!lastSessionAt) {
+    // This used to `return null` here, under "never-trained users are onboarding's
+    // job, not email's". That handed the job to a department that does not exist:
+    // onboarding has no follow-up of any kind, the account row is only created
+    // when a magic link is CLICKED, the push loop iterates zero subscriptions, and
+    // the commitment card is gated behind day_number > 1 — which never arrives for
+    // someone who never trains. Every re-engagement lever in the app was gated
+    // behind having already trained, so 122 of 135 users were unreachable on every
+    // channel simultaneously.
+    //
+    // ONE email, ever, and only to someone who gave us an address. Not a sequence:
+    // they have no streak to lose and did nothing wrong, so there is nothing to
+    // remind them of a second time.
+    if (!createdAt) return null;
+    const age = Math.floor((+new Date(now) - +new Date(createdAt)) / 86400000);
+    if (!Number.isFinite(age) || age < NUDGE_STAGE_0_DAYS) return null;
+    // Stamped against the account itself rather than a session that doesn't exist.
+    return nudge?.for_session_at === "account:created" ? null : { stage: 0, days: age };
+  }
   const days = Math.floor((+new Date(now) - +new Date(lastSessionAt)) / 86400000);
   if (!Number.isFinite(days) || days < NUDGE_STAGE_1_DAYS) return null;
   const sent = nudge?.for_session_at === lastSessionAt ? nudge.stage ?? 0 : 0;
@@ -39,19 +64,25 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       paused: !!user.paused,
       remindersOff: user.profile?.reminders_off === true,
       now,
+      // Already loaded above — the activation branch costs no extra store call.
+      createdAt: user.created_at ?? null,
     });
     if (!hit) continue;
     // CLAIM first (CAS — the precondition lives INSIDE the mutator, per the
     // store contract): if a concurrent sweep already recorded this stage, the
     // mutator sees it on re-read and we lose the race without sending.
     let claimed = false, prev = null;
+    // Hoisted: the RELEASE path below must key on the same anchor the claim used,
+    // or a failed stage-0 send leaves the claim stamped forever and the one
+    // activation email is silently never retried.
+    const anchor = hit.stage === 0 ? "account:created" : last_date;
     try {
       await store.updateUser(user_id, (u) => {
         claimed = false; prev = u.nudge ?? null; // reset per CAS attempt — the mutator may re-run on fresh data
-        const already = u.nudge?.for_session_at === last_date && (u.nudge.stage ?? 0) >= hit.stage;
+        const already = u.nudge?.for_session_at === anchor && (u.nudge.stage ?? 0) >= hit.stage;
         if (already) return u;
         claimed = true;
-        u.nudge = { for_session_at: last_date, stage: hit.stage, at: new Date(now).toISOString() };
+        u.nudge = { for_session_at: anchor, stage: hit.stage, at: new Date(now).toISOString() };
         return u;
       });
       if (!claimed) continue;
@@ -62,7 +93,7 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
         // release the claim (best effort) so tomorrow's sweep retries — only if
         // it is still OUR claim; a crash here costs one nudge, never a duplicate
         await store.updateUser(user_id, (u) => {
-          if (u.nudge?.for_session_at === last_date && u.nudge.stage === hit.stage) u.nudge = prev;
+          if (u.nudge?.for_session_at === anchor && u.nudge.stage === hit.stage) u.nudge = prev;
           return u;
         });
         continue;

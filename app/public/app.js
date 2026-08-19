@@ -300,11 +300,34 @@ const STEPS = [
   // /api/profile/injury escalation ladder all still accept it, and it behaves
   // exactly as it always did) so nobody who already answered it needs migrating.
   { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
-  { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
-  { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
+  // `sex` and `units` used to be asked here and are not any more.
+  //
+  // `sex` had ZERO references in the training engine (plan-core, derive-core,
+  // coach, planner) — it is read only by the Fuel tab's body-fat estimate. Its
+  // question said "this just sets sensible starting points", which was simply not
+  // true of anything the plan does. It now lives in the Fuel stats form beside the
+  // height/neck/waist it is actually used with, so it is asked at the point of use
+  // by the people who need it, and never asked of someone who only wants to train.
+  //
+  // `units` is a display preference, derived from the device locale with a one-tap
+  // correction where the numbers first appear. See `deriveUnits`.
 ];
 // Onboarding answers persist to localStorage as they're picked, so a reload or a
 // failed submit never makes a nervous first-timer re-answer the whole wizard.
+// Display units from the device's own locale. Only three countries in common use
+// pound-based bodyweight for this purpose, so the table is stated explicitly
+// rather than guessed at — and because a guess CAN be wrong (a UK user is metric
+// for plates and often imperial for bodyweight), the plan screen offers a one-tap
+// correction where the numbers first appear, instead of silently being wrong on
+// the first set screen.
+const IMPERIAL_REGIONS = new Set(["US", "LR", "MM"]);
+function deriveUnits() {
+  try {
+    const loc = new Intl.Locale(navigator.language || "en");
+    const region = loc.region || (navigator.language || "").split("-")[1] || "";
+    return IMPERIAL_REGIONS.has(String(region).toUpperCase()) ? "imperial" : "metric";
+  } catch { return "metric"; }
+}
 const ONB_KEY = "hb_onboarding";
 let onbStep = 0, onbStarted = false, answers = {};
 // Settings reuses the SAME wizard the user already learned in onboarding —
@@ -331,7 +354,7 @@ async function renderSettings() {
     return;
   }
   answers = {
-    training_status: p.training_status, primary_goal: p.primary_goal, sex: p.sex,
+    training_status: p.training_status, primary_goal: p.primary_goal,
     days_per_week: p.days_per_week ?? 3, session_length_min: p.session_length_min ?? 60,
     available_equipment: p.available_equipment,
     // multi steps store option-value arrays: select each group fully covered by the profile
@@ -339,7 +362,10 @@ async function renderSettings() {
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
     goal_event_date: p.goal_event_date || "",
-    units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
+    // `sex` and `units` are no longer wizard steps, so prefilling them here would
+    // populate answers nothing reads — and `units` in particular must NOT be sent
+    // back by a settings save (see submitOnboarding): the Me-tab toggle owns it,
+    // and re-sending a stale prefill would fight it.
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
   renderOnboarding();
@@ -483,7 +509,15 @@ async function submitOnboarding() {
     // date, not just add one — the regenerate route merges profile fields by
     // spreading the new object over the old, so an omitted key would never clear.
     goal_event_date: answers.training_status !== "beginner" && answers.goal_event_date ? answers.goal_event_date : null,
-    injuries, sex: answers.sex, units: answers.units || "metric",
+    injuries,
+    // `sex` and `units` are deliberately ABSENT from this literal, and absence is
+    // load-bearing: /api/plan/regenerate merges with `{ ...u.profile, ...patch }`,
+    // so sending `sex: undefined` would OVERWRITE a stored value with undefined and
+    // wipe it for every existing user on their next Settings save. Omitting the key
+    // leaves the stored one alone (lesson 37 — the half that bites people who
+    // already answered). `sex` is collected in the Fuel form now; `units` is set
+    // once at creation below and owned thereafter by the Me-tab toggle.
+    ...(settingsMode ? {} : { units: deriveUnits() }),
   };
   // NOTE: the display-unit preference (hb_units) is written only on the SUCCESS
   // paths below — flipping it before the API call meant a failed save showed
@@ -495,7 +529,10 @@ async function submitOnboarding() {
     let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile }) }); } catch { r = {}; }
     if (r.program) {
       settingsMode = false;
-      localStorage.setItem("hb_units", profile.units); // saved server-side — now the display can follow
+      // `profile.units` is absent on a settings save now (the toggle owns it), so
+      // writing it unconditionally would store the string "undefined" and flip
+      // every user to kg. Only write a real value.
+      if (profile.units) localStorage.setItem("hb_units", profile.units);
       localStorage.setItem("hb_program", r.program.name);
       return renderPlanExplain(false); // show the regenerated plan immediately
     }
@@ -612,6 +649,12 @@ async function renderPlanExplain(firstTime) {
         <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
       ${personalizationBlock}
       ${whyBlock}
+      ${localStorage.getItem("hb_email") ? "" : `<div class="card"><b>📩 Want this plan in your inbox?</b>
+        <p class="muted" style="margin:4px 0 8px">One email, no password. I'll send your week — the sessions, the exercises, the sets — so it's there when you're standing in the gym. It also keeps your progress if you change phone.</p>
+        <input id="plan-email" type="email" inputmode="email" autocomplete="email" aria-label="Email address"
+          placeholder="you@email.com" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
+        <button class="btn secondary" id="plan-email-go">Send me my plan</button>
+        <p class="muted" id="plan-email-msg" style="font-size:.85rem">No spam, and you can turn emails off any time.</p></div>`}
       <button class="btn" id="explain-go">Start training</button>`;
   } else {
     app.innerHTML = `<h1>Your plan</h1>
@@ -625,6 +668,27 @@ async function renderPlanExplain(firstTime) {
     $("#edit-plan").onclick = renderPlanEdit;
   }
   wireLearnLinks();
+  // The ONLY prompt to create an account used to sit in renderRecap — on the far
+  // side of a completed workout. The account row is what every re-engagement sweep
+  // queries, so the door to being reachable was gated behind the very thing ~90% of
+  // users never do. Asking here, at peak perceived value, costs one skippable field.
+  if ($("#plan-email-go")) $("#plan-email-go").onclick = async () => {
+    const email = ($("#plan-email")?.value || "").trim();
+    const msg = $("#plan-email-msg");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { if (msg) msg.textContent = "That doesn't look like an email address — check it and try again."; return; }
+    $("#plan-email-go").disabled = true;
+    if (msg) msg.textContent = "Sending…";
+    let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email, user_id: uid }) }); } catch { r = null; }
+    if (!r || r.error) {
+      $("#plan-email-go").disabled = false;
+      if (msg) msg.textContent = r?.error === "rate-limited"
+        ? "That's a few requests in a row — give it an hour and try again."
+        : r?.error ? "Couldn't send that — try again." : "Couldn't reach the server — check your connection.";
+      return;
+    }
+    localStorage.setItem("hb_email", email);
+    if (msg) msg.textContent = "Sent — check your inbox to finish. You can start training now either way.";
+  };
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
 
@@ -796,8 +860,25 @@ function commitmentCard(commitment) {
         <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
       <button class="btn ghost" id="edit-commitment" style="width:auto;padding:8px 14px">Edit</button></div>`;
   }
+  // The copy used to promise "a quick reminder lands on the days you say". That is
+  // delivered by shouldPushForCommitment, which runs inside a loop over the user's
+  // PUSH SUBSCRIPTIONS — and it is explicitly excluded from the email fallback. For
+  // anyone without push (in production: everyone) the sentence was simply false, so
+  // it is now conditional on a channel they actually have. Stating the commitment
+  // has real value unreminded — it is an implementation intention — and the .ics
+  // below needs no permission and no server (lesson 24: the assertion's trigger
+  // must cover every path that can flip it).
+  // PUSH ONLY. An email address does not make this deliverable: push.mjs states
+  // outright that "the daily/commitment reminder stays push-only here" — the email
+  // fallback covers the discrete social events and the comeback sweep, never this.
+  // Including `hb_email` here would have re-created the exact false promise this
+  // change exists to remove, for every user who gave an address. Caught by the
+  // browser walkthrough, which is the only place the two halves meet.
+  const canRemind = localStorage.getItem("hb_push") === "1";
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
-    <p class="muted" style="margin:4px 0 8px">A quick reminder lands on the days you say — not just once you've gone quiet.</p>
+    <p class="muted" style="margin:4px 0 8px">${canRemind
+      ? "A quick reminder lands on the days you say — not just once you've gone quiet."
+      : "Naming the days is most of the work — deciding once beats deciding daily. You can put them straight into your phone's calendar below."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
     <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
 }
@@ -848,8 +929,12 @@ async function renderToday() {
   // the coach's readiness note once a check-in exists (so it's not shown twice).
   const readinessCard = s.readiness != null && s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "";
   // A brand-new lifter's very first session gets a reassuring walkthrough up top.
+  // `first_session` is set by buildToday when a true beginner's day one has been
+  // shortened. Saying so is not optional: the plan screen shows the full week, so
+  // an unexplained 4-vs-7 gap reads as a bug rather than as coaching.
   const firstTimer = s.day_number === 1
     ? `<div class="card"><b>👋 First workout? You've got this.</b>
+        ${s.first_session ? `<p class="muted"><b>Today is ${s.first_session.shown} exercises instead of your usual ${s.first_session.full}</b> — on purpose. A first session of 20–40 minutes is plenty: day one is for finding the machines and learning how they feel, not for setting records. Your full session is back next time.</p>` : ""}
         <p class="muted">Here's exactly how a session goes — arrive, warm up, find a comfy weight, do your sets. A 2-minute read makes the whole thing easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Read: Your first session</button></div>`
     : "";
@@ -926,10 +1011,13 @@ async function renderToday() {
        <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
     : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
-  // Skip the ASK on day 1 — a brand-new lifter has enough to take in already
-  // (Goal 3: zero cognitive load); an already-set commitment still shows (e.g.
-  // a returning multi-device user), since that's just a fact, not a decision.
-  const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
+  // This used to skip the ask on day 1 for cognitive load — a defensible call that
+  // did not anticipate day 1 never ENDING. `day_number = sessions.length + 1`, so
+  // for the ~90% of users who never log a session it is permanently 1, and the
+  // app's one proactive lever was invisible to exactly the people it exists for.
+  // It shows on day 1 now; the copy above no longer promises a channel they may
+  // not have, which is what made hiding it feel necessary.
+  const commitment = commitmentCard(adh.commitment);
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}
@@ -1901,9 +1989,15 @@ function validHistoryCalendarDate(value) {
   const d = new Date(Date.UTC(year, month - 1, day));
   return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day ? value : null;
 }
+// The picker's ceiling must be the SERVER's ceiling, not the device's local
+// tomorrow. This used to be device-local, which offered far-east users a day the
+// server refused; the wave that "fixed" that by widening the server instead made
+// the server accept dates its own read path then re-quarantined. Narrowing the
+// picker is the correct half: the server's rule (now + 24h, UTC calendar day) is
+// provably never stricter than the user's own local TODAY at any offset from
+// -12:00 to +14:00 — it only excludes tomorrow, which nobody has trained yet.
 function historyTomorrow() {
-  const d = new Date(); d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 function historyDateInputValue(sess) {
   const local = validHistoryCalendarDate(sess?.local_date);
@@ -2085,8 +2179,19 @@ async function renderFuel() {
     // The Navy tape estimate needs the hip measure for women — without a hip field a
     // female user who leaves BF% blank estimates to null and loops on the blank form.
     const isFemale = n.sex === "female";
+    // Sex is asked HERE, not at onboarding, because this is the only place it does
+    // anything: the Navy/BMI body-fat formulas differ by sex, and an unknown sex
+    // falls through to the male formula. Asking it in the wizard cost every user a
+    // question under copy claiming it "sets sensible starting points" for training,
+    // which was false — it has no effect on the plan at all.
+    const sexRow = `<label class="muted" style="display:block;margin-top:4px">Sex <span class="muted" style="font-size:.85rem">— the body-fat estimate below uses a different formula for each; it changes nothing about your training.</span></label>
+      <div class="row" style="gap:6px;margin:4px 0 12px">
+        ${[["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]]
+          .map(([label, v]) => `<button class="choice${n.sex === v ? " sel" : ""}" data-sex="${v}" style="flex:1">${label}</button>`).join("")}
+      </div>`;
     app.innerHTML = `<h1>Fuel</h1>
       <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
+        ${sexRow}
         ${fld("f-weight", `Bodyweight (${unitLabel()})`, "", unitPref() === "lb" ? "e.g. 180" : "e.g. 82")}
         ${fld("f-height", "Height (cm)", "", "e.g. 178")}
         ${fld("f-bf", "Body fat % (optional)", "", "e.g. 18")}
@@ -2107,6 +2212,15 @@ async function renderFuel() {
         <p class="muted" id="f-msg"></p></div>`;
     wireLearnLinks();
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
+    // Saving on tap (rather than only at "Set my targets") is what makes the hip
+    // field appear for a female user without losing what they have already typed —
+    // the form re-renders from the server value.
+    app.querySelectorAll("[data-sex]").forEach((b) => b.onclick = async () => {
+      const typed = { weight_kg: (() => { const v = parseFloat($("#f-weight")?.value); return Number.isFinite(v) && v > 0 ? toKg(v) : undefined; })(),
+        height_cm: (() => { const v = parseFloat($("#f-height")?.value); return Number.isFinite(v) && v > 0 ? v : undefined; })() };
+      try { await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: b.dataset.sex, ...typed }) }); } catch {}
+      fuelEdit = true; renderFuel();
+    });
     $("#f-save").onclick = async () => {
       // Null-safe: #f-hip only exists in the DOM for a female user (the Navy
       // formula's hip measure), so reading it unconditionally for anyone else
@@ -2127,7 +2241,7 @@ async function renderFuel() {
         // writes below can record a bodyweight row, and the server only falls
         // back to the UTC date when none is sent.
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight, date: localDay() }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: n.sex ?? undefined, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
@@ -2467,7 +2581,17 @@ function renderMe() {
   // default keys off training status, so a graduating beginner inherits the chips
   // with nothing to configure (minimal-customization: no mandatory setting).
   $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
-  $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
+  $("#unittoggle").onclick = async () => {
+    // Writes BOTH sides. This used to set localStorage only, so `profile.units`
+    // drifted from what the user actually saw — harmless while the wizard also
+    // asked, load-bearing the moment it stopped: a new device reads the server
+    // value, and a stale one would show kg to someone who chose lb. Local first so
+    // the UI is instant; the server patch is best-effort and self-heals next flip.
+    const next = unitPref() === "lb" ? "metric" : "imperial";
+    localStorage.setItem("hb_units", next);
+    renderMe();
+    try { await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { units: next } }) }); } catch {}
+  };
   app.querySelectorAll("[data-restore-archive]").forEach((b) => b.onclick = () => restoreMergedArchive(uid, b.dataset.restoreArchive, b));
   app.querySelectorAll("[data-switch-restored]").forEach((b) => b.onclick = () => switchToRestoredArchive(uid, b.dataset.switchRestored, b));
   // Start this non-critical lookup after the normal Me controls are usable. Until
@@ -2518,8 +2642,25 @@ function downloadTrainingCalendar(days, time) {
   const ICS_DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
   const [hh, mm] = (time || "18:00").split(":");
   const byday = days.map((d) => ICS_DAYS[d]).join(",");
+  // DTSTART was hardcoded to 2026-01-05. Most clients still recur it forward, but
+  // the first event lands in the past, which is not what anyone means by "add my
+  // training to my calendar" — and in a client that shows the series start, the
+  // user's brand-new plan appears to have begun months ago. Anchor on the NEXT
+  // occurrence instead: today if it is one of the chosen days and the time has not
+  // passed, otherwise the soonest chosen day after that.
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(Number(hh), Number(mm), 0, 0);
+  const wanted = new Set(days);
+  const dowMon0 = (d) => (d.getDay() + 6) % 7;   // JS Sunday=0 → Monday=0, matching ICS_DAYS
+  for (let i = 0; i < 8; i++) {
+    if (wanted.has(dowMon0(start)) && start > now) break;
+    start.setDate(start.getDate() + 1);
+  }
+  const two = (n) => String(n).padStart(2, "0");
+  const dtstart = `${start.getFullYear()}${two(start.getMonth() + 1)}${two(start.getDate())}T${two(start.getHours())}${two(start.getMinutes())}00`;
   const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hypertrophy Bible//EN", "BEGIN:VEVENT",
-    "SUMMARY:🏋️ Training", `DTSTART:20260105T${hh}${mm}00`, "DURATION:PT1H",
+    "SUMMARY:🏋️ Training", `DTSTART:${dtstart}`, "DURATION:PT1H",
     `RRULE:FREQ=WEEKLY;BYDAY=${byday}`, "DESCRIPTION:Your scheduled training session — showing up is the win.", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
   const a = document.createElement("a"); a.href = url; a.download = "hypertrophy-training.ics"; a.click(); URL.revokeObjectURL(url);

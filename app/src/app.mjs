@@ -1351,19 +1351,18 @@ export function createApp(store, config = {}) {
     // deliberate, small form with one field, so silently changing an invalid choice
     // to today would be misleading. Reject it and leave the raw record intact.
     const correctionNow = Date.now();
-    // Judge the correction in the USER'S calendar frame, not UTC. `X-HB-TZ` rides
-    // every request from this client (and the stored offset is the fallback), and
-    // /api/today already reads it — this door did not, so its ceiling was a UTC
-    // date while the picker's `max` was the device's local tomorrow. A UTC+13 user
-    // was therefore OFFERED a day the server refused, and since this is the only
-    // exit from a timing quarantine, the repair was a dead end (lesson 22 on the
-    // frame, lesson 34 on a signal that was already at the choke point).
-    const correctionTz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min ?? null;
-    if (correctingDate && !normalizeSessionLocalDate(body.corrected_local_date, correctionNow, correctionTz)) {
+    // The correction is judged by the SAME rule the read path uses to decide
+    // whether a row is derivable. That is the whole contract: this door must never
+    // accept a date that `sessionTimingIssue` will then re-quarantine, or the user
+    // gets "it now counts toward your trends" over a row that still counts for
+    // nothing. A previous wave made this door tz-aware and left the read predicate
+    // flat, which is exactly that failure. Both call `tomorrowLocalDate`; the
+    // client's picker computes the same ceiling.
+    if (correctingDate && !normalizeSessionLocalDate(body.corrected_local_date, correctionNow)) {
       return c.json({ error: "bad-date" }, 400);
     }
     const timing = correctingDate
-      ? normalizeSessionTiming({ date: body.corrected_local_date, local_date: body.corrected_local_date }, correctionNow, correctionTz)
+      ? normalizeSessionTiming({ date: body.corrected_local_date, local_date: body.corrected_local_date }, correctionNow)
       : null;
     const updated = await store.updateSession(id, body.session_id, (sess) => {
       if (sets) {
@@ -1474,7 +1473,14 @@ export function createApp(store, config = {}) {
     // Body fat only within a plausible human range (a fat-fingered 100 makes TDEE
     // uncomputable and used to surface a "~null kcal/day" plan).
     const bf = (v) => (Number.isFinite(Number(v)) && Number(v) >= 2 && Number(v) < 60 ? Number(v) : undefined);
+    // The enum is the schema's, not a second literal: `sex` moved out of onboarding
+    // and into this form (it drives only the body-fat formula, never the plan), so
+    // this became a client-writable profile field and needs the same boundary
+    // treatment as its neighbours — an unknown value is DROPPED, never stored, and
+    // an absent one leaves the existing value alone.
+    const SEX_VALUES = new Set(["male", "female", "intersex", "prefer-not-to-say"]);
     const updated = await store.updateUser(b.user_id, (u) => {
+      if (typeof b.sex === "string" && SEX_VALUES.has(b.sex)) u.profile = { ...(u.profile ?? {}), sex: b.sex };
       u.nutrition = {
         ...(u.nutrition ?? {}),
         ...(num(b.height_cm) ? { height_cm: num(b.height_cm) } : {}),

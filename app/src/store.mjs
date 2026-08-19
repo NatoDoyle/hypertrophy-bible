@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeUserProfile } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
-import { activationFunnel, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -360,10 +360,34 @@ export function createFileStore(path) {
         .filter(([c, f]) => Number.isFinite(c) && f != null && f >= c)
         .map(([c, f]) => (f - c) / 86400000)
         .sort((a, b) => a - b);
-      const funnel = activationFunnel({ liveCount: live.length, smokeCount: smoke.length, usersWithSession: users_with_session, lags });
+      // Smoke rows that logged a session must leave the numerator too — a prod
+      // smoke usually DOES log one, so counting it as an activation is the same
+      // contamination from the other side.
+      const smokeIds = new Set(smoke.map(([uid]) => uid));
+      const smokeWithSession = [...smokeIds].filter((uid) => (db.sessions[uid] ?? []).some((x) => safeMs(x) != null)).length;
+      const funnel = activationFunnel({ liveCount: live.length, smokeCount: smoke.length, usersWithSession: users_with_session, smokeWithSession, lags });
+      const sessionUserIds = new Set(Object.entries(db.sessions ?? {})
+        .filter(([, list]) => list.some((x) => safeMs(x) != null)).map(([uid]) => uid));
+      const cohort = reachCohort({
+        users: live.map(([id, u]) => ({ id, created_at: u.created_at, tz_offset_min: u.profile?.tz_offset_min ?? null, smoke: u.profile?.smoke === true })),
+        sessionUserIds,
+      });
+      const since90 = new Date(now - 90 * 86400000).toISOString();
+      const shape = onboardShape({
+        createdAts: live.map(([, u]) => u.created_at).filter((d) => typeof d === "string" && d >= since90),
+        markerKeys: Object.values(db.magic_links ?? {})
+          .filter((l) => typeof l.rl_key === "string" && l.rl_key.startsWith("onboard:") && (l.created_at ?? 0) >= now - 90 * 86400000)
+          .map((l) => l.rl_key),
+      });
+      // Key ORDER matches store-d1's object literal exactly. The parity suite
+      // compares serialized aggregates, so a differently-ordered but identical
+      // object reads as a divergence — a false alarm that costs a debugging round
+      // every time someone adds a field.
       return {
         users_total: live.length, // tombstones aren't users
         users_with_session,
+        ...cohort,
+        ...shape,
         ...funnel,
         active_7d: cur.size,
         active_prev_7d: prev.size,

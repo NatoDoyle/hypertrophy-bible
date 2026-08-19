@@ -146,8 +146,19 @@ for (const [cls, n] of [...byClass].sort((a, b) => b[1] - a[1])) {
 }
 console.log(`  now traversable — counted here because the renderer OPENS them, not because the gate stopped looking:`);
 console.log(`      ${"data/exercises".padEnd(22)} ${String(exJumpTotal).padStart(3)}   across ${exJumpPages} page(s) → the in-app exercise sheet`);
-console.log(`  reconciliation: ${droppedTotal} dropped + ${exJumpTotal} traversable = ${droppedTotal + exJumpTotal} rendered non-page links`);
-console.log(`      (baseline before Wave 221: ${droppedTotal + exJumpTotal} dropped, 0 traversable — the delta is renderer coverage, not a filtered input.)`);
+// The baseline is a LITERAL, measured once and written down. It used to be
+// `droppedTotal + exJumpTotal` — derived from the same run it was checking — so the
+// reconciliation balanced by construction and would have kept printing "clean" even
+// if the classifier stopped matching everything (lesson 42: a check written in terms
+// of the thing it checks cannot falsify it). Pinned, it moves when the corpus moves,
+// which is the only way the line carries information.
+const RENDERED_NONPAGE_BASELINE = 122;   // measured 2026-08-18, before Wave 221
+const total = droppedTotal + exJumpTotal;
+console.log(`  reconciliation: ${droppedTotal} dropped + ${exJumpTotal} traversable = ${total} rendered non-page links`);
+console.log(`      (baseline 2026-08-18: ${RENDERED_NONPAGE_BASELINE} dropped, 0 traversable${
+  total === RENDERED_NONPAGE_BASELINE
+    ? " — conserved, so the delta is renderer coverage, not a filtered input.)"
+    : `; the corpus has since moved by ${total - RENDERED_NONPAGE_BASELINE}. Authoring changes this legitimately — confirm that is why.)`}`);
 
 // Exemptions (Wave 196): every flagged-but-exempt page prints WITH its justification —
 // enforcement skips them, the report never does (a silently-filtered input is a blind

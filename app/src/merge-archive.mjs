@@ -62,8 +62,14 @@ export function archiveSummary(archive) {
       nutrition_logs: snap.nutrition_logs?.length ?? 0,
       // Recorded, never revived: what the source account had, without what it
       // took to use any of it. A restore deliberately re-enables none of these.
-      push_subscriptions: snap.revoked_counts?.push_subscriptions ?? 0,
-      shares: snap.revoked_counts?.shares ?? 0,
+      // `?? .length` reads an archive written BEFORE the capability material was
+      // dropped, where these were arrays. Without it such a row reports 0 and the
+      // client copy is deliberately silent at 0 — an absence nobody can observe
+      // (lesson 41). The wave that made the change defended itself with a prose
+      // assertion that no such archive exists; this line means that no longer has
+      // to be true.
+      push_subscriptions: snap.revoked_counts?.push_subscriptions ?? snap.push_subscriptions?.length ?? 0,
+      shares: snap.revoked_counts?.shares ?? snap.shares?.length ?? 0,
     },
   };
 }
@@ -146,19 +152,105 @@ export function archiveSnapshot({ user, sessions = [], bodyweights = [], checkin
 // From now on the owner's own smoke traffic identifies itself. Rows that predate
 // this are NOT retroactively classified: there is no signal that distinguishes them,
 // and a plausible-looking split would be a number nobody measured.
-export function activationFunnel({ liveCount, smokeCount, usersWithSession, lags }) {
+export function activationFunnel({ liveCount, smokeCount, usersWithSession, smokeWithSession = 0, lags }) {
+  // The number this function exists to make trustworthy is the RATE, and the first
+  // version of it divided by the raw denominator — so the wave that added smoke
+  // tagging reported an activation rate that still counted the owner's own smoke
+  // traffic, and a test pinned it there. Smoke rows come out of BOTH sides: they
+  // are users, and the ones that logged a session are users-with-a-session.
   const real = liveCount - smokeCount;
+  const realWithSession = Math.max(0, usersWithSession - smokeWithSession);
   const median = lags.length
     ? (lags.length % 2 ? lags[(lags.length - 1) / 2] : (lags[lags.length / 2 - 1] + lags[lags.length / 2]) / 2)
     : null;
   return {
-    // Tagged rows only — this is 0 until the first tagged smoke lands, and it says
-    // so rather than pretending to have cleaned the history.
+    // Tagged rows only — 0 until the first tagged smoke lands, and it says so
+    // rather than pretending to have cleaned the history.
     smoke_users: smokeCount,
     users_unclassified: real,
-    onboarded_never_trained: Math.max(0, liveCount - usersWithSession),
-    activation_rate: liveCount ? usersWithSession / liveCount : null,
+    // Raw counts stay visible so the decontamination can be checked rather than
+    // trusted: a reader can always recompute the contaminated figure from these.
+    onboarded_never_trained: Math.max(0, real - realWithSession),
+    onboarded_never_trained_raw: Math.max(0, liveCount - usersWithSession),
+    activation_rate: real ? realWithSession / real : null,
+    activation_rate_raw: liveCount ? usersWithSession / liveCount : null,
     days_to_first_session_median: median == null ? null : Math.round(median * 10) / 10,
     days_to_first_session_n: lags.length,
+  };
+}
+
+// ---------- the reach cohort (Wave 225) ----------
+//
+// Splits "never trained" into two very different populations, using a signal the
+// database already holds and nothing new collected:
+//
+//   never_reached_today  — quit during the wizard or on the plan screen; the leak
+//                          is onboarding.
+//   reached_today_never_trained — saw the actual workout and walked; the leak is
+//                          the first session.
+//
+// The proxy: `profile.tz_offset_min` is written by `GET /api/today` and by
+// `POST /api/push/subscribe` (of which there have been zero, ever). `/api/onboard`
+// only SANITISES a posted value and the client's onboarding payload does not
+// include one, so a live user carrying a non-null offset provably loaded the Today
+// tab at least once.
+//
+// THE COHORT BOUND IS NOT OPTIONAL. The header that makes /api/today stamp the
+// offset (`X-HB-TZ`) landed 2026-08-04. Every user created before that has a null
+// offset BY CONSTRUCTION, whatever they did — so running this over the whole table
+// would report ~100% "never reached Today" and the conclusion would be an artifact
+// of the measurement's own age. That is lesson 34 (a field's reach is bounded by
+// the population of its writers) pointed at a metric instead of a feature, and it
+// is exactly the trap the commit that added `X-HB-TZ` was itself fixing.
+//
+// THE UTC TRAP: a user at UTC+0 stamps `0`, which is falsy. The test is against
+// null, never truthiness — `!= null` here, `IS NOT NULL` in SQL.
+export const TZ_WRITER_SINCE = "2026-08-04";      // X-HB-TZ shipped (commit e12a220)
+export const ONBOARD_MARKERS_SINCE = "2026-07-22"; // the onboard throttle shipped (commit 50cc9d6)
+
+export function reachCohort({ users, sessionUserIds, since = TZ_WRITER_SINCE }) {
+  // `users`: [{ id, created_at, tz_offset_min, smoke }] — live rows only.
+  const inCohort = users.filter((u) => typeof u.created_at === "string" && u.created_at.slice(0, 10) >= since && !u.smoke);
+  const reached = inCohort.filter((u) => u.tz_offset_min != null);   // NOT `!!u.tz_offset_min`
+  const trained = (u) => sessionUserIds.has(u.id);
+  return {
+    tz_writer_since: since,
+    cohort_users: inCohort.length,
+    cohort_with_session: inCohort.filter(trained).length,
+    cohort_reached_today: reached.length,
+    cohort_reached_today_never_trained: reached.filter((u) => !trained(u)).length,
+    cohort_never_reached_today: inCohort.length - reached.length,
+    // Stated so nobody reads the split as covering everyone. If this is large the
+    // cohort is mostly pre-instrumentation and the split says little (lesson 31 —
+    // report the uncertainty rather than the tidy number).
+    users_before_tz_writer: users.filter((u) => !(typeof u.created_at === "string" && u.created_at.slice(0, 10) >= since)).length,
+  };
+}
+
+// Burst-vs-trickle, from `users.created_at` and the onboard throttle markers.
+// One share posted somewhere puts most of the mass on one or two days and, if it
+// came from a handful of machines, a low distinct-IP ratio. A real trickle is flat
+// and diverse. This is what stands in for asking where the traffic came from.
+export function onboardShape({ createdAts, markerKeys, since = ONBOARD_MARKERS_SINCE }) {
+  const byDay = {};
+  for (const iso of createdAts) {
+    const day = typeof iso === "string" ? iso.slice(0, 10) : null;
+    if (day) byDay[day] = (byDay[day] ?? 0) + 1;
+  }
+  const counts = Object.values(byDay);
+  const distinct = new Set(markerKeys);
+  const perKey = {};
+  for (const k of markerKeys) perKey[k] = (perKey[k] ?? 0) + 1;
+  return {
+    onboards_by_day: byDay,
+    onboards_busiest_day: counts.length ? Math.max(...counts) : 0,
+    onboards_distinct_days: counts.length,
+    // Markers only exist since the throttle shipped, so this is a TRUNCATED series
+    // and smaller than users_total by design — said out loud rather than left to
+    // look like a discrepancy.
+    onboard_markers_since: since,
+    onboard_markers_total: markerKeys.length,
+    onboard_ips_distinct: distinct.size,
+    onboard_ip_max: Object.values(perKey).length ? Math.max(...Object.values(perKey)) : 0,
   };
 }

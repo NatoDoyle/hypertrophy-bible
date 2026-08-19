@@ -1149,9 +1149,17 @@ export function generatePlan(profile, kb, opts = {}) {
       // Banked so "What your answers changed" can say a block ENDED rather than
       // quietly dropping the maintenance holds it described last block.
       specialization: { wants: wantsSpecialization, active: specialization, block_index: blockIndex, max_blocks: SPEC_MAX_BLOCKS },
-      // The session ceiling, stated so the plan can explain itself: quality beats quantity.
-      session_budget: { hard_sets: setBudget, minutes: sessionMin,
-        reason: `Capped at ${setBudget} hard sets per session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
+      // The session ceiling, stated so the plan can explain itself: quality beats
+      // quantity. `hard_sets` is what the plan CONTAINS on its biggest day, not the
+      // input constraint — those differ, legitimately, because the 4c superset
+      // rescue places a paired isolation whose sets are deliberately not billed to
+      // the budget ("the pairing pays the time"). Reporting the constraint printed
+      // "capped at 12 hard sets" directly above a 14-set session, on the one screen
+      // built to prove the plan is honest. The engine was right and the explanation
+      // was wrong, so the explanation moved.
+      session_budget: { hard_sets: Math.max(setBudget, ...outSessions.map((sn) => sn.exercises.reduce((a, e) => a + e.sets, 0))),
+        budget: setBudget, minutes: sessionMin,
+        reason: `Up to ${Math.max(setBudget, ...outSessions.map((sn) => sn.exercises.reduce((a, e) => a + e.sets, 0)))} hard sets on your biggest session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
     },
     volume_by_muscle: volumeRationale,
     frequency_by_muscle: Object.fromEntries(muscles.map((m) => [m.id, freq[m.id] ?? 0])),
@@ -1184,8 +1192,12 @@ export function explainPersonalization(profile, rationale, program) {
   if (r.split?.reason) say("days_per_week", `${p.days_per_week} days a week`, r.split.reason);
   const budget = r.goal_prescription?.session_budget;
   if (budget?.hard_sets) {
+    // "up to N", not "capped at N": N is what the biggest session actually
+    // contains. The quality ceiling that shaped it is `budget.budget`, and where
+    // the two differ it is because a superset pairing bought the extra sets their
+    // time back — so quoting the cap here contradicted the session list below it.
     say("session_length_min", `${budget.minutes ?? p.session_length_min}-minute sessions`,
-      `each session is capped at ${budget.hard_sets} hard sets — long enough to do the work, short enough that the last sets still count.`);
+      `up to ${budget.hard_sets} hard sets on your biggest session — long enough to do the work, short enough that the last sets still count.`);
   }
   const scheme = r.goal_prescription?.rep_scheme;
   if (scheme?.compound) {

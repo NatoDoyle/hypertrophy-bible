@@ -909,5 +909,26 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
   if (mismatches.length) console.error("   ", mismatches.join("; "));
 }
 
+// The plan screen is the surface that exists to prove the plan is honest, so a
+// number printed there must be one the plan contains. `hard_sets` used to report
+// the INPUT budget while the 4c superset rescue legitimately places sets it does
+// not bill — printing "capped at 12" above a 14-set session. The invariant is >=,
+// not a magic 14: disable the rescue and this must still hold.
+// beginner / 60 min / full gym is the input that REACHES the superset rescue — a
+// 30-minute beginner never fires it and the fixture would prove nothing.
+const budgetPlan = generatePlan({ user_id: "budget-1", training_status: "beginner", primary_goal: "hypertrophy",
+  days_per_week: 3, session_length_min: 60,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] }, kb);
+const budgetBiggest = Math.max(...budgetPlan.program.sessions.map((s) => s.exercises.reduce((a, e) => a + e.sets, 0)));
+const budgetRep = budgetPlan.rationale.goal_prescription.session_budget;
+ok("session_budget.hard_sets is never less than the plan's biggest session",
+  budgetRep.hard_sets >= budgetBiggest);
+ok("...and this fixture actually reaches the superset rescue, so it isn't vacuous",
+  budgetBiggest > budgetRep.budget);
+ok("the personalization card quotes the delivered number, not the input cap",
+  (explainPersonalization({ training_status: "beginner", days_per_week: 3, session_length_min: 60 },
+    budgetPlan.rationale, budgetPlan.program).find((x) => x.input === "session_length_min")?.effect ?? "")
+    .includes(String(budgetBiggest)));
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

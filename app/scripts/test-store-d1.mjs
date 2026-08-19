@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
 import { createD1Shim, sqliteAvailable } from "./d1-shim.mjs";
+import { archiveSummary } from "../src/merge-archive.mjs";
 
 // This suite is the ONLY coverage of store-d1.mjs — the store production actually
 // runs on. It used to print "SKIPPED" and exit 0 on Node < 22.5 (no node:sqlite),
@@ -911,11 +912,83 @@ try {
     same(`stats parity: ${k}`, fStats[k], dStats[k]);
   }
   same("stats parity: the whole aggregate, on a clean pair", fStats, dStats);
+
+  // --- the reach cohort, including the trap that would silently break it -------
+  // `tz_offset_min === 0` is a REAL stamped value (a user at UTC+0). Tested with
+  // truthiness instead of against null, every UTC user is misreported as never
+  // having opened the app — and the resulting number looks perfectly plausible.
+  await fnFile.saveUser("rc-utc", { profile: { user_id: "rc-utc", tz_offset_min: 0 }, created_at: "2026-08-10T00:00:00.000Z" });
+  await fnD1.saveUser("rc-utc", { profile: { user_id: "rc-utc", tz_offset_min: 0 }, created_at: "2026-08-10T00:00:00.000Z" });
+  await fnFile.saveUser("rc-notz", { profile: { user_id: "rc-notz" }, created_at: "2026-08-11T00:00:00.000Z" });
+  await fnD1.saveUser("rc-notz", { profile: { user_id: "rc-notz" }, created_at: "2026-08-11T00:00:00.000Z" });
+  // ...and a user created BEFORE the tz writer existed, carrying an offset. It must
+  // be excluded from the cohort entirely: before 2026-08-04 a null offset says
+  // nothing about the user, so including that era fabricates a ~100% bounce rate.
+  await fnFile.saveUser("rc-old", { profile: { user_id: "rc-old", tz_offset_min: -300 }, created_at: "2026-07-01T00:00:00.000Z" });
+  await fnD1.saveUser("rc-old", { profile: { user_id: "rc-old", tz_offset_min: -300 }, created_at: "2026-07-01T00:00:00.000Z" });
+  const fRc = await fnFile.stats(FN_NOW), dRc = await fnD1.stats(FN_NOW);
+  for (const k of ["tz_writer_since", "cohort_users", "cohort_reached_today", "cohort_reached_today_never_trained",
+                   "cohort_never_reached_today", "users_before_tz_writer", "onboards_busiest_day",
+                   "onboard_markers_since", "onboard_ips_distinct", "onboard_ip_max"]) {
+    same(`reach cohort parity: ${k}`, fRc[k], dRc[k]);
+  }
+  ok("reach cohort: a UTC+0 user counts as having REACHED Today (the falsy-zero trap)",
+    fRc.cohort_reached_today === 1 && fRc.cohort_reached_today_never_trained === 1);
+  // 4 in cohort = fn-real, fn-never, rc-utc, rc-notz (the smoke row is excluded by
+  // reachCohort, and rc-old predates the tz writer). 3 never reached Today:
+  // fn-real and fn-never carry no offset either.
+  ok("reach cohort: users with no offset count as never reaching Today",
+    fRc.cohort_never_reached_today === 3);
+  ok("reach cohort: pre-instrumentation users are EXCLUDED, and their count is reported",
+    fRc.cohort_users === 4 && fRc.users_before_tz_writer === 1);
+  ok("reach cohort: a smoke row is not in the cohort either", fRc.cohort_users + 1 + fRc.users_before_tz_writer === fRc.users_total);
   ok("stats: only the key-minted row counts as smoke", fStats.smoke_users === 1);
-  ok("stats: the three rows split into 1 activated / 2 never-trained", fStats.onboarded_never_trained === 2 && Math.abs(fStats.activation_rate - 1 / 3) < 1e-9);
+  // Of the three fixtures one is smoke, so the REAL split is 2 users, 1 activated;
+  // the contaminated view stays visible as `_raw` for cross-checking.
+  ok("stats: the rate counts real users only, with the raw figure beside it",
+    fStats.onboarded_never_trained === 1 && Math.abs(fStats.activation_rate - 1 / 2) < 1e-9
+    && fStats.onboarded_never_trained_raw === 2 && Math.abs(fStats.activation_rate_raw - 1 / 3) < 1e-9);
   ok("stats: time-to-first-session is measured from the user's created_at (2 days here)",
     fStats.days_to_first_session_n === 1 && fStats.days_to_first_session_median === 2);
   try { rmSync(fnFilePath); } catch {}
+
+  // --- two verified addresses on ONE user: both must still be mailable ---------
+  // `accounts` keys on email with a NON-unique user_id, so a device already bound
+  // to user X can verify a second address against the same X. The D1 rewrite that
+  // turned this into one round trip keyed its dedup map by user_id and collapsed
+  // them — and the consumers of this list send mail, so one verified address
+  // silently stopped receiving comeback nudges while the file store kept both.
+  for (const [label, s0] of [["file", file], ["D1", d1]]) {
+    const uid = `two-addr-${label}`;
+    await s0.saveUser(uid, { profile: { user_id: uid } });
+    await s0.saveAccount(`first-${label}@example.com`, uid, "2026-08-01T00:00:00.000Z");
+    await s0.saveAccount(`second-${label}@example.com`, uid, "2026-08-02T00:00:00.000Z");
+    const rows = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .filter((r) => r.user_id === uid).map((r) => r.email).sort();
+    ok(`accounts: both verified addresses for one user are returned (${label})`,
+      rows.length === 2 && rows[0] === `first-${label}@example.com` && rows[1] === `second-${label}@example.com`);
+  }
+
+  // --- an archive written under the OLD snapshot shape still reports its counts -
+  // The wave that stopped storing capability material defended the change with a
+  // prose assertion that no such archive exists anywhere. Rather than rely on that
+  // being true, the summary falls back to the legacy arrays — otherwise the counts
+  // read 0 and the client copy is silent at 0, so the absence is unobservable.
+  {
+    const legacy = {
+      archive_id: "legacy-shape", created_at: "2026-08-10T00:00:00.000Z", state: "available",
+      restored_user_id: null, restored_at: null,
+      snapshot: {
+        user: { profile: {} }, sessions: [{}, {}], bodyweights: [], checkins: [], nutrition_logs: [],
+        // the pre-change shape: real arrays, no revoked_counts
+        push_subscriptions: [{ endpoint: "https://push/legacy" }], shares: [{ share_id: "legacy-share" }],
+        magic_links: [], push_deliveries: [],
+      },
+    };
+    const summary = archiveSummary(legacy);
+    ok("archive summary: a legacy-shape snapshot still reports device and share counts",
+      summary.counts.push_subscriptions === 1 && summary.counts.shares === 1 && summary.counts.sessions === 2);
+  }
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
