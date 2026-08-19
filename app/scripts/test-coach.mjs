@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey } from "../../tools/derive-core.mjs";
+import { generateUserPlan } from "../src/planner.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -40,10 +41,17 @@ check("dailyReadiness scores a check-in and buildToday eases a low day", () => {
   assert.equal(dailyReadiness({ sleep_quality: 5, energy: 5, stress: 1, mood: 5 }).level, "high");
   assert.equal(dailyReadiness({ sleep_quality: 1, energy: 2, stress: 5, mood: 2 }).level, "low");
   assert.equal(dailyReadiness({ sleep_quality: 3, energy: 3, stress: 3, mood: 3 }).level, "normal");
-  const normalDay = buildToday(user, []);
-  const lowDay = buildToday(user, [], { level: "low" });
+  // Anchored to a NON-first session on purpose. `buildToday(user, [])` is day one,
+  // and a true beginner's day one is now capped at 4 exercises — so both sides of
+  // this comparison would land on 4 and the assertion would pass or fail for a
+  // reason that has nothing to do with readiness. This test is about the readiness
+  // lever, so it must run where the readiness lever is the only thing moving.
+  const prior = [{ session_id: "rdy-prior", date: new Date(Date.now() - 3 * 86400000).toISOString(), sets: [] }];
+  const normalDay = buildToday(user, prior);
+  const lowDay = buildToday(user, prior, { level: "low" });
   assert.ok(lowDay.exercises.length < normalDay.exercises.length); // trimmed the last accessory
   assert.ok(lowDay.coach_note); // and told the user why, kindly
+  assert.equal(normalDay.first_session, null, "and neither side is a first session");
 });
 
 check("buildToday resolves a custom exercise from the injected library", () => {
@@ -897,6 +905,83 @@ check("#2D a comeback never lands beside 'peak volume — push hard' (lesson 24'
   assert.ok(!/push hard|push your sets hard/i.test(t.block?.note ?? ""),
     `the block card must not say "push hard" beside eased weights — got: ${t.block?.note}`);
   assert.ok(/picking up where you left off/i.test(t.block?.note ?? ""));
+});
+
+// --- the first session matches the KB -----------------------------------------
+// `your-first-session.md`: "Short is fine. A first session of 20-40 minutes is
+// plenty." The engine built the same 7-exercise day on day one as on day one
+// hundred, and beginners are exempt from the mesocycle wave, so the least
+// experienced user got no ramp at all.
+check("a true beginner's FIRST session is short, and says so", () => {
+  // A GENERATED plan, not one of this file's hand-written 1- and 3-exercise
+  // fixtures: a 3-exercise fixture can never show a slice, so the test would pass
+  // while proving nothing (lesson 54).
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
+  const full = program.sessions[0].exercises.length;
+  assert.ok(full > 4, "precondition: the generated day must be longer than the cap, or nothing is being tested");
+
+  const day1 = buildToday(u, []);
+  assert.equal(day1.exercises.length, 4);
+  assert.deepEqual(day1.first_session, { shown: 4, full });
+  assert.ok(/deliberately short/i.test(day1.coach_note ?? ""), "and the user is told why");
+
+  // Session TWO is the full session — the cap is first-session-only, not a
+  // permanent downgrade.
+  const day2 = buildToday(u, [{ session_id: "s1", date: new Date(Date.now() - 86400000).toISOString(), program_ref: program.id, sets: [] }]);
+  assert.ok(day2.exercises.length > 4);
+  assert.equal(day2.first_session, null);
+});
+
+check("the first-session cap is beginner-only", () => {
+  const profile = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, []);
+  assert.ok(day1.exercises.length > 4, "an intermediate's day one is untouched");
+  assert.equal(day1.first_session, null);
+});
+
+check("a shortened first session never leaves a dangling superset partner", () => {
+  // Hand-built so the PAIR STRADDLES the cut. In the real generated beginner plan
+  // the pair sits at indices 4 and 6, so a 4-slice drops both and the unlink is
+  // never exercised — the fixture has to put one survivor and one casualty either
+  // side of the boundary or it proves nothing (lesson 54).
+  const ex = (id, extra = {}) => ({ exercise: id, sets: 2, rep_range: "6-10", rir: "1-3", ...extra });
+  const program = { id: "p-super", name: "P", days_per_week: 3, split: "full-body", sessions: [{
+    name: "A", exercises: [
+      ex("barbell-back-squat"), ex("dumbbell-bench-press"), ex("chest-supported-row"),
+      ex("cable-lateral-raise", { superset_with: "leg-extension" }),   // index 3 — SURVIVES
+      ex("leg-extension", { superset_with: "cable-lateral-raise" }),   // index 4 — CUT
+      ex("plank"),
+    ],
+  }] };
+  const u = { profile: { training_status: "beginner", units: "metric" }, program, plan_meta: { block_start: new Date().toISOString() } };
+  const day1 = buildToday(u, []);
+  assert.equal(day1.exercises.length, 4);
+  const ids = new Set(day1.exercises.map((e) => e.exercise));
+  const dangling = day1.exercises.filter((e) => e.superset_with && !ids.has(e.superset_with));
+  assert.deepEqual(dangling, [], "a survivor pointing at a cut partner renders '🔗 superset with undefined'");
+  // ...and the fixture really did straddle the cut, or the assertion is vacuous.
+  assert.ok(ids.has("cable-lateral-raise") && !ids.has("leg-extension"));
+});
+
+check("a low-readiness FIRST session gets one note, not two contradictory ones", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "low" });
+  const note = day1.coach_note ?? "";
+  assert.ok(note.length > 0);
+  // Both levers trim; only one narrates. "deliberately short" beside "I trimmed the
+  // last accessory" would be two true mechanisms describing each other's opposite.
+  assert.ok(!(/deliberately short/i.test(note) && /trimmed the last accessory/i.test(note)));
+  assert.ok(/low sleep|energy/i.test(note), "the readiness note wins — it is the more specific truth about today");
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

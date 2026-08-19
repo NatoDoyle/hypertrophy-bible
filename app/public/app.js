@@ -885,8 +885,12 @@ async function renderToday() {
   // the coach's readiness note once a check-in exists (so it's not shown twice).
   const readinessCard = s.readiness != null && s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "";
   // A brand-new lifter's very first session gets a reassuring walkthrough up top.
+  // `first_session` is set by buildToday when a true beginner's day one has been
+  // shortened. Saying so is not optional: the plan screen shows the full week, so
+  // an unexplained 4-vs-7 gap reads as a bug rather than as coaching.
   const firstTimer = s.day_number === 1
     ? `<div class="card"><b>👋 First workout? You've got this.</b>
+        ${s.first_session ? `<p class="muted"><b>Today is ${s.first_session.shown} exercises instead of your usual ${s.first_session.full}</b> — on purpose. A first session of 20–40 minutes is plenty: day one is for finding the machines and learning how they feel, not for setting records. Your full session is back next time.</p>` : ""}
         <p class="muted">Here's exactly how a session goes — arrive, warm up, find a comfy weight, do your sets. A 2-minute read makes the whole thing easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Read: Your first session</button></div>`
     : "";
