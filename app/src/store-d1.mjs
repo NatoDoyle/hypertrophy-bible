@@ -450,10 +450,15 @@ export function createD1Store(db) {
         .map(([c, f]) => (f - c) / 86400000)
         .sort((a, b) => a - b);
       const usersWithSession = new Set(safe.map((r) => r.user_id)).size;
+      const isSmoke = (u) => u.smoke === 1 || u.smoke === true;
+      const smokeIds = new Set(userRows.filter(isSmoke).map((u) => u.id));
+      const sessionIds = new Set(safe.map((r) => r.user_id));
       const funnel = activationFunnel({
         liveCount: userRows.length,
-        smokeCount: userRows.filter((u) => u.smoke === 1 || u.smoke === true).length,
-        usersWithSession, lags,
+        smokeCount: smokeIds.size,
+        usersWithSession,
+        smokeWithSession: [...smokeIds].filter((id) => sessionIds.has(id)).length,
+        lags,
       });
       return {
         users_total: userRows.length, // tombstones aren't users
@@ -505,10 +510,16 @@ export function createD1Store(db) {
             AND s.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(s.date, 1, 10) <= ?
           ORDER BY s.date DESC`)
         .bind(bound).all();
-      const best = new Map();   // user_id -> {email, last_date}
+      // Keyed by EMAIL, not user_id. `accounts` has `email` as its primary key and
+      // a NON-unique `user_id`, so one user can hold two verified addresses (bind a
+      // second address from a device already bound and `consumeMagicLink` writes it
+      // against the same user). Keying by user_id collapsed them, and since the
+      // consumers of this list SEND MAIL, one verified address silently stopped
+      // being nudged. The file store returns one row per account row; so does this.
+      const best = new Map();   // email -> {email, user_id, last_date}
       for (const r of results) {
-        if (!best.has(r.user_id)) best.set(r.user_id, { email: r.email, user_id: r.user_id, last_date: null });
-        const acc = best.get(r.user_id);
+        if (!best.has(r.email)) best.set(r.email, { email: r.email, user_id: r.user_id, last_date: null });
+        const acc = best.get(r.email);
         if (acc.last_date == null && r.date != null
           && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs)) acc.last_date = r.date;
       }

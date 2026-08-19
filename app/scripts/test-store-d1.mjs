@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createD1Store } from "../src/store-d1.mjs";
 import { createD1Shim, sqliteAvailable } from "./d1-shim.mjs";
+import { archiveSummary } from "../src/merge-archive.mjs";
 
 // This suite is the ONLY coverage of store-d1.mjs — the store production actually
 // runs on. It used to print "SKIPPED" and exit 0 on Node < 22.5 (no node:sqlite),
@@ -912,10 +913,52 @@ try {
   }
   same("stats parity: the whole aggregate, on a clean pair", fStats, dStats);
   ok("stats: only the key-minted row counts as smoke", fStats.smoke_users === 1);
-  ok("stats: the three rows split into 1 activated / 2 never-trained", fStats.onboarded_never_trained === 2 && Math.abs(fStats.activation_rate - 1 / 3) < 1e-9);
+  // Of the three fixtures one is smoke, so the REAL split is 2 users, 1 activated;
+  // the contaminated view stays visible as `_raw` for cross-checking.
+  ok("stats: the rate counts real users only, with the raw figure beside it",
+    fStats.onboarded_never_trained === 1 && Math.abs(fStats.activation_rate - 1 / 2) < 1e-9
+    && fStats.onboarded_never_trained_raw === 2 && Math.abs(fStats.activation_rate_raw - 1 / 3) < 1e-9);
   ok("stats: time-to-first-session is measured from the user's created_at (2 days here)",
     fStats.days_to_first_session_n === 1 && fStats.days_to_first_session_median === 2);
   try { rmSync(fnFilePath); } catch {}
+
+  // --- two verified addresses on ONE user: both must still be mailable ---------
+  // `accounts` keys on email with a NON-unique user_id, so a device already bound
+  // to user X can verify a second address against the same X. The D1 rewrite that
+  // turned this into one round trip keyed its dedup map by user_id and collapsed
+  // them — and the consumers of this list send mail, so one verified address
+  // silently stopped receiving comeback nudges while the file store kept both.
+  for (const [label, s0] of [["file", file], ["D1", d1]]) {
+    const uid = `two-addr-${label}`;
+    await s0.saveUser(uid, { profile: { user_id: uid } });
+    await s0.saveAccount(`first-${label}@example.com`, uid, "2026-08-01T00:00:00.000Z");
+    await s0.saveAccount(`second-${label}@example.com`, uid, "2026-08-02T00:00:00.000Z");
+    const rows = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .filter((r) => r.user_id === uid).map((r) => r.email).sort();
+    ok(`accounts: both verified addresses for one user are returned (${label})`,
+      rows.length === 2 && rows[0] === `first-${label}@example.com` && rows[1] === `second-${label}@example.com`);
+  }
+
+  // --- an archive written under the OLD snapshot shape still reports its counts -
+  // The wave that stopped storing capability material defended the change with a
+  // prose assertion that no such archive exists anywhere. Rather than rely on that
+  // being true, the summary falls back to the legacy arrays — otherwise the counts
+  // read 0 and the client copy is silent at 0, so the absence is unobservable.
+  {
+    const legacy = {
+      archive_id: "legacy-shape", created_at: "2026-08-10T00:00:00.000Z", state: "available",
+      restored_user_id: null, restored_at: null,
+      snapshot: {
+        user: { profile: {} }, sessions: [{}, {}], bodyweights: [], checkins: [], nutrition_logs: [],
+        // the pre-change shape: real arrays, no revoked_counts
+        push_subscriptions: [{ endpoint: "https://push/legacy" }], shares: [{ share_id: "legacy-share" }],
+        magic_links: [], push_deliveries: [],
+      },
+    };
+    const summary = archiveSummary(legacy);
+    ok("archive summary: a legacy-shape snapshot still reports device and share counts",
+      summary.counts.push_subscriptions === 1 && summary.counts.shares === 1 && summary.counts.sessions === 2);
+  }
 
   console.log(`\n${pass} store-d1 parity test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

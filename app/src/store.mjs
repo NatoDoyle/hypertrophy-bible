@@ -360,7 +360,12 @@ export function createFileStore(path) {
         .filter(([c, f]) => Number.isFinite(c) && f != null && f >= c)
         .map(([c, f]) => (f - c) / 86400000)
         .sort((a, b) => a - b);
-      const funnel = activationFunnel({ liveCount: live.length, smokeCount: smoke.length, usersWithSession: users_with_session, lags });
+      // Smoke rows that logged a session must leave the numerator too — a prod
+      // smoke usually DOES log one, so counting it as an activation is the same
+      // contamination from the other side.
+      const smokeIds = new Set(smoke.map(([uid]) => uid));
+      const smokeWithSession = [...smokeIds].filter((uid) => (db.sessions[uid] ?? []).some((x) => safeMs(x) != null)).length;
+      const funnel = activationFunnel({ liveCount: live.length, smokeCount: smoke.length, usersWithSession: users_with_session, smokeWithSession, lags });
       return {
         users_total: live.length, // tombstones aren't users
         users_with_session,

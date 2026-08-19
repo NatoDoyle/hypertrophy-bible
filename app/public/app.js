@@ -1901,9 +1901,15 @@ function validHistoryCalendarDate(value) {
   const d = new Date(Date.UTC(year, month - 1, day));
   return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day ? value : null;
 }
+// The picker's ceiling must be the SERVER's ceiling, not the device's local
+// tomorrow. This used to be device-local, which offered far-east users a day the
+// server refused; the wave that "fixed" that by widening the server instead made
+// the server accept dates its own read path then re-quarantined. Narrowing the
+// picker is the correct half: the server's rule (now + 24h, UTC calendar day) is
+// provably never stricter than the user's own local TODAY at any offset from
+// -12:00 to +14:00 — it only excludes tomorrow, which nobody has trained yet.
 function historyTomorrow() {
-  const d = new Date(); d.setDate(d.getDate() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 function historyDateInputValue(sess) {
   const local = validHistoryCalendarDate(sess?.local_date);

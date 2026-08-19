@@ -2057,19 +2057,59 @@ try {
   // The repair, in a FAR-EAST frame: the client's picker offers the user's local
   // tomorrow, so the server must judge in that frame or the only exit from
   // quarantine is a dead end. Send the header this client always sends.
+  // A far-east client, sending the header it always sends. The date it submits is
+  // the ceiling the picker now computes — the SERVER's rule, not the device's local
+  // tomorrow. Submitting device-local tomorrow is what the pre-fix client did, and
+  // it is asserted separately below as the thing that must be refused honestly.
   const eastTz = String(13 * 60);
-  const localTomorrow = (tzMin) => {
-    const d = new Date(Date.now() + tzMin * 60000 + 86400000);
-    return d.toISOString().slice(0, 10);
-  };
+  const serverCeiling = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const deviceLocalTomorrow = new Date(Date.now() + 13 * 3600000 + 86400000).toISOString().slice(0, 10);
   const fixRes = await app.request("/api/session/update", {
     method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
-    body: JSON.stringify({ user_id: qU, session_id: "q-broken", corrected_local_date: localTomorrow(13 * 60) }),
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken", corrected_local_date: serverCeiling }),
   });
-  ok("#tq a UTC+13 user's own local tomorrow is ACCEPTED (it is what their picker offered)", fixRes.status === 200);
+  ok("#tq a correction at the server's own ceiling is accepted", fixRes.status === 200);
   const fixedRow = (await store.listSessions(qU, { includeVoided: true, includeQuarantined: true })).find((x) => x.session_id === "q-broken");
   ok("#tq the corrected day is STORED as the day chosen, not silently re-stamped as now",
-    fixedRow?.local_date === localTomorrow(13 * 60) && String(fixedRow?.date).slice(0, 10) === localTomorrow(13 * 60));
+    fixedRow?.local_date === serverCeiling && String(fixedRow?.date).slice(0, 10) === serverCeiling);
+  // THE assertion the original version of this test was missing, and the reason the
+  // half-fix shipped: it checked only `status === 200`. A repair that the read path
+  // then re-quarantines is worse than an honest refusal — the user is told "it now
+  // counts toward your trends" over a row that still counts for nothing. Re-read
+  // through the same door the client uses.
+  const afterFix = await app.request("/api/sessions", { headers: { "X-HB-User": qU, "X-HB-TZ": eastTz } });
+  const afterRows = (await afterFix.json()).sessions;
+  const repaired = afterRows.find((r) => r.session_id === "q-broken");
+  ok("#tq the repaired row is NO LONGER quarantined when read back", repaired && !repaired.time_quarantine);
+  ok("#tq ...and it now reaches derived coaching",
+    (await (await app.request("/api/adherence", { headers: { "X-HB-User": qU } })).json()).sessions_logged === 3);
+
+  // THE INVARIANT, submitted the way the PRE-FIX client did: a far-east device's
+  // own local tomorrow. Whatever the door decides, the two outcomes are (a) an
+  // honest refusal, or (b) acceptance AND a row the read path genuinely accepts.
+  // What must never happen is the third: accepted, announced as fixed, and still
+  // quarantined — which is precisely what shipped.
+  //
+  // Honest limitation, stated rather than papered over: this can only DISTINGUISH
+  // the outcomes when the UTC hour is late enough that a +13h device's tomorrow
+  // differs from the server's ceiling (roughly the second half of the UTC day).
+  // The route computes `Date.now()` internally, so making it hour-independent
+  // would need clock injection into the route. The structural guarantee lives in
+  // session-time.mjs — one ceiling function, no per-caller frame — and the PIN
+  // there fails if anyone re-introduces one.
+  await store.addSession(qU, { session_id: "q-broken-3", date: "", session_name: "Legacy 3", sets: qSet });
+  const tomorrowRes = await app.request("/api/session/update", {
+    method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": eastTz },
+    body: JSON.stringify({ user_id: qU, session_id: "q-broken-3", corrected_local_date: deviceLocalTomorrow }),
+  });
+  if (tomorrowRes.status === 200) {
+    const rows = (await (await app.request("/api/sessions", { headers: { "X-HB-User": qU } })).json()).sessions;
+    const row = rows.find((r) => r.session_id === "q-broken-3");
+    ok("#tq a date the door ACCEPTS is never left quarantined by the read path", row && !row.time_quarantine);
+  } else {
+    ok("#tq a date past the ceiling is refused honestly rather than accepted-then-quarantined",
+      tomorrowRes.status === 400 && (await tomorrowRes.json()).error === "bad-date");
+  }
 
   // ...and a genuinely impossible date is still refused, with a distinguishable
   // error the client can turn into truthful copy instead of "check your connection".
@@ -2099,17 +2139,36 @@ try {
   const st = await funnelRes.json();
   ok("#funnel only the owner's key can mark a row as smoke traffic", st.smoke_users === 1, `smoke_users=${st.smoke_users}`);
   ok("#funnel a client that DECLARES itself smoke is not believed", st.users_total === 3 && st.users_unclassified === 2);
-  ok("#funnel onboarded-but-never-trained is reported on its own", st.onboarded_never_trained === 3);
+  ok("#funnel onboarded-but-never-trained counts REAL users, with the raw figure beside it",
+    st.onboarded_never_trained === 2 && st.onboarded_never_trained_raw === 3);
   ok("#funnel activation_rate is 0 before anyone trains", st.activation_rate === 0);
   ok("#funnel time-to-first-session is null while nobody has one (never a fabricated 0)",
     st.days_to_first_session_median === null && st.days_to_first_session_n === 0);
 
   await sJson("/api/session", { user_id: realU, session_id: "fn-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-back-squat", weight_kg: 100, reps: 5, set_type: "work" }] });
   const st2 = await (await funnelApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "s3cret" } })).json();
-  ok("#funnel one activation moves the rate and the never-trained count together",
-    st2.users_with_session === 1 && st2.onboarded_never_trained === 2 && Math.abs(st2.activation_rate - 1 / 3) < 1e-9);
+  // INVERTED. This used to assert `activation_rate ≈ 1/3` over 3 users of which one
+  // was the key-minted smoke row — i.e. it locked the contamination IN, in the very
+  // wave whose purpose was to remove it. The real users are 2 (one trained), so the
+  // rate is 1/2; the contaminated figure stays visible as `_raw` so the
+  // decontamination can be checked rather than trusted.
+  ok("#funnel the activation rate EXCLUDES smoke rows from both sides",
+    st2.users_with_session === 1 && st2.onboarded_never_trained === 1
+    && Math.abs(st2.activation_rate - 1 / 2) < 1e-9);
+  ok("#funnel ...and the contaminated figure is still reported, labelled raw",
+    Math.abs(st2.activation_rate_raw - 1 / 3) < 1e-9 && st2.onboarded_never_trained_raw === 2);
   ok("#funnel a same-day activation reports a real lag, not null",
     st2.days_to_first_session_n === 1 && st2.days_to_first_session_median != null);
+  // The other side of the same contamination: a prod smoke usually DOES log a
+  // session, so a smoke row must leave the NUMERATOR as well. Without this the
+  // rate would climb every time the owner smoke-tests a deploy.
+  await sJson("/api/session", { user_id: smokeU, session_id: "fn-smoke-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-back-squat", weight_kg: 100, reps: 5, set_type: "work" }] });
+  const st3 = await (await funnelApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "s3cret" } })).json();
+  ok("#funnel a smoke row that TRAINS does not inflate the activation rate",
+    st3.users_with_session === 2 && Math.abs(st3.activation_rate - 1 / 2) < 1e-9,
+    );
+  ok("#funnel ...while the raw figure moves, showing exactly what was excluded",
+    Math.abs(st3.activation_rate_raw - 2 / 3) < 1e-9);
   ok("#funnel the stats route stays owner-only", (await funnelApp.request("/api/stats")).status === 404);
   void liarU; void smokeU;
 

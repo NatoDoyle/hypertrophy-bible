@@ -62,8 +62,14 @@ export function archiveSummary(archive) {
       nutrition_logs: snap.nutrition_logs?.length ?? 0,
       // Recorded, never revived: what the source account had, without what it
       // took to use any of it. A restore deliberately re-enables none of these.
-      push_subscriptions: snap.revoked_counts?.push_subscriptions ?? 0,
-      shares: snap.revoked_counts?.shares ?? 0,
+      // `?? .length` reads an archive written BEFORE the capability material was
+      // dropped, where these were arrays. Without it such a row reports 0 and the
+      // client copy is deliberately silent at 0 — an absence nobody can observe
+      // (lesson 41). The wave that made the change defended itself with a prose
+      // assertion that no such archive exists; this line means that no longer has
+      // to be true.
+      push_subscriptions: snap.revoked_counts?.push_subscriptions ?? snap.push_subscriptions?.length ?? 0,
+      shares: snap.revoked_counts?.shares ?? snap.shares?.length ?? 0,
     },
   };
 }
@@ -146,18 +152,28 @@ export function archiveSnapshot({ user, sessions = [], bodyweights = [], checkin
 // From now on the owner's own smoke traffic identifies itself. Rows that predate
 // this are NOT retroactively classified: there is no signal that distinguishes them,
 // and a plausible-looking split would be a number nobody measured.
-export function activationFunnel({ liveCount, smokeCount, usersWithSession, lags }) {
+export function activationFunnel({ liveCount, smokeCount, usersWithSession, smokeWithSession = 0, lags }) {
+  // The number this function exists to make trustworthy is the RATE, and the first
+  // version of it divided by the raw denominator — so the wave that added smoke
+  // tagging reported an activation rate that still counted the owner's own smoke
+  // traffic, and a test pinned it there. Smoke rows come out of BOTH sides: they
+  // are users, and the ones that logged a session are users-with-a-session.
   const real = liveCount - smokeCount;
+  const realWithSession = Math.max(0, usersWithSession - smokeWithSession);
   const median = lags.length
     ? (lags.length % 2 ? lags[(lags.length - 1) / 2] : (lags[lags.length / 2 - 1] + lags[lags.length / 2]) / 2)
     : null;
   return {
-    // Tagged rows only — this is 0 until the first tagged smoke lands, and it says
-    // so rather than pretending to have cleaned the history.
+    // Tagged rows only — 0 until the first tagged smoke lands, and it says so
+    // rather than pretending to have cleaned the history.
     smoke_users: smokeCount,
     users_unclassified: real,
-    onboarded_never_trained: Math.max(0, liveCount - usersWithSession),
-    activation_rate: liveCount ? usersWithSession / liveCount : null,
+    // Raw counts stay visible so the decontamination can be checked rather than
+    // trusted: a reader can always recompute the contaminated figure from these.
+    onboarded_never_trained: Math.max(0, real - realWithSession),
+    onboarded_never_trained_raw: Math.max(0, liveCount - usersWithSession),
+    activation_rate: real ? realWithSession / real : null,
+    activation_rate_raw: liveCount ? usersWithSession / liveCount : null,
     days_to_first_session_median: median == null ? null : Math.round(median * 10) / 10,
     days_to_first_session_n: lags.length,
   };
