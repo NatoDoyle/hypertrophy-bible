@@ -763,6 +763,65 @@ These are real failures from previous iterations. Each is now a standing check.
    iteration, the positive case: an enumerable "the fixture covers every field in
    this exported set" assertion fired the instant a new field joined the set.)
 
+55. **The denominator is a claim too — measure its AGE and its PROVENANCE before
+   you believe a rate.** The loop spent an iteration treating "122 of 135 finished
+   onboarding and never trained" (activation 9.6%) as the project's headline
+   problem. Building the instrument to split that 122 produced two findings that
+   between them dissolve the premise. **(a) An instrument younger than the
+   population reports on the instrument.** `tz_offset_min` — the proxy for "reached
+   the Today tab" — is only written by a header that shipped 2026-08-04, so **125
+   of the 135 users predate it** and would have been counted as "never reached
+   Today" for a reason that has nothing to do with them. Run un-cohorted, the split
+   would have read ~100% bounce, and it would have looked completely plausible. The
+   measurable cohort is **10**. **(b) Traffic that coincides with your own build
+   window is probably yours.** `onboards_by_day` puts **84% of every onboard in
+   2026-07-15..07-26** — the fortnight the repo took **266 commits** — collapsing to
+   ~1/day afterwards, with a single IP holding **25%** of the rate-limit markers.
+   The 135 are dominated by development and prod-smoke traffic. There was probably
+   never a 9.6% activation failure; there was an unexamined denominator.
+   → **Standing rule:** before drawing any conclusion from a ratio, ask when the
+   instrument that produces it started existing, and where the denominator came
+   from. Both are cheap to compute from rows you already hold, and both can turn a
+   crisis back into an artifact. This is lesson 34 aimed at a metric instead of a
+   feature, and lesson 30's "calibrate against the corpus" aimed at the corpus's
+   own origin.
+
+56. **Choose fixes that are right WITHOUT the number, because the number may
+   evaporate.** This iteration's build waves were selected on an explicit test: is
+   this still correct if the activation reading turns out to be noise? Two passed
+   and shipped — the engine contradicting the KB's own "a first session of 20–40
+   minutes is plenty" (a coaching defect, measured against the project's own
+   content), and the five verified locks that left a never-trained user unreachable
+   on every channel simultaneously (a structural hole, provable by reading the
+   code). Two were deferred for failing it: the day-one weight-entry friction and
+   the bodyweight plan's chin-up lead, both of which are only defensible if the
+   funnel number is real. Then the reading came in and deflated the motivation —
+   and both shipped waves still stand, because neither was ever justified by the
+   rate. → **Standing rule:** when a metric prompts work, sort the candidates by
+   whether they survive the metric being wrong, and ship that half first. The
+   discipline costs nothing when the number holds and saves the whole iteration
+   when it doesn't.
+
+57. **A door must not accept what the reader will reject.** Wave 218 fixed a
+   client/server mismatch (the date picker offered a day the server refused) by
+   WIDENING the server: it made the correction door timezone-aware and left
+   `sessionTimingIssue` — the predicate that decides whether a stored row is
+   usable — on the flat UTC ceiling. So the accept-set exceeded the derivable-set:
+   a UTC+13 user's repair was accepted, stored, announced as *"it now counts toward
+   your trends"*, and re-quarantined by the very next read. A repair that silently
+   does nothing is worse than an honest refusal. The widening was never needed —
+   verified across every offset from −12:00 to +14:00 at every hour, the flat
+   ceiling **never** refuses a user's own local *today*; it only refuses tomorrow,
+   which is correct. The fix was to narrow the CLIENT. → **Standing lens:** when a
+   writer and a reader disagree about what is valid, the reader is authoritative,
+   because it decides what the data MEANS — never widen the writer to close the gap.
+   And the strongest form of the fix is structural: both sides now call one
+   parameterless function, so they cannot diverge. Note what that costs you, and
+   say it out loud: the unit test asserting the invariant became a PIN rather than
+   a guard, because no tamper inside that module can separate two callers of the
+   same function. The test that can still catch a regression is at the route, and
+   it goes red on the shipped code.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -784,6 +843,41 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7r. **Telemetry (Waves 224–229, 2026-08-19).** One full turn; prod == main
+   (`hb-shell-v167`). **2 finder agents + 1 design agent (~560k subagent tokens),
+   ZERO verify agents, zero workflows.** The audit surface was my OWN previous
+   burst (Waves 217–223, 1650 insertions) and it was not clean: five confirmed
+   defects, four of them mine, headed by a Wave-218 "fix" that never worked (lesson
+   57) whose two regression tests were both built so they could not catch it —
+   **lesson 54 recurring in the commit that shipped lesson 54.**
+   The design agent again earned its cost by correcting me on things I would have
+   got wrong in the same direction twice: it caught that the tz proxy is invalid
+   over the full user table (lesson 55a) and that the "+2 set overshoot" I planned
+   to fix is a deliberate, commented decision — the defect was the plan screen
+   REPORTING the input cap above a 14-set session, not the session. I had it exactly
+   backwards, and lesson 13 would have been violated rather than applied.
+   Inline verification held throughout: every finder candidate was checked by
+   reading or executing the code, and the two premise corrections were re-measured
+   by me rather than adopted (lesson 39).
+   **The reading is the iteration's real result.** After deploying the cohorted
+   instrument: 135 users, but **125 predate the instrument** (measurable cohort:
+   **10**), and **84% of all onboards fall in 2026-07-15..07-26 — the fortnight the
+   repo took 266 commits** — with one IP holding 25% of the rate-limit markers. The
+   9.6% activation rate is very probably our own development traffic, not a product
+   failure. That is a better outcome than a fix: an iteration that measured its way
+   out of a false premise. The two build waves survive it because they were chosen
+   on the "right without the number" test (lesson 56).
+   Verification: 354 route · 189 store/D1 parity · 74 coach · 28 nudge · 12
+   session-time tests, every regression observed failing pre-fix WITH a tamper
+   proving its fixture reaches the branch, and a **12/12 browser walkthrough run
+   twice — once pinned to UTC** to exercise the falsy-zero trap end to end. The
+   walkthrough caught two things no unit suite could: an email card whose HTML never
+   landed (only its handler did), and a `canRemind` condition that would have
+   re-created the exact false promise it was written to remove.
+   Also this burst: `prod-smoke.mjs` exists so the smoke tag has a producer — it had
+   none, and I had been sending the header by hand, so `smoke_users` would have
+   read 0 forever while the contamination continued (lesson 15).
+
 7s. **Telemetry (Waves 217–223, 2026-08-18).** One full loop turn, end to end:
    AUDIT → VERIFY → PRIORITISE → IMPLEMENT → TEST → DEPLOY → LEARN, finishing with
    prod == main. **2 finder agents + 1 design agent (~464k subagent tokens), ZERO
