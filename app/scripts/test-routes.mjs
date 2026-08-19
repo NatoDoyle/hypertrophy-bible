@@ -2188,6 +2188,49 @@ try {
   ok("#funnel the stats route stays owner-only", (await funnelApp.request("/api/stats")).status === 404);
   void liarU; void smokeU;
 
+  // --- `sex` moved from onboarding to the Fuel form ---------------------------
+  // It has zero references in the training engine and only ever drove the body-fat
+  // formula, under onboarding copy claiming it "sets sensible starting points".
+  // Onboard WITHOUT sex — which is what the client now sends, since the step is
+  // gone. (`obProfile` still carries it, so it can't be reused here.)
+  const { sex: _obSex, ...obNoSex } = obProfile;
+  const sxU = (await json("POST", "/api/onboard", { profile: obNoSex })).data.user_id;
+  ok("#sex onboarding succeeds without it, and stores nothing",
+    !!sxU && (await store.getUser(sxU)).profile.sex === undefined);
+
+  // The female Navy formula NEEDS the hip measure — without it the estimate is null
+  // and this test would pass for the wrong reason (lesson 54).
+  await json("POST", "/api/nutrition/profile", { user_id: sxU, sex: "female", height_cm: 165, weight_kg: 62, neck_cm: 31, waist_cm: 70, hip_cm: 95 });
+  const sxProfile = (await store.getUser(sxU)).profile;
+  ok("#sex the Fuel form can set it", sxProfile.sex === "female");
+  const sxFuel = await (await app.request("/api/nutrition", { headers: { "X-HB-User": sxU } })).json();
+  ok("#sex ...and the estimate is computed from the FEMALE formula", sxFuel.sex === "female" && sxFuel.has_bf === true);
+  // Cross-check it is really the female branch: the male formula on the same
+  // numbers gives a materially different figure, so an unknown sex is not
+  // silently equivalent.
+  const { navyBodyFat } = await import("../../tools/nutrition-core.mjs");
+  const asFemale = navyBodyFat({ sex: "female", height_cm: 165, neck_cm: 31, waist_cm: 70, hip_cm: 95 });
+  const asMale = navyBodyFat({ sex: "male", height_cm: 165, neck_cm: 31, waist_cm: 70, hip_cm: 95 });
+  ok("#sex the two formulas genuinely differ, so the branch matters", Math.abs(asFemale - asMale) > 5);
+
+  // Boundary: an unknown value is dropped, not stored.
+  await json("POST", "/api/nutrition/profile", { user_id: sxU, sex: "not-a-sex" });
+  ok("#sex an unknown value is refused and leaves the stored one intact", (await store.getUser(sxU)).profile.sex === "female");
+
+  // The enum must not drift from the schema it claims to follow.
+  const sexSchema = JSON.parse(await (await import("node:fs/promises")).readFile(new URL("../../data/schemas/onboarding-profile.schema.json", import.meta.url), "utf8"));
+  const routeSrc = await (await import("node:fs/promises")).readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
+  ok("#sex the route's accepted values match the schema's enum exactly",
+    sexSchema.properties.sex.enum.every((v) => routeSrc.includes(`"${v}"`))
+    && (routeSrc.match(/const SEX_VALUES = new Set\(\[([^\]]*)\]\)/)?.[1].split(",").length === sexSchema.properties.sex.enum.length));
+
+  // A settings save must not WIPE it. `/api/plan/regenerate` merges by spread, so a
+  // client sending `sex: undefined` would overwrite the stored value with undefined
+  // — the exact trap that bites users who answered before the question moved.
+  await json("POST", "/api/plan/regenerate", { user_id: sxU, profile: { ...obNoSex } });
+  ok("#sex a settings save that omits it leaves the stored value alone",
+    (await store.getUser(sxU)).profile.sex === "female");
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

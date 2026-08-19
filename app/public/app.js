@@ -300,11 +300,34 @@ const STEPS = [
   // /api/profile/injury escalation ladder all still accept it, and it behaves
   // exactly as it always did) so nobody who already answered it needs migrating.
   { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
-  { key: "units", q: "Pounds or kilograms?", opts: [["Kilograms (kg)", "metric"], ["Pounds (lb)", "imperial"]] },
-  { key: "sex", q: "Last one — this just sets sensible starting points.", opts: [["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]] },
+  // `sex` and `units` used to be asked here and are not any more.
+  //
+  // `sex` had ZERO references in the training engine (plan-core, derive-core,
+  // coach, planner) — it is read only by the Fuel tab's body-fat estimate. Its
+  // question said "this just sets sensible starting points", which was simply not
+  // true of anything the plan does. It now lives in the Fuel stats form beside the
+  // height/neck/waist it is actually used with, so it is asked at the point of use
+  // by the people who need it, and never asked of someone who only wants to train.
+  //
+  // `units` is a display preference, derived from the device locale with a one-tap
+  // correction where the numbers first appear. See `deriveUnits`.
 ];
 // Onboarding answers persist to localStorage as they're picked, so a reload or a
 // failed submit never makes a nervous first-timer re-answer the whole wizard.
+// Display units from the device's own locale. Only three countries in common use
+// pound-based bodyweight for this purpose, so the table is stated explicitly
+// rather than guessed at — and because a guess CAN be wrong (a UK user is metric
+// for plates and often imperial for bodyweight), the plan screen offers a one-tap
+// correction where the numbers first appear, instead of silently being wrong on
+// the first set screen.
+const IMPERIAL_REGIONS = new Set(["US", "LR", "MM"]);
+function deriveUnits() {
+  try {
+    const loc = new Intl.Locale(navigator.language || "en");
+    const region = loc.region || (navigator.language || "").split("-")[1] || "";
+    return IMPERIAL_REGIONS.has(String(region).toUpperCase()) ? "imperial" : "metric";
+  } catch { return "metric"; }
+}
 const ONB_KEY = "hb_onboarding";
 let onbStep = 0, onbStarted = false, answers = {};
 // Settings reuses the SAME wizard the user already learned in onboarding —
@@ -331,7 +354,7 @@ async function renderSettings() {
     return;
   }
   answers = {
-    training_status: p.training_status, primary_goal: p.primary_goal, sex: p.sex,
+    training_status: p.training_status, primary_goal: p.primary_goal,
     days_per_week: p.days_per_week ?? 3, session_length_min: p.session_length_min ?? 60,
     available_equipment: p.available_equipment,
     // multi steps store option-value arrays: select each group fully covered by the profile
@@ -339,7 +362,10 @@ async function renderSettings() {
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
     goal_event_date: p.goal_event_date || "",
-    units: p.units || (unitPref() === "lb" ? "imperial" : "metric"), // profile is the truth; local pref is the fallback
+    // `sex` and `units` are no longer wizard steps, so prefilling them here would
+    // populate answers nothing reads — and `units` in particular must NOT be sent
+    // back by a settings save (see submitOnboarding): the Me-tab toggle owns it,
+    // and re-sending a stale prefill would fight it.
   };
   settingsMode = true; onbStarted = true; onbStep = 0;
   renderOnboarding();
@@ -483,7 +509,15 @@ async function submitOnboarding() {
     // date, not just add one — the regenerate route merges profile fields by
     // spreading the new object over the old, so an omitted key would never clear.
     goal_event_date: answers.training_status !== "beginner" && answers.goal_event_date ? answers.goal_event_date : null,
-    injuries, sex: answers.sex, units: answers.units || "metric",
+    injuries,
+    // `sex` and `units` are deliberately ABSENT from this literal, and absence is
+    // load-bearing: /api/plan/regenerate merges with `{ ...u.profile, ...patch }`,
+    // so sending `sex: undefined` would OVERWRITE a stored value with undefined and
+    // wipe it for every existing user on their next Settings save. Omitting the key
+    // leaves the stored one alone (lesson 37 — the half that bites people who
+    // already answered). `sex` is collected in the Fuel form now; `units` is set
+    // once at creation below and owned thereafter by the Me-tab toggle.
+    ...(settingsMode ? {} : { units: deriveUnits() }),
   };
   // NOTE: the display-unit preference (hb_units) is written only on the SUCCESS
   // paths below — flipping it before the API call meant a failed save showed
@@ -495,7 +529,10 @@ async function submitOnboarding() {
     let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile }) }); } catch { r = {}; }
     if (r.program) {
       settingsMode = false;
-      localStorage.setItem("hb_units", profile.units); // saved server-side — now the display can follow
+      // `profile.units` is absent on a settings save now (the toggle owns it), so
+      // writing it unconditionally would store the string "undefined" and flip
+      // every user to kg. Only write a real value.
+      if (profile.units) localStorage.setItem("hb_units", profile.units);
       localStorage.setItem("hb_program", r.program.name);
       return renderPlanExplain(false); // show the regenerated plan immediately
     }
@@ -2091,8 +2128,19 @@ async function renderFuel() {
     // The Navy tape estimate needs the hip measure for women — without a hip field a
     // female user who leaves BF% blank estimates to null and loops on the blank form.
     const isFemale = n.sex === "female";
+    // Sex is asked HERE, not at onboarding, because this is the only place it does
+    // anything: the Navy/BMI body-fat formulas differ by sex, and an unknown sex
+    // falls through to the male formula. Asking it in the wizard cost every user a
+    // question under copy claiming it "sets sensible starting points" for training,
+    // which was false — it has no effect on the plan at all.
+    const sexRow = `<label class="muted" style="display:block;margin-top:4px">Sex <span class="muted" style="font-size:.85rem">— the body-fat estimate below uses a different formula for each; it changes nothing about your training.</span></label>
+      <div class="row" style="gap:6px;margin:4px 0 12px">
+        ${[["Male", "male"], ["Female", "female"], ["Prefer not to say", "prefer-not-to-say"]]
+          .map(([label, v]) => `<button class="choice${n.sex === v ? " sel" : ""}" data-sex="${v}" style="flex:1">${label}</button>`).join("")}
+      </div>`;
     app.innerHTML = `<h1>Fuel</h1>
       <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
+        ${sexRow}
         ${fld("f-weight", `Bodyweight (${unitLabel()})`, "", unitPref() === "lb" ? "e.g. 180" : "e.g. 82")}
         ${fld("f-height", "Height (cm)", "", "e.g. 178")}
         ${fld("f-bf", "Body fat % (optional)", "", "e.g. 18")}
@@ -2113,6 +2161,15 @@ async function renderFuel() {
         <p class="muted" id="f-msg"></p></div>`;
     wireLearnLinks();
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
+    // Saving on tap (rather than only at "Set my targets") is what makes the hip
+    // field appear for a female user without losing what they have already typed —
+    // the form re-renders from the server value.
+    app.querySelectorAll("[data-sex]").forEach((b) => b.onclick = async () => {
+      const typed = { weight_kg: (() => { const v = parseFloat($("#f-weight")?.value); return Number.isFinite(v) && v > 0 ? toKg(v) : undefined; })(),
+        height_cm: (() => { const v = parseFloat($("#f-height")?.value); return Number.isFinite(v) && v > 0 ? v : undefined; })() };
+      try { await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: b.dataset.sex, ...typed }) }); } catch {}
+      fuelEdit = true; renderFuel();
+    });
     $("#f-save").onclick = async () => {
       // Null-safe: #f-hip only exists in the DOM for a female user (the Navy
       // formula's hip measure), so reading it unconditionally for anyone else
@@ -2133,7 +2190,7 @@ async function renderFuel() {
         // writes below can record a bodyweight row, and the server only falls
         // back to the UTC date when none is sent.
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight, date: localDay() }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: n.sex ?? undefined, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
@@ -2473,7 +2530,17 @@ function renderMe() {
   // default keys off training status, so a graduating beginner inherits the chips
   // with nothing to configure (minimal-customization: no mandatory setting).
   $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
-  $("#unittoggle").onclick = () => { localStorage.setItem("hb_units", unitPref() === "lb" ? "metric" : "imperial"); renderMe(); };
+  $("#unittoggle").onclick = async () => {
+    // Writes BOTH sides. This used to set localStorage only, so `profile.units`
+    // drifted from what the user actually saw — harmless while the wizard also
+    // asked, load-bearing the moment it stopped: a new device reads the server
+    // value, and a stale one would show kg to someone who chose lb. Local first so
+    // the UI is instant; the server patch is best-effort and self-heals next flip.
+    const next = unitPref() === "lb" ? "metric" : "imperial";
+    localStorage.setItem("hb_units", next);
+    renderMe();
+    try { await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { units: next } }) }); } catch {}
+  };
   app.querySelectorAll("[data-restore-archive]").forEach((b) => b.onclick = () => restoreMergedArchive(uid, b.dataset.restoreArchive, b));
   app.querySelectorAll("[data-switch-restored]").forEach((b) => b.onclick = () => switchToRestoredArchive(uid, b.dataset.switchRestored, b));
   // Start this non-critical lookup after the normal Me controls are usable. Until

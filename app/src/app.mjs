@@ -1473,7 +1473,14 @@ export function createApp(store, config = {}) {
     // Body fat only within a plausible human range (a fat-fingered 100 makes TDEE
     // uncomputable and used to surface a "~null kcal/day" plan).
     const bf = (v) => (Number.isFinite(Number(v)) && Number(v) >= 2 && Number(v) < 60 ? Number(v) : undefined);
+    // The enum is the schema's, not a second literal: `sex` moved out of onboarding
+    // and into this form (it drives only the body-fat formula, never the plan), so
+    // this became a client-writable profile field and needs the same boundary
+    // treatment as its neighbours — an unknown value is DROPPED, never stored, and
+    // an absent one leaves the existing value alone.
+    const SEX_VALUES = new Set(["male", "female", "intersex", "prefer-not-to-say"]);
     const updated = await store.updateUser(b.user_id, (u) => {
+      if (typeof b.sex === "string" && SEX_VALUES.has(b.sex)) u.profile = { ...(u.profile ?? {}), sex: b.sex };
       u.nutrition = {
         ...(u.nutrition ?? {}),
         ...(num(b.height_cm) ? { height_cm: num(b.height_cm) } : {}),
