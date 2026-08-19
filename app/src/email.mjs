@@ -43,10 +43,20 @@ export function createComebackSender({ apiKey, from } = {}) {
   const sender = from || "The Hypertrophy Bible <onboarding@resend.dev>";
 
   return async function sendComeback({ email, stage, days }) {
-    const subject = stage === 2
-      ? "The door's open — coming back is built in"
-      : "Your next session is ready when you are";
-    const body = stage === 2
+    // Stage 0 is the ACTIVATION note: this person has an account and a plan and has
+    // never trained. No streak language, no "you haven't...", nothing to make up —
+    // they have lost nothing and done nothing wrong, and the guardrail against
+    // shaming applies most sharply to someone who never started. One email, ever.
+    const subject = stage === 0
+      ? "Your first session, whenever you want it"
+      : stage === 2
+        ? "The door's open — coming back is built in"
+        : "Your next session is ready when you are";
+    const body = stage === 0
+      ? `<p>Your plan is sitting ready whenever you are. Nothing expires, nothing is waiting on you, and there's no catch-up to do — open it on a day that suits.</p>
+         <p>Your first session is deliberately short: a handful of exercises, twenty minutes or so. It's for finding the machines and seeing how they feel, not for setting records.</p>
+         <p>If you'd rather not hear from me, one tap turns these off in the app (Coach tab → Reminders).</p>`
+      : stage === 2
       ? `<p>It's been a couple of weeks — which is nothing in a training life. When you open the app, your weights are <b>eased automatically</b> for a smooth re-entry; that's built in, not a favor. One session is all a comeback is.</p>
          <p>If now isn't the time, that's genuinely fine — you can turn these reminders off in the app (Coach tab → Reminders) and your progress stays safely backed up either way. This is the last note we'll send about this break.</p>`
       : `<p>It's been ${days} days — no streak lost, nothing to make up. Your next session is sitting ready, and it adjusts to wherever you're at today.</p>

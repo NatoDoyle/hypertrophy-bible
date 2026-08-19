@@ -22,7 +22,23 @@ ok("after stage 2 the lapse goes silent forever", comebackStage({ lastSessionAt:
 ok("training again resets the lapse (new anchor, old nudge state ignored)", comebackStage({ lastSessionAt: daysAgo(5), nudge: { for_session_at: daysAgo(30), stage: 2 }, now: NOW })?.stage === 1);
 ok("paused users are NEVER emailed (the pause card's promise)", comebackStage({ lastSessionAt: daysAgo(20), paused: true, now: NOW }) === null);
 ok("reminders_off is a hard opt-out", comebackStage({ lastSessionAt: daysAgo(20), remindersOff: true, now: NOW }) === null);
-ok("never-trained users are not email targets", comebackStage({ lastSessionAt: null, now: NOW }) === null);
+// FLIPPED — same fixture, inverted assertion (lesson 45's corollary). This
+// asserted that a never-trained user is out of scope for email. That was true when
+// nothing else could reach them either; it turned out EVERY channel was gated
+// behind having already trained, so it described a hole, not a policy.
+ok("a never-trained user with no created_at is still not a target", comebackStage({ lastSessionAt: null, now: NOW }) === null);
+ok("a never-trained user gets exactly ONE activation nudge, after 2 days",
+  comebackStage({ lastSessionAt: null, createdAt: daysAgo(3), now: NOW })?.stage === 0);
+// The boundary, either side, with literals — or NUDGE_STAGE_0_DAYS is untested and
+// could be changed to 9999 with everything still green (lesson 42).
+ok("...not before the threshold", comebackStage({ lastSessionAt: null, createdAt: daysAgo(1), now: NOW }) === null);
+ok("...and exactly ON the threshold it fires", comebackStage({ lastSessionAt: null, createdAt: daysAgo(2), now: NOW })?.stage === 0);
+ok("once stamped, it never fires again — there is no second activation email",
+  comebackStage({ lastSessionAt: null, createdAt: daysAgo(30), nudge: { for_session_at: "account:created", stage: 0 }, now: NOW }) === null);
+ok("pause still silences it — the pause card promises exactly that",
+  comebackStage({ lastSessionAt: null, createdAt: daysAgo(9), paused: true, now: NOW }) === null);
+ok("reminders_off still silences it",
+  comebackStage({ lastSessionAt: null, createdAt: daysAgo(9), remindersOff: true, now: NOW }) === null);
 ok("stage thresholds are what the copy promises", NUDGE_STAGE_1_DAYS === 4 && NUDGE_STAGE_2_DAYS === 14);
 
 // --- sweep against the real file store ---
@@ -53,6 +69,35 @@ try {
   await runComebackSweep(store, fakeSend, NOW + 40 * 86400000);
   ok("after stage 2 the sweep stays silent for that lapse", forU("lapsed@t.com").length === 2);
   ok("opted-out and paused users never got a single email across every sweep", forU("optout@t.com").length === 0 && forU("paused@t.com").length === 0);
+
+  // --- the never-trained user, end to end through the sweep -------------------
+  // Before this, they were skipped at comebackStage AND absent from the query that
+  // feeds it, so a user who onboarded, backed up their email and never trained
+  // heard nothing from the app, ever, on any channel.
+  await store.saveUser("newbie", { profile: {}, created_at: new Date(NOW - 3 * 86400000).toISOString() });
+  await store.saveAccount("newbie@t.com", "newbie", new Date(NOW).toISOString());
+  const rN = await runComebackSweep(store, fakeSend, NOW);
+  ok("a never-trained account gets exactly one activation email",
+    forU("newbie@t.com").length === 1 && forU("newbie@t.com")[0].stage === 0 && rN.sent === 1);
+  await runComebackSweep(store, fakeSend, NOW + 86400000);
+  await runComebackSweep(store, fakeSend, NOW + 30 * 86400000);
+  ok("...and never a second one, however long they stay away", forU("newbie@t.com").length === 1);
+  // Once they DO train, the ordinary lapse cycle takes over from the real anchor.
+  await store.addSession("newbie", { session_id: "n1", date: daysAgo(-1), sets: [] });
+  await runComebackSweep(store, fakeSend, NOW + 6 * 86400000);
+  ok("training hands them over to the normal comeback cycle",
+    forU("newbie@t.com").length === 2 && forU("newbie@t.com")[1].stage === 1);
+
+  // A never-trained user with a FAILED send must be retried — the claim is keyed
+  // on the account anchor, and keying it on the (null) session date would both
+  // mail them daily and make the release a no-op.
+  await store.saveUser("newbie2", { profile: {}, created_at: new Date(NOW - 5 * 86400000).toISOString() });
+  await store.saveAccount("newbie2@t.com", "newbie2", new Date(NOW).toISOString());
+  const failOnce = async (msg) => { sent.push(msg); return { ok: false }; };
+  await runComebackSweep(store, failOnce, NOW);
+  ok("a failed activation send releases its claim", (await store.getUser("newbie2")).nudge == null);
+  await runComebackSweep(store, fakeSend, NOW);
+  ok("...so the next sweep retries it", forU("newbie2@t.com").length === 2);
 
   await store.addSession("lapsed", { session_id: "l2", date: daysAgo(-41), sets: [] }); // they came back (day 41)!
   await runComebackSweep(store, fakeSend, NOW + 46 * 86400000); // 5 days after the comeback session

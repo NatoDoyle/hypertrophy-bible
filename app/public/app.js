@@ -662,6 +662,27 @@ async function renderPlanExplain(firstTime) {
     $("#edit-plan").onclick = renderPlanEdit;
   }
   wireLearnLinks();
+  // The ONLY prompt to create an account used to sit in renderRecap — on the far
+  // side of a completed workout. The account row is what every re-engagement sweep
+  // queries, so the door to being reachable was gated behind the very thing ~90% of
+  // users never do. Asking here, at peak perceived value, costs one skippable field.
+  if ($("#plan-email-go")) $("#plan-email-go").onclick = async () => {
+    const email = ($("#plan-email")?.value || "").trim();
+    const msg = $("#plan-email-msg");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { if (msg) msg.textContent = "That doesn't look like an email address — check it and try again."; return; }
+    $("#plan-email-go").disabled = true;
+    if (msg) msg.textContent = "Sending…";
+    let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email, user_id: uid }) }); } catch { r = null; }
+    if (!r || r.error) {
+      $("#plan-email-go").disabled = false;
+      if (msg) msg.textContent = r?.error === "rate-limited"
+        ? "That's a few requests in a row — give it an hour and try again."
+        : r?.error ? "Couldn't send that — try again." : "Couldn't reach the server — check your connection.";
+      return;
+    }
+    localStorage.setItem("hb_email", email);
+    if (msg) msg.textContent = "Sent — check your inbox to finish. You can start training now either way.";
+  };
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
 
@@ -833,8 +854,19 @@ function commitmentCard(commitment) {
         <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
       <button class="btn ghost" id="edit-commitment" style="width:auto;padding:8px 14px">Edit</button></div>`;
   }
+  // The copy used to promise "a quick reminder lands on the days you say". That is
+  // delivered by shouldPushForCommitment, which runs inside a loop over the user's
+  // PUSH SUBSCRIPTIONS — and it is explicitly excluded from the email fallback. For
+  // anyone without push (in production: everyone) the sentence was simply false, so
+  // it is now conditional on a channel they actually have. Stating the commitment
+  // has real value unreminded — it is an implementation intention — and the .ics
+  // below needs no permission and no server (lesson 24: the assertion's trigger
+  // must cover every path that can flip it).
+  const canRemind = localStorage.getItem("hb_push") === "1" || !!localStorage.getItem("hb_email");
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
-    <p class="muted" style="margin:4px 0 8px">A quick reminder lands on the days you say — not just once you've gone quiet.</p>
+    <p class="muted" style="margin:4px 0 8px">${canRemind
+      ? "A quick reminder lands on the days you say — not just once you've gone quiet."
+      : "Naming the days is most of the work — deciding once beats deciding daily. You can put them straight into your phone's calendar below."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
     <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
 }
@@ -967,10 +999,13 @@ async function renderToday() {
        <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
     : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
-  // Skip the ASK on day 1 — a brand-new lifter has enough to take in already
-  // (Goal 3: zero cognitive load); an already-set commitment still shows (e.g.
-  // a returning multi-device user), since that's just a fact, not a decision.
-  const commitment = (s.day_number > 1 || adh.commitment) ? commitmentCard(adh.commitment) : "";
+  // This used to skip the ask on day 1 for cognitive load — a defensible call that
+  // did not anticipate day 1 never ENDING. `day_number = sessions.length + 1`, so
+  // for the ~90% of users who never log a session it is permanently 1, and the
+  // app's one proactive lever was invisible to exactly the people it exists for.
+  // It shows on day 1 now; the copy above no longer promises a channel they may
+  // not have, which is what made hiding it feel necessary.
+  const commitment = commitmentCard(adh.commitment);
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}
@@ -2595,8 +2630,25 @@ function downloadTrainingCalendar(days, time) {
   const ICS_DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
   const [hh, mm] = (time || "18:00").split(":");
   const byday = days.map((d) => ICS_DAYS[d]).join(",");
+  // DTSTART was hardcoded to 2026-01-05. Most clients still recur it forward, but
+  // the first event lands in the past, which is not what anyone means by "add my
+  // training to my calendar" — and in a client that shows the series start, the
+  // user's brand-new plan appears to have begun months ago. Anchor on the NEXT
+  // occurrence instead: today if it is one of the chosen days and the time has not
+  // passed, otherwise the soonest chosen day after that.
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(Number(hh), Number(mm), 0, 0);
+  const wanted = new Set(days);
+  const dowMon0 = (d) => (d.getDay() + 6) % 7;   // JS Sunday=0 → Monday=0, matching ICS_DAYS
+  for (let i = 0; i < 8; i++) {
+    if (wanted.has(dowMon0(start)) && start > now) break;
+    start.setDate(start.getDate() + 1);
+  }
+  const two = (n) => String(n).padStart(2, "0");
+  const dtstart = `${start.getFullYear()}${two(start.getMonth() + 1)}${two(start.getDate())}T${two(start.getHours())}${two(start.getMinutes())}00`;
   const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Hypertrophy Bible//EN", "BEGIN:VEVENT",
-    "SUMMARY:🏋️ Training", `DTSTART:20260105T${hh}${mm}00`, "DURATION:PT1H",
+    "SUMMARY:🏋️ Training", `DTSTART:${dtstart}`, "DURATION:PT1H",
     `RRULE:FREQ=WEEKLY;BYDAY=${byday}`, "DESCRIPTION:Your scheduled training session — showing up is the win.", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
   const a = document.createElement("a"); a.href = url; a.download = "hypertrophy-training.ics"; a.click(); URL.revokeObjectURL(url);
