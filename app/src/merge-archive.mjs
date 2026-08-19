@@ -178,3 +178,79 @@ export function activationFunnel({ liveCount, smokeCount, usersWithSession, smok
     days_to_first_session_n: lags.length,
   };
 }
+
+// ---------- the reach cohort (Wave 225) ----------
+//
+// Splits "never trained" into two very different populations, using a signal the
+// database already holds and nothing new collected:
+//
+//   never_reached_today  — quit during the wizard or on the plan screen; the leak
+//                          is onboarding.
+//   reached_today_never_trained — saw the actual workout and walked; the leak is
+//                          the first session.
+//
+// The proxy: `profile.tz_offset_min` is written by `GET /api/today` and by
+// `POST /api/push/subscribe` (of which there have been zero, ever). `/api/onboard`
+// only SANITISES a posted value and the client's onboarding payload does not
+// include one, so a live user carrying a non-null offset provably loaded the Today
+// tab at least once.
+//
+// THE COHORT BOUND IS NOT OPTIONAL. The header that makes /api/today stamp the
+// offset (`X-HB-TZ`) landed 2026-08-04. Every user created before that has a null
+// offset BY CONSTRUCTION, whatever they did — so running this over the whole table
+// would report ~100% "never reached Today" and the conclusion would be an artifact
+// of the measurement's own age. That is lesson 34 (a field's reach is bounded by
+// the population of its writers) pointed at a metric instead of a feature, and it
+// is exactly the trap the commit that added `X-HB-TZ` was itself fixing.
+//
+// THE UTC TRAP: a user at UTC+0 stamps `0`, which is falsy. The test is against
+// null, never truthiness — `!= null` here, `IS NOT NULL` in SQL.
+export const TZ_WRITER_SINCE = "2026-08-04";      // X-HB-TZ shipped (commit e12a220)
+export const ONBOARD_MARKERS_SINCE = "2026-07-22"; // the onboard throttle shipped (commit 50cc9d6)
+
+export function reachCohort({ users, sessionUserIds, since = TZ_WRITER_SINCE }) {
+  // `users`: [{ id, created_at, tz_offset_min, smoke }] — live rows only.
+  const inCohort = users.filter((u) => typeof u.created_at === "string" && u.created_at.slice(0, 10) >= since && !u.smoke);
+  const reached = inCohort.filter((u) => u.tz_offset_min != null);   // NOT `!!u.tz_offset_min`
+  const trained = (u) => sessionUserIds.has(u.id);
+  return {
+    tz_writer_since: since,
+    cohort_users: inCohort.length,
+    cohort_with_session: inCohort.filter(trained).length,
+    cohort_reached_today: reached.length,
+    cohort_reached_today_never_trained: reached.filter((u) => !trained(u)).length,
+    cohort_never_reached_today: inCohort.length - reached.length,
+    // Stated so nobody reads the split as covering everyone. If this is large the
+    // cohort is mostly pre-instrumentation and the split says little (lesson 31 —
+    // report the uncertainty rather than the tidy number).
+    users_before_tz_writer: users.filter((u) => !(typeof u.created_at === "string" && u.created_at.slice(0, 10) >= since)).length,
+  };
+}
+
+// Burst-vs-trickle, from `users.created_at` and the onboard throttle markers.
+// One share posted somewhere puts most of the mass on one or two days and, if it
+// came from a handful of machines, a low distinct-IP ratio. A real trickle is flat
+// and diverse. This is what stands in for asking where the traffic came from.
+export function onboardShape({ createdAts, markerKeys, since = ONBOARD_MARKERS_SINCE }) {
+  const byDay = {};
+  for (const iso of createdAts) {
+    const day = typeof iso === "string" ? iso.slice(0, 10) : null;
+    if (day) byDay[day] = (byDay[day] ?? 0) + 1;
+  }
+  const counts = Object.values(byDay);
+  const distinct = new Set(markerKeys);
+  const perKey = {};
+  for (const k of markerKeys) perKey[k] = (perKey[k] ?? 0) + 1;
+  return {
+    onboards_by_day: byDay,
+    onboards_busiest_day: counts.length ? Math.max(...counts) : 0,
+    onboards_distinct_days: counts.length,
+    // Markers only exist since the throttle shipped, so this is a TRUNCATED series
+    // and smaller than users_total by design — said out loud rather than left to
+    // look like a discrepancy.
+    onboard_markers_since: since,
+    onboard_markers_total: markerKeys.length,
+    onboard_ips_distinct: distinct.size,
+    onboard_ip_max: Object.values(perKey).length ? Math.max(...Object.values(perKey)) : 0,
+  };
+}

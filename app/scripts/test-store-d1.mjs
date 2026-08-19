@@ -912,6 +912,36 @@ try {
     same(`stats parity: ${k}`, fStats[k], dStats[k]);
   }
   same("stats parity: the whole aggregate, on a clean pair", fStats, dStats);
+
+  // --- the reach cohort, including the trap that would silently break it -------
+  // `tz_offset_min === 0` is a REAL stamped value (a user at UTC+0). Tested with
+  // truthiness instead of against null, every UTC user is misreported as never
+  // having opened the app — and the resulting number looks perfectly plausible.
+  await fnFile.saveUser("rc-utc", { profile: { user_id: "rc-utc", tz_offset_min: 0 }, created_at: "2026-08-10T00:00:00.000Z" });
+  await fnD1.saveUser("rc-utc", { profile: { user_id: "rc-utc", tz_offset_min: 0 }, created_at: "2026-08-10T00:00:00.000Z" });
+  await fnFile.saveUser("rc-notz", { profile: { user_id: "rc-notz" }, created_at: "2026-08-11T00:00:00.000Z" });
+  await fnD1.saveUser("rc-notz", { profile: { user_id: "rc-notz" }, created_at: "2026-08-11T00:00:00.000Z" });
+  // ...and a user created BEFORE the tz writer existed, carrying an offset. It must
+  // be excluded from the cohort entirely: before 2026-08-04 a null offset says
+  // nothing about the user, so including that era fabricates a ~100% bounce rate.
+  await fnFile.saveUser("rc-old", { profile: { user_id: "rc-old", tz_offset_min: -300 }, created_at: "2026-07-01T00:00:00.000Z" });
+  await fnD1.saveUser("rc-old", { profile: { user_id: "rc-old", tz_offset_min: -300 }, created_at: "2026-07-01T00:00:00.000Z" });
+  const fRc = await fnFile.stats(FN_NOW), dRc = await fnD1.stats(FN_NOW);
+  for (const k of ["tz_writer_since", "cohort_users", "cohort_reached_today", "cohort_reached_today_never_trained",
+                   "cohort_never_reached_today", "users_before_tz_writer", "onboards_busiest_day",
+                   "onboard_markers_since", "onboard_ips_distinct", "onboard_ip_max"]) {
+    same(`reach cohort parity: ${k}`, fRc[k], dRc[k]);
+  }
+  ok("reach cohort: a UTC+0 user counts as having REACHED Today (the falsy-zero trap)",
+    fRc.cohort_reached_today === 1 && fRc.cohort_reached_today_never_trained === 1);
+  // 4 in cohort = fn-real, fn-never, rc-utc, rc-notz (the smoke row is excluded by
+  // reachCohort, and rc-old predates the tz writer). 3 never reached Today:
+  // fn-real and fn-never carry no offset either.
+  ok("reach cohort: users with no offset count as never reaching Today",
+    fRc.cohort_never_reached_today === 3);
+  ok("reach cohort: pre-instrumentation users are EXCLUDED, and their count is reported",
+    fRc.cohort_users === 4 && fRc.users_before_tz_writer === 1);
+  ok("reach cohort: a smoke row is not in the cohort either", fRc.cohort_users + 1 + fRc.users_before_tz_writer === fRc.users_total);
   ok("stats: only the key-minted row counts as smoke", fStats.smoke_users === 1);
   // Of the three fixtures one is smoke, so the REAL split is 2 users, 1 activated;
   // the contaminated view stays visible as `_raw` for cross-checking.

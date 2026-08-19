@@ -5,7 +5,7 @@
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
-import { activationFunnel, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, onboardShape, reachCohort, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
 // logged data" — but must be invisible to every engine that reads history. The
@@ -436,8 +436,15 @@ export function createD1Store(db) {
       // ACTIVATION — two small columns per live user, never the blobs (same rule as
       // the queries above). See activationFunnel's note: the historical denominator
       // is contaminated by the loop's own prod smokes, which now tag themselves.
+      // Four small columns per live user, never the blobs. `tz_offset_min` comes
+      // back as SQL NULL for an absent key AND for a JSON null, and as 0 for a UTC
+      // user — so the JS test below must be `!= null`, never truthiness, or every
+      // UTC+0 user is misreported as never having opened the app.
       const { results: userRows } = await db
-        .prepare("SELECT id, json_extract(data, '$.created_at') AS created_at, json_extract(data, '$.profile.smoke') AS smoke FROM users WHERE json_extract(data, '$._merged_into') IS NULL")
+        .prepare(`SELECT id, json_extract(data, '$.created_at') AS created_at,
+                         json_extract(data, '$.profile.smoke') AS smoke,
+                         json_extract(data, '$.profile.tz_offset_min') AS tz_offset_min
+                  FROM users WHERE json_extract(data, '$._merged_into') IS NULL`)
         .all();
       const firstMs = new Map();
       for (const r of safe) {
@@ -460,9 +467,24 @@ export function createD1Store(db) {
         smokeWithSession: [...smokeIds].filter((id) => sessionIds.has(id)).length,
         lags,
       });
+      const cohort = reachCohort({
+        users: userRows.map((u) => ({ id: u.id, created_at: u.created_at, tz_offset_min: u.tz_offset_min ?? null, smoke: isSmoke(u) })),
+        sessionUserIds: sessionIds,
+      });
+      const since90ms = now - 90 * 86400000;
+      const since90 = new Date(since90ms).toISOString();
+      const { results: markerRows } = await db
+        .prepare("SELECT rl_key FROM magic_links WHERE rl_key GLOB 'onboard:*' AND created_at >= ?")
+        .bind(since90ms).all();
+      const shape = onboardShape({
+        createdAts: userRows.map((u) => u.created_at).filter((d) => typeof d === "string" && d >= since90),
+        markerKeys: markerRows.map((r) => r.rl_key),
+      });
       return {
         users_total: userRows.length, // tombstones aren't users
         users_with_session: usersWithSession,
+        ...cohort,
+        ...shape,
         ...funnel,
         active_7d: cur.size,
         active_prev_7d,

@@ -505,6 +505,22 @@ try {
     && typeof statsBody.push_subscriptions === "number" && typeof statsBody.push_delivered_7d === "number"
     && "retention_wow" in statsBody);
   ok("#210 the aggregates carry no per-user data (no ids, no emails)", !/user_id|email|@|[0-9a-f]{8}-[0-9a-f]{4}/.test(JSON.stringify(statsBody)));
+  // The burst-shape aggregate reads `magic_links.rl_key`, and that key EMBEDS the
+  // onboarding IP ("onboard:203.0.113.7"). Only counts may leave this endpoint, so
+  // the payload is checked for address shapes directly rather than trusting that
+  // the implementation kept aggregating. An enumerable check, not a comment.
+  {
+    const ipUser = await json("POST", "/api/onboard", { profile: obProfile });
+    void ipUser;
+    await store.createMagicLink({ token_hash: `ip-probe-${Date.now()}`, email: "", rl_key: "onboard:203.0.113.7", ip: null,
+      user_id: "onboard-marker", purpose: "onboard-marker", expires_at: Date.now(), used: 1, created_at: Date.now() });
+    const withIp = await (await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } })).json();
+    const text = JSON.stringify(withIp);
+    ok("#210 no IPv4 or IPv6 address reaches the stats payload",
+      !/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(text) && !/(?:[0-9a-f]{1,4}:){2,}[0-9a-f]{1,4}/i.test(text) && !/onboard:/.test(text));
+    ok("#210 ...while the marker is still COUNTED, so the check isn't passing on an empty read",
+      withIp.onboard_markers_total >= 1 && withIp.onboard_ips_distinct >= 1);
+  }
 
   // #21: local_date must round-trip through the /api/session whitelist (the
   // deload-flag lesson: a silently dropped field disables its whole pipeline).
