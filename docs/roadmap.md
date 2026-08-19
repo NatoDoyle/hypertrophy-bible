@@ -6,7 +6,28 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-18** (Waves 217-223: one full loop turn, ending
+Grounded assessment date: **2026-08-19** (Waves 224-229: one full turn, prod ==
+main. **The headline result is a premise that dissolved.** The previous grounding
+called 9.6% activation the project's frontier. Building the instrument to split
+those 122 users showed the number cannot bear that weight: `tz_offset_min` — the
+only proxy for "reached the Today tab" — is written by a header that shipped
+2026-08-04, so **125 of 135 users predate the instrument** and the measurable
+cohort is **10**; and `onboards_by_day` puts **84% of every onboard in
+2026-07-15..07-26, the fortnight this repo took 266 commits**, collapsing to ~1/day
+after, with a single IP holding 25% of the rate-limit markers. **The 135 are
+dominated by our own development and smoke traffic.** There was probably never an
+activation failure — there was an unexamined denominator (lesson 55). Smoke traffic
+tags itself from now on and `app/scripts/prod-smoke.mjs` is what carries it, so the
+next reading is honest by construction. Two build waves shipped anyway, because
+both were chosen on the "right even if the number is noise" test (lesson 56): the
+engine contradicted the KB's own *"a first session of 20-40 minutes is plenty"* and
+now serves a beginner 4 exercises on day one (Wave 227), and five verified locks
+left a never-trained user unreachable on EVERY channel simultaneously, now closed by
+one activation email, an email ask at peak value, and a commitment card that no
+longer promises a push nobody has (Wave 228). The self-audit found the previous
+burst's flagship fix never worked (lesson 57) and that its two regression tests were
+built so they could not catch it. **Push subscriptions: still 0.** The prior
+grounding was 2026-08-18, Waves 217-223: one full loop turn, ending
 with prod == main. The **un-landed Waves 213-216 burst** (draft PR #299, 1507
 insertions, never audited or deployed) was audited before it shipped — **ten
 confirmed defects** fixed as Waves 217-219, headed by a wholesale profile patch
@@ -205,6 +226,35 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 224–229 progress (2026-08-19). The activation premise, measured and mostly
+refuted; two fixes that stand regardless.**
+
+- **Wave 224 (self-audit of Waves 217-223).** Five defects, four mine. The Wave-218
+  quarantine repair never worked — it widened the correction door's ceiling and left
+  the read predicate flat, so a far-east user's repair was accepted, announced as
+  fixed, and re-quarantined by the next read (lesson 57). Both of its regression
+  tests were built so they could not catch it (lesson 54, in the commit that wrote
+  it). Wave 222's activation rate still divided by the contaminated denominator with
+  a test pinning it. Plus a store-parity divergence and an archive-summary fallback.
+- **Wave 225 (measure first).** The cohorted reach split, the falsy-zero trap
+  (`tz_offset_min === 0` is a real value) with a fixture on it and a tamper, and the
+  burst-shape aggregates that replaced the traffic-source question the owner could
+  not answer.
+- **Wave 226.** The plan screen printed "capped at 12 hard sets" above a 14-set
+  session — the engine was right and the explanation was wrong. `sex` moved to the
+  Fuel tab (zero references in the training engine; its copy claimed otherwise) and
+  `units` derives from locale, with all three of its write sites moved together.
+  Onboarding: 11 steps → 9, and 6 screens for a beginner in the real browser.
+- **Wave 227.** A beginner's first session is 4 exercises, in `buildToday` only —
+  week 1 goes 40 → 34 sets (0.85×), still less eased than an intermediate's 0.70×.
+- **Wave 228.** One activation email anchored on account creation; the email ask
+  moved off the far side of a completed workout; the commitment card unblocked on
+  day 1 with honest copy; the `.ics` no longer starts in January.
+- **Wave 229 (LEARN).** Lessons 55-57, telemetry 7r, this entry, BLOCKERS.
+- **Evidence:** 354 route · 189 parity · 74 coach · 28 nudge · 12 session-time; every
+  regression observed failing pre-fix with a tamper proving its fixture reaches the
+  branch; a 12/12 browser walkthrough run twice, once pinned to UTC.
 
 **Waves 217–223 progress (2026-08-18). One full loop turn; prod == main.**
 

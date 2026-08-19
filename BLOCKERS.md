@@ -12,9 +12,16 @@ Status key: 🔴 blocking real work · 🟡 unlocks something nice · ⚪ option
 
 ---
 
-## 🔴 Blocking
+## 🟡 Unlocks something
 
-### 1. Exercise demo media (real footage, not the v0 stand-in)
+### 1. Exercise demo media (real footage, not the v0 stand-in) *(de-escalated 2026-08-19)*
+**Why this is no longer blocking:** I measured the other half. All **171/171** exercises
+carry `execution_steps`, `cues`, `common_errors` and `resistance_profile` — the written
+coaching is complete, and since Wave 221 every muscle-guide pick list opens that sheet
+inside the app. What's missing is *video*, which I can neither film nor licence, and
+curating "vetted" YouTube URLs I cannot watch would be exactly the plausible-looking
+answer the project's guardrails forbid. So this waits for you, without holding anything
+up. v0 line-art plus complete written coaching is the shipped answer until then.
 **Update:** the urgent half of this shipped in code — the app no longer sends anyone to a raw
 YouTube search. `app/public/movement-demo.mjs` now renders a small inline line-art figure +
 animated glyph for all 171 exercises (keyed off `movement_pattern`, zero new data authored),
@@ -40,8 +47,6 @@ _(Web-push VAPID secret — was #4 here — RESOLVED 2026-07-26; moved to Done b
 
 ---
 
-## 🟡 Unlocks something
-
 ### 2b. Subscribe to push on a real device — prod has ZERO subscribers *(5 minutes, sharpened 2026-08-14)*
 **Why — and this is the burst's key finding:** the stats endpoint's first live reading
 (Wave 210) showed **`push_subscriptions: 0`** — in the entire life of the app, no real
@@ -64,21 +69,26 @@ Tell me if it doesn't.
 **Still 0 as of 2026-08-18** (fresh reading, second one ever). Unchanged since the
 first — so every push mechanism still reaches nobody on that channel.
 
-### 2c. The number that now matters more than push — activation *(new 2026-08-18)*
-The same reading says **135 people finished onboarding and 122 of them never logged
-a single workout** (activation 9.6%; 0 active in the last 7 days). And the one new
-signal: **median days-to-first-session is 0** across the 5 users where it's
-measurable — whoever trains, trains the *same day* they onboard. Small sample,
-stated as such, but if it holds it means there is no nurture window to work with:
-the entire adherence layer this project has built sits downstream of a door ~90% of
-people never walk through, and no notification can reach someone who never started.
-**Caveat I can't resolve alone:** every prod smoke test the loop has ever run used
-the same route that creates a user row, so an unknown share of those 135 is *me*.
-Smoke traffic tags itself from today; the history can't be split and I haven't
-invented a split. **What would help most:** tell me how the app has actually been
-shared — was it linked somewhere, did a batch of people arrive at once? That's the
-difference between "the first session is too hard to start" (which I can fix) and
-"135 curious clicks from one link" (which I can't, and shouldn't try to).
+### 2c. Activation — ANSWERED by measurement, not by you *(resolved 2026-08-19)*
+I asked how the app had been shared, because 9.6% activation means very different
+things depending on where 135 users came from. You didn't know, so I measured it
+instead, and the answer is clear enough to close this:
+
+- **125 of the 135 predate the instrument** that can tell whether someone ever
+  reached the workout screen (it shipped 2026-08-04), so the measurable cohort is
+  **10** — far too small to conclude anything from, and I'm not going to.
+- **84% of all onboards fall in 2026-07-15 to 07-26** — the fortnight this repo took
+  **266 commits** — then collapse to about one a day. A single IP accounts for 25%
+  of the rate-limit markers.
+
+So the 135 are dominated by my own development and smoke traffic. **There was
+probably never an activation failure; there was an unexamined denominator.** From
+now on smoke traffic tags itself (`app/scripts/prod-smoke.mjs` carries it), so the
+next reading is honest by construction — but it needs real users to be worth
+reading, which loops back to #1 and to sharing the app at all.
+
+Nothing here needs you. It is recorded so a future iteration doesn't re-raise 9.6%
+as a crisis.
 
 ### 3. Donations / Open Collective
 **Blocked on:** you creating the account. `DONATE_URL` in `app/public/app.js` is `""`, so the
@@ -98,12 +108,28 @@ Without it I'll build strictly to what the literature supports and label the unc
 
 ## ⚪ Optional
 
-### 8. Custom domain email replies *(app half done 2026-08-14 — routing still yours, optional)*
-`hello@hypertrophybible.com` sends via Resend but nothing receives. **The honest half
-shipped (Wave 211):** every email footer now says plainly "Replies to this address aren't
-read — this mailbox only sends", so nobody replies into a void believing they reached a
-human. If you ever want to actually BE reachable, set up forwarding (Cloudflare Email
-Routing is free) and I'll remove that line.
+### 8. Two DNS records — one useful, one optional *(sharpened 2026-08-19)*
+
+**8a. A DMARC record (2 minutes, genuinely worth doing).** I checked the domain's
+actual DNS this session and Resend is set up correctly: DKIM at
+`resend._domainkey`, SPF on `send.hypertrophybible.com`, bounce MX present. The one
+gap is that **there is no `_dmarc` record at all.** Publish this TXT record:
+
+```
+_dmarc.hypertrophybible.com    TXT    "v=DMARC1; p=reject;"
+```
+
+`p=reject` is safe here because DKIM is aligned on the apex and Resend is the only
+thing that sends as this domain; use `p=none` first if you'd rather watch before
+enforcing. At this send volume DMARC is recommended rather than required, so this is
+a modest deliverability improvement, not an emergency — **but email is currently the
+only channel that reaches anyone** (still zero push subscribers), so it is the
+cheapest thing you can do for the one working channel. I can't do it myself: my
+Cloudflare token has `zone (read)` and no email scope.
+
+**8b. Receiving replies (still optional).** No apex MX, so `hello@` genuinely cannot
+receive mail. Every email footer says so plainly, which is the honest half and it
+shipped. Cloudflare Email Routing is free if you ever want to actually be reachable.
 
 ### 9. Cloud-loop sandbox can't verify citations (environment, not the web)
 **Why:** the cloud/autonomous sessions' egress proxy denies CONNECT to
