@@ -177,9 +177,14 @@ These are real failures from previous iterations. Each is now a standing check.
    mutations as their own statements, and after shipping a `public/` asset verify the invariant directly
    (`curl …/sw.js | grep hb-shell-vN`) rather than trusting the pipeline ran end to end. (Wave-171
    refinement: the custom domain's edge cache can serve the OLD asset for a few seconds after a
-   successful deploy — a failing first curl is not yet a failed deploy. Re-check with a cache-buster
-   (`?nocache=…`) or against the workers.dev origin before diagnosing; only a stale ORIGIN is a real
-   failure.)
+   successful deploy — a failing first curl is not yet a failed deploy. **Wave-233 correction: the rest
+   of that refinement was WRONG and nearly cost an iteration.** A cache-busting query does NOT bypass
+   Workers Assets caching, and workers.dev is not an uncached origin — it answers `cf-cache-status: HIT`
+   too, so both hostnames can be stale together and "the origin agrees" proves nothing. Measured
+   2026-08-20: a deploy whose assets had uploaded at 23:05 served the PREVIOUS shell on both hostnames
+   for over a minute, which read as a failed deploy and was not one. The honest check is over TIME, not
+   across hostnames: poll for the expected version (`app/scripts/prod-smoke.mjs --expect hb-shell-vN`,
+   which waits up to three minutes) and call it failed only when the version never arrives.)
 
 18b. **`npm run deploy` ships the WORKING TREE, not `main` — never let it run from an unmerged
    branch.** Reconciling a cloud PR: a `git merge` (no conflicts) auto-committed, then a follow-up
