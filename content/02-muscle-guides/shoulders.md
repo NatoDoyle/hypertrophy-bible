@@ -3,9 +3,9 @@
 > **TL;DR** — The deltoid is **three heads with three different programming needs**, and treating it as one muscle is why most people's shoulders lag. The **front delt** already gets hammered by every press you do and rarely needs direct work. The **side delt** — the one that builds width and the capped look — and the **rear delt** get almost nothing from compounds, so they're where dedicated volume pays. Roughly **8–20 sets a week for side delts** (they tolerate the most of any small muscle), **8–18 for rear delts**, and often **zero** direct front-delt work. Keep raises light and close to failure: on these muscles, effort beats load.
 
 **Quick recommendations**
-- **Side delts are the priority.** Start near **8 sets/week**, build toward **12–20**, ceiling around **24–26** ([`side-delts.json`](../../data/muscles/side-delts.json)) — the highest tolerance of any small muscle here. Spread over **2–4 sessions**. **[Grade C]**
-- **Train rear delts directly.** ~**8–18 sets/week** across 2–3 sessions ([`rear-delts.json`](../../data/muscles/rear-delts.json)). Rows help but don't finish the job. **[Grade C]**
-- **Add little or no direct front-delt work.** Its whole maintenance requirement is ~**4 sets/week** and pressing already clears that several times over ([`front-delts.json`](../../data/muscles/front-delts.json)). **[Grade C]**
+- **Side delts are the priority.** Start near **8 sets/week**, build toward **12–20**, ceiling around **24–26** ([side-delt landmarks](../../data/muscles/side-delts.json)) — the highest tolerance of any small muscle here. Spread over **2–4 sessions**. **[Grade C]**
+- **Train rear delts directly.** ~**8–18 sets/week** across 2–3 sessions ([rear-delt landmarks](../../data/muscles/rear-delts.json)). Rows help but don't finish the job. **[Grade C]**
+- **Add little or no direct front-delt work.** Its whole maintenance requirement is ~**4 sets/week** and pressing already clears that several times over ([front-delt landmarks](../../data/muscles/front-delts.json)). **[Grade C]**
 - **Go light and near failure** on raises and flyes. Low loads taken close to failure build muscle comparably to heavy loads[^schoenfeld-2017-load-meta], and these are small muscles with poor leverage. **[Grade B]**
 - **Don't agonise over dumbbell vs cable.** With range of motion matched, an 8-week trial trained one arm with each and found **no meaningful difference** in lateral-delt growth[^larsen-2025-lateral-raise-dumbbell-cable]. **[Grade B]** Pick what lets you train hard and consistently.
 - **Count your pressing.** Overhead and incline work is front-delt volume — it goes inside the weekly total, not on top of it. **[Grade C]**
@@ -56,11 +56,11 @@ Read that result precisely, because it is easy to over-extend: it tested **the i
 - **No trial has tested "should you do direct front-delt work?"** The recommendation to skip it is inference from the volume landmarks plus the fact that pressing loads the front delt heavily. It's sound reasoning, not a measured result, and it's why that line is Grade C. If your front delts genuinely lag, adding a few sets is not a mistake.
 - **"3D delts" marketing oversells the complexity.** Cover abduction (side) and horizontal abduction/external rotation (rear) and the important work is done. There is no fourth head to isolate.
 - **Lateral raise technique is easy to butcher.** Momentum and shrugging move the work to the traps. If the weight can only move with a heave, it's too heavy — see the load evidence above.
-- **The side delt's high volume tolerance is a model-based estimate**, not a measured ceiling ([`side-delts.json`](../../data/muscles/side-delts.json) is Grade C). Build toward it from your own response rather than starting at 20 sets.
+- **The side delt's high volume tolerance is a model-based estimate**, not a measured ceiling ([side-delt landmarks](../../data/muscles/side-delts.json) is Grade C). Build toward it from your own response rather than starting at 20 sets.
 - **Overhead pressing is optional for hypertrophy.** It's valuable for strength and it's a genuinely good front-delt builder, but nothing breaks if your programme has incline pressing and lateral raises instead. It carries the highest systemic fatigue cost of anything on this page.
 
 ## Backing Data
-- Muscles: [`front-delts.json`](../../data/muscles/front-delts.json), [`side-delts.json`](../../data/muscles/side-delts.json), [`rear-delts.json`](../../data/muscles/rear-delts.json)
+- Muscles: [front-delt landmarks](../../data/muscles/front-delts.json), [side-delt landmarks](../../data/muscles/side-delts.json), [rear-delt landmarks](../../data/muscles/rear-delts.json)
 - Exercises: [`cable-lateral-raise`](../../data/exercises/cable-lateral-raise.json), [`lean-away-lateral-raise`](../../data/exercises/lean-away-lateral-raise.json), [`dumbbell-lateral-raise`](../../data/exercises/dumbbell-lateral-raise.json), [`cable-rear-delt-fly`](../../data/exercises/cable-rear-delt-fly.json), [`reverse-pec-deck`](../../data/exercises/reverse-pec-deck.json), [`face-pull`](../../data/exercises/face-pull.json), [`seated-dumbbell-shoulder-press`](../../data/exercises/seated-dumbbell-shoulder-press.json)
 
 ## References

@@ -9,7 +9,7 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
-let learnExercise = null; // an exercise sheet open OVER a Learn page (null = no sheet)
+let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or null
 // Session-only: the plan-screen email form has been submitted. Deliberately not
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
@@ -68,7 +68,11 @@ function openLearn(slug) {
 // Wire any [data-learn="slug"] element on the current screen to open that page.
 function wireLearnLinks() {
   app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn));
-  app.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => openLearnExercise(b.dataset.ex));
+  // One loop, three kinds — the same set graph-core's `DATA_REF_KINDS` defines, so
+  // adding a kind is a renderer and an entry, never a fourth wiring branch.
+  for (const kind of ["exercise", "supplement", "muscle"]) {
+    app.querySelectorAll(`[data-${kind}]`).forEach((b) => b.onclick = () => openLearnData(kind, b.dataset[kind]));
+  }
 }
 // A small inline "?" that opens a learn page — decodes jargon in place.
 // The accessible name must MATCH the visible text (WCAG 2.5.3): a hard-coded
@@ -2997,25 +3001,82 @@ async function renderLearn() {
 // the sheet works exactly as well offline as the page that linked to it — which is
 // the promise the Learn tab already makes on screen, and the reader most likely to
 // tap a lift is standing in a gym.
-async function renderLearnExercise(id) {
+// One entry point for every data sheet a Learn page can open. The data rides the
+// already-precached learn-data bundle rather than the API, so a sheet works exactly
+// as well offline as the page that linked to it — which is what the Learn tab
+// already promises on screen, to the reader most likely to be standing in a gym.
+async function renderLearnData({ kind, id }) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let LEARN_EXERCISES, LEARN_PAGES;
-  try { ({ LEARN_EXERCISES, LEARN_PAGES } = await learnData()); }
-  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that movement.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
-  const d = LEARN_EXERCISES?.[id];
+  let LEARN_EXERCISES, LEARN_SUPPLEMENTS, LEARN_MUSCLES, LEARN_PAGES;
+  try { ({ LEARN_EXERCISES, LEARN_SUPPLEMENTS, LEARN_MUSCLES, LEARN_PAGES } = await learnData()); }
+  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
+  const sheets = { exercise: LEARN_EXERCISES, supplement: LEARN_SUPPLEMENTS, muscle: LEARN_MUSCLES };
+  const d = sheets[kind]?.[id];
   // A page can only emit a button whose sheet was bundled (the generator throws
   // otherwise), so this is belt-and-braces: fall back to the page rather than
   // leaving a blank screen if an old cached bundle meets a new page.
   if (!d) { learnExercise = null; return renderLearnPage(learnSlug); }
   const from = LEARN_PAGES?.[learnSlug];
-  renderExerciseSheet(
-    { exercise: id, name: d.name, movement_pattern: d.movement_pattern },
-    d,
-    { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } },
-  );
+  const back = { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
+  if (kind === "exercise") renderExerciseSheet({ exercise: id, name: d.name, movement_pattern: d.movement_pattern }, d, back);
+  else if (kind === "supplement") renderSupplementSheet(d, back);
+  else renderMuscleSheet(d, back);
+  wireLearnLinks();
   window.scrollTo(0, 0);
 }
-const openLearnExercise = (id) => { learnExercise = id; renderLearnExercise(id); };
+const openLearnData = (kind, id) => { learnExercise = { kind, id }; renderLearnData({ kind, id }); };
+
+// Evidence tier first, because it is the only thing most readers need: the KB's
+// whole position on supplements is that a handful work and the rest are noise.
+const SUPP_TIER = {
+  strong: ["✅", "Worth taking", "Real, repeatable effects in good trials."],
+  modest: ["🤏", "Small effect", "Works, but the effect is small — food and training matter far more."],
+  situational: ["🎯", "Situational", "Useful for a specific job, not as a daily default."],
+  insufficient: ["🤔", "Not yet proven", "Promising or popular, but the evidence isn't there yet."],
+  ineffective: ["❌", "Skip it", "Tested and it doesn't do what it's sold for."],
+};
+function renderSupplementSheet(d, back) {
+  const [icon, label, gloss] = SUPP_TIER[d.tier] ?? ["•", d.tier ?? "", ""];
+  const row = (title, val) => (val ? `<h2>${title}</h2><p class="muted">${esc(val)}</p>` : "");
+  app.innerHTML = `<h1>${esc(d.name)}</h1>
+    <div class="card"><b>${icon} ${esc(label)}</b>${d.evidence_grade ? ` <span class="gradetag">Grade ${esc(d.evidence_grade)}</span>` : ""}
+      ${gloss ? `<p class="muted" style="margin:6px 0 0">${esc(gloss)}</p>` : ""}
+      ${d.summary ? `<p style="margin:8px 0 0">${esc(d.summary)}</p>` : ""}</div>
+    ${row("What it does", d.effect)}
+    ${row("Dose", d.dosing)}
+    ${row("When", d.timing)}
+    ${d.safety ? `<h2>Safety</h2><div class="card info"><p class="muted">⚠️ ${esc(d.safety)}</p></div>` : ""}
+    <button class="btn" id="back">${esc(back.label)}</button>`;
+  $("#back").onclick = back.onClick;
+}
+
+// The landmarks are the numbers the plan engine actually runs on, so showing them
+// is the most direct answer the app can give to "why this much work for this muscle".
+function renderMuscleSheet(d, back) {
+  const lm = d.landmarks;
+  const band = (k, title, why) => {
+    const v = lm?.[k];
+    if (!v) return "";
+    const range = v.min === v.max ? `${v.min}` : `${v.min}–${v.max}`;
+    return `<div class="win"><b>${title}: ${range} sets/week</b><br><span class="muted">${why}</span></div>`;
+  };
+  const list = (title, arr) => (arr?.length ? `<h2>${title}</h2><p class="muted">${esc(arr.join(" · "))}</p>` : "");
+  app.innerHTML = `<h1>${esc(d.name)}</h1>
+    ${d.group ? `<p class="muted">Part of your ${esc(d.group)} work</p>` : ""}
+    ${lm ? `<h2>Weekly volume ${helpDot("volume", "what these mean")}</h2><div class="card">
+      ${band("mv", "Maintenance", "enough to hold what you have")}
+      ${band("mev", "Minimum to grow", "below this, little happens")}
+      ${band("mav", "Most growth", "where the plan aims")}
+      ${band("mrv", "Recoverable ceiling", "past this you stop recovering")}
+      <p class="muted" style="margin:8px 0 0;font-size:.85rem">Model-based estimates, not measured constants — your own response moves them.</p></div>` : ""}
+    ${list("Regions", d.regions)}
+    ${list("What it does", d.functions)}
+    ${list("Opposing muscles", d.antagonists)}
+    ${d.frequency_notes ? `<h2>How often</h2><p class="muted">${esc(d.frequency_notes)}</p>` : ""}
+    ${d.training_notes ? `<h2>Training it</h2><p class="muted">${esc(d.training_notes)}</p>` : ""}
+    <button class="btn" id="back">${esc(back.label)}</button>`;
+  $("#back").onclick = back.onClick;
+}
 
 async function renderLearnPage(slug) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
@@ -3079,7 +3140,7 @@ function render() {
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();
-  else if (tab === "learn") { learnExercise ? renderLearnExercise(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
+  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") resetLearnNav(); render(); });

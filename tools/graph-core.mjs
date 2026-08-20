@@ -128,27 +128,45 @@ export const rendersAsLink = (url, bundled) => {
 // The `[a-z0-9-]` alphabet is a safety property, not just tidiness: the id is
 // interpolated into a `data-ex` attribute, and nothing matching this pattern can
 // carry a quote, an angle bracket, or a `javascript:` scheme.
-export const exerciseRefId = (url) => {
-  const m = String(url ?? "").match(/^(?:\.\.\/)+data\/exercises\/([a-z0-9-]+)\.json$/);
-  return m ? m[1] : null;
+// The KINDS of data the app can open a sheet for. Adding one is a single entry
+// here plus a renderer — the predicate, the gate and the generator all follow,
+// which is the property that stopped the gate and the product disagreeing.
+export const DATA_REF_KINDS = { exercises: "exercise", supplements: "supplement", muscles: "muscle" };
+
+export const dataRefId = (url) => {
+  const m = String(url ?? "").match(/^(?:\.\.\/)+data\/([a-z]+)\/([a-z0-9-]+)\.json$/);
+  const kind = m && DATA_REF_KINDS[m[1]];
+  return kind ? { kind, id: m[2] } : null;
 };
+
+// Kept as a named alias because it reads better at the exercise call sites and
+// because removing it would be a rename with no behavioural content.
+export const exerciseRefId = (url) => (dataRefId(url)?.kind === "exercise" ? dataRefId(url).id : null);
 
 // ...and the SECOND HALF, exactly as `rendersAsLink` has: shape AND "we actually
 // ship that exercise". A DIRECTORY link (`../../data/exercises/`) names no id and
 // is never a jump — it stays dropped, which is the cheapest possible proof that
 // this change made links traversable rather than making the gate stop looking.
+// ...and the SECOND HALF, exactly as `rendersAsLink` has: shape AND "we actually
+// ship that record". `shipped` is keyed by kind: { exercise: Set, supplement: Set,
+// muscle: Set }. A DIRECTORY link (`../../data/exercises/`) names no id and is
+// never a jump — it stays dropped, which is the cheapest available proof that a
+// class became traversable rather than the gate quietly ceasing to look.
+export const rendersAsData = (url, shipped) => {
+  const ref = dataRefId(url);
+  return ref && shipped?.[ref.kind]?.has(ref.id) ? ref : null;
+};
 export const rendersAsExercise = (url, exercises) => {
-  const id = exerciseRefId(url);
-  return id && exercises?.has(id) ? id : null;
+  const ref = rendersAsData(url, { exercise: exercises });
+  return ref?.kind === "exercise" ? ref.id : null;
 };
 
 // THE one question the renderer asks. Page jumps and exercise jumps come back as
 // distinct KINDS so a caller cannot fold one into the other by accident.
-export const linkTarget = (url, bundled, exercises = new Set()) => {
+export const linkTarget = (url, bundled, shipped = {}) => {
   const slug = rendersAsLink(url, bundled);
   if (slug) return { kind: "page", id: slug };
-  const ex = rendersAsExercise(url, exercises);
-  return ex ? { kind: "exercise", id: ex } : null;
+  return rendersAsData(url, shipped);
 };
 
 // What a DROPPED link actually is, so the report can name the class instead of
@@ -164,10 +182,10 @@ export const droppedClass = (url) => {
 // ONE pass over a page's rendered links, returning both halves. `droppedLinks`
 // below is its thin wrapper, so the jumps the renderer makes and the links the
 // gate calls unreachable can never be computed from different rules.
-export function classifyRenderedLinks(md, bundled, exercises = new Set()) {
+export function classifyRenderedLinks(md, bundled, shipped = {}) {
   const jumps = [], dropped = [];
   for (const m of stripNonRendered(md).matchAll(/\[([^\]]+)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g)) {
-    const t = linkTarget(m[2], bundled, exercises);
+    const t = linkTarget(m[2], bundled, shipped);
     if (t) jumps.push({ label: m[1], url: m[2], ...t });
     else dropped.push({ label: m[1], url: m[2], cls: droppedClass(m[2]) });
   }
@@ -186,8 +204,8 @@ export function classifyRenderedLinks(md, bundled, exercises = new Set()) {
 // ordinary prose, and back.md — the roadmap's own exemplar — has the most of any page.
 // The tell worth reading is a page where the DROPPED links outnumber the live ones,
 // which is what "the link was the content" looks like.
-export function droppedLinks(md, bundled, exercises = new Set()) {
-  return classifyRenderedLinks(md, bundled, exercises).dropped;
+export function droppedLinks(md, bundled, shipped = {}) {
+  return classifyRenderedLinks(md, bundled, shipped).dropped;
 }
 
 // ---------- depth grammar (Wave 175) ----------

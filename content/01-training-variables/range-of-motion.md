@@ -21,7 +21,7 @@
 | Chest | Deep dumbbell press/flyes | Cable crossover at peak contraction |
 | Quads | Squats/leg press to depth | Partial-range extensions |
 
-Both positions can grow muscle; the lengthened-biased option tends to be the higher-yield default, and you can add shortened-position work as a complement. See per-exercise `resistance_profile` and `lengthened_bias` flags in [`data/exercises/`](../../data/exercises/).
+Both positions can grow muscle; the lengthened-biased option tends to be the higher-yield default, and you can add shortened-position work as a complement. See per-exercise `resistance_profile` and `lengthened_bias` flags in [the per-exercise data](../../data/exercises/).
 
 **Lengthened partials as a tool.** When a full ROM is limited by strength curve or fatigue (e.g. the top of a lateral raise adds little), reps concentrated in the stretched range are a legitimate, equally effective option — about as good as full ROM in the biggest trial to date, and clearly better than short-range "top-half" pulses.
 
@@ -42,7 +42,7 @@ Both positions can grow muscle; the lengthened-biased option tends to be the hig
 - **Full-range work loads tendons, not just muscle.** Training at long muscle lengths stresses connective tissue, which adapts more slowly than muscle — see [Connective-tissue adaptation](../00-foundations/connective-tissue-adaptation.md).
 
 ## Backing Data
-- Exercise `resistance_profile`, `rom_notes`, and `lengthened_bias`: [`data/exercises/`](../../data/exercises/)
+- Exercise `resistance_profile`, `rom_notes`, and `lengthened_bias`: [the per-exercise data](../../data/exercises/)
 
 ## References
 [^schoenfeld-2020-rom-review]: Schoenfeld BJ, Grgic J (2020). *Effects of range of motion on muscle development during resistance training interventions: A systematic review.* SAGE Open Medicine, 8, 2050312120901559. DOI: [10.1177/2050312120901559](https://doi.org/10.1177/2050312120901559). PMID: 32030125.

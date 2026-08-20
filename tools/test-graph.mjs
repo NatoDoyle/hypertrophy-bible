@@ -580,21 +580,27 @@ check("rendersAsExercise carries BOTH halves: the shape AND an exercise we ship"
     "shape alone is not enough — the same second half rendersAsLink applies to pages");
   assert.equal(rendersAsExercise("../../data/exercises/", ex), null);
   assert.equal(rendersAsExercise("../../data/exercises/barbell-row.json", new Set()), null);
+  // A supplement is not an exercise, whatever set you hand it.
+  assert.equal(rendersAsExercise("../../data/supplements/creatine-monohydrate.json", new Set(["creatine-monohydrate"])), null);
 });
 
 check("linkTarget returns a KIND, so a page jump and an exercise jump can't be confused", () => {
-  const bundled = new Set(["volume"]), ex = new Set(["barbell-row"]);
-  assert.deepEqual(linkTarget("volume.md", bundled, ex), { kind: "page", id: "volume" });
-  assert.deepEqual(linkTarget("../../data/exercises/barbell-row.json", bundled, ex), { kind: "exercise", id: "barbell-row" });
-  assert.equal(linkTarget("../03-programming/index.md", bundled, ex), null, "index pages still aren't jumps");
-  assert.equal(linkTarget("../../data/exercises/not-shipped.json", bundled, ex), null, "an id we don't ship isn't a jump");
+  const bundled = new Set(["volume"]);
+  const shipped = { exercise: new Set(["barbell-row"]), supplement: new Set(["creatine-monohydrate"]), muscle: new Set(["lats"]) };
+  assert.deepEqual(linkTarget("volume.md", bundled, shipped), { kind: "page", id: "volume" });
+  assert.deepEqual(linkTarget("../../data/exercises/barbell-row.json", bundled, shipped), { kind: "exercise", id: "barbell-row" });
+  assert.deepEqual(linkTarget("../../data/supplements/creatine-monohydrate.json", bundled, shipped), { kind: "supplement", id: "creatine-monohydrate" });
+  assert.deepEqual(linkTarget("../../data/muscles/lats.json", bundled, shipped), { kind: "muscle", id: "lats" });
+  assert.equal(linkTarget("../03-programming/index.md", bundled, shipped), null, "index pages still aren't jumps");
+  assert.equal(linkTarget("../../data/exercises/not-shipped.json", bundled, shipped), null, "an id we don't ship isn't a jump");
+  assert.equal(linkTarget("../../data/programs/x.json", bundled, shipped), null, "programs have no sheet, so they are not jumps");
 });
 
 check("droppedLinks: a shipped exercise ref is no longer dropped; an unknown one still is", () => {
   const md = "See [rows](../../data/exercises/barbell-row.json) and [x](../../data/exercises/nope.json).";
   const bundled = new Set();
-  assert.equal(droppedLinks(md, bundled, new Set(["barbell-row"])).length, 1);
-  assert.equal(droppedLinks(md, bundled, new Set(["barbell-row"]))[0].url, "../../data/exercises/nope.json");
+  assert.equal(droppedLinks(md, bundled, { exercise: new Set(["barbell-row"]) }).length, 1);
+  assert.equal(droppedLinks(md, bundled, { exercise: new Set(["barbell-row"]) })[0].url, "../../data/exercises/nope.json");
   // Called WITHOUT the third argument (the pre-Wave-221 signature) both are dropped,
   // so existing callers cannot silently acquire the new behaviour.
   assert.equal(droppedLinks(md, bundled).length, 2);
@@ -605,15 +611,15 @@ check("droppedClass names each remaining class, so the report can itemise rather
   assert.equal(droppedClass("../../data/supplements/creatine.json"), "data/supplements");
   assert.equal(droppedClass("../../data/muscles/lats.json"), "data/muscles");
   assert.equal(droppedClass("../../data/exercises/"), "data/exercises");
+  assert.equal(droppedClass("../../data/supplements/creatine-monohydrate.json"), "data/supplements");
   assert.equal(droppedClass("weird"), "other");
 });
 
 check("THE separation invariant: an exercise ref is a jump but never a page edge", () => {
   const md = "# T\n\nSee [rows](../../data/exercises/barbell-row.json) and [pulls](../../data/exercises/pull-up.json).\n";
-  const ex = new Set(["barbell-row", "pull-up"]);
   const rec = extractPage({ slug: "t", pillar: "02-muscle-guides", md }, new Set());
   assert.deepEqual(Object.keys(rec.outbound), [], "exercise refs must not become graph edges");
-  const { jumps, dropped } = classifyRenderedLinks(md, new Set(), ex);
+  const { jumps, dropped } = classifyRenderedLinks(md, new Set(), { exercise: new Set(["barbell-row", "pull-up"]) });
   assert.equal(jumps.length, 2, "...while still being real in-app jumps");
   assert.equal(dropped.length, 0);
   // A page whose ONLY links are exercise refs must still fail the out-degree bar:
@@ -632,22 +638,26 @@ check("the real corpus reconciles: dropped + traversable equals what used to be 
   const contentDir = pathMod.join(ROOT, "content");
   const files = walkMd(contentDir).filter((f) => !f.endsWith("index.md"));
   const bundled = new Set(files.map((f) => pathMod.basename(f, ".md")));
-  const exIds = new Set(readdirSync(pathMod.join(ROOT, "data", "exercises")).filter((f) => f.endsWith(".json")).map((f) => pathMod.basename(f, ".json")));
+  const idsIn = (d) => new Set(readdirSync(pathMod.join(ROOT, "data", d)).filter((f) => f.endsWith(".json")).map((f) => pathMod.basename(f, ".json")));
+  const shipped = { exercise: idsIn("exercises"), supplement: idsIn("supplements"), muscle: idsIn("muscles") };
   let dropped = 0, exJumps = 0;
   const byClass = new Map();
   for (const f of files) {
-    const { jumps, dropped: d } = classifyRenderedLinks(readFileSync(f, "utf8"), bundled, exIds);
-    exJumps += jumps.filter((j) => j.kind === "exercise").length;
+    const { jumps, dropped: d } = classifyRenderedLinks(readFileSync(f, "utf8"), bundled, shipped);
+    exJumps += jumps.filter((j) => j.kind !== "page").length;
     dropped += d.length;
     for (const x of d) byClass.set(x.cls, (byClass.get(x.cls) ?? 0) + 1);
   }
   // The measured baseline this wave started from. If a future change moves either
   // number, the SUM says whether links were fixed or merely filtered out of view.
-  assert.equal(exJumps, 72, "exercise refs the renderer now opens");
+  assert.equal(exJumps, 92, "exercise + supplement + muscle refs the renderer now opens");
   assert.equal(dropped + exJumps, 122, "the pre-Wave-221 dropped total must be conserved");
-  // One data/exercises link stays dropped — the DIRECTORY link, which names no id.
-  // It is the cheapest available proof that the class was not silently excluded.
+  // Every remaining data/* drop is a DIRECTORY link, which names no id and so has
+  // nothing to open. That no class reached ZERO is the cheapest available proof
+  // that none was silently excluded from the metric (lesson 53).
   assert.equal(byClass.get("data/exercises"), 1);
+  assert.equal(byClass.get("data/supplements"), 1);
+  assert.equal(byClass.get("data/muscles"), 4);
   assert.equal(byClass.get("pillar index TOC"), 23);
 });
 
