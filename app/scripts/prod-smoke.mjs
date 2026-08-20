@@ -34,11 +34,29 @@ const v = await shellVersion(BASE);
 ok("sw.js reports a shell version", !!v, String(v));
 console.log(`    shell: ${v}`);
 
-// A stale CUSTOM-DOMAIN read is not yet a failed deploy — the edge can lag the
-// origin by seconds. Only a stale ORIGIN is real (the Wave-171 refinement).
-if (BASE.includes("hypertrophybible.com")) {
+// NEITHER hostname is an uncached origin. This check used to compare the custom
+// domain against workers.dev and call agreement proof of a good deploy — but
+// workers.dev answers `cf-cache-status: HIT` too, so both can be stale together,
+// and a cache-busting query does not bypass it. Measured: a deploy whose assets had
+// uploaded still served the previous shell version on BOTH hostnames for over a
+// minute, which read as a failed deploy and is not one.
+//
+// So the honest check is over TIME, not across hostnames: if an expected version is
+// given, poll for it and only fail when it never arrives. Without one, just report
+// what is being served and say the two hostnames agree — which is worth knowing,
+// but is not evidence about the origin.
+const EXPECT = args.includes("--expect") ? args[args.indexOf("--expect") + 1] : null;
+if (EXPECT) {
+  let seen = v, waited = 0;
+  while (seen !== EXPECT && waited < 180) {
+    await new Promise((r) => setTimeout(r, 15000));
+    waited += 15;
+    seen = await shellVersion(BASE);
+  }
+  ok(`the deployed shell reaches ${EXPECT} at the edge`, seen === EXPECT, `saw ${seen} after ${waited}s`);
+} else if (BASE.includes("hypertrophybible.com")) {
   const originV = await shellVersion("https://hypertrophy-bible.nathan-doyle1.workers.dev");
-  ok("the workers.dev ORIGIN agrees with the custom domain", originV === v, `origin ${originV} vs edge ${v}`);
+  ok("both hostnames serve the same shell (NOT proof of the origin — both are cached)", originV === v, `workers.dev ${originV} vs custom ${v}`);
 }
 
 const today = await fetch(`${BASE}/api/today`);
