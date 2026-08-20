@@ -664,7 +664,11 @@ export function createApp(store, config = {}) {
     // last entry is the most recent; no log yet -> null, and buildToday falls back
     // to the safe empty-bar default the client already applies.
     const latestBodyweightKg = bodyweights.length ? bodyweights[bodyweights.length - 1].kg : null;
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg), daily });
+    // `sessions` here is the derivable list, so it cannot distinguish "never
+    // trained" from "trained, but every row is voided or timing-quarantined".
+    // buildToday needs the difference before it calls someone a first-timer.
+    const everLogged = sessions.length > 0 || (await store.hasAnySession(id));
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged), daily });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
@@ -783,6 +787,26 @@ export function createApp(store, config = {}) {
 
   // Reminders opt-out (#4 nudges): a hard switch the comeback-email sweep
   // respects unconditionally. Lives on the profile so it survives merges.
+  // A DISPLAY preference deserves its own narrow door. The Me-tab kg/lb toggle used
+  // to POST /api/plan/regenerate, which is the plan-REBUILD door: its cosmetic path
+  // preserves the block and rotation, but it still runs `u.program = program`, and
+  // that line is the ONE regeneration site in this file with no `!u.program?.custom`
+  // guard (every automatic one at :517, :569 and :1283 has it). So a user who had
+  // hand-edited their plan and then tapped "Switch to lb" silently lost it. The
+  // route is not wrong — an explicit Settings save asking to rebuild SHOULD rebuild
+  // — the caller was: flipping a unit is not asking for a new programme.
+  app.post("/api/profile/units", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1
+    if (b.units !== "metric" && b.units !== "imperial") return c.json({ error: "bad-units" }, 400);
+    const updated = await store.updateUser(b.user_id, (u) => {
+      u.profile = { ...(u.profile ?? {}), units: b.units };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ units: updated.profile.units });
+  });
+
   app.post("/api/reminders", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
@@ -1557,7 +1581,22 @@ export function createApp(store, config = {}) {
     if (result.error) return c.json({ sent: true }); // rate-limited / no-user: stay generic
     const origin = new URL(c.req.url).origin;
     const link = `${origin}/verify.html?token=${encodeURIComponent(result.token)}`;
-    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose });
+    // Send the plan with the link when this is a BACKUP request from a user who has
+    // one — the plan-screen ask promises exactly that, and a promise in copy has to
+    // be kept by the code. Restores deliberately carry nothing: the whole point is
+    // that the recipient's device has no data yet, and a plan they cannot see the
+    // provenance of would be noise. Best-effort: a missing user never blocks the send.
+    let plan = null;
+    if (result.purpose !== "restore" && user_id) {
+      const u = await store.getUser(user_id).catch(() => null);
+      if (u?.program?.sessions?.length) {
+        plan = { name: u.program.name, sessions: u.program.sessions.map((sn) => ({
+          name: sn.name,
+          exercises: (sn.exercises ?? []).map((e) => ({ name: exerciseById.get(e.exercise)?.name ?? e.exercise, sets: e.sets, rep_range: e.rep_range })),
+        })) };
+      }
+    }
+    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose, plan });
     // A real send that failed: tell the client so it can offer a retry, rather
     // than a false "check your inbox". (Only reachable after a valid request, so
     // this never reveals whether an unknown email has an account.)

@@ -927,7 +927,11 @@ check("a true beginner's FIRST session is short, and says so", () => {
   const day1 = buildToday(u, []);
   assert.equal(day1.exercises.length, 4);
   assert.deepEqual(day1.first_session, { shown: 4, full });
-  assert.ok(/deliberately short/i.test(day1.coach_note ?? ""), "and the user is told why");
+  // NOT `coach_note`. The client renders coach_note only when readiness != null, so
+  // a note set on the ordinary day-one path was invisible to everyone — this test
+  // used to assert a string no user could ever see (lesson 15). `first_session` is
+  // the signal the first-timer card actually consumes.
+  assert.equal(day1.coach_note, null, "the explanation belongs to first_session, not an unrendered note");
 
   // Session TWO is the full session — the cap is first-session-only, not a
   // permanent downgrade.
@@ -968,6 +972,48 @@ check("a shortened first session never leaves a dangling superset partner", () =
   assert.deepEqual(dangling, [], "a survivor pointing at a cut partner renders '🔗 superset with undefined'");
   // ...and the fixture really did straddle the cut, or the assertion is vacuous.
   assert.ok(ids.has("cable-lateral-raise") && !ids.has("leg-extension"));
+});
+
+check("first_session.full reports the TEMPLATE's size, not the post-trim size", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
+  const full = program.sessions[0].exercises.length;
+  // A low-readiness day one trims an accessory BEFORE the first-session cap runs.
+  // Reading `full` off the already-trimmed list reported one fewer than the plan
+  // screen shows, so the card said "4 instead of 6" over a 7-exercise plan.
+  assert.equal(buildToday(u, [], { level: "low" }).first_session.full, full);
+  assert.equal(buildToday(u, []).first_session.full, full);
+});
+
+check("a user whose only sessions are quarantined is NOT treated as a first-timer", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
+  // `sessions` is the DERIVABLE list, so it is empty for someone whose only workout
+  // has an unparseable legacy date — but they HAVE trained, and History is showing
+  // them a "Date needs correcting" banner right now. hasAnySession = true.
+  const asFirstTimer = buildToday(u, [], null, [], null, null, false);
+  const hasTrained = buildToday(u, [], null, [], null, null, true);
+  assert.deepEqual(asFirstTimer.first_session, { shown: 4, full: program.sessions[0].exercises.length });
+  assert.equal(hasTrained.first_session, null, "they have trained — no 'day one' claim");
+  assert.ok(hasTrained.exercises.length > 4, "and no beginner trim either");
+});
+
+check("a normal check-in on a shortened first session never says the session stands as planned", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "normal" });
+  // The first-timer card says "4 instead of 7" on the same screen. A note claiming
+  // the session stands as planned directly contradicts it (lesson 24).
+  assert.ok(day1.first_session, "precondition: the trim applied, or this proves nothing");
+  assert.ok(!/stands as planned/.test(day1.coach_note ?? ""), day1.coach_note ?? "");
 });
 
 check("a low-readiness FIRST session gets one note, not two contradictory ones", () => {

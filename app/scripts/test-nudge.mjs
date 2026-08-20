@@ -29,6 +29,12 @@ ok("reminders_off is a hard opt-out", comebackStage({ lastSessionAt: daysAgo(20)
 ok("a never-trained user with no created_at is still not a target", comebackStage({ lastSessionAt: null, now: NOW }) === null);
 ok("a never-trained user gets exactly ONE activation nudge, after 2 days",
   comebackStage({ lastSessionAt: null, createdAt: daysAgo(3), now: NOW })?.stage === 0);
+// `lastSessionAt` is null for TWO populations: people with no sessions, and people
+// whose every session is voided or timing-quarantined. The second group HAS trained,
+// and telling them "your first session, whenever you want it" states the opposite of
+// what they did (lesson 10). Both of these fired before the fix.
+ok("...but NOT to someone whose sessions are all quarantined or voided — they trained",
+  comebackStage({ lastSessionAt: null, createdAt: daysAgo(3), hasAnySession: true, now: NOW }) === null);
 // The boundary, either side, with literals — or NUDGE_STAGE_0_DAYS is untested and
 // could be changed to 9999 with everything still green (lesson 42).
 ok("...not before the threshold", comebackStage({ lastSessionAt: null, createdAt: daysAgo(1), now: NOW }) === null);
@@ -76,7 +82,21 @@ try {
   // heard nothing from the app, ever, on any channel.
   await store.saveUser("newbie", { profile: {}, created_at: new Date(NOW - 3 * 86400000).toISOString() });
   await store.saveAccount("newbie@t.com", "newbie", new Date(NOW).toISOString());
+  // Two users who HAVE trained but whose sessions don't count: one with a legacy
+  // unparseable date (timing-quarantined — the app is showing them a "Date needs
+  // correcting" card at this very moment), one who voided their only workout. Both
+  // received the activation email before the fix, end to end through the sweep.
+  await store.saveUser("quaru", { profile: {}, created_at: new Date(NOW - 9 * 86400000).toISOString() });
+  await store.addSession("quaru", { session_id: "qu1", date: "", sets: [] });
+  await store.saveAccount("quar@t.com", "quaru", new Date(NOW).toISOString());
+  await store.saveUser("voidu", { profile: {}, created_at: new Date(NOW - 9 * 86400000).toISOString() });
+  await store.addSession("voidu", { session_id: "vo1", date: daysAgo(5), voided_at: new Date(NOW).toISOString(), sets: [] });
+  await store.saveAccount("void@t.com", "voidu", new Date(NOW).toISOString());
   const rN = await runComebackSweep(store, fakeSend, NOW);
+  ok("a user whose only session is QUARANTINED is never told to do their first one",
+    forU("quar@t.com").length === 0);
+  ok("a user who VOIDED their only session is never told to do their first one",
+    forU("void@t.com").length === 0);
   ok("a never-trained account gets exactly one activation email",
     forU("newbie@t.com").length === 1 && forU("newbie@t.com")[0].stage === 0 && rN.sent === 1);
   await runComebackSweep(store, fakeSend, NOW + 86400000);

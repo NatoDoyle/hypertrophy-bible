@@ -962,11 +962,31 @@ try {
     const uid = `two-addr-${label}`;
     await s0.saveUser(uid, { profile: { user_id: uid } });
     await s0.saveAccount(`first-${label}@example.com`, uid, "2026-08-01T00:00:00.000Z");
-    await s0.saveAccount(`second-${label}@example.com`, uid, "2026-08-02T00:00:00.000Z");
+    await s0.saveAccount(`second-${label}@example.com`, uid, "2026-08-02T00:00:00.000Z"); // later — wins
     const rows = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
       .filter((r) => r.user_id === uid).map((r) => r.email).sort();
-    ok(`accounts: both verified addresses for one user are returned (${label})`,
-      rows.length === 2 && rows[0] === `first-${label}@example.com` && rows[1] === `second-${label}@example.com`);
+    // `has_any_session` answers "ever logged anything at all", which is NOT what
+    // `last_date` answers — that is null for a user whose every session is voided
+    // or timing-quarantined. The activation nudge needs the first question and was
+    // reading the second, so it mailed "do your first session" to people who had.
+    await s0.saveUser(`ever-${label}`, { profile: { user_id: `ever-${label}` } });
+    await s0.saveAccount(`ever-${label}@example.com`, `ever-${label}`, "2026-08-01T00:00:00.000Z");
+    await s0.addSession(`ever-${label}`, { session_id: `ever-s-${label}`, date: "", sets: [] }); // quarantined
+    const everRow = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .find((r) => r.user_id === `ever-${label}`);
+    ok(`accounts: a quarantined-only user reports last_date null but has_any_session true (${label})`,
+      everRow && everRow.last_date == null && everRow.has_any_session === true);
+    const neverRow = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .find((r) => r.user_id === uid);
+    ok(`accounts: a genuinely never-trained user reports has_any_session false (${label})`,
+      neverRow && neverRow.has_any_session === false);
+
+    // ONE row per user, not per address — and it must be the SAME address in both
+    // stores every time. The suppression state (`u.nudge`) is per-user, so a second
+    // row could never produce a second email anyway; what it did produce was an
+    // extra store read and a non-deterministic `emailByUser` in the push sweep.
+    ok(`accounts: one row per user, most-recently-verified address wins (${label})`,
+      rows.length === 1 && rows[0] === `second-${label}@example.com`);
   }
 
   // --- an archive written under the OLD snapshot shape still reports its counts -

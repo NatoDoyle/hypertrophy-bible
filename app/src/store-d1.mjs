@@ -36,6 +36,13 @@ const derivableShapeBound = (nowMs) =>
 // already require a real active user.
 const notTombstonedOwner = "NOT EXISTS (SELECT 1 FROM users WHERE id = ? AND json_extract(data, '$._merged_into') IS NOT NULL)";
 
+const preferAccount = (a, b) => {
+  if (!b) return a;
+  const av = String(a.verified_at ?? ""), bv = String(b.verified_at ?? "");
+  if (av !== bv) return av > bv ? a : b;
+  return String(a.email) < String(b.email) ? a : b;
+};
+
 export function createD1Store(db) {
   const isTombstoned = async (id) => {
     const row = await db.prepare("SELECT data FROM users WHERE id = ?").bind(id).first();
@@ -498,6 +505,11 @@ export function createD1Store(db) {
       };
     },
     // Voided sessions must not count as "last trained" (parity with the file store).
+    // Parity twin of the file store's: EVER logged anything, voided and quarantined
+    // included. One indexed row probe, not a scan.
+    async hasAnySession(user_id) {
+      return !!(await db.prepare("SELECT 1 AS ok FROM sessions WHERE user_id = ? LIMIT 1").bind(user_id).first());
+    },
     async latestSessionDate(user_id, nowMs = Date.now()) {
       // Timing quarantine is a JS predicate, so this can no longer be a bare
       // SQL MAX(date). It briefly became "pull every session blob and parse it",
@@ -526,7 +538,7 @@ export function createD1Store(db) {
       // isolation those loops were written for.
       const bound = derivableShapeBound(nowMs);
       const { results } = await db
-        .prepare(`SELECT a.email, a.user_id, s.date AS date, json_extract(s.data, '$.local_date') AS local_date
+        .prepare(`SELECT a.email, a.user_id, a.verified_at AS verified_at, s.date AS date, json_extract(s.data, '$.local_date') AS local_date
           FROM accounts a
           LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")}
             AND s.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(s.date, 1, 10) <= ?
@@ -538,10 +550,33 @@ export function createD1Store(db) {
       // against the same user). Keying by user_id collapsed them, and since the
       // consumers of this list SEND MAIL, one verified address silently stopped
       // being nudged. The file store returns one row per account row; so does this.
-      const best = new Map();   // email -> {email, user_id, last_date}
+      // One extra query, not one per account: "has this user ever logged anything at
+      // all", which is a different question from `last_date` (null when every
+      // session is voided or timing-quarantined). Two small columns, no blobs.
+      const { results: everRows } = await db.prepare("SELECT DISTINCT user_id FROM sessions").all();
+      const everTrained = new Set(everRows.map((r) => r.user_id));
+      // ONE ROW PER USER, and the address chosen deterministically.
+      //
+      // A previous wave changed this key from user_id to email, on the reasoning
+      // that two verified addresses on one account meant "one address silently
+      // stopped being nudged". That reasoning was wrong, and the fix delivered
+      // nothing: suppression lives in `u.nudge`, which is per-USER, so the first
+      // row's claim short-circuits every later row for the same user anyway — the
+      // second address received nothing before the change and nothing after it.
+      // What it DID add was cost (an extra getUser per address, an inflated
+      // `checked` count) and non-determinism: push.mjs builds `emailByUser` by
+      // overwriting per row, so the social-email fallback address flipped between
+      // ticks depending on SQL row order.
+      //
+      // One nudge per person is the policy, so key by user and pick the address
+      // deterministically — most recently verified, ties broken lexicographically,
+      // identically in both stores.
+      const best = new Map();   // user_id -> {email, user_id, last_date}
       for (const r of results) {
-        if (!best.has(r.email)) best.set(r.email, { email: r.email, user_id: r.user_id, last_date: null });
-        const acc = best.get(r.email);
+        const prev = best.get(r.user_id);
+        if (!prev) best.set(r.user_id, { email: r.email, user_id: r.user_id, last_date: null, has_any_session: everTrained.has(r.user_id) });
+        else if (preferAccount(r, prev) === r) prev.email = r.email;
+        const acc = best.get(r.user_id);
         if (acc.last_date == null && r.date != null
           && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs)) acc.last_date = r.date;
       }

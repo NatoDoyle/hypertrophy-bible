@@ -21,7 +21,7 @@ export const NUDGE_STAGE_2_DAYS = 14; // "the door's open — re-entry is eased"
 // days did not merely fail to get round to it.
 export const NUDGE_STAGE_0_DAYS = 2;
 
-export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now, createdAt = null }) {
+export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now, createdAt = null, hasAnySession = false }) {
   // The pause promise and the opt-out are absolute, and stay the first line.
   if (paused || remindersOff) return null;
   if (!lastSessionAt) {
@@ -37,6 +37,16 @@ export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now,
     // ONE email, ever, and only to someone who gave us an address. Not a sequence:
     // they have no streak to lose and did nothing wrong, so there is nothing to
     // remind them of a second time.
+    //
+    // ...and only to someone who has genuinely never trained. `lastSessionAt` is
+    // null for TWO different populations: people with no sessions, and people whose
+    // every session is voided or timing-quarantined. The second group HAS trained —
+    // the app is showing one of them a "Date needs correcting" card in History at
+    // the same moment — and mailing them "Your first session, whenever you want it"
+    // states the opposite of what they did (lesson 10). `has_any_session` is the
+    // signal for "ever", which is a different question from "when did you last do
+    // something that counts".
+    if (hasAnySession) return null;
     if (!createdAt) return null;
     const age = Math.floor((+new Date(now) - +new Date(createdAt)) / 86400000);
     if (!Number.isFinite(age) || age < NUDGE_STAGE_0_DAYS) return null;
@@ -54,7 +64,7 @@ export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now,
 export async function runComebackSweep(store, sendComeback, now = Date.now()) {
   const rows = await store.listAccountLastSessions();
   let checked = 0, sent = 0;
-  for (const { email, user_id, last_date } of rows) {
+  for (const { email, user_id, last_date, has_any_session } of rows) {
     checked++;
     const user = await store.getUser(user_id);
     if (!user) continue;
@@ -66,6 +76,7 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       now,
       // Already loaded above — the activation branch costs no extra store call.
       createdAt: user.created_at ?? null,
+      hasAnySession: !!has_any_session,
     });
     if (!hit) continue;
     // CLAIM first (CAS — the precondition lives INSIDE the mutator, per the
@@ -87,7 +98,13 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       });
       if (!claimed) continue;
       let res;
-      try { res = await sendComeback({ email, stage: hit.stage, days: hit.days }); }
+      // The stage-0 copy promises a deliberately short first session — and
+      // buildToday only trims for a beginner (`training_status === "beginner"`,
+      // defaulting to beginner when unset, exactly as coach.mjs does). Sending that
+      // sentence to an intermediate would have the one email the app ever sends
+      // them falsified by the first screen it sends them to (lesson 24).
+      try { res = await sendComeback({ email, stage: hit.stage, days: hit.days,
+        beginner: (user.profile?.training_status ?? "beginner") === "beginner" }); }
       catch { res = { ok: false }; }
       if (res && res.ok === false) {
         // release the claim (best effort) so tomorrow's sweep retries — only if

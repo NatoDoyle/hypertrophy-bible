@@ -311,7 +311,7 @@ const unlinkOrphanSupersets = (list) => {
 // intermediate's by-design week-1 BLOCK_SET_SCALE of 0.70x.
 const FIRST_SESSION_EXERCISES = 4;
 
-export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null) {
+export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
   // beginner: gates plain-effort language on the set screen (Goal 3) — a true
@@ -453,11 +453,35 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // honest note, and printing "deliberately short" beside "I trimmed the last
   // accessory" would be two true mechanisms describing each other's opposite. The
   // trim still applies; only the note defers.
-  const firstSession = beginner && sessions.length === 0 && templateExercises.length > FIRST_SESSION_EXERCISES;
-  const firstSessionFull = templateExercises.length;
+  // `sessions` is the DERIVABLE list — it excludes voided and timing-quarantined
+  // rows — so `sessions.length === 0` means "nothing that counts", not "never
+  // trained". Someone whose only workout carries a legacy unparseable date has
+  // trained, is being shown a "Date needs correcting" banner in History at this
+  // very moment, and must not be handed a first-timer card calling today "day one
+  // for finding the machines". The activation email had the identical false
+  // premise and was fixed one call site earlier in this same wave; this is the
+  // other one (lesson 1).
+  const neverTrained = sessions.length === 0 && !hasAnySession;
+  // The FULL session is the template's, captured before any trim. Reading it from
+  // `templateExercises` meant a low-readiness day one had already dropped an
+  // accessory, so the card reported "4 instead of 6" while the plan screen showed 7.
+  const firstSessionFull = templateSession.exercises.length;
+  const firstSession = beginner && neverTrained && templateExercises.length > FIRST_SESSION_EXERCISES;
   if (firstSession) {
     templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, FIRST_SESSION_EXERCISES));
-    coach_note ??= `Your first session is deliberately short — ${FIRST_SESSION_EXERCISES} exercises instead of ${firstSessionFull}. Day one is for finding the machines and learning how they feel, not for setting records. Your full session is back next time.`;
+    // No `coach_note` here. The client gates `coach_note` on `readiness != null`,
+    // so a note set on the ordinary day-one path (nobody has checked in yet) was
+    // never rendered to anyone — a producer with no consumer, asserted by a test
+    // over a string no user could see. `first_session` below is the real signal and
+    // the first-timer card is its real consumer.
+    //
+    // And a readiness note that says the session "stands as planned" is FALSE once
+    // this trim has run — it stood at 7 and is now 4. Two true mechanisms cannot
+    // narrate each other's opposite on one screen (lesson 24), so the normal/high
+    // note is rewritten rather than left to contradict the card above it.
+    if (coach_note && /stands as planned/.test(coach_note)) {
+      coach_note = "Checked in ✓ — you're in your normal range. Today is still your short first session; the full one is back next time.";
+    }
   }
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
