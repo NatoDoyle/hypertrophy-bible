@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, "../..");
-const { LEARN_PAGES, LEARN_EXERCISES } = await import(join(here, "../public/learn-data.js"));
+const { LEARN_PAGES, LEARN_EXERCISES, LEARN_SUPPLEMENTS, LEARN_MUSCLES } = await import(join(here, "../public/learn-data.js"));
 
 let pass = 0, fail = 0;
 const check = (name, fn) => {
@@ -26,7 +26,7 @@ const check = (name, fn) => {
 
 const EX_ON_DISK = new Set(readdirSync(join(ROOT, "data", "exercises")).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
 const allButtons = () => Object.entries(LEARN_PAGES).flatMap(([slug, pg]) =>
-  [...pg.html.matchAll(/data-ex="([a-z0-9-]+)"/g)].map((m) => [slug, m[1]]));
+  [...pg.html.matchAll(/data-exercise="([a-z0-9-]+)"/g)].map((m) => [slug, m[1]]));
 
 check("the bundle ships an exercise sheet set", () => {
   assert.ok(LEARN_EXERCISES && typeof LEARN_EXERCISES === "object");
@@ -42,7 +42,7 @@ check("every rendered button can open a sheet — no button opens a blank screen
 
 check("back.md — the exemplar — renders its whole pick list as buttons, not prose", () => {
   const html = LEARN_PAGES.back?.html ?? "";
-  assert.equal([...html.matchAll(/data-ex="/g)].length, 22, "back.md dropped 22 exercise links before this wave");
+  assert.equal([...html.matchAll(/data-exercise="/g)].length, 22, "back.md dropped 22 exercise links before this wave");
   assert.ok(!html.includes("data/exercises"), "no raw data path may survive into the shipped HTML");
 });
 
@@ -88,6 +88,42 @@ try {
 } finally {
   try { rmSync(storePath); } catch {}
 }
+
+// --- supplement + muscle sheets (Wave 231) ------------------------------------
+check("the whole supplement catalogue is bundled and reachable", () => {
+  assert.equal(Object.keys(LEARN_SUPPLEMENTS).length, 15, "supplements.md references every entry");
+  const buttons = [...(LEARN_PAGES.supplements?.html ?? "").matchAll(/data-supplement="([a-z0-9-]+)"/g)].map((m2) => m2[1]);
+  assert.equal(buttons.length, 15, "and every one renders as a control, not dead text");
+  for (const id of buttons) assert.ok(LEARN_SUPPLEMENTS[id], `${id} has no bundled sheet`);
+});
+
+check("every supplement sheet carries the fields the reader needs — including SAFETY", () => {
+  for (const [id, d] of Object.entries(LEARN_SUPPLEMENTS)) {
+    for (const f of ["id", "name", "tier", "summary", "evidence_grade"]) {
+      assert.ok(d[f] != null, `${id} is missing ${f}`);
+    }
+  }
+  // The safety text ("not for pregnancy", "may interact with thyroid medication")
+  // was unreachable in-app before this wave; it is the field with the highest cost
+  // of being missing, so assert it is genuinely present rather than merely defined.
+  const withSafety = Object.values(LEARN_SUPPLEMENTS).filter((d) => typeof d.safety === "string" && d.safety.length > 20);
+  assert.ok(withSafety.length >= 12, `only ${withSafety.length} supplements carry real safety text`);
+});
+
+check("muscle sheets carry the volume landmarks the plan engine runs on", () => {
+  assert.ok(Object.keys(LEARN_MUSCLES).length >= 4);
+  for (const [id, d] of Object.entries(LEARN_MUSCLES)) {
+    assert.ok(d.landmarks?.mev && d.landmarks?.mav && d.landmarks?.mrv, `${id} is missing landmarks`);
+    assert.ok(Number.isFinite(d.landmarks.mev.min), `${id} landmarks are not numeric`);
+  }
+});
+
+check("no page leaks a raw data/ path for ANY of the three kinds", () => {
+  const leaky = Object.entries(LEARN_PAGES)
+    .filter(([, pg]) => /data\/(exercises|supplements|muscles)\/[a-z0-9-]+\.json/.test(pg.html))
+    .map(([s2]) => s2);
+  assert.deepEqual(leaky, []);
+});
 
 console.log(`\n${pass} learn-data test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

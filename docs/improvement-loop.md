@@ -822,6 +822,52 @@ These are real failures from previous iterations. Each is now a standing check.
    same function. The test that can still catch a regression is at the route, and
    it goes red on the shipped code.
 
+58. **"No records that COUNT" is not "no records" — a filtered read cannot answer an
+   ever/never question.** `listSessions` and `latestSessionDate` both exclude voided
+   and timing-quarantined rows, which is correct for every question they were built
+   for ("what should today be", "when did they last train"). Two new features then
+   asked them a different question — *has this person ever trained at all?* — and got
+   a confident wrong answer for anyone whose only workout is voided or carries a
+   legacy unparseable date. The activation email told them *"Your first session,
+   whenever you want it"*; `buildToday` gave them day_number 1, a "First workout?
+   You've got this" card and a beginner trim — **while History was showing the very
+   workout they logged, under a "Date needs correcting" banner.** Proved by running
+   the real sweep, not by reading. → **Standing lens:** when a new feature asks
+   "ever / never", check whether the signal it reads is FILTERED, and add an
+   unfiltered one rather than reusing the convenient null. And note the shape of the
+   miss: I fixed the email, wrote the fix up, and shipped it — the second call site
+   was found by an auditor an hour later. Lesson 1 is not "fix both", it is "go
+   looking for the second one BEFORE you believe you are done".
+
+59. **A cosmetic control must not reach a destructive door.** A one-tap kg/lb
+   preference was wired to `/api/plan/regenerate`, because that route happened to
+   accept a profile patch and its comment said the cosmetic path "keeps the current
+   block". It also runs `u.program = program` — the one regeneration site in the file
+   with **no `!u.program?.custom` guard** — so flipping units silently replaced a
+   hand-edited plan, dropped `plan_meta.reactive_deload`, and reverted mid-block
+   plateau swaps. The route was not wrong; an explicit Settings save asking to
+   rebuild *should* rebuild. The caller was. → **Standing rule:** before reusing a
+   route because its payload shape fits, read what it DOES, not what its comment
+   emphasises — and give a display preference its own narrow door. A comment that
+   enumerates three preserved fields and is silent about four dropped ones is
+   lesson 33 in a place nobody thinks to look.
+
+60. **Copy is a promise the code has to keep — check the mechanism, not the
+   sentence.** Three shipped in one burst, all mine, all written *while* I was
+   fixing other people's false copy. (a) A card said *"I'll send your week — the
+   sessions, the exercises, the sets"*; the mail was a bare magic link whose subject
+   was about backup. (b) The activation email promised *"your first session is
+   deliberately short"* to everyone, while the trim fires only for beginners — so an
+   intermediate's one and only email was falsified by the first screen it sent them
+   to. (c) A fallback line said the calendar export was "below" when it lives on
+   another tab, and a code comment justified a locale guess by "the plan screen
+   offers a one-tap correction" that did not exist. → **Standing rule:** for every
+   user-facing claim, name the function that delivers it and check its gate covers
+   the same population the sentence addresses. Where the mechanism is the better
+   half, build it: the email now carries the plan, and the plan screen now has the
+   correction — a promise is cheaper to keep than to retract, and keeping it here
+   also created the click that makes the account real.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -843,6 +889,36 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7q. **Telemetry (Waves 230–232, 2026-08-21).** **2 finder agents, ZERO verify
+   agents, zero workflows** (~273k subagent tokens). The audit surface was again my
+   own previous burst, and again it was not clean: **eight confirmed defects, seven
+   mine.** The pattern this time was a single false premise propagating —
+   "no derivable sessions" read as "never trained" (lesson 58) — plus three pieces
+   of copy promising things the code did not do (lesson 60).
+   The sharpest moment: I found the activation-email half MYSELF by running the real
+   sweep, fixed it, and had it committed in-flight when the finder pointed out the
+   identical premise driving `buildToday` one surface over. I had already written
+   the fix up as done. That is lesson 1 not as "fix both call sites" but as "go
+   looking for the second one before believing you are finished", and it is why the
+   finder earned its cost on a diff I wrote and had just re-read.
+   Two things were caught by machinery rather than by reading, both worth keeping:
+   the **dead-import gate** found that an edit had deleted `writeFileSync` from
+   gen-learn-data.mjs, so `npm run build-data` had been printing "Wrote
+   public/learn-data.js" while writing nothing; and the **browser walkthrough**
+   caught the last path-shaped link label, which no unit test could see because the
+   bundle was structurally correct — only the words were wrong.
+   Also refuted by measurement before acting: `hb_push` really does have a producer,
+   so the `canRemind` branch shipped last wave is live; and the finder's claim about
+   two verified emails per user turned out to prove my WAVE-224 fix was the mistake
+   — suppression is per-user, so the change delivered nothing and cost determinism.
+   Reverted, with the reasoning recorded rather than the code quietly changed back.
+   Wave 231 then finished the KB traversability work: supplements and muscles now
+   open in-app sheets, invisible links **50 → 30**, reconciliation conserved at 122,
+   and no class reached zero (every remaining data drop is a directory link).
+   Evidence: 354 route · 193 store/D1 parity · 77 coach · 31 nudge · 18 learn-data ·
+   53 graph checks; every regression observed failing pre-fix and tamper-verified;
+   browser walkthrough 14/14 including offline with zero network calls for a sheet.
+
 7r. **Telemetry (Waves 224–229, 2026-08-19).** One full turn; prod == main
    (`hb-shell-v167`). **2 finder agents + 1 design agent (~560k subagent tokens),
    ZERO verify agents, zero workflows.** The audit surface was my OWN previous

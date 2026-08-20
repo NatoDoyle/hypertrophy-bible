@@ -13,7 +13,8 @@ import { extractPage, buildGraph, formatReasons, parseContentsIndex, linkTarget 
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CONTENT = join(here, "../../content");
-const EXERCISES_DIR = join(here, "../../data/exercises");
+const DATA_DIR = join(here, "../../data");
+const EXERCISES_DIR = join(DATA_DIR, "exercises");
 const OUT = join(here, "../public/learn-data.js");
 
 // Every pillar ships. The beginner on-ramp leads (tier "start", curated
@@ -41,12 +42,17 @@ const BUNDLED = new Set();
 // Every exercise the KB could link to. Read from disk rather than importing
 // app/src/kb-data.mjs so the two generators have no run-order dependency.
 // Populated up front for the same reason BUNDLED is: `inline()` consults it.
-const EX_IDS = new Set(readdirSync(EXERCISES_DIR).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
+const idsIn = (dir) => new Set(readdirSync(join(DATA_DIR, dir)).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
+// Keyed by KIND, matching graph-core's `rendersAsData`. One object, so adding a
+// kind is an entry here and a renderer, not a new predicate.
+const SHIPPED = { exercise: idsIn("exercises"), supplement: idsIn("supplements"), muscle: idsIn("muscles") };
+const EX_IDS = SHIPPED.exercise;
 // Only the exercises the prose actually references get bundled — all 171 would
 // cost ~235 KB raw where the referenced 64 cost ~87 KB, on an asset the service
 // worker precaches. Collected while rendering.
-const EX_REFS = new Set();
-let exRefTotal = 0;
+const REFS = { exercise: new Set(), supplement: new Set(), muscle: new Set() };
+const REF_TOTAL = { exercise: 0, supplement: 0, muscle: 0 };
+const EX_REFS = REFS.exercise;
 
 // Inline markdown → HTML on already-escaped text.
 //   - links to a SIBLING page we bundle  → a tappable in-app deep link (data-learn)
@@ -75,9 +81,15 @@ function inline(text) {
     // The id is `[a-z0-9-]+` by construction, so it cannot carry anything into
     // the attribute — the safety property comes from the predicate's alphabet,
     // not from trusting the source.
-    const t = linkTarget(url, BUNDLED, EX_IDS);
+    const t = linkTarget(url, BUNDLED, SHIPPED);
     if (t?.kind === "page") return `<button class="learnlink" data-learn="${t.id}">${label}</button>`;
-    if (t?.kind === "exercise") { EX_REFS.add(t.id); exRefTotal++; return `<button class="learnlink exlink" data-ex="${t.id}">${label}</button>`; }
+    if (t && REFS[t.kind]) {
+      REFS[t.kind].add(t.id); REF_TOTAL[t.kind]++;
+      // `data-<kind>` and the id are both from a fixed alphabet, so nothing here can
+      // carry a quote or a scheme into an attribute — the safety comes from the
+      // predicate, not from trusting the source.
+      return `<button class="learnlink exlink" data-${t.kind}="${t.id}">${label}</button>`;
+    }
     return label;
   });
   t = t.replace(/\*\*((?:[^*]|\*(?!\*))+?)\*\*/g, "<strong>$1</strong>"); // tolerates *italics* inside **bold** (11 pages rendered literal ** before)
@@ -247,13 +259,46 @@ for (const id of [...EX_REFS].sort()) {
 // Drift tripwires, in this file's existing style: a predicate change that silently
 // stops matching would otherwise ship a bundle whose buttons all vanished, and the
 // page HTML would look fine.
-if (exRefTotal === 0) throw new Error("zero exercise refs rendered — predicate/renderer drift?");
-for (const [slug, pg] of Object.entries(pages)) {
-  for (const m of pg.html.matchAll(/data-ex="([a-z0-9-]+)"/g)) {
-    if (!learnExercises[m[1]]) throw new Error(`page "${slug}" links exercise "${m[1]}" with no bundled sheet`);
+// Supplement sheets: the whole 15-entry catalogue is referenced from
+// `supplements.md`, which had the worst dropped/live ratio in the corpus — a
+// reader saw fifteen names as dead text while the KB held a graded entry, a dose,
+// a timing and a SAFETY note for each. The safety field in particular ("not for
+// pregnancy", "may interact with thyroid/sedative medication") was unreachable
+// from inside the app.
+const learnSupplements = {};
+for (const id of [...REFS.supplement].sort()) {
+  const e = JSON.parse(readFileSync(join(DATA_DIR, "supplements", `${id}.json`), "utf8"));
+  learnSupplements[id] = {
+    id: e.id, name: e.name, tier: e.tier ?? null, summary: e.summary ?? null, effect: e.effect ?? null,
+    dosing: e.dosing ?? null, timing: e.timing ?? null, safety: e.safety ?? null,
+    evidence_grade: e.evidence_grade ?? null,
+  };
+}
+
+// Muscle sheets: these carry the volume LANDMARKS (MV/MEV/MAV/MRV) the whole
+// engine runs on, so a reader can see the numbers their own plan is built from.
+const learnMuscles = {};
+for (const id of [...REFS.muscle].sort()) {
+  const m = JSON.parse(readFileSync(join(DATA_DIR, "muscles", `${id}.json`), "utf8"));
+  learnMuscles[id] = {
+    id: m.id, name: m.name, group: m.group ?? null, regions: m.regions ?? [], functions: m.functions ?? [],
+    antagonists: (m.antagonists ?? []).map((a) => MUSCLE_NAME.get(a) ?? a),
+    landmarks: m.landmarks ?? null, frequency_notes: m.frequency_notes ?? null, training_notes: m.training_notes ?? null,
+  };
+}
+
+// Drift tripwires: a predicate change that silently stopped matching would ship a
+// bundle whose buttons had all become plain text again, and the HTML would look fine.
+const SHEETS = { exercise: learnExercises, supplement: learnSupplements, muscle: learnMuscles };
+for (const [kind, sheets] of Object.entries(SHEETS)) {
+  if (REF_TOTAL[kind] === 0) throw new Error(`zero ${kind} refs rendered — predicate/renderer drift?`);
+  for (const [slug, pg] of Object.entries(pages)) {
+    for (const mm of pg.html.matchAll(new RegExp(`data-${kind}="([a-z0-9-]+)"`, "g"))) {
+      if (!sheets[mm[1]]) throw new Error(`page "${slug}" links ${kind} "${mm[1]}" with no bundled sheet`);
+    }
   }
 }
 
 const banner = "// AUTO-GENERATED by app/scripts/gen-learn-data.mjs — do not edit by hand.\n";
-writeFileSync(OUT, `${banner}export const LEARN_INDEX = ${JSON.stringify(index)};\nexport const LEARN_PAGES = ${JSON.stringify(pages)};\nexport const LEARN_EXERCISES = ${JSON.stringify(learnExercises)};\n`);
-console.log(`Wrote public/learn-data.js — ${Object.keys(pages).length} pages, ${index.length} categories, ${graph.metrics.edgeCount} graph edges, ${exRefTotal} exercise refs → ${Object.keys(learnExercises).length} sheets.`);
+writeFileSync(OUT, `${banner}export const LEARN_INDEX = ${JSON.stringify(index)};\nexport const LEARN_PAGES = ${JSON.stringify(pages)};\nexport const LEARN_EXERCISES = ${JSON.stringify(learnExercises)};\nexport const LEARN_SUPPLEMENTS = ${JSON.stringify(learnSupplements)};\nexport const LEARN_MUSCLES = ${JSON.stringify(learnMuscles)};\n`);
+console.log(`Wrote public/learn-data.js — ${Object.keys(pages).length} pages, ${index.length} categories, ${graph.metrics.edgeCount} graph edges, ${REF_TOTAL.exercise}/${REF_TOTAL.supplement}/${REF_TOTAL.muscle} exercise/supplement/muscle refs → ${Object.keys(learnExercises).length}/${Object.keys(learnSupplements).length}/${Object.keys(learnMuscles).length} sheets.`);

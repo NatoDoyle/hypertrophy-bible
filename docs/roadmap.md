@@ -6,7 +6,23 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-19** (Waves 224-229: one full turn, prod ==
+Grounded assessment date: **2026-08-21** (Waves 230-232: a self-audit that found
+**eight defects, seven of them mine**, and the completion of the KB traversability
+work. The audit's theme is one false premise propagating: "no DERIVABLE sessions"
+is not "never trained", so a user whose only workout is voided or carries a legacy
+unparseable date was emailed "your first session, whenever you want it" AND shown a
+day-one beginner card — while History displayed that same workout under a "Date
+needs correcting" banner (lesson 58). Also: a kg/lb toggle was reaching the
+plan-REBUILD door and silently destroying hand-edited plans (lesson 59); three
+pieces of shipped copy promised things the code did not do, including an email card
+offering "your week" wired to a bare magic link (lesson 60); and my own Wave-224
+"parity fix" turned out to be built on a false premise and was reverted with the
+reasoning recorded. **Wave 231 finished what Wave 221 started:** supplements and
+muscles now open in-app sheets, so `supplements.md` — the corpus's worst
+dropped/live ratio, and the page whose SAFETY notes were unreachable in-app — is
+fully traversable. Invisible links **50 → 30**, reconciliation conserved at 122,
+and no class reached zero (every remaining data drop is a directory link, which has
+no id to open). Push subscriptions: still 0. The prior grounding was 2026-08-19, Waves 224-229: one full turn, prod ==
 main. **The headline result is a premise that dissolved.** The previous grounding
 called 9.6% activation the project's frontier. Building the instrument to split
 those 122 users showed the number cannot bear that weight: `tz_offset_min` — the
@@ -226,6 +242,26 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 230–232 progress (2026-08-21). A self-audit with eight findings, and the
+KB's last dead text made reachable.**
+
+- **Wave 230 (audit of Waves 224-229).** Eight defects, seven mine: the activation
+  email and `buildToday` both treating "no derivable sessions" as "never trained";
+  a display toggle reaching the plan-rebuild door; `hb_email` set on SEND so the app
+  claimed an account that did not exist; an email card promising the plan and
+  sending a magic link; a short-first-session promise made to non-beginners;
+  `first_session.full` reporting the post-trim size; and my own Wave-224 account
+  re-keying, reverted as built on a false premise.
+- **Wave 231 (the build).** One generalized predicate (`dataRefId`/`rendersAsData`
+  over a kind map) now carries exercises, supplements and muscles. Supplement sheets
+  surface tier, dose, timing and safety; muscle sheets surface the MV/MEV/MAV/MRV
+  landmarks the engine runs on, labelled as estimates. Five link labels that were
+  literal file paths were authored into names.
+- **Wave 232 (LEARN).** Lessons 58-60, telemetry 7q, this entry.
+- **Evidence:** 354 route · 193 parity · 77 coach · 31 nudge · 18 learn-data · 53
+  graph; regressions observed failing pre-fix and tamper-verified; browser
+  walkthrough 14/14 including offline.
 
 **Waves 224–229 progress (2026-08-19). The activation premise, measured and mostly
 refuted; two fixes that stand regardless.**

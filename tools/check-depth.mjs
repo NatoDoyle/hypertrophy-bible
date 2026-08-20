@@ -110,16 +110,23 @@ warn(`BOTH TELLS — thin/number-free AND out-degree <= ${GATE.minOut} (the shor
 // out of the metric" look identical in a shrinking total. So the classes are
 // itemised, the newly-traversable links are counted on their own line, and the two
 // are reconciled against the pre-change baseline below.
-const EX_IDS = new Set(readdirSync(join(root, "data", "exercises")).filter((f) => f.endsWith(".json")).map((f) => basename(f, ".json")));
-const classified = pages.map((pg) => ({ slug: pg.slug, pillar: pg.pillar, out: outDegree.get(pg.slug) ?? 0, ...classifyRenderedLinks(pg.md, known, EX_IDS) }));
+const idsIn = (dir) => new Set(readdirSync(join(root, "data", dir)).filter((f) => f.endsWith(".json")).map((f) => basename(f, ".json")));
+// Keyed by KIND, matching graph-core's `rendersAsData` and the generator's SHIPPED.
+const SHIPPED = { exercise: idsIn("exercises"), supplement: idsIn("supplements"), muscle: idsIn("muscles") };
+const classified = pages.map((pg) => ({ slug: pg.slug, pillar: pg.pillar, out: outDegree.get(pg.slug) ?? 0, ...classifyRenderedLinks(pg.md, known, SHIPPED) }));
 const dropped = classified
   .map((x) => ({ ...x, n: x.dropped.length }))
   .filter((x) => x.n > 0)
   .sort((a, b) => b.n - a.n);
 const droppedTotal = dropped.reduce((a, x) => a + x.n, 0);
-const exJumps = classified.map((x) => x.jumps.filter((j) => j.kind === "exercise").length);
-const exJumpTotal = exJumps.reduce((a, n) => a + n, 0);
-const exJumpPages = exJumps.filter((n) => n > 0).length;
+// Per KIND, so a class becoming traversable is visible as its own line rather than
+// disappearing into a shrinking dropped total (lesson 53).
+const DATA_KINDS = ["exercise", "supplement", "muscle"];
+const jumpsByKind = Object.fromEntries(DATA_KINDS.map((k) => {
+  const per = classified.map((x) => x.jumps.filter((j) => j.kind === k).length);
+  return [k, { total: per.reduce((a, n) => a + n, 0), pages: per.filter((n) => n > 0).length }];
+}));
+const exJumpTotal = DATA_KINDS.reduce((a, k) => a + jumpsByKind[k].total, 0);
 const byClass = new Map();
 for (const pg of classified) for (const d of pg.dropped) byClass.set(d.cls, (byClass.get(d.cls) ?? 0) + 1);
 console.log(`\ninvisible links (rendered, but not traversable in-app): ${droppedTotal} across ${dropped.length} page(s)`);
@@ -139,13 +146,21 @@ if (dropped.length > SHOWN) {
 // something a future wave can act on.
 console.log(`  by class — stated as counts so a narrowing can never hide inside a total:`);
 for (const [cls, n] of [...byClass].sort((a, b) => b[1] - a[1])) {
+  // The reason has to follow the renderer, or it goes stale the moment a kind
+  // becomes traversable — which is exactly what happened to "no in-app surface
+  // renders this yet" the wave supplements and muscles got one.
+  const rendered = DATA_KINDS.some((k) => cls === `data/${k}s`);
   const why = cls === "pillar index TOC" ? "the app ships no index page; a pillar's ## Contents becomes the Learn list"
-    : cls === "data/exercises" ? "a DIRECTORY link carries no id, so there is nothing to open"
+    : rendered ? "a DIRECTORY link carries no id, so there is nothing to open"
     : "no in-app surface renders this data type yet";
   console.log(`      ${cls.padEnd(22)} ${String(n).padStart(3)}   ${why}`);
 }
 console.log(`  now traversable — counted here because the renderer OPENS them, not because the gate stopped looking:`);
-console.log(`      ${"data/exercises".padEnd(22)} ${String(exJumpTotal).padStart(3)}   across ${exJumpPages} page(s) → the in-app exercise sheet`);
+for (const k of DATA_KINDS) {
+  const j = jumpsByKind[k];
+  if (!j.total) continue;
+  console.log(`      ${("data/" + k + "s").padEnd(22)} ${String(j.total).padStart(3)}   across ${j.pages} page(s) → the in-app ${k} sheet`);
+}
 // The baseline is a LITERAL, measured once and written down. It used to be
 // `droppedTotal + exJumpTotal` — derived from the same run it was checking — so the
 // reconciliation balanced by construction and would have kept printing "clean" even

@@ -40,7 +40,7 @@ Beginners keep a deliberately larger reserve (2-3 RIR on compounds) because [jud
 4. **Deload** when performance stalls, then start the next block slightly higher.
 5. **Individualize** — swap exercises for equivalents you can train hard and pain-free ([Exercise Selection](../01-training-variables/exercise-selection-and-order.md)).
 
-Every exercise, set, rep range and RIR is written out in machine-readable form in [`data/programs/`](../../data/programs/), and the set counts in the tables above are computed from those files rather than typed by hand — a test fails the build if the two ever disagree.
+Every exercise, set, rep range and RIR is written out in machine-readable form in [the program data files](../../data/programs/), and the set counts in the tables above are computed from those files rather than typed by hand — a test fails the build if the two ever disagree.
 
 **The app does not hand you one of these.** It generates a plan for you from the same principles — your days, session length, equipment, injuries and priority muscles — so treat these as the worked examples that show what the output should look like, and as a complete program if you are reading this Bible without using the app.
 
@@ -54,7 +54,7 @@ These templates are constructions, not studies — but each design choice traces
 - **More days is not inherently better** — the 6-day plan only wins if you recover from it; otherwise the 4-day plan with good volume is superior.
 
 ## Backing Data
-- [`data/programs/`](../../data/programs/) — the five templates, with every set, rep range and RIR
+- [the program data files](../../data/programs/) — the five templates, with every set, rep range and RIR
 - [`data/progressions/`](../../data/progressions/) — progression rules referenced by the templates
 
 ## References

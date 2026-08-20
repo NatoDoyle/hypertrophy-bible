@@ -10,7 +10,7 @@
 
 ## Practical Application
 
-**The evidence tiers** (full data in [`data/supplements/`](../../data/supplements/)):
+**The evidence tiers** (full data in [the full supplement data](../../data/supplements/)):
 
 | Supplement | Tier | What it actually does |
 |-----------|------|-----------------------|
@@ -47,7 +47,7 @@
 - **Supplement quality/labeling varies** — third-party-tested products reduce contamination risk, which matters for tested athletes.
 
 ## Backing Data
-- [`data/supplements/`](../../data/supplements/) — evidence tiers, dosing, timing, safety for each supplement
+- [the full supplement data](../../data/supplements/) — evidence tiers, dosing, timing, safety for each supplement
 
 ## References
 [^kreider-2017-creatine]: Kreider RB, et al. (2017). *International Society of Sports Nutrition position stand: safety and efficacy of creatine supplementation in exercise, sport, and medicine.* Journal of the International Society of Sports Nutrition, 14, 18. DOI: [10.1186/s12970-017-0173-z](https://doi.org/10.1186/s12970-017-0173-z). PMID: 28615996.

@@ -6,7 +6,7 @@
 - Count **hard sets** (working sets taken to ~0–4 reps in reserve). Warm-ups don't count. **[Grade B]**
 - Target **~10+ hard sets per muscle per week** as a sensible default for growth. **[Grade A]** — this beats low-volume training reliably.
 - Ranging up to **~20 sets/week** benefits many trained lifters, especially for lagging muscles — but returns diminish and fatigue rises. **[Grade B]**
-- **Progress volume over a block**: begin a mesocycle nearer your minimum, add ~1–3 sets/muscle/week as needed, then deload. See per-muscle landmarks in [`data/muscles/`](../../data/muscles/). **[Grade C]**
+- **Progress volume over a block**: begin a mesocycle nearer your minimum, add ~1–3 sets/muscle/week as needed, then deload. See per-muscle landmarks in [the per-muscle landmark data](../../data/muscles/). **[Grade C]**
 - Count **fractional/indirect volume** partially: a hard row trains the lats fully but the biceps partially. Count secondary involvement as ~0.5 of a set — of the counting methods tested, this "fractional" method had the strongest relative evidence in the largest dose-response synthesis to date[^pelland-2026-dose-response]. **[Grade C]**
 - **Stop at two tiers — don't invent a "tertiary" count.** The fractional method the evidence actually supports is two-level: **full** for the muscle a lift targets, **~half** for a muscle that meaningfully assists[^pelland-2026-dose-response]. A muscle that only *stabilizes* or barely contributes sees too little mechanical tension — the primary driver of growth — to add meaningful hypertrophy, so counting it (a "third tier") would be false precision the data doesn't support, and would inflate weekly totals against landmarks that were built on the direct-plus-indirect convention. Track those muscles anatomically if useful, but don't add them to the volume count. **[Grade C]**
 
@@ -46,7 +46,7 @@ These landmarks are **practical estimates, not measured constants** — they var
 - **Less can be enough when life is busy.** You don't always need to chase the top of the range — a minimum-effective dose still drives growth and is far better than skipping; see [Minimalist & low-volume training](../03-programming/minimalist-and-low-volume-training.md).
 
 ## Backing Data
-- Per-muscle weekly set landmarks (MV/MEV/MAV/MRV): [`data/muscles/`](../../data/muscles/)
+- Per-muscle weekly set landmarks (MV/MEV/MAV/MRV): [the per-muscle landmark data](../../data/muscles/)
 
 ## References
 [^schoenfeld-2017-volume-dose-response]: Schoenfeld BJ, Ogborn DI, Krieger JW (2017). *Dose-response relationship between weekly resistance training volume and increases in muscle mass: A systematic review and meta-analysis.* Journal of Sports Sciences, 35(11), 1073–1082. DOI: [10.1080/02640414.2016.1210197](https://doi.org/10.1080/02640414.2016.1210197). PMID: 27433992.

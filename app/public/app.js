@@ -9,7 +9,11 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
-let learnExercise = null; // an exercise sheet open OVER a Learn page (null = no sheet)
+let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or null
+// Session-only: the plan-screen email form has been submitted. Deliberately not
+// localStorage and deliberately not `hb_email` — an account exists only once the
+// emailed link is clicked, and claiming otherwise makes the whole app lie.
+let planEmailSent = false;
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
@@ -64,7 +68,11 @@ function openLearn(slug) {
 // Wire any [data-learn="slug"] element on the current screen to open that page.
 function wireLearnLinks() {
   app.querySelectorAll("[data-learn]").forEach((b) => b.onclick = () => openLearn(b.dataset.learn));
-  app.querySelectorAll("[data-ex]").forEach((b) => b.onclick = () => openLearnExercise(b.dataset.ex));
+  // One loop, three kinds — the same set graph-core's `DATA_REF_KINDS` defines, so
+  // adding a kind is a renderer and an entry, never a fourth wiring branch.
+  for (const kind of ["exercise", "supplement", "muscle"]) {
+    app.querySelectorAll(`[data-${kind}]`).forEach((b) => b.onclick = () => openLearnData(kind, b.dataset[kind]));
+  }
 }
 // A small inline "?" that opens a learn page — decodes jargon in place.
 // The accessible name must MATCH the visible text (WCAG 2.5.3): a hard-coded
@@ -317,9 +325,11 @@ const STEPS = [
 // Display units from the device's own locale. Only three countries in common use
 // pound-based bodyweight for this purpose, so the table is stated explicitly
 // rather than guessed at — and because a guess CAN be wrong (a UK user is metric
-// for plates and often imperial for bodyweight), the plan screen offers a one-tap
-// correction where the numbers first appear, instead of silently being wrong on
-// the first set screen.
+// for plates and often imperial for bodyweight), the plan screen carries a one-tap
+// correction where the numbers first appear (`#plan-units`), instead of the guess
+// being silently wrong on the first set screen. That justification was written
+// before the control existed, which made it a claim rather than a description;
+// building it was the honest way to keep the argument.
 const IMPERIAL_REGIONS = new Set(["US", "LR", "MM"]);
 function deriveUnits() {
   try {
@@ -649,7 +659,8 @@ async function renderPlanExplain(firstTime) {
         <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
       ${personalizationBlock}
       ${whyBlock}
-      ${localStorage.getItem("hb_email") ? "" : `<div class="card"><b>📩 Want this plan in your inbox?</b>
+      <p class="muted" style="margin:8px 0">Weights shown in <b>${unitLabel()}</b>. <button class="learnlink" id="plan-units">Use ${unitPref() === "lb" ? "kilograms" : "pounds"} instead</button></p>
+      ${localStorage.getItem("hb_email") || planEmailSent ? "" : `<div class="card"><b>📩 Want this plan in your inbox?</b>
         <p class="muted" style="margin:4px 0 8px">One email, no password. I'll send your week — the sessions, the exercises, the sets — so it's there when you're standing in the gym. It also keeps your progress if you change phone.</p>
         <input id="plan-email" type="email" inputmode="email" autocomplete="email" aria-label="Email address"
           placeholder="you@email.com" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
@@ -672,6 +683,14 @@ async function renderPlanExplain(firstTime) {
   // side of a completed workout. The account row is what every re-engagement sweep
   // queries, so the door to being reachable was gated behind the very thing ~90% of
   // users never do. Asking here, at peak perceived value, costs one skippable field.
+  // Correcting the locale guess where the numbers first appear, so a wrong guess
+  // never reaches the first set screen. Same narrow door the Me-tab toggle uses.
+  if ($("#plan-units")) $("#plan-units").onclick = async () => {
+    const next = unitPref() === "lb" ? "metric" : "imperial";
+    localStorage.setItem("hb_units", next);
+    try { await api("/api/profile/units", { method: "POST", body: JSON.stringify({ user_id: uid, units: next }) }); } catch {}
+    renderPlanExplain(firstTime);
+  };
   if ($("#plan-email-go")) $("#plan-email-go").onclick = async () => {
     const email = ($("#plan-email")?.value || "").trim();
     const msg = $("#plan-email-msg");
@@ -681,13 +700,24 @@ async function renderPlanExplain(firstTime) {
     let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email, user_id: uid }) }); } catch { r = null; }
     if (!r || r.error) {
       $("#plan-email-go").disabled = false;
-      if (msg) msg.textContent = r?.error === "rate-limited"
-        ? "That's a few requests in a row — give it an hour and try again."
+      // `rate-limited` is intentionally NOT a case here: the route collapses it into
+      // a generic `{sent:true}` so an attacker cannot probe which addresses have
+      // accounts. A branch matching on it would be unreachable (lesson 15).
+      if (msg) msg.textContent = r?.error === "invalid-email"
+        ? "That doesn't look like an email address — check it and try again."
         : r?.error ? "Couldn't send that — try again." : "Couldn't reach the server — check your connection.";
       return;
     }
-    localStorage.setItem("hb_email", email);
-    if (msg) msg.textContent = "Sent — check your inbox to finish. You can start training now either way.";
+    // Deliberately NOT `localStorage.setItem("hb_email", ...)`. `hb_email` is the
+    // app-wide "you have an account" flag, and the account row is only created when
+    // the magic link is CLICKED (verify.html writes it there). Setting it on SEND
+    // made five other surfaces claim the user was signed in — including Me showing
+    // "✓ signed in" with no way to re-request — for someone whose mail was still in
+    // a spam folder. Worse, /api/auth/request answers `{sent:true}` for rate-limited
+    // and unknown-user too (deliberately generic, to stop account enumeration), so
+    // the flag could be set when no email was sent at all.
+    planEmailSent = true;   // session-only: enough to stop re-offering the form here
+    if (msg) msg.textContent = "Sent — open the link in your inbox to finish. You can start training now either way.";
   };
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
@@ -878,7 +908,7 @@ function commitmentCard(commitment) {
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
     <p class="muted" style="margin:4px 0 8px">${canRemind
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
-      : "Naming the days is most of the work — deciding once beats deciding daily. You can put them straight into your phone's calendar below."}</p>
+      : "Naming the days is most of the work — deciding once beats deciding daily. Add them to your phone's calendar from the Coach tab and the reminder comes from the phone itself."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
     <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
 }
@@ -2198,7 +2228,7 @@ async function renderFuel() {
         <p class="muted" style="margin:2px 0 8px">Weight and height are enough to start. Want a sharper estimate? Add your body fat %, or a tape measure:</p>
         ${fld("f-waist", "Waist (cm, at the navel)", "", "optional")}
         ${fld("f-neck", "Neck (cm)", "", "optional")}
-        ${isFemale ? fld("f-hip", "Hip (cm, at the widest)", "", "optional") : ""}
+        <div id="f-hip-row" style="display:${isFemale ? "block" : "none"}">${fld("f-hip", "Hip (cm, at the widest)", "", "optional")}</div>
         <label for="f-act" class="muted">Daily activity (outside training)</label>
         <select id="f-act" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 12px">
           <option value="sedentary">Mostly sitting (desk job)</option>
@@ -2212,14 +2242,17 @@ async function renderFuel() {
         <p class="muted" id="f-msg"></p></div>`;
     wireLearnLinks();
     if ($("#f-cancel")) $("#f-cancel").onclick = () => { fuelEdit = false; renderFuel(); };
-    // Saving on tap (rather than only at "Set my targets") is what makes the hip
-    // field appear for a female user without losing what they have already typed —
-    // the form re-renders from the server value.
-    app.querySelectorAll("[data-sex]").forEach((b) => b.onclick = async () => {
-      const typed = { weight_kg: (() => { const v = parseFloat($("#f-weight")?.value); return Number.isFinite(v) && v > 0 ? toKg(v) : undefined; })(),
-        height_cm: (() => { const v = parseFloat($("#f-height")?.value); return Number.isFinite(v) && v > 0 ? v : undefined; })() };
-      try { await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: b.dataset.sex, ...typed }) }); } catch {}
-      fuelEdit = true; renderFuel();
+    // NO re-render, and no POST. The previous version did both, under a comment
+    // claiming it preserved what the user had typed — it did the opposite: every
+    // `fld()` call in this form passes "" as its value, so re-rendering returned a
+    // completely blank form and silently dropped body fat, waist, neck and activity
+    // (which the tap-POST never harvested at all). The only thing the tap needs to
+    // do is reveal the hip field, which the Navy formula needs for a female user.
+    // Selection is held in the DOM and read at save, like every other field here.
+    app.querySelectorAll("[data-sex]").forEach((b) => b.onclick = () => {
+      app.querySelectorAll("[data-sex]").forEach((o) => o.classList.toggle("sel", o === b));
+      const hip = $("#f-hip-row");
+      if (hip) hip.style.display = b.dataset.sex === "female" ? "block" : "none";
     });
     $("#f-save").onclick = async () => {
       // Null-safe: #f-hip only exists in the DOM for a female user (the Navy
@@ -2241,7 +2274,7 @@ async function renderFuel() {
         // writes below can record a bodyweight row, and the server only falls
         // back to the UTC date when none is sent.
         await api("/api/bodyweight", { method: "POST", body: JSON.stringify({ user_id: uid, kg: weight, date: localDay() }) });
-        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: n.sex ?? undefined, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
+        await api("/api/nutrition/profile", { method: "POST", body: JSON.stringify({ user_id: uid, sex: app.querySelector("[data-sex].sel")?.dataset.sex ?? n.sex ?? undefined, weight_kg: weight, height_cm: height, bf_pct: bf, waist_cm: waist, neck_cm: neck, hip_cm: hip, activity: $("#f-act").value, date: localDay() }) });
         fuelEdit = false; say("Targets set."); renderFuel();
       } catch { $("#f-msg").textContent = "📴 Couldn't save — try again when you're online."; }
     };
@@ -2590,7 +2623,11 @@ function renderMe() {
     const next = unitPref() === "lb" ? "metric" : "imperial";
     localStorage.setItem("hb_units", next);
     renderMe();
-    try { await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { units: next } }) }); } catch {}
+    // A narrow door, NOT /api/plan/regenerate. That route rebuilds the programme,
+    // and its `u.program = program` is the one regeneration site with no
+    // custom-plan guard — so routing a cosmetic unit flip through it silently
+    // replaced a hand-edited plan with a generated one.
+    try { await api("/api/profile/units", { method: "POST", body: JSON.stringify({ user_id: uid, units: next }) }); } catch {}
   };
   app.querySelectorAll("[data-restore-archive]").forEach((b) => b.onclick = () => restoreMergedArchive(uid, b.dataset.restoreArchive, b));
   app.querySelectorAll("[data-switch-restored]").forEach((b) => b.onclick = () => switchToRestoredArchive(uid, b.dataset.switchRestored, b));
@@ -2964,25 +3001,82 @@ async function renderLearn() {
 // the sheet works exactly as well offline as the page that linked to it — which is
 // the promise the Learn tab already makes on screen, and the reader most likely to
 // tap a lift is standing in a gym.
-async function renderLearnExercise(id) {
+// One entry point for every data sheet a Learn page can open. The data rides the
+// already-precached learn-data bundle rather than the API, so a sheet works exactly
+// as well offline as the page that linked to it — which is what the Learn tab
+// already promises on screen, to the reader most likely to be standing in a gym.
+async function renderLearnData({ kind, id }) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
-  let LEARN_EXERCISES, LEARN_PAGES;
-  try { ({ LEARN_EXERCISES, LEARN_PAGES } = await learnData()); }
-  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that movement.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
-  const d = LEARN_EXERCISES?.[id];
+  let LEARN_EXERCISES, LEARN_SUPPLEMENTS, LEARN_MUSCLES, LEARN_PAGES;
+  try { ({ LEARN_EXERCISES, LEARN_SUPPLEMENTS, LEARN_MUSCLES, LEARN_PAGES } = await learnData()); }
+  catch { app.innerHTML = `<div class="card"><p>📴 Couldn't load that.</p><p class="muted">Connect once and it'll be saved on this device.</p></div>`; return; }
+  const sheets = { exercise: LEARN_EXERCISES, supplement: LEARN_SUPPLEMENTS, muscle: LEARN_MUSCLES };
+  const d = sheets[kind]?.[id];
   // A page can only emit a button whose sheet was bundled (the generator throws
   // otherwise), so this is belt-and-braces: fall back to the page rather than
   // leaving a blank screen if an old cached bundle meets a new page.
   if (!d) { learnExercise = null; return renderLearnPage(learnSlug); }
   const from = LEARN_PAGES?.[learnSlug];
-  renderExerciseSheet(
-    { exercise: id, name: d.name, movement_pattern: d.movement_pattern },
-    d,
-    { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } },
-  );
+  const back = { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
+  if (kind === "exercise") renderExerciseSheet({ exercise: id, name: d.name, movement_pattern: d.movement_pattern }, d, back);
+  else if (kind === "supplement") renderSupplementSheet(d, back);
+  else renderMuscleSheet(d, back);
+  wireLearnLinks();
   window.scrollTo(0, 0);
 }
-const openLearnExercise = (id) => { learnExercise = id; renderLearnExercise(id); };
+const openLearnData = (kind, id) => { learnExercise = { kind, id }; renderLearnData({ kind, id }); };
+
+// Evidence tier first, because it is the only thing most readers need: the KB's
+// whole position on supplements is that a handful work and the rest are noise.
+const SUPP_TIER = {
+  strong: ["✅", "Worth taking", "Real, repeatable effects in good trials."],
+  modest: ["🤏", "Small effect", "Works, but the effect is small — food and training matter far more."],
+  situational: ["🎯", "Situational", "Useful for a specific job, not as a daily default."],
+  insufficient: ["🤔", "Not yet proven", "Promising or popular, but the evidence isn't there yet."],
+  ineffective: ["❌", "Skip it", "Tested and it doesn't do what it's sold for."],
+};
+function renderSupplementSheet(d, back) {
+  const [icon, label, gloss] = SUPP_TIER[d.tier] ?? ["•", d.tier ?? "", ""];
+  const row = (title, val) => (val ? `<h2>${title}</h2><p class="muted">${esc(val)}</p>` : "");
+  app.innerHTML = `<h1>${esc(d.name)}</h1>
+    <div class="card"><b>${icon} ${esc(label)}</b>${d.evidence_grade ? ` <span class="gradetag">Grade ${esc(d.evidence_grade)}</span>` : ""}
+      ${gloss ? `<p class="muted" style="margin:6px 0 0">${esc(gloss)}</p>` : ""}
+      ${d.summary ? `<p style="margin:8px 0 0">${esc(d.summary)}</p>` : ""}</div>
+    ${row("What it does", d.effect)}
+    ${row("Dose", d.dosing)}
+    ${row("When", d.timing)}
+    ${d.safety ? `<h2>Safety</h2><div class="card info"><p class="muted">⚠️ ${esc(d.safety)}</p></div>` : ""}
+    <button class="btn" id="back">${esc(back.label)}</button>`;
+  $("#back").onclick = back.onClick;
+}
+
+// The landmarks are the numbers the plan engine actually runs on, so showing them
+// is the most direct answer the app can give to "why this much work for this muscle".
+function renderMuscleSheet(d, back) {
+  const lm = d.landmarks;
+  const band = (k, title, why) => {
+    const v = lm?.[k];
+    if (!v) return "";
+    const range = v.min === v.max ? `${v.min}` : `${v.min}–${v.max}`;
+    return `<div class="win"><b>${title}: ${range} sets/week</b><br><span class="muted">${why}</span></div>`;
+  };
+  const list = (title, arr) => (arr?.length ? `<h2>${title}</h2><p class="muted">${esc(arr.join(" · "))}</p>` : "");
+  app.innerHTML = `<h1>${esc(d.name)}</h1>
+    ${d.group ? `<p class="muted">Part of your ${esc(d.group)} work</p>` : ""}
+    ${lm ? `<h2>Weekly volume ${helpDot("volume", "what these mean")}</h2><div class="card">
+      ${band("mv", "Maintenance", "enough to hold what you have")}
+      ${band("mev", "Minimum to grow", "below this, little happens")}
+      ${band("mav", "Most growth", "where the plan aims")}
+      ${band("mrv", "Recoverable ceiling", "past this you stop recovering")}
+      <p class="muted" style="margin:8px 0 0;font-size:.85rem">Model-based estimates, not measured constants — your own response moves them.</p></div>` : ""}
+    ${list("Regions", d.regions)}
+    ${list("What it does", d.functions)}
+    ${list("Opposing muscles", d.antagonists)}
+    ${d.frequency_notes ? `<h2>How often</h2><p class="muted">${esc(d.frequency_notes)}</p>` : ""}
+    ${d.training_notes ? `<h2>Training it</h2><p class="muted">${esc(d.training_notes)}</p>` : ""}
+    <button class="btn" id="back">${esc(back.label)}</button>`;
+  $("#back").onclick = back.onClick;
+}
 
 async function renderLearnPage(slug) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
@@ -3046,7 +3140,7 @@ function render() {
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "coach") renderCoach();
-  else if (tab === "learn") { learnExercise ? renderLearnExercise(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
+  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") resetLearnNav(); render(); });

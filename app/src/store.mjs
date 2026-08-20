@@ -7,6 +7,13 @@ import { mergeUserProfile } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
 import { activationFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
+const preferAccount = (a, b) => {
+  if (!b) return a;
+  const av = String(a.verified_at ?? ""), bv = String(b.verified_at ?? "");
+  if (av !== bv) return av > bv ? a : b;
+  return String(a.email) < String(b.email) ? a : b;
+};
+
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
   let db = existsSync(path)
@@ -404,6 +411,10 @@ export function createFileStore(path) {
     // clock (a far-future row stops being far-future once time reaches it), and D1
     // takes one. A store that silently used its own clock while the other honoured
     // the argument would make every parity test agree only on the day it was run.
+    // "Has this user EVER logged anything", including voided and timing-quarantined
+    // rows. Deliberately not derivable from latestSessionDate, which answers the
+    // different question "when did they last do something that counts".
+    async hasAnySession(user_id) { return (db.sessions[user_id] ?? []).length > 0; },
     async latestSessionDate(user_id, nowMs = Date.now()) {
       let latest = null, latestMs = null;
       for (const s of db.sessions[user_id] ?? []) {
@@ -414,10 +425,34 @@ export function createFileStore(path) {
     },
     // Comeback-nudge sweep: every email-bound user with their latest session
     // date (null when they've never logged one). Mirrors the D1 LEFT JOIN.
+      // ONE ROW PER USER, and the address chosen deterministically.
+      //
+      // A previous wave changed this key from user_id to email, on the reasoning
+      // that two verified addresses on one account meant "one address silently
+      // stopped being nudged". That reasoning was wrong, and the fix delivered
+      // nothing: suppression lives in `u.nudge`, which is per-USER, so the first
+      // row's claim short-circuits every later row for the same user anyway — the
+      // second address received nothing before the change and nothing after it.
+      // What it DID add was cost (an extra getUser per address, an inflated
+      // `checked` count) and non-determinism: push.mjs builds `emailByUser` by
+      // overwriting per row, so the social-email fallback address flipped between
+      // ticks depending on SQL row order.
+      //
+      // One nudge per person is the policy, so key by user and pick the address
+      // deterministically — most recently verified, ties broken lexicographically,
+      // identically in both stores.
     async listAccountLastSessions(nowMs = Date.now()) {
-      return Promise.all(Object.values(db.accounts).map(async (a) => ({
+      const byUser = new Map();
+      for (const a of Object.values(db.accounts)) byUser.set(a.user_id, preferAccount(a, byUser.get(a.user_id)));
+      return Promise.all([...byUser.values()].map(async (a) => ({
         email: a.email, user_id: a.user_id,
         last_date: await this.latestSessionDate(a.user_id, nowMs),
+        // `last_date` answers "when did they last do something that COUNTS" — it is
+        // null for a user whose only sessions are voided or timing-quarantined.
+        // That is the right answer for a lapse, and the wrong one for "have they
+        // ever trained at all", which the activation nudge needs. Two different
+        // questions; they had one signal between them.
+        has_any_session: (db.sessions[a.user_id] ?? []).length > 0,
       })));
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
