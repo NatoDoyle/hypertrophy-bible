@@ -475,12 +475,18 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // over a string no user could see. `first_session` below is the real signal and
     // the first-timer card is its real consumer.
     //
-    // And a readiness note that says the session "stands as planned" is FALSE once
-    // this trim has run — it stood at 7 and is now 4. Two true mechanisms cannot
-    // narrate each other's opposite on one screen (lesson 24), so the normal/high
-    // note is rewritten rather than left to contradict the card above it.
+    // A readiness note written before this trim can contradict the card beside it
+    // (lesson 24), so EVERY branch that reaches here is reconciled — the first cut
+    // rewrote only "stands as planned" while claiming the high note was covered
+    // too (lesson 33): the low note kept crediting its one-accessory trim under a
+    // card saying "4 instead of 7", and the high note invited a back-off set on
+    // the same screen that says day one is not for setting records.
     if (coach_note && /stands as planned/.test(coach_note)) {
       coach_note = "Checked in ✓ — you're in your normal range. Today is still your short first session; the full one is back next time.";
+    } else if (readiness?.level === "low") {
+      coach_note = "You flagged low sleep/energy — good thing today is already your short first session. Take a little extra rest between sets and stop a few reps short of failure. Showing up is the win.";
+    } else if (readiness?.level === "high") {
+      coach_note = "You're feeling fresh — great day for your first session. Keep the weights comfortable anyway; day one is for learning the movements, not chasing records.";
     }
   }
   const exercises = templateExercises.map((ex) => {
@@ -575,7 +581,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const cardio = program.cardio
     ? { ...program.cardio, hard_cardio_ok: (program.cardio.placement?.best_after ?? []).includes(templateSession.name) }
     : null;
-  return { index: idx, day_number: sessions.length + 1, name: templateSession.name, program_name: program.name, exercises, coach_note,
+  // `day_number` counts DERIVABLE sessions, which is right for "session N of your
+  // plan" but must never gate a "first workout ever" claim — it reads 1 for a user
+  // whose only workout is voided or quarantined. `never_trained` is that claim's
+  // own signal, carried explicitly so no consumer re-derives it from the filter.
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
     // feel broken. Rendered by the existing first-timer card.

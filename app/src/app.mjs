@@ -1597,9 +1597,12 @@ export function createApp(store, config = {}) {
     if (result.purpose !== "restore" && user_id) {
       const u = await store.getUser(user_id).catch(() => null);
       if (u?.program?.sessions?.length) {
+        // Include custom exercises, or a user's own lift shows as its raw slug —
+        // the History route's rule, applied to the mail (which is a screen too).
+        const customName = new Map((u.custom_exercises ?? []).map((x) => [x.id, x.name]));
         plan = { name: u.program.name, sessions: u.program.sessions.map((sn) => ({
           name: sn.name,
-          exercises: (sn.exercises ?? []).map((e) => ({ name: exerciseById.get(e.exercise)?.name ?? e.exercise, sets: e.sets, rep_range: e.rep_range })),
+          exercises: (sn.exercises ?? []).map((e) => ({ name: customName.get(e.exercise) ?? exerciseById.get(e.exercise)?.name ?? e.exercise, sets: e.sets, rep_range: e.rep_range })),
         })) };
       }
     }

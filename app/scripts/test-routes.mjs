@@ -2243,6 +2243,39 @@ try {
   ok("#sex a settings save that omits it leaves the stored value alone",
     (await store.getUser(sxU)).profile.sex === "female");
 
+  // --- never_trained rides the /api/today payload (Wave 235) --------------------
+  // The client's first-timer greeting gated on day_number === 1, which derives
+  // from the FILTERED session list — so a user whose only workout is quarantined
+  // (History is showing them "Date needs correcting" right now) was still greeted
+  // "👋 First workout?". The payload now carries the unfiltered truth end to end.
+  const ntU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const ntFresh = (await (await app.request(`/api/today`, { headers: { "X-HB-User": ntU } })).json()).session;
+  ok("#never_trained true for a genuinely fresh user", ntFresh.never_trained === true);
+  await store.addSession(ntU, { session_id: "nt-q1", date: "", sets: [] }); // unparseable date → quarantined
+  const ntAfter = (await (await app.request(`/api/today`, { headers: { "X-HB-User": ntU } })).json()).session;
+  ok("#never_trained false once ANY session exists, even a quarantined one (while day_number still reads 1)",
+    ntAfter.never_trained === false && ntAfter.day_number === 1);
+
+  // --- The emailed plan resolves CUSTOM exercise names (Wave 235) ---------------
+  // The magic-link mail renders the user's week; a custom lift resolved through
+  // exerciseById alone ships as its raw slug. The History route already states the
+  // rule ("include custom exercises, or a user's own lift would show as a raw slug
+  // on the one screen where they have to recognise it") — the mail is such a screen.
+  const sentMail = [];
+  const mailApp = createApp(store, { sendEmail: async (m) => { sentMail.push(m); return { ok: true }; } });
+  const mailU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(mailU, (u) => {
+    u.custom_exercises = [{ id: "custom-my-fly", name: "My Cable Fly" }];
+    u.program.sessions[0].exercises[0] = { exercise: "custom-my-fly", sets: 3, rep_range: "8-12" };
+    return u;
+  });
+  await mailApp.request("/api/auth/request", { method: "POST",
+    headers: { "content-type": "application/json", "CF-Connecting-IP": "10.99.99.99" },
+    body: JSON.stringify({ email: "plan-names@t.com", user_id: mailU }) });
+  const mailNames = (sentMail.at(-1)?.plan?.sessions ?? []).flatMap((sn) => sn.exercises.map((e) => e.name));
+  ok("#the emailed plan resolves a CUSTOM lift's name, not its raw slug",
+    mailNames.includes("My Cable Fly") && !mailNames.includes("custom-my-fly"));
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}
