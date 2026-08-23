@@ -930,5 +930,80 @@ ok("the personalization card quotes the delivered number, not the input cap",
     budgetPlan.rationale, budgetPlan.program).find((x) => x.input === "session_length_min")?.effect ?? "")
     .includes(String(budgetBiggest)));
 
+// --- SECONDARY_SERVED tier (Wave 237, owner considerations #1) ---
+// The KB's own prose is the specification here, and the generator was
+// contradicting it: back.md — "Erectors need little direct work — deadlifts,
+// RDLs, squats, rows, and carries already load them heavily; add back extensions
+// only if they lag" [Grade C]; arms.md — forearm "dedicated work is optional
+// unless grip or forearm size is a specific goal" [Grade C]. Measured before the
+// fix: every Upper day carried a 2-set wrist curl that still left forearms at
+// 2/6 MEV (fragmenting 8-muscle days into 8 exercises × 2 sets), and every
+// int/adv Lower day summoned conventional-deadlift FOR spinal-erectors beside
+// the hamstring RDL — two heavy hinges, one placed for a muscle the KB says the
+// other already covers.
+const ssProfile = { user_id: "ss-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_length_min: 60 };
+const ssPlan = generatePlan(ssProfile, kb);
+const ssFor = new Set(ssPlan.rationale.exercise_choices.map((c) => c.for_muscle));
+ok("#SS no exercise is placed FOR forearms on a default plan (arms.md: optional unless prioritized)",
+  !ssFor.has("forearms"));
+ok("#SS no exercise is placed FOR spinal-erectors on a default plan (back.md: compounds already cover them)",
+  !ssFor.has("spinal-erectors"));
+// The KB's coverage claim, asserted the way the KB makes it. back.md's mechanism
+// is EXPOSURE to heavy compound loading ("deadlifts, RDLs, squats, rows... already
+// load them heavily"), so assert real exposure: several weekly hard sets of lifts
+// that list the erectors as a secondary. The fractional 0.5-credit projection is
+// deliberately NOT compared against the MV landmark here — bracing a heavy RDL is
+// understated by half-credit arithmetic, and the landmark numbers are themselves
+// Grade-C model estimates; where the prose and the proxy disagree, the prose is
+// the specification (the depth gate's own lesson about proxies).
+const ssErectorExposure = ssPlan.program.sessions.flatMap((s) => s.exercises)
+  .filter((e) => (kb.exercises.find((x) => x.id === e.exercise)?.secondary_muscles ?? []).includes("spinal-erectors"))
+  .reduce((a, e) => a + e.sets, 0);
+ok("#SS ...and the erectors really ARE covered: ≥4 weekly hard sets of heavy compounds load them as a secondary",
+  ssErectorExposure >= 4 && (ssPlan.rationale.volume_by_muscle["spinal-erectors"]?.projected_sets ?? 0) > 0);
+ok("#SS the rationale says WHY the muscle has no direct exercise, so the plan screen can explain it",
+  (ssPlan.rationale.volume_by_muscle["forearms"]?.reasons ?? []).join(" ").toLowerCase().includes("compound"));
+// The "if they lag / specific goal" door the KB leaves open: prioritizing the
+// muscle restores full direct work.
+const ssPriPlan = generatePlan({ ...ssProfile, user_id: "ss-2", priority_muscles: ["forearms", "spinal-erectors"] }, kb);
+const ssPriFor = new Set(ssPriPlan.rationale.exercise_choices.map((c) => c.for_muscle));
+ok("#SS prioritizing forearms brings direct forearm work back", ssPriFor.has("forearms"));
+ok("#SS prioritizing spinal-erectors brings direct erector work back", ssPriFor.has("spinal-erectors"));
+// The critique must share the same tier (one exported set, lesson 35's
+// one-predicate rule): a muscle the KB says to serve by secondary credit is not
+// "worth fixing" for sitting below a direct-work MEV on a default plan.
+const ssCrit = critiquePlan(ssPlan.program, kb, { experience: "intermediate" });
+ok("#SS the critique never warns below-MEV for forearms/erectors on a default plan",
+  !ssCrit.findings.some((f) => f.severity === "warn" && (f.muscle === "forearms" || f.muscle === "spinal-erectors")));
+// The freed budget must land where the KB says growth needs it: chest and lats
+// were sitting at 7 vs MEV 8 and 7 vs MEV 10 on this exact profile pre-fix.
+const ssProj = (m) => ssPlan.rationale.volume_by_muscle[m]?.projected_sets ?? 0;
+ok("#SS chest clears its MEV on the flagship intermediate 4d/60m profile",
+  ssProj("chest") >= muscleById.get("chest").landmarks.mev.min);
+
+// --- caveat framing for GENERATED plans (Wave 238, owner considerations #2) ---
+// "When a program is built there shouldn't be any things 'worth fixing' — it
+// should be perfect as built... maybe a 'caveats' note where it explains a
+// sacrifice that had to be made and how a small adjustment would let the app
+// build a better program." Measured pre-fix: 120/120 freshly generated plans
+// opened the Edit & review screen under "N things worth fixing" — the app
+// red-flagging its own untouched output, on the cohort Goal 3 exists for.
+const cvProfile = { user_id: "cv-1", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_length_min: 30 };
+const cvPlan = generatePlan(cvProfile, kb);
+const cvGen = critiquePlan(cvPlan.program, kb, { experience: "beginner", generated: true });
+ok("#CV a generated plan's critique carries NO warn-severity findings — constraints become caveats",
+  cvGen.findings.every((f) => f.severity !== "warn"));
+ok("#CV ...and the summary never says 'worth fixing'",
+  !/worth fixing/i.test(cvGen.summary));
+ok("#CV a caveat names the LEVER (days or session length), not a defect",
+  cvGen.findings.length > 0 && cvGen.findings.some((f) => /day|session/i.test(f.msg)));
+// The same program judged as a USER EDIT keeps the full critical framing —
+// byte-identical to the pre-Wave-238 behavior (the critique still guards edits).
+const cvEdit = critiquePlan(cvPlan.program, kb, { experience: "beginner" });
+ok("#CV the un-generated path still warns (the critique keeps guarding hand edits)",
+  cvEdit.findings.some((f) => f.severity === "warn") && /worth fixing/i.test(cvEdit.summary));
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -6,7 +6,24 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-23** (Waves 234-236: the self-audit of Waves
+Grounded assessment date: **2026-08-23, second turn** (Waves 237-239: the owner's
+program-engine report, measured claim by claim (lesson 36) and mostly confirmed —
+the generator was contradicting the KB's own prose. back.md and arms.md both say
+erectors/forearms need no default direct work, yet every Upper day carried a wrist
+curl and every int/adv lower day summoned conventional-deadlift FOR spinal-erectors
+beside the hamstring RDL; and the weekly-coverage floor ran on every session, so
+each archetype's first day fragmented into 2-set placements (36% of all generated
+days) while day B accidentally got the intended shape. One exported
+`SECONDARY_SERVED` tier + a last-chance coverage floor fixed both (fragmentation →
+7.5%, median 5 exercises/day, majors clear MEV on the flagship profile, RDL owns
+the hypertrophy hinge with conv-deadlift now a strength-goal lift), and the
+critique now speaks in CAVEATS on the app's own untouched output (was: "N things
+worth fixing" on 120/120 fresh plans) while keeping the full guard-rail for hand
+edits. Refuted and recorded: 1-set exercises are specialization maintenance
+micro-doses by design; the kettlebell side bend is core.md's own pick. Fresh
+beginner plans now open at ≤4 exercises structurally — the KB's "20-40 minutes is
+plenty" delivered by allocation rather than by trim. See lesson 62 and telemetry
+7o.) The prior grounding, same day: (Waves 234-236: the self-audit of Waves
 230-232 confirmed **six defects** — five from the one finder that survived a
 session limit (5-for-5, a first), one from inline reading, and the inline one was
 the severe one: **stopping `hb_email` from being planted on SEND (Wave 230) did
@@ -261,6 +278,35 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 237–239 progress (2026-08-23, second turn). The owner's program-engine
+report: the generator contradicted the KB's own prose, and the critique
+red-flagged the app's own output.**
+
+- **Wave 237 (the engine).** One exported `SECONDARY_SERVED` tier (forearms,
+  spinal-erectors — each with the KB's "only if it lags / unless prioritized"
+  clause quoted at the definition) carried through generator AND critique;
+  prioritizing the muscle restores full direct work. The weekly-coverage floor
+  now fires only at a muscle's LAST chance, so day A concentrates 3-4-set doses
+  and day B leads with the rest — the KB templates' own A/B shape. Measured
+  end-to-end: fragmented days 36% → 7.5% of 480, median 5 exercises/day,
+  conventional-deadlift 13 placements (11 on strength plans, where
+  barbell-first is correct), chest/lats/side-delts/biceps clear MEV on the
+  flagship intermediate 4d/60m profile. Fresh beginner day-ones are ≤4
+  exercises structurally, so the first-session trim's tests moved to
+  deliberately legacy-shaped stored-plan fixtures (lesson 45).
+- **Wave 238 (the framing, consideration #2 verbatim).** `critiquePlan` gains
+  `generated: true`: on the app's own untouched output, shortfalls render as
+  constraint caveats naming the lever ("an extra training day, or longer
+  sessions..."), info severity, builder's-voice summary — never "worth fixing".
+  Hand-edited plans keep the critical framing byte-for-byte. Plan screen
+  renders the new "covered by compounds" status only beside a real indirect
+  dose.
+- **Wave 239 (LEARN).** Lesson 62, telemetry 7o, this entry; both considerations
+  deleted per the owner's rule with refutations recorded in the file's note.
+- **Evidence:** 166 plan · 95 derive · 359 route · 199 parity · 78 coach; four
+  tampers each red on exactly their own test; 6/6 browser walkthrough; root
+  gate green (the dead-import gate caught a leftover import of mine).
 
 **Waves 234–236 progress (2026-08-23). The Waves 230-232 self-audit: six
 confirmed defects, headed by a false backup promise no migration could reach.**

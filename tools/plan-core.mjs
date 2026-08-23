@@ -24,6 +24,22 @@ const ARCH = {
 // on 100% of plans — suppressed unless the user explicitly prioritises it.
 const PROGRAMMABLE_MUSCLES = new Set(Object.values(ARCH).flat());
 
+// Muscles the KB itself says to serve by SECONDARY credit, not by a default
+// direct exercise — the prose is the specification: back.md, "Erectors need
+// little direct work — deadlifts, RDLs, squats, rows, and carries already load
+// them heavily; add back extensions only if they lag" [Grade C]; arms.md,
+// forearm "dedicated work is optional unless grip or forearm size is a specific
+// goal" [Grade C]. Before this tier existed the generator contradicted its own
+// KB on every default plan: Upper days carried a 2-set wrist curl (that still
+// left forearms under MEV) as the 9th exercise of an 8-slot day, and every
+// int/adv Lower day summoned conventional-deadlift FOR spinal-erectors beside
+// the hamstring RDL — erectors' only loadable compound, so the pool forced a
+// second heavy hinge for a muscle the first one already covered.
+// PRIORITIZING the muscle is the KB's own "if they lag" door: it restores full
+// direct work. Exported because the CRITIQUE must share this tier (one set,
+// never two copies that can disagree — the gate/renderer split lesson).
+export const SECONDARY_SERVED = new Set(["forearms", "spinal-erectors"]);
+
 // split by days_per_week × training_status → ordered list of archetypes
 const SPLIT_TABLE = {
   "2": { "*": ["FULL", "FULL"] },
@@ -548,11 +564,28 @@ export function generatePlan(profile, kb, opts = {}) {
         volumeRationale[m.id].reasons = [`maintenance during specialization (~${maint} sets, the KB's maintenance volume — holds what you've built)`];
       }
     }
+    // SECONDARY_SERVED (non-priority): no direct exercise by design — the KB's own
+    // guides say compound work covers these. Marked AFTER the specialization block
+    // so the label wins: the muscle isn't "held" by a cap, it simply gets its usual
+    // indirect dose either way. Prioritizing it takes the KB's "if they lag" door
+    // and restores the normal target machinery above.
+    if (SECONDARY_SERVED.has(m.id) && !priority.has(m.id)) {
+      volumeRationale[m.id].secondary_served = true;
+      delete volumeRationale[m.id].maintenance;
+      volumeRationale[m.id].reasons = ["covered by your compound work — deadlifts, squats, rows and curls already load it (the KB's own guidance: direct work is optional unless you prioritize it)"];
+    }
   }
 
-  // 3) how many sessions each muscle appears in (its frequency)
+  // 3) how many sessions each muscle appears in (its frequency).
+  // SECONDARY_SERVED muscles (non-priority) count as directly trained NOWHERE —
+  // the placement passes will never serve them, so a nonzero frequency here would
+  // be a claim the plan doesn't keep (and the self-check below reads frequency as
+  // "how many sessions serve this muscle directly").
   const freq = {};
-  for (const spec of sessionSpecs) for (const m of ARCH[spec.arch]) freq[m] = (freq[m] ?? 0) + 1;
+  for (const spec of sessionSpecs) for (const m of ARCH[spec.arch]) {
+    if (SECONDARY_SERVED.has(m) && !priority.has(m)) continue;
+    freq[m] = (freq[m] ?? 0) + 1;
+  }
 
   // A non-priority muscle inside a specialization block is HELD at its maintenance
   // dose: the block's whole mechanism is to free recovery by NOT growing everything
@@ -726,8 +759,11 @@ export function generatePlan(profile, kb, opts = {}) {
     // deliver at quality, the under-target warning says so — the KB's answer is
     // "add a day rather than cramming" (frequency page), not a 13-set session.
     const perTarget = (m) => Math.min(perSessionCap, Math.ceil((targets[m] ?? 0) / Math.max(1, freq[m] ?? 1)));
-    // muscles this session trains, priority ones first so they win contested budget
-    const order = [...PLACE_ORDER].filter((m) => mset.includes(m)).sort((a, b) => (priority.has(b) ? 1 : 0) - (priority.has(a) ? 1 : 0));
+    // muscles this session trains, priority ones first so they win contested budget.
+    // SECONDARY_SERVED muscles are absent unless prioritized — every placement pass
+    // below iterates `order`, so this one filter IS the tier's enforcement point
+    // (coverage floor, first-serve, staples and residual all follow it for free).
+    const order = [...PLACE_ORDER].filter((m) => mset.includes(m) && (!SECONDARY_SERVED.has(m) || priority.has(m))).sort((a, b) => (priority.has(b) ? 1 : 0) - (priority.has(a) ? 1 : 0));
     // ISO_FIRST muscles draw from their isolation pool first (laterals before
     // upright-rows); everyone else compounds-first as before.
     const poolFor = (m) => ISO_FIRST.has(m)
@@ -766,14 +802,24 @@ export function generatePlan(profile, kb, opts = {}) {
       }
     }
 
-    // 4a¼) WEEKLY COVERAGE FLOOR: before this session doubles up on big muscles,
-    // every muscle it trains that NO session has served yet this week gets one
-    // exercise (~2 sets). One 16-set session can't serve 11 muscles, but the week
-    // must — abs/calves were getting zero all week on 2-day splits (last in
-    // PLACE_ORDER), and specialization-maintenance muscles were dropping to zero
-    // rather than their maintenance floor. Runs BEFORE pattern-coverage doubling.
+    // 4a¼) WEEKLY COVERAGE FLOOR: a muscle that would otherwise finish the week
+    // with NOTHING gets one exercise (~2 sets) — abs/calves were getting zero all
+    // week on 2-day splits (last in PLACE_ORDER), and specialization-maintenance
+    // muscles were dropping to zero rather than their maintenance floor.
+    // LAST-CHANCE ONLY: the floor fires when no LATER session trains the muscle.
+    // Its first cut ran on every session — so on each archetype's FIRST day every
+    // muscle was still week-unserved and the floor flooded the whole budget with
+    // 2-set placements (a default Upper A was 8 exercises × 2 sets — the KB's own
+    // templates never fragment like that, running 3-6 exercises at 2-4 sets), while
+    // the archetype's SECOND day, with the floor quiet, built the intended
+    // compound-first 3-4-set shape. Deferring the rescue to the muscle's final
+    // qualifying session turns that accident into deliberate A/B emphasis:
+    // day A concentrates real doses on the muscles it leads with, day B leads with
+    // the rest — the exact structure the worked templates model.
+    const trainsLater = (m) => sessionSpecs.slice(sIdx + 1).some((sp) => ARCH[sp.arch].includes(m));
     for (const m of order) {
-      // (direct[m] > 0): a muscle already holding direct sets THIS session (the
+        if (trainsLater(m)) continue;
+    // ((direct[m] > 0): a muscle already holding direct sets THIS session (the)
       // 4a0 priority pass, or a compound placed for a neighbour) is served — the
       // floor exists for muscles with NOTHING, and `order` is priority-first, so
       // without this check a priority arm just served by 4a0 took a SECOND
@@ -823,6 +869,17 @@ export function generatePlan(profile, kb, opts = {}) {
       // no session has served yet jump the queue, so the same last-in-order
       // muscles (calves, abs) can't lose every single day.
       if (pass === 0) {
+        // LAST-CHANCE knee-flexion first: the staple below runs after first-serve,
+        // which is right for mid-week sessions (spare budget picks it up cheaply) —
+        // but on the week's FINAL hamstring session a fully-dosed compound pass can
+        // spend the whole budget before the staple fires, and then no session is
+        // left to cover the short head at all (beginner 12-set lower days did
+        // exactly this once the coverage floor stopped fragmenting day A). The
+        // guarantee is weekly, so its last chance outranks first-serve's doubling.
+        if (!weekKneeFlexion && mset.includes("hamstrings") && !trainsLater("hamstrings") && !holdMaint("hamstrings") && room()) {
+          const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
+          if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
+        }
         const fsOrder = [...order].sort((a, b) => (weekServed.has(a) ? 1 : 0) - (weekServed.has(b) ? 1 : 0));
         for (const m of fsOrder) {
           if (servedFor.has(m) || !room() || (credited[m] ?? 0) >= perTarget(m)) continue;
@@ -1069,6 +1126,13 @@ export function generatePlan(profile, kb, opts = {}) {
     r.projected_sets = proj;
     r.frequency = f;
     r.projected_status = f ? (vsLm[m]?.status ?? "no-data") : "not-in-split";
+    // A secondary-served muscle's whole prescription is its indirect dose, so the
+    // below-MEV/under-target machinery (which assumes direct work SHOULD exist)
+    // stays quiet; over-MRV spillover from compounds would still be caught by the
+    // trim above. The status gets its own value — the client renders it as
+    // "covered by compounds" — never a warning about volume it was never meant
+    // to receive directly.
+    if (r.secondary_served) { r.projected_status = proj > 0 ? "secondary-served" : "not-reached"; continue; }
     if (r.target_sets <= 0) continue; // NOTE: the field is target_sets — `r.target` was undefined here, which silently killed the under-target warning below for every profile
     // A maintenance muscle (specialization block) is INTENTIONALLY low — its status
     // is "maintenance" and it earns no growth warnings; warning that a muscle we're
@@ -1291,7 +1355,17 @@ const MUSCLE_LABEL = {
   "rear-delts": "rear delts", "spinal-erectors": "spinal erectors",
 };
 
-export function critiquePlan(program, kb, { experience = "intermediate" } = {}) {
+// `generated: true` = this program is the app's OWN untouched output, and the
+// critique must speak accordingly (owner considerations #2): the questionnaire
+// gathered the constraints and the engine built the best fit — so a shortfall is
+// not a defect the user should fix, it is a CAVEAT: the honest price of their
+// days/session-length, named together with the lever that would buy more. The
+// full critical framing stays for hand-edited plans, where the critique is the
+// guard rail it was built to be. Structurally, a generated plan can't trip the
+// other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
+// run at generation), so "generated" only re-frames the volume findings.
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false } = {}) {
+  const prioritySet = new Set(priority);
   const { exercises, muscles } = kb;
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
@@ -1312,8 +1386,16 @@ export function critiquePlan(program, kb, { experience = "intermediate" } = {}) 
   for (const [m, r] of Object.entries(vsLm)) {
     const lm = muscleById.get(m)?.landmarks;
     if (!lm) continue;
+    // The SAME tier the generator uses (one exported set): a muscle the KB says
+    // to serve by compound work is not "below MEV" in any actionable sense on a
+    // plan that never owed it direct work — warning about it taught every user
+    // to add wrist curls the KB calls optional. Over-MRV spillover stays real
+    // and still warns below. Prioritizing the muscle restores the full check.
+    if (SECONDARY_SERVED.has(m) && !prioritySet.has(m) && r.status === "below-MEV") continue;
     const grade = lm.evidence_grade || "C";
-    if (r.status === "over-MRV") add("warn", `${name(m)}: ${r.sets} hard sets/wk is above MRV (~${lm.mrv.max}) — likely more than you can recover from. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+    if (r.status === "over-MRV") add(generated ? "info" : "warn", generated
+      ? `${name(m)}: ~${r.sets} sets/wk from compound overlap — your other lifts work it on the way past. The plan already keeps its direct work trimmed; nothing for you to change. [Grade ${grade}]`
+      : `${name(m)}: ${r.sets} hard sets/wk is above MRV (~${lm.mrv.max}) — likely more than you can recover from. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
     else if (r.status === "below-MEV") {
       // A BEGINNER is deliberately built at ~MEV under a session-quality cap the
       // generator cannot exceed, so most muscles sit a little under MEV BY DESIGN.
@@ -1323,6 +1405,12 @@ export function critiquePlan(program, kb, { experience = "intermediate" } = {}) 
       // (< 0.6×MEV, mirroring the generator's own under-target threshold) is a warn.
       // Intermediate/advanced genuinely need the volume, so below-MEV stays a warn.
       const severe = r.sets < lm.mev.min * 0.6;
+      if (generated) {
+        // A caveat, not a verdict: the plan already is the best fit to the stated
+        // constraints, so name the trade and the lever — never "fix your plan".
+        add("info", `${name(m)}: ~${r.sets} sets/wk is what fits your ${program.days_per_week ?? "current"}-day setup — the ideal range starts around ${lm.mev.min}. An extra training day, or longer sessions, would let the plan give it more${prioritySet.has(m) ? "" : "; marking it a priority muscle would tilt the current budget its way"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+        continue;
+      }
       const soft = experience === "beginner" && !severe;
       add(soft ? "info" : "warn", `${name(m)}: ${r.sets} hard sets/wk is below MEV (~${lm.mev.min}) — ${soft ? "a little under the ideal, which is normal on a starter plan; you'll add more as you get more days or time" : "probably too little to grow it"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
     }
@@ -1349,8 +1437,12 @@ export function critiquePlan(program, kb, { experience = "intermediate" } = {}) 
   }
 
   const warns = findings.filter((f) => f.severity === "warn").length;
-  const summary = warns === 0
-    ? (findings.length ? "Solid plan — a couple of small tweaks below." : "This plan checks out against the KB — well balanced and in the productive volume ranges. 💪")
-    : `${warns} thing${warns === 1 ? "" : "s"} worth fixing, plus a few suggestions.`;
+  const summary = generated
+    ? (findings.length
+      ? "Your plan is built to fit your answers. The honest caveats — what your setup trades away, and what would unlock more:"
+      : "This plan checks out against the KB — well balanced and in the productive volume ranges. 💪")
+    : warns === 0
+      ? (findings.length ? "Solid plan — a couple of small tweaks below." : "This plan checks out against the KB — well balanced and in the productive volume ranges. 💪")
+      : `${warns} thing${warns === 1 ? "" : "s"} worth fixing, plus a few suggestions.`;
   return { summary, findings, volume_by_muscle: Object.fromEntries(Object.entries(vsLm).map(([m, r]) => [m, { name: name(m), sets: r.sets, status: r.status }])) };
 }
