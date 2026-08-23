@@ -15,3 +15,5 @@ and KB-backed; the kettlebell side bend is core.md's own ranked oblique pick whe
 kettlebells are available; and RDL was already the hypertrophy hinge — the conventional
 deadlifts were being summoned for SPINAL ERECTORS, which back.md says need no default
 direct work at all, and that is what was fixed.)*
+
+1. audit the ui/ux of the app. it doesnt feel very intuitive. Can we audit the naming conventions for the menus, how the menus are organized, how everything is split between the menus, the flow of the app. stuff that needs to be accessed should be quick and easily accessable. navigation and finding things should be easy, intuitive and obvious. I want less scrolling and clicking. i want denser pages. I don't want to have to click through 4 pages/screens to get to something. I want more information on my screen at once.

@@ -367,7 +367,7 @@ export function createApp(store, config = {}) {
     // The app's own untouched output is critiqued in CAVEAT framing (constraints
     // and levers, no "worth fixing"); a hand-edited plan keeps the full guard rail.
     const critProgram = b.program || user.program;
-    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom));
+    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null));
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -411,7 +411,7 @@ export function createApp(store, config = {}) {
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
-    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom) });
+    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null) });
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's

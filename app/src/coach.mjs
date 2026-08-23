@@ -822,7 +822,16 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // maintenance dose is "holding steady", not "add volume" — the client's
   // s-maint status/legend exist for exactly this (they were never emitted).
   const maintIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.maintenance).map(([id]) => id));
-  const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets, status: maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : v.status }))
+  // The tier's THIRD consumer (the generator and the critique are the first two):
+  // a muscle the plan deliberately serves through compound credit must not be told
+  // "add volume" here while the plan screen calls the same state "covered by
+  // compounds" — one user, three surfaces, one answer (lesson 10 at the coaching
+  // layer; the exact s-maint shape handled one line up). Read from the STORED
+  // rationale, so a pre-tier plan — which really does program wrist curls — keeps
+  // its old, equally honest statuses until its next regeneration.
+  const secServedIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.secondary_served).map(([id]) => id));
+  const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets,
+    status: secServedIds.has(id) && v.status === "below-MEV" ? "secondary-served" : maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : v.status }))
     .sort((a, b) => b.sets - a.sets);
   // Individualized patience (Increment B): the plateau surface uses the SAME personal
   // stall window as the auto-tune, so a slow responder isn't told they've plateaued at
@@ -849,6 +858,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
+    .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)
     .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
   // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
   const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
