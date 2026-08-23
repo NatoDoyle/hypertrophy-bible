@@ -3,7 +3,7 @@
 // app and every route are byte-for-byte identical on Node and on Workers.
 // Rows hold a JSON blob per record — the app owns the shape, D1 is just durable
 // key/value with an index. See schema.sql for the tables.
-import { mergeUserProfile } from "./merge-profile.mjs";
+import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
 import { activationFunnel, onboardShape, reachCohort, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
@@ -35,13 +35,6 @@ const derivableShapeBound = (nowMs) =>
 // user remains permitted for low-level fixture/backfill compatibility; routes
 // already require a real active user.
 const notTombstonedOwner = "NOT EXISTS (SELECT 1 FROM users WHERE id = ? AND json_extract(data, '$._merged_into') IS NOT NULL)";
-
-const preferAccount = (a, b) => {
-  if (!b) return a;
-  const av = String(a.verified_at ?? ""), bv = String(b.verified_at ?? "");
-  if (av !== bv) return av > bv ? a : b;
-  return String(a.email) < String(b.email) ? a : b;
-};
 
 export function createD1Store(db) {
   const isTombstoned = async (id) => {
@@ -510,6 +503,15 @@ export function createD1Store(db) {
     async hasAnySession(user_id) {
       return !!(await db.prepare("SELECT 1 AS ok FROM sessions WHERE user_id = ? LIMIT 1").bind(user_id).first());
     },
+    // The one address a user IS for mail/UI purposes — most recently verified,
+    // via the same shared preferAccount the sweep list uses, so the Me tab's
+    // "signed in" truth and the sweep's recipient can never disagree. Null when
+    // no verified account exists (the server-side answer the client needs to
+    // stop trusting a localStorage flag the old send path planted).
+    async accountEmail(user_id) {
+      const { results } = await db.prepare("SELECT email, verified_at FROM accounts WHERE user_id = ?").bind(user_id).all();
+      return results.reduce((best, a) => preferAccount(a, best), null)?.email ?? null;
+    },
     async latestSessionDate(user_id, nowMs = Date.now()) {
       // Timing quarantine is a JS predicate, so this can no longer be a bare
       // SQL MAX(date). It briefly became "pull every session blob and parse it",
@@ -538,7 +540,9 @@ export function createD1Store(db) {
       // isolation those loops were written for.
       const bound = derivableShapeBound(nowMs);
       const { results } = await db
-        .prepare(`SELECT a.email, a.user_id, a.verified_at AS verified_at, s.date AS date, json_extract(s.data, '$.local_date') AS local_date
+        .prepare(`SELECT a.email, a.user_id, a.verified_at AS verified_at,
+            EXISTS(SELECT 1 FROM sessions s2 WHERE s2.user_id = a.user_id) AS has_any_session,
+            s.date AS date, json_extract(s.data, '$.local_date') AS local_date
           FROM accounts a
           LEFT JOIN sessions s ON s.user_id = a.user_id AND ${notVoided("s.data")}
             AND s.date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND substr(s.date, 1, 10) <= ?
@@ -550,11 +554,13 @@ export function createD1Store(db) {
       // against the same user). Keying by user_id collapsed them, and since the
       // consumers of this list SEND MAIL, one verified address silently stopped
       // being nudged. The file store returns one row per account row; so does this.
-      // One extra query, not one per account: "has this user ever logged anything at
-      // all", which is a different question from `last_date` (null when every
-      // session is voided or timing-quarantined). Two small columns, no blobs.
-      const { results: everRows } = await db.prepare("SELECT DISTINCT user_id FROM sessions").all();
-      const everTrained = new Set(everRows.map((r) => r.user_id));
+      // `has_any_session` ("has this user ever logged anything at all" — a
+      // different question from `last_date`, which is null when every session is
+      // voided or timing-quarantined) rides the SAME query as an EXISTS column.
+      // Its first cut was a second `SELECT DISTINCT user_id FROM sessions` — an
+      // unbounded whole-table scan at the head of BOTH sweeps, i.e. the exact
+      // grows-past-the-budget failure the round-trip comment above exists to
+      // forbid, probed only for the handful of ids in `accounts` anyway.
       // ONE ROW PER USER, and the address chosen deterministically.
       //
       // A previous wave changed this key from user_id to email, on the reasoning
@@ -571,16 +577,23 @@ export function createD1Store(db) {
       // One nudge per person is the policy, so key by user and pick the address
       // deterministically — most recently verified, ties broken lexicographically,
       // identically in both stores.
-      const best = new Map();   // user_id -> {email, user_id, last_date}
+      // Each tracked entry KEEPS its winner's verified_at — preferAccount compares
+      // by that field, so an entry without it always lost to the next verified row
+      // and the "deterministic" pick was really last-row-in-SQL-order (caught by
+      // the adverse-insertion-order parity test; the file store was never wrong
+      // because its entries are whole account objects).
+      const best = new Map();   // user_id -> {email, verified_at, user_id, last_date, has_any_session}
       for (const r of results) {
         const prev = best.get(r.user_id);
-        if (!prev) best.set(r.user_id, { email: r.email, user_id: r.user_id, last_date: null, has_any_session: everTrained.has(r.user_id) });
-        else if (preferAccount(r, prev) === r) prev.email = r.email;
+        if (!prev) best.set(r.user_id, { email: r.email, verified_at: r.verified_at, user_id: r.user_id, last_date: null, has_any_session: !!r.has_any_session });
+        else if (preferAccount(r, prev) === r) { prev.email = r.email; prev.verified_at = r.verified_at; }
         const acc = best.get(r.user_id);
         if (acc.last_date == null && r.date != null
           && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs)) acc.last_date = r.date;
       }
-      return [...best.values()];
+      // Strip the working field: the file store's rows don't carry it, and the two
+      // stores must return byte-identical shapes.
+      return [...best.values()].map(({ verified_at, ...row }) => row);
     },
     // created_at is written explicitly in the same ISO-8601 format the file
     // store uses (new Date().toISOString()), not left to the accounts table's

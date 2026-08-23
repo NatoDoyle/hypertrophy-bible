@@ -3,16 +3,9 @@
 // D1-backed store (see worker.mjs) with zero route changes.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { mergeUserProfile } from "./merge-profile.mjs";
+import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
 import { activationFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
-
-const preferAccount = (a, b) => {
-  if (!b) return a;
-  const av = String(a.verified_at ?? ""), bv = String(b.verified_at ?? "");
-  if (av !== bv) return av > bv ? a : b;
-  return String(a.email) < String(b.email) ? a : b;
-};
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -415,6 +408,16 @@ export function createFileStore(path) {
     // rows. Deliberately not derivable from latestSessionDate, which answers the
     // different question "when did they last do something that counts".
     async hasAnySession(user_id) { return (db.sessions[user_id] ?? []).length > 0; },
+    // The one address a user IS for mail/UI purposes — most recently verified,
+    // via the same shared preferAccount the sweep list uses, so the Me tab's
+    // "signed in" truth and the sweep's recipient can never disagree. Null when
+    // no verified account exists (the server-side answer the client needs to
+    // stop trusting a localStorage flag the old send path planted).
+    async accountEmail(user_id) {
+      let best = null;
+      for (const a of Object.values(db.accounts)) if (a.user_id === user_id) best = preferAccount(a, best);
+      return best?.email ?? null;
+    },
     async latestSessionDate(user_id, nowMs = Date.now()) {
       let latest = null, latestMs = null;
       for (const s of db.sessions[user_id] ?? []) {

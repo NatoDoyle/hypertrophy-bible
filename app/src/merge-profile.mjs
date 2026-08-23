@@ -6,6 +6,20 @@
 // added to the user record after reassignUserData was written silently orphans
 // on merge instead of following the user. Never overwrites anything `to` already
 // has; only fills gaps `to` is missing or adds to counts/lists it already owns.
+// Which of two account rows is "the" address for a user who has verified more
+// than one: most recently verified wins, ties broken lexicographically so the
+// answer is deterministic. Shared by BOTH stores and by every consumer that must
+// agree on whose address a user is (the sweep list, the Me tab's account truth) —
+// a copy per store is exactly the divergence CLAUDE.md's parity rule forbids, and
+// the copies did diverge once: the D1 sweep compared each row against a projected
+// entry that carried no verified_at, so whichever row SQL emitted last won.
+export const preferAccount = (a, b) => {
+  if (!b) return a;
+  const av = String(a.verified_at ?? ""), bv = String(b.verified_at ?? "");
+  if (av !== bv) return av > bv ? a : b;
+  return String(a.email) < String(b.email) ? a : b;
+};
+
 export const FOLLOWING_CAP = 20;         // parity with POST /api/following's own cap
 export const HISTORY_CAP_FIELD_CAP = 24; // parity with streak_freezes/pause_history's existing .slice(-24)
 export const CHALLENGE_HISTORY_CAP = 20; // parity with adherence.mjs's CHALLENGE_HISTORY_CAP

@@ -90,6 +90,17 @@ reading, which loops back to #1 and to sharing the app at all.
 Nothing here needs you. It is recorded so a future iteration doesn't re-raise 9.6%
 as a crisis.
 
+### 10. Put STATS_KEY where local iterations can read it *(30 seconds, added 2026-08-23)*
+**Why:** the Goal-4 numbers (`GET /api/stats` — users, activation, push subscribers) are
+the loop's only ground truth for the project's stated top priority, and the key exists
+only as a Cloudflare secret since the 2026-08-18 rotation — so a local iteration cannot
+take a fresh reading and has to carry the last one forward instead (the 2026-08-23
+iteration did exactly that).
+**What I need (30s):** add a line `STATS_KEY=<the value>` to `app/.dev.vars` (it's
+git-ignored, same file the VAPID key already lives in). If you no longer have the value,
+say so and I'll rotate it again next iteration (`wrangler secret put STATS_KEY`) and
+write it there myself in the same step.
+
 ### 3. Donations / Open Collective
 **Blocked on:** you creating the account. `DONATE_URL` in `app/public/app.js` is `""`, so the
 support button stays hidden by design (never a dead or fake donation link). The copy is

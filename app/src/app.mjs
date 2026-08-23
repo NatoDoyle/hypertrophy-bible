@@ -723,7 +723,14 @@ export function createApp(store, config = {}) {
     const pendingNudge = user.profile?.partner_nudge;
     const nudged = !!pendingNudge && pendingNudge.at > (user.profile?.nudge_seen_at ?? 0);
     if (nudged) await store.updateUser(id, (u) => { u.profile = { ...(u.profile ?? {}), nudge_seen_at: pendingNudge.at }; return u; });
-    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers, nudged });
+    // The server's own answer to "does this user actually have an account" (most
+    // recently verified address, or null). The client's `hb_email` flag used to be
+    // planted on SEND, so a user who never clicked their link carried a false
+    // "✓ signed in / your progress is saved" forever — Wave 230 stopped new
+    // plantings, but a stopped write does not reach flags already stored (lesson
+    // 41); this field is what lets the client reconcile them against the truth.
+    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers, nudged,
+      account_email: await store.accountEmail(id) });
   });
 
   // Weekly training commitment (#4 adherence, roadmap item #2): the user states
@@ -1590,9 +1597,12 @@ export function createApp(store, config = {}) {
     if (result.purpose !== "restore" && user_id) {
       const u = await store.getUser(user_id).catch(() => null);
       if (u?.program?.sessions?.length) {
+        // Include custom exercises, or a user's own lift shows as its raw slug —
+        // the History route's rule, applied to the mail (which is a screen too).
+        const customName = new Map((u.custom_exercises ?? []).map((x) => [x.id, x.name]));
         plan = { name: u.program.name, sessions: u.program.sessions.map((sn) => ({
           name: sn.name,
-          exercises: (sn.exercises ?? []).map((e) => ({ name: exerciseById.get(e.exercise)?.name ?? e.exercise, sets: e.sets, rep_range: e.rep_range })),
+          exercises: (sn.exercises ?? []).map((e) => ({ name: customName.get(e.exercise) ?? exerciseById.get(e.exercise)?.name ?? e.exercise, sets: e.sets, rep_range: e.rep_range })),
         })) };
       }
     }

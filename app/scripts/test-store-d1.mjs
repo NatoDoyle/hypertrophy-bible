@@ -987,6 +987,47 @@ try {
     // extra store read and a non-deterministic `emailByUser` in the push sweep.
     ok(`accounts: one row per user, most-recently-verified address wins (${label})`,
       rows.length === 1 && rows[0] === `second-${label}@example.com`);
+
+    // The ADVERSE insertion order: the later-verified address arrives FIRST in row
+    // order. The pick must key on verified_at, not on whichever row the store
+    // happens to emit last — D1's first cut compared each row against a projected
+    // entry that carried no verified_at, so any later verified row won and "most
+    // recently verified" silently meant "last row in SQL order" (and diverged from
+    // the file store, whose entries kept the whole account object).
+    // THREE addresses, in [oldest, newest, middle] insertion order — the one
+    // arrangement that catches both halves: the newest must beat a row that
+    // arrives after it (pick by verified_at, not row order), AND the tracked
+    // entry must carry the newest's OWN verified_at forward, or the middle
+    // address wins the final comparison against the oldest's stale stamp.
+    const uidA = `two-addr-adverse-${label}`;
+    await s0.saveUser(uidA, { profile: { user_id: uidA } });
+    await s0.saveAccount(`oldest-${label}@example.com`, uidA, "2026-08-01T00:00:00.000Z");
+    await s0.saveAccount(`newest-${label}@example.com`, uidA, "2026-08-05T00:00:00.000Z");
+    await s0.saveAccount(`middle-${label}@example.com`, uidA, "2026-08-03T00:00:00.000Z");
+    const advRow = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .find((r) => r.user_id === uidA);
+    ok(`accounts: the address pick keys on verified_at, not row order (${label})`,
+      advRow && advRow.email === `newest-${label}@example.com` && !("verified_at" in advRow));
+    // ...and the winner-inserted-FIRST arrangement, which is the one that catches
+    // an initial tracked entry stamped WITHOUT its verified_at: there the first
+    // row must win on its own stamp, and an empty stamp loses to everything.
+    const uidB = `two-addr-winner-first-${label}`;
+    await s0.saveUser(uidB, { profile: { user_id: uidB } });
+    await s0.saveAccount(`win-${label}@example.com`, uidB, "2026-08-05T00:00:00.000Z"); // later — inserted FIRST
+    await s0.saveAccount(`lose-${label}@example.com`, uidB, "2026-08-01T00:00:00.000Z");
+    const winRow = (await s0.listAccountLastSessions(Date.parse("2026-09-01T00:00:00.000Z")))
+      .find((r) => r.user_id === uidB);
+    ok(`accounts: a first-inserted winner keeps winning on its own stamp (${label})`,
+      winRow && winRow.email === `win-${label}@example.com`);
+    // accountEmail: the same one-true-address as a per-user probe — the server
+    // truth behind the Me tab's "signed in" claim. Shares preferAccount with the
+    // sweep list above so the two can never disagree about which address is a
+    // user's, in either store.
+    ok(`accountEmail: most-recently-verified in BOTH orders, null when none (${label})`,
+      typeof s0.accountEmail === "function"
+      && (await s0.accountEmail(uid)) === `second-${label}@example.com`
+      && (await s0.accountEmail(uidA)) === `newest-${label}@example.com`
+      && (await s0.accountEmail(`ghost-${label}`)) === null);
   }
 
   // --- an archive written under the OLD snapshot shape still reports its counts -

@@ -1002,6 +1002,15 @@ check("a user whose only sessions are quarantined is NOT treated as a first-time
   assert.deepEqual(asFirstTimer.first_session, { shown: 4, full: program.sessions[0].exercises.length });
   assert.equal(hasTrained.first_session, null, "they have trained — no 'day one' claim");
   assert.ok(hasTrained.exercises.length > 4, "and no beginner trim either");
+  // The payload must carry the distinction itself: the client's whole first-timer
+  // greeting ("👋 First workout? You've got this") gated on day_number === 1, and
+  // day_number derives from the same FILTERED list — so the voided/quarantined-only
+  // user this fix exists for was still greeted as a first-timer by the card one
+  // line above the paragraph the fix corrected (lesson 1: the premise lives in
+  // every field derived from the filter, not just the branch you fixed).
+  assert.equal(asFirstTimer.never_trained, true);
+  assert.equal(hasTrained.never_trained, false);
+  assert.equal(hasTrained.day_number, 1, "day_number still reads 1 here — which is why it cannot be the client's gate");
 });
 
 check("a normal check-in on a shortened first session never says the session stands as planned", () => {
@@ -1028,6 +1037,24 @@ check("a low-readiness FIRST session gets one note, not two contradictory ones",
   // last accessory" would be two true mechanisms describing each other's opposite.
   assert.ok(!(/deliberately short/i.test(note) && /trimmed the last accessory/i.test(note)));
   assert.ok(/low sleep|energy/i.test(note), "the readiness note wins — it is the more specific truth about today");
+  // ...but the low note must not claim ITS lever did the trimming: it drops one
+  // accessory, the first-session cap then drops to 4, and the card beside it says
+  // "4 instead of your usual 7". "I trimmed the last accessory" credits the wrong
+  // mechanism with the wrong count (lesson 24, the branch the rewrite missed).
+  assert.ok(!/trimmed the last accessory/i.test(note), note);
+});
+
+check("a high-readiness FIRST session never invites a back-off set", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "high", score: 5 });
+  // The first-timer card says day one "is not for setting records"; the stock
+  // high note says "if a lift feels easy, add a back-off set". Same screen,
+  // opposite coaching (lesson 24's shape, third branch).
+  assert.ok(day1.first_session, "precondition: the trim applied, or this proves nothing");
+  assert.ok(!/back-off set/i.test(day1.coach_note ?? ""), day1.coach_note ?? "");
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

@@ -14,6 +14,21 @@ let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or n
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
 let planEmailSent = false;
+// Server truth for "you have an account": /api/adherence carries `account_email`
+// (the most-recently-verified address, or null). The OLD send path planted
+// hb_email on SEND, so a user who never clicked their link carried a false
+// "✓ signed in / your progress is saved" forever — and stopping the write could
+// not reach flags already stored (lesson 41). Reconcile whenever the payload
+// passes by: adopt the server's address (this also follows a post-merge address
+// change), clear the flag when no account exists. Never touched on a network
+// failure — only a real server answer may change it.
+function syncAccountEmail(a) {
+  if (!a || !("account_email" in a)) return;
+  try {
+    if (a.account_email) localStorage.setItem("hb_email", a.account_email);
+    else localStorage.removeItem("hb_email");
+  } catch {}
+}
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
@@ -939,6 +954,7 @@ async function renderToday() {
     $("#retry-today").onclick = () => renderToday();
     return;
   }
+  syncAccountEmail(adh);
   const s = data.session;
   // Streak + level header, and the motivational state (loss-aversion when at risk,
   // warm welcome on a comeback, calm reassurance when paused).
@@ -962,7 +978,12 @@ async function renderToday() {
   // `first_session` is set by buildToday when a true beginner's day one has been
   // shortened. Saying so is not optional: the plan screen shows the full week, so
   // an unexplained 4-vs-7 gap reads as a bug rather than as coaching.
-  const firstTimer = s.day_number === 1
+  // Gated on `never_trained`, NOT `day_number === 1`: day_number counts DERIVABLE
+  // sessions, so a user whose only workout is voided or quarantined reads as day 1
+  // — and greeting them "First workout?" states the opposite of what they did,
+  // beside the History tab showing that very workout (the premise Wave 230 fixed,
+  // at the one field it missed).
+  const firstTimer = s.never_trained
     ? `<div class="card"><b>👋 First workout? You've got this.</b>
         ${s.first_session ? `<p class="muted"><b>Today is ${s.first_session.shown} exercises instead of your usual ${s.first_session.full}</b> — on purpose. A first session of 20–40 minutes is plenty: day one is for finding the machines and learning how they feel, not for setting records. Your full session is back next time.</p>` : ""}
         <p class="muted">Here's exactly how a session goes — arrive, warm up, find a comfy weight, do your sets. A 2-minute read makes the whole thing easy.</p>
@@ -2710,6 +2731,7 @@ async function renderCoach() {
     $("#retry-coach").onclick = () => renderCoach();
     return;
   }
+  syncAccountEmail(a);
   let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
   let cw = { challenges: [] }; try { cw = await api(`/api/challenge`); } catch {}
   // Multi-challenge (Wave 199): `challenges` is a LIST — each slot carries its own

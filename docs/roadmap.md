@@ -6,7 +6,26 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-21** (Waves 230-232: a self-audit that found
+Grounded assessment date: **2026-08-23** (Waves 234-236: the self-audit of Waves
+230-232 confirmed **six defects** — five from the one finder that survived a
+session limit (5-for-5, a first), one from inline reading, and the inline one was
+the severe one: **stopping `hb_email` from being planted on SEND (Wave 230) did
+nothing for every install the old code had already mislabelled** — a user who
+never clicked their link kept "✓ signed in / your progress is saved" over an
+account that does not exist, a false backup promise living in localStorage where
+no migration can reach it (lesson 61). `/api/adherence` now carries the server's
+own `account_email` and the client reconciles against it, verified in a real
+browser by planting the stale flag and watching it clear. Also fixed: D1's
+"deterministic" address pick was really last-row-in-SQL-order, with its own
+regression test passing only in the lucky insertion order (lesson 54 — which then
+also caught my first replacement fixture); the first-timer greeting still keyed
+on `day_number`, a sibling field of the exact filtered-list premise Wave 230
+fixed; the readiness notes contradicting the first-session trim on the same
+screen; an unbounded whole-sessions-table scan at the head of both sweeps; and
+custom lifts shipping as raw slugs in the plan email. Push subscriptions: unread
+this iteration — no STATS_KEY is available locally (BLOCKERS #10 is the
+30-second fix); the 2026-08-21 reading, still 0, stands. The prior grounding was
+2026-08-21, Waves 230-232: a self-audit that found
 **eight defects, seven of them mine**, and the completion of the KB traversability
 work. The audit's theme is one false premise propagating: "no DERIVABLE sessions"
 is not "never trained", so a user whose only workout is voided or carries a legacy
@@ -242,6 +261,32 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 234–236 progress (2026-08-23). The Waves 230-232 self-audit: six
+confirmed defects, headed by a false backup promise no migration could reach.**
+
+- **Wave 234 (account truth).** `/api/adherence` now answers "does this user
+  actually have an account" (`account_email`, via ONE shared `preferAccount` in
+  `merge-profile.mjs` — the per-store copies had already diverged in effect); the
+  client adopts or clears `hb_email` against it, so installs the old set-on-SEND
+  code mislabelled stop claiming a backup that does not exist. D1's per-user
+  address pick genuinely keys on `verified_at` now (it was last-row-in-SQL-order —
+  repro'd against both stores before fixing, with regression fixtures covering
+  BOTH adverse insertion arrangements), and `has_any_session` rides the sweep
+  query as an EXISTS column instead of a second unbounded whole-table scan.
+- **Wave 235.** `buildToday` carries `never_trained`; the first-timer greeting
+  gates on it instead of `day_number === 1` (the same filtered-list premise Wave
+  230 fixed, at its third surface — a voided-only user was still greeted "First
+  workout?"). Every readiness note now reconciles with the first-session trim
+  (low credited its one-accessory trim under a card saying "4 instead of 7"; high
+  invited a back-off set beside "not for setting records"). The emailed plan
+  resolves custom lifts by name.
+- **Wave 236 (LEARN).** Lesson 61, telemetry 7p, this entry, BLOCKERS #10.
+- **Evidence:** 359 route · 199 parity · 78 coach · 77 adherence · 31 nudge · 86
+  auth · 163 push · 18 learn-data; every new regression observed red pre-fix;
+  five tampers each turned exactly their own test red (two only after the tamper
+  exposed the fixture); 10/10 real-browser walkthrough including the
+  planted-stale-flag reconcile.
 
 **Waves 230–232 progress (2026-08-21). A self-audit with eight findings, and the
 KB's last dead text made reachable.**

@@ -873,6 +873,33 @@ These are real failures from previous iterations. Each is now a standing check.
    correction — a promise is cheaper to keep than to retract, and keeping it here
    also created the click that makes the account real.
 
+61. **Stopping a false write does not clean up the state it already planted — and when
+   that state lives on the CLIENT, the fix needs a server truth to reconcile against.**
+   Wave 230 correctly stopped `hb_email` being set on SEND (an account exists only once
+   the emailed link is clicked) — and changed nothing for every install the old code had
+   already mislabelled: a user who requested a link and never clicked it kept
+   "✓ signed in / your progress is saved" on the Me tab indefinitely, over an account
+   that did not exist. That is a false BACKUP promise, which becomes real data loss the
+   day they lose the phone — and the re-request form was hidden behind the very flag
+   that was wrong, so the state could never self-correct. This is lesson 41 (a fix that
+   writes into a stored artifact does not reach artifacts already stored) with the
+   artifact in localStorage, where no server-side migration can ever reach it. The
+   reconcile has to come from the server: `/api/adherence` now carries `account_email`
+   (most-recently-verified address, or null — `store.accountEmail`, one shared
+   `preferAccount`) and the client adopts or clears its flag whenever the payload
+   passes by; never on a network failure, only on a real answer. → **Standing lens:**
+   when a fix stops a client-side write that was creating false state, ask what happens
+   to the installs that already wrote it — and if the answer is "nothing", give the
+   client a server-derived truth to reconcile against instead of waiting for the flag
+   to become right by luck. (Same iteration, the sibling recurrences: lesson 1 at field
+   scope — Wave 230 fixed "no derivable sessions ≠ never trained" in `first_session`
+   and the activation email, while `day_number`, three lines up in the same return and
+   derived from the same filtered list, still gated the client's whole first-timer
+   greeting; and lesson 54 twice — the burst's own two-address D1 test passed only in
+   the lucky SQL insertion order, and then my replacement adverse fixture survived its
+   own tamper until a three-address arrangement reached the win path. The tamper step
+   is not ceremony; it is the only thing that caught either.)
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -894,6 +921,40 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7p. **Telemetry (Waves 234–236, 2026-08-23).** One full turn; prod == main going in
+   (`hb-shell-v169`). **3 finder agents launched, 1 returned** — the other two died
+   on a session limit before producing a single candidate — **zero verify agents,
+   zero workflows** (~103k subagent tokens from the survivor). Per 7b's precedent
+   the dead halves were not re-run: the surviving finder went **5-for-5 confirmed**
+   (a first), my own inline read of the same diff had independently found two of
+   its five plus the iteration's most serious defect (the stale-`hb_email` false
+   backup promise, lesson 61), and that was already a full shippable load. Inline
+   verification cut both ways: the finder's push-side `comebackStage` lesson-1
+   candidate was REFUTED by reading (no `createdAt` → the activation stage is
+   unreachable on the push channel, by design), and the D1 address-pick defect was
+   confirmed by EXECUTING an adverse-insertion-order repro against both stores
+   before any fix was written — D1 returned the old address where the file store
+   returned the new one, on identical inputs. Six confirmed defects shipped as two
+   fix waves; the finder's fifth (an unbounded whole-sessions-table scan at the
+   head of both sweeps) rode along as an EXISTS column on the query it should
+   always have been.
+   The meta-lesson is lesson 54, twice in one iteration: the audited burst's own
+   two-address determinism test passed only in the lucky SQL insertion order — and
+   then MY first replacement fixture survived its own tamper, because only a
+   three-address [oldest, newest, middle] arrangement reaches the win path it
+   claimed to defend. Both were caught by running the tamper, not by reading.
+   No STATS_KEY exists in this environment (rotated 2026-08-18, held only as a
+   Cloudflare secret), so the Goal-4 reading was NOT refreshed; the 2026-08-21
+   reading (push subscriptions: 0) stands unrevised rather than re-derived from
+   anything weaker — and BLOCKERS gained the 30-second ask that unblocks future
+   readings.
+   Evidence: 359 route · 199 store/D1 parity · 78 coach · 77 adherence · 31 nudge ·
+   86 auth · 163 push · 18 learn-data; every new regression observed red pre-fix;
+   five tampers run, each turning exactly its own test red (two of them only after
+   the tamper itself exposed the fixture); and a **10/10 real-browser walkthrough**
+   covering all four user-visible scenarios, including planting the stale flag by
+   hand and watching the server truth clear it.
+
 7q. **Telemetry (Waves 230–232, 2026-08-21).** **2 finder agents, ZERO verify
    agents, zero workflows** (~273k subagent tokens). The audit surface was again my
    own previous burst, and again it was not clean: **eight confirmed defects, seven
