@@ -900,6 +900,34 @@ These are real failures from previous iterations. Each is now a standing check.
    own tamper until a three-address arrangement reached the win path. The tamper step
    is not ceremony; it is the only thing that caught either.)
 
+62. **The generator's KB is full of "only if / optional unless" clauses — grep the ENGINE
+   for the paths that ignore them.** The owner reported the plans felt wrong (8-exercise
+   2-set days, odd equipment picks, deadlifts over RDLs); measuring each claim traced
+   most of them to ONE root: the engine gave every muscle in `data/muscles` a default
+   direct exercise, while the KB's own guides say in plain text that two of them should
+   not have one (back.md: erectors "need little direct work... add back extensions only
+   if they lag"; arms.md: forearm "dedicated work is optional unless grip or forearm
+   size is a specific goal"). The wrist curl fragmenting every Upper day and the
+   conventional-deadlift stacked beside an RDL (erectors' only loadable compound,
+   summoned FOR erectors) were both the engine contradicting prose that had been
+   sitting in the corpus for waves — lesson 26's decision-table rule, where the table
+   is the KB itself. The fix is one exported tier (`SECONDARY_SERVED`) carried through
+   generator AND critique, with the muscle's priority flag as the KB's own "if they
+   lag" door. Three sub-lessons: (a) a conditional recommendation in the KB ("only
+   if X") is an ENGINE branch specification — if the engine has no such branch, one
+   side is wrong; (b) a rescue pass that runs before its need exists becomes the
+   dominant allocator — the weekly-coverage floor fired on every session, so each
+   archetype's FIRST day was all 2-set rescues and the SECOND day accidentally got
+   the intended shape; deferring the rescue to a muscle's last chance turned the
+   accident into deliberate A/B emphasis; (c) when a structural fix makes an older
+   safety net's live population EMPTY (fresh beginner day-ones are now ≤4 exercises,
+   so the first-session trim only ever fires on pre-change stored plans), its tests
+   must switch to deliberately legacy-shaped fixtures (lesson 45) or the net rots
+   unnoticed. And the measured refutations are as load-bearing as the fixes (lesson
+   36): the "1-set exercises" were specialization maintenance micro-doses working as
+   designed, and the kettlebell side bend is core.md's own ranked pick — both now
+   recorded so no future audit "fixes" them.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -921,6 +949,33 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7o. **Telemetry (Waves 237–239, 2026-08-23, same turn as 7p).** The owner's two
+   program-engine considerations landed mid-iteration (accidentally committed by the
+   7p burst's `git add -A` before being read — noted, no harm: the file's rule is
+   they persist until implemented). **Zero agents, zero workflows** — the audit
+   apparatus was MEASUREMENT: 45- and 120-plan generation matrices, run before any
+   code moved, which confirmed two claims structurally (fragmentation on 36% of
+   days; critique warns on 120/120 of the app's own fresh plans), narrowed one
+   (conventional deadlift: chosen for erectors, not over RDL — RDL already owned
+   the hinge), and refuted two outright (1-set exercises = specialization
+   maintenance micro-doses by design; kettlebell side bend = core.md's own pick).
+   The engine fix was grounded in the KB's own prose (lesson 62) and verified by
+   re-running the same matrices: fragmented days 36% → 7.5%, median 5
+   exercises/day, conv-deadlift 13 placements with 11 on strength plans, majors
+   clearing MEV on the flagship profile, and the critique's "worth fixing" gone
+   from every generated plan while surviving byte-identical for hand-edits.
+   Meta worth keeping: my first critique measurement read `crit.issues` — a field
+   that does not exist — and printed 0/120 where the truth was 120/120 (lesson 39
+   on myself, caught only because the zero looked too clean and I re-read the
+   return shape). And the dead-import gate + the coach suite's own vacuity
+   precondition ("the generated day must be longer than the cap, or nothing is
+   being tested") each caught a real gap in MY changes before commit — the
+   machinery the loop has built now audits the loop.
+   Evidence: 166 plan · 95 derive · full app chain green (359 route · 199 parity ·
+   78 coach) · root gate green · four tampers each red on exactly their own test ·
+   6/6 browser walkthrough including the guard-rail returning after a real hand
+   edit. Deployed with 7p's waves as one turn.
+
 7p. **Telemetry (Waves 234–236, 2026-08-23).** One full turn; prod == main going in
    (`hb-shell-v169`). **3 finder agents launched, 1 returned** — the other two died
    on a session limit before producing a single candidate — **zero verify agents,
