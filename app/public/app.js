@@ -94,7 +94,7 @@ function wireLearnLinks() {
 // aria-label="Explain" hid descriptive labels like "what's RIR?" from screen
 // readers and broke voice control ("tap what's RIR"). Only the bare "?" default
 // needs a spoken name; a descriptive label speaks for itself.
-const helpDot = (slug, label = "?") => `<button class="help" data-learn="${slug}"${label === "?" ? ' aria-label="Explain this term"' : ""}>${label}</button>`;
+const helpDot = (slug, label = "ⓘ what's this?") => `<button class="help" data-learn="${slug}">${label}</button>`;
 
 const api = async (path, opts = {}) => {
   // The device's clock rides EVERY authed call, from the one helper they all go
@@ -174,7 +174,7 @@ async function tryPendingFollow() {
 // stays as a soft guide alongside.
 const REST_CUES = [["breath", "🫁 Breath back to normal"], ["hr", "❤️ Heart rate settled"], ["mind", "🎯 Head in it — ready to push"]];
 const restReadiness = () => `<div class="card" style="text-align:left;margin-top:14px">
-    <p class="muted" style="margin:0 0 6px">Start your next set when you can tick these — rest by readiness, not the clock ${helpDot("rest-periods", "why")}:</p>
+    <p class="muted" style="margin:0 0 6px">Start your next set when you can tick these — rest by readiness, not the clock ${helpDot("rest-periods", "ⓘ why")}:</p>
     ${REST_CUES.map(([k, label]) => `<button class="restcue" data-cue="${k}" role="checkbox" aria-checked="false" style="display:flex;align-items:center;width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;margin:5px 0;font-size:1rem;text-align:left"><span class="cuebox" aria-hidden="true" style="margin-right:10px">⬜</span>${label}</button>`).join("")}</div>`;
 const wireRestCues = () => {
   const cues = [...app.querySelectorAll("[data-cue]")];
@@ -405,7 +405,7 @@ function renderOnboarding() {
       <button class="btn" id="go">Start</button>
       <p class="muted">Free · no ads · no account needed</p>
       <p class="muted" style="font-size:.8rem">By starting you agree this is training guidance, not medical advice — <a href="#" id="healthnote" style="color:var(--muted);text-decoration:underline">the honest details</a></p>
-      <button class="btn ghost" id="restore">Already have progress saved? Restore it</button>
+      <button class="btn ghost" id="restore">Already have progress saved? Sign in on this device</button>
       <div id="restorebox" hidden style="margin-top:6px">
         <input id="remail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your restore link" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
@@ -626,7 +626,7 @@ async function renderPlanExplain(firstTime) {
   const pc = d.program?.cardio;
   const pcRange = (x, unit = "") => x ? (x.min === x.max ? `${x.min}${unit}` : `${x.min}–${x.max}${unit}`) : "";
   const cardioBlock = pc
-    ? `<h2>Cardio &amp; steps ${helpDot("cardio-and-concurrent-training", "?")}</h2>
+    ? `<h2>Cardio &amp; steps ${helpDot("cardio-and-concurrent-training", "ⓘ how much cardio?")}</h2>
        <div class="card"><div class="row"><div style="flex:1"><b>${pcRange(pc.steps_per_day)} steps/day</b>
          <div class="muted" style="font-size:.85rem">${esc(pc.note ?? "")}</div></div>
          <span class="chip">Grade ${esc(pc.evidence_grade)}</span></div>
@@ -658,7 +658,7 @@ async function renderPlanExplain(firstTime) {
   const whyBlock = hasRationale
     ? `<details class="why"><summary>Why this plan? <span class="muted">(the science)</span></summary>
     <p class="muted" style="margin-top:8px">${esc(r.split?.reason || "")} ${gradeChip("B")}</p>
-    <h3>Weekly sets per muscle</h3>
+    <h3>Planned sets per muscle</h3>
     <div class="card">${volRows || '<p class="muted">—</p>'}</div>
     ${STATUS_LEGEND}
     ${warns ? `<h3>Heads up</h3><div class="card">${warns}</div>` : ""}</details>`
@@ -773,7 +773,7 @@ function drawEdit(critique) {
     <p class="muted">Your edits are never overwritten — which also means a hand-edited plan pauses the automatic accessory rotation between blocks. Rebuild from Settings any time to hand the wheel back.</p>
     ${crit}${sessions}
     <button class="btn" id="savePlan">Save &amp; re-check</button>
-    <button class="btn ghost" id="backPlan">Done</button>`;
+    <button class="btn ghost" id="backPlan">Back</button>`;
   app.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => {
     const row = b.closest("[data-si]"), si = +row.dataset.si, ei = +row.dataset.ei, ex = editState.sessions[si].exercises[ei];
     const act = b.dataset.act;
@@ -902,9 +902,9 @@ const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu
 function commitmentCard(commitment) {
   if (commitment && commitment.days?.length) {
     const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
-    return `<div class="card row"><div style="flex:1"><b>🗓️ This week's plan: ${esc(list)}</b>
+    return `<div class="card row"><div style="flex:1"><b>🗓️ This week's training days: ${esc(list)}</b>
         <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
-      <button class="btn ghost" id="edit-commitment" style="width:auto;padding:8px 14px">Edit</button></div>`;
+      <button class="btn ghost inline" id="edit-commitment">Edit</button></div>`;
   }
   // The copy used to promise "a quick reminder lands on the days you say". That is
   // delivered by shouldPushForCommitment, which runs inside a loop over the user's
@@ -926,7 +926,7 @@ function commitmentCard(commitment) {
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
       : "Naming the days is most of the work — deciding once beats deciding daily. Add them to your phone's calendar from the Coach tab and the reminder comes from the phone itself."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
-    <button class="btn secondary" id="save-commitment" style="margin-top:10px;width:auto;padding:10px 18px">Save my plan</button></div>`;
+    <button class="btn secondary inline" id="save-commitment" style="margin-top:10px">Save my days</button></div>`;
 }
 function wireCommitmentCard() {
   const chips = [...app.querySelectorAll("[data-day]")];
@@ -934,7 +934,7 @@ function wireCommitmentCard() {
   if ($("#save-commitment")) $("#save-commitment").onclick = async () => {
     const days = chips.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.day);
     if (!days.length) return;
-    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("This week's plan saved."); renderToday(); }
+    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("Training days saved."); renderToday(); }
     catch { alertBar("📴 Couldn't save — try again when connected."); }
   };
   if ($("#edit-commitment")) $("#edit-commitment").onclick = () => {
@@ -1035,9 +1035,9 @@ async function renderToday() {
   // so skipping did nothing and the check-in stayed the highlighted next step).
   const ckDismissed = !dy.checked_in && (() => { try { return localStorage.getItem("hb_ck_dismissed") === localDay(); } catch { return false; } })();
   const steps = [
-    { key: "checkin", icon: "☀️", label: "Morning check-in", sub: "Weight + how you're feeling", done: dy.checked_in, dismissed: ckDismissed, cta: "Check in" },
+    { key: "checkin", icon: "☀️", label: "Daily check-in", sub: "Weight + how you're feeling", done: dy.checked_in, dismissed: ckDismissed, cta: "Check in" },
     { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
-    { key: "calories", icon: "🌙", label: "Tonight's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
+    { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
   // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
   // came to train — an optional survey must never read as the gate before it (Goal 3).
@@ -1049,7 +1049,7 @@ async function renderToday() {
     const settled = x.done || x.dismissed;
     const right = x.done
       ? `<span class="chip" aria-label="${x.label} done">done</span>`
-      : `<button class="btn ${isNext ? "" : "secondary"}" data-step="${x.key}" style="width:auto;padding:10px 16px">${x.cta}</button>`;
+      : `<button class="btn inline ${isNext ? "" : "secondary"}" data-step="${x.key}" style="margin:0">${x.cta}</button>`;
     return `<div class="row" ${isNext ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
       <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
       <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? "Skipped for today" : x.sub}</span></div>
@@ -1059,8 +1059,8 @@ async function renderToday() {
   // evening entry is one tap — no trip to another tab (considerations #6: "very
   // quick and straightforward"). The Fuel tab stays for the target + macros.
   const calorieQuickLog = firstUndone?.key === "calories"
-    ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="hub-kcal" type="number" inputmode="numeric" placeholder="today's total calories" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;font-size:1.05rem"><button class="btn" id="hub-log" style="width:auto;padding:11px 18px">Log</button></div>
-       <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost" data-step="calories" style="width:auto;padding:2px 8px;font-size:.85rem">see your target</button></p>`
+    ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="hub-kcal" type="number" inputmode="numeric" placeholder="today's total calories" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;font-size:1.05rem"><button class="btn inline" id="hub-log" style="margin:0">Log</button></div>
+       <p class="muted" style="margin-top:6px;text-align:center">Great work today — log your total to finish. <button class="btn ghost inline" data-step="calories" style="padding:2px 8px;font-size:.85rem;margin:0">see your target</button></p>`
     : `<p class="muted" style="margin-top:8px;text-align:center">${firstUndone ? (firstUndone.key === "checkin" ? "Start your morning here." : dy.checked_in ? "You're checked in — time to train." : "Time to train.") : "🎉 All done today. See you tomorrow."}</p>`;
   const dailyHub = `<h2>Your day</h2><div class="card">${steps.map(stepRow).join("")}${calorieQuickLog}</div>`;
   // This used to skip the ask on day 1 for cognitive load — a defensible call that
@@ -1109,7 +1109,7 @@ function renderCheckin() {
   const draw = () => {
     const row = ([key, label, anchors]) => `<div class="ckrow"><span class="cklabel">${label} <span class="muted" style="font-weight:400">${anchors}</span></span><div class="ckscale">${[1, 2, 3, 4, 5].map((n) =>
       `<button class="tapchip${vals[key] === n ? " sel" : ""}" data-k="${key}" data-v="${n}" aria-pressed="${vals[key] === n}" aria-label="${label} ${n} of 5">${n}</button>`).join("")}</div></div>`;
-    app.innerHTML = `<h1>Morning check-in</h1><p class="muted">Your weight and how you're feeling. 15 seconds — it tunes today's session and tracks your trend, never a score or judgment.</p>
+    app.innerHTML = `<h1>Daily check-in</h1><p class="muted">Your weight and how you're feeling. 15 seconds — it tunes today's session and tracks your trend, never a score or judgment.</p>
       <div class="card"><label for="ck-weight" class="muted">Bodyweight (${unitLabel()}, optional)</label>
         <input id="ck-weight" type="number" inputmode="decimal" placeholder="weigh in first thing" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 4px"></div>
       <div class="card">${fields.map(row).join("")}</div>
@@ -1417,7 +1417,7 @@ function renderPlayer(resting = 0) {
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
-    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "what's RIR?")}</p>
+    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -1944,9 +1944,9 @@ async function renderProgress() {
   // correctable from here — otherwise a mistyped weight is visibly wrong on the
   // very page that reports it, with nothing the user can do about it.
   const historyCard = p.sessions_logged > 0
-    ? `<div class="card"><b>📓 Your workouts</b>
+    ? `<div class="card"><b>📓 Workout history</b>
         <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
-        <button class="btn ghost" id="open-history">Review &amp; fix past workouts</button></div>`
+        <button class="btn ghost" id="open-history">Workout history â view &amp; fix</button></div>`
     : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
@@ -1975,7 +1975,7 @@ async function renderProgress() {
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
     ${historyCard}
     ${prCard}
-    <h2>Weekly sets per muscle ${helpDot("glossary", "?")}</h2>
+    <h2>This week's sets per muscle ${helpDot("glossary", "ⓘ what these tags mean")}</h2>
     <p class="muted">${p.volume_note ? esc(p.volume_note) : "How many hard sets each muscle got this week, and whether that's in the range that builds muscle."}</p>
     <div class="card">${vol}</div>
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
@@ -1983,8 +1983,8 @@ async function renderProgress() {
     ${regrCard}
     ${stallCard}
     ${interfCard}
-    <h2>Your best lifts (estimated) ${helpDot("glossary", "?")}</h2>
-    <p class="muted">The most you could likely lift for one rep, estimated from your sets. Watch the trend, not the exact number.</p>
+    <h2>Strength trends ${helpDot("glossary", "ⓘ how these are estimated")}</h2>
+    <p class="muted">Your estimated 1-rep max where the reps allow it, your top-set weight where they don't. Watch the trend, not the exact number.</p>
     <div class="card">${prog}</div>
     <h2>Bodyweight & energy balance</h2>
     <div class="card">
@@ -2068,11 +2068,11 @@ function formatHistoryDate(sess) {
 }
 
 async function renderHistory() {
-  app.innerHTML = `<h1>Your workouts</h1><p class="muted">Loading…</p>`;
+  app.innerHTML = `<h1>Workout history</h1><p class="muted">Loading…</p>`;
   let d;
   try { d = await api("/api/sessions"); }
   catch {
-    app.innerHTML = `<h1>Your workouts</h1><div class="card"><p>📴 You're offline.</p>
+    app.innerHTML = `<h1>Workout history</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Your history loads when you reconnect. Nothing you've logged is lost.</p>
       <button class="btn" id="rh">Try again</button></div>`;
     $("#rh").onclick = () => renderHistory();
@@ -2159,7 +2159,7 @@ async function renderHistory() {
            <button class="btn ghost" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
     </div>`;
   }).join("") || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
-  app.innerHTML = `<h1>Your workouts</h1>
+  app.innerHTML = `<h1>Workout history</h1>
     <p class="muted">Mistyped a weight? Fix it here and every trend recalculates. Nothing is ever deleted — a workout you take back stays on this list and can be put straight back.</p>
     ${rows}
     <button class="btn ghost" id="hback">‹ Back to progress</button>`;
@@ -2242,7 +2242,7 @@ async function renderFuel() {
           .map(([label, v]) => `<button class="choice${n.sex === v ? " sel" : ""}" data-sex="${v}" style="flex:1">${label}</button>`).join("")}
       </div>`;
     app.innerHTML = `<h1>Fuel</h1>
-      <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "how this works")}</p>
+      <div class="card"><p class="muted">A few numbers and I'll set your daily calorie + protein targets, then dial them in from your logged food and weight. ${helpDot("energy-balance", "ⓘ how this works")}</p>
         ${sexRow}
         ${fld("f-weight", `Bodyweight (${unitLabel()})`, "", unitPref() === "lb" ? "e.g. 180" : "e.g. 82")}
         ${fld("f-height", "Height (cm)", "", "e.g. 178")}
@@ -2258,7 +2258,7 @@ async function renderFuel() {
           <option value="moderate" selected>Moderately active (on your feet a fair bit)</option>
           <option value="active">Very active (physical job)</option>
         </select>
-        <p class="muted" style="margin:-6px 0 12px;font-size:.85rem">Steps and cardio swing this more than most people expect — though your targets re-derive from your logged weight either way. ${helpDot("cardio-and-concurrent-training", "cardio &amp; lifting")}</p>
+        <p class="muted" style="margin:-6px 0 12px;font-size:.85rem">Steps and cardio swing this more than most people expect — though your targets re-derive from your logged weight either way. ${helpDot("cardio-and-concurrent-training", "ⓘ cardio &amp; lifting")}</p>
         <button class="btn" id="f-save">Set my targets</button>
         ${t ? `<button class="btn ghost" id="f-cancel">Cancel</button>` : ""}
         <p class="muted" id="f-msg"></p></div>`;
@@ -2318,7 +2318,7 @@ async function renderFuel() {
     <div class="card center"><div class="big">${t.calorie_target} <span class="muted" style="font-size:1rem">kcal/day</span></div>
       <p class="muted">Target for ${goalTxt}. ${t.tdee_basis === "logged" ? "Dialled in from your logs." : "Starting estimate."}</p></div>
     ${todayCard}
-    <h2>Daily macros ${helpDot("protein", "?")}</h2>
+    <h2>Daily macros ${helpDot("protein", "ⓘ why these numbers")}</h2>
     <div class="card"><div class="row"><div style="flex:1"><b>🥩 Protein</b><br><span class="muted">${t.protein_g} g (${t.protein_per_kg} g/kg — the priority)</span></div></div>
       <div class="row"><div style="flex:1"><b>🍚 Carbs</b><br><span class="muted">${t.carbs_g} g — fuel your training</span></div></div>
       <div class="row"><div style="flex:1"><b>🥑 Fat</b><br><span class="muted">${t.fat_g} g</span></div></div></div>
@@ -2456,15 +2456,15 @@ function mergeArchiveCard(ownerId) {
       ? `<div class="card info" style="margin:10px 0 0"><b>✓ Separate copy ready</b>
           <p class="muted" style="margin:8px 0">${restored.program_name ? `Program: ${esc(restored.program_name)}.` : "Your saved program is ready."}${restoreUnitsLabel(restored.units) ? ` It uses ${restoreUnitsLabel(restored.units)}.` : ""} This account has not been changed.</p>
           <p class="muted" style="margin:8px 0">The copy does not reactivate reminders, sharing, partners, cheers, or challenges. Switch only when you are ready to use that separate copy on this device.</p>
-          <button class="btn" data-switch-restored="${esc(archive.archive_id)}">Switch to this restored copy</button>
+          <button class="btn" data-switch-restored="${esc(archive.archive_id)}">Switch to the recovered copy</button>
         </div>`
       : "";
     const restoredLabel = archive.state === "restored"
       ? `A separate copy was prepared${archive.restored_at ? ` on ${esc(archiveWhen(archive.restored_at))}` : ""}. You can safely reopen its switch option.`
       : archive.state === "restoring"
         ? "A restore was already started. Check its separate copy without creating another one."
-        : "Restore it as a separate copy; this account stays exactly as it is.";
-    const actionLabel = archive.state === "available" ? "Restore a separate copy" : "Show restored copy";
+        : "Recover it as a separate copy; this account stays exactly as it is.";
+    const actionLabel = archive.state === "available" ? "Recover a separate copy" : "Show recovered copy";
     return `<div class="card" style="margin-top:10px"><b>↩︎ Merged account recovery</b>
       <p class="muted" style="margin:8px 0">Archived ${esc(archiveWhen(archive.created_at))} · ${esc(archiveCountSummary(archive.counts))}</p>
       <p class="muted" style="margin:8px 0">${restoredLabel}</p>
@@ -2616,8 +2616,8 @@ function renderMe() {
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
-      <button class="btn secondary" id="settings">Update my settings &amp; rebuild plan</button></div>
-    <div class="card"><p class="muted">Effort chips (reps left in the tank)</p>
+      <button class="btn secondary" id="settings">Change my answers (rebuilds your plan)</button></div>
+    <div class="card"><p class="muted">After-set effort question (reps left in the tank)</p>
       <p>After each set, one optional tap: how many more reps you had in you. It's how the coach knows a weight has gotten too easy — skipping a set never counts against you.</p>
       <p class="muted">${localStorage.getItem("hb_rir") === "1" ? "Always on." : localStorage.getItem("hb_rir") === "0" ? "Off." : "Auto — the chips appear once you're past the beginner stage."}</p>
       <button class="btn secondary" id="rirtoggle">${localStorage.getItem("hb_rir") === "1" ? "Always on — tap to switch off" : localStorage.getItem("hb_rir") === "0" ? "Off — tap to switch to auto" : "Auto — tap to force always on"}</button></div>
@@ -2765,7 +2765,7 @@ async function renderCoach() {
       <div id="sharebox" class="hidden" style="margin-top:10px"></div></div>` : ""}
     <div class="card"><b>🤝 Training partners</b>
       <p class="muted" style="margin-top:8px">Follow a friend's share link and their streak shows up here — a little mutual accountability. Paste the link they sent you:</p>
-      <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="followbtn" style="width:auto">Follow</button></div>
+      <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary inline" id="followbtn" style="margin:0">Follow</button></div>
       <p class="muted" id="followmsg" style="margin-top:6px"></p>
       ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) => {
         const race = r.isYou ? null : weeklyRaceStatus(a.week.sessions, r.sessions_this_week);
@@ -2780,7 +2780,7 @@ async function renderCoach() {
       // list, so the renderer carries a list (lesson 15, asked forward).
       if (x.status === "pending" && x.role === "opponent") return `<div class="card"><b>⚔️ A training partner challenged you</b>
       <p class="muted" style="margin-top:8px">Most sessions logged by the end of this week wins. Are you in?</p>
-      <div class="row" style="gap:8px;margin-top:8px"><button class="btn challenge-accept" data-chid="${esc(x.id)}" style="width:auto">Accept</button><button class="btn secondary challenge-decline" data-chid="${esc(x.id)}" style="width:auto">Decline</button></div></div>`;
+      <div class="row" style="gap:8px;margin-top:8px"><button class="btn inline challenge-accept" data-chid="${esc(x.id)}" style="margin:0">Accept</button><button class="btn secondary inline challenge-decline" data-chid="${esc(x.id)}" style="margin:0">Decline</button></div></div>`;
       if (x.status === "pending" && x.role === "challenger") return `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`;
       if (x.status === "active") {
         const race = weeklyRaceStatus(x.my_count, x.opponent_count);
@@ -2808,7 +2808,7 @@ async function renderCoach() {
           const label = h.result === "win" ? "Won" : h.result === "lose" ? "Lost" : "Tied";
           return `<div class="row" style="padding:4px 0;justify-content:space-between"><span class="muted">${icon} ${label} · ${esc(formatWeekLabel(h.week))}</span><span class="muted">${h.my_count}–${h.opponent_count}</span></div>`;
         }).join("");
-        return `<div class="card"><b>📊 Challenge record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p><div style="margin-top:8px">${rows}</div></div>`;
+        return `<div class="card"><b>📊 Head-to-head record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p><div style="margin-top:8px">${rows}</div></div>`;
       })()
       : ""}
     <h2>Schedule your sessions</h2>
@@ -2876,7 +2876,7 @@ async function renderCoach() {
       box.classList.remove("hidden");
       // Build the row structurally and set the URL via .value (a property, never
       // interpolated into HTML) so there is no injection surface.
-      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary" id="sharecopy" style="width:auto">Copy</button></div>${r.new_cheers > 0 ? `<p style="margin-top:8px;color:var(--accent);font-weight:600">🎉 ${r.new_cheers} new cheer${r.new_cheers === 1 ? "" : "s"} since you last looked!</p>` : ""}${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
+      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary inline" id="sharecopy" style="margin:0">Copy</button></div>${r.new_cheers > 0 ? `<p style="margin-top:8px;color:var(--accent);font-weight:600">🎉 ${r.new_cheers} new cheer${r.new_cheers === 1 ? "" : "s"} since you last looked!</p>` : ""}${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
       $("#shareurl").value = url;
       $("#sharecopy").onclick = () => { try { navigator.clipboard?.writeText(url); } catch {} $("#shareurl").select(); say("Link copied."); };
       $("#sharerevoke").onclick = async () => {
@@ -3086,7 +3086,7 @@ function renderMuscleSheet(d, back) {
   const list = (title, arr) => (arr?.length ? `<h2>${title}</h2><p class="muted">${esc(arr.join(" · "))}</p>` : "");
   app.innerHTML = `<h1>${esc(d.name)}</h1>
     ${d.group ? `<p class="muted">Part of your ${esc(d.group)} work</p>` : ""}
-    ${lm ? `<h2>Weekly volume ${helpDot("volume", "what these mean")}</h2><div class="card">
+    ${lm ? `<h2>Weekly volume ${helpDot("volume", "ⓘ what these mean")}</h2><div class="card">
       ${band("mv", "Maintenance", "enough to hold what you have")}
       ${band("mev", "Minimum to grow", "below this, little happens")}
       ${band("mav", "Most growth", "where the plan aims")}

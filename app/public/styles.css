@@ -175,8 +175,15 @@ details.why h3{font-size:1rem;margin:1.1em 0 .3em}
 .learn table{border-collapse:collapse;width:100%;font-size:.9rem}
 .learn th,.learn td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
 .learn th{background:var(--card2)}
-#nav button{font-size:.68rem}  /* five tabs — trim label size so they fit */
+#nav button{font-size:.68rem}  /* six tabs — trim label size so they fit */
 
 /* A Learn link that opens an exercise SHEET rather than another page — same
    affordance, visibly a different destination. */
 .learnlink.exlink { text-decoration-style: dotted; }
+
+/* Wave 243: compact inline button — secondary/tertiary actions stop being
+   full-width 56px blocks. Primary actions stay block-level (one per screen). */
+.btn.inline{display:inline-block;width:auto;padding:12px 18px;font-size:1rem;margin:8px 8px 0 0}
+/* Used by the share box show/hide since Wave 108 — was never defined, and only
+   read as hidden because the box starts empty. */
+.hidden{display:none}
