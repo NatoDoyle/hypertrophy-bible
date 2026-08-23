@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey } from "../../tools/derive-core.mjs";
-import { generateUserPlan } from "../src/planner.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -912,17 +911,27 @@ check("#2D a comeback never lands beside 'peak volume — push hard' (lesson 24'
 // plenty." The engine built the same 7-exercise day on day one as on day one
 // hundred, and beginners are exempt from the mesocycle wave, so the least
 // experienced user got no ramp at all.
+// A PRE-Wave-237 stored program, byte-shaped like the engine's OLD output: seven
+// 2-set exercises per day. Since Wave 237's last-chance coverage floor, freshly
+// generated beginner plans open at <=4 exercises structurally (measured across
+// every days/length/equipment combination), so the first-session cap's remaining
+// live population is plans STORED before the change — and its tests must feed it
+// one, kept legacy-shaped on purpose (lesson 45: a migration-era behavior needs
+// fixtures in the shape that actually exists in prod rows).
+const legacySeven = () => ["goblet-squat", "dumbbell-romanian-deadlift", "dumbbell-bench-press",
+  "chest-supported-row", "cable-lateral-raise", "machine-crunch", "seated-calf-raise"]
+  .map((id) => ({ exercise: id, sets: 2, rep_range: "6-10", rir: "2-3" }));
+const legacyBeginnerProgram = () => ({ id: "p-legacy-7", name: "Legacy Full Body", days_per_week: 3, split: "full-body",
+  sessions: ["Full Body A", "Full Body B", "Full Body C"].map((name) => ({ name, exercises: legacySeven() })) });
+
 check("a true beginner's FIRST session is short, and says so", () => {
-  // A GENERATED plan, not one of this file's hand-written 1- and 3-exercise
-  // fixtures: a 3-exercise fixture can never show a slice, so the test would pass
-  // while proving nothing (lesson 54).
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram();
   const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
   const full = program.sessions[0].exercises.length;
-  assert.ok(full > 4, "precondition: the generated day must be longer than the cap, or nothing is being tested");
+  assert.ok(full > 4, "precondition: the stored day must be longer than the cap, or nothing is being tested");
 
   const day1 = buildToday(u, []);
   assert.equal(day1.exercises.length, 4);
@@ -944,7 +953,7 @@ check("the first-session cap is beginner-only", () => {
   const profile = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // 7-exercise stored day — only the STATUS may gate the cap
   const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, []);
   assert.ok(day1.exercises.length > 4, "an intermediate's day one is untouched");
   assert.equal(day1.first_session, null);
@@ -978,7 +987,7 @@ check("first_session.full reports the TEMPLATE's size, not the post-trim size", 
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // the 7-exercise STORED shape the cap still serves (see fixture above)
   const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
   const full = program.sessions[0].exercises.length;
   // A low-readiness day one trims an accessory BEFORE the first-session cap runs.
@@ -992,7 +1001,7 @@ check("a user whose only sessions are quarantined is NOT treated as a first-time
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // the 7-exercise STORED shape the cap still serves (see fixture above)
   const u = { profile, program, plan_meta: { block_start: new Date().toISOString() } };
   // `sessions` is the DERIVABLE list, so it is empty for someone whose only workout
   // has an unparseable legacy date — but they HAVE trained, and History is showing
@@ -1017,7 +1026,7 @@ check("a normal check-in on a shortened first session never says the session sta
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // the 7-exercise STORED shape the cap still serves (see fixture above)
   const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "normal" });
   // The first-timer card says "4 instead of 7" on the same screen. A note claiming
   // the session stands as planned directly contradicts it (lesson 24).
@@ -1029,7 +1038,7 @@ check("a low-readiness FIRST session gets one note, not two contradictory ones",
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // the 7-exercise STORED shape the cap still serves (see fixture above)
   const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "low" });
   const note = day1.coach_note ?? "";
   assert.ok(note.length > 0);
@@ -1048,7 +1057,7 @@ check("a high-readiness FIRST session never invites a back-off set", () => {
   const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60,
     available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const { program } = generateUserPlan({ ...profile });
+  const program = legacyBeginnerProgram(); // the 7-exercise STORED shape the cap still serves (see fixture above)
   const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, [], { level: "high", score: 5 });
   // The first-timer card says day one "is not for setting records"; the stock
   // high note says "if a lift feels easy, add a back-off set". Same screen,

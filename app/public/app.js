@@ -613,7 +613,7 @@ async function renderPlanExplain(firstTime) {
   }
   const r = d.rationale || {};
   const gradeChip = (g) => g ? `<span class="chip">Grade ${g}</span>` : "";
-  const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => v.frequency > 0 && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
+  const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => (v.frequency > 0 || v.secondary_served) && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
   const volRows = vols.map(([m, v]) => `<div class="row"><div style="flex:1"><b>${esc(cap(friendlyMuscle(m)))}</b> <span class="muted">${v.projected_sets} sets/wk${v.is_priority ? " · priority" : ""}</span>
       <div class="bar"><i style="width:${Math.min(100, (v.projected_sets / 24) * 100)}%;background:var(--accent)"></i></div>
       <span class="muted" style="font-size:.82rem">${esc((v.reasons || []).join(" · "))} ${gradeChip(v.landmark?.evidence_grade)}</span></div>
@@ -1874,8 +1874,8 @@ function renderRecap(recap) {
 }
 
 // ---------- Progress ----------
-const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint" }[s] || "s-none");
-const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "no-landmark": "—" }[s] || s);
+const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint", "secondary-served": "s-maint" }[s] || "s-none");
+const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "no-landmark": "—" }[s] || s);
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
