@@ -14,6 +14,21 @@ let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or n
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
 let planEmailSent = false;
+// Server truth for "you have an account": /api/adherence carries `account_email`
+// (the most-recently-verified address, or null). The OLD send path planted
+// hb_email on SEND, so a user who never clicked their link carried a false
+// "✓ signed in / your progress is saved" forever — and stopping the write could
+// not reach flags already stored (lesson 41). Reconcile whenever the payload
+// passes by: adopt the server's address (this also follows a post-merge address
+// change), clear the flag when no account exists. Never touched on a network
+// failure — only a real server answer may change it.
+function syncAccountEmail(a) {
+  if (!a || !("account_email" in a)) return;
+  try {
+    if (a.account_email) localStorage.setItem("hb_email", a.account_email);
+    else localStorage.removeItem("hb_email");
+  } catch {}
+}
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
@@ -939,6 +954,7 @@ async function renderToday() {
     $("#retry-today").onclick = () => renderToday();
     return;
   }
+  syncAccountEmail(adh);
   const s = data.session;
   // Streak + level header, and the motivational state (loss-aversion when at risk,
   // warm welcome on a comeback, calm reassurance when paused).
@@ -2710,6 +2726,7 @@ async function renderCoach() {
     $("#retry-coach").onclick = () => renderCoach();
     return;
   }
+  syncAccountEmail(a);
   let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
   let cw = { challenges: [] }; try { cw = await api(`/api/challenge`); } catch {}
   // Multi-challenge (Wave 199): `challenges` is a LIST — each slot carries its own

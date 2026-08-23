@@ -756,6 +756,18 @@ try {
   const staleAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment from a prior week reads back as unset via /api/adherence", staleAdh.commitment === null);
 
+  // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
+  // "does this user actually have an account". The client used to trust a
+  // localStorage flag the OLD send path planted on SEND — so a user who requested a
+  // link and never clicked it saw "✓ signed in / your progress is saved" over an
+  // account that did not exist, with no way to correct it (lesson 41: stopping the
+  // false write does not reach the flags already planted).
+  ok("#account_email is null while no verified account exists", staleAdh.account_email === null);
+  const acctLink = await requestMagicLink(store, { email: "trueacct@t.com", anonUserId: cUser });
+  await json("POST", "/api/auth/consume", { token: acctLink.token });
+  const acctAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#account_email reports the verified address once the link is consumed", acctAdh.account_email === "trueacct@t.com");
+
   // --- Streak freeze (#4 adherence): spend a held token to protect a missed week.
   // Guards first (same parity concern as commitment: an undefined bind THROWS on D1).
   const noUserFreeze = await json("POST", "/api/streak/freeze", { week: "2026-W01" });
