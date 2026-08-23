@@ -187,3 +187,7 @@ details.why h3{font-size:1rem;margin:1.1em 0 .3em}
 /* Used by the share box show/hide since Wave 108 — was never defined, and only
    read as hidden because the box starts empty. */
 .hidden{display:none}
+/* Wave 244: the commitment day picker toggles aria-pressed but nothing ever
+   styled it — day selection was VISUALLY INVISIBLE (the save logic worked; the
+   feedback didn't). The aria state is the style source, same look as .sel. */
+.tapchip[aria-pressed="true"]{background:var(--accent);color:#06210f;border-color:var(--accent)}

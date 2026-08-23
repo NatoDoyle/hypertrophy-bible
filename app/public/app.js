@@ -2,6 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -812,12 +813,21 @@ function drawEdit(critique) {
   $("#backPlan").onclick = () => { tab = "today"; render(); };
 }
 function renderAddExercise(si) {
-  const list = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("");
+  const sorted = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const rowsFor = (items) => items
+    .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("")
+    || `<p class="muted" style="padding:8px 0">Nothing matches — try a muscle ("chest") or equipment ("cable").</p>`;
   app.innerHTML = `<h1>Add exercise</h1>
-    <button class="btn secondary" id="newEx">+ Create a new exercise</button>
-    <div class="card" style="max-height:62vh;overflow:auto">${list}</div><button class="btn ghost" id="cancelAdd">Cancel</button>`;
-  app.querySelectorAll("[data-add-id]").forEach((b) => b.onclick = () => { editState.sessions[si].exercises.push({ exercise: b.dataset.addId, sets: 3, rep_range: "8-12" }); drawEdit(null); });
+    <input id="ex-filter" type="search" placeholder="Search by name, muscle or equipment…" aria-label="Search exercises"
+      style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
+    <div class="card" style="max-height:56vh;overflow:auto" id="ex-list">${rowsFor(sorted)}</div>
+    <button class="btn secondary inline" id="newEx">+ Create a new exercise</button>
+    <button class="btn ghost inline" id="cancelAdd">Cancel</button>`;
+  const wireRows = () => app.querySelectorAll("[data-add-id]").forEach((b) => b.onclick = () => { editState.sessions[si].exercises.push({ exercise: b.dataset.addId, sets: 3, rep_range: "8-12" }); drawEdit(null); });
+  wireRows();
+  // Re-render only the LIST on input — never the input itself, or it loses focus
+  // mid-word and the search fights the typist.
+  $("#ex-filter").oninput = () => { $("#ex-list").innerHTML = rowsFor(filterExercises(sorted, $("#ex-filter").value)); wireRows(); };
   $("#newEx").onclick = () => renderCustomExercise(si);
   $("#cancelAdd").onclick = () => drawEdit(null);
 }
@@ -899,12 +909,12 @@ function renderResume() {
 // (server-side) proactively reminds on a committed day they haven't trained
 // yet — not just reactively after they've already gone quiet.
 const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
-function commitmentCard(commitment) {
+function commitmentCard(commitment, prefill = []) {
   if (commitment && commitment.days?.length) {
     const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
     return `<div class="card row"><div style="flex:1"><b>🗓️ This week's training days: ${esc(list)}</b>
         <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
-      <button class="btn ghost inline" id="edit-commitment">Edit</button></div>`;
+      <button class="btn ghost inline" id="edit-commitment" data-days="${esc(commitment.days.join(","))}">Edit</button></div>`;
   }
   // The copy used to promise "a quick reminder lands on the days you say". That is
   // delivered by shouldPushForCommitment, which runs inside a loop over the user's
@@ -925,7 +935,7 @@ function commitmentCard(commitment) {
     <p class="muted" style="margin:4px 0 8px">${canRemind
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
       : "Naming the days is most of the work — deciding once beats deciding daily. Add them to your phone's calendar from the Coach tab and the reminder comes from the phone itself."}</p>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="false">${label}</button>`).join("")}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="${prefill.includes(k)}">${label}</button>`).join("")}</div>
     <button class="btn secondary inline" id="save-commitment" style="margin-top:10px">Save my days</button></div>`;
 }
 function wireCommitmentCard() {
@@ -938,7 +948,11 @@ function wireCommitmentCard() {
     catch { alertBar("📴 Couldn't save — try again when connected."); }
   };
   if ($("#edit-commitment")) $("#edit-commitment").onclick = () => {
-    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null);
+    // Pre-select the days already committed (design law: never a blank picker
+    // when the answer is known) — carried on the button, since this handler has
+    // no other line to the current commitment.
+    const days = ($("#edit-commitment").dataset.days || "").split(",").filter(Boolean);
+    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null, days);
     wireCommitmentCard();
   };
 }
@@ -1169,6 +1183,7 @@ let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
 let historyEdit = null;     // session_id currently open for correction on the history screen
 let historyDateFix = null;  // session_id whose quarantined calendar date is being repaired
+let historyWeeksShown = 4;  // history is week-grouped and capped; "Show earlier weeks" raises this
 let quitPending = false;    // two-tap guard on ending a workout early
 // Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
 // Keyed by the EXERCISE ID being confirmed, not its array index: the superset
@@ -1994,7 +2009,7 @@ async function renderProgress() {
       <button class="btn secondary" id="logbw">Add today's weight</button>
     </div>`;
   wireLearnLinks();
-  if ($("#open-history")) $("#open-history").onclick = () => { tab = "history"; render(); };
+  if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -2116,7 +2131,7 @@ async function renderHistory() {
     };
     return;
   }
-  const rows = list.map((sess) => {
+  const sessCard = (sess) => {
     const voided = !!sess.voided_at;
     const quarantined = !!sess.time_quarantine;
     const when = formatHistoryDate(sess);
@@ -2154,16 +2169,32 @@ async function renderHistory() {
       </div></div>
       ${timingRepair}
       ${voided
-        ? `<button class="btn ghost" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
-        : `<button class="btn ghost" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
-           <button class="btn ghost" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
+        ? `<button class="btn ghost inline" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
+        : `<button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+           <button class="btn ghost inline" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
     </div>`;
-  }).join("") || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
+  };
+  // Grouped by calendar week (the list is already newest-first with quarantined
+  // rows pinned), and capped: unbounded one-card-per-session was the tab's whole
+  // scroll cost. Unparseable-date rows lead in their own group so the repair
+  // card can never sink beneath weeks it doesn't belong to; voided rows stay
+  // visible inside their week (never lose logged data — hiding is not grouping).
+  const groups = groupSessionsByWeek(list, (s) => validHistoryCalendarDate(s.local_date) || validHistoryCalendarDate(String(s.date ?? "").slice(0, 10)));
+  const dateless = groups.filter((g) => g.week === null);
+  const dated = groups.filter((g) => g.week !== null);
+  const shown = dated.slice(0, historyWeeksShown);
+  const more = dated.length - shown.length;
+  const rows = ([
+    ...dateless.map((g) => `<h2>🕒 Date needs correcting</h2>${g.sessions.map(sessCard).join("")}`),
+    ...shown.map((g) => `<h2>${esc(weekLabelOf(g.week))}</h2>${g.sessions.map(sessCard).join("")}`),
+  ].join("") + (more > 0 ? `<button class="btn secondary inline" id="more-weeks">Show earlier weeks (${more} more)</button>` : ""))
+    || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
   app.innerHTML = `<h1>Workout history</h1>
     <p class="muted">Mistyped a weight? Fix it here and every trend recalculates. Nothing is ever deleted — a workout you take back stays on this list and can be put straight back.</p>
     ${rows}
     <button class="btn ghost" id="hback">‹ Back to progress</button>`;
-  $("#hback").onclick = () => { tab = "progress"; render(); };
+  if ($("#more-weeks")) $("#more-weeks").onclick = () => { historyWeeksShown += 4; renderHistory(); };
+  $("#hback").onclick = () => { historyWeeksShown = 4; tab = "progress"; render(); };
   app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDateFix = null; historyEdit = b.dataset.edit; renderHistory(); });
   app.querySelectorAll("[data-fix-date]").forEach((b) => b.onclick = () => { historyEdit = null; historyDateFix = b.dataset.fixDate; renderHistory(); });
   app.querySelectorAll("[data-cancel-date]").forEach((b) => b.onclick = () => { historyDateFix = null; renderHistory(); });
@@ -2593,13 +2624,21 @@ function renderMe() {
   // with magic-link sign-in and cross-device restore). Present it as one.
   const backup = email
     ? `<div class="card"><p class="muted">Your account</p><b>${esc(email)}</b> <span class="chip">✓ signed in</span>
-        <p class="muted" style="margin-top:8px">Your progress is saved to this account. On any other device, open the app, tap "Restore", and enter this email to pick up where you left off. No password — sign-in links come to your inbox.</p></div>`
+        <p class="muted" style="margin-top:8px">Your progress is saved to this account. On any other device, open the app, tap "Sign in on this device", and enter this email to pick up where you left off. No password — sign-in links come to your inbox.</p></div>`
     : `<div class="card"><p class="muted">Create your account</p>
         <p>One email — <b>no password, ever</b>. It keeps your progress safe if you lose this phone, and syncs it to any other device.</p>
         <input id="bemail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your account" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:8px 0 4px">
         <button class="btn" id="sendlink">Create my account</button>
-        <p class="muted" id="bmsg"></p></div>`;
+        <p class="muted" id="bmsg"></p>
+        <button class="btn ghost inline" id="me-restore-toggle">Used the app on another phone?</button>
+        <div id="me-restore" class="hidden" style="margin-top:6px">
+          <p class="muted">Enter the email you saved progress under and I'll send a sign-in link — this door was previously only reachable by resetting the app.</p>
+          <input id="me-restore-email" type="email" inputmode="email" autocomplete="email" aria-label="Email you saved progress under" placeholder="you@email.com"
+            style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:6px 0 4px">
+          <button class="btn secondary inline" id="me-restore-send">Email me a sign-in link</button>
+          <p class="muted" id="me-restore-msg"></p>
+        </div></div>`;
   // "How this is funded" — informational, always reachable, never a gate
   // (copy per docs/donation-page.md; support button appears only when a real
   // donation destination is configured).
@@ -2668,6 +2707,20 @@ function renderMe() {
       if (r.error === "invalid-email") { $("#bmsg").textContent = "That doesn't look like an email."; $("#sendlink").disabled = false; return; }
       if (r.sent === false) { $("#bmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendlink").disabled = false; return; }
       $("#bmsg").innerHTML = "Check your inbox for a link to finish — it works once and expires in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+    };
+    // Sign in from another phone's saved progress — WITHOUT user_id, which is the
+    // welcome-screen restore semantics: sending this device's id would CLAIM the
+    // address onto this anonymous user instead of fetching the saved account.
+    if ($("#me-restore-toggle")) $("#me-restore-toggle").onclick = () => $("#me-restore").classList.toggle("hidden");
+    if ($("#me-restore-send")) $("#me-restore-send").onclick = async () => {
+      const val = $("#me-restore-email").value.trim();
+      if (!val) { $("#me-restore-msg").textContent = "Enter the email first."; return; }
+      $("#me-restore-msg").textContent = "Sending…";
+      let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val }) }); }
+      catch { $("#me-restore-msg").textContent = "📴 You're offline — try again when you have signal."; return; }
+      if (r.error === "invalid-email") { $("#me-restore-msg").textContent = "That doesn't look like an email."; return; }
+      $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in link is on its way — it works once and expires in 30 minutes."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
     };
   }
@@ -2999,19 +3052,33 @@ async function renderLearn() {
   let LEARN_INDEX;
   try { ({ LEARN_INDEX } = await learnData()); }
   catch { app.innerHTML = `<h1>Learn</h1><div class="card"><p>📴 Couldn't load the guides.</p><p class="muted">Connect once and they'll be saved on this device for good.</p></div>`; return; }
-  let deeperShown = false;
-  const cats = LEARN_INDEX.map((c) => {
-    // One divider where the beginner on-ramp ends and the full evidence base begins.
-    const divider = c.tier === "deeper" && !deeperShown
-      ? (deeperShown = true, `<div class="card tldr" style="margin-top:26px"><b>🔬 Go deeper — the science library</b>
-          <p class="muted" style="margin:6px 0 0">The full evidence base behind your plan: every claim graded A–D by strength of evidence. Read what interests you — none of it is required to train well.</p></div>`)
-      : "";
-    return `${divider}<h2>${esc(c.category)}</h2><div class="card">${
-      c.items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
-    }</div>`;
-  }).join("");
+  // One divider where the beginner on-ramp ends and the full evidence base begins
+  // (inside catsFor, since filtering can remove the category that used to carry it).
+  // The 93-row index gets a filter. Only the category container re-renders on
+  // input (the input itself is never replaced, so focus survives every keystroke).
+  const catsFor = (q) => {
+    const needle = String(q ?? "").trim().toLowerCase();
+    let deeper = false;
+    return LEARN_INDEX.map((c) => {
+      const items = needle
+        ? c.items.filter((it) => `${it.title} ${it.desc ?? ""} ${c.category}`.toLowerCase().includes(needle))
+        : c.items;
+      if (!items.length) return "";
+      const divider = c.tier === "deeper" && !deeper
+        ? (deeper = true, `<div class="card tldr" style="margin-top:26px"><b>🔬 Go deeper — the science library</b>
+            <p class="muted" style="margin:6px 0 0">The full evidence base behind your plan: every claim graded A–D by strength of evidence. Read what interests you — none of it is required to train well.</p></div>`)
+        : "";
+      return `${divider}<h2>${esc(c.category)}</h2><div class="card">${
+        items.map((it) => `<button class="choice" data-learn="${esc(it.slug)}"><span style="flex:1"><b>${esc(it.title)}</b>${it.desc ? `<br><span class="muted">${esc(it.desc)}</span>` : ""}</span><span>›</span></button>`).join("")
+      }</div>`;
+    }).join("") || `<p class="muted" style="margin-top:14px">Nothing matches — try a plainer word ("protein", "sore", "sets").</p>`;
+  };
   app.innerHTML = `<h1>Learn</h1>
-    <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>${cats}`;
+    <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>
+    <input id="learn-filter" type="search" placeholder="Search the guides…" aria-label="Search the guides"
+      style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 4px">
+    <div id="learn-cats">${catsFor("")}</div>`;
+  $("#learn-filter").oninput = () => { $("#learn-cats").innerHTML = catsFor($("#learn-filter").value); wireLearnLinks(); };
   wireLearnLinks();
   window.scrollTo(0, 0);
 }
