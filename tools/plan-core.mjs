@@ -1261,7 +1261,7 @@ export function generatePlan(profile, kb, opts = {}) {
       // broken, contradictory coaching. Give the only real levers left instead.
       message: priority.has(m)
         ? `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — its ceiling is more than these ${sessionSpecs.length} days can recover; ${levers}.`
-        : `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
+        : `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — ${levers}${/priority/.test(levers) ? "" : "; marking it a priority muscle in Settings would tilt the budget its way"}.` });
   }
 
   const citations = [...new Set([...splitCites, ...exerciseChoices.flatMap((c) => c.citations), ...Object.values(volumeRationale).flatMap((r) => r.landmark?.citations ?? [])])];
