@@ -343,8 +343,15 @@ ok("beginner bodyweight hamstring work is now a beginner movement",
 // --- first-serve: default intermediate/advanced plans leave NO directly-trained
 //     muscle at zero weekly sets (the quality cap was letting big-muscle compounds
 //     double up while calves/abs/side-delts got nothing all week) ---
-ok("no directly-trained muscle gets zero weekly sets (intermediate + advanced defaults)",
-  [{ user_id: "fs-i", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60 },
+// BEGINNERS INCLUDED — the invariant's original grid was int/adv only, and the
+// Wave-237 last-chance floor silently zeroed beginners' abs on the DEFAULT 2d/3d
+// profiles (their 12-set budget can't rescue seven muscles on one final day, and
+// abs are second-to-last in PLACE_ORDER, so they lost the race every time —
+// while the grid that guarded exactly this class never generated a beginner).
+ok("no directly-trained muscle gets zero weekly sets (beginner + intermediate + advanced defaults)",
+  [{ user_id: "fs-b2", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60 },
+   { user_id: "fs-b3", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60 },
+   { user_id: "fs-i", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60 },
    { user_id: "fs-a", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 90 }]
     .every((prof) => Object.values(generatePlan(prof, kb).rationale.volume_by_muscle)
       .every((r) => r.frequency === 0 || r.projected_sets > 0)));
@@ -962,8 +969,9 @@ const ssErectorExposure = ssPlan.program.sessions.flatMap((s) => s.exercises)
   .reduce((a, e) => a + e.sets, 0);
 ok("#SS ...and the erectors really ARE covered: ≥4 weekly hard sets of heavy compounds load them as a secondary",
   ssErectorExposure >= 4 && (ssPlan.rationale.volume_by_muscle["spinal-erectors"]?.projected_sets ?? 0) > 0);
-ok("#SS the rationale says WHY the muscle has no direct exercise, so the plan screen can explain it",
-  (ssPlan.rationale.volume_by_muscle["forearms"]?.reasons ?? []).join(" ").toLowerCase().includes("compound"));
+ok("#SS the rationale says WHY per muscle — forearms is a GRIP story, not a set-count story",
+  (ssPlan.rationale.volume_by_muscle["forearms"]?.reasons ?? []).join(" ").toLowerCase().includes("grip")
+  && (ssPlan.rationale.volume_by_muscle["spinal-erectors"]?.reasons ?? []).join(" ").toLowerCase().includes("deadlift"));
 // The "if they lag / specific goal" door the KB leaves open: prioritizing the
 // muscle restores full direct work.
 const ssPriPlan = generatePlan({ ...ssProfile, user_id: "ss-2", priority_muscles: ["forearms", "spinal-erectors"] }, kb);
@@ -981,6 +989,19 @@ ok("#SS the critique never warns below-MEV for forearms/erectors on a default pl
 const ssProj = (m) => ssPlan.rationale.volume_by_muscle[m]?.projected_sets ?? 0;
 ok("#SS chest clears its MEV on the flagship intermediate 4d/60m profile",
   ssProj("chest") >= muscleById.get("chest").landmarks.mev.min);
+// The AGGREGATE pin, because the single-muscle one above proved too narrow: a
+// mid-implementation measurement of this profile once claimed four majors clear
+// MEV, and a later allocation change silently traded two of them away while the
+// chest pin stayed green (lesson 39, against our own commit message). The
+// flagship 4d/60m week is structurally MEV-short (the muscles' MEV sum exceeds
+// its budget — the caveat's "add a day" is the true fix), so pin the measured
+// distribution: most upper-body muscles clear, and the total shortfall stays
+// bounded. Goes red on a real allocation regression; tolerates ±1-set drift.
+const ssUpper = ["chest", "lats", "upper-back", "side-delts", "rear-delts", "biceps", "triceps"];
+const ssClears = ssUpper.filter((m) => ssProj(m) >= muscleById.get(m).landmarks.mev.min);
+const ssDeficit = ssUpper.reduce((a, m) => a + Math.max(0, muscleById.get(m).landmarks.mev.min - ssProj(m)), 0);
+ok(`#SS flagship distribution: >=5 of 7 upper muscles clear MEV (got ${ssClears.length}) with total deficit <=6 (got ${ssDeficit.toFixed(1)})`,
+  ssClears.length >= 5 && ssDeficit <= 6);
 
 // --- caveat framing for GENERATED plans (Wave 238, owner considerations #2) ---
 // "When a program is built there shouldn't be any things 'worth fixing' — it
@@ -999,6 +1020,19 @@ ok("#CV ...and the summary never says 'worth fixing'",
   !/worth fixing/i.test(cvGen.summary));
 ok("#CV a caveat names the LEVER (days or session length), not a defect",
   cvGen.findings.length > 0 && cvGen.findings.some((f) => /day|session/i.test(f.msg)));
+// A DEAD lever must never be offered (the caveat's whole job is naming what
+// would actually buy more): a beginner's budget is clamped by the QUALITY cap
+// from 36 minutes up — 45- and 90-minute beginner plans are byte-identical — so
+// "longer sessions" is inert for them, and only the day lever is real.
+const cvB = generatePlan({ user_id: "cv-b", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3,
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_length_min: 60 }, kb);
+const cvGenB = critiquePlan(cvB.program, kb, { experience: "beginner", generated: true, sessionMinutes: 60 });
+ok("#CV no caveat offers 'longer sessions' to a quality-capped beginner — only the real day lever",
+  cvGenB.findings.length > 0 && !cvGenB.findings.some((f) => /longer session/i.test(f.msg))
+  && cvGenB.findings.some((f) => /extra training day/i.test(f.msg)));
+ok("#CV the generator's own warnings drop the dead lever too",
+  (cvB.rationale.warnings ?? []).length > 0 && !cvB.rationale.warnings.some((w) => /longer session/i.test(w.message ?? "")));
+
 // The same program judged as a USER EDIT keeps the full critical framing —
 // byte-identical to the pre-Wave-238 behavior (the critique still guards edits).
 const cvEdit = critiquePlan(cvPlan.program, kb, { experience: "beginner" });

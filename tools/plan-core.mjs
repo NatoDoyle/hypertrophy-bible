@@ -40,6 +40,28 @@ const PROGRAMMABLE_MUSCLES = new Set(Object.values(ARCH).flat());
 // never two copies that can disagree — the gate/renderer split lesson).
 export const SECONDARY_SERVED = new Set(["forearms", "spinal-erectors"]);
 
+// Per-session hard-set ceiling by training age (see the step-4 comment in
+// generatePlan for the reasoning). Module-scope because the lever helper below
+// must know when the CLOCK stops being the binding constraint.
+const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+
+// The volume LEVERS that actually bind for this profile, named honestly. The
+// caveat's whole job is telling the user what would buy more — and two cohorts
+// were being offered dead ones: a beginner's budget is clamped by the QUALITY
+// cap from 36 minutes up (a 45- and a 90-minute beginner plan are byte-identical
+// — measured), and intermediates cap at 48 minutes; a 6-day split has no 7th row
+// to add. A lever that does nothing when pulled costs exactly the trust the
+// caveat exists to build. Shared by the generator's self-check warnings and the
+// critique's caveats, so the two surfaces can never disagree about what helps.
+export const volumeLevers = ({ days, sessionMin, experience } = {}) => {
+  const timeBinds = Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < (SESSION_QUALITY_CAP[experience] ?? 16);
+  const dayBinds = (days ?? 2) < 6;
+  if (dayBinds && timeBinds) return "an extra training day, or longer sessions, would let the plan give it more";
+  if (dayBinds) return "an extra training day would let the plan give it more (extra session time would not help — each session already holds as much quality work as pays off)";
+  if (timeBinds) return "longer sessions would let the plan give it more";
+  return "six days already hold as much quality work as pays off per session — this closes as your work capacity grows, or by making the muscle a priority";
+};
+
 // split by days_per_week × training_status → ordered list of archetypes
 const SPLIT_TABLE = {
   "2": { "*": ["FULL", "FULL"] },
@@ -572,7 +594,17 @@ export function generatePlan(profile, kb, opts = {}) {
     if (SECONDARY_SERVED.has(m.id) && !priority.has(m.id)) {
       volumeRationale[m.id].secondary_served = true;
       delete volumeRationale[m.id].maintenance;
-      volumeRationale[m.id].reasons = ["covered by your compound work — deadlifts, squats, rows and curls already load it (the KB's own guidance: direct work is optional unless you prioritize it)"];
+      // Per-muscle WHY, because the mechanisms differ and one of them is
+      // invisible to set-counting: erectors genuinely accrue secondary credit
+      // from hinges and squats (measured ~2.5-3 effective sets on default
+      // plans), but forearms work through GRIP — rows, pulls and curls load
+      // them isometrically on every rep, and none of that appears in the
+      // fractional volume model (most plans show forearms at ~0-1 counted
+      // sets). A single "compound work already loads it" line over a 0-set bar
+      // was a claim the number beside it visibly contradicted.
+      volumeRationale[m.id].reasons = [m.id === "forearms"
+        ? "trained through grip — rows, pulls, curls and carries work the forearms constantly, though set-counting can't see grip work (the KB: direct work is optional unless forearm size is a goal)"
+        : "covered by your compound work — deadlifts, squats and rows brace and load it on every rep (the KB: add direct work only if it lags)"];
     }
   }
 
@@ -649,8 +681,8 @@ export function generatePlan(profile, kb, opts = {}) {
   // window and Schoenfeld 2015's per-set-quality mechanism both point here, and
   // real lifters report effort degrading after ~a dozen hard sets). The ceiling
   // scales with training age — beginners need far less to grow and can sustain
-  // less; advanced lifters tolerate more.
-  const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+  // less; advanced lifters tolerate more. (Table lives at module scope: the
+  // lever helper must know when the clock stops mattering.)
   const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
   const setBudget = Math.min(Math.round(sessionMin / 3), SESSION_QUALITY_CAP[experience] ?? 16); // ~3 min/set incl. rest, capped for quality
   const EX_SET_CAP = 5;   // no single exercise exceeds 5 sets
@@ -816,10 +848,38 @@ export function generatePlan(profile, kb, opts = {}) {
     // qualifying session turns that accident into deliberate A/B emphasis:
     // day A concentrates real doses on the muscles it leads with, day B leads with
     // the rest — the exact structure the worked templates model.
-    const trainsLater = (m) => sessionSpecs.slice(sIdx + 1).some((sp) => ARCH[sp.arch].includes(m));
-    for (const m of order) {
-        if (trainsLater(m)) continue;
-    // ((direct[m] > 0): a muscle already holding direct sets THIS session (the)
+    //
+    // ...WITH A SPILL RULE, because "last chance only" re-opened the exact hole
+    // the floor was built to close: on a beginner full-body week every muscle's
+    // last chance is the SAME final session, and a 12-set budget cannot host
+    // seven 2-set rescues — abs (second-to-last in PLACE_ORDER) shipped at ZERO
+    // on the default 2d/3d beginner profiles, warned but unserved. When the
+    // muscles one session away from their last chance already outweigh the
+    // final day's whole budget, a few rescues spill a session early — capped at
+    // setBudget/4 placements so the early day keeps its concentrated shape, and
+    // taken TAIL-first from PLACE_ORDER, because the back of the order is who
+    // always loses the final race. Splits whose final days can absorb their
+    // rescues (upper/lower, PPL — measured) never trigger the spill.
+    const laterChances = (m) => sessionSpecs.slice(sIdx + 1).filter((sp) => ARCH[sp.arch].includes(m)).length;
+    const trainsLater = (m) => laterChances(m) > 0;
+    const pendingSoon = order.filter((x) => !weekServed.has(x) && (direct[x] ?? 0) === 0 && laterChances(x) === 1);
+    const earlyCap = pendingSoon.length * 2 > setBudget ? Math.floor(setBudget / 4) : 0;
+    let earlyUsed = 0;
+    const rescueQueue = [
+      ...order.filter((m) => laterChances(m) === 0),
+      ...(earlyCap ? [...order].reverse().filter((m) => pendingSoon.includes(m)) : []),
+    ];
+    for (const m of rescueQueue) {
+      const isEarly = laterChances(m) > 0;
+      if (isEarly && earlyUsed >= earlyCap) continue;
+      // An EARLY spill must never preempt the session's own foundation: it may
+      // only spend budget the compound pass can spare (room for two compound
+      // doses stays reserved), or an arm-priority day turned into six isolations
+      // with no squat/press/row at all — the exact takeover the Wave-15
+      // invariant exists to forbid. Last-chance rescues are mandatory and keep
+      // first claim; spills are opportunistic by definition.
+      if (isEarly && setsUsed + 2 > setBudget - compoundSets * 2) continue;
+      // (direct[m] > 0): a muscle already holding direct sets THIS session (the
       // 4a0 priority pass, or a compound placed for a neighbour) is served — the
       // floor exists for muscles with NOTHING, and `order` is priority-first, so
       // without this check a priority arm just served by 4a0 took a SECOND
@@ -829,7 +889,7 @@ export function generatePlan(profile, kb, opts = {}) {
       const pool = poolFor(m);
       if (!pool.length) continue;
       const ex = pickFrom(pool, m);
-      if (ex) add(ex, Math.min(2, perTarget(m), EX_SET_CAP), m, ["weekly coverage — every muscle gets served before any doubles up", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]);
+      if (ex && add(ex, Math.min(2, perTarget(m), EX_SET_CAP), m, ["weekly coverage — every muscle gets served before the week runs out", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]) && isEarly) earlyUsed++;
     }
 
     // 4a) one compound per compound-driven muscle — but under a scarce quality
@@ -951,7 +1011,21 @@ export function generatePlan(profile, kb, opts = {}) {
       }
       return false;
     };
-    for (const m of order) {
+    // NEEDIEST FIRST, not PLACE_ORDER: the residual pass hands out the session's
+    // last few sets, and iterating the fixed anatomical order let early-order
+    // muscles (chest) eat the whole margin — a marginal set is worth most to the
+    // muscle farthest below its own per-session share (stable sort on
+    // deterministic values, so determinism holds). Measured honestly before
+    // shipping: this moves the corpus-wide MEV deficit by only ~1% (1903.5 →
+    // 1886.5 sets across 120 configs), because tight sessions are decided by the
+    // EARLIER passes and the remaining deficit is structural — the MEV sum
+    // genuinely exceeds what a short/low-day week can budget, and the generated
+    // caveats' "an extra training day would close it" is the true answer. A
+    // two-level MEV-first water-fill was tried and bought ~0.2% more for real
+    // added complexity — don't re-chase this margin with residual-pass tuning.
+    const needyOrder = [...order].sort((a, b) =>
+      ((credited[a] ?? 0) / Math.max(1, perTarget(a))) - ((credited[b] ?? 0) / Math.max(1, perTarget(b))));
+    for (const m of needyOrder) {
       for (let k = 0; k < 2; k++) {
         const residual = perTarget(m) - (credited[m] ?? 0);
         // topUp GROWS an existing exercise — it needs set budget, not an exercise
@@ -1120,6 +1194,9 @@ export function generatePlan(profile, kb, opts = {}) {
   }
   const weekVol = projectWeek();
   const vsLm = volumeVsLandmarks(weekVol, muscleIndex);
+  // Only the levers that actually bind for THIS profile appear in any message
+  // below — see volumeLevers for why a dead lever is worse than none.
+  const levers = volumeLevers({ days: sessionSpecs.length, sessionMin, experience });
   for (const [m, r] of Object.entries(volumeRationale)) {
     const proj = weekVol[m] ?? 0;
     const f = freq[m] ?? 0;
@@ -1163,9 +1240,9 @@ export function generatePlan(profile, kb, opts = {}) {
     }
     const hasExercise = compoundPool[m].length || isoPool[m].length;
     if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
-    else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit your ${sessionMin}-min sessions — longer sessions or an extra day would add it.` });
+    else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit this week — ${levers}.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
-    else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. More days or longer sessions would fix it.` });
+    else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. ${levers[0].toUpperCase()}${levers.slice(1)}.` });
     // FREQUENCY CEILING (considerations #1, finding 1C). A muscle's weekly target is
     // split across the sessions that train it and capped at the session-quality
     // window, so `freq × perSessionCap` is the hard maximum this split can EVER
@@ -1183,7 +1260,7 @@ export function generatePlan(profile, kb, opts = {}) {
       // session-quality cap) must not be told to "mark it a priority" — it reads as
       // broken, contradictory coaching. Give the only real levers left instead.
       message: priority.has(m)
-        ? `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — its ceiling is more than these ${sessionSpecs.length} days can recover; an extra training day or longer sessions would close the gap.`
+        ? `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — its ceiling is more than these ${sessionSpecs.length} days can recover; ${levers}.`
         : `Only ~${proj} of a targeted ${r.target_sets} sets/wk fit for ${m} — more days, or marking it a priority muscle in Settings, would close the gap.` });
   }
 
@@ -1364,8 +1441,12 @@ const MUSCLE_LABEL = {
 // guard rail it was built to be. Structurally, a generated plan can't trip the
 // other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
 // run at generation), so "generated" only re-frames the volume findings.
-export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false } = {}) {
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null } = {}) {
   const prioritySet = new Set(priority);
+  // Caveats must offer only levers that BIND for this user (volumeLevers) — the
+  // binder passes sessionMinutes from the profile; without it the default-60
+  // assumption still beats the old always-both wording.
+  const levers = volumeLevers({ days: program?.days_per_week, sessionMin: sessionMinutes ?? undefined, experience });
   const { exercises, muscles } = kb;
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
@@ -1408,7 +1489,7 @@ export function critiquePlan(program, kb, { experience = "intermediate", priorit
       if (generated) {
         // A caveat, not a verdict: the plan already is the best fit to the stated
         // constraints, so name the trade and the lever — never "fix your plan".
-        add("info", `${name(m)}: ~${r.sets} sets/wk is what fits your ${program.days_per_week ?? "current"}-day setup — the ideal range starts around ${lm.mev.min}. An extra training day, or longer sessions, would let the plan give it more${prioritySet.has(m) ? "" : "; marking it a priority muscle would tilt the current budget its way"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
+        add("info", `${name(m)}: ~${r.sets} sets/wk is what fits your ${program.days_per_week ?? "current"}-day setup — the ideal range starts around ${lm.mev.min}. ${levers[0].toUpperCase()}${levers.slice(1)}${prioritySet.has(m) ? "" : "; marking it a priority muscle would tilt the current budget its way"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
         continue;
       }
       const soft = experience === "beginner" && !severe;

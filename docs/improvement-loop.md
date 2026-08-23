@@ -928,6 +928,37 @@ These are real failures from previous iterations. Each is now a standing check.
    designed, and the kettlebell side bend is core.md's own ranked pick — both now
    recorded so no future audit "fixes" them.
 
+63. **Deferring queued work to a "last chance" is only safe when the last chance can
+   HOST it — and the claims you shipped about the change are measurements that must be
+   re-run on the FINAL code.** Wave 237's coverage floor deferred every rescue to a
+   muscle's final qualifying session; on a beginner full-body week every muscle's
+   final chance is the SAME 12-set day, which cannot host seven 2-set rescues — so
+   abs (second-to-last in PLACE_ORDER) shipped at ZERO on the default 2d/3d beginner
+   profiles, warned but unserved, re-opening the exact hole the floor was built to
+   close. The fix is a SPILL rule: when the muscles one session from their last
+   chance already outweigh the final day's budget, a bounded few rescues (setBudget/4,
+   tail-of-order first — the perennial losers) fire a session early, under a reserve
+   that keeps room for two compound doses so the spill can never re-create the
+   isolation-takeover the Wave-15 invariant forbids (the unguarded version did exactly
+   that, caught by the old test). Measured end state: zero-volume muscle-configs
+   127 → 55 across 600 configs — better than the pre-Wave-237 63. Three siblings from
+   the same iteration: (a) the guarding grid never generated a BEGINNER — the invariant
+   test for "no muscle at zero" ran int/adv only, so the cohort with the tightest
+   budget was the one unwatched (when a test grid excludes a cohort, ask which cohort
+   the defect class binds hardest); (b) my Wave-237 commit claimed "chest/lats/
+   side-delts/biceps clear MEV" from a measurement taken MID-implementation — the
+   final code had traded two of them away while the single-muscle chest pin stayed
+   green; the fix is an AGGREGATE distribution pin (N-of-M clear + bounded deficit)
+   and re-running the battery on what actually ships; (c) a lever named in advice
+   must BIND — "longer sessions" was offered to beginners whose budget is
+   quality-capped from 36 minutes up (45- and 90-minute beginner plans are
+   byte-identical), so `volumeLevers` now derives the offer from the same constants
+   that clamp the budget, shared by the generator's warnings and the critique's
+   caveats. And the tier itself had a THIRD consumer: Progress kept saying
+   "add volume / add sets" for the muscles the plan screen calls "covered by
+   compounds" — one user, three surfaces, two answers (lesson 15's sweep must count
+   SURFACES, not files).
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -949,6 +980,37 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7n. **Telemetry (Waves 240–241, 2026-08-24).** The scheduled self-audit of Waves
+   237-239 — my own engine burst. **1 finder (~133k tokens), zero verify agents,
+   zero workflows**, and the finder earned every token: five candidates, five
+   confirmed (its second 5-for-5), four with measured reproductions I re-ran
+   before acting. The headline was mine to be ashamed of and the finder's to
+   catch: the last-chance coverage floor zeroed beginners' abs on the DEFAULT
+   onboarding profiles (lesson 63), invisible to the guarding test because its
+   grid never generated a beginner. My own inline audit had independently caught
+   the sibling defect first — the Wave-237 commit's "majors clear MEV" claim was
+   measured mid-implementation and false on the shipped code — via a seed sweep
+   that exposed my flagship measurement as temporally lucky, not seed-lucky
+   (lesson 39, on my own commit message). Fixes: the spill rule (with the
+   compound-reserve guard the UNGUARDED version needed — the old Wave-15
+   invariant caught my first cut re-creating the isolation takeover, tests doing
+   their job against the fixer), the Progress surface joining the tier (third
+   consumer), honest binding levers via one shared helper, per-muscle
+   secondary-served rationale (forearms is a grip story set-counting can't see),
+   and live-engine cap coverage restored. Also from this turn: lesson 54 hit MY
+   fixtures twice more (a route test reading a key that doesn't exist — red for
+   the wrong reason; a walkthrough segment spilling into the legend), each caught
+   by insisting the red be FOR the named reason before fixing anything.
+   Measured battery: zero-volume configs 127 → 55 (pre-burst 63), abs restored
+   on defaults, fragmentation steady at 7.6%, remaining zeros all warned and
+   structurally honest (no bodyweight side-delt exercise exists; 30-minute
+   budgets). Evidence: 169 plan · 95 derive · 79 coach · 361 route · full app
+   chain exit 0 · root gate exit 0 · five tampers each red on exactly their own
+   test · 3/3 Progress browser checks. Refutations recorded by the finder and
+   kept: the knee-flexion staple cannot double-fire; forearms-as-priority
+   coheres end to end; the generated-flag computation is sound on every
+   server-side path.
+
 7o. **Telemetry (Waves 237–239, 2026-08-23, same turn as 7p).** The owner's two
    program-engine considerations landed mid-iteration (accidentally committed by the
    7p burst's `git add -A` before being read — noted, no harm: the file's rule is

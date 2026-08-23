@@ -1,6 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
+import { generateUserPlan } from "../src/planner.mjs";
 import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey } from "../../tools/derive-core.mjs";
 
@@ -912,12 +913,14 @@ check("#2D a comeback never lands beside 'peak volume — push hard' (lesson 24'
 // hundred, and beginners are exempt from the mesocycle wave, so the least
 // experienced user got no ramp at all.
 // A PRE-Wave-237 stored program, byte-shaped like the engine's OLD output: seven
-// 2-set exercises per day. Since Wave 237's last-chance coverage floor, freshly
-// generated beginner plans open at <=4 exercises structurally (measured across
-// every days/length/equipment combination), so the first-session cap's remaining
-// live population is plans STORED before the change — and its tests must feed it
-// one, kept legacy-shaped on purpose (lesson 45: a migration-era behavior needs
-// fixtures in the shape that actually exists in prod rows).
+// 2-set exercises per day. The cap serves TWO populations: plans STORED before
+// the Wave-237 floor change (this fixture, kept legacy-shaped on purpose —
+// lesson 45), and the fresh generated plans whose day one still exceeds 4 (the
+// Wave-240 spill rescues re-lengthened some, e.g. a 4-day dumbbell-only
+// beginner opens at 6 — the live-engine test below covers that door, so the cap
+// is never tested through hand-written fixtures alone). An earlier version of
+// this comment claimed fresh plans were ≤4 "across every combination"; that
+// was measured mid-change and was false — both doors are tested now.
 const legacySeven = () => ["goblet-squat", "dumbbell-romanian-deadlift", "dumbbell-bench-press",
   "chest-supported-row", "cable-lateral-raise", "machine-crunch", "seated-calf-raise"]
   .map((id) => ({ exercise: id, sets: 2, rep_range: "6-10", rir: "2-3" }));
@@ -947,6 +950,17 @@ check("a true beginner's FIRST session is short, and says so", () => {
   const day2 = buildToday(u, [{ session_id: "s1", date: new Date(Date.now() - 86400000).toISOString(), program_ref: program.id, sets: [] }]);
   assert.ok(day2.exercises.length > 4);
   assert.equal(day2.first_session, null);
+});
+
+check("the first-session cap fires on LIVE engine output too (a 4d dumbbell-only beginner opens at 6)", () => {
+  const profile = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 4, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"] };
+  const { program } = generateUserPlan({ ...profile });
+  const full = program.sessions[0].exercises.length;
+  assert.ok(full > 4, "precondition: this generated day must exceed the cap, or the live door is untested");
+  const day1 = buildToday({ profile, program, plan_meta: { block_start: new Date().toISOString() } }, []);
+  assert.equal(day1.exercises.length, 4);
+  assert.deepEqual(day1.first_session, { shown: 4, full });
 });
 
 check("the first-session cap is beginner-only", () => {

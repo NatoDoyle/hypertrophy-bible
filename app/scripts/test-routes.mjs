@@ -2243,6 +2243,23 @@ try {
   ok("#sex a settings save that omits it leaves the stored value alone",
     (await store.getUser(sxU)).profile.sex === "female");
 
+  // --- the SECONDARY_SERVED tier reaches the Progress surface (Wave 240) --------
+  // The tier shipped in the generator and the critique — and Progress kept saying
+  // "add volume / add sets" for the very muscles the plan screen calls "covered by
+  // compounds" (the third consumer, missed: lesson 15's producer/renderer sweep at
+  // surface scope). One user, three surfaces, two answers.
+  const ss3U = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  // Log a week that credits the erectors only through compounds (an RDL), leaving
+  // them far below the direct-work MEV — the exact state the tier calls fine.
+  await json("POST", "/api/session", { user_id: ss3U, session_id: "ss3-1", date: dAgo(2),
+    sets: Array.from({ length: 3 }, () => ({ exercise: "romanian-deadlift", set_type: "work", weight_kg: 80, reps: 8 })) });
+  const ss3P = await (await app.request("/api/progress", { headers: { "X-HB-User": ss3U } })).json();
+  const ss3Row = (ss3P.volumeByMuscle ?? []).find((r) => r.id === "spinal-erectors");
+  ok("#SS3 Progress shows 'covered by compounds' for erectors, never 'add volume'",
+    !!ss3Row && ss3Row.status === "secondary-served");
+  ok("#SS3 ...and the adaptive advice never says 'add sets' for a tier muscle",
+    !(ss3P.adaptive ?? []).some((a) => (a.muscle === "spinal-erectors" || a.muscle === "forearms") && a.signal === "add"));
+
   // --- never_trained rides the /api/today payload (Wave 235) --------------------
   // The client's first-timer greeting gated on day_number === 1, which derives
   // from the FILTERED session list — so a user whose only workout is quarantined

@@ -33,8 +33,8 @@ export function explainUserPlan(profile, rationale, program) {
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus

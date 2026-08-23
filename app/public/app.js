@@ -598,7 +598,8 @@ const STATUS_LEGEND = `<p class="muted legend"><b>What the tags mean:</b>
   <span class="status s-near">near max</span> plenty ·
   <span class="status s-over">over max</span> more than you can recover from.<br>
   <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.<br>
-  <span class="status s-maint">holding steady</span> during a specialization block, this muscle is intentionally kept at a maintenance dose while your priority muscles get the extra volume.</p>`;
+  <span class="status s-maint">holding steady</span> during a specialization block, this muscle is intentionally kept at a maintenance dose while your priority muscles get the extra volume.<br>
+  <span class="status s-maint">covered by compounds</span> this muscle gets its work from your big lifts — direct exercises for it are optional unless you make it a priority.</p>`;
 async function renderPlanExplain(firstTime) {
   nav.hidden = !!firstTime;
   app.innerHTML = `<p class="muted">Loading your plan…</p>`;

@@ -6,7 +6,22 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-23, second turn** (Waves 237-239: the owner's
+Grounded assessment date: **2026-08-24** (Waves 240-241: the self-audit of the
+Waves 237-239 engine burst found **five confirmed defects — all mine, headed by
+the last-chance coverage floor zeroing beginners' abs on the default onboarding
+profiles** (the guarding test's grid never generated a beginner), and my own
+commit's "majors clear MEV" claim measured mid-implementation and false on the
+shipped code. Fixed: a bounded SPILL rule (zero-volume configs 127 → 55, better
+than the pre-tier 63; the unguarded first cut was caught by the Wave-15
+invariant re-creating the isolation takeover — the old tests defending against
+the fixer), the Progress tab joining the SECONDARY_SERVED tier (it was telling
+users to "add volume" to the muscles the plan screen calls "covered by
+compounds"), advice levers derived from the same constants that clamp the
+budget (a beginner's 45- and 90-minute plans are byte-identical, so "longer
+sessions" was a dead lever), per-muscle secondary-served rationale (forearms is
+a grip story set-counting can't see), and live-engine first-session-cap
+coverage restored. See lesson 63 and telemetry 7n.) The prior grounding:
+(Waves 237-239: the owner's
 program-engine report, measured claim by claim (lesson 36) and mostly confirmed —
 the generator was contradicting the KB's own prose. back.md and arms.md both say
 erectors/forearms need no default direct work, yet every Upper day carried a wrist
@@ -278,6 +293,33 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 240–241 progress (2026-08-24). The engine burst's self-audit: five
+confirmed, all mine; the coverage floor's deferral had zeroed beginners' abs.**
+
+- **Wave 240.** (a) The spill rule: when the muscles one session from their last
+  chance outweigh the final day's budget, a bounded few rescues (setBudget/4,
+  tail-of-order first) fire early — under a compound-reserve so the spill can
+  never re-create the Wave-15 isolation takeover (the unguarded cut did, and the
+  old invariant caught it). Beginner defaults get their abs back; zero-volume
+  configs 127 → 55 across 600, all remaining warned and structural. The
+  invariant test's grid now generates beginners. (b) Progress joins the
+  SECONDARY_SERVED tier — status "covered by compounds", no "add sets" advice
+  for tier muscles; stored pre-tier rationales keep their old honest statuses
+  (lesson 41 respected). Legend updated. (c) `volumeLevers`: advice offers only
+  levers that BIND, shared by generator warnings and critique caveats. (d)
+  Forearms' rationale tells the grip story instead of claiming countable
+  coverage set-counting contradicts. (e) The first-session cap's "every
+  combination" comment corrected and its live-engine door re-tested (a 4d
+  dumbbell-only beginner opens at 6). Plus: needy-first residual ordering
+  (aggregate MEV deficit 1903.5 → 1886.5; the two-level water-fill was tried,
+  measured at ~0.2% further, and deliberately NOT shipped — recorded in code so
+  the margin isn't re-chased), and an aggregate flagship distribution pin
+  replacing the single-muscle pin my own mid-implementation claim hid behind.
+- **Wave 241 (LEARN).** Lesson 63, telemetry 7n, this entry.
+- **Evidence:** 169 plan · 95 derive · 79 coach · 361 route · app chain exit 0 ·
+  root exit 0; five tampers each red on exactly their own test; 3/3 Progress
+  browser checks; the finder's three refutations recorded.
 
 **Waves 237–239 progress (2026-08-23, second turn). The owner's program-engine
 report: the generator contradicted the KB's own prose, and the critique
