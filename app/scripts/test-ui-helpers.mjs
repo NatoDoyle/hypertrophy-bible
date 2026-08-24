@@ -2,7 +2,7 @@
 // path shorteners. app.js itself cannot be imported under Node (top-level DOM), so
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -54,6 +54,19 @@ check("filterExercises: name, muscle and equipment substrings; empty query retur
   assert.deepEqual(filterExercises(list, "HAMSTR").map((e) => e.name), ["Seated Leg Curl"]);
   assert.deepEqual(filterExercises(list, "machine").map((e) => e.name), ["Seated Leg Curl"]);
   assert.equal(filterExercises(list, "zzz").length, 0);
+});
+
+check("linePath: spreads x across the width, inverts y, pads, and centers a flat series", () => {
+  const { pts, min, max } = linePath([80, 82, 81], 100, 50, 5);
+  assert.equal(pts.length, 3);
+  assert.equal(pts[0][0], 5); assert.equal(pts[2][0], 95);            // x spread pad..w-pad
+  assert.ok(pts[1][1] < pts[0][1] && pts[1][1] < pts[2][1]);          // higher value = smaller y (SVG)
+  assert.equal(min, 80); assert.equal(max, 82);
+  assert.ok(pts.every(([x, y]) => y >= 5 && y <= 45));                // padded frame
+  const flat = linePath([70, 70], 100, 50, 5);
+  assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
+  assert.deepEqual(linePath([], 100, 50).pts, []);
+  assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

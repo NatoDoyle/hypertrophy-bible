@@ -2271,6 +2271,31 @@ try {
   ok("#SS3 ...and the adaptive advice never says 'add sets' for a tier muscle",
     !(ss3P.adaptive ?? []).some((a) => (a.muscle === "spinal-erectors" || a.muscle === "forearms") && a.signal === "add"));
 
+  // --- history + trends payloads (Wave 252, owner: "look back at past weights,
+  // calories… and edit them; graphs for progress") -------------------------------
+  const htU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  for (const [n, kg] of [[3, 82.5], [2, 82.2], [1, 82.4]]) await json("POST", "/api/bodyweight", { user_id: htU, kg, date: day(n) });
+  for (const [n, kcal] of [[2, 2400], [1, 2500]]) await json("POST", "/api/nutrition/log", { user_id: htU, date: day(n), kcal });
+  const htP = await (await app.request("/api/progress", { headers: { "X-HB-User": htU } })).json();
+  ok("#HT /api/progress ships the raw weigh-in series for the graph + edit list",
+    Array.isArray(htP.bodyweight_series) && htP.bodyweight_series.length === 3
+    && htP.bodyweight_series.some((b) => b.date === day(2) && b.kg === 82.2));
+  const htN = await (await app.request(`/api/nutrition?d=${day(0)}`, { headers: { "X-HB-User": htU } })).json();
+  ok("#HT /api/nutrition ships the daily intake log", Array.isArray(htN.log) && htN.log.length === 2 && htN.log.some((e) => e.date === day(1) && e.kcal === 2500));
+  // Editing IS the existing replace-by-date door — prove the round trip for both.
+  await json("POST", "/api/bodyweight", { user_id: htU, kg: 81.9, date: day(2) });
+  await json("POST", "/api/nutrition/log", { user_id: htU, date: day(1), kcal: 2100 });
+  const htP2 = await (await app.request("/api/progress", { headers: { "X-HB-User": htU } })).json();
+  const htN2 = await (await app.request("/api/nutrition", { headers: { "X-HB-User": htU } })).json();
+  ok("#HT a past day EDITS in place — no duplicate rows, the new value shows",
+    htP2.bodyweight_series.filter((b) => b.date === day(2)).length === 1
+    && htP2.bodyweight_series.find((b) => b.date === day(2)).kg === 81.9
+    && htN2.log.filter((e) => e.date === day(1)).length === 1
+    && htN2.log.find((e) => e.date === day(1)).kcal === 2100);
+  ok("#HT strength trend rows carry their series through the route",
+    (htP2.progression ?? []).every((p) => !p.weeks || Array.isArray(p.series)));
+
   // --- never_trained rides the /api/today payload (Wave 235) --------------------
   // The client's first-timer greeting gated on day_number === 1, which derives
   // from the FILTERED session list — so a user whose only workout is quarantined

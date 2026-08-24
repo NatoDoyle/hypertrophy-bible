@@ -1563,7 +1563,11 @@ export function createApp(store, config = {}) {
     const todayLog = (await store.listNutritionLog(id)).find((e) => (e.date || "").slice(0, 10) === day) || null;
     // sex is surfaced so the stats form can ask for the hip measure the Navy formula
     // requires for women (without it a female tape-measure estimate silently fails).
-    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: history.filter((h) => h.kcal).length, sex: user.profile?.sex ?? null, today: todayLog && { kcal: todayLog.kcal, protein_g: todayLog.protein_g } });
+    // The daily log rides along (it was already loaded for the adaptive TDEE):
+    // the client draws the intake trend and offers per-day edits — the existing
+    // POST /api/nutrition/log replaces-by-date, so editing needs no new door.
+    const log = history.filter((h) => h.kcal).map((h) => ({ date: (h.date || "").slice(0, 10), kcal: h.kcal, protein_g: h.protein_g ?? null }));
+    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: log.length, sex: user.profile?.sex ?? null, today: todayLog && { kcal: todayLog.kcal, protein_g: todayLog.protein_g }, log });
   });
 
   app.post("/api/nutrition/log", async (c) => {

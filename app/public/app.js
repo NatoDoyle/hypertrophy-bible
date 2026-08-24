@@ -2,7 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -96,6 +96,47 @@ function wireLearnLinks() {
 // readers and broke voice control ("tap what's RIR"). Only the bare "?" default
 // needs a spoken name; a descriptive label speaks for itself.
 const helpDot = (slug, label = "ⓘ what's this?") => `<button class="help" data-learn="${slug}">${label}</button>`;
+
+// --- Trend charts (Wave 252; the dataviz method) -----------------------------
+// Change-over-time → a LINE. One series per chart → one hue (the accent), no
+// legend (the card heading names the series), axis extremes as muted text
+// tokens, and the editable day list beside each chart is its table view. Tap
+// the plot to inspect the nearest day (the mobile tooltip).
+function trendChart(values, { unit = "", w = 320, h = 84, target = null, capId = "" } = {}) {
+  // pad 14: the extremes' text labels live in the corners, and the eyeball pass
+  // (dataviz step 7) caught the line colliding with both at pad 6.
+  const { pts, min, max } = linePath(values, w, h, 14);
+  if (!pts.length) return "";
+  const line = pts.map(([x, y]) => `${x},${y}`).join(" ");
+  const last = pts[pts.length - 1];
+  // The target reference draws only when it falls inside the data's own range —
+  // rescaling the domain around an off-screen target would flatten the real line.
+  const ty = target != null && max > min && target >= min && target <= max
+    ? (h - 14) - ((target - min) * (h - 28)) / (max - min) : null;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" ${capId ? `data-chart="${capId}"` : ""} role="img" aria-label="Trend from ${min}${unit} to ${max}${unit}">
+    ${ty != null ? `<line x1="14" x2="${w - 14}" y1="${ty}" y2="${ty}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 4"/>` : ""}
+    <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="var(--accent)"/>
+    <text x="4" y="${h - 2}" fill="var(--muted)" font-size="10">${min}${unit}</text>
+    <text x="${w - 4}" y="10" fill="var(--muted)" font-size="10" text-anchor="end">${max}${unit}</text>
+  </svg>${capId ? `<p class="muted" id="${capId}" style="font-size:.85rem;margin:2px 0 0">Tap the line to inspect a day.</p>` : ""}`;
+}
+function wireChartTap(capId, series, labelOf) {
+  const svg = app.querySelector(`[data-chart="${capId}"]`);
+  if (!svg || !series.length) return;
+  svg.style.cursor = "pointer";
+  svg.onclick = (ev) => {
+    const r = svg.getBoundingClientRect();
+    const i = Math.max(0, Math.min(series.length - 1, Math.round(((ev.clientX - r.left) / r.width) * (series.length - 1))));
+    const cap = $(`#${capId}`); if (cap) cap.textContent = labelOf(series[i]);
+  };
+}
+const miniSpark = (values) => {
+  const { pts } = linePath(values, 64, 18, 2);
+  return pts.length > 1 ? `<svg viewBox="0 0 64 18" width="64" height="18" aria-hidden="true" style="flex:none;margin-right:8px"><polyline points="${pts.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/></svg>` : "";
+};
+let bwEditDate = null;   // a past weigh-in day selected for editing on Progress
+let fuelLogDate = null;  // a past intake day selected for editing on Fuel
 
 const api = async (path, opts = {}) => {
   // The device's clock rides EVERY authed call, from the one helper they all go
@@ -443,6 +484,12 @@ async function renderSettings(soloKey = null) {
     priority_muscles: (STEPS.find((s) => s.key === "priority_muscles")?.multi || [])
       .map(([, v]) => v).filter((v) => v.every((id) => (p.priority_muscles || []).includes(id))),
     injuries: (p.injuries || []).map((i) => i.region),
+    // Severity MUST prefill: a solo edit of any non-injury answer submits without
+    // walking the severity question, and `answers.injury_severity || "moderate"`
+    // was silently ESCALATING every stored mild injury to moderate — deleting
+    // squat/lunge patterns from the plan because the user asked to train one
+    // more day. (The injuries solo edit still re-asks and overwrites this.)
+    injury_severity: (p.injuries || [])[0]?.severity ?? undefined,
     goal_event_date: p.goal_event_date || "",
     // `sex` and `units` are no longer wizard steps, so prefilling them here would
     // populate answers nothing reads — and `units` in particular must NOT be sent
@@ -745,6 +792,7 @@ async function renderPlan() {
   const meta = new Map(exs.map((e) => [e.id, e]));
   const { cardioBlock, personalizationBlock, whyBlock } = buildPlanBlocks(d);
   const sessionCards = (d.program?.sessions ?? []).map((s) => `<div class="card"><b>${esc(s.name)}</b>
+    ${d.rationale?.session_notes?.[s.name] ? `<p class="muted" style="margin:2px 0 4px">🌙 ${esc(d.rationale.session_notes[s.name])}</p>` : ""}
     ${orderSupersetAdjacent(s.exercises).map((e) => {
       const x = meta.get(e.exercise) || {};
       return `<button class="row" data-ex-open="${esc(e.exercise)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:10px 0;cursor:pointer">
@@ -1223,7 +1271,7 @@ async function renderToday() {
   const commitment = commitmentCard(adh.commitment);
 
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
-    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2><div class="card">${list}</div>`}
+    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>`}
     ${cardioCard}`;
   wireCommitmentCard();
   // daily-flow actions
@@ -2048,7 +2096,7 @@ async function renderProgress() {
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;
   // Load-basis rows (pump-band lifts, 12-20 reps) chart the top-set weight —
   // an e1RM there would be guesswork, but the dumbbell you hold is not.
-  const prog = (p.progression || []).map((x) => `<div class="row"><b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  const prog = (p.progression || []).map((x) => `<div class="row">${(x.series ?? []).length > 1 ? miniSpark(x.series.map((pt) => pt.value)) : ""}<b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
   // The plateau card now says which lever the engine is ACTUALLY pulling, instead
   // of the same three-line playbook regardless of cause. `p.adaptive` carries
@@ -2098,7 +2146,7 @@ async function renderProgress() {
   const historyCard = p.sessions_logged > 0
     ? `<div class="card"><b>📓 Workout history</b>
         <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
-        <button class="btn ghost" id="open-history">Workout history â view &amp; fix</button></div>`
+        <button class="btn ghost" id="open-history">Workout history — view &amp; fix</button></div>`
     : "";
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
@@ -2124,6 +2172,7 @@ async function renderProgress() {
         }).join("")}</div>`
     : "";
   app.innerHTML = `<h1>Progress</h1>
+    <div id="progress-nudge"></div>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
     ${historyCard}
     ${prCard}
@@ -2142,8 +2191,11 @@ async function renderProgress() {
     <div class="card">
       ${t ? `<p><b>${slopeDisp >= 0 ? "+" : ""}${slopeDisp} ${unitLabel()}/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
         <p class="muted">${esc(eb.suggestion || "")}</p>` : `<p class="muted">Add a few bodyweights to infer your energy balance — no calorie counting needed.</p>`}
+      ${(p.bodyweight_series ?? []).length >= 2 ? trendChart((p.bodyweight_series ?? []).slice(-60).map((b) => dispBw(b.kg)), { unit: ` ${unitLabel()}`, capId: "bw-cap" }) : ""}
       <div class="stepper"><label for="bw">Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
       <button class="btn secondary" id="logbw">Add today's weight</button>
+      ${(p.bodyweight_series ?? []).length ? `<button class="btn ghost inline" id="bw-hist-toggle">✏️ View &amp; edit past days</button>
+      <div id="bw-hist" class="hidden">${(p.bodyweight_series ?? []).slice(-14).reverse().map((b) => `<button class="row" data-bw-edit="${esc(b.date)}" data-bw-kg="${b.kg}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(b.date)}</span><span>${dispBw(b.kg)} ${unitLabel()}</span></button>`).join("")}</div>` : ""}
     </div>
     <div id="story"></div>`;
   wireLearnLinks();
@@ -2151,6 +2203,16 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  if ($("#bw-hist-toggle")) $("#bw-hist-toggle").onclick = () => $("#bw-hist").classList.toggle("hidden");
+  app.querySelectorAll("[data-bw-edit]").forEach((b) => b.onclick = () => {
+    // Tap a past day: the existing form edits THAT day (the server replaces
+    // by date, so this is the same single door the daily log already uses).
+    bwEditDate = b.dataset.bwEdit;
+    $("#bw").value = dispBw(parseFloat(b.dataset.bwKg));
+    $("#logbw").textContent = `Save for ${bwEditDate}`;
+    $("#bw").focus();
+  });
+  wireChartTap("bw-cap", (p.bodyweight_series ?? []).slice(-60), (b) => `${b.date}: ${dispBw(b.kg)} ${unitLabel()}`);
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -2162,7 +2224,8 @@ async function renderProgress() {
     // can silently collide with and overwrite a genuinely different day's
     // weigh-in) so an offline weigh-in keeps its real date and a replayed POST
     // replaces the same-day row instead of duplicating it.
-    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: localDay() });
+    const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: bwEditDate ?? localDay() });
+    bwEditDate = null;
     if (res.ok) return renderProgress();
     $("#bw").value = "";
     const note = document.createElement("p");
@@ -2499,15 +2562,30 @@ async function renderFuel() {
       ${fld("f-kcal", "Calories eaten today", "", "e.g. 2600")}
       ${fld("f-protein", "Protein (g, optional)", "", "e.g. 180")}
       <button class="btn" id="f-log">Log today</button><p class="muted" id="f-logmsg">${n.logged_days ? `${n.logged_days} day${n.logged_days === 1 ? "" : "s"} logged.` : ""}</p></div>
+    ${(n.log ?? []).length >= 2 ? `<h2>Intake history</h2><div class="card">
+      <p class="muted" style="margin:0 0 4px">Daily calories — the dashed line is your ${t.calorie_target} kcal target.</p>
+      ${trendChart((n.log ?? []).slice(-30).map((e) => e.kcal), { unit: "", target: t.calorie_target, capId: "kcal-cap" })}
+      <button class="btn ghost inline" id="fl-hist-toggle">✏️ View &amp; edit past days</button>
+      <div id="fl-hist" class="hidden">${(n.log ?? []).slice(-14).reverse().map((e) => `<button class="row" data-fl-edit="${esc(e.date)}" data-fl-kcal="${e.kcal}" data-fl-protein="${e.protein_g ?? ""}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(e.date)}</span><span>${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}</span></button>`).join("")}</div></div>` : ""}
     <div class="card"><p class="muted">Maintenance estimate: <b>${t.tdee}</b> kcal (${t.tdee_basis}). ${esc(t.note)}</p></div>
     <button class="btn ghost" id="f-editstats">Edit my stats</button>`;
   wireLearnLinks();
   $("#f-editstats").onclick = () => { fuelEdit = true; renderFuel(); };
+  if ($("#fl-hist-toggle")) $("#fl-hist-toggle").onclick = () => $("#fl-hist").classList.toggle("hidden");
+  app.querySelectorAll("[data-fl-edit]").forEach((b) => b.onclick = () => {
+    fuelLogDate = b.dataset.flEdit;
+    $("#f-kcal").value = b.dataset.flKcal;
+    $("#f-protein").value = b.dataset.flProtein || "";
+    $("#f-log").textContent = `Save for ${fuelLogDate}`;
+    $("#f-kcal").focus();
+  });
+  wireChartTap("kcal-cap", (n.log ?? []).slice(-30), (e) => `${e.date}: ${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}`);
   $("#f-log").onclick = async () => {
     const kcal = parseFloat($("#f-kcal").value); const protein = parseFloat($("#f-protein").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#f-logmsg").textContent = "Enter today's calories."; return; }
     try {
-      const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: localDay(), ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
+      const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: fuelLogDate ?? localDay(), ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
+      fuelLogDate = null;
       say("Logged."); $("#f-logmsg").textContent = `Logged — ${r.logged_days} day${r.logged_days === 1 ? "" : "s"} in. ${r.nutrition.tdee_basis === "logged" ? "Targets updated from your data." : ""}`;
       $("#f-kcal").value = ""; $("#f-protein").value = "";
       if (r.nutrition.tdee_basis === "logged") renderFuel();
@@ -2845,13 +2923,32 @@ function wireCareCards(a, rerender) {
   };
 }
 
-async function renderMe() {
-  // Me is an /api/adherence consumer since Wave 246 (pause + reminders read it)
-  // — so it MUST render the seen-once nudge banner and reconcile the account
-  // flag, exactly like Today and Coach: the flag is consumed by whichever
-  // surface fetches first, and a consumer that doesn't render it eats it.
+// Fill Me's care slot (pause/reminders/install) from /api/adherence — the SLOT
+// pattern, not a screen-level await: renderMe stays synchronous so the purely
+// local toggles (units, RIR) repaint instantly and never look dead offline
+// (the audit's finding: a gym-basement unit flip stalled several seconds, then
+// the pause button the user was reaching for vanished). On failure the slot —
+// and only the slot — degrades to the honest note. Me is an /api/adherence
+// consumer, so the seen-once nudge banner renders here too — at the TOP.
+async function fillMeCare() {
+  const slot = $("#care-slot");
+  if (!slot) return;
   let a = null; try { a = await api(`/api/adherence`); } catch {}
-  if (a) syncAccountEmail(a);
+  if (!slot.isConnected) return; // the user navigated away mid-fetch
+  if (!a) {
+    slot.innerHTML = `<h2>Reminders &amp; pause</h2><div class="card"><p class="muted">📴 Pause and reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
+    return;
+  }
+  syncAccountEmail(a);
+  if (a.nudged && $("#me-nudge")) $("#me-nudge").innerHTML = `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>`;
+  slot.innerHTML = careCards(a);
+  // Re-renders from care actions refresh ONLY the slot: scroll survives and the
+  // announce-and-restore-focus pattern finds its button (a whole-screen redraw
+  // would resolve before the async slot refill and drop focus to body).
+  wireCareCards(a, fillMeCare);
+}
+
+function renderMe() {
   const email = localStorage.getItem("hb_email");
   // This IS the account system — passwordless by design (an email-bound identity
   // with magic-link sign-in and cross-device restore). Present it as one.
@@ -2883,10 +2980,9 @@ async function renderMe() {
       : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
   </div>`;
   const recovery = mergeArchiveCard(uid);
-  const care = a ? careCards(a)
-    : `<h2>Reminders &amp; pause</h2><div class="card"><p class="muted">📴 Pause and reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
+  const care = `<div id="care-slot"><h2>Reminders &amp; pause</h2><div class="card"><p class="muted">Loading…</p></div></div>`;
   app.innerHTML = `<h1>Me</h1>
-    ${a?.nudged ? `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>` : ""}
+    <div id="me-nudge"></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
       <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
@@ -2903,7 +2999,7 @@ async function renderMe() {
     ${funded}
     <button class="btn ghost inline" id="healthnote-me">Health &amp; safety note</button>
     <button class="btn ghost inline" id="reset">Reset (start over)</button>`;
-  if (a) wireCareCards(a, renderMe);
+  fillMeCare();
   $("#healthnote-me").onclick = () => renderHealthNote(() => { tab = "me"; render(); });
   $("#settings").onclick = renderTrainingSettings;
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
@@ -2955,6 +3051,11 @@ async function renderMe() {
       let r; try { r = await api("/api/auth/request", { method: "POST", body: JSON.stringify({ email: val }) }); }
       catch { $("#me-restore-msg").textContent = "📴 You're offline — try again when you have signal."; return; }
       if (r.error === "invalid-email") { $("#me-restore-msg").textContent = "That doesn't look like an email."; return; }
+      // A real send that FAILED must never read as "check your inbox" — this is
+      // the account-recovery door, and the hedged success copy would steer the
+      // user to conclude their account doesn't exist (the sibling send buttons
+      // both carry this guard; omitting it here was the audit's finding).
+      if (r.sent === false) { $("#me-restore-msg").textContent = "Couldn't send right now — try again in a moment."; return; }
       $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in link is on its way — it works once and expires in 30 minutes."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
     };
@@ -3026,7 +3127,14 @@ async function renderStory() {
     $("#retry-coach").onclick = () => renderStory();
     return;
   }
+  if (!box.isConnected) return; // Progress re-rendered underneath us mid-fetch
   syncAccountEmail(a);
+  // The nudge banner paints at the TOP of Progress, not inside the story box —
+  // the box is the last element of the app's longest screen, and a seen-once
+  // flag consumed by this fetch but painted six screens below the fold is a
+  // flag EATEN, not shown (the audit's finding; the whole reason every
+  // /api/adherence consumer must render it is that the fetch spends it).
+  if (a.nudged && $("#progress-nudge")) $("#progress-nudge").innerHTML = `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>`;
   let fw = { partners: [] }; try { fw = await api(`/api/following`); } catch {}
   let cw = { challenges: [] }; try { cw = await api(`/api/challenge`); } catch {}
   // Multi-challenge (Wave 199): `challenges` is a LIST — each slot carries its own
@@ -3045,7 +3153,6 @@ async function renderStory() {
       ${a.sessions_logged === 0 ? "" : `<p class="muted">Level ${a.level} · ${a.xp} XP · ${a.xp_to_next} to level ${a.level + 1}</p>
       <p class="muted">${a.sessions_logged} sessions logged · ${a.week.sessions} this week</p>`}
       ${a.share_cheers > 0 ? `<p style="color:var(--accent);font-weight:600;margin-top:6px">💪 ${a.share_cheers} ${a.share_cheers === 1 ? "person has" : "people have"} cheered you on</p>` : ""}</div>
-    ${a.nudged ? `<div class="card"><b>👋 A training partner nudged you</b><p class="muted" style="margin-top:8px">They noticed you've got a session waiting — let's get it in.</p></div>` : ""}
     ${m.latest ? `<div class="card"><b>🏅 ${esc(m.latest.msg)}</b>${m.next ? `<p class="muted" style="margin-top:8px">Next up: ${esc(m.next.msg)}</p>` : ""}</div>` : ""}
     ${badges ? `<div class="card"><p class="muted">Milestones reached</p>${badges}</div>` : ""}
     ${a.streak_freeze && a.streak_freeze.balance > 0 ? `<div class="card"><b>🛡️ ${a.streak_freeze.balance} streak freeze${a.streak_freeze.balance === 1 ? "" : "s"}</b>
