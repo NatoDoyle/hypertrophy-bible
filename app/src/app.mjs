@@ -713,7 +713,14 @@ export function createApp(store, config = {}) {
     // — a raw UTC week here would silently disagree with both near the
     // UTC week boundary for anyone west of UTC.
     const curWeek = isoWeekKeyLocal(Date.now(), user.profile?.tz_offset_min);
-    const commitment = user.profile?.commitment?.week === curWeek ? user.profile.commitment : null;
+    // ORDINAL, not equality (lesson 40): "is this commitment still current" must
+    // read stale only when its week is genuinely PAST. A stamp that reads as a
+    // LATER week than the viewer's frame (tz captured after the save, near the
+    // week boundary — e.g. stamped in the UTC week, read from UTC-8 while its
+    // Monday hasn't arrived) is not stale, and the equality test silently
+    // un-set a commitment the user made an hour ago every early-Monday window.
+    // ISO week keys are zero-padded, so string order IS chronological order.
+    const commitment = (user.profile?.commitment?.week ?? "") >= curWeek ? user.profile.commitment : null;
     // Surface the cheer tally on the main Coach view (not just buried in the share
     // box) so the social validation actually lands where the user looks. Only an
     // extra read for users who've opted into sharing; null/0 otherwise.

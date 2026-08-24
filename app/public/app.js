@@ -126,7 +126,7 @@ const SOCIAL_ERROR_COPY = {
   "already-challenging": "You already have a challenge going with this partner.",
   "opponent-busy": "They've got a full slate of challenges this week — try again later.",
   "challenge-slots-full": "You're already running the maximum number of challenges this week.",
-  "challenge-id-required": "You have more than one invite waiting — answer them from the Coach tab.",
+  "challenge-id-required": "You have more than one invite waiting — answer them from the Progress tab.",
   "no-pending-challenge": "That challenge isn't waiting on you anymore.",
   "unknown user": "Refresh the page and try again.",
   "no-tokens": "You don't have a streak freeze to spend yet.",
@@ -164,7 +164,7 @@ async function tryPendingFollow() {
   try { localStorage.removeItem(REFERRAL_KEY); } catch {} // one attempt — never retries into a follow loop
   try {
     const r = await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
-    if (r && !r.error) say("Connected with the friend who invited you — see them on the Coach tab.");
+    if (r && !r.error) say("Connected with the friend who invited you — see them on the Progress tab.");
   } catch {}
 }
 
@@ -625,7 +625,7 @@ async function submitOnboarding() {
       if (profile.units) localStorage.setItem("hb_units", profile.units);
       localStorage.setItem("hb_program", r.program.name);
       if (settingsSolo) { settingsSolo = null; say("Saved — your plan was rebuilt around it."); return renderTrainingSettings(); }
-      return renderPlanExplain(false); // show the regenerated plan immediately
+      tab = "plan"; return render(); // show the regenerated plan immediately, on its own tab
     }
     app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Hmm — that didn't go through.</h1>
       <p>Your settings weren't changed. Let's try again.</p>
@@ -666,18 +666,10 @@ const STATUS_LEGEND = `<p class="muted legend"><b>What the tags mean:</b>
   <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.<br>
   <span class="status s-maint">holding steady</span> during a specialization block, this muscle is intentionally kept at a maintenance dose while your priority muscles get the extra volume.<br>
   <span class="status s-maint">covered by compounds</span> this muscle gets its work from your big lifts — direct exercises for it are optional unless you make it a priority.</p>`;
-async function renderPlanExplain(firstTime) {
-  nav.hidden = !!firstTime;
-  app.innerHTML = `<p class="muted">Loading your plan…</p>`;
-  let d;
-  try { d = await api(`/api/plan/explain`); if (!d || d.error) throw new Error("no plan"); }
-  catch {
-    app.innerHTML = `<div class="center" style="padding-top:14vh"><h1>Couldn't load your plan</h1>
-      <p>It's saved safely — this is just a connection hiccup.</p>
-      <button class="btn" id="retry-plan">Try again</button></div>`;
-    $("#retry-plan").onclick = () => renderPlanExplain(firstTime);
-    return;
-  }
+// Shared block builder for every plan surface (the first-run reveal and the Plan
+// tab): cardio, the UN-collapsed personalization panel, the collapsed why-block,
+// and the session list — one source, so the two screens can never drift.
+function buildPlanBlocks(d) {
   const r = d.rationale || {};
   const gradeChip = (g) => g ? `<span class="chip">Grade ${g}</span>` : "";
   const vols = Object.entries(r.volume_by_muscle || {}).filter(([, v]) => (v.frequency > 0 || v.secondary_served) && v.projected_sets > 0).sort((a, b) => b[1].projected_sets - a[1].projected_sets);
@@ -729,6 +721,70 @@ async function renderPlanExplain(firstTime) {
     ${STATUS_LEGEND}
     ${warns ? `<h3>Heads up</h3><div class="card">${warns}</div>` : ""}</details>`
     : `<div class="card"><p class="muted">You've customised this plan, so the auto-generated “why” breakdown no longer describes it. Use <b>Edit &amp; review my plan</b> below for a live check of your plan against the KB.</p></div>`;
+  return { cardioBlock, personalizationBlock, whyBlock, sessions, sessionRows, hasRationale };
+}
+
+// The Plan tab (Wave 248): the read-only week — every session's exercises with
+// sets × reps, one tap from anywhere. This surface did not exist: the only place
+// to SEE a non-today session was the EDITOR, three taps deep via Me. Exercise
+// rows open the bundled how-to sheet; the editor is one honest tap away.
+async function renderPlan() {
+  app.innerHTML = `<h1>Your plan</h1><p class="muted">Loading…</p>`;
+  let d, exs;
+  try {
+    [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]);
+    if (!d || d.error) throw new Error("no plan");
+  } catch {
+    app.innerHTML = `<h1>Your plan</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Your plan is saved safely — it'll show the moment you reconnect.</p>
+      <button class="btn" id="retry-planview">Try again</button></div>`;
+    $("#retry-planview").onclick = renderPlan;
+    return;
+  }
+  allExercises = exs; // exName() resolves through this, custom exercises included
+  const meta = new Map(exs.map((e) => [e.id, e]));
+  const { cardioBlock, personalizationBlock, whyBlock } = buildPlanBlocks(d);
+  const sessionCards = (d.program?.sessions ?? []).map((s) => `<div class="card"><b>${esc(s.name)}</b>
+    ${orderSupersetAdjacent(s.exercises).map((e) => {
+      const x = meta.get(e.exercise) || {};
+      return `<button class="row" data-ex-open="${esc(e.exercise)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:10px 0;cursor:pointer">
+        <div style="flex:1"><b>${esc(exName(e.exercise))}</b>${x.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br>
+          <span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${x.unilateral ? " <b>each side</b>" : ""}${e.superset_with ? ` · <b>🔗 superset with ${esc(exName(e.superset_with))}</b>` : ""}${x.primary_muscles ? ` · works ${esc(friendlyMuscles(x.primary_muscles))}` : ""}</span>
+        </div><span class="muted">›</span></button>`;
+    }).join("")}</div>`).join("");
+  app.innerHTML = `<h1>Your plan</h1>
+    <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
+    ${sessionCards}
+    <button class="btn secondary inline" id="edit-plan">Edit plan</button>
+    ${personalizationBlock}
+    ${whyBlock}
+    ${cardioBlock}`;
+  wireLearnLinks();
+  $("#edit-plan").onclick = renderPlanEdit;
+  app.querySelectorAll("[data-ex-open]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.exOpen;
+    let LX; try { ({ LEARN_EXERCISES: LX } = await learnData()); } catch { LX = null; }
+    const dta = LX?.[id];
+    if (!dta) { say("No guide for this one — it may be one of your own exercises."); return; }
+    renderExerciseSheet({ exercise: id, name: dta.name, movement_pattern: dta.movement_pattern }, dta,
+      { label: "‹ Back to your plan", onClick: () => { tab = "plan"; render(); } });
+    window.scrollTo(0, 0);
+  });
+}
+
+async function renderPlanExplain(firstTime) {
+  nav.hidden = !!firstTime;
+  app.innerHTML = `<p class="muted">Loading your plan…</p>`;
+  let d;
+  try { d = await api(`/api/plan/explain`); if (!d || d.error) throw new Error("no plan"); }
+  catch {
+    app.innerHTML = `<div class="center" style="padding-top:14vh"><h1>Couldn't load your plan</h1>
+      <p>It's saved safely — this is just a connection hiccup.</p>
+      <button class="btn" id="retry-plan">Try again</button></div>`;
+    $("#retry-plan").onclick = () => renderPlanExplain(firstTime);
+    return;
+  }
+  const { cardioBlock, personalizationBlock, whyBlock, sessions, sessionRows, hasRationale } = buildPlanBlocks(d);
 
   if (firstTime) {
     app.innerHTML = `<div class="center"><h1>Your plan is ready 🎉</h1></div>
@@ -875,7 +931,7 @@ function drawEdit(critique) {
     if (r && r.ok) { localStorage.setItem("hb_program", editState.name); say("Plan saved."); drawEdit(r.critique); }
     else { say("Couldn't save."); alertBar("📴 Couldn't save — check your connection and tap Save again. Your edits are still here."); }
   };
-  $("#backPlan").onclick = () => { tab = "today"; render(); };
+  $("#backPlan").onclick = () => { tab = "plan"; render(); };
 }
 function renderAddExercise(si) {
   const sorted = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -2088,8 +2144,12 @@ async function renderProgress() {
         <p class="muted">${esc(eb.suggestion || "")}</p>` : `<p class="muted">Add a few bodyweights to infer your energy balance — no calorie counting needed.</p>`}
       <div class="stepper"><label for="bw">Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
       <button class="btn secondary" id="logbw">Add today's weight</button>
-    </div>`;
+    </div>
+    <div id="story"></div>`;
   wireLearnLinks();
+  // "Your story" — streak, milestones, partners, challenges (the dissolved Coach
+  // tab, Wave 247) — fills its own box and refreshes independently.
+  renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
@@ -2827,8 +2887,6 @@ async function renderMe() {
     : `<h2>Reminders &amp; pause</h2><div class="card"><p class="muted">📴 Pause and reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
   app.innerHTML = `<h1>Me</h1>
     ${a?.nudged ? `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>` : ""}
-    <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
-      <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
       <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
@@ -2847,7 +2905,6 @@ async function renderMe() {
     <button class="btn ghost inline" id="reset">Reset (start over)</button>`;
   if (a) wireCareCards(a, renderMe);
   $("#healthnote-me").onclick = () => renderHealthNote(() => { tab = "me"; render(); });
-  $("#viewplan").onclick = () => renderPlanExplain(false);
   $("#settings").onclick = renderTrainingSettings;
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
   // default keys off training status, so a graduating beginner inherits the chips
@@ -2955,12 +3012,18 @@ function downloadTrainingCalendar(days, time) {
   const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
   const a = document.createElement("a"); a.href = url; a.download = "hypertrophy-training.ics"; a.click(); URL.revokeObjectURL(url);
 }
-async function renderCoach() {
-  app.innerHTML = `<p class="muted">Loading…</p>`;
+// ---------- Your story (streak, milestones, partners, challenges) ----------
+// Formerly the Coach tab, dissolved in Wave 247: it carried no coaching. Renders
+// into Progress's #story box; its own re-renders refresh ONLY the box, which is
+// cheaper than redrawing all of Progress and preserves scroll/focus.
+async function renderStory() {
+  const box = $("#story");
+  if (!box) return; // Progress re-rendered underneath us
+  box.innerHTML = `<p class="muted">Loading…</p>`;
   let a; try { a = await api(`/api/adherence`); } catch {
-    app.innerHTML = `<h1>Coach</h1><div class="card"><p>📴 You're offline.</p><p class="muted">Your streak and XP are safe — they'll show as soon as you reconnect.</p>
+    box.innerHTML = `<h2>Your story</h2><div class="card"><p>📴 You're offline.</p><p class="muted">Your streak and XP are safe — they'll show as soon as you reconnect.</p>
       <button class="btn" id="retry-coach">Try again</button></div>`;
-    $("#retry-coach").onclick = () => renderCoach();
+    $("#retry-coach").onclick = () => renderStory();
     return;
   }
   syncAccountEmail(a);
@@ -2975,7 +3038,7 @@ async function renderCoach() {
   const canChallengeToken = (token) => !busyTokens.has(token) && openCh.length < 3;
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
-  app.innerHTML = `<h1>Coach</h1>
+  box.innerHTML = `<h2>Your story</h2>
     <div class="card center">
       <div class="big">${a.sessions_logged === 0 ? "🌱 Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
       <div class="bar" style="margin:12px 0"><i style="width:${a.level_progress_pct}%;background:var(--accent)"></i></div>
@@ -3045,9 +3108,9 @@ async function renderCoach() {
   if (freezeBtn) freezeBtn.onclick = async () => {
     try {
       const r = await api("/api/streak/freeze", { method: "POST", body: JSON.stringify({ user_id: uid }) });
-      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderStory(); return; }
       say(`Streak protected — still ${r.streak_weeks} week${r.streak_weeks === 1 ? "" : "s"} strong.`);
-      await renderCoach(); $("#freeze")?.focus();
+      await renderStory(); $("#freeze")?.focus();
     } catch { alertBar("📴 Couldn't apply the freeze right now. Try again in a moment."); }
   };
   const shareBtn = $("#sharebtn");
@@ -3079,14 +3142,14 @@ async function renderCoach() {
       const r = await api("/api/following", { method: "POST", body: JSON.stringify({ user_id: uid, token }) });
       if (r.error) { $("#followmsg").textContent = socialErrorMessage(r.error); return; }
       say("Training partner added.");
-      await renderCoach();
+      await renderStory();
     } catch { $("#followmsg").textContent = "That link isn't an active share — ask your friend for a fresh one."; }
   };
   app.querySelectorAll(".unfollow").forEach((b) => b.onclick = async () => {
     try {
       const r = await api("/api/following/remove", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) });
       if (r.error) { alertBar(socialErrorMessage(r.error)); return; }
-      await renderCoach();
+      await renderStory();
     } catch { alertBar("📴 Couldn't update — try again when connected."); }
   });
   app.querySelectorAll(".nudge").forEach((b) => b.onclick = async () => {
@@ -3105,7 +3168,7 @@ async function renderCoach() {
     try {
       const r = await api("/api/challenge", { method: "POST", body: JSON.stringify({ user_id: uid, token: b.dataset.token }) });
       if (r.error) { b.disabled = false; alertBar(socialErrorMessage(r.error)); return; }
-      say("Challenge sent."); await renderCoach();
+      say("Challenge sent."); await renderStory();
     }
     catch { b.disabled = false; alertBar("📴 Couldn't send that challenge — try again when connected."); }
   });
@@ -3114,16 +3177,16 @@ async function renderCoach() {
   app.querySelectorAll(".challenge-accept").forEach((btn) => btn.onclick = async () => {
     try {
       const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, challenge_id: btn.dataset.chid, accept: true }) });
-      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
-      say("Challenge accepted — good luck."); await renderCoach();
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderStory(); return; }
+      say("Challenge accepted — good luck."); await renderStory();
     }
     catch { alertBar("📴 Couldn't accept — try again when connected."); }
   });
   app.querySelectorAll(".challenge-decline").forEach((btn) => btn.onclick = async () => {
     try {
       const r = await api("/api/challenge/respond", { method: "POST", body: JSON.stringify({ user_id: uid, challenge_id: btn.dataset.chid, accept: false }) });
-      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderCoach(); return; }
-      say("Challenge declined."); await renderCoach();
+      if (r.error) { alertBar(socialErrorMessage(r.error)); await renderStory(); return; }
+      say("Challenge declined."); await renderStory();
     }
     catch { alertBar("📴 Couldn't update — try again when connected."); }
   });
@@ -3313,7 +3376,7 @@ function render() {
   else if (tab === "history") { nav.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === "progress")); renderHistory(); }
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
-  else if (tab === "coach") renderCoach();
+  else if (tab === "plan") renderPlan();
   else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
