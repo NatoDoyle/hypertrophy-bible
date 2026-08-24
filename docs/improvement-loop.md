@@ -959,6 +959,29 @@ These are real failures from previous iterations. Each is now a standing check.
    compounds" — one user, three surfaces, two answers (lesson 15's sweep must count
    SURFACES, not files).
 
+64. **A weekly boundary is a SCHEDULED outage for equality reads and relative-date
+   fixtures — and the flake window is when the truth visits.** Three route tests went
+   red at 00:06 UTC Monday on the DEPLOYED code: challenge-tally fixtures dated
+   "hours ago" had crossed into last ISO week (a relative date is only
+   frame-stable mid-week — CLAUDE.md's "date fixtures relative to now" rule has an
+   early-Monday blind spot), and `/api/adherence`'s commitment read was an
+   EQUALITY on the week key, so a stamp whose week read LATER than the viewer's
+   frame (tz captured after a save near the boundary) silently un-set a
+   commitment made an hour ago — lesson 40's exact shape, alive in shipped code,
+   reachable every Monday-morning window and never once caught because no test
+   run had ever landed inside it. Three rules: (a) when a suite fails at an odd
+   hour, run it against the DEPLOYED commit first — same failures = the clock,
+   not your diff (that measurement saved this iteration from "fixing" the wrong
+   thing); (b) an intermittent window is not a reason to wait it out — CONSTRUCT
+   the window's state deterministically (the regression now seeds a future-skewed
+   stamp directly, so the branch is reached at every wall clock, not just Monday
+   mornings); (c) fixture dates that must share a frame with an assertion pin to
+   NOW, not to hours-ago. Same iteration, the process face of the lesson: I
+   committed a wave before reading the test chain's exit code AND committed it to
+   main (no branch) — the failing chain then turned out to be the clock, but only
+   the re-measurement made that an excuse; the sequence was still wrong, and the
+   recovery (branch off the commit, reset main to origin) is now written down.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -980,6 +1003,32 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7m. **Telemetry (Waves 242–249, 2026-08-24, the UI/UX overhaul).** The owner's
+   audit request, run as measure → decide → build: two Explore inventories
+   (~275k tokens — a line-cited IA map of all six tabs with a taps-to-task
+   table, and a register of 41 recorded UX decisions with what each constrains),
+   one Plan agent (~115k) whose wave design survived contact almost unchanged,
+   and two owner decisions asked up front (bold restructure; phone-first
+   density). Three PR bursts shipped: 242-244 (audit rider + naming/compaction +
+   search/grouped-history/prefilled-pickers, deployed v174), 245-246 (the
+   per-question Training Settings screen + calendar-on-commitment +
+   care-settings-to-Me, v175), 247-249 (Coach dissolved into Progress's story
+   box, the Plan tab, docs, v176). The inventory's sharpest finds were CHEAP:
+   the commitment day picker's selection had been visually invisible since it
+   shipped (aria-pressed toggled, no CSS ever targeted it), `.hidden` was used
+   but never defined, and the "five tabs" comment guarded six. Constraint 7
+   (seen-once flags render on EVERY /api/adherence consumer) was asserted in a
+   real browser with a real mutual pair at each step of the dissolution.
+   Lesson-54 discipline caught MY OWN fixtures four more times (a key that
+   didn't exist, a segment spilling into a legend, an emoji-blind nav assert, a
+   share card gated on a session the fixture never logged) — red-for-the-named-
+   reason before any fix, every time. And lesson 64's boundary flake fired
+   mid-burst: diagnosed against the deployed commit, fixed ordinally, and the
+   window's state now constructed deterministically in the suite. Deferred
+   with the owner's own words as the reason: the desktop multi-column layer
+   ("mostly phone"). Owner consideration #2 (history/graphs) arrived
+   mid-iteration and heads the next queue.
+
 7n. **Telemetry (Waves 240–241, 2026-08-24).** The scheduled self-audit of Waves
    237-239 — my own engine burst. **1 finder (~133k tokens), zero verify agents,
    zero workflows**, and the finder earned every token: five candidates, five

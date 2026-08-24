@@ -6,7 +6,28 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-24** (Waves 240-241: the self-audit of the
+Grounded assessment date: **2026-08-24, second turn** (Waves 242-249: the owner's
+UI/UX audit, measured then built. The inventory substantiated every complaint with
+line citations — the Coach tab was 10-13 cards with no coaching in it, NO read-only
+week view existed anywhere (editor-only, 3 taps deep via Me), one changed setting
+re-ran the whole wizard, no search anywhere, one fixed 520px column. Shipped across
+three deployed bursts (v174/v175/v176): one ⓘ helpDot convention and honest names
+everywhere; .btn.inline killing the full-width button tails; search on the exercise
+library and Learn index; History grouped by week and capped; the commitment picker
+pre-filled (and its selection made VISIBLE — it had toggled aria-pressed with no CSS
+since it shipped); a restore door that no longer requires factory reset; a
+per-question Training Settings screen (one setting: 3 taps, was ~8-10); the .ics
+seeded from the committed days on Today; care settings on Me; **Coach dissolved into
+Progress's "Your story"** (the three-consumer seen-once rule held and asserted with
+a real mutual pair); and the **Plan tab** — the week one tap away, exercise how-to
+two, editor two, personalization un-collapsed, superset adjacency preserved. Plus
+lesson 64's find: an early-Monday flake window in shipped code (equality week-key
+read un-setting fresh commitments; hours-ago fixtures crossing the ISO boundary) —
+fixed ordinally with the skew constructed deterministically. **Deferred, the named
+next pulls:** the desktop multi-column layer (owner: "mostly phone"), and owner
+consideration #2 — history/edit for weights & calories + trend graphs — which
+arrived mid-iteration and heads the queue.) The prior grounding, same day:
+(Waves 240-241: the self-audit of the
 Waves 237-239 engine burst found **five confirmed defects — all mine, headed by
 the last-chance coverage floor zeroing beginners' abs on the default onboarding
 profiles** (the guarding test's grid never generated a beginner), and my own
@@ -293,6 +314,37 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 242–249 progress (2026-08-24, second turn). The UI/UX overhaul: six honest
+tabs, everything the owner named made faster.**
+
+- **Wave 242.** Self-audit of 240-241: clean, one dead-lever copy rider fixed.
+- **Wave 243.** The naming pass (one ⓘ helpDot convention, Workout history,
+  distinct restore verbs, the commitment stops calling itself "plan"…) +
+  `.btn.inline` + `.hidden` defined.
+- **Wave 244.** `ui-helpers.mjs` (pure, red-first, SW SHELL): grouped+capped
+  History, exercise & Learn search with focus-preserving re-render, pre-selected
+  commitment edit (selection made visible), Me restore door without a reset.
+- **Wave 245.** Training Settings: one row per answer, solo wizard jump with
+  dependent follow-ups, Back cancels wholesale; equipment/priorities proven to
+  survive a solo days change.
+- **Wave 246.** Calendar onto the commitment card (seeded, persisted); pause /
+  email + device reminders / install to Me via shared careCards; Me joins the
+  three-consumer seen-once rule.
+- **Waves 247-248.** Coach dissolved into Progress's "Your story" (renderStory
+  box, independent refresh); the Plan tab (buildPlanBlocks shared with the
+  first-run reveal; superset adjacency; sheet round-trip; editor "Back to
+  plan"). Rider: the early-Monday flake class fixed (lesson 64) — ordinal
+  commitment read, now-pinned tally fixtures, deterministic skew regression.
+- **Wave 249 (docs/LEARN).** Spec addendum (shipped IA + the calorie-law
+  override recorded), considerations #1 deleted with its write-up, lesson 64,
+  telemetry 7m.
+- **Deferred, named:** desktop `.cols` layer (phone-first per owner);
+  consideration #2 (weights/calories history+edit, trend graphs) heads the
+  next queue.
+- **Evidence per burst:** full app chain + root gate exit 0; walkthroughs
+  11/11 · 11/11 · 13/13 · 15/15; every new pure helper red-first; ordinal-read
+  tamper red; deployed and prod-smoked v174 → v175 → v176.
 
 **Waves 240–241 progress (2026-08-24). The engine burst's self-audit: five
 confirmed, all mine; the coverage floor's deferral had zeroed beginners' abs.**

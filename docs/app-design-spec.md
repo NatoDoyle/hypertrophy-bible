@@ -1,7 +1,27 @@
 # App Design Spec — The Hypertrophy Bible
 
-**Status:** Design proposal (UI/UX layer). Downstream of the built data + learning layer
-(`docs/data-and-learning-spec.md`, `tools/derive-metrics.mjs`, `data/schemas/`).
+**Status:** Design proposal (UI/UX layer), partially superseded by shipped decisions — see the
+**2026-08-24 addendum** at the end of this header block before citing §3 law 4 or §4.1.
+(`docs/data-and-learning-spec.md`, `tools/derive-metrics.mjs`, `data/schemas/`.)
+
+> **Addendum (2026-08-24, Waves 242-249 — the shipped IA).** Two spec positions were overridden
+> by the owner and the overrides are now the record:
+> **(1) Tabs.** The shipped nav is SIX tabs — **Today · Plan · Progress · Fuel · Learn · Me** —
+> not §4.1's four. Fuel was an explicit owner request (Wave 44); **Plan** exists because the
+> spec's four-tab shell left NO read-only view of the week anywhere (the only surface was the
+> editor, three taps deep) — the single deepest navigation gap the 2026-08-23 UI/UX audit
+> measured. The former Coach tab (accreted, never specced) is dissolved: its social/gamification
+> content is Progress's "Your story" section (progress-as-story, §4.1's own reasoning), its
+> settings moved to Me. Standing rule from the dissolution: **every surface that fetches
+> `/api/adherence` must render the seen-once flags (`nudged`, cheers) — the flag is consumed by
+> whichever consumer fetches first.** Today, Progress (via the story box) and Me all comply.
+> **(2) Calorie logging exists.** §3 law 4's "no calorie counting, ever" was overridden by the
+> owner when Fuel shipped (a calorie/macro tracker, Wave 44+). The guardrails that law carried
+> move to the mechanism instead: targets are ranges re-derived from the user's own logged data,
+> pause is total, the disordered-eating row in §15 still binds copy, and the weight-trend
+> explainer (§9.1) remains the preferred surface.
+> Screens described in §4.2 that remain UNSHIPPED proposals (verified 2026-08-24): Nerd Mode,
+> the Weekly Coach Check-in as a distinct screen, the ~200-item Coach Moments system.
 **Purpose:** One coherent app design that a total novice can use on day one and that still walks a
 dedicated user to their genetic ceiling — hosted feasibly on a near-zero-cost Cloudflare stack.
 
