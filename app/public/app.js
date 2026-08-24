@@ -360,11 +360,67 @@ let onbStep = 0, onbStarted = false, answers = {};
 // pre-filled from their profile, submitting to /api/plan/regenerate instead of
 // creating a new user. Zero new UI concepts; the plan regenerates on save.
 let settingsMode = false;
+// Solo settings edit (Wave 245): jump into ONE wizard question from the Training
+// Settings screen, answer it (plus any dependent follow-up), and the plan
+// rebuilds immediately — changing one thing stops costing the whole 7-9-question
+// wizard. Back from a solo question cancels the edit wholesale; nothing saves.
+let settingsSolo = null;
+const SOLO_FOLLOWUPS = { injuries: ["injury_severity"] }; // dependent questions a solo edit must still ask
 try { const s = JSON.parse(localStorage.getItem(ONB_KEY) || "null"); if (s) { answers = s.answers || {}; onbStep = s.onbStep || 0; onbStarted = !!s.onbStarted; } } catch {}
 const saveOnb = () => { if (settingsMode) return; try { localStorage.setItem(ONB_KEY, JSON.stringify({ answers, onbStep, onbStarted })); } catch {} };
 
-// Open the wizard as a pre-filled settings editor for an existing user.
-async function renderSettings() {
+// Training Settings (Wave 245): one row per answer with its CURRENT value and a
+// "Change" that jumps into just that wizard question — changing one setting is
+// three taps, not a re-run of the whole questionnaire. The full wizard stays one
+// row away for a genuine re-answer-everything.
+async function renderTrainingSettings() {
+  nav.hidden = false; // the wizard hides the nav; every solo-edit path returns HERE, not through render()
+  app.innerHTML = `<h1>Training settings</h1><p class="muted">Loading…</p>`;
+  let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
+  const p = d?.profile;
+  if (!p) {
+    app.innerHTML = `<h1>Training settings</h1><div class="card"><p>📴 Couldn't load your current settings.</p>
+      <p class="muted">Editing needs them first — otherwise a save could overwrite what you've got.</p>
+      <button class="btn" id="retry-ts">Try again</button>
+      <button class="btn ghost" id="back-me2">‹ Back</button></div>`;
+    $("#retry-ts").onclick = renderTrainingSettings;
+    $("#back-me2").onclick = () => { tab = "me"; render(); };
+    return;
+  }
+  const stepBy = (k) => STEPS.find((s) => s.key === k);
+  const optLabel = (k, v) => stepBy(k)?.opts?.find(([, val]) => val === v)?.[0] ?? v ?? "—";
+  const equipLabel = () => {
+    const have = [...(p.available_equipment ?? [])].sort().join(",");
+    return stepBy("available_equipment")?.opts?.find(([, v]) => [...v].sort().join(",") === have)?.[0] ?? "Custom mix";
+  };
+  const priLabel = () => (stepBy("priority_muscles")?.multi ?? [])
+    .filter(([, ids]) => ids.every((id) => (p.priority_muscles ?? []).includes(id))).map(([l]) => l).join(", ") || "None";
+  const injLabel = () => (p.injuries ?? []).map((i) => titleCase(String(i.region).replace(/-/g, " "))).join(", ") || "None";
+  const rows = [
+    ["training_status", "Experience", optLabel("training_status", p.training_status)],
+    ["primary_goal", "Goal", optLabel("primary_goal", p.primary_goal)],
+    ["days_per_week", "Days per week", String(p.days_per_week ?? "—")],
+    ["session_length_min", "Session length", `${p.session_length_min ?? "—"} min`],
+    ["available_equipment", "Equipment", equipLabel()],
+    ["priority_muscles", "Priority muscles", priLabel()],
+    ["injuries", "Training around", injLabel()],
+    // The goal-event row mirrors the wizard step's own gate (non-beginners only).
+    ...(p.training_status !== "beginner" ? [["goal_event_date", "Goal event date", p.goal_event_date || "None"]] : []),
+  ];
+  app.innerHTML = `<h1>Training settings</h1>
+    <p class="muted">Change any answer on its own — your plan rebuilds around it. Your logged workouts are never touched.</p>
+    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}</div>
+    <button class="btn secondary inline" id="ts-full">Re-answer everything &amp; rebuild</button>
+    <button class="btn ghost inline" id="ts-back">‹ Back</button>`;
+  app.querySelectorAll("[data-solo]").forEach((b) => b.onclick = () => renderSettings(b.dataset.solo));
+  $("#ts-full").onclick = () => renderSettings();
+  $("#ts-back").onclick = () => { tab = "me"; render(); };
+}
+
+// Open the wizard as a pre-filled settings editor for an existing user. With
+// `soloKey`, open at THAT question only (the Training Settings screen's per-row
+// "Change" door) instead of walking every question from the top.
+async function renderSettings(soloKey = null) {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
   const p = d?.profile;
@@ -375,7 +431,7 @@ async function renderSettings() {
       <p class="muted">Editing needs them first — otherwise a save could overwrite what you've got.</p>
       <button class="btn" id="retry-set">Try again</button>
       <button class="btn ghost" id="back-me">‹ Back</button></div>`;
-    $("#retry-set").onclick = renderSettings;
+    $("#retry-set").onclick = () => renderSettings(soloKey);
     $("#back-me").onclick = () => { tab = "me"; render(); };
     return;
   }
@@ -393,7 +449,9 @@ async function renderSettings() {
     // back by a settings save (see submitOnboarding): the Me-tab toggle owns it,
     // and re-sending a stale prefill would fight it.
   };
-  settingsMode = true; onbStarted = true; onbStep = 0;
+  settingsMode = true; onbStarted = true;
+  settingsSolo = typeof soloKey === "string" ? soloKey : null; // an event object is not a key
+  onbStep = settingsSolo ? Math.max(0, STEPS.findIndex((s) => s.key === settingsSolo)) : 0;
   renderOnboarding();
 }
 
@@ -505,6 +563,9 @@ function renderOnboarding() {
 // A misclick is always recoverable: step back one question (or to the welcome
 // screen from the first), with prior answers preserved and re-highlighted.
 function onbBack() {
+  // Back from ANY question of a solo edit cancels the edit wholesale — nothing
+  // saves, and the user lands back on the settings list they came from.
+  if (settingsSolo) { settingsSolo = null; settingsMode = false; return renderTrainingSettings(); }
   if (settingsMode && onbStep === 0) { settingsMode = false; tab = "me"; return render(); } // exit settings, change nothing
   if (onbStep === 0) { onbStarted = false; saveOnb(); return renderOnboarding(); }
   let prev = onbStep - 1;
@@ -515,6 +576,9 @@ function onbBack() {
 async function advance() {
   let next = onbStep + 1;
   while (next < STEPS.length && STEPS[next].showIf && !STEPS[next].showIf(answers)) next++; // skip conditional steps
+  // A solo edit submits as soon as its question (and any dependent follow-up,
+  // e.g. injuries → severity) is answered — never marches on through the rest.
+  if (settingsSolo && (next >= STEPS.length || !(SOLO_FOLLOWUPS[settingsSolo] ?? []).includes(STEPS[next].key))) return submitOnboarding();
   if (next < STEPS.length) { onbStep = next; saveOnb(); return renderOnboarding(); }
   await submitOnboarding();
 }
@@ -560,6 +624,7 @@ async function submitOnboarding() {
       // every user to kg. Only write a real value.
       if (profile.units) localStorage.setItem("hb_units", profile.units);
       localStorage.setItem("hb_program", r.program.name);
+      if (settingsSolo) { settingsSolo = null; say("Saved — your plan was rebuilt around it."); return renderTrainingSettings(); }
       return renderPlanExplain(false); // show the regenerated plan immediately
     }
     app.innerHTML = `<div class="center" style="padding-top:16vh"><h1>Hmm — that didn't go through.</h1>
@@ -567,7 +632,7 @@ async function submitOnboarding() {
       <button class="btn" id="retryset">Try again</button>
       <button class="btn ghost" id="backset">‹ Keep my old settings</button></div>`;
     $("#retryset").onclick = submitOnboarding;
-    $("#backset").onclick = () => { settingsMode = false; tab = "me"; render(); };
+    $("#backset").onclick = () => { settingsSolo = null; settingsMode = false; tab = "me"; render(); };
     return;
   }
   let res;
@@ -912,9 +977,17 @@ const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu
 function commitmentCard(commitment, prefill = []) {
   if (commitment && commitment.days?.length) {
     const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
-    return `<div class="card row"><div style="flex:1"><b>🗓️ This week's training days: ${esc(list)}</b>
+    // The calendar export lives HERE now (it sat on the Coach tab behind ~10
+    // cards, with a picker that opened BLANK every visit) — seeded from the very
+    // days just committed, time remembered per device. Same .ics, zero re-picking.
+    return `<div class="card"><div class="row" style="border:0"><div style="flex:1"><b>🗓️ This week's training days: ${esc(list)}</b>
         <p class="muted" style="margin:2px 0 0">You said you'd train these days — a promise to yourself.</p></div>
-      <button class="btn ghost inline" id="edit-commitment" data-days="${esc(commitment.days.join(","))}">Edit</button></div>`;
+      <button class="btn ghost inline" id="edit-commitment" data-days="${esc(commitment.days.join(","))}" style="margin:0">Edit</button></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+        <input id="sched-time" type="time" value="${esc(localStorage.getItem("hb_cal_time") || "18:00")}" aria-label="Training time"
+          style="background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:1rem">
+        <button class="btn ghost inline" id="addcal" style="margin:0">📆 Add these days to my calendar</button>
+      </div><p class="muted" id="calmsg" style="margin:4px 0 0"></p></div>`;
   }
   // The copy used to promise "a quick reminder lands on the days you say". That is
   // delivered by shouldPushForCommitment, which runs inside a loop over the user's
@@ -934,7 +1007,7 @@ function commitmentCard(commitment, prefill = []) {
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
     <p class="muted" style="margin:4px 0 8px">${canRemind
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
-      : "Naming the days is most of the work — deciding once beats deciding daily. Add them to your phone's calendar from the Coach tab and the reminder comes from the phone itself."}</p>
+      : "Naming the days is most of the work — deciding once beats deciding daily. Save them and the calendar button appears right here — the reminder comes from the phone itself."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="${prefill.includes(k)}">${label}</button>`).join("")}</div>
     <button class="btn secondary inline" id="save-commitment" style="margin-top:10px">Save my days</button></div>`;
 }
@@ -946,6 +1019,14 @@ function wireCommitmentCard() {
     if (!days.length) return;
     try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("Training days saved."); renderToday(); }
     catch { alertBar("📴 Couldn't save — try again when connected."); }
+  };
+  if ($("#addcal")) $("#addcal").onclick = () => {
+    const days = seedCalendarDays(($("#edit-commitment").dataset.days || "").split(",").filter(Boolean), null);
+    if (!days.length) { $("#calmsg").textContent = "Pick your days first."; return; }
+    const t = $("#sched-time").value || "18:00";
+    try { localStorage.setItem("hb_cal_time", t); localStorage.setItem("hb_cal_days", JSON.stringify(days)); } catch {}
+    downloadTrainingCalendar(days, t);
+    $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders.";
   };
   if ($("#edit-commitment")) $("#edit-commitment").onclick = () => {
     // Pre-select the days already committed (design law: never a blank picker
@@ -2580,7 +2661,7 @@ function clearAccountLocalState() {
       try { localStorage.removeItem(key); } catch {}
     }
   }
-  onbStep = 0; onbStarted = false; answers = {}; settingsMode = false;
+  onbStep = 0; onbStarted = false; answers = {}; settingsMode = false; settingsSolo = null;
   historyEdit = null; historyDateFix = null; resetLearnNav();
 }
 async function switchToRestoredArchive(ownerId, archiveId, button) {
@@ -2618,7 +2699,99 @@ async function switchToRestoredArchive(ownerId, archiveId, button) {
   render();
 }
 
-function renderMe() {
+// Care & device settings (pause, email reminders, push reminders, install) —
+// moved to Me in Wave 246: they are settings, and the Coach tab was carrying
+// them as cards ~10 deep. One builder + one wiring, parameterized on the
+// re-render so the announce-and-restore-focus pattern works wherever they live.
+function careCards(a) {
+  const paused = a.paused;
+  return `<h2>Injury or illness?</h2>
+    <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
+      <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>
+    <h2>Reminders</h2>
+    ${localStorage.getItem("hb_email")
+      ? `<div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays safely backed up either way." : "If you drift away, I'll email your account at most two gentle notes per break — never while you're paused."}</p>
+      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
+      : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account above (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
+      <button class="btn secondary inline" id="nudges-acct">Take me to the account box</button></div>`}
+    ${pushSupported()
+      ? `<div class="card"><p class="muted">${localStorage.getItem("hb_push") === "1" ? "Device reminders are on — a quiet nudge when a session's waiting, never while paused." : "Or get a reminder right on this device — no email needed. One gentle nudge when a session's waiting; stops while you're paused and after ~3 weeks."}</p>
+      <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
+      <p class="muted" id="pushmsg"></p></div>`
+      : isIOS() && !isStandalone()
+        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
+        : ""}
+    ${deferredInstallPrompt && !isStandalone()
+      ? `<div class="card"><p class="muted">Put the app on your home screen — it opens full-screen in one tap, works offline, and makes it far easier to keep the habit.</p>
+      <button class="btn secondary" id="installbtn">Install the app</button><p class="muted" id="installmsg"></p></div>`
+      : ""}`;
+}
+function wireCareCards(a, rerender) {
+  const paused = a.paused;
+  // Toggles announce + restore focus: the re-render replaces the whole screen,
+  // which destroys the tapped button (focus drops to body).
+  if ($("#pause")) $("#pause").onclick = async () => {
+    try {
+      await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) });
+      say(paused ? "Resumed. Welcome back." : "Paused — heal up. Your streak is safe.");
+      await rerender(); $("#pause")?.focus();
+    } catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
+  };
+  const nudgeBtn = $("#nudges");
+  if (nudgeBtn) nudgeBtn.onclick = async () => {
+    try {
+      await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) });
+      say(a.reminders_off ? "Reminders turned on." : "Reminders turned off.");
+      await rerender(); $("#nudges")?.focus();
+    } catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
+  };
+  const acctBtn = $("#nudges-acct");
+  if (acctBtn) acctBtn.onclick = () => { $("#bemail")?.scrollIntoView({ behavior: "smooth", block: "center" }); $("#bemail")?.focus({ preventScroll: true }); };
+  const installBtn = $("#installbtn");
+  if (installBtn) installBtn.onclick = async () => {
+    if (!deferredInstallPrompt) { $("#installmsg").textContent = "Your browser's menu has an “Install app” option."; return; }
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice.catch(() => ({ outcome: "dismissed" }));
+    deferredInstallPrompt = null; // the event is single-use
+    if (outcome === "accepted") { say("Installing the app."); rerender(); }
+    else $("#installmsg").textContent = "No problem — you can install any time from here.";
+  };
+  const pushBtn = $("#pushbtn");
+  if (pushBtn) pushBtn.onclick = async () => {
+    const msg = (t) => { $("#pushmsg").textContent = t; };
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (localStorage.getItem("hb_push") === "1") {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
+        localStorage.removeItem("hb_push");
+        say("Device reminders turned off."); await rerender(); $("#pushbtn")?.focus(); return;
+      }
+      const { key } = await api("/api/push/key");
+      if (!key) { msg("Device reminders aren't available right now."); return; }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { msg("No problem — you can enable notifications any time in your browser settings."); return; }
+      // base64url -> Uint8Array for applicationServerKey
+      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/"));
+      const appKey = new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+      // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate) — lets the
+      // server nudge at ~5pm THIS device's local time instead of 16:00 UTC for everyone.
+      const tz_offset_min = -new Date().getTimezoneOffset();
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min }) });
+      localStorage.setItem("hb_push", "1");
+      say("Device reminders on."); await rerender(); $("#pushbtn")?.focus();
+    } catch { msg("📴 Couldn't set up device reminders — try again when you're online."); }
+  };
+}
+
+async function renderMe() {
+  // Me is an /api/adherence consumer since Wave 246 (pause + reminders read it)
+  // — so it MUST render the seen-once nudge banner and reconcile the account
+  // flag, exactly like Today and Coach: the flag is consumed by whichever
+  // surface fetches first, and a consumer that doesn't render it eats it.
+  let a = null; try { a = await api(`/api/adherence`); } catch {}
+  if (a) syncAccountEmail(a);
   const email = localStorage.getItem("hb_email");
   // This IS the account system — passwordless by design (an email-bound identity
   // with magic-link sign-in and cross-device restore). Present it as one.
@@ -2650,12 +2823,15 @@ function renderMe() {
       : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
   </div>`;
   const recovery = mergeArchiveCard(uid);
+  const care = a ? careCards(a)
+    : `<h2>Reminders &amp; pause</h2><div class="card"><p class="muted">📴 Pause and reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
   app.innerHTML = `<h1>Me</h1>
+    ${a?.nudged ? `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>` : ""}
     <div class="card"><p class="muted">Program</p><b>${esc(localStorage.getItem("hb_program") || "—")}</b>
       <button class="btn secondary" id="viewplan" style="margin-top:10px">View my plan &amp; why</button></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
-      <button class="btn secondary" id="settings">Change my answers (rebuilds your plan)</button></div>
+      <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
     <div class="card"><p class="muted">After-set effort question (reps left in the tank)</p>
       <p>After each set, one optional tap: how many more reps you had in you. It's how the coach knows a weight has gotten too easy — skipping a set never counts against you.</p>
       <p class="muted">${localStorage.getItem("hb_rir") === "1" ? "Always on." : localStorage.getItem("hb_rir") === "0" ? "Off." : "Auto — the chips appear once you're past the beginner stage."}</p>
@@ -2664,13 +2840,15 @@ function renderMe() {
       <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
     ${backup}
+    ${care}
     ${recovery}
     ${funded}
-    <button class="btn ghost" id="healthnote-me">Health &amp; safety note</button>
-    <button class="btn ghost" id="reset">Reset (start over)</button>`;
+    <button class="btn ghost inline" id="healthnote-me">Health &amp; safety note</button>
+    <button class="btn ghost inline" id="reset">Reset (start over)</button>`;
+  if (a) wireCareCards(a, renderMe);
   $("#healthnote-me").onclick = () => renderHealthNote(() => { tab = "me"; render(); });
   $("#viewplan").onclick = () => renderPlanExplain(false);
-  $("#settings").onclick = renderSettings;
+  $("#settings").onclick = renderTrainingSettings;
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
   // default keys off training status, so a graduating beginner inherits the chips
   // with nothing to configure (minimal-customization: no mandatory setting).
@@ -2797,7 +2975,6 @@ async function renderCoach() {
   const canChallengeToken = (token) => !busyTokens.has(token) && openCh.length < 3;
   const m = a.milestones || {};
   const badges = (m.reached || []).map((x) => `<span class="chip">✓ ${x.at}</span>`).join(" ");
-  const paused = a.paused;
   app.innerHTML = `<h1>Coach</h1>
     <div class="card center">
       <div class="big">${a.sessions_logged === 0 ? "🌱 Your streak starts with your first session" : `🔥 ${a.streak_weeks} week${a.streak_weeks === 1 ? "" : "s"} strong`}</div>
@@ -2863,54 +3040,7 @@ async function renderCoach() {
         }).join("");
         return `<div class="card"><b>📊 Head-to-head record</b><p class="muted" style="margin-top:8px">${wins}W – ${losses}L${ties ? ` – ${ties}T` : ""} across ${cw.history.length} challenge${cw.history.length === 1 ? "" : "s"}</p><div style="margin-top:8px">${rows}</div></div>`;
       })()
-      : ""}
-    <h2>Schedule your sessions</h2>
-    <div class="card"><p class="muted">The single biggest lever for consistency: put your sessions in your calendar.</p>
-      <div id="days" style="margin:8px 0"></div>
-      <div class="stepper"><label for="sched-time">Time</label><input id="sched-time" type="time" value="18:00" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem"></div>
-      <button class="btn secondary" id="addcal">Add to my calendar</button>
-      <p class="muted" id="calmsg"></p></div>
-    <h2>Injury or illness?</h2>
-    <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
-      <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>
-    <h2>Reminders</h2>
-    ${localStorage.getItem("hb_email")
-      ? `<div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays safely backed up either way." : "If you drift away, I'll email your account at most two gentle notes per break — never while you're paused."}</p>
-      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
-      : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
-      <button class="btn secondary" id="nudges-acct">Create my account</button></div>`}
-    ${pushSupported()
-      ? `<div class="card"><p class="muted">${localStorage.getItem("hb_push") === "1" ? "Device reminders are on — a quiet nudge when a session's waiting, never while paused." : "Or get a reminder right on this device — no email needed. One gentle nudge when a session's waiting; stops while you're paused and after ~3 weeks."}</p>
-      <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
-      <p class="muted" id="pushmsg"></p></div>`
-      : isIOS() && !isStandalone()
-        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
-        : ""}
-    ${deferredInstallPrompt && !isStandalone()
-      ? `<div class="card"><p class="muted">Put the app on your home screen — it opens full-screen in one tap, works offline, and makes it far easier to keep the habit.</p>
-      <button class="btn secondary" id="installbtn">Install the app</button><p class="muted" id="installmsg"></p></div>`
       : ""}`;
-  const sel = new Set();
-  const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-  $("#days").innerHTML = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, i) => `<button class="tapchip" data-day="${i}" aria-pressed="false" aria-label="${DAYNAMES[i]}">${d}</button>`).join(" ");
-  $("#days").querySelectorAll("[data-day]").forEach((b) => b.onclick = () => {
-    const i = +b.dataset.day;
-    // This picker never re-renders, so a screen reader gets no feedback from the
-    // colour change alone — mirror the state into aria-pressed AND announce it.
-    if (sel.has(i)) { sel.delete(i); b.style.background = ""; b.style.color = ""; b.setAttribute("aria-pressed", "false"); say(`${DAYNAMES[i]} removed`); }
-    else { sel.add(i); b.style.background = "var(--accent)"; b.style.color = "#06210f"; b.setAttribute("aria-pressed", "true"); say(`${DAYNAMES[i]} added`); }
-  });
-  $("#addcal").onclick = () => { if (!sel.size) { $("#calmsg").textContent = "Pick at least one day first."; return; } downloadTrainingCalendar([...sel], $("#sched-time").value); $("#calmsg").textContent = "Calendar file downloaded — open it to add recurring reminders."; };
-  // Toggles announce + restore focus: renderCoach() replaces the whole screen,
-  // which destroys the tapped button (focus drops to body) — the same reason the
-  // day-picker chips above announce via say() instead of relying on colour.
-  $("#pause").onclick = async () => {
-    try {
-      await api("/api/pause", { method: "POST", body: JSON.stringify({ user_id: uid, on: !paused }) });
-      say(paused ? "Resumed. Welcome back." : "Paused — heal up. Your streak is safe.");
-      await renderCoach(); $("#pause")?.focus();
-    } catch { alertBar("📴 Couldn't update the pause — you're offline. Try again when connected."); }
-  };
   const freezeBtn = $("#freeze");
   if (freezeBtn) freezeBtn.onclick = async () => {
     try {
@@ -2997,52 +3127,6 @@ async function renderCoach() {
     }
     catch { alertBar("📴 Couldn't update — try again when connected."); }
   });
-  const nudgeBtn = $("#nudges");
-  if (nudgeBtn) nudgeBtn.onclick = async () => {
-    try {
-      await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) });
-      say(a.reminders_off ? "Reminders turned on." : "Reminders turned off.");
-      await renderCoach(); $("#nudges")?.focus();
-    } catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
-  };
-  const acctBtn = $("#nudges-acct");
-  if (acctBtn) acctBtn.onclick = () => { tab = "me"; render(); };
-  const installBtn = $("#installbtn");
-  if (installBtn) installBtn.onclick = async () => {
-    if (!deferredInstallPrompt) { $("#installmsg").textContent = "Your browser's menu has an “Install app” option."; return; }
-    deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice.catch(() => ({ outcome: "dismissed" }));
-    deferredInstallPrompt = null; // the event is single-use
-    if (outcome === "accepted") { say("Installing the app."); renderCoach(); }
-    else $("#installmsg").textContent = "No problem — you can install any time from here.";
-  };
-  const pushBtn = $("#pushbtn");
-  if (pushBtn) pushBtn.onclick = async () => {
-    const msg = (t) => { $("#pushmsg").textContent = t; };
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      if (localStorage.getItem("hb_push") === "1") {
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
-        localStorage.removeItem("hb_push");
-        say("Device reminders turned off."); await renderCoach(); $("#pushbtn")?.focus(); return;
-      }
-      const { key } = await api("/api/push/key");
-      if (!key) { msg("Device reminders aren't available right now."); return; }
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { msg("No problem — you can enable notifications any time in your browser settings."); return; }
-      // base64url -> Uint8Array for applicationServerKey
-      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/"));
-      const appKey = new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-      // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate) — lets the
-      // server nudge at ~5pm THIS device's local time instead of 16:00 UTC for everyone.
-      const tz_offset_min = -new Date().getTimezoneOffset();
-      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min }) });
-      localStorage.setItem("hb_push", "1");
-      say("Device reminders on."); await renderCoach(); $("#pushbtn")?.focus();
-    } catch { msg("📴 Couldn't set up device reminders — try again when you're online."); }
-  };
 }
 
 // ---------- Learn (the beginner on-ramp library, bundled + offline) ----------
@@ -3218,7 +3302,7 @@ async function renderLearnPage(slug) {
 // ---------- Router ----------
 function render() {
   stopRestTimer(); // leaving the player must always cancel the pending repaint
-  settingsMode = false; // navigating away abandons an in-progress settings edit cleanly
+  settingsMode = false; settingsSolo = null; // navigating away abandons an in-progress settings edit cleanly
   if (tab !== "history") { historyEdit = null; historyDateFix = null; } // ...and an in-progress workout correction/date repair
   quitPending = false;
   discardPending = false; // an armed Discard must not survive a trip to another tab
