@@ -15,4 +15,5 @@ the desktop multi-column layer (the owner chose phone-first) and a URL router
 (flattening to depth ≤2 removed the need). Item 2 below arrived mid-iteration and is
 the NEXT iteration's queue head, untouched here.)*
 
-2. i want to be able to look back at past weights, calories and workouts i've logged and be able to edit them. I also want graphs to see the progress and trends
+1. i want to be able to look back at past weights, calories and workouts i've logged and be able to edit them. I also want graphs to see the progress and trends
+2. i went through the onboarding questionnare and chose: several years, both, shoulders and arms. why is my leg day volume so low ?

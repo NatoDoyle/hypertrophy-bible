@@ -585,7 +585,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // plan" but must never gate a "first workout ever" claim — it reads 1 for a user
   // whose only workout is voided or quarantined. `never_trained` is that claim's
   // own signal, carried explicitly so no consumer re-derives it from the filter.
+  // A specialization block's maintenance day says WHY it's light, on the day
+  // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note,
+    maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
     // feel broken. Rendered by the existing first-timer card.
@@ -896,5 +899,9 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     recovery: recoverySignal(recentCheckins, energy),
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference,
+    // The raw weigh-in series (already computed for the trend): the client draws
+    // it and offers per-day edits — the trend number alone answered "am I
+    // gaining", never "what did I actually log" (owner consideration, Wave 252).
+    bodyweight_series: bwSeries.map((b) => ({ date: (b.date || "").slice(0, 10), kg: b.bodyweight_kg })) };
 }

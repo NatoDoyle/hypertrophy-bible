@@ -1081,3 +1081,23 @@ check("a high-readiness FIRST session never invites a back-off set", () => {
 });
 
 console.log(`\n${passed} coach test(s) passed.`);
+
+check("a maintenance day's 'light on purpose' note rides the /api/today payload", () => {
+  // The rationale produces it (Wave 250); a producer without this consumer is the
+  // exact lesson-15 shape — the note must reach the screen the question arises on.
+  const profile = { units: "metric", training_status: "advanced", primary_goal: "recomposition",
+    days_per_week: 4, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"],
+    priority_muscles: ["side-delts", "biceps", "triceps"] };
+  const { program, rationale } = generateUserPlan({ ...profile });
+  const noted = Object.keys(rationale.session_notes ?? {});
+  assert.ok(noted.length > 0, "precondition: this profile produces a noted session, or nothing is tested");
+  const idx = program.sessions.findIndex((s) => noted.includes(s.name));
+  const sessions = [];
+  // advance the rotation to the noted day by logging the earlier sessions
+  for (let i = 0; i < idx; i++) sessions.push({ session_id: `mn-${i}`, date: new Date(Date.now() - (idx - i) * 86400000).toISOString(), program_ref: program.id, sets: [] });
+  const u = { profile, program, plan_meta: { block_start: new Date().toISOString() }, plan_rationale: rationale };
+  const t = buildToday(u, sessions);
+  assert.equal(t.name, program.sessions[idx].name, "precondition: today IS the noted day");
+  assert.match(t.maintenance_note ?? "", /light on purpose/i);
+});

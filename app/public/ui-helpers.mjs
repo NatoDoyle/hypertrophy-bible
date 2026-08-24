@@ -62,3 +62,18 @@ export function filterExercises(list, q) {
     || (e.primary_muscles ?? []).join(" ").toLowerCase().includes(needle)
     || String(e.equipment ?? "").toLowerCase().includes(needle));
 }
+
+// Chart geometry for the app's single-series trend lines (dataviz method:
+// change-over-time → a line; ONE series → one hue, no legend — the card title
+// names it; the editable list beside the chart is the table view). Pure math:
+// values in, padded SVG point pairs out. Higher value = smaller y (SVG frame);
+// a flat or single-point series draws at the midline instead of dividing by 0.
+export function linePath(values, w, h, pad = 4) {
+  const vals = (values ?? []).filter((v) => Number.isFinite(v));
+  if (!vals.length) return { pts: [], min: null, max: null };
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min;
+  const x = (i) => vals.length === 1 ? w / 2 : pad + (i * (w - 2 * pad)) / (vals.length - 1);
+  const y = (v) => span === 0 ? h / 2 : (h - pad) - ((v - min) * (h - 2 * pad)) / span;
+  return { pts: vals.map((v, i) => [Math.round(x(i) * 10) / 10, Math.round(y(v) * 10) / 10]), min, max };
+}

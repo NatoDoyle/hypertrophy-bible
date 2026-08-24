@@ -1323,4 +1323,21 @@ check("sweep: buildFeatureReport + siblings never throw across a wide input spac
   assert.ok(ran === 40, "sweep should attempt all 40 seeds");
 });
 
+// --- progression SERIES (Wave 252, owner: "graphs to see the progress") -------
+// progressionByExercise always computed the full week→best map and returned only
+// its endpoints; the series now ships so the client can draw the trend line.
+check("progression rows carry a week-keyed series matching their endpoints", () => {
+  const exIndex = new Map([["bench", { name: "Bench", primary: ["chest"], secondary: [] }]]);
+  const wk = (n, w, r) => ({ date: new Date(Date.UTC(2026, 0, 5 + n * 7)).toISOString(), sets: [{ exercise: "bench", set_type: "work", weight_kg: w, reps: r }] });
+  const prog = progressionByExercise([wk(0, 60, 5), wk(1, 62.5, 5), wk(2, 65, 5)], exIndex);
+  const row = prog.find((p) => p.exercise === "bench");
+  assert.ok(Array.isArray(row?.series) && row.series.length === 3, "series present with one point per trained week");
+  assert.equal(row.series[0].value, row.first_e1rm);
+  assert.equal(row.series[2].value, row.last_e1rm);
+  assert.ok(row.series.every((pt) => /^\d{4}-W\d{2}$/.test(pt.week)));
+  const pump = progressionByExercise([wk(0, 20, 15), wk(1, 22.5, 15)], exIndex);
+  const prow = pump.find((p) => p.basis === "load");
+  assert.ok(Array.isArray(prow?.series) && prow.series.length === 2 && prow.series[1].value === 22.5, "load-basis rows carry the series too");
+});
+
 console.log(`\n${passed} test(s) passed.`);

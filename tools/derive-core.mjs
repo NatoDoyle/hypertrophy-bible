@@ -876,6 +876,9 @@ export function progressionByExercise(sessions, exIndex) {
     out.push({
       exercise: ex, name: exIndex.get(ex)?.name ?? ex, weeks: weeks.length,
       first_load_kg: first, last_load_kg: last, basis: "load",
+      // The full week-by-week trend was always computed here and thrown away —
+      // it ships now so the client can DRAW it (owner: "graphs to see progress").
+      series: weeks.map((w) => ({ week: w, value: weekMap[w] })),
       change_pct: first ? Math.round(((last - first) / first) * 10000) / 100 : 0,
     });
   }
@@ -889,6 +892,7 @@ export function progressionByExercise(sessions, exIndex) {
       weeks: weeks.length,
       first_e1rm: first,
       last_e1rm: last,
+      series: weeks.map((w) => ({ week: w, value: weekMap[w] })),
       change_pct: first ? Math.round(((last - first) / first) * 10000) / 100 : 0,
     });
   }

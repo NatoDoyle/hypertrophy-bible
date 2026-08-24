@@ -602,10 +602,15 @@ ok("#1C in a specialization block the priority muscle's work leads the session",
   (firstEx?.primary_muscles ?? []).includes("side-delts"));
 // ...but never at the cost of burying genuinely heavy work behind an isolation.
 const specLower = specPlan.program.sessions.find((x) => (x.exercises ?? []).some((e) => exByIdR.get(e.exercise)?.cns_cost === "high"));
-if (specLower) {
-  const idxHigh = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.cns_cost === "high");
-  const idxIso = specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.mechanic === "isolation");
-  ok("#1C high-CNS compounds still lead — promotion doesn't bury a squat behind a raise", idxIso === -1 || idxHigh < idxIso);
+{
+  // UNCONDITIONAL, so the check count is stable: since the Wave-250 maintenance
+  // consolidation a spec plan may contain no high-CNS lift at all (the 1-set
+  // deadlift micro-doses are gone), and an `if` around ok() made the check
+  // silently disappear — a skip that reads as a pass (lesson 52's shape). The
+  // grid-wide #14f heaviest-first test still guards ordering universally.
+  const idxHigh = specLower ? specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.cns_cost === "high") : -1;
+  const idxIso = specLower ? specLower.exercises.findIndex((e) => exByIdR.get(e.exercise)?.mechanic === "isolation") : -1;
+  ok("#1C high-CNS compounds still lead when present — promotion doesn't bury a squat behind a raise", !specLower || idxIso === -1 || idxHigh < idxIso);
 }
 // An ORDINARY priority plan (no specialization) is byte-identical to before.
 // This fixture used to switch specialization off with a stored `specialization: false`.
@@ -1038,6 +1043,32 @@ ok("#CV the generator's own warnings drop the dead lever too",
 const cvEdit = critiquePlan(cvPlan.program, kb, { experience: "beginner" });
 ok("#CV the un-generated path still warns (the critique keeps guarding hand edits)",
   cvEdit.findings.some((f) => f.severity === "warn") && /worth fixing/i.test(cvEdit.summary));
+
+// --- maintenance days say so (Wave 250, owner report: "why is my leg day volume
+// so low?") — the mechanism was right and unbelieved, which lesson 36 says means
+// SHOW it: a session whose direct work is entirely held-at-maintenance muscles
+// carries a rationale note the plan screens render at day level, where the
+// question actually arises. Keyed by session name in the rationale (the
+// compound_bands pattern) — the program stays schema-byte-compatible.
+const mnProfile = { user_id: "mn-1", training_status: "advanced", primary_goal: "recomposition", days_per_week: 4,
+  session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"],
+  priority_muscles: ["side-delts", "biceps", "triceps"] };
+const mnPlan = generatePlan(mnProfile, kb);
+ok("#MN the owner's exact profile runs a specialization block (premise)",
+  mnPlan.rationale.goal_prescription.specialization.active === true);
+const mnLower = mnPlan.program.sessions.filter((s) => /Low|Leg/i.test(s.name));
+ok("#MN every all-maintenance day carries a 'light on purpose' rationale note naming the block",
+  mnLower.length > 0 && mnLower.every((s) => /light on purpose/i.test(mnPlan.rationale.session_notes?.[s.name] ?? "")
+    && /maintenance/i.test(mnPlan.rationale.session_notes[s.name])));
+ok("#MN priority days carry NO such note",
+  !Object.keys(mnPlan.rationale.session_notes ?? {}).some((n) => /Upper|Push|Pull/i.test(n) && !/Low|Leg/i.test(n)));
+const mnPlain = generatePlan({ ...mnProfile, user_id: "mn-2", priority_muscles: [] }, kb);
+ok("#MN a non-specialization plan has no session notes at all",
+  Object.keys(mnPlain.rationale.session_notes ?? {}).length === 0);
+// ...and the consolidation half of the same report: maintenance is a real dose,
+// never 1-set scatter (three 1-set lifts shipped on one leg day).
+ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
+  mnPlan.program.sessions.every((s) => s.exercises.every((e) => e.sets >= 2)));
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -755,8 +755,18 @@ export function generatePlan(profile, kb, opts = {}) {
       // (maintenance) target still has room for — so a full compoundSets can't blow
       // a small maintenance dose past its ceiling. `credited` is effective volume
       // (primary 1.0 + secondary 0.5), so this counts incidental secondary work too.
+      // A held-at-maintenance muscle takes a REAL dose or none: the old
+      // `Math.max(1, …)` floor turned every fractional residual (a muscle already
+      // half-maintained by secondaries) into a 1-set orphan, so a specialization
+      // leg day shipped THREE different 1-set lifts — scatter wearing the
+      // maintenance label, and the exact "why are there 1-set exercises" the
+      // owner reported. Multi-set superiority is the engine's own Grade-A rule;
+      // maintenance is not an exemption from it. A residual under 2 defers to
+      // secondary credit (which is what created the fraction in the first place);
+      // the weekly coverage floor still guarantees a week-unserved held muscle
+      // one honest 2-set placement at its last chance.
       const want = holdMaint(forMuscle)
-        ? Math.min(sets, Math.max(1, Math.ceil(Math.ceil((targets[forMuscle] ?? 0) / Math.max(1, freq[forMuscle] ?? 1)) - (credited[forMuscle] ?? 0))))
+        ? Math.min(sets, Math.ceil(Math.ceil((targets[forMuscle] ?? 0) / Math.max(1, freq[forMuscle] ?? 1)) - (credited[forMuscle] ?? 0)))
         : sets;
       // PER-MUSCLE SESSION-QUALITY CAP (KB frequency page, Grade C: "roughly 6-10
       // hard sets in a single session is about as much as most people can do for
@@ -772,7 +782,7 @@ export function generatePlan(profile, kb, opts = {}) {
       // each. Residual top-ups grow an EXISTING exercise instead. The one
       // exception: a held-at-maintenance muscle, where a deliberate 1-set
       // micro-dose IS the prescription (KB: maintenance volume can be that low).
-      if (Math.min(want, headroom) < (holdMaint(forMuscle) ? 1 : 2)) return false;
+      if (Math.min(want, headroom) < 2) return false; // maintenance included — a 1-set orphan is scatter whatever its label
       const setN = clamp(Math.min(want, EX_SET_CAP, headroom), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       weekUseCount[ex.id] = (weekUseCount[ex.id] ?? 0) + 1;
@@ -1278,7 +1288,27 @@ export function generatePlan(profile, kb, opts = {}) {
     ...(cardio ? { cardio } : {}),
     citations,
   };
+  // Day-level honesty for specialization blocks (owner report: "why is my leg
+  // day volume so low?" — the mechanism was right and unbelieved, and lesson 36
+  // says the fix is to SHOW it where the question arises). A session whose
+  // DIRECT work is entirely held-at-maintenance muscles reads as broken unless
+  // it says why it's light — the volume list's "holding steady" chips live two
+  // screens away from the leg day itself. Keyed by session name in the
+  // rationale (the compound_bands pattern), so the program stays byte-
+  // compatible with the template schema. Computed AFTER the MRV trim, so the
+  // note describes the sessions the user actually gets.
+  const session_notes = {};
+  if (specialization && priority.size) {
+    for (const sn of outSessions) {
+      const prims = new Set(sn.exercises.flatMap((e) => exById.get(e.exercise)?.primary_muscles ?? []));
+      if (prims.size && [...prims].every((m) => holdMaint(m))) {
+        session_notes[sn.name] = "Light on purpose: your specialization block holds these muscles at a maintenance dose — enough to keep everything you've built, while the freed recovery pays for your priority muscles.";
+      }
+    }
+  }
+
   const rationale = {
+    session_notes,
     split: { choice: split, days_per_week: sessionSpecs.length, training_status: experience, reason: splitReason, citations: splitCites },
     goal_prescription: {
       primary_goal: goal, rep_scheme: scheme,
