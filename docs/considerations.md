@@ -4,16 +4,24 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented and then delete the consideration 
 
-*(Most recently handled: the UI/UX audit ("not intuitive, denser pages, less clicking,
-fewer screens") — inventoried against the real code (a line-cited IA map + a register of
-41 recorded UX decisions), decided with the owner (bold tab restructure; phone-first
-density), and shipped as Waves 242-248: the naming pass, search + grouped history +
-pre-filled pickers, a per-question Training Settings screen, the calendar moved onto the
-commitment card, the Coach tab dissolved into Progress's "Your story", and the new Plan
-tab (the week one tap away, editor two). Deliberately deferred, recorded in the roadmap:
-the desktop multi-column layer (the owner chose phone-first) and a URL router
-(flattening to depth ≤2 removed the need). Item 2 below arrived mid-iteration and is
-the NEXT iteration's queue head, untouched here.)*
+*(No open considerations. Most recently handled, both in Waves 250-253:*
 
-1. i want to be able to look back at past weights, calories and workouts i've logged and be able to edit them. I also want graphs to see the progress and trends
-2. i went through the onboarding questionnare and chose: several years, both, shoulders and arms. why is my leg day volume so low ?
+*• "Look back at past weights, calories and workouts and edit them, plus graphs" —
+SHIPPED. Workouts already had view+edit (Workout history); weigh-ins and intake now
+have trend charts with tap-to-inspect, "View & edit past days" lists on Progress and
+Fuel, and edits that reuse the existing replace-by-date doors (no new server
+surface). Strength-trend rows carry sparklines from the full weekly series the
+engine had always computed and discarded.*
+
+*• "Why is my leg day volume so low?" (several years · both · shoulders and arms) —
+ANSWERED and improved. Those answers start a real SPECIALIZATION block: shoulders
+and arms get pushed toward their ceiling and every other muscle is deliberately held
+at a maintenance dose to pay for it — the onboarding hint says exactly this at
+answer time. The report still surfaced two real problems inside the deliberate
+design: maintenance was being delivered as 1-set scatter (three 1-set lifts on one
+leg day), fixed — a held muscle now takes a >=2-set dose or defers to secondary
+credit, which also FREED budget for the priorities (side-delts 13→17 weekly sets on
+3 days); and nothing said "light on purpose" at day level, fixed — maintenance days
+carry that note on the Plan tab and on Today. To restore full leg volume, clear or
+change the priority muscles in Training settings — the block also rotates out
+automatically after its recorded maximum length.)*

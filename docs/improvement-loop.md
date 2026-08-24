@@ -982,6 +982,27 @@ These are real failures from previous iterations. Each is now a standing check.
    the re-measurement made that an excuse; the sequence was still wrong, and the
    recovery (branch off the commit, reset main to origin) is now written down.
 
+65. **A recorded refutation has a SCOPE — when the same complaint returns from a new
+   angle, re-examine the refutation before repeating it.** "Why are there 1-set
+   exercises?" was measured in Waves 237-239 and refuted: they exist only as
+   specialization maintenance micro-doses, deliberate and KB-backed. That
+   refutation was true and TOO BROAD: it blessed the dose's existence and, by
+   doing so, its *texture* — and the texture was scatter (a leg day carrying
+   THREE different 1-set lifts, because a `Math.max(1, …)` floor turned every
+   fractional secondary-credit residual into a new orphan exercise). The owner's
+   second report arrived aimed at the volume ("why is my leg day so low?"), the
+   volume was working as designed — and the scatter it exposed was real, sitting
+   exactly where the earlier refutation had stopped anyone from looking.
+   "Deliberate" is not "optimal": lesson 13 protects tuned decisions from churn,
+   but a refutation earns the same skepticism as a finding when the complaint
+   recurs — ask what the refutation did NOT cover. (The fix — a held muscle
+   takes a ≥2-set dose or defers entirely to secondary credit — also FREED
+   priority budget, which is the tell that the texture was cost, not design.)
+   Sibling from the same iteration: lesson 36's "show the mechanism" needed a
+   THIRD application (the maintenance day now says "light on purpose" at day
+   level) — a mechanism explained on a screen the user isn't looking at is
+   still invisible; the explanation belongs where the question arises.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1003,6 +1024,30 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7l. **Telemetry (Waves 250–253, 2026-08-24, third turn).** Two owner
+   considerations + the scheduled overhaul self-audit, one turn. **1 finder
+   (~177k tokens, five candidates, five confirmed — its third consecutive
+   perfect audit, three findings being MY overhaul code), zero verify agents,
+   zero workflows.** The owner's leg-day report was measured with their EXACT
+   onboarding answers before anything moved: the volume was working as designed
+   (a specialization block holding legs at maintenance), and the measurement
+   still yielded two real fixes inside the deliberate design (lesson 65 — the
+   old 1-set refutation's scope; the day-level "light on purpose" note). The
+   finder's sharpest catch was severity escalation via solo settings edits — a
+   mild knee injury silently became moderate and cost the plan its squat
+   patterns because the user asked to train one more day; the walkthrough now
+   proves mild survives, run on the owner's own profile. History+graphs
+   (consideration #1) shipped with the dataviz method end to end, including
+   step 7's eyeball pass catching a corner-label collision the validator can't
+   see — the screenshot is part of the evidence, not decoration. Process
+   integrity note: one commit was made before its chains ran (a shell-quoting
+   abort ate the test half of the command silently — lesson 18's class, again);
+   caught one command later, chains run post-hoc green, and the sequencing
+   failure recorded rather than smoothed over.
+   Evidence: 174 plan · 96 derive · 79 coach · 366 route · 6 ui-helper ·
+   full app chain + root gate exit 0 · maintenance-rule tamper red · 14/14
+   owner-profile walkthrough · chart eyeball screenshot. Deployed v177.
+
 7m. **Telemetry (Waves 242–249, 2026-08-24, the UI/UX overhaul).** The owner's
    audit request, run as measure → decide → build: two Explore inventories
    (~275k tokens — a line-cited IA map of all six tabs with a taps-to-task

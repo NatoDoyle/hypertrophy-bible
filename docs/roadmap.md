@@ -6,7 +6,23 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-24, second turn** (Waves 242-249: the owner's
+Grounded assessment date: **2026-08-24, third turn** (Waves 250-253: both open
+owner considerations closed and the overhaul self-audited. The leg-day report
+("several years · both · shoulders and arms") was measured on the exact profile:
+a specialization block working as designed — and still worth two fixes (lesson
+65): maintenance doses consolidated (a held muscle takes ≥2 sets or defers to
+secondary credit; the 1-set scatter the earlier refutation had blessed is gone,
+and the freed budget raised the priorities themselves), and maintenance days now
+say "light on purpose" at day level on Plan and Today. History+graphs shipped:
+weigh-in and intake trend charts with tap-to-inspect, editable past-day lists
+reusing the replace-by-date doors, strength sparklines from the series the
+engine had always discarded. The overhaul self-audit went 5-for-5, headed by a
+solo settings edit silently escalating a mild injury to moderate (squat patterns
+lost because the user asked for one more day) — fixed with severity prefill,
+plus the restore door's false success, the below-fold nudge consumption, the
+network-gated Me, and a byte-level mojibake repair. **Named next pulls
+unchanged:** the desktop multi-column layer; BLOCKERS #10/#2b remain the human
+asks.) The prior grounding, same day: (Waves 242-249: the owner's
 UI/UX audit, measured then built. The inventory substantiated every complaint with
 line citations — the Coach tab was 10-13 cards with no coaching in it, NO read-only
 week view existed anywhere (editor-only, 3 taps deep via Me), one changed setting
@@ -314,6 +330,30 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 250–253 progress (2026-08-24, third turn). Both considerations closed;
+the overhaul audited.**
+
+- **Wave 250.** The leg-day answer + the two fixes inside the deliberate design
+  (≥2-set maintenance doses or defer-to-secondary; day-level "light on purpose"
+  notes via rationale.session_notes → Plan cards + Today). Priorities gained
+  budget as a side effect — the tell the scatter was cost, not design.
+- **Wave 251.** Five audit fixes: solo-edit injury-severity escalation
+  (prefill), the restore door's sent:false guard, the nudge banner to
+  Progress's top slot (+ isConnected guard), renderMe re-slotted sync
+  (instant local toggles; care slot fills async and degrades alone), the
+  mojibake em dash.
+- **Wave 252.** History + trends: progression `series` (derive, red-first),
+  `bodyweight_series` on /api/progress, the intake `log` on /api/nutrition;
+  accent line charts with tap-to-inspect, editable past-day lists on Progress
+  and Fuel arming the existing replace-by-date doors, per-row strength
+  sparklines. Dataviz method followed; the step-7 eyeball caught and fixed a
+  corner-label collision.
+- **Wave 253 (LEARN).** Lesson 65, telemetry 7l, both considerations deleted
+  with write-ups.
+- **Evidence:** 174 plan · 96 derive · 79 coach · 366 route · 6 ui-helper;
+  chains + root exit 0; tampers red; 14/14 walkthrough on the owner's exact
+  profile; chart screenshot eyeballed. Deployed v177.
 
 **Waves 242–249 progress (2026-08-24, second turn). The UI/UX overhaul: six honest
 tabs, everything the owner named made faster.**
