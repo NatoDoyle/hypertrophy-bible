@@ -1012,11 +1012,11 @@ try {
 
   // Log sessions for each side THIS week and confirm the live tally is correct.
   const dNow = (n) => new Date(Date.now() - n * 3600000).toISOString();
-  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c1", date: dNow(2),
+  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c1", date: dNow(0),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
-  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c2", date: dNow(1),
+  await json("POST", "/api/session", { user_id: carol, session_id: "ch-c2", date: dNow(0),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
-  await json("POST", "/api/session", { user_id: dave, session_id: "ch-d1", date: dNow(1),
+  await json("POST", "/api/session", { user_id: dave, session_id: "ch-d1", date: dNow(0), // 0 = NOW: an hours-ago date crosses the ISO week boundary every early Monday
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 10 }] });
   const carolView2 = await getChallenge(carol);
   ok("#challenge live tally counts each side's own sessions this week", carolView2.my_count === 2 && carolView2.opponent_count === 1);
@@ -1804,6 +1804,17 @@ try {
   const tzAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cmUser, "X-HB-TZ": "-480" } })).json();
   ok("#tz a commitment stamped before the clock was known survives the frame change",
     Array.isArray(tzAdh.commitment?.days) && tzAdh.commitment.days.length === 2);
+  // ...including the FUTURE-skew direction, constructed deterministically: a stamp
+  // whose week reads LATER than the viewer's frame (tz captured after a save near
+  // the boundary). The natural version of this only occurs in the early-Monday
+  // window, which is exactly when the old equality read failed in production runs
+  // and every other wall clock left this branch unreached (lesson 54) — so the
+  // skew is seeded directly rather than waited for. Ordinal rule: not-yet-past
+  // is current (lesson 40; the ambiguous direction must be inert).
+  await store.updateUser(cmUser, (u) => { u.profile.commitment = { week: isoWeekKeyLocal(Date.now() + 7 * 86400000, -480), days: ["fri"] }; return u; });
+  const tzAdh2 = await (await app.request("/api/adherence", { headers: { "X-HB-User": cmUser, "X-HB-TZ": "-480" } })).json();
+  ok("#tz a future-skewed commitment stamp reads as CURRENT, never silently unset",
+    Array.isArray(tzAdh2.commitment?.days) && tzAdh2.commitment.days[0] === "fri");
 
   // ...and the CHALLENGE equivalent, which the last iteration recorded as an unverified
   // hypothesis and this one reproduced: a week key stamped in one frame, read in another,
