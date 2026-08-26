@@ -61,7 +61,7 @@ function simulate(e1rmByWeek, { checkinFor = () => null } = {}) {
     const cadence = progressionCadence(sessions, exIndex);
     const window = adaptiveStallWindow(cadence);
     const stalled = stallDetect(sessions, exIndex, { minWeeks: window }).some((s) => s.exercise === "barbell-bench-press");
-    adjust = computeVolumeAdjust(adjust, sessions, [], { checkins, goal: "hypertrophy" });
+    adjust = computeVolumeAdjust(adjust, sessions, [], { checkins, goal: "hypertrophy" }).adjust;
     timeline.push({ throughWeek, setsTrained: setsThisBlock, cadence, window, stalled, chestAdjustForNext: adjust.chest ?? 0 });
   }
   // The raw log, so an assertion can check what the engine could SEE, not only what

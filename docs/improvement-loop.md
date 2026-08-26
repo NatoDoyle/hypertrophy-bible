@@ -1026,6 +1026,24 @@ These are real failures from previous iterations. Each is now a standing check.
    the KB's own Grade-D dosing caveat is what made the change honest rather
    than a contradiction.)
 
+67. **A fixture built to cross a precondition goes VACUOUS when the precondition's
+   semantics change — and a `?? 0 === 0` assertion can't tell "suppressed" from
+   "never ran".** The #A recovery-gate route test seeded 5 weekly sessions and
+   asserted the tune's add was suppressed (`volume_adjust.chest ?? 0 === 0`). When
+   Wave 167 moved the block clock to TRAINED weeks, the boundary began to need 6 —
+   the fixture stopped crossing it, the tune stopped running at all, and the
+   assertion stayed green for ~90 waves because absence and suppression produce the
+   same 0. Its sibling (#69) was updated to 7 weeks in that same era; #A was missed,
+   and nothing could notice: it asserted a value that absence also produces, with no
+   pin that the branch was reached. Exposed only when Wave 258 asserted on a field
+   (`tuned_this_block.held`) that exists ONLY when the boundary fires. → **Standing
+   rules:** (a) when a shared precondition changes meaning (a clock's unit, a
+   threshold, a gate), grep every FIXTURE built to cross it, not just the code —
+   lesson 29's blast-radius rule aimed at test data; (b) every suppression/no-op
+   assertion needs a sibling pin that the mechanism RAN (a boundary-fired flag, a
+   stamp, a side effect absence cannot produce) — `x ?? 0 === 0` is lesson 54's
+   vacuity in its most durable disguise.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1047,6 +1065,36 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7j. **Telemetry (Waves 257–261, 2026-08-27).** All three owner considerations closed
+   in one turn, centered on the program-engine explainer audit. **Planning: 3 Explore
+   agents (~431k — engine map with 16 verified-premise candidates C1-C16, the
+   history/graphs inventory, the 306-page book characterization) + 1 Plan agent
+   (~189k, premises spot-checked against HEAD before adoption) + 1 AskUserQuestion
+   (the owner chose "Full progress views"). Execution: ZERO finder agents, zero
+   verify agents, zero workflows** — every candidate verified inline by reading or
+   MEASURING (a 720-config ease-pass battery, a 30-config deload-cut sweep, the
+   C6 divergence and C14 corruption both reproduced through routes before fixing).
+   Score: 9 confirmed+fixed (C2/C3/C5/C6/C7/C14/C15 + the ease-pass's held-at-zero
+   silence and eased-undershoot false number), 7 refuted/recorded with scope
+   (C1/C4/C8/C10/C11/C13/C16 — C13's gate right, its SILENCE the defect), 2 of the
+   inline audit's own hypotheses refuted by the battery (the 1-set door, the
+   overlap-served block). The lesson-54 discipline caught THREE vacuous fixtures
+   this iteration: two drafts of the stays-demoted test (bench's absence was a
+   tune coincidence — only a probed lat-pulldown fixture isolates the demotion),
+   and the shipped #A fixture, vacuous since Wave 167 (lesson 67). The dataviz
+   step-7 eyeball caught what no assertion could: "Week of undefined ? 2026" on
+   every chart label (weekLabelOf takes a Monday date, not an ISO week key), a
+   19px y-gutter clipping "102.5", and flat-series gridlines stacking — then DOM
+   bbox measurement settled what the screenshot's scale garbled (both directions:
+   one real clip, one artifact). The book wave shipped the registry's first
+   `study_type: "book"` entry with existence-only verification stated in notes,
+   and its three traps recorded as refusals inside the page itself.
+   Evidence: 193 plan · 89 coach · 385 route · full chains + root gate exit 0
+   before every commit · 12 tampers each turning exactly its own test red ·
+   4-profile non-spec determinism pin vs main · 17/17 owner-profile walkthrough
+   (incl. the Wave-258 cards on their own fixture users) · 3 screenshots
+   eyeballed. Deploy: v179 after merge.
+
 7k. **Telemetry (Waves 254–256, 2026-08-26).** The owner's follow-up challenge to
    the leg-day answer ("surely leg volume should stay the same?") became a live
    design ruling via AskUserQuestion — "MV when volume is high and recovery is

@@ -20,6 +20,7 @@ keeps effective, recoverable volume high.
 | [Warm-Ups](warm-up.md) | General warm-up + ramp-up sets; warming up without pre-fatigue | ✅ |
 | [Cardio & Concurrent Training](cardio-and-concurrent-training.md) | The interference effect, programming cardio, cardio for fat loss | ✅ |
 | [Program Templates](program-templates.md) | Beginner / intermediate / advanced full programs (backed by `data/programs/`) | ✅ |
+| [Elite Strength-Sport Practice](elite-strength-sport-practice.md) | How the Chinese weightlifting system doses hypertrophy work — documented elite practice (Grade D), mapped onto this KB | ✅ |
 
 ## The one-paragraph model
 

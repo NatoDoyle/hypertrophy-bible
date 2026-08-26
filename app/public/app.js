@@ -135,8 +135,46 @@ const miniSpark = (values) => {
   const { pts } = linePath(values, 64, 18, 2);
   return pts.length > 1 ? `<svg viewBox="0 0 64 18" width="64" height="18" aria-hidden="true" style="flex:none;margin-right:8px"><polyline points="${pts.map(([x, y]) => `${x},${y}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/></svg>` : "";
 };
+// The full-size sibling (Wave 259, owner #3): same single-series accent line, plus
+// what the compact card omits — recessive gridlines with y-tick labels, first/last
+// date labels, and room to read the shape. One hue, no legend (the heading names
+// the series); the day/week list beside each use is its table view.
+function fullTrendChart(values, { unit = "", w = 320, h = 170, capId = "", firstLabel = "", lastLabel = "", target = null } = {}) {
+  // The left gutter must hold a real y-tick ("102.5") — 18px clipped 3-digit
+  // weights to "1…" (step-7 eyeball catch). linePath pads symmetrically, so pass
+  // the larger gutter; the top/bottom breathing room it adds is fine at h=170.
+  const pad = 34;
+  const { pts, min, max } = linePath(values, w, h, pad);
+  if (pts.length < 2) return "";
+  const line = pts.map(([x, y]) => `${x},${y}`).join(" ");
+  const last = pts[pts.length - 1];
+  const mid = Math.round(((min + max) / 2) * 10) / 10;
+  const gy = (v) => max > min ? (h - pad) - ((v - min) * (h - 2 * pad)) / (max - min) : h / 2;
+  // A flat series collapses all three gridlines onto one y — draw a single line
+  // there or the labels stack unreadably (caught by the step-7 eyeball pass).
+  const grid = (max > min ? [min, mid, max] : [min]).map((v) => `<line x1="${pad}" x2="${w - 4}" y1="${gy(v)}" y2="${gy(v)}" stroke="var(--line)" stroke-width="1"/>
+    <text x="${pad - 2}" y="${gy(v) + 3}" fill="var(--muted)" font-size="9" text-anchor="end">${v}</text>`).join("");
+  // Same in-range rule as trendChart: an off-screen target must not flatten the line.
+  const ty = target != null && max > min && target >= min && target <= max ? gy(target) : null;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block" ${capId ? `data-chart="${capId}"` : ""} role="img" aria-label="Trend from ${min}${unit} to ${max}${unit}">
+    ${grid}
+    ${ty != null ? `<line x1="${pad}" x2="${w - 4}" y1="${ty}" y2="${ty}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 4"/>` : ""}
+    <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="3.5" fill="var(--accent)"/>
+    ${firstLabel ? `<text x="${pad}" y="${h - 2}" fill="var(--muted)" font-size="9">${esc(firstLabel)}</text>` : ""}
+    ${lastLabel ? `<text x="${w - 4}" y="${h - 2}" fill="var(--muted)" font-size="9" text-anchor="end">${esc(lastLabel)}</text>` : ""}
+  </svg>${capId ? `<p class="muted" id="${capId}" style="font-size:.85rem;margin:2px 0 0">Tap the line to inspect a point.</p>` : ""}`;
+}
 let bwEditDate = null;   // a past weigh-in day selected for editing on Progress
 let fuelLogDate = null;  // a past intake day selected for editing on Fuel
+// Full-progress sub-views (Wave 259, owner #3). Each renders from the Progress
+// fetch it came from; back always clears the flag and re-renders the parent.
+let liftDetail = null;   // exercise id whose full dated chart is open
+let showAllLifts = false; // the "All lifts" expander under Strength trends
+let prFullView = false;  // the complete PR history list
+let bwFullView = false;  // full bodyweight history (chart + every day)
+let fuelFullView = false; // full intake history (chart + every day)
+let historyDetail = null; // session_id whose read-only set detail is open
 
 const api = async (path, opts = {}) => {
   // The device's clock rides EVERY authed call, from the one helper they all go
@@ -1456,6 +1494,12 @@ function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m
 // `idx` tags the member index inside a superset station; omit it in the single
 // player. The value stored is always the ADDED weight (0 = pure bodyweight), which
 // is exactly what e1RM/volume expect, so nothing downstream changes.
+// "Last time you did this lift" (Wave 259, owner #3): the log's answer to "what
+// did I lift last time?", right where the question arises. Bodyweight lifts show
+// reps only (their weight field is hidden for the same reason).
+const lastTimeLine = (e) => Array.isArray(e.last_reps) && e.last_reps.length
+  ? `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">Last time: ${e.equipment === "bodyweight" && !(e.last_kg > 0) ? `${e.last_reps.join(", ")} reps` : `${dispWeight(e.last_kg)} ${unitLabel()} × ${e.last_reps.join(", ")}`}</p>`
+  : "";
 function weightStepper(w, isBodyweight, idx) {
   const di = idx == null ? "" : ` data-i="${idx}"`;
   if (isBodyweight && w === 0) {
@@ -1631,6 +1675,7 @@ function renderPlayer(resting = 0) {
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
       ${weightStepper(w, e.equipment === "bodyweight", null)}
+      ${lastTimeLine(e)}
       <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
       ${effChips(sess.i)}
       ${confirmSet.has(e.exercise) ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
@@ -1775,6 +1820,7 @@ function renderSupersetStation(L, P, resting = 0) {
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx)}
+      ${lastTimeLine(m)}
       <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
       ${effChips(idx)}
       ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
@@ -2077,6 +2123,9 @@ function renderRecap(recap) {
 
 // ---------- Progress ----------
 const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint", "secondary-served": "s-maint", "eased": "s-maint" }[s] || "s-none");
+const prDetailText = (r) => r.kind === "load" ? `${dispWeight(r.load_kg)} ${unitLabel()} × ${r.reps}` : `${dispWeight(r.e1rm_kg)} ${unitLabel()} est. 1RM`;
+let bwEditArm = null; // a day tapped in the full bodyweight view, to arm the Progress edit form
+let fuelEditArm = null; // its Fuel sibling
 const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "eased": "slow growth", "no-landmark": "—" }[s] || s);
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
@@ -2089,6 +2138,11 @@ async function renderProgress() {
     $("#retry-prog").onclick = () => renderProgress();
     return;
   }
+  // Full-progress sub-views (Wave 259, owner #3) — each renders from this same
+  // fetch and returns here via its back button.
+  if (liftDetail) return renderLiftDetail(p);
+  if (prFullView) return renderPrFull(p);
+  if (bwFullView) return renderBwFull(p);
   const vol = (p.volumeByMuscle || []).map((m) => {
     const pct = Math.min(100, (m.sets / 24) * 100);
     return `<div class="row"><div style="flex:1"><b>${esc(m.id ? cap(friendlyMuscle(m.id)) : m.muscle)}</b> <span class="muted">${m.sets} set${m.sets === 1 ? "" : "s"}/wk</span>
@@ -2097,7 +2151,16 @@ async function renderProgress() {
   }).join("") || `<p class="muted">Log a workout to see your weekly volume.</p>`;
   // Load-basis rows (pump-band lifts, 12-20 reps) chart the top-set weight —
   // an e1RM there would be guesswork, but the dumbbell you hold is not.
-  const prog = (p.progression || []).map((x) => `<div class="row">${(x.series ?? []).length > 1 ? miniSpark(x.series.map((pt) => pt.value)) : ""}<b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span></div>`).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  // Every row is a BUTTON into the lift's full dated chart (Wave 259, owner #3) —
+  // the sparkline stopped being decoration the day it grew a destination.
+  const trendRow = (x) => `<button class="row" data-lift="${esc(x.exercise)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer">${(x.series ?? []).length > 1 ? miniSpark(x.series.map((pt) => pt.value)) : ""}<b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}" style="margin-left:auto">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span><span class="muted" style="margin-left:6px">›</span></button>`;
+  const prog = (p.progression || []).map(trendRow).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
+  const shownLiftIds = new Set((p.progression || []).map((x) => x.exercise));
+  const restLifts = (p.progression_all || []).filter((x) => !shownLiftIds.has(x.exercise));
+  const allLiftsBits = restLifts.length
+    ? `<button class="btn ghost inline" id="all-lifts">${showAllLifts ? "Hide" : "All lifts"} (${(p.progression_all || []).length})</button>
+       <div id="all-lifts-box" class="${showAllLifts ? "" : "hidden"}">${restLifts.map(trendRow).join("")}</div>`
+    : "";
   // A plateau gets an honest, KB-grounded playbook — not "add a rep" forever.
   // The plateau card now says which lever the engine is ACTUALLY pulling, instead
   // of the same three-line playbook regardless of cause. `p.adaptive` carries
@@ -2121,7 +2184,22 @@ async function renderProgress() {
   // target → the fix is effort, not sets. Sits between the ceiling read (deload
   // still wins) and the add-volume read (never add sets to a sandbagged stall).
   const pushHarder = (p.adaptive || []).filter((a) => a.signal === "effort");
-  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
+  // A `gated` add is one the tune will NOT act on — promising "I'm adding sets"
+  // there was false (Wave 258). Regression-gated rows are owned by the regression
+  // card above ("I've stopped adding volume to those muscles"), so they render
+  // nothing here; deficit/recovery-gated rows get the honest hold sentence.
+  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add" && !a.gated);
+  const heldAdds = (p.adaptive || []).filter((a) => a.signal === "add" && (a.gated === "deficit" || a.gated === "recovery"));
+  // Over-MRV must be an INSTRUCTION, not only a chip (C7): volumeResponse ranks
+  // "reduce" FIRST, yet nothing ever rendered it — an over-ceiling user saw only
+  // the "over max" tag with no sentence saying what to do. Independent of the
+  // stalls card: reduce fires without any plateau.
+  const overCeiling = (p.adaptive || []).filter((a) => a.signal === "reduce");
+  const reduceCard = overCeiling.length
+    ? `<div class="card"><b>⚖️ More than you can recover from</b>
+        <p class="muted">Your ${esc(overCeiling.map((a) => a.muscle_name).join(", "))} ${overCeiling.length === 1 ? "is" : "are"} getting more weekly sets than you can recover from — past that ceiling, extra sets cost recovery without adding growth. Trim a set or two per session, or let the plan handle it: the next block's retune eases ${overCeiling.length === 1 ? "it" : "them"} back automatically.</p>
+        <button class="btn ghost" data-learn="volume-progression-and-deloads">Read: volume &amp; deloads</button></div>`
+    : "";
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
         <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
@@ -2131,7 +2209,9 @@ async function renderProgress() {
             ? `<p class="muted">Your own effort logs show plenty left in the tank on your ${esc(pushHarder.map((a) => a.muscle_name).join(", "))} sets. Before adding volume, take the last set of each lift closer to failure — about 1–2 reps in reserve. Effort is the cheapest fix there is, so I'm holding your sets steady until it's in.</p>`
             : canAddMore.length
               ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
-              : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
+              : heldAdds.length
+                ? `<p class="muted">Your ${esc(heldAdds.map((a) => a.muscle_name).join(", "))} ${heldAdds.length === 1 ? "has" : "have"} room to grow, but ${heldAdds[0].gated === "deficit" ? "you're eating in a deficit" : "your check-ins say recovery's been short"} — so I'm holding sets steady until that turns around. More volume you can't recover from digs the hole deeper; fixing fuel and sleep beats any programming change.</p>`
+                : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
   // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your
@@ -2167,10 +2247,8 @@ async function renderProgress() {
     : "";
   const prCard = (p.pr_count > 0)
     ? `<div class="card"><div class="row"><b>🏆 Personal records</b> <span class="chip">${p.pr_count}</span></div>
-        ${(p.personal_records || []).map((r) => {
-          const detail = r.kind === "load" ? `${dispWeight(r.load_kg)} ${unitLabel()} × ${r.reps}` : `${dispWeight(r.e1rm_kg)} ${unitLabel()} est. 1RM`;
-          return `<div class="row"><span style="flex:1">${esc(r.name)}</span><span class="muted" style="font-size:.85rem">${detail}${r.date ? ` · ${esc(String(r.date).slice(0, 10))}` : ""}</span></div>`;
-        }).join("")}</div>`
+        ${(p.personal_records || []).map((r) => `<div class="row"><span style="flex:1">${esc(r.name)}</span><span class="muted" style="font-size:.85rem">${prDetailText(r)}${r.date ? ` · ${esc(String(r.date).slice(0, 10))}` : ""}</span></div>`).join("")}
+        ${p.pr_count > (p.personal_records || []).length ? `<button class="btn ghost inline" id="pr-all">See all ${p.pr_count}</button>` : ""}</div>`
     : "";
   app.innerHTML = `<h1>Progress</h1>
     <div id="progress-nudge"></div>
@@ -2183,11 +2261,12 @@ async function renderProgress() {
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${autoAdaptNote}
     ${regrCard}
+    ${reduceCard}
     ${stallCard}
     ${interfCard}
     <h2>Strength trends ${helpDot("glossary", "ⓘ how these are estimated")}</h2>
-    <p class="muted">Your estimated 1-rep max where the reps allow it, your top-set weight where they don't. Watch the trend, not the exact number.</p>
-    <div class="card">${prog}</div>
+    <p class="muted">Your estimated 1-rep max where the reps allow it, your top-set weight where they don't. Watch the trend, not the exact number — and tap a lift for its full chart.</p>
+    <div class="card">${prog}${allLiftsBits}</div>
     <h2>Bodyweight & energy balance</h2>
     <div class="card">
       ${t ? `<p><b>${slopeDisp >= 0 ? "+" : ""}${slopeDisp} ${unitLabel()}/week</b> <span class="muted">(${t.pct_per_week}%/wk)</span></p>
@@ -2197,6 +2276,7 @@ async function renderProgress() {
       <button class="btn secondary" id="logbw">Add today's weight</button>
       ${(p.bodyweight_series ?? []).length ? `<button class="btn ghost inline" id="bw-hist-toggle">✏️ View &amp; edit past days</button>
       <div id="bw-hist" class="hidden">${(p.bodyweight_series ?? []).slice(-14).reverse().map((b) => `<button class="row" data-bw-edit="${esc(b.date)}" data-bw-kg="${b.kg}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(b.date)}</span><span>${dispBw(b.kg)} ${unitLabel()}</span></button>`).join("")}</div>` : ""}
+      ${(p.bodyweight_series ?? []).length > 14 ? `<button class="btn ghost inline" id="bw-full">📈 Full history (${(p.bodyweight_series ?? []).length} days)</button>` : ""}
     </div>
     <div id="story"></div>`;
   wireLearnLinks();
@@ -2204,6 +2284,10 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
+  if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
+  if ($("#pr-all")) $("#pr-all").onclick = () => { prFullView = true; renderProgress(); };
+  if ($("#bw-full")) $("#bw-full").onclick = () => { bwFullView = true; renderProgress(); };
   if ($("#bw-hist-toggle")) $("#bw-hist-toggle").onclick = () => $("#bw-hist").classList.toggle("hidden");
   app.querySelectorAll("[data-bw-edit]").forEach((b) => b.onclick = () => {
     // Tap a past day: the existing form edits THAT day (the server replaces
@@ -2214,6 +2298,14 @@ async function renderProgress() {
     $("#bw").focus();
   });
   wireChartTap("bw-cap", (p.bodyweight_series ?? []).slice(-60), (b) => `${b.date}: ${dispBw(b.kg)} ${unitLabel()}`);
+  // A day tapped in the FULL history view lands back here with the edit form
+  // armed for that day — same single replace-by-date door as the 14-day list.
+  if (bwEditArm) {
+    bwEditDate = bwEditArm.date;
+    $("#bw").value = dispBw(bwEditArm.kg);
+    $("#logbw").textContent = `Save for ${bwEditDate}`;
+    bwEditArm = null;
+  }
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -2239,6 +2331,80 @@ async function renderProgress() {
     note.textContent = "📴 Saved offline — it'll sync when you're back online.";
     $("#logbw").after(note);
   };
+}
+
+// ---------- Full-progress sub-views (Wave 259, owner #3) ----------
+// Each renders from the Progress fetch that opened it; back re-renders Progress.
+// The progression series keys weeks as ISO week keys ("2026-W35"); weekLabelOf
+// takes a Monday YYYY-MM-DD — convert, never feed it the raw key (the first cut
+// rendered "Week of undefined ? 2026" on every row; step-7 eyeball catch).
+const isoWeekMonday = (wk) => {
+  const m = /^(\d{4})-W(\d{2})$/.exec(String(wk));
+  if (!m) return null;
+  const jan4 = new Date(Date.UTC(+m[1], 0, 4));
+  const dow = (jan4.getUTCDay() + 6) % 7; // 0 = Monday (ISO week 1 contains Jan 4)
+  return new Date(Date.UTC(+m[1], 0, 4 - dow + (+m[2] - 1) * 7)).toISOString().slice(0, 10);
+};
+const weekKeyLabel = (wk) => { const mon = isoWeekMonday(wk); return mon ? weekLabelOf(mon) : String(wk ?? ""); };
+function renderLiftDetail(p) {
+  const row = (p.progression_all || p.progression || []).find((x) => x.exercise === liftDetail);
+  if (!row) { liftDetail = null; return renderProgress(); }
+  const series = row.series ?? [];
+  const vals = series.map((pt) => dispWeight(pt.value));
+  const basisNote = row.basis === "load"
+    ? "Charted as your top-set weight — at these rep ranges an estimated 1RM would be guesswork, but the weight in your hands is not."
+    : "Charted as your estimated 1-rep max from each week's best set. Watch the trend, not the exact number.";
+  const prRows = (p.personal_records_all || []).filter((r) => r.exercise === liftDetail).slice(0, 5);
+  const weekRows = [...series].reverse().map((pt) => `<div class="row"><span style="flex:1">${esc(weekKeyLabel(pt.week))}</span><span>${dispWeight(pt.value)} ${unitLabel()}</span></div>`).join("");
+  app.innerHTML = `<h1>${esc(row.name)}</h1>
+    <p class="muted">${row.stalled ? '<span class="chip" style="color:var(--warn)">⏸ stalled</span> ' : ""}${esc(basisNote)}</p>
+    <div class="card">${fullTrendChart(vals, { unit: ` ${unitLabel()}`, capId: "lift-cap", firstLabel: series.length ? weekKeyLabel(series[0].week) : "", lastLabel: series.length ? weekKeyLabel(series[series.length - 1].week) : "" }) || `<p class="muted">Two weeks of data unlocks this chart.</p>`}</div>
+    ${prRows.length ? `<div class="card"><b>🏆 Records on this lift</b>${prRows.map((r) => `<div class="row"><span style="flex:1">${prDetailText(r)}</span><span class="muted" style="font-size:.85rem">${esc(String(r.date ?? "").slice(0, 10))}</span></div>`).join("")}</div>` : ""}
+    <div class="card"><b>Week by week</b>${weekRows}</div>
+    <button class="btn ghost" id="ld-back">‹ Back to progress</button>`;
+  wireChartTap("lift-cap", series, (pt) => `${weekKeyLabel(pt.week)}: ${dispWeight(pt.value)} ${unitLabel()}`);
+  $("#ld-back").onclick = () => { liftDetail = null; renderProgress(); };
+}
+
+function renderPrFull(p) {
+  const rows = (p.personal_records_all || []).map((r) => `<div class="row"><span style="flex:1">${esc(r.name)}</span><span class="muted" style="font-size:.85rem">${prDetailText(r)}${r.date ? ` · ${esc(String(r.date).slice(0, 10))}` : ""}</span></div>`).join("");
+  app.innerHTML = `<h1>🏆 Personal records</h1>
+    <p class="muted">Every record you've set, newest first — a heavier top set, or a heavier estimated 1RM.</p>
+    <div class="card">${rows || `<p class="muted">No records yet — they'll land as you train.</p>`}</div>
+    <button class="btn ghost" id="pr-back">‹ Back to progress</button>`;
+  $("#pr-back").onclick = () => { prFullView = false; renderProgress(); };
+}
+
+function renderBwFull(p) {
+  const series = p.bodyweight_series ?? [];
+  app.innerHTML = `<h1>Bodyweight history</h1>
+    <p class="muted">Every weigh-in you've logged — ${series.length} day${series.length === 1 ? "" : "s"}. Tap a day below to edit it.</p>
+    <div class="card">${fullTrendChart(series.map((b) => dispBw(b.kg)), { unit: ` ${unitLabel()}`, capId: "bwf-cap", firstLabel: series[0]?.date ?? "", lastLabel: series[series.length - 1]?.date ?? "" }) || `<p class="muted">Two weigh-ins unlock the chart.</p>`}</div>
+    <div class="card">${[...series].reverse().map((b) => `<button class="row" data-bw-edit="${esc(b.date)}" data-bw-kg="${b.kg}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(b.date)}</span><span>${dispBw(b.kg)} ${unitLabel()}</span></button>`).join("")}</div>
+    <button class="btn ghost" id="bwf-back">‹ Back to progress</button>`;
+  wireChartTap("bwf-cap", series, (b) => `${b.date}: ${dispBw(b.kg)} ${unitLabel()}`);
+  $("#bwf-back").onclick = () => { bwFullView = false; renderProgress(); };
+  app.querySelectorAll("[data-bw-edit]").forEach((b) => b.onclick = () => {
+    bwFullView = false;
+    bwEditArm = { date: b.dataset.bwEdit, kg: parseFloat(b.dataset.bwKg) };
+    renderProgress();
+  });
+}
+
+function renderFuelFull(n, t) {
+  const log = n.log ?? [];
+  app.innerHTML = `<h1>Intake history</h1>
+    <p class="muted">Every day you've logged — ${log.length} day${log.length === 1 ? "" : "s"}. The dashed line is your ${t.calorie_target} kcal target. Tap a day below to edit it.</p>
+    <div class="card">${fullTrendChart(log.map((e) => e.kcal), { unit: "", capId: "flf-cap", target: t.calorie_target, firstLabel: log[0]?.date ?? "", lastLabel: log[log.length - 1]?.date ?? "" }) || `<p class="muted">Two logged days unlock the chart.</p>`}</div>
+    <div class="card">${[...log].reverse().map((e) => `<button class="row" data-fl-edit="${esc(e.date)}" data-fl-kcal="${e.kcal}" data-fl-protein="${e.protein_g ?? ""}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(e.date)}</span><span>${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}</span></button>`).join("")}</div>
+    <button class="btn ghost" id="flf-back">‹ Back to Fuel</button>`;
+  wireChartTap("flf-cap", log, (e) => `${e.date}: ${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}`);
+  $("#flf-back").onclick = () => { fuelFullView = false; renderFuel(); };
+  app.querySelectorAll("[data-fl-edit]").forEach((b) => b.onclick = () => {
+    fuelFullView = false;
+    fuelEditArm = { date: b.dataset.flEdit, kcal: b.dataset.flKcal, protein: b.dataset.flProtein || "" };
+    renderFuel();
+  });
 }
 
 // ---------- Workout history (correcting the log) ----------
@@ -2341,6 +2507,40 @@ async function renderHistory() {
     };
     return;
   }
+  // Read-only session detail (Wave 259, owner #3): every set, grouped by exercise —
+  // previously the ONLY way to see logged sets was the edit form, and a voided
+  // session's sets couldn't be viewed at all.
+  if (historyDetail) {
+    const sess = list.find((x) => x.session_id === historyDetail);
+    if (!sess) { historyDetail = null; return renderHistory(); }
+    const voided = !!sess.voided_at;
+    const order = [];
+    const byEx = new Map();
+    for (const set of sess.sets ?? []) {
+      if (!byEx.has(set.exercise)) { byEx.set(set.exercise, { name: set.name || set.exercise, sets: [] }); order.push(set.exercise); }
+      byEx.get(set.exercise).sets.push(set);
+    }
+    const setText = (s) => `${dispWeight(s.weight_kg)} × ${s.reps}${typeof s.rir === "number" ? ` @${s.rir}` : ""}${(s.set_type ?? "work") === "warmup" ? " ᵂ" : ""}${s.deload ? " ᴰ" : ""}`;
+    const exRows = order.map((k) => {
+      const g = byEx.get(k);
+      return `<div class="row"><div style="flex:1"><b>${esc(g.name)}</b>
+        <div class="muted" style="font-size:.9rem">${g.sets.map(setText).join(" · ")} ${unitLabel()}</div></div></div>`;
+    }).join("");
+    const anyMarks = (sess.sets ?? []).some((s) => (s.set_type ?? "work") === "warmup" || s.deload);
+    app.innerHTML = `<h1>${esc(sess.session_name || "Workout")}</h1>
+      <p class="muted">${esc(formatHistoryDate(sess))} · ${sessionVolume(sess)} working set${sessionVolume(sess) === 1 ? "" : "s"}${voided ? ' · <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' · <span class="chip">edited</span>' : ""}</p>
+      <div class="card">${exRows || `<p class="muted">No sets on this workout.</p>`}</div>
+      ${anyMarks ? `<p class="muted" style="font-size:.85rem">@N = reps left in the tank · ᵂ warm-up · ᴰ deload — neither counts toward your trends.</p>` : ""}
+      ${voided
+        ? `<button class="btn ghost inline" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
+        : `<button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+           <button class="btn ghost inline" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
+      <button class="btn ghost" id="hd-back">‹ Back to history</button>`;
+    $("#hd-back").onclick = () => { historyDetail = null; renderHistory(); };
+    app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDetail = null; historyEdit = b.dataset.edit; renderHistory(); });
+    wireHistoryVoidButtons();
+    return;
+  }
   const sessCard = (sess) => {
     const voided = !!sess.voided_at;
     const quarantined = !!sess.time_quarantine;
@@ -2373,10 +2573,10 @@ async function renderHistory() {
         </div>`
       : "";
     return `<div class="card"${voided ? ' style="opacity:.55"' : ""}>
-      <div class="row"><div style="flex:1">
+      <button class="row" data-detail="${esc(sess.session_id)}" style="width:100%;text-align:left;background:none;border:0;color:var(--text);padding:0;cursor:pointer" aria-label="View this workout's sets"><div style="flex:1">
         <b>${esc(sess.session_name || "Workout")}</b>${voided ? ' <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' <span class="chip">edited</span>' : ""}
         <div class="muted" style="font-size:.85rem">${esc(when)} · ${sessionVolume(sess)} set${sessionVolume(sess) === 1 ? "" : "s"}</div>
-      </div></div>
+      </div><span class="muted">›</span></button>
       ${timingRepair}
       ${voided
         ? `<button class="btn ghost inline" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
@@ -2405,6 +2605,7 @@ async function renderHistory() {
     <button class="btn ghost" id="hback">‹ Back to progress</button>`;
   if ($("#more-weeks")) $("#more-weeks").onclick = () => { historyWeeksShown += 4; renderHistory(); };
   $("#hback").onclick = () => { historyWeeksShown = 4; tab = "progress"; render(); };
+  app.querySelectorAll("[data-detail]").forEach((b) => b.onclick = () => { historyDateFix = null; historyDetail = b.dataset.detail; renderHistory(); });
   app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDateFix = null; historyEdit = b.dataset.edit; renderHistory(); });
   app.querySelectorAll("[data-fix-date]").forEach((b) => b.onclick = () => { historyEdit = null; historyDateFix = b.dataset.fixDate; renderHistory(); });
   app.querySelectorAll("[data-cancel-date]").forEach((b) => b.onclick = () => { historyDateFix = null; renderHistory(); });
@@ -2445,14 +2646,19 @@ async function renderHistory() {
       : "Workout date corrected. It now counts toward your trends.");
     renderHistory();
   });
-  const setVoid = async (sessionId, voided) => {
-    const res = await api("/api/session/void", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId, voided }) });
-    if (res.error) { say("Couldn't do that — try again."); return; }
-    say(voided ? "Taken back — it no longer counts toward your trends. You can put it back any time." : "Put back — it counts again.");
-    renderHistory();
-  };
-  app.querySelectorAll("[data-void]").forEach((b) => b.onclick = () => setVoid(b.dataset.void, true));
-  app.querySelectorAll("[data-unvoid]").forEach((b) => b.onclick = () => setVoid(b.dataset.unvoid, false));
+  wireHistoryVoidButtons();
+}
+// Shared by the history list and the read-only session detail (both render
+// void/unvoid buttons; one door, one copy).
+async function historySetVoid(sessionId, voided) {
+  const res = await api("/api/session/void", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId, voided }) });
+  if (res.error) { say("Couldn't do that — try again."); return; }
+  say(voided ? "Taken back — it no longer counts toward your trends. You can put it back any time." : "Put back — it counts again.");
+  renderHistory();
+}
+function wireHistoryVoidButtons() {
+  app.querySelectorAll("[data-void]").forEach((b) => b.onclick = () => historySetVoid(b.dataset.void, true));
+  app.querySelectorAll("[data-unvoid]").forEach((b) => b.onclick = () => historySetVoid(b.dataset.unvoid, false));
 }
 
 // ---------- Fuel (nutrition: calorie/macro targets + daily intake log) ----------
@@ -2467,6 +2673,9 @@ async function renderFuel() {
     $("#rf").onclick = () => renderFuel(); return;
   }
   const t = n.nutrition;
+  // Full intake history (Wave 259, owner #3) — needs targets to exist; without
+  // them the stats form below is the right screen anyway.
+  if (fuelFullView && t) return renderFuelFull(n, t);
   // --- stats form (first run, or "edit stats") ---
   if (!t || fuelEdit) {
     // The Navy tape estimate needs the hip measure for women — without a hip field a
@@ -2572,12 +2781,14 @@ async function renderFuel() {
       <p class="muted" style="margin:0 0 4px">Daily calories — the dashed line is your ${t.calorie_target} kcal target.</p>
       ${trendChart((n.log ?? []).slice(-30).map((e) => e.kcal), { unit: "", target: t.calorie_target, capId: "kcal-cap" })}
       <button class="btn ghost inline" id="fl-hist-toggle">✏️ View &amp; edit past days</button>
-      <div id="fl-hist" class="hidden">${(n.log ?? []).slice(-14).reverse().map((e) => `<button class="row" data-fl-edit="${esc(e.date)}" data-fl-kcal="${e.kcal}" data-fl-protein="${e.protein_g ?? ""}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(e.date)}</span><span>${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}</span></button>`).join("")}</div></div>` : ""}
+      <div id="fl-hist" class="hidden">${(n.log ?? []).slice(-14).reverse().map((e) => `<button class="row" data-fl-edit="${esc(e.date)}" data-fl-kcal="${e.kcal}" data-fl-protein="${e.protein_g ?? ""}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(e.date)}</span><span>${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}</span></button>`).join("")}</div>
+      ${(n.log ?? []).length > 14 ? `<button class="btn ghost inline" id="fl-full">📈 Full history (${(n.log ?? []).length} days)</button>` : ""}</div>` : ""}
     <div class="card"><p class="muted">Maintenance estimate: <b>${t.tdee}</b> kcal (${t.tdee_basis}). ${esc(t.note)}</p></div>
     <button class="btn ghost" id="f-editstats">Edit my stats</button>`;
   wireLearnLinks();
   $("#f-editstats").onclick = () => { fuelEdit = true; renderFuel(); };
   if ($("#fl-hist-toggle")) $("#fl-hist-toggle").onclick = () => $("#fl-hist").classList.toggle("hidden");
+  if ($("#fl-full")) $("#fl-full").onclick = () => { fuelFullView = true; renderFuel(); };
   app.querySelectorAll("[data-fl-edit]").forEach((b) => b.onclick = () => {
     fuelLogDate = b.dataset.flEdit;
     $("#f-kcal").value = b.dataset.flKcal;
@@ -2585,6 +2796,14 @@ async function renderFuel() {
     $("#f-log").textContent = `Save for ${fuelLogDate}`;
     $("#f-kcal").focus();
   });
+  // A day tapped in the FULL intake view lands back here with the form armed.
+  if (fuelEditArm) {
+    fuelLogDate = fuelEditArm.date;
+    $("#f-kcal").value = fuelEditArm.kcal;
+    $("#f-protein").value = fuelEditArm.protein ?? "";
+    $("#f-log").textContent = `Save for ${fuelLogDate}`;
+    fuelEditArm = null;
+  }
   wireChartTap("kcal-cap", (n.log ?? []).slice(-30), (e) => `${e.date}: ${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}`);
   $("#f-log").onclick = async () => {
     const kcal = parseFloat($("#f-kcal").value); const protein = parseFloat($("#f-protein").value);
@@ -3493,7 +3712,14 @@ function render() {
   else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
   else renderMe();
 }
-nav.querySelectorAll("button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; if (tab === "learn") resetLearnNav(); render(); });
+nav.querySelectorAll("button").forEach((b) => b.onclick = () => {
+  tab = b.dataset.tab;
+  if (tab === "learn") resetLearnNav();
+  // A nav tap always lands on the tab's MAIN screen — any open full-progress
+  // sub-view (lift detail, full histories, session detail) closes (Wave 259).
+  liftDetail = null; showAllLifts = false; prFullView = false; bwFullView = false; fuelFullView = false; historyDetail = null;
+  render();
+});
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link

@@ -3,7 +3,7 @@
 import {
   perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, isoWeekKeyLocal, sessionWeekKey,
+  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal,
 } from "../../tools/derive-core.mjs";
@@ -109,7 +109,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const { max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
   const lastWeight = last.sets[0].weight_kg;
-  const allHitTop = last.sets.every((s) => s.reps >= max);
+  // Judge reps/RIR only over sets AT the anchor weight (or heavier). The anchor is
+  // set 1, but a lighter back-off set is a different load: counting it both denied
+  // an earned bump (top set hit the ceiling, back-off didn't) and could fabricate
+  // one (easy back-off RIR averaging over a maxed top set) — C14. Straight sets
+  // are byte-identical. (That set 1 anchors at all — vs the day's heaviest — is a
+  // separate recorded design question, not changed here.)
+  const judged = last.sets.filter((s) => (s.weight_kg ?? 0) >= lastWeight);
+  const allHitTop = judged.every((s) => s.reps >= max);
   const base = { last_kg: lastWeight, last_reps: last.sets.map((s) => s.reps) };
   // Layoff deload: if it's been a while, ease the load and suppress the progression
   // bump — overrides everything below so a comeback never loads heavier than before.
@@ -126,7 +133,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // prescribed band's top (default 2 -> bump at 3, the historical behavior):
   // a week-1 lifter told "3-4 RIR" who complies at 3.5 is following the eased
   // wave, not sandbagging — bumping their load would undo the easy week.
-  const rirs = last.sets.map((s) => s.rir).filter((r) => typeof r === "number");
+  const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
   if (rirs.length) {
     const bandTop = (() => { const m = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); return m ? +m[2] : 2; })();
     const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
@@ -158,10 +165,16 @@ export function nextSessionIndex(program, sessionCount) {
 // (plan-core's targetWeeklySets explains why summed mid-MAV targets are
 // undeliverable in a typical week) and the adaptive tune walks the target up from
 // the user's own evidence instead; this comment used to claim the ceiling outright.
-// week 6 is a deload — roughly half volume, ~10% lighter, comfortably shy of
-// failure — then the next block starts automatically. Beginners are exempt:
-// they progress by load/reps and don't yet need volume waves (KB: periodization
-// -and-progression.md), and their UX stays maximally simple.
+// week 6 is a deload — roughly half volume on the multi-set lifts (the 2-set
+// floor means short 2-day programs cut less set-wise and deload mostly through
+// the ~10% load ease + RIR 3-4; measured Wave 261: median weekly cut 31%,
+// 2-day plans ~11%), comfortably shy of failure — then the next block starts
+// automatically. Beginners are exempt: that is THIS APP'S design choice (double
+// progression carries a novice a long way, and their UX stays maximally
+// simple), grounded in the KB's "beginners estimate RIR poorly — simple double
+// progression is often better" (periodization-and-progression.md) and its
+// beginner carve-out on the wave page; the KB pages don't prescribe the
+// exemption outright, so don't cite them as if they did (C9, Wave 261).
 // ---------------------------------------------------------------------------
 export const BLOCK_WEEKS = 6;
 const BLOCK_SET_SCALE = [0.7, 0.8, 0.9, 1.0, 1.0, 0.5]; // w1..w5 build->peak, w6 deload
@@ -329,12 +342,15 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // and the stamp can't slide forward mid-week as new sessions change the signal.
   // Rewrites the phase in place so every downstream deload branch (sets, RIR, load
   // ease) applies unchanged — one mechanism, two triggers.
-  if (block && now && user.plan_meta?.reactive_deload?.week === isoWeekKey(now)) {
+  // The stamp is read in the user's LOCAL week frame — the same frame the block
+  // clock (trainedWeeksInBlock) and the stamp writer use. Raw isoWeekKey here made
+  // a UTC-8 user's Sunday-evening deload land in a week they weren't in (lesson 22).
+  if (block && now && user.plan_meta?.reactive_deload?.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)) {
     block = {
       ...block,
       phase: "deload",
       setScale: 0.5,
-      note: `Deload week — brought forward. Your hardest lifts have gone flat at the top of what you can recover from, and at that point more sets is the one thing that can't help. Half the sets, ~10% lighter, well shy of failure: this is where the work you've already done turns into growth.`,
+      note: `Deload week — brought forward. Your hardest lifts have gone flat at the top of what you can recover from, and at that point more sets is the one thing that can't help. Your big lifts drop to about half their sets, ~10% lighter, well shy of failure: this is where the work you've already done turns into growth.`,
     };
   }
   // Is a goal event close enough to taper for? (null unless the user set one AND
@@ -398,6 +414,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const tuned = bumped.length || eased.length
       ? ` Based on how you've been responding, I've ${[bumped.length ? `added volume for your ${bumped.join(", ")}` : "", eased.length ? `eased off your ${eased.join(", ")}` : ""].filter(Boolean).join(" and ")}.`
       : "";
+    // A gated add must not be SILENT (Wave 258): a stalled muscle with room whose
+    // +2 the recovery/fuel gate suppressed produced no delta, so the note said
+    // nothing — and the user was left wondering why a flagged plateau changed
+    // nothing. One plain sentence, only when it happened.
+    const held = changed.held ?? [];
+    const heldNote = held.length
+      ? ` Your ${held.map((h) => mName(h.muscle)).join(", ")} ${held.length === 1 ? "has" : "have"} stalled with room to grow, but ${held[0].reason === "deficit" ? "you're eating in a deficit" : "your check-ins say recovery's been short"} — I've held ${held.length === 1 ? "its" : "their"} sets until that turns around. Fuel and sleep beat any programming change there.`
+      : "";
     // If a lift got CHANGED because it plateaued (not just rotated for variety),
     // name it — an exercise vanishing from your plan without explanation reads as
     // the app losing track, and this one is a deliberate coaching decision.
@@ -405,7 +429,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const swapNote = swapped.length
       ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
       : "";
-    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${swapNote}`;
+    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}`;
     coach_note = coach_note ? `${msg} ${coach_note}` : msg;
   }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just
@@ -557,6 +581,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // lb into a kg field) against the lift's own history before banking it — see
       // session-core's isImplausibleSet. Display/guard only, never stored.
       last_kg: sug.last_kg ?? null,
+      // ...and the reps that went with it, so the set screen can say
+      // "Last time: 40 kg × 8, 7" (owner #3) — last_kg rode for the typo guard
+      // while last_reps was silently dropped here (the route-whitelist class).
+      last_reps: sug.last_reps ?? null,
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory
@@ -707,10 +735,18 @@ export function stalledExerciseIds(sessions, customEx = [], now = null) {
 // Bounded hard: never in week 1-2 (a block that has barely started has no fatigue
 // to shed), never during a scheduled deload week, and at most ONCE per block.
 const REACTIVE_DELOAD_MIN_WEEK = 3;
-export function reactiveDeloadDue(responses, block, plan_meta, blockIndex) {
+export function reactiveDeloadDue(responses, block, plan_meta, blockIndex, opts = {}) {
   if (!block || block.phase === "deload") return false;
   if (block.week < REACTIVE_DELOAD_MIN_WEEK) return false;
-  if ((plan_meta?.reactive_deload?.block ?? null) === blockIndex) return false; // once per block
+  if ((plan_meta?.reactive_deload?.block ?? null) === blockIndex) {
+    // Once per block — per block of TRAINING (lesson 28): a stamped week the user
+    // never trained delivered no deload, so it re-arms once that week is strictly
+    // past in the user's frame. The ambiguous directions stay inert (lesson 40):
+    // a still-current week is in progress, and a trained week is spent. Callers
+    // that don't pass the flags keep the old hard once-per-block behavior.
+    const { stampedWeekTrained = true, stampedWeekOver = false } = opts;
+    if (stampedWeekTrained || !stampedWeekOver) return false;
+  }
   return (responses ?? []).some((r) => r.signal === "change");
 }
 
@@ -723,16 +759,12 @@ const tooEasySet = (eff) => new Set(Object.entries(eff).filter(([, v]) => v.too_
 export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context = {}) {
   const { byId, index } = resolveEx(customEx);
   const weekly = perMuscleWeeklyVolume(sessions, index);
-  const weeks = Object.keys(weekly).sort();
-  if (!weeks.length) return prevAdjust || {};
+  if (!Object.keys(weekly).length) return { adjust: prevAdjust || {}, held: [] };
   // Sample each muscle's PEAK weekly volume over the recent block — NOT the last
-  // logged week. A mesocycle ends on a DELOAD (~half volume), so sampling the latest
-  // week would make every "at/over the recoverable ceiling → ease" branch unreachable
-  // (deload volume is always well below MAV.max), leaving the tune able only to
-  // ratchet UP. Peak volume reflects the working load the muscle actually stalled at.
-  const recent = weeks.slice(-6);
-  const peak = {};
-  for (const wk of recent) for (const [m, sets] of Object.entries(weekly[wk] ?? {})) peak[m] = Math.max(peak[m] ?? 0, sets);
+  // logged week (see peakWeeklyVolume: a mesocycle ends on a deload, so the latest
+  // week makes the ease branches unreachable). Shared with progressReport's adaptive
+  // card so the advice and the action can never read different numbers (C6).
+  const peak = peakWeeklyVolume(weekly);
   // Individualized patience (Increment B): judge "stalled" against THIS person's own
   // demonstrated progression cadence, not a fixed 4 weeks — a slow-but-real responder
   // isn't plateaued at week 4 if their history shows they PR on a ~6-week rhythm.
@@ -759,7 +791,25 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // plan prescribed, and strength deliberately reserves more on accessories — omit it
   // and a compliant strength lifter's sets are withheld for "sandbagging" they never did.
   const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId, { goal }));
-  return deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
+  const adjust = deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
+  // WHO was held and WHY (Wave 258): the whole-athlete gate (deficit/under-recovery)
+  // suppresses an add SILENTLY — a gated add produces no delta, and no delta produced
+  // no new-block sentence — so report the suppression beside the map, derived from
+  // the SAME values the decision used (lesson 24: one derivation, never a second one
+  // that can drift). Regression and effort holds are deliberately not listed here:
+  // each already has its own standing card explaining itself.
+  const gate = recovery.inDeficit ? "deficit" : recovery.underRecovered ? "recovery" : null;
+  const held = gate
+    ? [...stalledMuscleIds].filter((m) => {
+        const lm = muscleIndex.get(m);
+        if (!lm || lm.mav?.max == null || lm.mrv?.max == null) return false;
+        const sets = peak[m] ?? 0;
+        // Mirrors deriveVolumeAdjust's add branch exactly: these are the muscles
+        // that WOULD have taken +2 but for the recovery/fuel gate.
+        return sets <= lm.mrv.max && sets < lm.mav.max && !regressingMuscleIds.has(m) && !tooEasyMuscleIds.has(m);
+      }).sort().map((m) => ({ muscle: m, reason: gate }))
+    : [];
+  return { adjust, held };
 }
 
 // `tz` is the user's UTC offset in minutes east — REQUIRED for the week arithmetic
@@ -862,17 +912,6 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // Same goal argument as computeVolumeAdjust's call, for the same reason — the two
   // must grade against the identical band or the card and the tune diverge.
   const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId, { goal: user.profile?.primary_goal ?? null }));
-  const adaptive = latest ? volumeResponse(weekly[latest], muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
-    .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
-    .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
-    .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)
-    .filter((a) => !(easedIds.has(a.muscle) && a.signal === "add")) // ...nor to a muscle the block deliberately caps at MEV — the cap IS the plan (over-MRV still passes)
-    .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
-  // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
-  const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
-  const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
-    .slice(0, 8)
-    .map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
   // Bodyweight trend/energy-balance must reflect the CURRENT phase, not the user's
   // whole lifetime history — the exact "lifetime vs block" bug /api/today's recovery
   // gate already guards against (L266 above) for this SAME bodyweightTrend function;
@@ -882,31 +921,66 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // dominated by the larger, older dataset. Window to the same 42-day block; a sparse
   // window falls back to the full history (bodyweightTrend's own 3-point floor), the
   // safe direction — never worse than the unwindowed behavior for a sparse logger.
+  // (Hoisted above the adaptive assembly: the gated-add marker below needs the same
+  // recovery read the tune's gate uses.)
   const bwWindowStart = now ? new Date(+new Date(now) - 42 * 86400000).toISOString().slice(0, 10) : null;
   const recentBodyweights = bwWindowStart ? bodyweights.filter((b) => (b.date || "").slice(0, 10) >= bwWindowStart) : bodyweights;
   const bwSeries = (recentBodyweights.length >= 3 ? recentBodyweights : bodyweights).map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const trend = bodyweightTrend(bwSeries);
   const energy = classifyEnergyBalance(trend, user.profile.primary_goal);
+  // Windowed to the same 42-day block — recoverySignal averages whatever it's
+  // handed, and a lifetime blend is the exact bug /api/today's gate guards against.
+  const recentCheckins = bwWindowStart ? (checkins || []).filter((c) => (c.date || "").slice(0, 10) >= bwWindowStart) : (checkins || []);
+  const recovery = recoverySignal(recentCheckins, energy);
+  // The volume SAMPLE is the same 6-week PEAK the block-boundary tune acts on (C6):
+  // sampled from the reference week instead, the card said "add… I'm adding sets
+  // next block" from a 12-set recent week while the tune's peak read 18 >= mav.max
+  // and eased the same muscle −2 (measured live). One sample, one story.
+  const regressingMuscleIdSet = new Set(regressions.flatMap((r) => index.get(r.exercise)?.primary ?? []));
+  const addGate = recovery.inDeficit ? "deficit" : recovery.underRecovered ? "recovery" : null;
+  const adaptive = latest ? volumeResponse(peakWeeklyVolume(weekly), muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
+    .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
+    .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
+    .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)
+    .filter((a) => !(easedIds.has(a.muscle) && a.signal === "add")) // ...nor to a muscle the block deliberately caps at MEV — the cap IS the plan (over-MRV still passes)
+    .map((a) => {
+      // An "add" the tune will NOT act on must say so — the card's promise ("I'm
+      // adding sets there next block") was false under the recovery/fuel gate and
+      // for a regressing muscle. Marked at the gate's own scope (lesson 24):
+      // per-muscle for regression, whole-athlete for deficit/recovery.
+      const gated = a.signal === "add" ? (regressingMuscleIdSet.has(a.muscle) ? "regression" : addGate) : null;
+      return { ...a, ...(gated ? { gated } : {}), muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle };
+    }) : [];
+  // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
+  const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);
+  const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
+    .slice(0, 8)
+    .map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
+  // The FULL list beside the capped feed (owner #3, "Full progress views"): the
+  // engine always computed every lift's dated series and threw all but 8 rows away.
+  // Additive — `progression`'s 8-row contract is pinned by tests and stays.
+  const progression_all = allProg.map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
   // Personal-record history (roadmap #1c): the full PR list for a count, plus the most
   // recent few for a lookback "wins" feed. Structured (weights, not pre-baked strings) so
   // the client renders in the user's unit.
   const prHistory = allPersonalRecords(sessions);
   const personal_records = prHistory.slice(0, 8).map((pr) => ({ ...pr, name: name(pr.exercise) }));
-  // Concurrent-training read. Windowed to the same 42-day block as the bodyweight
-  // trend above — recoverySignal averages whatever it's handed, and a lifetime blend
-  // is the exact bug /api/today's gate already guards against. Fed the FULL
-  // progression list (not the 8-row display slice) so a climbing upper-body lift can
-  // never be truncated out of the asymmetry check, and the same `stalls` array the
-  // plateau card renders, so the two surfaces can't name different lifts.
-  const recentCheckins = bwWindowStart ? (checkins || []).filter((c) => (c.date || "").slice(0, 10) >= bwWindowStart) : (checkins || []);
+  // ...and the complete list the count had always promised (owner #3): every PR
+  // event, renderable (name + date), newest first.
+  const personal_records_all = prHistory.map((pr) => ({ ...pr, name: name(pr.exercise) }));
+  // Concurrent-training read. Fed the FULL progression list (not the 8-row display
+  // slice) so a climbing upper-body lift can never be truncated out of the asymmetry
+  // check, and the same `stalls` array the plateau card renders, so the two surfaces
+  // can't name different lifts.
   const interference = latest ? interferenceSignal({
     stalls, progression: allProg, weekVolume: weekly[latest], energyBalance: energy,
-    recovery: recoverySignal(recentCheckins, energy),
+    recovery,
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference,
-    // The raw weigh-in series (already computed for the trend): the client draws
-    // it and offers per-day edits — the trend number alone answered "am I
-    // gaining", never "what did I actually log" (owner consideration, Wave 252).
-    bodyweight_series: bwSeries.map((b) => ({ date: (b.date || "").slice(0, 10), kg: b.bodyweight_kg })) };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
+    // The raw weigh-in series the client DRAWS spans the full log (owner #3 —
+    // "see my progress" means all of it), while `bodyweight_trend` above keeps its
+    // 42-day window: the drawn history and the adaptive read are different
+    // questions, split deliberately (Wave 259).
+    bodyweight_series: bodyweights.map((b) => ({ date: (b.date || "").slice(0, 10), kg: b.kg })) };
 }
