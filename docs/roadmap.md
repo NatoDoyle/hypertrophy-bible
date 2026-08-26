@@ -6,7 +6,29 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-26** (Waves 254-256: the owner's follow-up
+Grounded assessment date: **2026-08-27** (Waves 257-261: all three owner
+considerations closed in one turn. The program-engine explainer audit — the named
+centerpiece — produced `docs/program-engine.md` (the owner's four questions answered
+with every magnitude from code) and 16 verified candidates: 9 fixed (a Settings save
+no longer erases mid-block deload/swap/announcement state or un-demotes plateaued
+lifts; the swap note names only lifts actually dropped; the reactive deload lives in
+the user's local week and re-arms if its week passed untrained; the plateau card and
+the tune read ONE 6-week-peak sample so the card can't promise "+2 sets" the tune
+then eases; gated adds say why they held; "reduce" renders as an instruction;
+back-off sets stop corrupting the top set's progression) and 7 recorded
+working-as-designed with scope so they aren't re-raised. "Full progress views"
+(owner #3, scope chosen live): tap-through lift charts with week tables and PRs,
+read-only session detail incl. voided, full-history bodyweight/intake charts with
+tap-to-edit reaching every old day, the complete PR list, "Last time: X kg × reps"
+in both players. The book (owner #2) entered the KB as
+`elite-strength-sport-practice.md` — Grade-D documented practice with its three
+traps recorded as refusals — plus the registry's first book entry. **Named next
+pulls:** the desktop multi-column layer (standing); Nerd Mode surfaces (the
+computed-but-unshipped readinessIndex/confidenceTier payload, C8); mapping the
+session rotation onto committed weekdays (C16, design question); the
+below-maintenance feasibility warning SHIPPED this turn (held-not-reached).
+BLOCKERS #10/#2b remain the human asks.) The prior grounding:
+(Waves 254-256: the owner's follow-up
 challenge to the leg-day answer became a design ruling, asked and answered live —
 "non priority muscles drop to MV when total weekly volume is high and recovery is
 of concern, otherwise MEV, automatically." Shipped as the ease-to-MEV funding
@@ -351,6 +373,38 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 257–261 progress (2026-08-27). Three considerations, one turn; the engine
+audited to explainer grade.**
+
+- **Wave 257 (self-audit + engine-state truth).** The 254-256 diff audited inline
+  against a 720-config battery: held-at-zero muscles now warned + honestly worded
+  (the roadmap's named feasibility warning, shipped as `held-not-reached`), the
+  eased-undershoot reason quotes delivered sets; the 1-set door and overlap-served
+  hypotheses REFUTED by measurement. Then C5/C3 (Settings-save amnesia +
+  false swap claims) and C2/C15 (reactive deload local-week + re-arm on untrained
+  weeks), all red-first with per-tamper verification.
+- **Wave 258 (one story per signal).** C6: `peakWeeklyVolume` shared by card and
+  tune (measured live: card said "add", tune stepped −2). Gated adds carry
+  `gated` + `tuned_this_block.held` + the new-block hold sentence; the reduce
+  card renders over-MRV as an instruction; C14 back-off-set corruption fixed.
+  The #A fixture found VACUOUS since Wave 167 (lesson 67) and repaired. SW v179.
+- **Wave 259 (Full progress views).** Server: `progression_all`,
+  `personal_records_all`, full `bodyweight_series` (trend window untouched), full
+  intake log (adaptive window untouched), `last_reps` through /api/today. Client:
+  fullTrendChart + lift detail + expander + session detail + full histories with
+  tap-to-edit + PR list + last-time lines. 17/17 walkthrough; three eyeball
+  catches fixed (week-label conversion, y-gutter, flat-series gridlines).
+- **Wave 260 (the book).** `elite-strength-sport-practice.md` + the registry's
+  first `study_type: "book"` entry (existence-only verification, stated); the
+  orphan gate caught the TOC-only first cut. No engine changes from Grade-D lore.
+- **Wave 261 (explainer + LEARN).** `docs/program-engine.md`; C9's comment owns
+  the design choice and the KB carries the beginner deload carve-out; C12's
+  0-1-RIR-vs-compounds tension reconciled in prose; the deload-cut measurement
+  (median 31%, 2-day 11%) recorded with the reactive note's copy scoped; lesson
+  67; telemetry 7j; considerations deleted with scoped refutations.
+- **Evidence:** 193 plan · 89 coach · 385 route; chains + root exit 0 per commit;
+  12 tampers; non-spec determinism pinned vs main; 17/17 owner-shape walkthrough.
 
 **Waves 254–256 progress (2026-08-26). The owner's dose ruling, engineered.**
 

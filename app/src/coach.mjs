@@ -165,10 +165,16 @@ export function nextSessionIndex(program, sessionCount) {
 // (plan-core's targetWeeklySets explains why summed mid-MAV targets are
 // undeliverable in a typical week) and the adaptive tune walks the target up from
 // the user's own evidence instead; this comment used to claim the ceiling outright.
-// week 6 is a deload — roughly half volume, ~10% lighter, comfortably shy of
-// failure — then the next block starts automatically. Beginners are exempt:
-// they progress by load/reps and don't yet need volume waves (KB: periodization
-// -and-progression.md), and their UX stays maximally simple.
+// week 6 is a deload — roughly half volume on the multi-set lifts (the 2-set
+// floor means short 2-day programs cut less set-wise and deload mostly through
+// the ~10% load ease + RIR 3-4; measured Wave 261: median weekly cut 31%,
+// 2-day plans ~11%), comfortably shy of failure — then the next block starts
+// automatically. Beginners are exempt: that is THIS APP'S design choice (double
+// progression carries a novice a long way, and their UX stays maximally
+// simple), grounded in the KB's "beginners estimate RIR poorly — simple double
+// progression is often better" (periodization-and-progression.md) and its
+// beginner carve-out on the wave page; the KB pages don't prescribe the
+// exemption outright, so don't cite them as if they did (C9, Wave 261).
 // ---------------------------------------------------------------------------
 export const BLOCK_WEEKS = 6;
 const BLOCK_SET_SCALE = [0.7, 0.8, 0.9, 1.0, 1.0, 0.5]; // w1..w5 build->peak, w6 deload
@@ -344,7 +350,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       ...block,
       phase: "deload",
       setScale: 0.5,
-      note: `Deload week — brought forward. Your hardest lifts have gone flat at the top of what you can recover from, and at that point more sets is the one thing that can't help. Half the sets, ~10% lighter, well shy of failure: this is where the work you've already done turns into growth.`,
+      note: `Deload week — brought forward. Your hardest lifts have gone flat at the top of what you can recover from, and at that point more sets is the one thing that can't help. Your big lifts drop to about half their sets, ~10% lighter, well shy of failure: this is where the work you've already done turns into growth.`,
     };
   }
   // Is a goal event close enough to taper for? (null unless the user set one AND
