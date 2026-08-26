@@ -6,7 +6,28 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-24, third turn** (Waves 250-253: both open
+Grounded assessment date: **2026-08-26** (Waves 254-256: the owner's follow-up
+challenge to the leg-day answer became a design ruling, asked and answered live —
+"non priority muscles drop to MV when total weekly volume is high and recovery is
+of concern, otherwise MEV, automatically." Shipped as the ease-to-MEV funding
+pass: during a specialization block a non-priority muscle the priority lifts
+don't reach rises from MV to MEV (still slowly growing) whenever every day
+serving it still fits the session budget with the priorities' full share counted
+first; overlap-served synergists stay at MV, fat-loss funds nothing, no setting
+exists. Owner profile: quads 6→8, hams 3.5→5, glutes 5→7, calves 6→8; side-delts
+untouched at 17; 69 direct sets vs the non-spec 88. The KB's weak-point prose now
+frames the non-priority dose as the spectrum its own Grade-D dosing caveat always
+implied. The scheduled self-audit (2 confirmed, 6 refuted, 1 closed inline) fixed
+the zero-week stranding the ≥2-set rule had caused on tight splits (calves 1→0 on
+2-day blocks; door re-opened at zero credit only, lesson 66) and the offline
+weigh-in edit's stale "Save for <past day>" label that made a second tap
+overwrite TODAY. **Named next pulls:** the owner's NEW consideration — an
+explainer-grade audit of the program engine (progression, periodization, deloads,
+experience gating) — is the next centerpiece; then the desktop multi-column
+layer; a below-maintenance feasibility warning for splits that can't fit every
+held muscle's dose (abs on 2-day two-priority blocks — pre-existing, recorded);
+BLOCKERS #10/#2b remain the human asks.) The prior grounding:
+(Waves 250-253: both open
 owner considerations closed and the overhaul self-audited. The leg-day report
 ("several years · both · shoulders and arms") was measured on the exact profile:
 a specialization block working as designed — and still worth two fixes (lesson
@@ -330,6 +351,33 @@ diff-scoped lesson-3 review of its own predecessor and then pulled from this tie
   invisible personalization is indistinguishable from none.
 - **Items 2 and 3 (multi-challenge, the social events with no push) remain untouched
   and cloud-eligible** — unchanged and still correctly scoped.
+
+**Waves 254–256 progress (2026-08-26). The owner's dose ruling, engineered.**
+
+- **Wave 254 (audit of 16b5ec9).** Finder stalled at the watchdog; a resume
+  recovered the full report. 2 confirmed → fixed: the ≥2-set rule's zero-week
+  stranding (last-chance rescue door re-opened at zero credit ONLY — the first
+  draft re-created the original residual scatter and a placement trace caught
+  it, lesson 66) and the offline bodyweight edit's stale armed label (falls
+  back with the state; proven offline in the walkthrough). 6 refuted; the
+  finder's open session-name-collision question closed inline (unique across
+  the split grid). abs at zero on 2-day two-priority blocks measured as
+  PRE-existing (identical two engines back) — recorded as a feasibility-warning
+  pull, not silently claimed fixed.
+- **Wave 255 (the ease-to-MEV funding pass).** Owner's rule, verbatim, made
+  deterministic: MEV by default where the per-day budget provably funds it
+  (priorities' full share counted first — slot-stealing impossible by
+  construction), MV for overlap-served synergists and under deficit. Two-flag
+  model (`maintenance` / `eased`) through every consumer: want-math, coverage
+  floors, statuses ("slow growth" chip + legend), day notes (three honest
+  variants), personalization summary, Progress advice suppression, onboarding
+  hint, KB prose spectrum framing. Engine 1.1.0; stored plans self-correct at
+  their block boundary (≤6 trained weeks) or any settings rebuild.
+- **Wave 256 (LEARN).** Lesson 66, telemetry 7k, this entry.
+- **Evidence:** 188 plan / 96 derive / 80 coach / 366 route / 6 ui-helper;
+  chains + root exit 0; red-first with tamper pairs; non-spec determinism
+  pinned vs main (4 profiles); 12/12 walkthrough on the owner's exact profile
+  incl. an offline save; deployed v178.
 
 **Waves 250–253 progress (2026-08-24, third turn). Both considerations closed;
 the overhaul audited.**
