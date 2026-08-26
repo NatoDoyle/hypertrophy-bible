@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**144** verified references.
+**145** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -111,6 +111,14 @@ Bruusgaard JC & et al. (2010). Myonuclei acquired by overload exercise precede h
 
 - Type: mechanistic · Population: animal
 - DOI: [10.1073/pnas.0913935107](https://doi.org/10.1073/pnas.0913935107) · PMID: [20713720](https://pubmed.ncbi.nlm.nih.gov/20713720/)
+
+### buitrago-ma-2018-chinese-weightlifting
+Buitrago M & Ma J (2018). Chinese Weightlifting: Technical Mastery and Training.
+
+*Ma Strength / Verante Publishing (ISBN 9781948404136)*.
+
+- Type: book
+- URL: [link](https://www.abebooks.com/9781948404136/Chinese-Weightlifting-Technical-Mastery-Training-1948404133/plp)
 
 ### byrne-2018-matador
 Byrne NM & et al. (2018). Intermittent energy restriction improves weight loss efficiency in obese men: the MATADOR study.

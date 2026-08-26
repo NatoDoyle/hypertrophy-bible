@@ -19,7 +19,7 @@
 | 5 (peak) | Near MRV | Hard, near failure |
 | Deload | ~40–60% of peak volume | Comfortable, ~3–4 RIR |
 
-Then the next block starts slightly higher than the last. Per-muscle landmarks (MEV/MRV) live in the [muscle data files](../../data/muscles/) — remember they're **estimates to adjust from your own response**, not exact numbers, and [volume](../01-training-variables/volume.md) explains what they mean and how they were derived.
+Then the next block starts slightly higher than the last. Per-muscle landmarks (MEV/MRV) live in the [muscle data files](../../data/muscles/) — remember they're **estimates to adjust from your own response**, not exact numbers, and [volume](../01-training-variables/volume.md) explains what they mean and how they were derived. The same wave shape — low/medium weeks building to high, an individualized deload, volume cut before frequency — shows up independently in [elite Chinese weightlifting practice](elite-strength-sport-practice.md), a useful convergence check from outside the trial literature.
 
 **Reading the signals to deload:** persistent performance drops across sessions, joints feeling beaten up, sleep/appetite/motivation dipping, or reps falling at the same load — the fatigue side of [stimulus, fatigue and adaptation](../00-foundations/stimulus-fatigue-adaptation.md), and the same signals covered in [deloads and rest days](../05-recovery/deloads-and-rest-days.md). A deload trades a few days of reduced stimulus for dissipated fatigue and protection against overuse — you'll often *feel* fresher afterward, though the one direct trial found no measurable "supercompensation" bounce in strength or size from the week off[^coleman-2024-deload-rct].
 

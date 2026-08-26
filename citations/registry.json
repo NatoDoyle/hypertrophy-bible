@@ -258,6 +258,22 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/20713720/"
     },
     {
+      "key": "buitrago-ma-2018-chinese-weightlifting",
+      "authors": [
+        "Buitrago M",
+        "Ma J"
+      ],
+      "year": 2018,
+      "title": "Chinese Weightlifting: Technical Mastery and Training.",
+      "source": "Ma Strength / Verante Publishing (ISBN 9781948404136)",
+      "url": "https://www.abebooks.com/9781948404136/Chinese-Weightlifting-Technical-Mastery-Training-1948404133/plp",
+      "study_type": "book",
+      "population": "na",
+      "verified": true,
+      "verified_via": "https://www.abebooks.com/9781948404136/Chinese-Weightlifting-Technical-Mastery-Training-1948404133/plp",
+      "notes": "Self-published practice text by an elite Chinese national-team coach (Ma Jianping) and translator (Buitrago). Verification asserts the book's EXISTENCE and bibliographic details only, not the truth of its claims. Its ~250-entry bibliography is untraceable Chinese-language sports science (not PubMed/DOI-indexed), so nothing sourced to this book may exceed Grade D — it enters the KB strictly as documented elite institutional practice."
+    },
+    {
       "key": "byrne-2018-matador",
       "authors": [
         "Byrne NM",
