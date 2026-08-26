@@ -114,7 +114,10 @@ try {
   const postMeta = (await store.getUser(uid)).plan_meta;
   ok("cosmetic edit preserves block_start and block_index", postMeta.block_start === preMeta.block_start && postMeta.block_index === preMeta.block_index);
   const postIds = (await store.getUser(uid)).program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).join(",");
-  ok("cosmetic edit does not re-rotate accessories", postIds === preIds && !postMeta.rotated_at);
+  // rotated_at must be UNCHANGED — not re-stamped (that would re-announce a rotation
+  // that didn't happen) and not dropped (Wave 257b: the old `!postMeta.rotated_at`
+  // clause pinned the amnesia this route used to inflict on every mid-block stamp).
+  ok("cosmetic edit does not re-rotate accessories", postIds === preIds && postMeta.rotated_at === preMeta.rotated_at);
 
   // A no-op plan-editor save must NOT flip the plan to custom (which freezes rotation).
   const gen = await store.getUser(uid);
@@ -236,6 +239,76 @@ try {
   const atAfter = await store.getUser(atUser);
   ok("#2 auto-tune records a positive volume_adjust for a stalled muscle", (atAfter.plan_meta?.volume_adjust?.chest ?? 0) > 0);
   ok("#2 the new block's chest target increased from the adaptive bump", atAfter.plan_rationale?.volume_by_muscle?.chest?.target_sets > chestBefore);
+
+  // --- Wave 257b: honest swap claims (C3) + plan_meta truth through Settings (C5) ---
+  // C3: STALLED_DEMOTION is a ranking demotion, not an exclusion — a stalled lift
+  // whose muscle has a POOL OF ONE is re-picked by the new block. The boundary used
+  // to stamp the whole stalled list as swapped_this_block, so the coach note said
+  // "I've swapped it for a different angle" about a lift still in the plan
+  // (lesson 60: copy is a promise the code has to keep). Machine-only equipment
+  // makes machine-chest-press the only chest compound — deterministic re-pick.
+  const atIds = atAfter.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+  ok("#C3 swapped_this_block ⊆ lifts actually absent from the new program (full-gym pin)",
+    (atAfter.plan_meta.swapped_this_block ?? []).every((sid) => !atIds.includes(sid)));
+  const poolOne = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["machine"] } })).data.user_id;
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: poolOne, session_id: `po-${w}`, date: dayAgo(49 - w * 7),
+    sets: [{ exercise: "machine-chest-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+  await store.updateUser(poolOne, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": poolOne } });
+  const po = await store.getUser(poolOne);
+  const poIds = po.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+  ok("#C3 fixture reaches the branch: boundary crossed and the stalled pool-of-one lift is re-picked",
+    (po.plan_meta.block_index ?? 0) >= 1 && poIds.includes("machine-chest-press"));
+  ok("#C3 a re-picked lift is never stamped as swapped",
+    !(po.plan_meta.swapped_this_block ?? []).includes("machine-chest-press"));
+
+  // C5: /api/plan/regenerate backs the Settings screen, and its plan_meta rebuild
+  // kept only four fields — a cosmetic save was amnesia for every mid-block stamp
+  // (the lesson-59 record listed the harms when the units door reached this route;
+  // the route itself was never fixed) — and it regenerated WITHOUT stalledExercises,
+  // so a Settings save un-demoted every plateaued lift.
+  const preCos = await store.getUser(atUser);
+  await store.updateUser(atUser, (u) => {
+    u.plan_meta = { ...u.plan_meta, reactive_deload: { block: u.plan_meta.block_index ?? 0, week: "2026-W30" } };
+    return u;
+  });
+  const cosSave = await json("POST", "/api/plan/regenerate", { user_id: atUser, profile: { units: "imperial" } });
+  ok("#C5 cosmetic settings save succeeds", cosSave.status === 200);
+  const postCos = await store.getUser(atUser);
+  ok("#C5 the reactive-deload stamp survives a cosmetic save (a units flip must not end a deload week)",
+    postCos.plan_meta?.reactive_deload?.week === "2026-W30");
+  ok("#C5 rotated_at survives a cosmetic save (the new-block note's announce window is not amnesia)",
+    !!preCos.plan_meta?.rotated_at && postCos.plan_meta?.rotated_at === preCos.plan_meta.rotated_at);
+  // The demotion half needs its own fixture, and the lift is load-bearing (lesson
+  // 54 — TWO earlier drafts of this test were vacuous): bench's absence from
+  // atUser's post-cosmetic plan is a coincidence of the chest +2 tune reshaping the
+  // allocation, so "bench stays out" couldn't fail for the named reason. Probed
+  // through the route: a stalled lat-pulldown is demoted out at the boundary AND
+  // comes straight back on an un-demoted regenerate under its own lats +2 tune —
+  // the only fixture shape here whose red is the demotion itself.
+  const msUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: msUser, session_id: `ms-${w}`, date: dayAgo(49 - w * 7),
+    sets: [{ exercise: "lat-pulldown", set_type: "work", weight_kg: 70, reps: 8 }] });
+  await store.updateUser(msUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": msUser } });
+  const msPre = await store.getUser(msUser);
+  ok("#C5 fixture reaches the branch: the boundary demoted the stalled lat-pulldown out of the plan",
+    (msPre.plan_meta.block_index ?? 0) >= 1
+    && !msPre.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).includes("lat-pulldown"));
+  await json("POST", "/api/plan/regenerate", { user_id: msUser, profile: { units: "imperial" } });
+  const msPost = await store.getUser(msUser);
+  ok("#C5 a plateaued lift stays demoted through a Settings save",
+    !msPost.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).includes("lat-pulldown"));
+  // ...and the kept direction: a REAL training change starts a fresh block 0, where
+  // clearing the stamps is correct (fresh wave, fresh announcements). Locked here so
+  // a later sweep doesn't "fix" the clear (lesson 13).
+  const realChange = await json("POST", "/api/plan/regenerate", { user_id: atUser, profile: { days_per_week: 4 } });
+  ok("#C5 a real training change still clears the deload stamp with the fresh block",
+    realChange.status === 200 && !(await store.getUser(atUser)).plan_meta?.reactive_deload);
 
   // ...and the SAME stall must NOT bump volume while a specialization block is running,
   // because a non-priority muscle held at maintenance stalls BY DESIGN. The gate for

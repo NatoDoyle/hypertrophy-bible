@@ -338,10 +338,30 @@ export function createApp(store, config = {}) {
       // days/equipment doesn't invalidate "this person's chest responds to more
       // volume". (Specialization muscles ignore it; their target is overridden.)
       const volumeAdjust = u.plan_meta?.volume_adjust ?? {};
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust });
+      // A plateaued lift is plateaued regardless of a settings edit — regenerating
+      // WITHOUT the stalled set un-demoted every swapped lift mid-block (lesson 59's
+      // recorded remainder: the units door got its own path; this route never got
+      // the fix). Recency-filtered, so a long-idle stall never re-triggers.
+      const stalledExercises = stalledExerciseIds(priorSessions, u.custom_exercises || [], nowISO);
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
+      // A cosmetic save is not amnesia: every mid-block stamp survives it. A REAL
+      // training change starts a fresh block 0, where clearing them is correct
+      // (fresh wave, fresh announcements) — that direction is deliberate and
+      // test-locked; don't "fix" it into preservation (lesson 13).
+      const keptStamps = trainingChanged ? {} : Object.fromEntries(
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to"]
+          .filter((k) => u.plan_meta?.[k] != null)
+          .map((k) => [k, u.plan_meta[k]]));
+      // ...and the swap note may only keep naming lifts the REGENERATED plan still
+      // omits — a re-included lift must fall out of the claim (the same honesty rule
+      // as the boundary stamp).
+      const keptSwapped = trainingChanged ? [] : (u.plan_meta?.swapped_this_block ?? [])
+        .filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
       u.program = program; u.plan_rationale = rationale;
       u.plan_meta = {
         ...meta,
+        ...keptStamps,
+        ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
@@ -605,11 +625,16 @@ export function createApp(store, config = {}) {
           // lift would stay flagged forever and never come back (see stalledExerciseIds).
           const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO);
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
+          // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
+          // one accessible lift re-picks the same one. The coach note says "I've
+          // swapped it", so stamp only the lifts the new program actually DROPPED,
+          // never the whole stalled list (lesson 60: copy is a promise).
+          const swappedOut = stalledExercises.filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
-            swapped_this_block: stalledExercises, // what got changed, for the coach note
+            swapped_this_block: swappedOut, // what ACTUALLY changed, for the coach note
             block_index: blockIndex,
             rotation_base: sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length,
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
