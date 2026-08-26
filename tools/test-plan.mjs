@@ -410,26 +410,26 @@ ok("no major directly-trained muscle gets zero weekly sets across the int/adv gr
   const sp = generatePlan({ user_id: "sp-mv", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75, priority_muscles: ["side-delts"], specialization: true }, kb);
   ok("specialization maintenance dose uses the KB's MV landmark, not half-MEV",
     sp.rationale.volume_by_muscle["chest"].target_sets === muscleById.get("chest").landmarks.mv.min);
-  ok("specialization emits no growth-warning noise for maintenance muscles",
-    !sp.rationale.warnings.some((w) => (w.code === "below-mev" || w.code === "below-mev-indirect" || w.code === "under-target") && sp.rationale.volume_by_muscle[w.muscle]?.maintenance));
+  ok("specialization emits no growth-warning noise for maintenance or eased muscles",
+    !sp.rationale.warnings.some((w) => (w.code === "below-mev" || w.code === "below-mev-indirect" || w.code === "under-target") && (sp.rationale.volume_by_muscle[w.muscle]?.maintenance || sp.rationale.volume_by_muscle[w.muscle]?.eased)));
   ok("specialization never programs over MRV", !sp.rationale.warnings.some((w) => w.code === "over-mrv"));
 }
 
 // --- elite features: specialization, supersets, block rotation ---
 const specP = generatePlan({ user_id: "sp", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 75, priority_muscles: ["side-delts", "chest"], specialization: true }, kb);
 ok("specialization: priority targets push to the MRV ceiling", specP.rationale.volume_by_muscle["side-delts"].target_sets === muscleById.get("side-delts").landmarks.mrv.max);
-ok("specialization: non-priority muscles run at labelled maintenance with no below-MEV noise",
-  specP.rationale.volume_by_muscle["quadriceps"].projected_status === "maintenance" &&
+ok("specialization: non-priority muscles run reduced (eased-to-MEV here) with no below-MEV noise",
+  specP.rationale.volume_by_muscle["quadriceps"].projected_status === "eased" &&
   specP.rationale.warnings.filter((w) => w.code === "below-mev").length === 0);
 ok("specialization: still never over MRV", specP.rationale.warnings.filter((w) => w.code === "over-mrv").length === 0);
-// #1: the block's promise is to HOLD non-priority muscles at maintenance and free
-// recovery for the priorities. A muscle UNRELATED to the priorities (quads, when
-// the priorities are side-delts+chest) must actually sit near its maintenance dose,
-// NOT be quietly grown into MEV/growth range as it was before (target 6 -> proj 10).
+// #1 (rewritten by the Wave-255 owner ruling): a muscle UNRELATED to the priorities
+// (quads, when the priorities are side-delts+chest) is EASED to its minimum effective
+// dose when the day's budget has slack — still growing slowly, never quietly grown
+// past MEV, and never held at MV while the budget could fund more.
 const specQuad = specP.rationale.volume_by_muscle["quadriceps"];
-ok("#1 a non-synergist maintenance muscle is HELD below its growth threshold (MEV)",
-  specQuad.projected_sets < muscleById.get("quadriceps").landmarks.mev.min);
-ok("#1 a held maintenance muscle stays within ~1.5 sets of its maintenance target",
+ok("#1 a non-synergist muscle with budget slack eases to exactly MEV, not past it",
+  specQuad.eased === true && specQuad.target_sets === muscleById.get("quadriceps").landmarks.mev.min);
+ok("#1 an eased muscle stays within ~1.5 sets of its (MEV) target",
   specQuad.projected_sets <= specQuad.target_sets + 1.5);
 // A synergist of the priority lifts (e.g. triceps under a chest priority) will pick
 // up unavoidable SECONDARY volume and overshoot — that's physiology, not a bug — but
@@ -764,9 +764,9 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
   // ...and the PLAN must actually rebalance, not just the predicate flip.
   const during = generatePlan(specProf, kb, { blockIndex: 0 });
   const after = generatePlan(specProf, kb, { blockIndex: SPEC_MAX_BLOCKS });
-  const heldDuring = Object.values(during.rationale.volume_by_muscle).filter((v) => v.maintenance).length;
-  const heldAfter = Object.values(after.rationale.volume_by_muscle).filter((v) => v.maintenance).length;
-  ok("a finished specialization block takes every other muscle OFF maintenance",
+  const heldDuring = Object.values(during.rationale.volume_by_muscle).filter((v) => v.maintenance || v.eased).length;
+  const heldAfter = Object.values(after.rationale.volume_by_muscle).filter((v) => v.maintenance || v.eased).length;
+  ok("a finished specialization block takes every other muscle OFF maintenance (and off the eased dose)",
     heldDuring > 0 && heldAfter === 0);
   // The priority tilt survives — ending the block must not cost them their priority.
   const chestDuring = during.rationale.volume_by_muscle.chest.target_sets;
@@ -821,14 +821,21 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
     pri.effect.includes(`${projected} sets/wk`) && !pri.effect.includes(`${rationale.volume_by_muscle.chest.target_sets} sets/wk`));
   ok("...and says what the specialization trade actually cost", /maintenance/.test(pri.effect));
   // It must not count a muscle the plan never doses. `neck` carries the maintenance flag
-  // but no session archetype trains it (projected 0, status "not-reached").
+  // but no session archetype trains it (projected 0, status "not-reached"). Since the
+  // Wave-255 owner ruling the card reports TWO groups — eased-to-MEV (still growing)
+  // and held-at-MV — each counted from its own flag, dosed muscles only.
   {
     const vol = rationale.volume_by_muscle;
     const flagged = Object.values(vol).filter((v) => v.maintenance).length;
-    const dosed = Object.values(vol).filter((v) => v.maintenance && (v.projected_sets ?? 0) > 0).length;
-    const claimed = Number((pri.effect.match(/and (\d+) other muscles?/) ?? [])[1]);
+    const dosedHeld = Object.values(vol).filter((v) => v.maintenance && (v.projected_sets ?? 0) > 0).length;
+    const dosedEased = Object.values(vol).filter((v) => v.eased && (v.projected_sets ?? 0) > 0).length;
+    const claimedEased = Number((pri.effect.match(/(\d+) other muscles? eased/) ?? [])[1]);
+    const claimedHeld = Number((pri.effect.match(/(\d+) (?:more|other muscles?) held/) ?? [])[1]);
     ok("...and counts only the muscles it actually doses, never one projected at zero sets",
-      Number.isFinite(claimed) && claimed === dosed && (vol.neck?.maintenance ? dosed < flagged : true));
+      (dosedEased === 0 || claimedEased === dosedEased)
+      && (dosedHeld === 0 || claimedHeld === dosedHeld)
+      && (dosedEased + dosedHeld) > 0
+      && (vol.neck?.maintenance ? dosedHeld < flagged : true));
   }
   // A profile that answered nothing optional still explains the answers it DID give.
   const bare = { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 45, available_equipment: ["bodyweight"] };
@@ -1057,9 +1064,9 @@ const mnPlan = generatePlan(mnProfile, kb);
 ok("#MN the owner's exact profile runs a specialization block (premise)",
   mnPlan.rationale.goal_prescription.specialization.active === true);
 const mnLower = mnPlan.program.sessions.filter((s) => /Low|Leg/i.test(s.name));
-ok("#MN every all-maintenance day carries a 'light on purpose' rationale note naming the block",
+ok("#MN every reduced-dose day carries a 'light on purpose' rationale note naming its dose",
   mnLower.length > 0 && mnLower.every((s) => /light on purpose/i.test(mnPlan.rationale.session_notes?.[s.name] ?? "")
-    && /maintenance/i.test(mnPlan.rationale.session_notes[s.name])));
+    && /growing|maintenance/i.test(mnPlan.rationale.session_notes[s.name])));
 ok("#MN priority days carry NO such note",
   !Object.keys(mnPlan.rationale.session_notes ?? {}).some((n) => /Upper|Push|Pull/i.test(n) && !/Low|Leg/i.test(n)));
 const mnPlain = generatePlan({ ...mnProfile, user_id: "mn-2", priority_muscles: [] }, kb);
@@ -1069,6 +1076,88 @@ ok("#MN a non-specialization plan has no session notes at all",
 // never 1-set scatter (three 1-set lifts shipped on one leg day).
 ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   mnPlan.program.sessions.every((s) => s.exercises.every((e) => e.sets >= 2)));
+
+// --- the coverage floor keeps its own promise at 1-set headroom (Wave 254 audit) ---
+// The Wave-250 >=2-set consolidation removed the old 1-set exception EVERYWHERE,
+// including the last-chance weekly-coverage rescue — so on tight splits (2-day
+// specialization) a held muscle whose final session had 1 set of budget left was
+// rejected outright and went from a 1-set hold to ZERO for the whole week, silently
+// detraining what its rationale claimed to hold (calves on this fixture). The
+// restored door opens ONLY for a zero-credit muscle at its last chance — a muscle
+// with any fractional credit keeps the 2-set floor, so residual scatter (the thing
+// Wave 250 rightly killed: pre-250 this fixture ALSO shipped a 1-set RDL residual)
+// stays dead. abs at zero here is a PRE-EXISTING infeasibility of a 2-day
+// two-priority week (verified identical on the pre-250 engine), not this
+// regression — dose-feasibility gating is recorded work, not this fix.
+{
+  const tight = generatePlan({ user_id: "cf-tight", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2,
+    session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts", "chest"] }, kb);
+  const tv = tight.rationale.volume_by_muscle;
+  ok("#CF the last-chance rescue keeps a held muscle off zero (the Wave-250 calves regression)",
+    tv.calves.projected_sets > 0);
+  const tightOnes = tight.program.sessions.flatMap((s) => s.exercises.filter((e) => e.sets === 1).map((e) => e.exercise));
+  ok("#CF ...via at most ONE single-set placement, and only for a zero-week muscle (no residual scatter)",
+    tightOnes.length <= 1);
+}
+
+// --- the adaptive specialization dose (Wave 255, owner ruling): "non priority
+// muscles should drop to MV when total weekly volume is high and recovery is of
+// concern. Otherwise they should drop to MEV. This should be done automatically."
+// Mechanism: an ease-to-MEV funding pass — a non-priority muscle rises from MV to
+// MEV only when (a) no priority exercise reaches it (overlap-served muscles are
+// already fed) and (b) every day serving it still fits the session budget with the
+// priorities' full share counted FIRST. Fat-loss (a deficit) funds nothing.
+{
+  const adProfile = { user_id: "ad-1", training_status: "advanced", primary_goal: "recomposition", days_per_week: 4,
+    session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"],
+    priority_muscles: ["side-delts", "biceps", "triceps"] };
+  const ad = generatePlan(adProfile, kb);
+  const vol = ad.rationale.volume_by_muscle;
+  ok("#AD owner profile: lower-body muscles ease to exactly MEV (still growing), not held at MV",
+    ["quadriceps", "hamstrings", "glutes", "calves", "abs"].every((m) =>
+      vol[m].eased === true && !vol[m].maintenance && vol[m].target_sets === muscleById.get(m).landmarks.mev.min));
+  ok("#AD eased muscles carry the 'eased' status, not 'maintenance'",
+    vol.quadriceps.projected_status === "eased");
+  ok("#AD overlap-served muscles (fed by the priority lifts) stay at MV",
+    ["chest", "upper-back", "lats", "front-delts"].every((m) => vol[m].maintenance === true && !vol[m].eased));
+  ok("#AD a budget-denied muscle stays at MV even without overlap (rear-delts on packed upper days)",
+    vol["rear-delts"].maintenance === true && !vol["rear-delts"].eased);
+  ok("#AD priorities are untouched by the easing (side-delts still near its ceiling)",
+    vol["side-delts"].projected_sets >= 16);
+  ok("#AD no growth warnings for eased muscles (deliberately capped is not under-dosed)",
+    !ad.rationale.warnings.some((w) => ["below-mev", "below-mev-indirect", "under-target"].includes(w.code) && vol[w.muscle]?.eased));
+  ok("#AD an eased muscle overshot by secondary credit gets an honest reason, not a stale MEV claim",
+    Object.entries(vol).filter(([, v]) => v.eased).every(([m, v]) =>
+      v.projected_sets <= muscleById.get(m).landmarks.mev.min + 1.5 || /secondary work/.test(v.reasons[0])));
+  // The redistribution invariant (KB weak-point page: "don't specialize everything at
+  // once — that's just more volume everywhere"): the spec week's direct sets never
+  // exceed what the same profile would train with no block at all.
+  const directTotal = (plan) => plan.program.sessions.reduce((a, s) => a + s.exercises.reduce((b, e) => b + e.sets, 0), 0);
+  const adPlain = generatePlan({ ...adProfile, user_id: "ad-plain", priority_muscles: [] }, kb);
+  ok("#AD redistribution, not addition: spec total direct sets <= the non-spec week's",
+    directTotal(ad) <= directTotal(adPlain));
+  ok("#AD fat-loss: nothing eases — a deficit already taxes recovery, MV is the honest dose",
+    Object.values(generatePlan({ ...adProfile, user_id: "ad-cut", primary_goal: "fat-loss" }, kb)
+      .rationale.volume_by_muscle).every((v) => !v.eased));
+  // TAMPER pair (lesson 54): the budget gate must actually gate. A slackless 3-day
+  // block (full-body days already at the budget) funds NOTHING while the owner's
+  // 4-day block funds several. Remove the demand check and both fund everything;
+  // remove the pass and both fund nothing — either tamper turns exactly one red.
+  const adTight = generatePlan({ user_id: "ad-3d", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3,
+    session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"], specialization: true }, kb);
+  ok("#AD tamper pair: a slackless 3-day block funds zero eased muscles...",
+    Object.values(adTight.rationale.volume_by_muscle).every((v) => !v.eased));
+  ok("#AD ...while the owner's 4-day block funds several — the gate gates",
+    Object.values(vol).filter((v) => v.eased).length >= 4);
+  // Flag invariants, landmarks read from DATA (a tampered constant can't stay green):
+  // the two flags are exclusive and each pins its own landmark.
+  const adSweep = [ad, adPlain, adTight];
+  ok("#AD invariant: eased XOR maintenance; eased => MEV.min, maintenance => MV.min",
+    adSweep.every((plan) => Object.entries(plan.rationale.volume_by_muscle).every(([m, v]) =>
+      !(v.eased && v.maintenance)
+      && (!v.eased || v.target_sets === muscleById.get(m).landmarks.mev.min)
+      && (!v.maintenance || v.target_sets === (muscleById.get(m).landmarks.mv?.min ?? v.target_sets)))));
+}
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

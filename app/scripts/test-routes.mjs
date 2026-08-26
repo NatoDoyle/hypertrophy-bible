@@ -264,8 +264,8 @@ try {
   ok("#spec-end the boundary actually advanced the block index",
     (stAfter.plan_meta?.block_index ?? 0) >= 1);
   const stVol = stAfter.plan_rationale?.volume_by_muscle ?? {};
-  ok("#spec-end a finished specialization block takes every other muscle off maintenance",
-    Object.values(stVol).every((v) => !v.maintenance));
+  ok("#spec-end a finished specialization block takes every other muscle off maintenance (and off the eased dose)",
+    Object.values(stVol).every((v) => !v.maintenance && !v.eased));
   // The first version of this assertion was TAUTOLOGICAL — `(chest > lats) === false ?
   // chest > 0 : true` can only fail if chest is both <= lats and <= 0, so it asserted
   // nothing its label claimed (caught by the Waves 190-193 self-audit). The engine's

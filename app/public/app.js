@@ -324,7 +324,7 @@ const STEPS = [
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
-  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard, and everything else drops to a maintenance dose to pay for it. Pick three or more and we'll just tilt volume their way." },
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard while everything else eases back to a light dose to pay for it (most muscles keep slowly growing; a few drop to pure maintenance). Pick three or more and we'll just tilt volume their way." },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
   // that the app exists to make for them, and a lifter who could answer it wouldn't
@@ -712,6 +712,7 @@ const STATUS_LEGEND = `<p class="muted legend"><b>What the tags mean:</b>
   <span class="status s-over">over max</span> more than you can recover from.<br>
   <b>Grade A–D</b> shows how strong the science behind a number is — A is the strongest evidence, D is a sensible best-guess.<br>
   <span class="status s-maint">holding steady</span> during a specialization block, this muscle is intentionally kept at a maintenance dose while your priority muscles get the extra volume.<br>
+  <span class="status s-maint">slow growth</span> during a specialization block, this muscle is eased back to its minimum effective dose — still slowly growing while your priority muscles get the extra volume.<br>
   <span class="status s-maint">covered by compounds</span> this muscle gets its work from your big lifts — direct exercises for it are optional unless you make it a priority.</p>`;
 // Shared block builder for every plan surface (the first-run reveal and the Plan
 // tab): cardio, the UN-collapsed personalization panel, the collapsed why-block,
@@ -2075,8 +2076,8 @@ function renderRecap(recap) {
 }
 
 // ---------- Progress ----------
-const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint", "secondary-served": "s-maint" }[s] || "s-none");
-const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "no-landmark": "—" }[s] || s);
+const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint", "secondary-served": "s-maint", "eased": "s-maint" }[s] || "s-none");
+const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "eased": "slow growth", "no-landmark": "—" }[s] || s);
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
@@ -2227,6 +2228,11 @@ async function renderProgress() {
     const res = await postOrQueue("/api/bodyweight", { user_id: uid, kg, date: bwEditDate ?? localDay() });
     bwEditDate = null;
     if (res.ok) return renderProgress();
+    // Offline: the write is QUEUED with its armed date, so the edit state resets —
+    // but the button label must fall back WITH it (success re-renders; this path
+    // doesn't), or a second tap saves to TODAY under a stale "Save for <past day>"
+    // label (Wave 254 audit).
+    $("#logbw").textContent = "Add today's weight";
     $("#bw").value = "";
     const note = document.createElement("p");
     note.className = "muted";

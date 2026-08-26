@@ -825,6 +825,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // maintenance dose is "holding steady", not "add volume" — the client's
   // s-maint status/legend exist for exactly this (they were never emitted).
   const maintIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.maintenance).map(([id]) => id));
+  // ...and its EASED sibling (Wave 255): a muscle the block deliberately caps at its
+  // minimum effective dose is "slow growth", not "below MEV" — the cap is the plan
+  // working. Older stored plans have no eased flags and keep their old statuses.
+  const easedIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.eased).map(([id]) => id));
   // The tier's THIRD consumer (the generator and the critique are the first two):
   // a muscle the plan deliberately serves through compound credit must not be told
   // "add volume" here while the plan screen calls the same state "covered by
@@ -834,7 +838,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // its old, equally honest statuses until its next regeneration.
   const secServedIds = new Set(Object.entries(user.plan_rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.secondary_served).map(([id]) => id));
   const volumeByMuscle = Object.entries(volume).map(([id, v]) => ({ muscle: muscleById.get(id)?.name ?? id, id, sets: v.sets,
-    status: secServedIds.has(id) && v.status === "below-MEV" ? "secondary-served" : maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : v.status }))
+    status: secServedIds.has(id) && v.status === "below-MEV" ? "secondary-served" : maintIds.has(id) && v.status === "below-MEV" ? "maintenance" : easedIds.has(id) && v.status === "below-MEV" ? "eased" : v.status }))
     .sort((a, b) => b.sets - a.sets);
   // Individualized patience (Increment B): the plateau surface uses the SAME personal
   // stall window as the auto-tune, so a slow responder isn't told they've plateaued at
@@ -862,6 +866,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
     .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)
+    .filter((a) => !(easedIds.has(a.muscle) && a.signal === "add")) // ...nor to a muscle the block deliberately caps at MEV — the cap IS the plan (over-MRV still passes)
     .map((a) => ({ ...a, muscle_name: muscleById.get(a.muscle)?.name ?? a.muscle })) : [];
   // Stalled lifts are pinned into the list — a plateau must never scroll out of sight.
   const allProg = progressionByExercise(sessions, index).filter((p) => p.weeks > 1);

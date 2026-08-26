@@ -275,6 +275,23 @@ check("#19 specialization maintenance muscles read 'holding steady', never 'add 
   assert.ok(!rep.adaptive.some((a) => a.muscle === "chest" && a.signal === "add"));
 });
 
+check("#19b specialization EASED muscles read 'eased' (slow growth), and 'add volume' stays suppressed", () => {
+  // Wave 255: an eased muscle is deliberately capped at MEV — below-MEV raw numbers
+  // are the block working, not under-dosing, and "add sets" advice would fight the
+  // plan. Over-MRV honesty must still pass (the eased dose can never explain that).
+  const now = "2026-06-10T10:00:00Z";
+  const user = { profile: { training_status: "advanced", primary_goal: "recomposition", days_per_week: 4 },
+    plan_rationale: { volume_by_muscle: { chest: { eased: true, target_sets: 8 } } } };
+  const sessions = [{ session_id: "e1", date: "2026-06-02", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 },
+  ] }];
+  const rep = progressReport(user, sessions, [], [], now);
+  const chest = rep.volumeByMuscle.find((v) => v.id === "chest");
+  assert.equal(chest.status, "eased");
+  assert.ok(!rep.adaptive.some((a) => a.muscle === "chest" && a.signal === "add"));
+});
+
 check("#21 the session AFTER a comeback does not re-fire the layoff ease (deload-tagged sessions still count as training)", () => {
   const now = "2026-06-20T10:00:00Z";
   const day = (n) => new Date(+new Date(now) - n * 86400000).toISOString();

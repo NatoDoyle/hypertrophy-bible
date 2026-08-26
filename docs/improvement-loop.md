@@ -1003,6 +1003,29 @@ These are real failures from previous iterations. Each is now a standing check.
    level) — a mechanism explained on a screen the user isn't looking at is
    still invisible; the explanation belongs where the question arises.
 
+66. **Scope a fix to the regression it repairs — measure the predecessor before
+   asserting the property, and when relaxing a guard, keep the guard's own
+   counterexample red.** Two halves, both from the Wave-254 audit fix. (1) The
+   ≥2-set consolidation had stranded held muscles at zero weekly sets on tight
+   splits; the first regression test asserted "no in-split muscle at zero" —
+   a property the engine NEVER had (abs was zero on the same fixture two
+   engines back; only calves 1→0 was the regression). Running the fixture
+   against the pre-change engine turned an over-broad assert into a scoped one
+   plus an honest record of the pre-existing infeasibility. (2) The first fix
+   draft re-opened the 1-set door for every held muscle at its last chance —
+   and the placement trace showed a 1-set deadlift for glutes already
+   half-served by RDL secondaries: the EXACT residual scatter the ≥2 rule was
+   built to kill, reborn inside its own repair, and it spent the budget the
+   genuinely-stranded muscles needed. The shipped door opens only at zero
+   credit, where the single set is a budget-truncated real dose. A guard's
+   history is part of its spec: the counterexample that justified it must stay
+   red through any relaxation. (Same iteration, same muscle-dose ground:
+   lesson 65's refutation-scope discipline found the owner's SECOND follow-up
+   — "surely legs should stay the same" — re-opened the specialization dose
+   design itself; the owner's ruling became the ease-to-MEV funding pass, and
+   the KB's own Grade-D dosing caveat is what made the change honest rather
+   than a contradiction.)
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1024,6 +1047,28 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+7k. **Telemetry (Waves 254–256, 2026-08-26).** The owner's follow-up challenge to
+   the leg-day answer ("surely leg volume should stay the same?") became a live
+   design ruling via AskUserQuestion — "MV when volume is high and recovery is
+   of concern, otherwise MEV, automatically" — and the iteration centered on it.
+   Planning used 2 Explore agents (~142k) + 1 Plan agent (~155k) whose design
+   was simulation-verified BEFORE approval: every fixture outcome it predicted
+   (which muscles ease, which stay MV, which tests survive) matched
+   implementation exactly — pre-verified design beats design-then-debug. The
+   audit finder (sonnet, ~165k) STALLED at the watchdog mid-verification; a
+   SendMessage resume with "wrap up now, no new tests" recovered its full
+   report in one continuation (~103s) — resume-don't-relaunch works for stalls,
+   not just limit wipes. It went 2 confirmed + 6 refuted + 1 open question I
+   closed inline in one grep (session names unique). Both confirmed findings
+   were real: the zero-week stranding (fixed, lesson 66's two-half discipline —
+   the first fix draft was caught re-creating the original scatter by a
+   placement trace) and the offline stale-label overwrite (fixed, proven
+   offline in the walkthrough). Evidence: 188 plan / 96 derive / 80 coach /
+   366 route; both chains exit 0; #AD + #CF red-first, both tampers turning
+   exactly the right tests red; non-spec determinism pinned against main on 4
+   profiles; 12/12 walkthrough on the owner's profile. Deployed v178. A NEW
+   owner consideration (program-engine explainer audit) arrived mid-iteration
+   and was deliberately queued, not half-started.
 7l. **Telemetry (Waves 250–253, 2026-08-24, third turn).** Two owner
    considerations + the scheduled overhaul self-audit, one turn. **1 finder
    (~177k tokens, five candidates, five confirmed — its third consecutive
