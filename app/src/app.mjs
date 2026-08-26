@@ -609,14 +609,17 @@ export function createApp(store, config = {}) {
           // un-freeze the tune exactly at the boundary where a specialization block
           // ends, folding in a whole block of by-design stalls in one go.
           const completedBlockIndex = u.plan_meta?.block_index ?? 0;
-          const volumeAdjust = isSpecializing(u.profile, completedBlockIndex)
-            ? prevAdjust
+          const { adjust: volumeAdjust, held: heldThisBlock } = isSpecializing(u.profile, completedBlockIndex)
+            ? { adjust: prevAdjust, held: [] }
             : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
           // What CHANGED this block — so the new-block coach note announces the actual
-          // adjustment, not the whole accumulated total re-announced every block.
+          // adjustment, not the whole accumulated total re-announced every block. `held`
+          // carries the adds the recovery/fuel gate suppressed, so the note can say WHY
+          // a stalled muscle's sets didn't move instead of saying nothing (Wave 258).
           const tunedThisBlock = {
             bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
             eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
+            held: heldThisBlock,
           };
           // THE EXERCISE-CHANGE LEVER (the KB's 4th plateau lever, previously absent):
           // lifts this person has genuinely plateaued on are demoted below every

@@ -387,14 +387,28 @@ try {
   const rgUser = (await json("POST", "/api/onboard", { profile: {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
-  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: rgUser, session_id: `rg-${w}`, date: dayAgo(35 - w * 7),
+  // SEVEN trained weeks, not five (Wave 167: the block clock counts TRAINED weeks,
+  // so six must sit behind the boundary for it to advance at all). This fixture had
+  // stayed at five when the clock changed, so the boundary never fired and the
+  // suppression assertion below passed VACUOUSLY (`?? 0` is 0 when the tune never
+  // ran) — exposed the moment Wave 258 asserted on tuned_this_block.held.
+  for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: rgUser, session_id: `rg-${w}`, date: dayAgo(49 - w * 7),
     sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
-  // 5 low daily check-ins across the block → block-average readiness ~2/5 → under-recovered
+  // Low daily check-ins inside the 42-day window → under-recovered
   for (let d = 0; d < 5; d++) await json("POST", "/api/checkin", { user_id: rgUser, date: dayAgo(30 - d * 6).slice(0, 10), sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 });
-  await store.updateUser(rgUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(43), block_index: 0 }; return u; });
+  await store.updateUser(rgUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": rgUser } });
   const rgAfter = await store.getUser(rgUser);
+  ok("#A fixture reaches the branch: the boundary actually fired (was vacuous at 5 trained weeks)",
+    (rgAfter.plan_meta?.block_index ?? 0) >= 1 && !!rgAfter.plan_meta?.rotated_at);
   ok("#A under-recovery suppresses the volume bump through /api/today (recovery-aware tune wired at the block boundary)", (rgAfter.plan_meta?.volume_adjust?.chest ?? 0) === 0);
+  // ...and the suppression is no longer SILENT (Wave 258): the boundary records who
+  // was held and why, and the new-block note says it in a sentence.
+  ok("#A the gated add is recorded in tuned_this_block.held with its reason",
+    (rgAfter.plan_meta?.tuned_this_block?.held ?? []).some((h) => h.muscle === "chest" && h.reason === "recovery"));
+  const rgToday = await (await app.request("/api/today", { headers: { "X-HB-User": rgUser } })).json();
+  ok("#A the new-block note tells the user their stalled muscle was held for recovery",
+    /stalled with room to grow/.test(rgToday?.session?.coach_note ?? ""));
 
   // Wave 69 (audit A/B): the recovery gate reads only the CURRENT block, not the whole
   // history. The same stall, but the only low check-ins are a long-ago rough patch

@@ -553,6 +553,20 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
 // it silently; (2) every suggestion is bounded by the recoverable range — it never
 // pushes a target above MAV.max, and once a muscle is stalled AT its ceiling it says
 // "change/deload", not "add more", so volume can never run away.
+// ONE volume sample for the card and the tune (C6): each muscle's PEAK weekly
+// volume over the last `n` PRESENT weeks. Peak, not the latest week — a mesocycle
+// ends on a deload (~half volume), so the latest week makes every at/over-ceiling
+// branch unreachable; peak reflects the working load the muscle actually stalled
+// at. Extracted from computeVolumeAdjust so the Progress card's advice and the
+// block-boundary tune read the SAME number — sampled differently, the card promised
+// "I'm adding sets next block" from a reference week the tune's peak then EASED.
+export function peakWeeklyVolume(weekly, n = 6) {
+  const peak = {};
+  for (const wk of Object.keys(weekly).sort().slice(-n))
+    for (const [m, sets] of Object.entries(weekly[wk] ?? {})) peak[m] = Math.max(peak[m] ?? 0, sets);
+  return peak;
+}
+
 // `weekVolume` is { muscleId: sets } (effective sets); `stalledMuscleIds` is the set
 // of muscle ids whose primary lift stallDetect flagged. `tooEasyMuscleIds` (Increment
 // C) marks muscles whose LOGGED effort sits clearly above the KB target — a stall

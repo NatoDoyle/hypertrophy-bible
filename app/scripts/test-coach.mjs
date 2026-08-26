@@ -132,6 +132,34 @@ check("suggestWeight: RIR autoregulation raises load when reps are left in reser
   assert.equal(suggestWeight(failed, "barbell-bench-press", "6-10").suggested_kg, 100);
 });
 
+check("suggestWeight: back-off sets don't corrupt the top set's progression (C14)", () => {
+  // The anchor is set 1's weight, but reps/RIR were judged across ALL sets — so a
+  // lighter back-off could both deny an earned bump and fabricate an unearned one.
+  // (a) Earned: the top set hit the range ceiling; a lighter back-off that didn't
+  // is a different load, not a failure at the anchor weight.
+  const pyramid = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 },
+  ] }];
+  assert.equal(suggestWeight(pyramid, "barbell-bench-press", "6-10").suggested_kg, 102.5,
+    "the 80 kg back-off is not evidence against the 100 kg top set");
+  // (b) Fabricated: very easy back-offs must not average a load bump onto a top
+  // set that had nothing left (rir 1 at the anchor weight).
+  const polluted = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 1 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8, rir: 6 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8, rir: 6 },
+  ] }];
+  assert.equal(suggestWeight(polluted, "barbell-bench-press", "6-10").suggested_kg, 100,
+    "rir 1 at the anchor weight is not a green light, whatever the back-offs say");
+  // Straight sets are byte-identical to the old read (every set IS at the anchor).
+  const straight = [{ date: "2026-06-01T18:00:00Z", sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 },
+  ] }];
+  assert.equal(suggestWeight(straight, "barbell-bench-press", "6-10").suggested_kg, 102.5);
+});
+
 // The mesocycle advances on TRAINED weeks, not calendar weeks (Wave 167), so these
 // fixtures log a session in each intervening week. `day(n)` is still the calendar
 // offset — with a session banked every week the two clocks coincide exactly, which
@@ -438,7 +466,7 @@ check("computeVolumeAdjust samples PEAK block volume, not the deload week (ease 
   // deload week at 10. Sampling the deload (10 < MAV.max) would BUMP; sampling the peak
   // (20 >= MAV.max) correctly EASES a ceiling-stalled muscle.
   const sessions = [wk(42, 20), wk(35, 20), wk(28, 20), wk(21, 20), wk(14, 20), wk(7, 10)];
-  const adj = computeVolumeAdjust({ chest: 6 }, sessions);
+  const adj = computeVolumeAdjust({ chest: 6 }, sessions).adjust;
   assert.equal(adj.chest, 4, `stalled at ceiling should EASE +6→+4, got ${adj.chest}`);
 });
 
@@ -448,13 +476,13 @@ check("computeVolumeAdjust recovery gate (Increment A): under-recovery holds the
   // chest (bench primary) stalled at 12 working sets/wk — room below MAV.max — flat e1RM 5 weeks.
   const sessions = [wk(35, 12), wk(28, 12), wk(21, 12), wk(14, 12), wk(7, 12)];
   // no recovery context → the tune ADDS volume to the stalled-with-room muscle (+2 from +2 → +4)
-  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions).chest, 4);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions).adjust.chest, 4);
   // 5 low check-ins (avg readiness ~2/5) → under-recovered → the add is SUPPRESSED, holds at +2
   const lowCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 }));
-  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { checkins: lowCheckins }).chest, 2);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { checkins: lowCheckins }).adjust.chest, 2);
   // losing bodyweight on a gain goal → energy deficit → likewise holds (stall needs fuel, not sets)
   const bwDown = Array.from({ length: 6 }, (_, i) => ({ date: `2026-06-0${i + 1}`, kg: 85 - i * 0.3 }));
-  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).chest, 2);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).adjust.chest, 2);
 });
 
 check("computeVolumeAdjust individualized patience (Increment B): a slow responder's own rhythm isn't a stall", () => {
@@ -463,10 +491,10 @@ check("computeVolumeAdjust individualized patience (Increment B): a slow respond
   const week = (i, kg) => ({ local_date: wkDate(i), sets: Array.from({ length: 12 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: kg, reps: 8 })) });
   const full = []; for (let i = 0; i < 15; i++) full.push(week(i, 100 + Math.floor(i / 5) * 10));
   // personal cadence ~5wk → the stall window stretches to ~8 → the recent 4-week flat is NOT a plateau → no bump
-  assert.equal(computeVolumeAdjust({}, full).chest, undefined);
+  assert.equal(computeVolumeAdjust({}, full).adjust.chest, undefined);
   // the SAME recent flat weeks WITHOUT the track record (cadence unknown → default 4-week window) DO read as a
   // stall → bump. This is the whole point of Increment B: identical recent data, different verdict by history.
-  assert.equal(computeVolumeAdjust({}, full.slice(9)).chest, 2);
+  assert.equal(computeVolumeAdjust({}, full.slice(9)).adjust.chest, 2);
 });
 
 check("computeVolumeAdjust effort gate (Increment C): a sandbagged stall HOLDS — the fix is effort, not sets", () => {
@@ -476,13 +504,72 @@ check("computeVolumeAdjust effort gate (Increment C): a sandbagged stall HOLDS �
   const noRir = [wk(35), wk(28), wk(21), wk(14), wk(7)];
   const easy = [wk(35, 4), wk(28, 4), wk(21, 4), wk(14, 4), wk(7, 4)];
   // no effort data → +2 exactly as today (the binder-level absent-data guard)
-  assert.equal(computeVolumeAdjust({ chest: 2 }, noRir).chest, 4);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, noRir).adjust.chest, 4);
   // 60 recent sets averaging rir 4 vs bench's tier target 3 (stability "moderate" → heavy band "1-3")
   // → clear logged surplus → the add is HELD; more sets would just be more easy sets
-  assert.equal(computeVolumeAdjust({ chest: 2 }, easy).chest, 2);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, easy).adjust.chest, 2);
   // compliant effort (rir 3 = the band top) never trips the gate — the bump still fires
   const compliant = [wk(35, 3), wk(28, 3), wk(21, 3), wk(14, 3), wk(7, 3)];
-  assert.equal(computeVolumeAdjust({ chest: 2 }, compliant).chest, 4);
+  assert.equal(computeVolumeAdjust({ chest: 2 }, compliant).adjust.chest, 4);
+});
+
+check("computeVolumeAdjust reports WHO was held and WHY — a suppressed add must not be silent (Wave 258)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  const sessions = [wk(35, 12), wk(28, 12), wk(21, 12), wk(14, 12), wk(7, 12)];
+  // Ungated: the add fires, nothing is held.
+  assert.deepEqual(computeVolumeAdjust({ chest: 2 }, sessions).held, []);
+  // Recovery-gated: the add is suppressed AND the suppression is reported, so the
+  // new-block note can say WHY instead of saying nothing (the gate was invisible:
+  // a gated add produced no delta, no delta produced no sentence).
+  const lowCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 }));
+  assert.deepEqual(computeVolumeAdjust({ chest: 2 }, sessions, [], { checkins: lowCheckins }).held, [{ muscle: "chest", reason: "recovery" }]);
+  // Deficit-gated: same shape, deficit reason (deficit outranks recovery in the label).
+  const bwDown = Array.from({ length: 6 }, (_, i) => ({ date: `2026-06-0${i + 1}`, kg: 85 - i * 0.3 }));
+  assert.deepEqual(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).held, [{ muscle: "chest", reason: "deficit" }]);
+});
+
+check("progressReport's adaptive signal reads the PEAK sample the tune acts on — the card can't promise the opposite of the action (C6)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  // Chest peaked at 18 sets (>= mav.max 18) five weeks ago, settled at 12, stalled
+  // throughout: the card read the reference week (12 < 18 → "add… I'm adding sets
+  // next block") while the tune read the peak (18 >= 18 → −2). Measured live before
+  // this test was written. One sample now feeds both.
+  const sessions = [wk(35, 18), wk(28, 12), wk(21, 12), wk(14, 12), wk(7, 12)];
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const rep = progressReport(u, sessions, [], [], new Date().toISOString());
+  const chest = (rep.adaptive || []).find((a) => a.muscle === "chest");
+  assert.equal(chest?.signal, "change", "peak >= mav.max is the ceiling — the same read the tune eases on");
+  const { adjust } = computeVolumeAdjust({}, sessions);
+  assert.equal(adjust.chest, -2, "…and the tune agrees from the same sample");
+});
+
+check("an add signal under the whole-athlete deficit/recovery gate carries `gated` (the card must not promise sets the tune won't add)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  const sessions = [wk(35, 12), wk(28, 12), wk(21, 12), wk(14, 12), wk(7, 12)];
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  // Declining bodyweight inside the 42-day window → deficit → every add is gated.
+  const bwDown = Array.from({ length: 6 }, (_, i) => ({ date: day(30 - i * 5).slice(0, 10), kg: 85 - i * 0.3 }));
+  const rep = progressReport(u, sessions, bwDown, [], new Date().toISOString());
+  const chest = (rep.adaptive || []).find((a) => a.muscle === "chest");
+  assert.equal(chest?.signal, "add", "fixture sanity: stalled with room reads add");
+  assert.equal(chest?.gated, "deficit", "…and the row says the tune will hold it");
+  // Without the gate, no marker.
+  const clean = progressReport(u, sessions, [], [], new Date().toISOString());
+  assert.equal((clean.adaptive || []).find((a) => a.muscle === "chest")?.gated, undefined);
+});
+
+check("an over-MRV muscle's reduce signal survives the adaptive filter chain (C7's server half)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+  // 24 weekly chest sets > mrv.max 22 — no stall required; reduce ranks first.
+  const sessions = [wk(21, 24), wk(14, 24), wk(7, 24)];
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const rep = progressReport(u, sessions, [], [], new Date().toISOString());
+  const chest = (rep.adaptive || []).find((a) => a.muscle === "chest");
+  assert.equal(chest?.signal, "reduce", "over-MRV must reach the client as an instruction, not only a chip");
 });
 
 check("progressReport effort lever (Increment C): a too-easy stall reads 'effort'; the same history without rir reads 'add'", () => {

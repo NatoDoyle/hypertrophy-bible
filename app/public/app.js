@@ -2121,7 +2121,22 @@ async function renderProgress() {
   // target → the fix is effort, not sets. Sits between the ceiling read (deload
   // still wins) and the add-volume read (never add sets to a sandbagged stall).
   const pushHarder = (p.adaptive || []).filter((a) => a.signal === "effort");
-  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add");
+  // A `gated` add is one the tune will NOT act on — promising "I'm adding sets"
+  // there was false (Wave 258). Regression-gated rows are owned by the regression
+  // card above ("I've stopped adding volume to those muscles"), so they render
+  // nothing here; deficit/recovery-gated rows get the honest hold sentence.
+  const canAddMore = (p.adaptive || []).filter((a) => a.signal === "add" && !a.gated);
+  const heldAdds = (p.adaptive || []).filter((a) => a.signal === "add" && (a.gated === "deficit" || a.gated === "recovery"));
+  // Over-MRV must be an INSTRUCTION, not only a chip (C7): volumeResponse ranks
+  // "reduce" FIRST, yet nothing ever rendered it — an over-ceiling user saw only
+  // the "over max" tag with no sentence saying what to do. Independent of the
+  // stalls card: reduce fires without any plateau.
+  const overCeiling = (p.adaptive || []).filter((a) => a.signal === "reduce");
+  const reduceCard = overCeiling.length
+    ? `<div class="card"><b>⚖️ More than you can recover from</b>
+        <p class="muted">Your ${esc(overCeiling.map((a) => a.muscle_name).join(", "))} ${overCeiling.length === 1 ? "is" : "are"} getting more weekly sets than you can recover from — past that ceiling, extra sets cost recovery without adding growth. Trim a set or two per session, or let the plan handle it: the next block's retune eases ${overCeiling.length === 1 ? "it" : "them"} back automatically.</p>
+        <button class="btn ghost" data-learn="volume-progression-and-deloads">Read: volume &amp; deloads</button></div>`
+    : "";
   const stallCard = (p.stalls || []).length
     ? `<div class="card"><b>⏸ ${p.stalls.length === 1 ? "One lift has" : p.stalls.length + " lifts have"} plateaued</b>
         <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
@@ -2131,7 +2146,9 @@ async function renderProgress() {
             ? `<p class="muted">Your own effort logs show plenty left in the tank on your ${esc(pushHarder.map((a) => a.muscle_name).join(", "))} sets. Before adding volume, take the last set of each lift closer to failure — about 1–2 reps in reserve. Effort is the cheapest fix there is, so I'm holding your sets steady until it's in.</p>`
             : canAddMore.length
               ? `<p class="muted">Your ${esc(canAddMore.map((a) => a.muscle_name).join(", "))} still ${canAddMore.length === 1 ? "has" : "have"} room below your recoverable ceiling, so I'm adding sets there next block. If sleep or food has been short, fix that first — it beats any programming change.</p>`
-              : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
+              : heldAdds.length
+                ? `<p class="muted">Your ${esc(heldAdds.map((a) => a.muscle_name).join(", "))} ${heldAdds.length === 1 ? "has" : "have"} room to grow, but ${heldAdds[0].gated === "deficit" ? "you're eating in a deficit" : "your check-ins say recovery's been short"} — so I'm holding sets steady until that turns around. More volume you can't recover from digs the hole deeper; fixing fuel and sleep beats any programming change.</p>`
+                : `<p class="muted">Worth checking sleep and food first — under-recovery and under-eating cause more plateaus than programming does.</p>`}
         <button class="btn ghost" data-learn="breaking-advanced-plateaus">Read: Breaking plateaus</button></div>`
     : "";
   // No "what to adjust" to-do list: the plan RETUNES ITSELF each block from your
@@ -2183,6 +2200,7 @@ async function renderProgress() {
     ${p.volumeByMuscle && p.volumeByMuscle.length ? STATUS_LEGEND : ""}
     ${autoAdaptNote}
     ${regrCard}
+    ${reduceCard}
     ${stallCard}
     ${interfCard}
     <h2>Strength trends ${helpDot("glossary", "ⓘ how these are estimated")}</h2>
