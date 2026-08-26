@@ -549,6 +549,11 @@ export function generatePlan(profile, kb, opts = {}) {
   // Cardio rides on the split, since its placement rule is about leg days.
   const cardio = buildCardio(cardioGuideline, goal, sessionSpecs);
 
+  // The per-day set budget, needed from step 2 onward (the ease-to-MEV funding
+  // pass measures its slack); step 4 documents why it exists and how it's sized.
+  const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
+  const setBudget = Math.min(Math.round(sessionMin / 3), SESSION_QUALITY_CAP[experience] ?? 16); // ~3 min/set incl. rest, capped for quality
+
   // 2) weekly target per muscle
   // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
   // logged response has nudged each muscle's target up or down over past blocks.
@@ -566,9 +571,10 @@ export function generatePlan(profile, kb, opts = {}) {
     }
     targets[m.id] = t.target;
     volumeRationale[m.id] = { target_sets: t.target, is_priority: priority.has(m.id), landmark: t.landmark, reasons: t.reasons, ...(volumeAdjust[m.id] ? { adaptive_delta: volumeAdjust[m.id] } : {}) };
-    // SPECIALIZATION BLOCK (KB: weak-point-prioritization): the user goes all-in —
-    // priority muscles push to the recoverable ceiling while everything else drops
-    // to a maintenance dose (~half MEV keeps muscle; detraining-and-maintenance).
+    // SPECIALIZATION BLOCK (KB: weak-point-prioritization): priority muscles push
+    // to the recoverable ceiling while everything else is cut back — to MV here,
+    // then eased up to MEV wherever the funding pass below proves the week's
+    // budget has slack (the owner's rule: MV only when recovery is of concern).
     // The freed recovery budget is what pays for the specialization.
     if (specialization && priority.size && m.landmarks) {
       if (priority.has(m.id)) {
@@ -619,12 +625,60 @@ export function generatePlan(profile, kb, opts = {}) {
     freq[m] = (freq[m] ?? 0) + 1;
   }
 
-  // A non-priority muscle inside a specialization block is HELD at its maintenance
-  // dose: the block's whole mechanism is to free recovery by NOT growing everything
-  // else. Direct allocation to such a muscle is capped at its (maintenance) target
-  // so the plan can't quietly grow it past what the "holds what you've built"
-  // rationale promises. Priority muscles and non-specialization plans are untouched.
-  const holdMaint = (m) => specialization && priority.size > 0 && !priority.has(m) && !!volumeRationale[m]?.maintenance;
+  // 3b) THE EASE-TO-MEV FUNDING PASS (Wave 255, owner ruling: "non priority
+  // muscles should drop to MV when total weekly volume is high and recovery is
+  // of concern. Otherwise they should drop to MEV. This should be done
+  // automatically."). The KB's real constraint is that specialization is a
+  // REDISTRIBUTION, not an addition (weak-point-prioritization: "don't
+  // specialize everything at once"), and its non-priority dosing is Grade-D
+  // consensus, not a law — while detraining-and-maintenance warns an indefinite
+  // minimal dose slowly erodes gains. So a held muscle rises from MV to its MEV
+  // (still growing, slowly) when the week can PROVABLY fund it:
+  //   (a) it is not overlap-served — no available exercise trains a priority
+  //       muscle as a primary while reaching it (as primary OR secondary;
+  //       co-primaries matter: chin-ups are biceps+lats). Synergists already
+  //       collect credit from the priority work itself and sit above pure
+  //       maintenance either way (the blessed ruling in the status pass), and
+  //   (b) every day serving it still fits the session set budget with every
+  //       muscle's per-day share counted at current targets — priorities at
+  //       their FULL deliverable share first, so easing can never steal their
+  //       slots by construction.
+  // A deficit (fat-loss) funds nothing: recovery is already the constraint
+  // there, and MV is the honest dose. Deterministic throughout: fixed
+  // eligibility, cheapest-increment-first funding, muscle-id tie-break.
+  if (specialization && priority.size && goal !== "fat-loss") {
+    const overlapServed = new Set();
+    for (const ex of avail) {
+      if (!(ex.primary_muscles ?? []).some((m) => priority.has(m))) continue;
+      for (const m of [...(ex.primary_muscles ?? []), ...(ex.secondary_muscles ?? [])]) if (!priority.has(m)) overlapServed.add(m);
+    }
+    const share = (m) => Math.min(perSessionCap, Math.ceil((targets[m] ?? 0) / Math.max(1, freq[m] ?? 1)));
+    const demand = sessionSpecs.map((spec) => ARCH[spec.arch]
+      .filter((m) => (freq[m] ?? 0) > 0 && muscleById.get(m)?.landmarks)
+      .reduce((a, m) => a + share(m), 0));
+    const eligible = muscles
+      .filter((m) => volumeRationale[m.id]?.maintenance && !SECONDARY_SERVED.has(m.id) && (freq[m.id] ?? 0) > 0 && !overlapServed.has(m.id) && m.landmarks?.mev)
+      .map((m) => ({ id: m.id, inc: Math.ceil(m.landmarks.mev.min / freq[m.id]) - Math.ceil((targets[m.id] ?? 0) / freq[m.id]) }))
+      .sort((a, b) => a.inc - b.inc || (a.id < b.id ? -1 : 1));
+    for (const { id, inc } of eligible) {
+      const days = sessionSpecs.map((spec, i) => (ARCH[spec.arch].includes(id) ? i : -1)).filter((i) => i >= 0);
+      if (!days.every((i) => demand[i] + inc <= setBudget)) continue;
+      for (const i of days) demand[i] += inc;
+      targets[id] = muscleById.get(id).landmarks.mev.min;
+      const vr = volumeRationale[id];
+      vr.target_sets = targets[id];
+      delete vr.maintenance;
+      vr.eased = true; // eased to MEV — still growing, slowly; the day's budget funds it
+      vr.reasons = [`eased during specialization (~${targets[id]} sets, the KB's minimum effective volume — still growing, slowly, while your priorities take the freed recovery)`];
+    }
+  }
+
+  // A non-priority muscle inside a specialization block is HELD at its reduced
+  // dose — MV (maintenance) or MEV (eased): the block's whole mechanism is to free
+  // recovery by not fully growing everything else. Direct allocation to such a
+  // muscle is capped at its reduced target so the plan can't quietly grow it past
+  // what its rationale promises. Priority muscles and non-spec plans are untouched.
+  const holdMaint = (m) => specialization && priority.size > 0 && !priority.has(m) && !!(volumeRationale[m]?.maintenance || volumeRationale[m]?.eased);
 
   // pools per muscle (filtered + ranked), and a rotation counter for variety
   const compoundPool = {}, isoPool = {}, rot = {};
@@ -683,8 +737,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // scales with training age — beginners need far less to grow and can sustain
   // less; advanced lifters tolerate more. (Table lives at module scope: the
   // lever helper must know when the clock stops mattering.)
-  const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
-  const setBudget = Math.min(Math.round(sessionMin / 3), SESSION_QUALITY_CAP[experience] ?? 16); // ~3 min/set incl. rest, capped for quality
+  // (sessionMin / setBudget are hoisted above step 2 — the ease-to-MEV pass needs them.)
   const EX_SET_CAP = 5;   // no single exercise exceeds 5 sets
   const EX_BUDGET = 8;    // no session exceeds 8 exercises
   const exerciseChoices = [];
@@ -717,7 +770,7 @@ export function generatePlan(profile, kb, opts = {}) {
     let setsUsed = 0;
     let highCns = 0;          // count of high-CNS-cost lifts placed this session
     const room = () => setsUsed < setBudget && items.length < EX_BUDGET;
-    const add = (ex, sets, forMuscle, why) => {
+    const add = (ex, sets, forMuscle, why, minSets = 2) => {
       if (placed.has(ex.id) || !room()) return false;
       // Weekly variety cap: the same lift in a 3rd session is a programming smell
       // (the engine was prescribing upright-rows and close-grip benches 3×/week).
@@ -779,10 +832,13 @@ export function generatePlan(profile, kb, opts = {}) {
       // No 1-set EXERCISES, compound or isolation: a 1-set curl or lateral raise
       // is scatter, not a dose — multi-set superiority is Grade A (volume page,
       // Krieger 2010), so the engine concentrates: fewer exercises, 2-5 sets
-      // each. Residual top-ups grow an EXISTING exercise instead. The one
-      // exception: a held-at-maintenance muscle, where a deliberate 1-set
-      // micro-dose IS the prescription (KB: maintenance volume can be that low).
-      if (Math.min(want, headroom) < 2) return false; // maintenance included — a 1-set orphan is scatter whatever its label
+      // each. Residual top-ups grow an EXISTING exercise instead. The ONE caller
+      // allowed to lower the floor (minSets 1) is the last-chance weekly-coverage
+      // rescue for a held muscle: with 1 set of budget left on the muscle's final
+      // session, refusing it strands the muscle at ZERO for the week — and one
+      // hard set holds muscle (KB detraining) where zero detrains it. That single
+      // set is not scatter: it fires once, only for a muscle with nothing else.
+      if (Math.min(want, headroom) < minSets) return false; // a 1-set orphan is scatter whatever its label — except the zero-week rescue above
       const setN = clamp(Math.min(want, EX_SET_CAP, headroom), 1, 10);
       placed.add(ex.id); setsUsed += setN;
       weekUseCount[ex.id] = (weekUseCount[ex.id] ?? 0) + 1;
@@ -899,7 +955,17 @@ export function generatePlan(profile, kb, opts = {}) {
       const pool = poolFor(m);
       if (!pool.length) continue;
       const ex = pickFrom(pool, m);
-      if (ex && add(ex, Math.min(2, perTarget(m), EX_SET_CAP), m, ["weekly coverage — every muscle gets served before the week runs out", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m]) && isEarly) earlyUsed++;
+      // A held muscle's LAST chance may place a single set rather than strand the
+      // muscle at zero for the week (the Wave-254 audit found 2-day specialization
+      // blocks shipping abs/calves at literally nothing while claiming to hold
+      // them). The door opens ONLY at zero session credit — a muscle with any
+      // fractional credit keeps the 2-set floor, or the residual becomes exactly
+      // the 1-set orphan the floor forbids (a first draft of this fix placed a
+      // 1-set deadlift for glutes already half-served by RDL secondaries, and
+      // spent the budget the genuinely-stranded muscles needed). Zero credit
+      // implies a full >=2-set want, so the single set is a budget-truncated real
+      // dose, never scatter. Early spills and non-held muscles keep the floor.
+      if (ex && add(ex, Math.min(2, perTarget(m), EX_SET_CAP), m, ["weekly coverage — every muscle gets served before the week runs out", ex.lengthened_bias ? "lengthened-biased" : "primary for " + m], !isEarly && holdMaint(m) && (credited[m] ?? 0) === 0 ? 1 : 2) && isEarly) earlyUsed++;
     }
 
     // 4a) one compound per compound-driven muscle — but under a scarce quality
@@ -946,7 +1012,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // left to cover the short head at all (beginner 12-set lower days did
         // exactly this once the coverage floor stopped fragmenting day A). The
         // guarantee is weekly, so its last chance outranks first-serve's doubling.
-        if (!weekKneeFlexion && mset.includes("hamstrings") && !trainsLater("hamstrings") && !holdMaint("hamstrings") && room()) {
+        if (!weekKneeFlexion && mset.includes("hamstrings") && !trainsLater("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
           const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
@@ -984,7 +1050,10 @@ export function generatePlan(profile, kb, opts = {}) {
         //     of the biceps femoris untrained (it only crosses the knee) — leg
         //     curls are a leg-day canon staple for a reason. Guarantee ≥1
         //     knee-flexion exercise somewhere in the week when equipment allows.
-        if (!weekKneeFlexion && mset.includes("hamstrings") && !holdMaint("hamstrings") && room()) {
+        // (Both knee-flexion gates test `.maintenance` directly, NOT holdMaint: an
+        // EASED hamstring is growth-dosed at MEV and regains the weekly short-head
+        // guarantee — the want-math still caps its sets at the eased target.)
+        if (!weekKneeFlexion && mset.includes("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
           const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
@@ -1224,6 +1293,21 @@ export function generatePlan(profile, kb, opts = {}) {
     // A maintenance muscle (specialization block) is INTENTIONALLY low — its status
     // is "maintenance" and it earns no growth warnings; warning that a muscle we're
     // deliberately only holding is "below MEV" would contradict the block's whole point.
+    // An EASED muscle (specialization, budget-funded) is deliberately capped at its
+    // minimum effective dose — "slow growth" by design, so the below-MEV/under-target
+    // machinery stays quiet exactly as it does for maintenance; over-MRV would still
+    // be caught by the trim above.
+    if (r.eased) {
+      r.projected_status = proj > 0 ? "eased" : "not-reached";
+      // Same honesty rule as the maintenance overshoot below: secondary credit
+      // (hinges and squats placed for their neighbours) can carry an eased muscle
+      // past its MEV dose — say so rather than keep quoting the smaller target.
+      const mev = muscleById.get(m)?.landmarks?.mev?.min;
+      if (mev != null && proj > mev + 1.5) {
+        r.reasons = [`~${proj} sets/wk — carried above its eased (minimum effective) dose by secondary work from your other lifts (unavoidable, and fine); it keeps growing while the recovery cost still falls mostly on the priorities`];
+      }
+      continue;
+    }
     if (r.maintenance) {
       r.projected_status = proj > 0 ? "maintenance" : "not-reached";
       // Honesty: a maintenance muscle that is ALSO a synergist of the priority lifts
@@ -1302,7 +1386,15 @@ export function generatePlan(profile, kb, opts = {}) {
     for (const sn of outSessions) {
       const prims = new Set(sn.exercises.flatMap((e) => exById.get(e.exercise)?.primary_muscles ?? []));
       if (prims.size && [...prims].every((m) => holdMaint(m))) {
-        session_notes[sn.name] = "Light on purpose: your specialization block holds these muscles at a maintenance dose — enough to keep everything you've built, while the freed recovery pays for your priority muscles.";
+        // Three honest variants for the day's dose mix — all keep the "Light on
+        // purpose:" prefix the surfaces (and tests) key on.
+        const anyMv = [...prims].some((m) => volumeRationale[m]?.maintenance);
+        const anyEased = [...prims].some((m) => volumeRationale[m]?.eased);
+        session_notes[sn.name] = anyMv && anyEased
+          ? "Light on purpose: your specialization block runs these muscles on a reduced dose — a minimum growing dose where recovery allows, a maintenance dose where it doesn't — while the freed recovery pays for your priority muscles."
+          : anyEased
+            ? "Light on purpose: your specialization block eases these muscles back to a minimum effective dose — still slowly growing, while the freed recovery pays for your priority muscles."
+            : "Light on purpose: your specialization block holds these muscles at a maintenance dose — enough to keep everything you've built, while the freed recovery pays for your priority muscles.";
       }
     }
   }
@@ -1337,7 +1429,7 @@ export function generatePlan(profile, kb, opts = {}) {
     exercise_choices: exerciseChoices,
     warnings,
   };
-  return { program, rationale, meta: { engine_version: "1.0.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries } } };
+  return { program, rationale, meta: { engine_version: "1.1.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries } } };
 }
 
 // Critique any program (generated OR user-built) against the KB: per-muscle
@@ -1422,6 +1514,11 @@ export function explainPersonalization(profile, rationale, program) {
     const held = Object.entries(vol)
       .filter(([, v]) => v.maintenance && (v.projected_sets ?? 0) > 0)
       .map(([m]) => MUSCLE_LABEL[m] ?? m);
+    // ...and the muscles the funding pass EASED to MEV — reported as their own
+    // group (still progressing), never lumped in with the pure-maintenance holds.
+    const eased = Object.entries(vol)
+      .filter(([, v]) => v.eased && (v.projected_sets ?? 0) > 0)
+      .map(([m]) => MUSCLE_LABEL[m] ?? m);
     // A specialization block ENDS (SPEC_MAX_BLOCKS). When it does, the maintenance
     // holds this line described last block simply vanish — so say so, rather than
     // letting the plan quietly change underneath a card whose whole job is explaining
@@ -1429,9 +1526,14 @@ export function explainPersonalization(profile, rationale, program) {
     const spec = r.goal_prescription?.specialization;
     const blockEnded = spec ? spec.wants && !spec.active : false;
     if (named.length) {
+      const cutParts = [];
+      if (eased.length) cutParts.push(`${eased.length} other muscle${eased.length === 1 ? "" : "s"} eased back to a minimum growing dose (still progressing, slowly)`);
+      if (held.length) cutParts.push(eased.length
+        ? `${held.length} more held at a maintenance dose`
+        : `${held.length} other muscle${held.length === 1 ? "" : "s"} held at a maintenance dose`);
       say("priority_muscles", `you want to grow ${priorities.map((m) => MUSCLE_LABEL[m] ?? m).join(" and ")}`,
-        held.length
-          ? `${named.join(", ")} — pushed toward the ceiling, and ${held.length} other muscle${held.length === 1 ? "" : "s"} held at a maintenance dose to pay for the recovery it costs.`
+        cutParts.length
+          ? `${named.join(", ")} — pushed toward the ceiling, and ${cutParts.join(" and ")} to pay for the recovery it costs.`
           : blockEnded
             ? `${named.join(", ")} — still your priority. Your specialization block has run its course, so everything else is back off maintenance and training normally again; change your priority muscles whenever you want to start another one.`
             : `${named.join(", ")} — more volume than they'd otherwise get.`);
