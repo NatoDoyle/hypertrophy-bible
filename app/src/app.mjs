@@ -1606,14 +1606,20 @@ export function createApp(store, config = {}) {
     // Today's logged intake (client passes ?d= its local day) so the Fuel tab can
     // show progress AGAINST the target — closing the tracker loop.
     const day = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date().toISOString().slice(0, 10); })();
-    const todayLog = (await store.listNutritionLog(id)).find((e) => (e.date || "").slice(0, 10) === day) || null;
+    const fullList = await store.listNutritionLog(id);
+    const todayLog = fullList.find((e) => (e.date || "").slice(0, 10) === day) || null;
     // sex is surfaced so the stats form can ask for the hip measure the Navy formula
     // requires for women (without it a female tape-measure estimate silently fails).
-    // The daily log rides along (it was already loaded for the adaptive TDEE):
-    // the client draws the intake trend and offers per-day edits — the existing
-    // POST /api/nutrition/log replaces-by-date, so editing needs no new door.
-    const log = history.filter((h) => h.kcal).map((h) => ({ date: (h.date || "").slice(0, 10), kcal: h.kcal, protein_g: h.protein_g ?? null }));
-    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: log.length, sex: user.profile?.sex ?? null, today: todayLog && { kcal: todayLog.kcal, protein_g: todayLog.protein_g }, log });
+    // The daily log the client DRAWS spans the full history (owner #3 — the intake
+    // chart was silently capped at nutritionInputs' 28-day adaptive window), while
+    // `logged_days` keeps counting only the windowed days that feed the adaptive
+    // maintenance estimate — its copy says "from your last N logged days", so the
+    // two must not be conflated. Edits still reuse the replace-by-date door.
+    const log = fullList.filter((h) => h.kcal)
+      .map((h) => ({ date: (h.date || "").slice(0, 10), kcal: h.kcal, protein_g: h.protein_g ?? null }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+    const windowedDays = history.filter((h) => h.kcal).length;
+    return c.json({ nutrition: plan, needs_stats: !plan, has_bf: profile.bf_pct != null, has_weight: profile.weight_kg != null, logged_days: windowedDays, sex: user.profile?.sex ?? null, today: todayLog && { kcal: todayLog.kcal, protein_g: todayLog.protein_g }, log });
   });
 
   app.post("/api/nutrition/log", async (c) => {

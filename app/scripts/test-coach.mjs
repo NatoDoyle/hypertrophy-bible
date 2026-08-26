@@ -561,6 +561,34 @@ check("an add signal under the whole-athlete deficit/recovery gate carries `gate
   assert.equal((clean.adaptive || []).find((a) => a.muscle === "chest")?.gated, undefined);
 });
 
+check("progressReport ships the FULL progression and PR lists beside the capped ones (owner #3: Full progress views)", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const lifts = ["barbell-bench-press", "barbell-back-squat", "conventional-deadlift", "barbell-overhead-press", "barbell-row", "lat-pulldown", "leg-press", "dumbbell-bench-press", "romanian-deadlift", "skullcrusher"];
+  // 10 lifts × 3 rising weeks → progression stays capped at 8, _all carries all 10;
+  // every weekly best is a PR event, so the full PR list far exceeds the 8-row feed.
+  const sessions = [3, 2, 1].map((w) => ({ session_id: `pw-${w}`, date: day(w * 7), sets: lifts.map((ex) => ({ exercise: ex, set_type: "work", weight_kg: 100 + (3 - w) * 5, reps: 8 })) }));
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const rep = progressReport(u, sessions, [], [], new Date().toISOString());
+  assert.equal(rep.progression.length, 8, "the display list keeps its 8-row contract");
+  assert.equal(rep.progression_all.length, 10, "…while _all carries every lift with 2+ weeks");
+  assert.ok(rep.progression_all.every((p) => Array.isArray(p.series) && p.series.every((pt) => pt.week && typeof pt.value === "number")), "each row ships its dated series");
+  assert.equal(rep.personal_records.length, 8, "the PR feed keeps its 8-row contract");
+  assert.equal(rep.personal_records_all.length, rep.pr_count, "…while _all is the complete history the count already promised");
+  assert.ok(rep.personal_records_all.every((pr) => pr.name && pr.date), "each PR row is renderable (name + date)");
+});
+
+check("bodyweight_series spans the FULL history while bodyweight_trend keeps the 42-day window", () => {
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  // ≥3 recent points AND an old row — without the old row the sparse fallback makes
+  // windowed and full history silently identical, and this test would pass on the
+  // old code (lesson 54's exact class, caught twice before).
+  const bw = [{ date: day(100), kg: 100 }, { date: day(20), kg: 80 }, { date: day(12), kg: 80.2 }, { date: day(5), kg: 80.1 }, { date: day(1), kg: 80 }];
+  const u = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3 } };
+  const rep = progressReport(u, [], bw, [], new Date().toISOString());
+  assert.equal(rep.bodyweight_series.length, 5, "the drawn series carries the whole log, incl. the 100-day-old row");
+  assert.equal(rep.bodyweight_trend.n, 4, "…while the trend stays on the 42-day window (the adaptive read is untouched)");
+});
+
 check("an over-MRV muscle's reduce signal survives the adaptive filter chain (C7's server half)", () => {
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
   const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });

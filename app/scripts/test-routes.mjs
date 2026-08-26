@@ -776,6 +776,35 @@ try {
   ok("#51 GET /api/nutrition returns today's logged intake for the given day", withToday.today && withToday.today.kcal === 2650 && withToday.today.protein_g === 175);
   const noToday = await (await app.request("/api/nutrition?d=2020-01-01", { headers: { "X-HB-User": nUser } })).json();
   ok("#51 a day with nothing logged returns no today total", !noToday.today);
+  // Wave 259 (owner #3): the intake HISTORY the client draws spans the full log,
+  // while the adaptive maintenance estimate keeps its 28-day window untouched.
+  await json("POST", "/api/nutrition/log", { user_id: nUser, date: dAgo(40).slice(0, 10), kcal: 3100, protein_g: 150 });
+  const fullLog = await (await app.request("/api/nutrition", { headers: { "X-HB-User": nUser } })).json();
+  ok("#259 a 40-day-old intake entry appears in the drawn log",
+    (fullLog.log ?? []).some((e) => e.date === dAgo(40).slice(0, 10) && e.kcal === 3100));
+  ok("#259 ...without touching the adaptive window (logged_days still counts only the 28-day read)",
+    fullLog.logged_days === withToday.logged_days && fullLog.nutrition?.tdee_basis === withToday.nutrition?.tdee_basis);
+
+  // Wave 259 (owner #3): "Last time you did this lift" needs last_reps to survive
+  // the route — last_kg already rides buildToday's exercise assembly, last_reps was
+  // dropped there (the exact route-whitelist class this suite exists for).
+  const lrUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  // One logged session advances the rotation to program session[1]; log ITS first
+  // exercise so today's card carries that lift's history.
+  const lrProg = (await store.getUser(lrUser)).program;
+  const lrEx = lrProg.sessions[1].exercises[0].exercise;
+  await json("POST", "/api/session", { user_id: lrUser, session_id: "lr-1", date: dayAgo(3), sets: [
+    { exercise: lrEx, set_type: "work", weight_kg: 40, reps: 8 },
+    { exercise: lrEx, set_type: "work", weight_kg: 40, reps: 7 },
+  ] });
+  const lrToday = await (await app.request("/api/today", { headers: { "X-HB-User": lrUser } })).json();
+  const lrRow = (lrToday.session?.exercises ?? []).find((e) => e.exercise === lrEx);
+  ok("#259 fixture reaches the branch: the logged lift is on today's card with its last weight",
+    !!lrRow && lrRow.last_kg === 40);
+  ok("#259 last_reps rides /api/today so the player can say 'Last time: 40 kg × 8, 7'",
+    Array.isArray(lrRow?.last_reps) && lrRow.last_reps.join(",") === "8,7");
 
   // --- Wave 68 (audit): nutrition route hardening through the real HTTP door ---
   // E: a hostile/unknown activity string must not poison TDEE to NaN (Wave-49 class).

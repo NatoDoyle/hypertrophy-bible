@@ -575,6 +575,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // lb into a kg field) against the lift's own history before banking it — see
       // session-core's isImplausibleSet. Display/guard only, never stored.
       last_kg: sug.last_kg ?? null,
+      // ...and the reps that went with it, so the set screen can say
+      // "Last time: 40 kg × 8, 7" (owner #3) — last_kg rode for the typo guard
+      // while last_reps was silently dropped here (the route-whitelist class).
+      last_reps: sug.last_reps ?? null,
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory
@@ -946,11 +950,18 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   const progression = [...allProg.filter((p) => stalledIds.has(p.exercise)), ...allProg.filter((p) => !stalledIds.has(p.exercise))]
     .slice(0, 8)
     .map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
+  // The FULL list beside the capped feed (owner #3, "Full progress views"): the
+  // engine always computed every lift's dated series and threw all but 8 rows away.
+  // Additive — `progression`'s 8-row contract is pinned by tests and stays.
+  const progression_all = allProg.map((p) => ({ ...p, stalled: stalledIds.has(p.exercise) }));
   // Personal-record history (roadmap #1c): the full PR list for a count, plus the most
   // recent few for a lookback "wins" feed. Structured (weights, not pre-baked strings) so
   // the client renders in the user's unit.
   const prHistory = allPersonalRecords(sessions);
   const personal_records = prHistory.slice(0, 8).map((pr) => ({ ...pr, name: name(pr.exercise) }));
+  // ...and the complete list the count had always promised (owner #3): every PR
+  // event, renderable (name + date), newest first.
+  const personal_records_all = prHistory.map((pr) => ({ ...pr, name: name(pr.exercise) }));
   // Concurrent-training read. Fed the FULL progression list (not the 8-row display
   // slice) so a climbing upper-body lift can never be truncated out of the asymmetry
   // check, and the same `stalls` array the plateau card renders, so the two surfaces
@@ -960,9 +971,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     recovery,
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, pr_count: prHistory.length, interference,
-    // The raw weigh-in series (already computed for the trend): the client draws
-    // it and offers per-day edits — the trend number alone answered "am I
-    // gaining", never "what did I actually log" (owner consideration, Wave 252).
-    bodyweight_series: bwSeries.map((b) => ({ date: (b.date || "").slice(0, 10), kg: b.bodyweight_kg })) };
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
+    // The raw weigh-in series the client DRAWS spans the full log (owner #3 —
+    // "see my progress" means all of it), while `bodyweight_trend` above keeps its
+    // 42-day window: the drawn history and the adaptive read are different
+    // questions, split deliberately (Wave 259).
+    bodyweight_series: bodyweights.map((b) => ({ date: (b.date || "").slice(0, 10), kg: b.kg })) };
 }
