@@ -438,6 +438,35 @@ const overshootSyn = Object.entries(specP.rationale.volume_by_muscle)
   .find(([m, r]) => r.maintenance && r.projected_sets >= (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity))?.[1];
 ok("#1 an overshooting synergist gets an honest 'secondary work' reason, not a false maintenance claim",
   !overshootSyn || (/secondary work/.test(overshootSyn.reasons[0]) && !/holds what you've built/.test(overshootSyn.reasons[0])));
+
+// --- Wave 257 (self-audit of the ease-to-MEV pass): honesty at the two ends the
+// funding pass can't control — a held muscle the week can't serve AT ALL, and an
+// eased muscle whose placement falls short of the MEV its reason quotes. Both
+// measured real across a 720-config battery (9 held-at-zero configs, 18
+// eased-undershoot configs) before these tests were written.
+{
+  // (a) 2-day 30-min block, three priorities: lats is held at MV and the week
+  // delivers literally NOTHING for it — the rationale must say so (not "holds
+  // what you've built") and a warning must name it (the feasibility warning the
+  // roadmap named after the Wave-254 abs record; lats is its sibling).
+  const tight = generatePlan({ user_id: "t-held0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 30, priority_muscles: ["side-delts", "biceps", "triceps"] }, kb);
+  const lats = tight.rationale.volume_by_muscle["lats"];
+  ok("#HZ fixture reaches the branch: lats held at MV, delivered zero, status not-reached",
+    lats.maintenance === true && lats.projected_sets === 0 && lats.projected_status === "not-reached");
+  ok("#HZ a held muscle at zero tells the truth instead of claiming a dose it never got",
+    !/holds what you've built/.test(lats.reasons[0]) && /couldn't fit|didn't fit|gets nothing/.test(lats.reasons[0]));
+  ok("#HZ ...and a warning names it (held-not-reached)",
+    tight.rationale.warnings.some((w) => w.code === "held-not-reached" && w.muscle === "lats"));
+  // (b) 6-day glute block: chest eases to MEV 8 but placement delivers 6 — the
+  // reason must quote the DELIVERED number, matching the critique caveat that
+  // already says 6 (two surfaces, one answer).
+  const six = generatePlan({ user_id: "t-eased-under", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60, priority_muscles: ["glutes"] }, kb);
+  const chest = six.rationale.volume_by_muscle["chest"];
+  ok("#EU fixture reaches the branch: chest eased, delivered < MEV - 1.5",
+    chest.eased === true && chest.projected_sets < muscleById.get("chest").landmarks.mev.min - 1.5);
+  ok("#EU an under-delivered eased muscle's reason quotes what the week actually gives",
+    new RegExp(`~${chest.projected_sets} sets`).test(chest.reasons[0]) && !new RegExp(`~${chest.target_sets} sets, the KB's minimum`).test(chest.reasons[0]));
+}
 // #2/#4: an under-target warning for an ALREADY-priority muscle must not tell the
 // user to "mark it a priority muscle" (they already did / it's a specialization
 // target). It should point at the real levers (more days / longer sessions).

@@ -1299,24 +1299,43 @@ export function generatePlan(profile, kb, opts = {}) {
     // be caught by the trim above.
     if (r.eased) {
       r.projected_status = proj > 0 ? "eased" : "not-reached";
-      // Same honesty rule as the maintenance overshoot below: secondary credit
-      // (hinges and squats placed for their neighbours) can carry an eased muscle
-      // past its MEV dose — say so rather than keep quoting the smaller target.
       const mev = muscleById.get(m)?.landmarks?.mev?.min;
-      if (mev != null && proj > mev + 1.5) {
+      if (proj === 0) {
+        // Funded on paper, served nothing in placement (pool/variety caps) — the
+        // same feasibility truth as the maintenance branch below: say it, warn it.
+        r.reasons = [`the week couldn't fit its eased dose — it gets nothing this block; ${levers}`];
+        warnings.push({ code: "held-not-reached", muscle: m, message: `${m} was eased back for your specialization block, but with your priorities' share placed first the week couldn't fit it at all — ${levers}, or trim a priority muscle.` });
+      } else if (mev != null && proj > mev + 1.5) {
+        // Same honesty rule as the maintenance overshoot below: secondary credit
+        // (hinges and squats placed for their neighbours) can carry an eased muscle
+        // past its MEV dose — say so rather than keep quoting the smaller target.
         r.reasons = [`~${proj} sets/wk — carried above its eased (minimum effective) dose by secondary work from your other lifts (unavoidable, and fine); it keeps growing while the recovery cost still falls mostly on the priorities`];
+      } else if (mev != null && proj < mev - 1.5) {
+        // ...and the UNDERSHOOT mirror (Wave-257 audit: 18/720 configs shipped a
+        // reason promising "~MEV sets" while placement delivered less — the critique
+        // caveat already told the truth, so two surfaces disagreed). Quote what the
+        // week actually gives, never the target the budget check funded on paper.
+        r.reasons = [`~${proj} sets/wk — eased toward its minimum effective dose (~${r.target_sets}) as far as the week's sessions actually fit; still growing, slowly, while your priorities take the freed recovery`];
       }
       continue;
     }
     if (r.maintenance) {
       r.projected_status = proj > 0 ? "maintenance" : "not-reached";
-      // Honesty: a maintenance muscle that is ALSO a synergist of the priority lifts
-      // picks up unavoidable secondary volume and can sit above pure maintenance (you
-      // can't press for a priority chest without working triceps/front-delts). When
-      // that lands it at/above MEV, say so — don't keep claiming "~target sets, holds
-      // what you've built" when the plan is really giving it growth-range volume.
       const mev = muscleById.get(m)?.landmarks?.mev?.min;
-      if (mev != null && proj >= mev) {
+      if (proj === 0) {
+        // The tight-budget end (Wave-257 audit: 9/720 configs — 2-day 30-min blocks
+        // with 3 priorities strand lats at literal zero; abs' recorded sibling): the
+        // reason must not claim "holds what you've built" over a dose of nothing,
+        // and the plan screen gets a warning — held muscles skip the generic
+        // proj===0 warning below by design, so this branch carries its own.
+        r.reasons = [`the week couldn't fit even its ~${r.target_sets}-set maintenance dose — it gets nothing this block; ${levers}`];
+        warnings.push({ code: "held-not-reached", muscle: m, message: `${m} is meant to hold at ~${r.target_sets} maintenance sets during your specialization block, but with your priorities' share placed first the week couldn't fit any — ${levers}, or trim a priority muscle.` });
+      } else if (mev != null && proj >= mev) {
+        // Honesty: a maintenance muscle that is ALSO a synergist of the priority lifts
+        // picks up unavoidable secondary volume and can sit above pure maintenance (you
+        // can't press for a priority chest without working triceps/front-delts). When
+        // that lands it at/above MEV, say so — don't keep claiming "~target sets, holds
+        // what you've built" when the plan is really giving it growth-range volume.
         r.reasons = [`~${proj} sets/wk — carried above pure maintenance by secondary work from your priority lifts (unavoidable, and fine); the recovery cost still falls mostly on the priorities`];
       }
       continue;
