@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKey, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -662,13 +662,31 @@ export function createApp(store, config = {}) {
     if (rdBlock && rdBlockStart && !user.program?.custom) {
       const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
       const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
-      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex)) {
+      // The stamp lives in the user's LOCAL week frame — the same frame the block
+      // clock and buildToday's read use; raw isoWeekKey put a UTC-8 user's Sunday
+      // deload in a week they weren't in (lesson 22, storage+consumption together).
+      const rdWeek = isoWeekKeyLocal(nowISO, tz);
+      // Re-arm context (C15): sessionWeekKey is already local (it prefers
+      // local_date), and ISO week keys are zero-padded, so string order IS
+      // chronological order (lesson 40 — the ordinal form, not equality).
+      const rdTrainedKeys = new Set(sessions.map(sessionWeekKey).filter(Boolean));
+      const rdStamp = user.plan_meta?.reactive_deload;
+      const rdOpts = {
+        stampedWeekTrained: rdStamp ? rdTrainedKeys.has(rdStamp.week) : true,
+        stampedWeekOver: rdStamp ? rdStamp.week < rdWeek : false,
+      };
+      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex, rdOpts)) {
         const stamped = await store.updateUser(id, (u) => {
           // Precondition re-checked inside the CAS against the FRESH read — a
           // concurrent request may have stamped this block already, and stamping
-          // twice would move the week forward and deload two weeks running.
-          if ((u.plan_meta?.reactive_deload?.block ?? null) === rdBlockIndex) return u;
-          u.plan_meta = { ...(u.plan_meta ?? {}), reactive_deload: { block: rdBlockIndex, week: isoWeekKey(nowISO) } };
+          // twice would move the week forward and deload two weeks running. It must
+          // mirror the outer re-arm rule exactly, or a legitimately re-armed stamp
+          // could never be moved (lesson 21: act on what persists): same-block
+          // stamps stand unless their week passed untrained.
+          const fresh = u.plan_meta?.reactive_deload;
+          if ((fresh?.block ?? null) === rdBlockIndex
+            && (fresh.week === rdWeek || rdTrainedKeys.has(fresh.week) || !(fresh.week < rdWeek))) return u;
+          u.plan_meta = { ...(u.plan_meta ?? {}), reactive_deload: { block: rdBlockIndex, week: rdWeek } };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
         if (stamped) user = stamped; // act on what was PERSISTED, not the local guess (lesson 21)

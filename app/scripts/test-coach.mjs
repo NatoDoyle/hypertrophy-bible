@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
-import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey } from "../../tools/derive-core.mjs";
+import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -878,6 +878,37 @@ check("reactiveDeloadDue: at most ONCE per block", () => {
 
 check("reactiveDeloadDue: beginners have no block at all, so nothing to bring forward", () => {
   assert.equal(reactiveDeloadDue(atCeiling, null, {}, 0), false);
+});
+
+check("reactiveDeloadDue: a stamped week that passed UNTRAINED re-arms; a trained or current one doesn't (C15)", () => {
+  const meta = { reactive_deload: { block: 0, week: "2026-W30" } };
+  // The stamped week came and went with no session — the deload never happened, so
+  // the block's one reactive deload was never actually spent (lesson 28: a deload
+  // must mean a deload that HAPPENED, not a week the user skipped).
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), meta, 0, { stampedWeekTrained: false, stampedWeekOver: true }), true, "untrained past week re-arms");
+  // The stamped week was trained — the deload was delivered; once per block holds.
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), meta, 0, { stampedWeekTrained: true, stampedWeekOver: true }), false, "a delivered deload is spent");
+  // The stamped week is still current — the deload is in progress, never re-stamp
+  // (lesson 40: the ambiguous direction is the inert one).
+  assert.equal(reactiveDeloadDue(atCeiling, blk(4), meta, 0, { stampedWeekTrained: false, stampedWeekOver: false }), false, "an in-progress week is not re-armed");
+});
+
+check("buildToday: the reactive-deload stamp is read in the user's LOCAL week frame, not raw UTC (C2)", () => {
+  // Monday 02:00 UTC = Sunday evening at UTC-8: the user's local week is still the
+  // PREVIOUS ISO week. A stamp written in their frame must deload their session,
+  // and a raw-UTC stamp must not — the same lesson-22 class trainedWeeksInBlock
+  // already fixed, at the deload stamp's read.
+  const now = "2026-01-05T02:00:00.000Z"; // Monday, UTC week 2026-W02
+  const tz = -480;
+  const localWk = isoWeekKeyLocal(now, tz); // 2026-W01 (their Sunday)
+  assert.notEqual(localWk, isoWeekKey(now), "fixture sanity: the frames disagree at this instant");
+  const prog = selectProgram({ training_status: "intermediate", days_per_week: 4 });
+  const base = { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, tz_offset_min: tz }, program: prog };
+  const blockStart = "2025-12-21T00:00:00.000Z";
+  const localStamp = buildToday({ ...base, plan_meta: { block_start: blockStart, reactive_deload: { block: 0, week: localWk } } }, [], null, [], now);
+  assert.equal(localStamp.block.phase, "deload", "a stamp in the user's own week frame deloads their session");
+  const utcStamp = buildToday({ ...base, plan_meta: { block_start: blockStart, reactive_deload: { block: 0, week: isoWeekKey(now) } } }, [], null, [], now);
+  assert.notEqual(utcStamp.block.phase, "deload", "a raw-UTC week the user is not in must not deload");
 });
 
 check("buildToday: a stamped reactive-deload week actually deloads the session", () => {

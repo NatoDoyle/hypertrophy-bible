@@ -3,7 +3,7 @@
 import {
   perMuscleWeeklyVolume, volumeVsLandmarks, progressionByExercise,
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
-  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKey, isoWeekKeyLocal, sessionWeekKey,
+  deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal,
 } from "../../tools/derive-core.mjs";
@@ -329,7 +329,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // and the stamp can't slide forward mid-week as new sessions change the signal.
   // Rewrites the phase in place so every downstream deload branch (sets, RIR, load
   // ease) applies unchanged — one mechanism, two triggers.
-  if (block && now && user.plan_meta?.reactive_deload?.week === isoWeekKey(now)) {
+  // The stamp is read in the user's LOCAL week frame — the same frame the block
+  // clock (trainedWeeksInBlock) and the stamp writer use. Raw isoWeekKey here made
+  // a UTC-8 user's Sunday-evening deload land in a week they weren't in (lesson 22).
+  if (block && now && user.plan_meta?.reactive_deload?.week === isoWeekKeyLocal(now, user.profile?.tz_offset_min)) {
     block = {
       ...block,
       phase: "deload",
@@ -707,10 +710,18 @@ export function stalledExerciseIds(sessions, customEx = [], now = null) {
 // Bounded hard: never in week 1-2 (a block that has barely started has no fatigue
 // to shed), never during a scheduled deload week, and at most ONCE per block.
 const REACTIVE_DELOAD_MIN_WEEK = 3;
-export function reactiveDeloadDue(responses, block, plan_meta, blockIndex) {
+export function reactiveDeloadDue(responses, block, plan_meta, blockIndex, opts = {}) {
   if (!block || block.phase === "deload") return false;
   if (block.week < REACTIVE_DELOAD_MIN_WEEK) return false;
-  if ((plan_meta?.reactive_deload?.block ?? null) === blockIndex) return false; // once per block
+  if ((plan_meta?.reactive_deload?.block ?? null) === blockIndex) {
+    // Once per block — per block of TRAINING (lesson 28): a stamped week the user
+    // never trained delivered no deload, so it re-arms once that week is strictly
+    // past in the user's frame. The ambiguous directions stay inert (lesson 40):
+    // a still-current week is in progress, and a trained week is spent. Callers
+    // that don't pass the flags keep the old hard once-per-block behavior.
+    const { stampedWeekTrained = true, stampedWeekOver = false } = opts;
+    if (stampedWeekTrained || !stampedWeekOver) return false;
+  }
   return (responses ?? []).some((r) => r.signal === "change");
 }
 

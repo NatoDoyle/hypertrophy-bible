@@ -310,6 +310,34 @@ try {
   ok("#C5 a real training change still clears the deload stamp with the fresh block",
     realChange.status === 200 && !(await store.getUser(atUser)).plan_meta?.reactive_deload);
 
+  // C15: "once per block" must mean once per block OF TRAINING — a stamped week the
+  // user never trained burned the block's one reactive deload forever. Construct the
+  // "change" signal for real (chest stalled at its recoverable ceiling: 5 flat weekly
+  // sessions of 18 hard bench sets, ≥ chest mav.max), block week 4 (3 trained weeks
+  // since block_start), then a pre-seeded stamp for an ancient UNTRAINED week must
+  // re-arm — and one for a genuinely trained week must stay spent.
+  const rdUser = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  const bigSession = Array.from({ length: 18 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }));
+  for (let w = 0; w < 5; w++) await json("POST", "/api/session", { user_id: rdUser, session_id: `rd-${w}`, date: dayAgo(35 - w * 7), sets: bigSession });
+  await store.updateUser(rdUser, (u) => {
+    u.plan_meta = { ...u.plan_meta, block_start: dayAgo(22), block_index: 0, reactive_deload: { block: 0, week: "2020-W01" } };
+    return u;
+  });
+  const rdRes = await (await app.request("/api/today", { headers: { "X-HB-User": rdUser } })).json();
+  const rdStamp = (await store.getUser(rdUser)).plan_meta.reactive_deload;
+  ok("#C15 an untrained stamped week re-arms: the stamp moves to the current local week",
+    rdStamp?.week === isoWeekKeyLocal(Date.now(), null) && rdStamp?.block === 0);
+  ok("#C15 ...and today's session is the deload it re-armed", rdRes?.session?.block?.phase === "deload");
+  // The spent direction, locked so a later sweep doesn't "fix" it (lesson 13): a
+  // stamp whose week WAS trained is a delivered deload and stays consumed.
+  const trainedWk = isoWeekKeyLocal(Date.parse(dayAgo(7)), null);
+  await store.updateUser(rdUser, (u) => { u.plan_meta = { ...u.plan_meta, reactive_deload: { block: 0, week: trainedWk } }; return u; });
+  await app.request("/api/today", { headers: { "X-HB-User": rdUser } });
+  ok("#C15 a stamp for a TRAINED week stays spent (once per block of training holds)",
+    (await store.getUser(rdUser)).plan_meta.reactive_deload.week === trainedWk);
+
   // ...and the SAME stall must NOT bump volume while a specialization block is running,
   // because a non-priority muscle held at maintenance stalls BY DESIGN. The gate for
   // that read the raw `profile.specialization` field, which Wave 179 stopped writing —
