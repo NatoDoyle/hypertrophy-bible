@@ -6,7 +6,23 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-08-27** (Waves 257-261: all three owner
+Grounded assessment date: **2026-09-06** (Waves 262-264: all three owner
+considerations closed. Wave 262 — the session player's weight/reps became real
+type-able inputs between the − / + buttons, and the unit label became a
+per-exercise kg↔lb toggle for the mixed-unit gym (profile.exercise_units via its
+own narrow route; storage stays kg everywhere — per-entry unit stamps + one pure
+migration function keep est-1RM/PR/stall/suggestions pound-free); adversarially
+reviewed, 9 findings fixed. Waves 263-264 — the owner's "missing exercise page"
+premise was overturned: all 171 sheets were authored, 107 were UNREACHABLE from
+the Plan tab's 64-sheet bundle; every sheet now ships (owner chose full offline
+parity), custom lifts fall back to the API, the frozen `=== 64` gate became a
+corpus-derived coverage floor, and ~141 exercises' authored-but-never-shown
+progressions/regressions render as Make it easier/harder. **Named next pulls**
+unchanged from the prior grounding: the desktop multi-column layer; Nerd Mode
+surfaces (C8); session rotation onto committed weekdays (C16); plus recorded
+deferrals — rom_notes surfacing (28/171) and richer per-exercise prose pages.)
+The prior grounding:
+(Waves 257-261: all three owner
 considerations closed in one turn. The program-engine explainer audit — the named
 centerpiece — produced `docs/program-engine.md` (the owner's four questions answered
 with every magnitude from code) and 16 verified candidates: 9 fixed (a Settings save

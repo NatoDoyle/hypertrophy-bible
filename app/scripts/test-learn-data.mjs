@@ -28,9 +28,14 @@ const EX_ON_DISK = new Set(readdirSync(join(ROOT, "data", "exercises")).filter((
 const allButtons = () => Object.entries(LEARN_PAGES).flatMap(([slug, pg]) =>
   [...pg.html.matchAll(/data-exercise="([a-z0-9-]+)"/g)].map((m) => [slug, m[1]]));
 
-check("the bundle ships an exercise sheet set", () => {
+check("EVERY exercise on disk ships a sheet — coverage is a floor, not a frozen count", () => {
+  // Wave 263 (owner decision): the old "referenced-only" bundle made the Plan
+  // tab's "tap any exercise" false for 107 of 171 lifts. This is deliberately a
+  // corpus-derived floor, not a constant — the previous `=== 64` FROZE the gap
+  // in place: a test that pins today's number can't tell "still complete" from
+  // "still incomplete". A new exercise file without a regenerated bundle fails here.
   assert.ok(LEARN_EXERCISES && typeof LEARN_EXERCISES === "object");
-  assert.equal(Object.keys(LEARN_EXERCISES).length, 64, "only the referenced ids are bundled — all 171 would cost ~235 KB raw against ~87 KB");
+  for (const id of EX_ON_DISK) assert.ok(LEARN_EXERCISES[id], `exercise ${id} has no bundled sheet — run build-data`);
   for (const id of Object.keys(LEARN_EXERCISES)) assert.ok(EX_ON_DISK.has(id), `bundled sheet ${id} has no data file`);
 });
 
@@ -52,7 +57,8 @@ check("no page leaks a raw data/ path into the shipped HTML", () => {
 });
 
 check("each sheet carries every field renderExerciseSheet reads", () => {
-  const NEEDED = ["id", "name", "execution_steps", "cues", "common_errors", "primary_muscles", "movement_pattern"];
+  const NEEDED = ["id", "name", "execution_steps", "cues", "common_errors", "primary_muscles", "movement_pattern",
+    "good_when", "bad_when", "progressions", "regressions"];
   for (const [id, d] of Object.entries(LEARN_EXERCISES)) {
     for (const f of NEEDED) assert.ok(Object.hasOwn(d, f), `${id} is missing ${f}`);
   }
@@ -73,7 +79,9 @@ check("muscles are DISPLAY names, not raw ids — the sheet renders them directl
 const storePath = join(tmpdir(), `hb-learn-data-test-${process.pid}.json`);
 try {
   const app = createApp(createFileStore(storePath), {});
-  const sample = Object.keys(LEARN_EXERCISES).slice(0, 8);
+  // kettlebell-lateral-raise rides along explicitly: it is the owner's named
+  // example of a previously unreachable sheet (Wave 263).
+  const sample = [...new Set([...Object.keys(LEARN_EXERCISES).slice(0, 8), "kettlebell-lateral-raise"])];
   for (const id of sample) {
     const res = await app.request(`/api/exercise/${id}`);
     const api = await res.json();

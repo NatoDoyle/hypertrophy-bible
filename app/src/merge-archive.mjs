@@ -36,7 +36,11 @@ export const LIVE_PROFILE_FIELDS = new Set([
 // `smoke` marks owner smoke-test traffic so it can be excluded from the activation
 // metric. It must be server-owned in the strictest sense: a client that could set it
 // could remove itself from the app's own numbers.
-export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke"]);
+// `exercise_units` (per-exercise kg/lb overrides) sits in the same slot as
+// disclaimer_ack: it travels with a restore, but only its own validating route
+// (/api/profile/exercise-units) may write it — the wholesale doors would accept
+// an unbounded, unvalidated map.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units"]);
 
 // Every wholesale client->profile door passes through here. Returns a private
 // copy: callers then validate the remaining fields, so mutating the caller's

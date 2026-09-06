@@ -46,6 +46,10 @@
             localStorage.setItem("hb_email", d.email);
             if (d.program_name) localStorage.setItem("hb_program", d.program_name);
             if (d.units) localStorage.setItem("hb_units", d.units); // restored device shows kg/lb correctly from the first screen
+            // Per-exercise overrides: adopting an account takes ITS map — and when it
+            // has none, the previous account's map must not linger on this device.
+            if (d.exercise_units && typeof d.exercise_units === "object" && Object.keys(d.exercise_units).length) localStorage.setItem("hb_ex_units", JSON.stringify(d.exercise_units));
+            else localStorage.removeItem("hb_ex_units");
           };
           if (current && current !== d.user_id) {
             // Does this device hold data of its own? Count server-side sessions +

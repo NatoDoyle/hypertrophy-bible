@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
@@ -48,13 +48,27 @@ const friendlyMuscles = (list) => (list || []).map(friendlyMuscle).join(", ");
 // Units: everything is STORED and computed in kg (server + engine). This is a
 // pure display layer — pounds are shown/entered by the user who prefers them and
 // converted at the edges, so a US/UK beginner never has to think in kg.
-const LB_PER_KG = 2.2046226;
+// (LB_PER_KG + the conversion math live in session-core.mjs so they're unit-tested.)
+// TWO layers: the global preference (hb_units) plus PER-EXERCISE overrides
+// (hb_ex_units ↔ profile.exercise_units) for the mixed-unit gym — one machine's
+// stack is labelled in lb while the bars stay kg. The *For variants take the
+// exercise id; with no override they equal their global twins, so every
+// exercise-independent call site (bodyweight, Fuel) keeps the plain ones.
 const unitPref = () => localStorage.getItem("hb_units") === "imperial" ? "lb" : "kg";
 const unitLabel = () => unitPref();
-const wInc = () => unitPref() === "lb" ? 5 : 2.5;                       // stepper increment, display units
-const dispWeight = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG / 5) * 5 : Math.round(kg * 4) / 4; // to plate
+const exUnits = () => { try { return JSON.parse(localStorage.getItem("hb_ex_units")) || {}; } catch { return {}; } };
+const unitFor = (exId) => { const o = exId ? exUnits()[exId] : null; return o === "imperial" ? "lb" : o === "metric" ? "kg" : unitPref(); };
+const unitLabelFor = (exId) => unitFor(exId);
+const wIncIn = (u) => u === "lb" ? 5 : 2.5;                             // stepper increment, display units
+const wInc = () => wIncIn(unitPref());
+const wIncFor = (exId) => wIncIn(unitFor(exId));
+const dispW = (kg, u) => u === "lb" ? Math.round(kg * LB_PER_KG / 5) * 5 : Math.round(kg * 4) / 4; // to plate
+const dispWeight = (kg) => dispW(kg, unitPref());
+const dispWeightFor = (kg, exId) => dispW(kg, unitFor(exId));
 const dispBw = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : Math.round(kg * 10) / 10; // bodyweight
-const toKg = (v) => unitPref() === "lb" ? Math.round((v / LB_PER_KG) * 100) / 100 : v;
+const toKgIn = (v, u) => u === "lb" ? Math.round((v / LB_PER_KG) * 100) / 100 : v;
+const toKg = (v) => toKgIn(v, unitPref());
+const toKgFor = (v, exId) => toKgIn(v, unitFor(exId));
 
 // The beginner library is ~150KB of prose. Load it on demand rather than on every
 // cold start — the first thing a nervous newcomer sees shouldn't wait on 24 pages
@@ -850,9 +864,14 @@ async function renderPlan() {
   $("#edit-plan").onclick = renderPlanEdit;
   app.querySelectorAll("[data-ex-open]").forEach((b) => b.onclick = async () => {
     const id = b.dataset.exOpen;
+    // The bundle now carries every KB exercise (offline-capable). The API
+    // fallback exists for the ids the bundle can never hold — the user's own
+    // custom exercises — and as a safety net; only when BOTH miss is there
+    // honestly no sheet to show.
     let LX; try { ({ LEARN_EXERCISES: LX } = await learnData()); } catch { LX = null; }
-    const dta = LX?.[id];
-    if (!dta) { say("No guide for this one — it may be one of your own exercises."); return; }
+    let dta = LX?.[id];
+    if (!dta) { try { dta = await api(`/api/exercise/${encodeURIComponent(id)}`); } catch {} }
+    if (!dta || dta.error) { say("Couldn't load this one's guide — try again when you're online."); return; }
     renderExerciseSheet({ exercise: id, name: dta.name, movement_pattern: dta.movement_pattern }, dta,
       { label: "‹ Back to your plan", onClick: () => { tab = "plan"; render(); } });
     window.scrollTo(0, 0);
@@ -1194,6 +1213,15 @@ async function renderToday() {
     return;
   }
   syncAccountEmail(adh);
+  // Per-exercise unit overrides: seed a NEW device from the account copy, but only
+  // when this device holds none — local is the source of truth for a device that
+  // has toggled (the POST behind a toggle is best-effort, so the server copy can
+  // lag; overwriting here would silently revert the user's choice). An EMPTY
+  // server map is never written: stamping "{}" on first boot would mark a
+  // never-toggled device as opinionated and block inheritance forever.
+  if (localStorage.getItem("hb_ex_units") == null && data.exercise_units && Object.keys(data.exercise_units).length) {
+    try { localStorage.setItem("hb_ex_units", JSON.stringify(data.exercise_units)); } catch {}
+  }
   const s = data.session;
   // Streak + level header, and the motivational state (loss-aversion when at risk,
   // warm welcome on a comeback, calm reassurance when paused).
@@ -1397,7 +1425,7 @@ function loadSess() {
     if (!Number.isInteger(s.i) || s.i < 0) s.i = 0;
     if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
     if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
-    s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
+    s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; s.wUnits ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
     return s;
   } catch { return null; }
 }
@@ -1451,12 +1479,12 @@ function startSession(templateSession) {
     deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
     // eff (NOT the old `rir` map): a deliberately fresh key, so crash-mirror blobs
     // from builds that auto-seeded rir 2 can never leak fabricated effort data.
-    logged: [], weights: {}, reps: {}, eff: {},
+    logged: [], weights: {}, reps: {}, eff: {}, wUnits: {},
     // The id is minted ONCE, here — so if the final save is interrupted and retried
     // after a reload, the server's ON CONFLICT dedupe sees the SAME id and the
     // workout can never be double-saved.
     session_id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    units: unitPref(), // weights below are stored in DISPLAY units — stamp which
+    units: unitPref(), // legacy scalar stamp — wUnits carries the real per-index unit; this survives as the fallback for a blob resumed by an older build
     startedAt: new Date().toISOString(),
     // The device's LOCAL calendar day: streak/volume weeks bank to the day the
     // user experienced — a Monday-morning session in UTC+12 is Monday, not the
@@ -1467,18 +1495,29 @@ function startSession(templateSession) {
   renderPlayer();
 }
 
-// sess.weights are display-unit values. If the user toggles kg/lb mid-workout (the
-// Me tab is reachable from the player via the nav), convert them once — otherwise
-// "60" quietly changes meaning from kg to lb and every resumed weight is wrong.
+// sess.weights are display-unit values; sess.wUnits stamps which unit EACH entry
+// is in (per index — a per-exercise lb override means one session can mix units).
+// If the user toggles kg/lb mid-workout — globally from the Me tab, or one
+// exercise's unit button in the player — convert the affected entries once;
+// otherwise "60" quietly changes meaning from kg to lb and every resumed weight
+// is wrong. Old crash blobs carry only the scalar sess.units stamp: it becomes
+// the fallback for unstamped entries, then everything is stamped per-index. The
+// migration math is session-core's (pure, unit-tested); this binds the live sess.
 function normalizeSessUnits() {
-  const from = sess.units ?? unitPref(); // old blobs: assume current pref (no-op)
-  if (from === unitPref()) { sess.units = from; return; }
-  for (const k of Object.keys(sess.weights || {})) {
-    const kg = from === "lb" ? sess.weights[k] / LB_PER_KG : sess.weights[k];
-    sess.weights[k] = dispWeight(kg);
-  }
+  const before = sess.units;
+  const res = normalizeWeightsToUnits({
+    weights: sess.weights || {}, stamps: sess.wUnits || {},
+    fallbackUnit: sess.units ?? unitPref(),
+    unitOf: (k) => unitFor(sess.ex[k]?.exercise),
+  });
+  sess.weights = res.weights; sess.wUnits = res.stamps;
+  // The legacy scalar tracks the GLOBAL pref so an older build resuming this blob
+  // converts non-overridden entries correctly. Known residual: no scalar can
+  // describe a MIXED-unit session, so a rollback build resuming a blob with
+  // per-exercise overrides would mis-read those entries — accepted (rollback ×
+  // mid-session resume × override in one session).
   sess.units = unitPref();
-  saveSess();
+  if (res.changed || before !== sess.units) saveSess();
 }
 function startWeightDefault(e) {
   if (e.suggested_kg != null) return e.suggested_kg;
@@ -1498,19 +1537,34 @@ function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m
 // did I lift last time?", right where the question arises. Bodyweight lifts show
 // reps only (their weight field is hidden for the same reason).
 const lastTimeLine = (e) => Array.isArray(e.last_reps) && e.last_reps.length
-  ? `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">Last time: ${e.equipment === "bodyweight" && !(e.last_kg > 0) ? `${e.last_reps.join(", ")} reps` : `${dispWeight(e.last_kg)} ${unitLabel()} × ${e.last_reps.join(", ")}`}</p>`
+  ? `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">Last time: ${e.equipment === "bodyweight" && !(e.last_kg > 0) ? `${e.last_reps.join(", ")} reps` : `${dispWeightFor(e.last_kg, e.exercise)} ${unitLabelFor(e.exercise)} × ${e.last_reps.join(", ")}`}</p>`
   : "";
-function weightStepper(w, isBodyweight, idx) {
+// The value between the − / + nudge buttons is a REAL input (typed entry is the
+// fast path for a big jump — 20→80 kg was 24 taps). The unit beside it is a
+// button: tapping flips THIS exercise between kg and lb (the mixed-unit gym),
+// remembered for future sessions. `exId` scopes both to the lift.
+function weightStepper(w, isBodyweight, idx, exId) {
   const di = idx == null ? "" : ` data-i="${idx}"`;
   if (isBodyweight && w === 0) {
-    return `<div class="stepper"><label>Weight</label><div class="val" style="font-size:1.05rem;font-weight:700">Bodyweight <span class="muted" style="font-weight:400">(just you)</span></div><button class="wt-add" data-w="${wInc()}"${di} aria-label="add weight">+ add weight</button></div>`;
+    return `<div class="stepper"><label>Weight</label><div class="val" style="font-size:1.05rem;font-weight:700">Bodyweight <span class="muted" style="font-weight:400">(just you)</span></div><button class="wt-add" data-w="${wIncFor(exId)}"${di} aria-label="add weight">+ add weight</button></div>`;
   }
-  const tag = isBodyweight ? "+" : "", suffix = isBodyweight ? " added" : "";
-  return `<div class="stepper"><label>Weight</label><button data-w="-${wInc()}"${di} aria-label="less weight">–</button><div class="val" aria-live="polite">${tag}${w} ${unitLabel()}${suffix}</div><button data-w="${wInc()}"${di} aria-label="more weight">+</button></div>`;
+  const tag = isBodyweight ? `<span class="valfix" aria-hidden="true">+</span>` : "";
+  const suffix = isBodyweight ? `<span class="valfix muted" aria-hidden="true">added</span>` : "";
+  return `<div class="stepper"><label>Weight</label><button data-w="-${wIncFor(exId)}"${di} aria-label="less weight">–</button>${tag}<input class="val-input" data-win${di} type="number" inputmode="decimal" step="0.25" min="0" value="${w}" aria-label="weight${isBodyweight ? " added" : ""} in ${unitLabelFor(exId)}"><button class="unit-toggle" data-u${di} aria-label="show this lift in ${unitFor(exId) === "lb" ? "kilograms" : "pounds"} instead">${unitLabelFor(exId)}</button>${suffix}<button data-w="${wIncFor(exId)}"${di} aria-label="more weight">+</button></div>`;
 }
-// Update the value display beside a tapped stepper button IN PLACE — the aria-live
-// region announces it, and the button stays in the DOM so focus survives the tap.
-function setStepperVal(btn, text) { const v = btn.parentElement.querySelector(".val"); if (v) v.textContent = text; }
+const repsStepper = (reps, idx) => {
+  const di = idx == null ? "" : ` data-i="${idx}"`;
+  return `<div class="stepper"><label>Reps</label><button data-r="-1"${di} aria-label="fewer reps">–</button><input class="val-input" data-rin${di} type="number" inputmode="numeric" step="1" min="0" value="${reps}" aria-label="reps"><button data-r="1"${di} aria-label="more reps">+</button></div>`;
+};
+// Update the value beside a tapped stepper button IN PLACE — the input (or the
+// bodyweight-mode .val div) stays in the DOM so focus survives the tap. Inputs
+// aren't aria-live, so stepper handlers announce the new value via say().
+function setStepperVal(btn, value) {
+  const row = btn.parentElement;
+  const inp = row.querySelector("input.val-input");
+  if (inp) { inp.value = value; return; }
+  const v = row.querySelector(".val"); if (v) v.textContent = value;
+}
 
 // ---------- Superset helpers ----------
 // Pure session logic (superset ordering + banked-set progress) lives in
@@ -1533,7 +1587,15 @@ const clearSetConfirm = () => { const was = confirmSet.size > 0; confirmSet.clea
 // must be judged as 102 kg, not 225, or every lb session would be questioned).
 // Returns false once the user has confirmed THIS index, so the second tap banks it.
 const setExKey = (idx) => sess.ex[idx]?.exercise;
-const setLooksLikeTypo = (idx) => isImplausibleSet(toKg(sess.weights[idx]), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+// The unit a session entry is ACTUALLY in: the per-index stamp normalizeSessUnits
+// maintains, falling back to the live preference only for an unstamped entry.
+// Banking (and judging) through the stamp — not through a fresh unitFor() read —
+// means a preference flipped in ANOTHER TAB between paint and Done cannot change
+// what the on-screen number converts to (there is no storage listener; the stamp
+// travels with the number it describes).
+const sessUnitOf = (idx) => sess.wUnits?.[idx] ?? unitFor(sess.ex[idx]?.exercise);
+const bankKg = (idx) => toKgIn(sess.weights[idx], sessUnitOf(idx));
+const setLooksLikeTypo = (idx) => isImplausibleSet(bankKg(idx), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
 // Which of these station members still owe a confirming tap. Both players go through
 // session-core's `unconfirmedFlagged` so "flagged and unconfirmed" has ONE definition.
 const stationNeedsConfirm = (indices) => unconfirmedFlagged(indices, setExKey, setLooksLikeTypo, confirmSet);
@@ -1547,8 +1609,87 @@ const setConfirmCue = (idx) => {
   const ref = [ex?.last_kg, ex?.pr_watch?.load_kg].find((v) => typeof v === "number" && v > 0);
   const reps = sess.reps[idx];
   if (typeof reps === "number" && reps > 50) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
-  return `⚠️ <b>${dispWeight(toKg(sess.weights[idx]))} ${unitLabel()}</b> is a big jump${ref != null ? ` from the ${dispWeight(ref)} ${unitLabel()} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
+  // Quote the entry VERBATIM in its own unit — this dialog's whole job is "is this
+  // exact number right?", and a plate-rounding round-trip could name 135 while the
+  // confirming tap banks a typed 137.
+  const u = sessUnitOf(idx);
+  return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${ref != null ? ` from the ${dispWeightFor(ref, ex?.exercise)} ${unitLabelFor(ex?.exercise)} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
 };
+
+// Clearing a pending typo-confirm from a TYPED edit must NOT repaint — the focused
+// input dies with the screen, so one keystroke after the cue's own "fix it above"
+// advice would eject the user from the field. Instead: reset the flag, remove the
+// cue line(s) (only confirm cues carry role="status" inside the player card), and
+// restore the Done button's idle label stashed at render time. The stepper − / +
+// buttons keep their existing repaint-on-clear path — they hold no text focus.
+function dismissConfirmCueInPlace() {
+  if (!clearSetConfirm()) return;
+  app.querySelectorAll('.cue[role="status"]').forEach((el) => el.remove());
+  const btn = app.querySelector("#done, #doner");
+  if (btn?.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
+}
+
+// Typed entry, shared by the player and the superset station. Keystrokes write
+// straight into sess (crash-mirrored like a stepper tap) but never repaint; junk
+// or an emptied field leaves the last good value in sess (sanitizeTypedValue),
+// and blur restores the display from sess so screen and log can't disagree at
+// Done time (tapping Done blurs the input first). The bodyweight input↔"just
+// you" card shape swap happens on blur ONLY — typing "0.5" passes through 0.
+function wireValInputs(idxOf, repaintFn) {
+  app.querySelectorAll("[data-win],[data-rin]").forEach((inp) => {
+    const isW = inp.hasAttribute("data-win");
+    inp.oninput = () => {
+      quitPending = false;
+      dismissConfirmCueInPlace();
+      const i = idxOf(inp);
+      const v = sanitizeTypedValue(inp.value, { integer: !isW, fallback: null });
+      if (v == null) return;
+      if (isW) sess.weights[i] = v; else sess.reps[i] = v;
+      saveSess();
+    };
+    inp.onblur = () => {
+      const i = idxOf(inp);
+      const cur = isW ? sess.weights[i] : sess.reps[i];
+      if (inp.value !== String(cur)) inp.value = cur;
+      // Bodyweight zero-crossing changes the row's SHAPE (input ↔ "just you"
+      // card). Blur fires MID-TAP, so a synchronous repaint here would detach the
+      // control being tapped — and the collapsed row shifts everything up, so the
+      // tap could land on "log a warm-up set" or "End workout early" instead.
+      // Defer past the tap's click dispatch and re-check: if whatever was tapped
+      // already repainted (Done → rest screen, the unit toggle, a stepper's own
+      // zero-crossing path), the typed input is gone or the weight moved, and
+      // this deliberately does nothing.
+      if (isW && sess.ex[i]?.equipment === "bodyweight" && cur === 0) {
+        setTimeout(() => { if (sess && sess.weights[i] === 0 && app.contains(inp)) repaintFn(); }, 0);
+      }
+    };
+    inp.onkeydown = (ev) => { if (ev.key === "Enter") inp.blur(); };
+  });
+}
+
+// The per-exercise kg/lb toggle (the mixed-unit gym: one machine's stack is
+// labelled in lb, the bars stay kg). Stored as EXCEPTIONS only — flipping back to
+// the global unit deletes the override, so the map stays a short list of odd
+// machines. localStorage first (instant, offline-safe); the server copy is
+// best-effort and exists so a new device inherits it via /api/today — the same
+// contract as hb_units. The caller repaints: normalizeSessUnits converts this
+// lift's in-progress weight so the number keeps meaning what it meant.
+function toggleExerciseUnit(exId, name) {
+  const map = exUnits();
+  const next = unitFor(exId) === "lb" ? "metric" : "imperial";
+  if (next === (unitPref() === "lb" ? "imperial" : "metric")) delete map[exId]; else map[exId] = next;
+  try { localStorage.setItem("hb_ex_units", JSON.stringify(map)); } catch {}
+  say(`${name} now shows ${next === "imperial" ? "pounds" : "kilograms"}.`);
+  api("/api/profile/exercise-units", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: exId, units: map[exId] ?? null }) }).catch(() => {});
+}
+const wireUnitToggles = (idxOf, repaintFn) => app.querySelectorAll(".unit-toggle").forEach((b) => b.onclick = () => {
+  quitPending = false;
+  clearSetConfirm(); // the repaint below redraws the cue-free card anyway
+  const m = sess.ex[idxOf(b)];
+  if (!m) return;
+  toggleExerciseUnit(m.exercise, m.name);
+  repaintFn();
+});
 
 // A brief, self-dismissing toast for the in-player PR moment (roadmap #1 slice b —
 // celebrate mid-session, not only in the end-of-session recap). Appended to <body>,
@@ -1577,8 +1718,8 @@ function checkAndCelebratePR(exObj, weightKg, reps, deload) {
   sess.prCelebrated = sess.prCelebrated || {};
   sess.prCelebrated[exObj.exercise] = true;
   const detail = pr.kind === "load"
-    ? `new best working weight — ${dispWeight(pr.load_kg)} ${unitLabel()} × ${pr.reps} reps`
-    : `new estimated best single lift — ${dispWeight(pr.e1rm_kg)} ${unitLabel()}`;
+    ? `new best working weight — ${dispWeightFor(pr.load_kg, exObj.exercise)} ${unitLabelFor(exObj.exercise)} × ${pr.reps} reps`
+    : `new estimated best single lift — ${dispWeightFor(pr.e1rm_kg, exObj.exercise)} ${unitLabelFor(exObj.exercise)}`;
   showPrToast(`🎉 <b>New personal record!</b><br><span class="muted">${esc(exObj.name)}: ${detail}</span>`);
   say(`New personal record on ${exObj.name}!`);
   return true;
@@ -1636,8 +1777,9 @@ function renderPlayer(resting = 0) {
     sess.i = nx; sess.set = loggedSetCount(sess.ex[sess.i].exercise); saveSess();
     return renderPlayer(0);
   }
-  // sess.weights holds DISPLAY-unit values; converted to kg only when logged.
-  if (sess.weights[sess.i] == null) sess.weights[sess.i] = dispWeight(startWeightDefault(e));
+  // sess.weights holds DISPLAY-unit values (stamped per-index in wUnits);
+  // converted to kg only when logged.
+  if (sess.weights[sess.i] == null) { sess.weights[sess.i] = dispWeightFor(startWeightDefault(e), e.exercise); sess.wUnits[sess.i] = unitFor(e.exercise); }
   if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
   // sess.eff is NEVER seeded — no answer means no rir on the logged set.
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
@@ -1674,12 +1816,12 @@ function renderPlayer(resting = 0) {
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
-      ${weightStepper(w, e.equipment === "bodyweight", null)}
+      ${weightStepper(w, e.equipment === "bodyweight", null, e.exercise)}
       ${lastTimeLine(e)}
-      <div class="stepper"><label>Reps</label><button data-r="-1" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" aria-label="more reps">+</button></div>
+      ${repsStepper(reps, null)}
       ${effChips(sess.i)}
       ${confirmSet.has(e.exercise) ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
-      <button class="btn" id="done">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
+      <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
@@ -1701,7 +1843,7 @@ function renderPlayer(resting = 0) {
   // purely a record. Adjust the steppers to your warm-up load first, then tap.
   if ($("#warmup")) $("#warmup").onclick = () => {
     quitPending = false;
-    sess.logged.push({ exercise: e.exercise, set_type: "warmup", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], completed_at: new Date().toISOString() });
+    sess.logged.push({ exercise: e.exercise, set_type: "warmup", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], completed_at: new Date().toISOString() });
     saveSess();
     const n = sess.logged.filter((l) => l.exercise === e.exercise && l.set_type === "warmup").length;
     say(`Warm-up set logged.`);
@@ -1710,8 +1852,9 @@ function renderPlayer(resting = 0) {
 
   // In-place stepper updates: a full repaint on every tap destroys the tapped
   // button (dumping keyboard/screen-reader focus) and never announces the new
-  // value. Update the adjacent aria-live .val instead; only re-render when the
-  // stepper changes SHAPE (bodyweight "+ add weight" ↔ loaded −/+ stepper).
+  // value. Update the adjacent input instead (+ say() for the announcement);
+  // only re-render when the stepper changes SHAPE (bodyweight "+ add weight" ↔
+  // loaded −/+ stepper).
   app.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => {
     quitPending = false;
     const repaint = clearSetConfirm();
@@ -1720,9 +1863,12 @@ function renderPlayer(resting = 0) {
     saveSess();
     const bw = e.equipment === "bodyweight";
     if (repaint || (bw && (was === 0 || sess.weights[sess.i] === 0))) return renderPlayer();
-    setStepperVal(b, `${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabel()}${bw ? " added" : ""}`);
+    setStepperVal(b, sess.weights[sess.i]);
+    say(`${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabelFor(e.exercise)}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); say(`${sess.reps[sess.i]} reps`); });
+  wireValInputs(() => sess.i, () => renderPlayer(0));
+  wireUnitToggles(() => sess.i, () => renderPlayer(0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderPlayer()));
   $("#how").onclick = async () => {
     let d = null;
@@ -1744,7 +1890,7 @@ function renderPlayer(resting = 0) {
     confirmSet.clear();
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
-    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: toKg(sess.weights[sess.i]), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     sess.set++;
@@ -1808,7 +1954,7 @@ function renderSupersetStation(L, P, resting = 0) {
 
   const memberBlock = (idx) => {
     const m = sess.ex[idx];
-    if (sess.weights[idx] == null) sess.weights[idx] = dispWeight(startWeightDefault(m));
+    if (sess.weights[idx] == null) { sess.weights[idx] = dispWeightFor(startWeightDefault(m), m.exercise); sess.wUnits[idx] = unitFor(m.exercise); }
     if (sess.reps[idx] == null) sess.reps[idx] = topReps(m.rep_range);
     // sess.eff is NEVER seeded — no answer means no rir on the logged set.
     const w = sess.weights[idx], reps = sess.reps[idx];
@@ -1819,9 +1965,9 @@ function renderSupersetStation(L, P, resting = 0) {
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
-      ${weightStepper(w, m.equipment === "bodyweight", idx)}
+      ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
-      <div class="stepper"><label>Reps</label><button data-r="-1" data-i="${idx}" aria-label="fewer reps">–</button><div class="val" aria-live="polite">${reps}</div><button data-r="1" data-i="${idx}" aria-label="more reps">+</button></div>
+      ${repsStepper(reps, idx)}
       ${effChips(idx)}
       ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
@@ -1832,7 +1978,7 @@ function renderSupersetStation(L, P, resting = 0) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
-    <button class="btn" id="doner">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
+    <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
@@ -1847,9 +1993,12 @@ function renderSupersetStation(L, P, resting = 0) {
     saveSess();
     const bw = sess.ex[i].equipment === "bodyweight";
     if (repaint || (bw && (was === 0 || sess.weights[i] === 0))) return renderSupersetStation(L, P, 0);
-    setStepperVal(b, `${bw ? "+" : ""}${sess.weights[i]} ${unitLabel()}${bw ? " added" : ""}`);
+    setStepperVal(b, sess.weights[i]);
+    say(`${bw ? "+" : ""}${sess.weights[i]} ${unitLabelFor(sess.ex[i].exercise)}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); say(`${sess.reps[i]} reps`); });
+  wireValInputs((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
+  wireUnitToggles((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderSupersetStation(L, P, 0)));
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
@@ -1869,7 +2018,7 @@ function renderSupersetStation(L, P, resting = 0) {
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
-      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: toKg(sess.weights[idx]), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
       sess.logged.push(loggedSet);
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
       roundSets.push([m, loggedSet]);
@@ -1931,6 +2080,8 @@ function renderExerciseSheet(ex, d, back) {
   const errs = (d?.common_errors ?? []).map((c) => `<div class="win">⚠️ ${esc(c)}</div>`).join("");
   const good = (d?.good_when ?? []).map((c) => `<div class="win">👍 ${esc(c)}</div>`).join("");
   const bad = (d?.bad_when ?? []).map((c) => `<div class="win">👎 ${esc(c)}</div>`).join("");
+  const harder = (d?.progressions ?? []).map((c) => `<div class="win">⬆️ ${esc(c)}</div>`).join("");
+  const easier = (d?.regressions ?? []).map((c) => `<div class="win">⬇️ ${esc(c)}</div>`).join("");
   const muscles = friendlyMuscles([...(d?.primary_muscles ?? []), ...(d?.secondary_muscles ?? [])]);
   // quick fact chips: loading bias, systemic fatigue, difficulty
   const chips = [
@@ -1948,6 +2099,8 @@ function renderExerciseSheet(ex, d, back) {
     ${errs ? `<h2>Avoid</h2>${errs}` : ""}
     ${good ? `<h2>Good pick when</h2>${good}` : ""}
     ${bad ? `<h2>Maybe skip when</h2>${bad}` : ""}
+    ${easier ? `<h2>Make it easier</h2>${easier}` : ""}
+    ${harder ? `<h2>Make it harder</h2>${harder}` : ""}
     <button class="btn" id="back">${esc(back.label)}</button>`;
   $("#back").onclick = back.onClick;
 }
@@ -2014,7 +2167,7 @@ async function renderSwap() {
       movement_pattern: chosen?.movement_pattern ?? null,
       superset_with: undefined, superset_with_name: undefined,
     };
-    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.eff[sess.i];
+    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.eff[sess.i]; delete sess.wUnits[sess.i];
     saveSess();
     say(`Swapped to ${name}.`);
     renderPlayer(0);
@@ -2044,7 +2197,7 @@ function deferCurrentExercise() {
     }
     return out;
   };
-  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.eff = remap(sess.eff);
+  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.eff = remap(sess.eff); sess.wUnits = remap(sess.wUnits);
   // sess.i stays put — it now points at the exercise that was next; the deferred lift
   // waits at the end. Resume its cursor from however many of its sets are already
   // banked (0 in the normal unstarted case), matching how advancing resolves the set
@@ -2086,11 +2239,11 @@ async function finish() {
 }
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
-  const fmtDelta = (kg) => unitPref() === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : kg;
+  const fmtDelta = (kg, exId) => unitFor(exId) === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : kg;
   const winHtml = (w) => {
     if (typeof w === "string") return esc(w);
-    if (w.kind === "pr-load") return `🏆 ${esc(w.name)}: new best working weight — <b>${dispWeight(w.load_kg)} ${unitLabel()}</b> × ${w.reps} reps.`;
-    return `🏆 ${esc(w.name)}: new estimated best single lift — <b>${dispWeight(w.e1rm_kg)} ${unitLabel()}</b> (up ${fmtDelta(w.delta_kg)} ${unitLabel()}).`;
+    if (w.kind === "pr-load") return `🏆 ${esc(w.name)}: new best working weight — <b>${dispWeightFor(w.load_kg, w.exercise)} ${unitLabelFor(w.exercise)}</b> × ${w.reps} reps.`;
+    return `🏆 ${esc(w.name)}: new estimated best single lift — <b>${dispWeightFor(w.e1rm_kg, w.exercise)} ${unitLabelFor(w.exercise)}</b> (up ${fmtDelta(w.delta_kg, w.exercise)} ${unitLabelFor(w.exercise)}).`;
   };
   // A personal record is the reward moment — give it a celebratory banner at the top of the
   // recap; other wins stay as quiet rows below.
@@ -2123,7 +2276,7 @@ function renderRecap(recap) {
 
 // ---------- Progress ----------
 const statusClass = (s) => ({ "below-MEV": "s-below", "in-productive-range": "s-in", "approaching-MRV": "s-near", "over-MRV": "s-over", "maintenance": "s-maint", "secondary-served": "s-maint", "eased": "s-maint" }[s] || "s-none");
-const prDetailText = (r) => r.kind === "load" ? `${dispWeight(r.load_kg)} ${unitLabel()} × ${r.reps}` : `${dispWeight(r.e1rm_kg)} ${unitLabel()} est. 1RM`;
+const prDetailText = (r) => r.kind === "load" ? `${dispWeightFor(r.load_kg, r.exercise)} ${unitLabelFor(r.exercise)} × ${r.reps}` : `${dispWeightFor(r.e1rm_kg, r.exercise)} ${unitLabelFor(r.exercise)} est. 1RM`;
 let bwEditArm = null; // a day tapped in the full bodyweight view, to arm the Progress edit form
 let fuelEditArm = null; // its Fuel sibling
 const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "eased": "slow growth", "no-landmark": "—" }[s] || s);
@@ -2153,7 +2306,7 @@ async function renderProgress() {
   // an e1RM there would be guesswork, but the dumbbell you hold is not.
   // Every row is a BUTTON into the lift's full dated chart (Wave 259, owner #3) —
   // the sparkline stopped being decoration the day it grew a destination.
-  const trendRow = (x) => `<button class="row" data-lift="${esc(x.exercise)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer">${(x.series ?? []).length > 1 ? miniSpark(x.series.map((pt) => pt.value)) : ""}<b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}" style="margin-left:auto">${x.basis === "load" ? `${dispWeight(x.first_load_kg)}→${dispWeight(x.last_load_kg)} ${unitLabel()} top set` : `${dispWeight(x.first_e1rm)}→${dispWeight(x.last_e1rm)} ${unitLabel()}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span><span class="muted" style="margin-left:6px">›</span></button>`;
+  const trendRow = (x) => `<button class="row" data-lift="${esc(x.exercise)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer">${(x.series ?? []).length > 1 ? miniSpark(x.series.map((pt) => pt.value)) : ""}<b>${esc(x.name)}${x.stalled ? ' <span class="chip" style="color:var(--warn)">⏸ stalled</span>' : ""}</b><span class="${x.change_pct >= 0 ? "" : "muted"}" style="margin-left:auto">${x.basis === "load" ? `${dispWeightFor(x.first_load_kg, x.exercise)}→${dispWeightFor(x.last_load_kg, x.exercise)} ${unitLabelFor(x.exercise)} top set` : `${dispWeightFor(x.first_e1rm, x.exercise)}→${dispWeightFor(x.last_e1rm, x.exercise)} ${unitLabelFor(x.exercise)}`} (${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%)</span><span class="muted" style="margin-left:6px">›</span></button>`;
   const prog = (p.progression || []).map(trendRow).join("") || `<p class="muted">Two weeks of data unlocks strength trends.</p>`;
   const shownLiftIds = new Set((p.progression || []).map((x) => x.exercise));
   const restLifts = (p.progression_all || []).filter((x) => !shownLiftIds.has(x.exercise));
@@ -2350,19 +2503,19 @@ function renderLiftDetail(p) {
   const row = (p.progression_all || p.progression || []).find((x) => x.exercise === liftDetail);
   if (!row) { liftDetail = null; return renderProgress(); }
   const series = row.series ?? [];
-  const vals = series.map((pt) => dispWeight(pt.value));
+  const vals = series.map((pt) => dispWeightFor(pt.value, liftDetail));
   const basisNote = row.basis === "load"
     ? "Charted as your top-set weight — at these rep ranges an estimated 1RM would be guesswork, but the weight in your hands is not."
     : "Charted as your estimated 1-rep max from each week's best set. Watch the trend, not the exact number.";
   const prRows = (p.personal_records_all || []).filter((r) => r.exercise === liftDetail).slice(0, 5);
-  const weekRows = [...series].reverse().map((pt) => `<div class="row"><span style="flex:1">${esc(weekKeyLabel(pt.week))}</span><span>${dispWeight(pt.value)} ${unitLabel()}</span></div>`).join("");
+  const weekRows = [...series].reverse().map((pt) => `<div class="row"><span style="flex:1">${esc(weekKeyLabel(pt.week))}</span><span>${dispWeightFor(pt.value, liftDetail)} ${unitLabelFor(liftDetail)}</span></div>`).join("");
   app.innerHTML = `<h1>${esc(row.name)}</h1>
     <p class="muted">${row.stalled ? '<span class="chip" style="color:var(--warn)">⏸ stalled</span> ' : ""}${esc(basisNote)}</p>
-    <div class="card">${fullTrendChart(vals, { unit: ` ${unitLabel()}`, capId: "lift-cap", firstLabel: series.length ? weekKeyLabel(series[0].week) : "", lastLabel: series.length ? weekKeyLabel(series[series.length - 1].week) : "" }) || `<p class="muted">Two weeks of data unlocks this chart.</p>`}</div>
+    <div class="card">${fullTrendChart(vals, { unit: ` ${unitLabelFor(liftDetail)}`, capId: "lift-cap", firstLabel: series.length ? weekKeyLabel(series[0].week) : "", lastLabel: series.length ? weekKeyLabel(series[series.length - 1].week) : "" }) || `<p class="muted">Two weeks of data unlocks this chart.</p>`}</div>
     ${prRows.length ? `<div class="card"><b>🏆 Records on this lift</b>${prRows.map((r) => `<div class="row"><span style="flex:1">${prDetailText(r)}</span><span class="muted" style="font-size:.85rem">${esc(String(r.date ?? "").slice(0, 10))}</span></div>`).join("")}</div>` : ""}
     <div class="card"><b>Week by week</b>${weekRows}</div>
     <button class="btn ghost" id="ld-back">‹ Back to progress</button>`;
-  wireChartTap("lift-cap", series, (pt) => `${weekKeyLabel(pt.week)}: ${dispWeight(pt.value)} ${unitLabel()}`);
+  wireChartTap("lift-cap", series, (pt) => `${weekKeyLabel(pt.week)}: ${dispWeightFor(pt.value, liftDetail)} ${unitLabelFor(liftDetail)}`);
   $("#ld-back").onclick = () => { liftDetail = null; renderProgress(); };
 }
 
@@ -2475,9 +2628,9 @@ async function renderHistory() {
     if (!sess) { historyEdit = null; return renderHistory(); }
     const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
       <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
-      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeight(set.weight_kg)}" aria-label="weight for set ${i + 1}"
+      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeightFor(set.weight_kg, set.exercise)}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
-      <span class="muted">${unitLabel()} ×</span>
+      <span class="muted">${unitLabelFor(set.exercise)} ×</span>
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
         style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
     </div>`).join("");
@@ -2497,7 +2650,7 @@ async function renderHistory() {
         const { name, ...rest } = set; // `name` is a display-only field this screen added
         const wv = parseFloat(app.querySelector(`[data-w="${i}"]`)?.value);
         const rv = parseInt(app.querySelector(`[data-reps="${i}"]`)?.value, 10);
-        return { ...rest, weight_kg: Number.isFinite(wv) ? toKg(wv) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
+        return { ...rest, weight_kg: Number.isFinite(wv) ? toKgFor(wv, rest.exercise) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
       });
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
@@ -2520,11 +2673,11 @@ async function renderHistory() {
       if (!byEx.has(set.exercise)) { byEx.set(set.exercise, { name: set.name || set.exercise, sets: [] }); order.push(set.exercise); }
       byEx.get(set.exercise).sets.push(set);
     }
-    const setText = (s) => `${dispWeight(s.weight_kg)} × ${s.reps}${typeof s.rir === "number" ? ` @${s.rir}` : ""}${(s.set_type ?? "work") === "warmup" ? " ᵂ" : ""}${s.deload ? " ᴰ" : ""}`;
+    const setText = (s) => `${dispWeightFor(s.weight_kg, s.exercise)} × ${s.reps}${typeof s.rir === "number" ? ` @${s.rir}` : ""}${(s.set_type ?? "work") === "warmup" ? " ᵂ" : ""}${s.deload ? " ᴰ" : ""}`;
     const exRows = order.map((k) => {
       const g = byEx.get(k);
       return `<div class="row"><div style="flex:1"><b>${esc(g.name)}</b>
-        <div class="muted" style="font-size:.9rem">${g.sets.map(setText).join(" · ")} ${unitLabel()}</div></div></div>`;
+        <div class="muted" style="font-size:.9rem">${g.sets.map(setText).join(" · ")} ${unitLabelFor(k)}</div></div></div>`;
     }).join("");
     const anyMarks = (sess.sets ?? []).some((s) => (s.set_type ?? "work") === "warmup" || s.deload);
     app.innerHTML = `<h1>${esc(sess.session_name || "Workout")}</h1>
@@ -2976,7 +3129,7 @@ async function restoreMergedArchive(ownerId, archiveId, button) {
     if (uid === ownerId && tab === "me") renderMe();
     return;
   }
-  mergeArchiveRestores.set(key, { user_id: result.user_id, program_name: typeof result.program_name === "string" ? result.program_name : null, units: result.units });
+  mergeArchiveRestores.set(key, { user_id: result.user_id, program_name: typeof result.program_name === "string" ? result.program_name : null, units: result.units, exercise_units: result.exercise_units });
   updateMergeArchiveSummary(ownerId, result.archive);
   // A dropped response is normal mobile behaviour. The restore route is
   // idempotent, so the button can safely ask again and returns the same copy.
@@ -3056,6 +3209,7 @@ async function switchToRestoredArchive(ownerId, archiveId, button) {
     localStorage.setItem("hb_user", uid);
     if (restored.program_name) localStorage.setItem("hb_program", restored.program_name);
     if (restored.units === "metric" || restored.units === "imperial") localStorage.setItem("hb_units", restored.units);
+    if (restored.exercise_units && typeof restored.exercise_units === "object") localStorage.setItem("hb_ex_units", JSON.stringify(restored.exercise_units));
   } catch {}
   pendingNotice = "You're now viewing a separate restored copy. Your previous training data was left untouched; this device's old reminder was turned off, and reminders and social sharing are off in this copy.";
   tab = "today";

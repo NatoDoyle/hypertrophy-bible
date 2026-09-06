@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -432,6 +432,82 @@ check("isImplausibleSet: no history to judge against is never questioned", () =>
 check("isImplausibleSet: a rep count past any prescribed band is flagged on its own", () => {
   assert.equal(isImplausibleSet(20, 88, { lastKg: 20 }), true, "88 reps — no band in the engine goes near it, and the weight is unchanged");
   assert.equal(isImplausibleSet(20, 30, { lastKg: 20 }), false, "30 reps IS a prescribed band (fat-loss pumpIso tops out at 20-30)");
+});
+
+// ---------- Typed entry + per-exercise kg/lb units ----------
+// These guard the player's typed inputs and the per-key session unit migration —
+// the two places a stored "60" could silently change meaning (which then anchors
+// the NEXT session's suggested weight at 2.2x, a safety issue, not a display bug).
+
+check("sanitizeTypedValue: parses decimals, floors negatives at 0", () => {
+  assert.equal(sanitizeTypedValue("62.5"), 62.5);
+  assert.equal(sanitizeTypedValue("-4"), 0, "a pasted negative floors at 0, same as the steppers");
+});
+
+check("sanitizeTypedValue: junk/empty returns the fallback, NEVER 0", () => {
+  // A number input's .value is "" while empty or mid-edit; zeroing the weight
+  // there would bank a 0 kg set on the very next Done tap.
+  assert.equal(sanitizeTypedValue("", { fallback: 60 }), 60);
+  assert.equal(sanitizeTypedValue("abc", { fallback: null }), null);
+  assert.equal(sanitizeTypedValue(undefined, { fallback: 12 }), 12);
+});
+
+check("sanitizeTypedValue: integer mode rounds (reps are whole)", () => {
+  assert.equal(sanitizeTypedValue("12", { integer: true }), 12);
+  assert.equal(sanitizeTypedValue("12.7", { integer: true }), 12, "parseInt semantics — '12.7' reads as 12, matching the history editor");
+  assert.equal(sanitizeTypedValue("-3", { integer: true }), 0);
+});
+
+check("convertDispWeight: kg ↔ lb at plate quanta (5 lb pins, 0.25 kg plates)", () => {
+  assert.equal(convertDispWeight(60, "kg", "lb"), 130, "60 kg is a 130 lb stack pin, not 132.3");
+  assert.equal(convertDispWeight(130, "lb", "kg"), 59, "and back lands on a loadable kg value");
+  assert.equal(convertDispWeight(225, "lb", "kg"), 102, "the classic 225 lb = 102 kg");
+});
+
+check("convertDispWeight: same-unit is the identity — a typed value is never re-rounded", () => {
+  assert.equal(convertDispWeight(62.7, "kg", "kg"), 62.7);
+  assert.equal(convertDispWeight(137, "lb", "lb"), 137, "an off-plate typed 137 lb stays 137");
+});
+
+check("convertDispWeight: a nonzero value never converts to ZERO (0 means 'no added weight')", () => {
+  // 1 kg added on weighted pull-ups: the 5 lb plate snap would say 0 lb, which
+  // renders the bodyweight no-added-weight shape and destroys the entry.
+  assert.equal(convertDispWeight(1, "kg", "lb"), 2, "falls back to the finer 0.5 lb quantum");
+  assert.equal(convertDispWeight(1, "lb", "kg"), 0.5);
+  assert.equal(convertDispWeight(0.1, "kg", "lb"), 0.5, "clamped to at least one quantum");
+  assert.equal(convertDispWeight(0, "kg", "lb"), 0, "a genuine zero stays zero");
+});
+
+check("normalizeWeightsToUnits: an old scalar-stamped blob is stamped per key, converting only what moved", () => {
+  // Crash blob saved by a pre-override build (weights all kg, no stamps); the
+  // user has since flipped exercise at index 1 to lb.
+  const res = normalizeWeightsToUnits({ weights: { 0: 60, 1: 60 }, stamps: {}, fallbackUnit: "kg", unitOf: (k) => (k === "1" ? "lb" : "kg") });
+  assert.equal(res.changed, true);
+  assert.equal(res.weights[0], 60, "the kg entry is untouched");
+  assert.equal(res.weights[1], 130, "the overridden entry converts once");
+  assert.deepEqual(res.stamps, { 0: "kg", 1: "lb" }, "every entry leaves stamped");
+});
+
+check("normalizeWeightsToUnits: stable — matching stamps are a no-op (no drift on every render)", () => {
+  const res = normalizeWeightsToUnits({ weights: { 0: 62.7 }, stamps: { 0: "kg" }, fallbackUnit: "kg", unitOf: () => "kg" });
+  assert.equal(res.changed, false);
+  assert.equal(res.weights[0], 62.7, "a typed off-plate value survives repeated normalization byte-identical");
+});
+
+check("normalizeWeightsToUnits: a global flip converts non-overridden entries; already-lb entries stay put", () => {
+  // Session in progress with index 1 overridden to lb; user flips GLOBAL kg→lb.
+  const res = normalizeWeightsToUnits({ weights: { 0: 60, 1: 130 }, stamps: { 0: "kg", 1: "lb" }, fallbackUnit: "kg", unitOf: () => "lb" });
+  assert.equal(res.weights[0], 130, "the kg entry converts");
+  assert.equal(res.weights[1], 130, "the lb entry is NOT double-converted");
+  assert.deepEqual(res.stamps, { 0: "lb", 1: "lb" });
+});
+
+check("units round-trip: a deliberate lb entry never trips the lb/kg typo guard", () => {
+  // 130 lb typed on an lb-overridden machine converts to ~59 kg at bank time —
+  // against a 60 kg history the guard must stay silent (it exists to catch lb
+  // typed into a KG field, which no longer happens once the field IS lb).
+  const bankedKg = Math.round((130 / 2.2046226) * 100) / 100;
+  assert.equal(isImplausibleSet(bankedKg, 8, { lastKg: 60 }), false);
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

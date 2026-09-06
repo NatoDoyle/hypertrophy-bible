@@ -1065,6 +1065,69 @@ and every confirmed finding was re-verified inline by the main loop before fixin
 6. **Resume, never relaunch.** After a limit wipe: `Workflow({scriptPath, resumeFromRunId})` —
    completed agents replay free from cache. A relaunch re-buys everything.
 7. **Cadence.** Audit every 2–3 implementation waves, not after each; deploy once per burst.
+8. **Cloud sandboxes (Daytona) — the gate and the tournament (`daytona/`).** Isolated cloud
+   compute for two jobs; neither relaxes any rule above.
+   - *The clean-room gate* (`cd daytona && npm run gate`) runs both test chains + the build-data
+     staleness check in a fresh Node-24 sandbox. It is pre-merge **evidence in addition to** the
+     local chains, never a substitute for inline verification. Exit **1 = the code failed**;
+     exit **2 = inconclusive infra** (auth/quota/snapshot/network) and is NEVER a code verdict.
+   - *Tournament mode* (`npm run tournament -- briefs/x.md`) races N variant implementations by
+     headless Claude, judged by a fitness metric. Sanctioned **only** when ≥2 defensible
+     approaches exist that reading the code can't settle, **and** the fitness function is a
+     measured deterministic metric that already exists at HEAD — the runner pre-registers the
+     baseline and refuses to race otherwise (lessons 25/30). Never let a variant game the metric
+     against the KB's grounding (lessons 13/30/38). N ≤ 3 (4 with `--allow-4`). **A tournament
+     counts as the iteration's one workflow** (rule 4). The winner's diff is verified INLINE
+     locally — both chains + lesson-54 tampers of its own new tests — before commit; losers'
+     diffs are discarded but their measurements recorded in telemetry.
+   - **Sandboxes never deploy or push** (lessons 18b/29), enforced structurally: they clone from
+     an uploaded tarball, so there is no git remote and no Cloudflare/Resend/VAPID credential.
+     Variants return a patch + results.json; the local loop applies, verifies, commits, PRs.
+   - **Debate for domain judgment runs as subagents, not sandboxes.** An evidence-grade (A–D) or
+     exercise-science dispute is rule 1's one-skeptic case — pure reasoning, no code execution,
+     no isolation; a sandbox adds cost for nothing. **No auto-PR / no-human-in-the-loop merges**
+     — "iterate until tests pass" optimizes the exact signal lessons 34/42/54 prove insufficient.
+7i. **Telemetry (Waves 262–264, 2026-09-06).** All three owner considerations closed;
+   the third's premise overturned by exploration. **Wave 262** (typed weight/reps
+   entry + the per-exercise kg/lb override): planning 2 Explore agents (~271k) +
+   1 Plan agent that STALLED at the 600s watchdog with nothing recoverable — the
+   design was done inline instead, and the owner approved both recommended choices
+   live (input-between-steppers; per-exercise override, the global toggle already
+   existing). Execution inline; the iteration's ONE workflow was the
+   post-implementation 3-lens adversarial diff review (~447k): 11 findings → 9
+   fixed inline + 2 accepted-and-documented residuals. The sharpest four: the
+   bodyweight blur-repaint tap race (a mid-tap innerHTML swap could land the tap
+   on "End workout early"), bank sites reading LIVE unit prefs instead of the
+   per-index sess.wUnits stamp (a cross-tab 2.2× hazard — the stamp is now
+   load-bearing at the one edge where display becomes weight_kg), 1 kg
+   plate-rounding to 0 lb and destroying a bodyweight lift's entry, and the
+   typo-confirm cue quoting a plate-rounded number different from the one a
+   confirming tap banks. Guardrail held: storage stays kg — the override is
+   display/entry-only, stamped per session entry, migrated by one pure
+   unit-tested function (normalizeWeightsToUnits). **Waves 263–264**: 1 Explore
+   agent (~111k) REFUTED the "missing page" premise — all 171 exercises were
+   fully authored (good_when/bad_when included); the gap was REACHABILITY (the
+   Plan tab resolved sheets against the 64-referenced bundle and told 107 lifts
+   "it may be one of your own exercises"). Owner chose bundle-all-171 (816→996 KB
+   raw, precached) over API-fallback-only; custom lifts got the API fallback; and
+   the `=== 64` assertion became a corpus-derived floor — the old constant had
+   FROZEN the gap in place: a pinned count can't tell "still complete" from
+   "still incomplete". Stranded progressions/regressions (~141 exercises,
+   authored, never displayed) now render as Make it easier / Make it harder.
+   Zero finder agents, zero Plan agents, zero further workflows for W263-264.
+   Lesson-54 this iteration: the enumerable forged-fixture gate went red BY
+   ITSELF when exercise_units joined SERVER_OWNED (the fixture-coverage check
+   did its job), the new coverage floor was tamper-proven (deleting one bundled
+   sheet turned exactly it plus the named kettlebell-lateral-raise parity check
+   red; build-data restored green), and the review caught a vacuous-risk test of
+   its own iteration (the regenerate-survival test needed a status===200 anchor).
+   Evidence: 399 route · 43 session-core · 19 learn-data · 199 store-parity ·
+   both chains + root gate exit 0 · Playwright 15+4+5 checks (typo-confirm
+   dismissed in place with focus retained, a mixed-unit superset round banking
+   37.5 kg and 115 lb→52.16 kg side by side, crash-resume byte-identical,
+   kettlebell-lateral-raise's sheet from the Plan tab, the custom-lift fallback).
+   Deploy: v180 after merge.
+
 7j. **Telemetry (Waves 257–261, 2026-08-27).** All three owner considerations closed
    in one turn, centered on the program-engine explainer audit. **Planning: 3 Explore
    agents (~431k — engine map with 16 verified-premise candidates C1-C16, the

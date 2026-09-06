@@ -337,6 +337,7 @@ export function createD1Store(db) {
           user_id: id,
           program_name: existing?.program?.name ?? null,
           units: existing?.profile?.units ?? null,
+          exercise_units: existing?.profile?.exercise_units ?? null,
           archive: archiveSummary({ ...archive, snapshot: JSON.parse(archive.snapshot) }),
         };
       }
@@ -369,6 +370,7 @@ export function createD1Store(db) {
         user_id: id,
         program_name: user.program?.name ?? null,
         units: user.profile?.units ?? null,
+        exercise_units: user.profile?.exercise_units ?? null,
         archive: archiveSummary({ ...finalArchive, snapshot: JSON.parse(finalArchive.snapshot) }),
       };
     },

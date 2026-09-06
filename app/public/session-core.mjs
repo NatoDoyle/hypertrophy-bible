@@ -202,6 +202,67 @@ export function weeklyRaceStatus(youThisWeek, partnerThisWeek) {
   return "tied";
 }
 
+// ---------- Units (kg ↔ lb display layer) ----------
+// Everything is STORED and computed in kg; pounds exist only at the display/entry
+// edge. These pure pieces live here (not app.js) so the conversion + the per-key
+// session migration below are unit-tested in Node — getting either wrong silently
+// changes what a resumed weight MEANS, which then anchors the next session's
+// suggestion at 2.2x. app.js binds them to localStorage prefs and the live sess.
+export const LB_PER_KG = 2.2046226;
+
+// Snap a display-unit value to what the gym can actually load: 5 lb stack pins,
+// 0.25 kg microplates — the same quanta app.js's dispWeight has always used.
+export const roundToPlate = (v, unit) => unit === "lb" ? Math.round(v / 5) * 5 : Math.round(v * 4) / 4;
+
+// Convert a DISPLAY-unit value between kg and lb, plate-rounded in the target
+// unit. Same-unit conversion is the identity (no re-rounding a value the user
+// typed — 62.7 kg stays 62.7 kg until they change units). A nonzero value NEVER
+// converts to zero: plate rounding would turn 1 kg into 0 lb, and 0 has meaning
+// here (a bodyweight lift renders its no-added-weight shape and the entry is
+// gone) — so when the plate snap collapses a real value, fall back to a finer
+// 0.5 lb / 0.25 kg quantum, clamped to at least one quantum.
+export function convertDispWeight(value, from, to) {
+  if (from === to || !(typeof value === "number" && Number.isFinite(value))) return value;
+  const raw = (from === "lb" ? value / LB_PER_KG : value) * (to === "lb" ? LB_PER_KG : 1);
+  let out = roundToPlate(raw, to);
+  if (out === 0 && value > 0) {
+    const quantum = to === "lb" ? 0.5 : 0.25;
+    out = Math.max(quantum, Math.round(raw / quantum) * quantum);
+  }
+  return out;
+}
+
+// Typed-entry gate for the player's weight/reps inputs. A number input's .value
+// is "" while empty OR mid-edit junk (browsers blank invalid states), so parse
+// failures return `fallback` (the last good value stays in sess) rather than 0 —
+// zeroing a weight because someone selected-all mid-correction would then bank a
+// 0 kg set on the next Done tap. Negative paste/spinner values floor at 0.
+export function sanitizeTypedValue(raw, { integer = false, fallback = null } = {}) {
+  const n = integer ? parseInt(raw, 10) : parseFloat(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, integer ? Math.round(n) : n);
+}
+
+// Per-key unit migration for the crash-mirrored session. sess.weights holds
+// DISPLAY-unit values; `stamps` records which unit each entry is in (per index —
+// a per-exercise lb override means one session legitimately mixes units).
+// `unitOf(key)` is what the entry SHOULD be in now; any entry whose stamp (or,
+// for pre-stamp blobs, `fallbackUnit` — the old scalar sess.units) disagrees is
+// converted once and restamped. One function serves both a global kg/lb flip and
+// a single exercise's toggle mid-workout, so there is exactly one place a stored
+// "60" can change meaning. Returns fresh objects + whether anything moved.
+export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUnit, unitOf }) {
+  const w = { ...weights }, st = { ...stamps };
+  let changed = false;
+  for (const k of Object.keys(w)) {
+    const to = unitOf(k);
+    const from = st[k] ?? fallbackUnit ?? to;
+    if (from !== to) w[k] = convertDispWeight(w[k], from, to);
+    if (st[k] !== to) { st[k] = to; changed = true; }
+  }
+  return { weights: w, stamps: st, changed };
+}
+
 // Turns an ISO week key ("2026-W30", the internal identity `isoWeekKey` stamps
 // on every challenge/session) into a label a user can read ("Week 30, 2026").
 // Pure + unit-tested so the challenge-history list (#10 social follow-on: the

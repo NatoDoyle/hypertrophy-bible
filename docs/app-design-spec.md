@@ -240,9 +240,13 @@ engine's suggestion (`progressionByExercise` + double-progression: *"Last time 3
 today"*). One exercise at a time, large steppers, a giant **Log set** button that auto-starts the rest
 timer.
 
-**3. Log a set in ~2 taps** — confirm the pre-filled numbers, or nudge them. Weight and reps are the
-**only** inputs. Rest timer auto-starts (learned from the user's real `restTimes`), buzzes on completion
-so you never watch the screen, and shows the next target. Total taps per set: ~2.
+**3. Log a set in ~2 taps** — confirm the pre-filled numbers, nudge them with − / +, or **type them**
+(the value between the stepper buttons is a real input; typing is the fast path for a big jump —
+20→80 kg is no longer 24 taps). Weight and reps are the **only** inputs. The unit beside the weight is
+tappable: it flips **that exercise** between kg and lb (the mixed-unit gym — a machine stack labelled in
+lb while the bars stay kg), remembered for future sessions; storage stays kg everywhere. Rest timer
+auto-starts (learned from the user's real `restTimes`), buzzes on completion so you never watch the
+screen, and shows the next target. Total taps per set: ~2.
 
 **4. Effort is invisible for beginners.** RIR/RPE is **never** demanded of a novice (the KB:
 beginner RIR calls are noise). Past the beginner stage (Wave-164 graduation, or force-on via the
@@ -467,9 +471,10 @@ Designed for the real conditions of logging mid-set — sweaty, gloved, one-hand
 bad signal, a cheap phone, possibly never having touched a barbell. Good gym-floor design *is* good
 accessibility.
 
-- **Thumb-first, one-handed.** All logging controls bottom-anchored with large tap targets and stepper
-  controls (no tiny numeric fields); nothing critical requires reaching the top of the screen. Core
-  numbers legible from three feet at the rack.
+- **Thumb-first, one-handed.** All logging controls bottom-anchored with large tap targets; the value
+  sits between large − / + stepper buttons as a big type-able field (numeric keypad, never a tiny
+  free-text box), so nudging stays one-thumb while a big jump can be typed. Nothing critical requires
+  reaching the top of the screen. Core numbers legible from three feet at the rack.
 - **Eyes-free.** Haptics confirm every logged set and announce the rest timer; the timer can speak. An
   optional hands-free "Log set" (voice / large gesture).
 - **Vision.** High-contrast, large default type, dark mode by default (bright screens wash out under gym

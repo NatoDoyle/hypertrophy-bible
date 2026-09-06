@@ -278,6 +278,7 @@ export function createFileStore(path) {
         user_id: id,
         program_name: restored?.program?.name ?? null,
         units: restored?.profile?.units ?? null,
+        exercise_units: restored?.profile?.exercise_units ?? null,
         archive: archiveSummary(archive),
       };
     },

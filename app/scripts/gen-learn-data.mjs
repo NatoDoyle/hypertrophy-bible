@@ -47,12 +47,14 @@ const idsIn = (dir) => new Set(readdirSync(join(DATA_DIR, dir)).filter((f) => f.
 // kind is an entry here and a renderer, not a new predicate.
 const SHIPPED = { exercise: idsIn("exercises"), supplement: idsIn("supplements"), muscle: idsIn("muscles") };
 const EX_IDS = SHIPPED.exercise;
-// Only the exercises the prose actually references get bundled — all 171 would
-// cost ~235 KB raw where the referenced 64 cost ~87 KB, on an asset the service
-// worker precaches. Collected while rendering.
+// EVERY exercise gets a bundled sheet — an owner decision (Wave 263). The old
+// prose-referenced-only filter saved ~148 KB raw on the precached bundle, but it
+// made the Plan tab's "tap any exercise for the how-to" a lie for 107 of 171
+// lifts (all smith-machine, most kettlebell/band): fully-authored sheets existed
+// and the tap said "No guide for this one." Full offline parity won.
+// REFS still collects what the prose links — the drift tripwires below need it.
 const REFS = { exercise: new Set(), supplement: new Set(), muscle: new Set() };
 const REF_TOTAL = { exercise: 0, supplement: 0, muscle: 0 };
-const EX_REFS = REFS.exercise;
 
 // Inline markdown → HTML on already-escaped text.
 //   - links to a SIBLING page we bundle  → a tappable in-app deep link (data-learn)
@@ -245,7 +247,7 @@ const MUSCLE_NAME = new Map(readdirSync(join(here, "../../data/muscles")).filter
   .map((f) => { const m = JSON.parse(readFileSync(join(here, "../../data/muscles", f), "utf8")); return [m.id, m.name]; }));
 const muscleNames = (ids) => (ids ?? []).map((id) => MUSCLE_NAME.get(id) ?? id);
 const learnExercises = {};
-for (const id of [...EX_REFS].sort()) {
+for (const id of [...EX_IDS].sort()) {
   const e = JSON.parse(readFileSync(join(EXERCISES_DIR, `${id}.json`), "utf8"));
   learnExercises[id] = {
     id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [],
@@ -254,6 +256,9 @@ for (const id of [...EX_REFS].sort()) {
     execution_steps: e.execution_steps ?? [], good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],
     loading_bias: e.loading_bias ?? null, cns_cost: e.cns_cost ?? null, difficulty: e.difficulty ?? null,
     resistance_profile: e.resistance_profile ?? null, movement_pattern: e.movement_pattern ?? null,
+    // Wave 264: make-it-harder / make-it-easier variants — authored on ~141
+    // entries since the metadata pass, displayed nowhere until now.
+    progressions: e.progressions ?? [], regressions: e.regressions ?? [],
   };
 }
 // Drift tripwires, in this file's existing style: a predicate change that silently

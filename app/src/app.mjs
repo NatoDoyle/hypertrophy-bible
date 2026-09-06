@@ -717,7 +717,9 @@ export function createApp(store, config = {}) {
     // trained" from "trained, but every row is voided or timing-quarantined".
     // buildToday needs the difference before it calls someone a first-timer.
     const everLogged = sessions.length > 0 || (await store.hasAnySession(id));
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged), daily });
+    // exercise_units rides the boot request so a NEW device inherits the account's
+    // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
+    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged), daily, exercise_units: user.profile?.exercise_units ?? {} });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
@@ -868,6 +870,38 @@ export function createApp(store, config = {}) {
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
     return c.json({ units: updated.profile.units });
+  });
+
+  // PER-EXERCISE unit overrides (the mixed-unit gym: one machine's stack is
+  // labelled in lb while the bars stay kg). Same narrow-door rule as /units above;
+  // stored as exceptions only — `units: null` clears an override. The client keeps
+  // its own copy in localStorage (instant, offline-safe); this account copy exists
+  // so a new device inherits the map via /api/today. DISPLAY-ONLY by design:
+  // logged sets stay kg-normalized (weight_kg), so nothing downstream — e1RM, PRs,
+  // stall detection, the next suggestion — ever sees a pound.
+  const MAX_EXERCISE_UNIT_OVERRIDES = 300;
+  app.post("/api/profile/exercise-units", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1
+    // Reserved object-machinery names are refused outright: "__proto__" assigns
+    // through the prototype setter (a silent no-op that would 200 while storing
+    // nothing), and none of them can ever be a real exercise slug.
+    if (typeof b.exercise !== "string" || !b.exercise.length || b.exercise.length > 120
+      || b.exercise === "__proto__" || b.exercise === "constructor" || b.exercise === "prototype") return c.json({ error: "bad-exercise" }, 400);
+    if (b.units !== "metric" && b.units !== "imperial" && b.units != null) return c.json({ error: "bad-units" }, 400);
+    let tooMany = false;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      tooMany = false; // re-derived per run: a CAS retry re-executes this mutator on a fresh read
+      const map = { ...(u.profile?.exercise_units ?? {}) };
+      if (b.units == null) delete map[b.exercise];
+      else if (Object.keys(map).length >= MAX_EXERCISE_UNIT_OVERRIDES && !Object.hasOwn(map, b.exercise)) { tooMany = true; return u; }
+      else map[b.exercise] = b.units;
+      u.profile = { ...(u.profile ?? {}), exercise_units: map };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    if (tooMany) return c.json({ error: "too-many" }, 400);
+    return c.json({ exercise_units: updated.profile.exercise_units ?? {} });
   });
 
   app.post("/api/reminders", async (c) => {
@@ -1711,6 +1745,7 @@ export function createApp(store, config = {}) {
       purpose: result.purpose,
       program_name: user?.program?.name ?? null,
       units: user?.profile?.units ?? null, // so a fresh device shows weights in the user's unit immediately
+      exercise_units: user?.profile?.exercise_units ?? null, // same contract for the per-exercise kg/lb overrides
       merge_grant,
     });
   });
@@ -1811,6 +1846,9 @@ export function createApp(store, config = {}) {
       // one-line coaching note. (This whitelist has silently dropped a field
       // before; test-routes asserts the contract.)
       resistance_profile: e.resistance_profile ?? null,
+      // Make-it-harder / make-it-easier variants (Wave 264) — free-text lists,
+      // mirrored in gen-learn-data.mjs's bundle emitter (parity-tested).
+      progressions: e.progressions ?? [], regressions: e.regressions ?? [],
     });
   });
 
