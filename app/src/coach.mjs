@@ -652,8 +652,10 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
   // the client renders the reward in the unit the user actually chose.
   const prs = detectPersonalRecords(newSession, prior);
   for (const pr of prs) {
-    if (pr.kind === "e1rm") wins.push({ kind: "pr", name: name(pr.exercise), e1rm_kg: pr.e1rm_kg, delta_kg: pr.delta_kg });
-    else if (pr.kind === "load") wins.push({ kind: "pr-load", name: name(pr.exercise), load_kg: pr.load_kg, reps: pr.reps });
+    // `exercise` travels so the client can render the win in THAT lift's unit
+    // (per-exercise kg/lb overrides), not just the global preference.
+    if (pr.kind === "e1rm") wins.push({ kind: "pr", exercise: pr.exercise, name: name(pr.exercise), e1rm_kg: pr.e1rm_kg, delta_kg: pr.delta_kg });
+    else if (pr.kind === "load") wins.push({ kind: "pr-load", exercise: pr.exercise, name: name(pr.exercise), load_kg: pr.load_kg, reps: pr.reps });
   }
 
   // Proximity to failure inferred from rep drop-off.

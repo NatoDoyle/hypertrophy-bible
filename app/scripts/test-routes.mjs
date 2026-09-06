@@ -219,6 +219,11 @@ try {
   // shipped in Wave 12 was unreachable by the client until this contract existed).
   ok("#13-2 exercise detail carries resistance_profile through the whitelist",
     typeof kbSwing.resistance_profile === "string" && kbSwing.resistance_profile.length > 10);
+  // Wave 264: progressions/regressions were authored on ~141 exercises and
+  // stranded behind this same whitelist — the sheet now renders them.
+  ok("#W264 exercise detail carries progressions + regressions through the whitelist",
+    Array.isArray(kbSwing.progressions) && kbSwing.progressions.length > 0
+    && Array.isArray(kbSwing.regressions) && kbSwing.regressions.length > 0);
 
   // #2 AUTO-TUNE: a lift that stalls across a block bumps that muscle's volume in the
   // NEXT block (bounded to MEV↔MRV), driven by the user's own logged response.
@@ -2149,6 +2154,9 @@ try {
     challenge_pushed_at: 1, challenge_accept_pushed_at: 1,
     disclaimer_ack: { v: 99, at: "1970-01-01T00:00:00.000Z" },
     smoke: true,
+    // Per-exercise kg/lb overrides may only enter through their own validating
+    // route — a wholesale door would accept an unbounded, unvalidated map.
+    exercise_units: Object.fromEntries(Array.from({ length: 999 }, (_, i) => [`forged-${i}`, "imperial"])),
   };
   // The fixture must COVER the set — otherwise this test silently shrinks the day
   // someone adds a field (the "green gate proves only what it measures" trap).
@@ -2472,6 +2480,57 @@ try {
   const mailNames = (sentMail.at(-1)?.plan?.sessions ?? []).flatMap((sn) => sn.exercises.map((e) => e.name));
   ok("#the emailed plan resolves a CUSTOM lift's name, not its raw slug",
     mailNames.includes("My Cable Fly") && !mailNames.includes("custom-my-fly"));
+
+  // --- Units: the narrow doors (global + per-exercise kg/lb) --------------------
+  // /api/profile/units shipped with NO test at all (the lesson-59 record fixed the
+  // caller, the route stayed unproven); its new per-exercise sibling gets the same
+  // coverage in one section. Both are display-only preferences: nothing here may
+  // touch the program, and stored weights stay kg everywhere.
+  const unU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["machine", "barbell"] } })).data.user_id;
+  const gu1 = await json("POST", "/api/profile/units", { user_id: unU, units: "imperial" });
+  ok("#units the global toggle round-trips through its narrow door",
+    gu1.status === 200 && gu1.data.units === "imperial" && (await store.getUser(unU)).profile.units === "imperial");
+  ok("#units a junk global value is refused", (await json("POST", "/api/profile/units", { user_id: unU, units: "stones" })).status === 400);
+  ok("#units an unknown user 404s", (await json("POST", "/api/profile/units", { user_id: "nope", units: "metric" })).status === 404);
+
+  const exu1 = await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "leg-press", units: "imperial" });
+  ok("#exunits setting an override round-trips",
+    exu1.status === 200 && exu1.data.exercise_units["leg-press"] === "imperial"
+    && (await store.getUser(unU)).profile.exercise_units["leg-press"] === "imperial");
+  const exuToday = await (await app.request(`/api/today`, { headers: { "X-HB-User": unU } })).json();
+  ok("#exunits the map rides /api/today so a new device inherits it",
+    exuToday.exercise_units?.["leg-press"] === "imperial");
+  const exu2 = await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "leg-press", units: null });
+  ok("#exunits units:null clears the override (exceptions only — no tombstones)",
+    exu2.status === 200 && !("leg-press" in exu2.data.exercise_units));
+  ok("#exunits a junk unit value is refused",
+    (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "leg-press", units: "stones" })).status === 400);
+  ok("#exunits reserved object-machinery names are refused (no silent __proto__ 200-no-op)",
+    (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "__proto__", units: "imperial" })).status === 400
+    && (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "constructor", units: "imperial" })).status === 400);
+  ok("#exunits a missing/overlong exercise id is refused",
+    (await json("POST", "/api/profile/exercise-units", { user_id: unU, units: "imperial" })).status === 400
+    && (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "x".repeat(121), units: "imperial" })).status === 400);
+  ok("#exunits an unknown user 404s",
+    (await json("POST", "/api/profile/exercise-units", { user_id: "nope", exercise: "leg-press", units: "imperial" })).status === 404);
+  // The cap: a hostile client can't grow the profile blob without bound.
+  await store.updateUser(unU, (u) => {
+    u.profile = { ...u.profile, exercise_units: Object.fromEntries(Array.from({ length: 300 }, (_, i) => [`cap-${i}`, "imperial"])) };
+    return u;
+  });
+  ok("#exunits the 301st override is refused (blob-growth cap)…",
+    (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "one-too-many", units: "imperial" })).status === 400);
+  ok("#exunits …but re-setting an EXISTING override still works at the cap",
+    (await json("POST", "/api/profile/exercise-units", { user_id: unU, exercise: "cap-0", units: "metric" })).status === 200);
+  // Wholesale-door hardening + survival: a client can't write the map through
+  // regenerate, and a cosmetic Settings save doesn't erase overrides set through
+  // the narrow door (regenerate merges by spread over the stored profile).
+  await store.updateUser(unU, (u) => { u.profile = { ...u.profile, exercise_units: { "leg-press": "imperial" } }; return u; });
+  const unRegen = await json("POST", "/api/plan/regenerate", { user_id: unU, profile: { units: "metric", exercise_units: { "smuggled-lift": "imperial" } } });
+  const unAfter = (await store.getUser(unU)).profile.exercise_units;
+  ok("#exunits the map survives a cosmetic Settings save, and a smuggled map is stripped at the wholesale door",
+    unRegen.status === 200 // the save must actually happen, or both assertions below hold vacuously
+    && unAfter["leg-press"] === "imperial" && !("smuggled-lift" in unAfter));
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

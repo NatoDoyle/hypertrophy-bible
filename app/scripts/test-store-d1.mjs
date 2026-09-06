@@ -451,6 +451,8 @@ try {
     profile: {
       user_id: ARC_SOURCE_ID,
       units: "imperial",
+      // Per-exercise kg/lb overrides travel with a restore, like disclaimer_ack.
+      exercise_units: { "arc-bench": "imperial" },
       disclaimer_ack: { version: "health-v1", acknowledged_at: "2026-08-01T00:00:00.000Z" },
       // Live device/social state is intentionally archived but must not become
       // active on a restored copy.
@@ -615,7 +617,8 @@ try {
   same("archive restore: file/D1 return the same new safe-copy identity and safe summary", fileRestore, d1Restore);
   ok("archive restore: response names a fresh copy and marks the immutable archive restored",
     fileRestore?.user_id === ARC_COPY_ID && fileRestore?.program_name === "Archived source programme"
-      && fileRestore?.units === "imperial" && fileRestore?.archive?.state === "restored"
+      && fileRestore?.units === "imperial" && fileRestore?.exercise_units?.["arc-bench"] === "imperial"
+      && fileRestore?.archive?.state === "restored"
       && fileRestore?.archive?.restored_at === ARC_RESTORED_AT);
   const fileRestoreRetry = await file.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, "must-not-create-a-second-copy", "2026-08-17T14:00:00.000Z");
   const d1RestoreRetry = await d1.restoreMergeArchive(ARC_SURVIVOR_ID, ARC_ID, "must-not-create-a-second-copy", "2026-08-17T14:00:00.000Z");
@@ -639,6 +642,7 @@ try {
       && state.user?.custom_exercises?.[0]?.id === "arc-curl"
       && state.user?.profile?.user_id === ARC_COPY_ID
       && state.user?.profile?.disclaimer_ack?.version === "health-v1"
+      && state.user?.profile?.exercise_units?.["arc-bench"] === "imperial"
       // No live subscription/social state follows a historical copy.
       && !Object.hasOwn(state.user?.profile ?? {}, "celebration")
       && !Object.hasOwn(state.user?.profile ?? {}, "commitment")

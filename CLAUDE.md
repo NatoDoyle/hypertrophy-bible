@@ -33,6 +33,15 @@ npm run deploy         # build-data + wrangler deploy (prod)
 npm run cf:dev         # run the Workers build locally (exercises the D1 store)
 ```
 
+**Cloud sandboxes (`cd app/../daytona` — self-contained, see `docs/improvement-loop.md` "Token discipline" rule 8):**
+```bash
+npm install            # once; sole dep @daytona/sdk (keeps the repo's single-dep invariant)
+npm run snapshot:build # build the Node-24 sandbox image once (installs Claude Code); rebuild if it deactivates
+npm run gate           # run BOTH test chains + the build-data staleness check in a fresh sandbox (~10 min, ~$0.03)
+npm run tournament -- briefs/x.md   # race N variant implementations; winner is verified INLINE locally before merge
+```
+Needs `DAYTONA_API_KEY` (+ `ANTHROPIC_API_KEY` for tournaments) in `daytona/.env` (git-ignored) or the env. Exit **1 = code failed**, **2 = inconclusive infra** (never a code verdict). **Sandboxes never deploy or push** — they have no git remote and no prod credentials.
+
 There is no lint step and no frontend build step. Local app data lives in `app/.data/store.json` (git-ignored); delete it to reset.
 
 ## Critical workflow rules (these have each caused real bugs)

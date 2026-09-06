@@ -1,0 +1,17 @@
+{
+  "name": "hypertrophy-bible-daytona",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Daytona cloud-sandbox tooling for the Hypertrophy Bible improvement loop: a clean-room verification gate and a variant-tournament runner. Self-contained; keeps the repo root's single-dep invariant intact.",
+  "scripts": {
+    "gate": "node gate.mjs",
+    "tournament": "node tournament.mjs",
+    "smoke": "node smoke.mjs",
+    "cleanup": "node cleanup.mjs",
+    "snapshot:build": "node snapshot.mjs"
+  },
+  "dependencies": {
+    "@daytona/sdk": "^0.207.0"
+  }
+}
