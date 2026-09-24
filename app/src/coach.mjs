@@ -156,6 +156,43 @@ export function nextSessionIndex(program, sessionCount) {
   return ((sessionCount % n) + n) % n;
 }
 
+const isPermutation = (map, n) =>
+  Array.isArray(map) && map.length === n && new Set(map).size === n && map.every((v) => Number.isInteger(v) && v >= 0 && v < n);
+
+// THE rotation pointer — the single source of truth for "which program session is
+// due" (lesson 1: buildToday, todayCard, and the skip/swap routes all read this;
+// two copies of the offset math would let the card and the served session drift).
+// On top of the base rotation (own-program session count minus rotation_base):
+//   - `plan_meta.rotation_skips` — user skips; each advances the pointer one slot
+//     without a logged session. Program-agnostic on purpose: a brand-new user with
+//     zero sessions can skip Day A and must see Day B.
+//   - `plan_meta.cycle_swap` — `{ program, cycle, map }`, a user-made permutation
+//     of THIS cycle's day order ("do Legs today; Push takes its old slot").
+//     Honored only while the program id and cycle number still match and `map` is
+//     a real permutation of the current day count — anything else (regenerated
+//     plan, rolled-over cycle, edited day list) makes it self-expire, never error.
+// Both fields die whenever plan_meta is rebuilt wholesale (block boundary,
+// graduation, training-change regenerate) — the rebase to Day A is their intended
+// expiry, not a leak.
+export function rotationState(program, sessions, planMeta) {
+  const n = program.sessions.length;
+  const own = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
+  const rotCount = Math.max(0, own - (planMeta?.rotation_base ?? 0));
+  const effCount = rotCount + Math.max(0, planMeta?.rotation_skips ?? 0);
+  const cycle = Math.floor(effCount / n);
+  const rawIdx = effCount % n;
+  const sw = planMeta?.cycle_swap;
+  const map = sw && sw.program === program.id && sw.cycle === cycle && isPermutation(sw.map, n) ? sw.map : null;
+  return { n, effCount, cycle, rawIdx, idx: map ? map[rawIdx] : rawIdx };
+}
+
+// The reassurance threshold for the missed-a-day note: a gap long enough to be a
+// real miss for THIS schedule, not a routine rest gap. A 2-day/week lifter sits
+// 3-4 days between sessions by design — flagging that as "missed" would read as
+// nagging, the exact opposite of the note's job. Always below COMEBACK_GAP_DAYS,
+// where the comeback ease owns the card with its own copy.
+export const gentleGapDays = (dpw) => Math.max(4, Math.ceil(7 / Math.max(1, dpw || 3)) + 2);
+
 // ---------------------------------------------------------------------------
 // The mesocycle: the KB's volume wave (volume-progression-and-deloads.md) made
 // real. Weeks 1-5 ramp set volume from ~70% toward the plan's generated target.
@@ -361,8 +398,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // program (e.g. an earlier device) don't phase-shift the cycle.
   // rotation_base rebases the cycle at the last regenerate: the deterministic
   // program id is reused, so without it old sessions phase-shift a fresh plan.
-  const rotCount = Math.max(0, sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length - (user.plan_meta?.rotation_base ?? 0));
-  const idx = nextSessionIndex(program, rotCount);
+  // rotationState folds in the user's skips and this cycle's day swaps on top.
+  const { idx } = rotationState(program, sessions, user.plan_meta);
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;
   let coach_note = null;
@@ -486,6 +523,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // premise and was fixed one call site earlier in this same wave; this is the
   // other one (lesson 1).
   const neverTrained = sessions.length === 0 && !hasAnySession;
+  // Missed-a-day reassurance (its own field, NOT coach_note — the client renders
+  // coach_note only when a readiness check-in exists, so a gap note folded in
+  // there would be invisible to exactly the person coming back from a gap).
+  // Bounded below COMEBACK_GAP_DAYS: at >=12 days the comeback branch above owns
+  // the card and eases the weights; here nothing changed and the copy says so.
+  const gap_note = !neverTrained && layoffDays >= gentleGapDays(user.profile?.days_per_week) && layoffDays < COMEBACK_GAP_DAYS
+    ? `It's been ${layoffDays} days — no problem. Your plan doesn't punish a gap: today's workout simply moved with you, nothing was skipped or lost, and your weights are unchanged.`
+    : null;
   // The FULL session is the template's, captured before any trim. Reading it from
   // `templateExercises` meant a low-readiness day one had already dropped an
   // accessory, so the card reported "4 instead of 6" while the plan screen showed 7.
@@ -615,7 +660,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // own signal, carried explicitly so no consumer re-derives it from the filter.
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note,
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app

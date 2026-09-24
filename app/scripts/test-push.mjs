@@ -124,6 +124,10 @@ ok("no commitment set -> no push", shouldPushForCommitment({ commitment: null, l
 ok("a commitment from a PRIOR week is stale and never fires", shouldPushForCommitment({ commitment: { week: "2020-W01", days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === false);
 ok("paused users are NEVER pushed for a commitment either", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, paused: true, now: NOW }) === false);
 ok("reminders_off is a hard opt-out for commitment pushes too", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, remindersOff: true, now: NOW }) === false);
+// A day explicitly marked as rest is ANSWERED, not lapsed — the commitment nudge
+// must stay quiet, or the rest-day button teaches users it's fake.
+ok("a marked rest day silences today's commitment push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, now: NOW, restDays: [new Date(NOW).toISOString().slice(0, 10)] }) === false);
+ok("yesterday's rest day does NOT silence today's commitment", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, now: NOW, restDays: [new Date(NOW - 86400000).toISOString().slice(0, 10)] }) === true);
 // Same-day-after-training is exactly the case shouldPush's PUSH_MIN_LAPSE_DAYS gate would block —
 // the commitment path fires anyway because it's a DIFFERENT reason (the user's own stated plan).
 ok("shouldPush alone would block a same-day-after-training push (the gate this feature bypasses)", shouldPush({ lastSessionAt: daysAgo(1), now: NOW }) === false);

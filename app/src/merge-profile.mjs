@@ -43,6 +43,12 @@ export function mergeUserProfile(fromU, toU) {
   if (fromU.pause_history?.length) {
     toU.pause_history = [...(toU.pause_history ?? []), ...fromU.pause_history].slice(-HISTORY_CAP_FIELD_CAP);
   }
+  // Deliberate rest-day records (local-day keys): pure history, additive like the
+  // two lists above — a rest day marked on the departing device must not vanish
+  // from the survivor's History (this field's own lesson-16 wiring, done at birth).
+  if (fromU.rest_days?.length) {
+    toU.rest_days = [...new Set([...(toU.rest_days ?? []), ...fromU.rest_days])].sort().slice(-HISTORY_CAP_FIELD_CAP);
+  }
   const fromFollowing = fromU.profile?.following ?? [];
   if (fromFollowing.length) {
     const toFollowing = toU.profile?.following ?? [];

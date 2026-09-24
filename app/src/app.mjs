@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
@@ -349,7 +349,7 @@ export function createApp(store, config = {}) {
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap"]
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -428,6 +428,10 @@ export function createApp(store, config = {}) {
       // it's stale — showing it beside the new session list is silent misinformation.
       // Clear it on a real edit; the explain screen falls back to the live critique.
       if (changed) u.plan_rationale = null;
+      // A day-order swap stores index positions; a real edit can reorder, add, or
+      // remove days, so those positions are meaningless now. (rotationState would
+      // also self-expire it on a length change — this covers same-length edits.)
+      if (changed && u.plan_meta?.cycle_swap) { const meta = { ...u.plan_meta }; delete meta.cycle_swap; u.plan_meta = meta; }
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
@@ -707,6 +711,7 @@ export function createApp(store, config = {}) {
       weight_logged: bodyweights.some((b) => onDay(b.date)),
       workout_logged: sessions.some((s) => onDay(s.local_date ?? s.date)),
       calories_logged: nutrition.some((e) => onDay(e.date)),
+      rest_day: (user.rest_days ?? []).includes(clientDay),
     };
     // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
     // guess for a lift with no history. `bodyweights` is ASC-sorted (byDate), so the
@@ -720,6 +725,102 @@ export function createApp(store, config = {}) {
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
     return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged), daily, exercise_units: user.profile?.exercise_units ?? {} });
+  });
+
+  // Skip today's workout: the cycle ADVANCES past it (the next session in the
+  // split is up; the skipped one returns next cycle). Stored as a counter on
+  // plan_meta — a skip must never be a phantom session row (every row advances
+  // the rotation AND feeds day_number), and it must die at every wholesale
+  // plan_meta rebuild (block boundary / graduation / training change), which a
+  // separate field does for free. `undo` walks one skip back — offered in the
+  // UI right after skipping, before anything else has moved.
+  app.post("/api/today/skip", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
+    const sessions = await store.listSessions(b.user_id);
+    let reason = null, skippedName = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      if (!u.program?.sessions?.length) { reason = "no-program"; return u; }
+      const skips = Math.max(0, u.plan_meta?.rotation_skips ?? 0);
+      if (b.undo === true) {
+        if (skips <= 0) { reason = "nothing-to-undo"; return u; }
+        const meta = { ...(u.plan_meta ?? {}) };
+        if (skips <= 1) delete meta.rotation_skips; else meta.rotation_skips = skips - 1;
+        u.plan_meta = meta;
+        return u;
+      }
+      // Name what's being skipped BEFORE advancing, from the same pointer the
+      // Today card reads — so the response can say "Skipped Push A" honestly.
+      skippedName = u.program.sessions[rotationState(u.program, sessions, u.plan_meta).idx].name;
+      u.plan_meta = { ...(u.plan_meta ?? {}), rotation_skips: Math.min(999, skips + 1) };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    if (reason) return c.json({ error: reason }, 400);
+    // Report from what was PERSISTED (lesson 21), through the one rotation pointer.
+    const today = updated.program.sessions[rotationState(updated.program, sessions, updated.plan_meta).idx].name;
+    return c.json({ ok: true, ...(skippedName ? { skipped: skippedName } : {}), today });
+  });
+
+  // Swap today's workout for another day's: the two TRADE PLACES for this cycle
+  // (do Legs today; Push takes Legs' old slot — nothing dropped or doubled).
+  // Stored as a cycle-scoped permutation on plan_meta, addressed by session NAME
+  // (the repo's per-day-metadata convention — sessions have no ids). Swapping the
+  // same pair back restores the identity map, which deletes the field: free undo.
+  // Deliberate allowance: swapping in a day whose slot already passed this cycle
+  // serves it a second time and the displaced day returns next cycle — that is
+  // what the user asked for, not a bug.
+  app.post("/api/today/swap", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    const sessions = await store.listSessions(b.user_id);
+    let reason = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      if (!u.program?.sessions?.length) { reason = "no-program"; return u; }
+      const j = u.program.sessions.findIndex((s) => s.name === String(b.day ?? ""));
+      if (j < 0) { reason = "unknown-day"; return u; }
+      const st = rotationState(u.program, sessions, u.plan_meta);
+      // Start from the live map when one is active for THIS program+cycle (the
+      // rotationState validity rules), else identity. Re-derived inside the CAS
+      // so a concurrent swap composes rather than being clobbered.
+      const active = u.plan_meta?.cycle_swap;
+      const live = active && active.program === u.program.id && active.cycle === st.cycle
+        && Array.isArray(active.map) && active.map.length === st.n ? active.map : null;
+      const map = live ? [...live] : u.program.sessions.map((_, i) => i);
+      const displayed = map[st.rawIdx];
+      if (displayed === j) { reason = "same-day"; return u; }
+      const p = map.indexOf(j);
+      map[st.rawIdx] = j;
+      map[p] = displayed;
+      const meta = { ...(u.plan_meta ?? {}) };
+      if (map.every((v, i) => v === i)) delete meta.cycle_swap; // identity — the swap undid itself
+      else meta.cycle_swap = { program: u.program.id, cycle: st.cycle, map };
+      u.plan_meta = meta;
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    if (reason) return c.json({ error: reason }, 400);
+    const today = updated.program.sessions[rotationState(updated.program, sessions, updated.plan_meta).idx].name;
+    return c.json({ ok: true, today });
+  });
+
+  // Mark a day as a deliberate rest day. A record, never a lever: it creates NO
+  // session row (a row would advance the rotation), never blocks training, and
+  // only (a) shows in History/Today and (b) quiets that evening's commitment
+  // nudge. Idempotent both ways; `remove` un-marks.
+  app.post("/api/rest-day", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    const date = boundLocalDate(b.date); // past ok; beyond-tomorrow clamps to today (the bodyweight/check-in bound)
+    const updated = await store.updateUser(b.user_id, (u) => {
+      const days = (u.rest_days ?? []).filter((d) => d !== date);
+      if (b.remove !== true) days.push(date);
+      // Sorted + capped like every other user-doc list (streak_freezes' .slice(-24)).
+      u.rest_days = days.sort().slice(-24);
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, rest_days: updated.rest_days ?? [] });
   });
 
   // Optional daily check-in (sleep/energy/stress/mood, 1-5). One per day; returns
@@ -1451,7 +1552,7 @@ export function createApp(store, config = {}) {
       ...sess,
       ...(timing_issue ? { time_quarantine: timing_issue } : {}),
       sets: (sess.sets ?? []).map((set) => ({ ...set, name: label(set.exercise) })),
-    })) });
+    })), rest_days: user.rest_days ?? [] });
   });
 
   // Fix the numbers on a session already logged. Replaces the whole `sets` array

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
-import { buildToday, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -80,6 +80,68 @@ check("nextSessionIndex rotates through the program", () => {
   assert.equal(nextSessionIndex(p, 0), 0);
   assert.equal(nextSessionIndex(p, p.sessions.length), 0); // wraps
   assert.equal(nextSessionIndex(p, 1), 1 % p.sessions.length);
+});
+
+// Shared fixtures for the rotation-pointer tests below (skip / swap / gap note).
+const rotProg = { id: "gen-mine", name: "P", sessions: [{ name: "A", exercises: [] }, { name: "B", exercises: [] }, { name: "C", exercises: [] }] };
+const rotMine = (n) => ({ session_id: `rot-${n}`, date: `2026-06-0${n + 1}T18:00:00Z`, program_ref: "gen-mine", sets: [] });
+const rotToday = (meta, sessions = []) => buildToday({ profile: { days_per_week: 3 }, plan_meta: meta, program: rotProg }, sessions);
+
+check("rotation_skips advances the pointer without a session, and the skipped day returns next cycle", () => {
+  assert.equal(rotToday({}).index, 0, "precondition: no skips opens at Day A");
+  assert.equal(rotToday({ rotation_skips: 1 }).index, 1); // day-one skip: A skipped -> B due (works with zero sessions)
+  assert.equal(rotToday({ rotation_skips: 1 }, [rotMine(0), rotMine(1)]).index, 0); // B and C logged -> cycle 1 opens at A: the skip cost one cycle, not the day
+  assert.equal(rotToday({ rotation_skips: 2 }).index, 2); // double-skip is two slots
+});
+
+check("cycle_swap trades two days for THIS cycle, nothing dropped or doubled, then expires with the cycle", () => {
+  const swap = { program: "gen-mine", cycle: 0, map: [2, 1, 0] }; // A<->C traded
+  assert.equal(rotToday({ cycle_swap: swap }).index, 2);                          // slot 0 now serves C
+  assert.equal(rotToday({ cycle_swap: swap }, [rotMine(0)]).index, 1);            // B keeps its slot
+  assert.equal(rotToday({ cycle_swap: swap }, [rotMine(0), rotMine(1)]).index, 0); // A lands in C's old slot — displaced, never dropped
+  // Cycle 1: rawIdx 0 again, but the map (which would send 0 -> 2) is expired — natural order resumes.
+  assert.equal(rotToday({ cycle_swap: swap }, [rotMine(0), rotMine(1), rotMine(2)]).index, 0);
+});
+
+check("cycle_swap self-expires on a foreign program, wrong cycle, or malformed map — never errors", () => {
+  assert.equal(rotToday({ cycle_swap: { program: "gen-other", cycle: 0, map: [2, 1, 0] } }).index, 0);
+  assert.equal(rotToday({ cycle_swap: { program: "gen-mine", cycle: 1, map: [2, 1, 0] } }).index, 0);
+  assert.equal(rotToday({ cycle_swap: { program: "gen-mine", cycle: 0, map: [2, 1] } }).index, 0);    // day count changed (plan edit)
+  assert.equal(rotToday({ cycle_swap: { program: "gen-mine", cycle: 0, map: [2, 2, 0] } }).index, 0); // not a permutation
+  assert.equal(rotToday({ cycle_swap: { program: "gen-mine", cycle: 0, map: "abc" } }).index, 0);     // not an array
+});
+
+check("a skip skips the DISPLAYED day when a swap is active (skip composes on top of the map)", () => {
+  const swap = { program: "gen-mine", cycle: 0, map: [1, 0, 2] }; // A<->B traded: slot 0 shows B
+  assert.equal(rotToday({ cycle_swap: swap }).index, 1, "precondition: the swap alone serves B first");
+  assert.equal(rotToday({ cycle_swap: swap, rotation_skips: 1 }).index, 0); // skipping the displayed B serves A (slot 1)
+});
+
+check("todayCard headline and buildToday name agree under skips + swaps (lesson 1: one rotation pointer)", () => {
+  const u = { profile: { days_per_week: 3 }, plan_meta: { rotation_skips: 2, cycle_swap: { program: "gen-mine", cycle: 0, map: [1, 0, 2] } }, program: rotProg };
+  assert.equal(todayCard(u, []).headline, buildToday(u, []).name);
+  const st = rotationState(rotProg, [], u.plan_meta);
+  assert.equal(rotProg.sessions[st.idx].name, buildToday(u, []).name); // and the exported helper is that same pointer
+});
+
+check("gap_note: fires for a real miss scaled to days_per_week, never beside the comeback, never for a first-timer", () => {
+  assert.equal(gentleGapDays(3), 5);
+  assert.equal(gentleGapDays(2), 6);
+  assert.equal(gentleGapDays(6), 4); // floor: never nags sooner than 4 days
+  const now = "2026-06-10T18:00:00Z";
+  const at = (daysAgo) => [{ session_id: "gap", date: new Date(+new Date(now) - daysAgo * 86400000).toISOString(), program_ref: "gen-mine", sets: [] }];
+  const dpw3 = { profile: { days_per_week: 3 }, program: rotProg };
+  assert.ok(buildToday(dpw3, at(5), null, [], now).gap_note, "5-day gap at 3/wk is a miss worth reassuring");
+  assert.equal(buildToday(dpw3, at(3), null, [], now).gap_note, null, "3-day gap at 3/wk is routine rest");
+  const dpw2 = { profile: { days_per_week: 2 }, program: rotProg };
+  assert.equal(buildToday(dpw2, at(5), null, [], now).gap_note, null, "5-day gap at 2/wk is by design, not a miss");
+  assert.ok(buildToday(dpw2, at(7), null, [], now).gap_note);
+  const comeback = buildToday(dpw3, at(12), null, [], now);
+  assert.ok(comeback.comeback, "precondition: 12 days is the comeback threshold");
+  assert.equal(comeback.gap_note, null, "the comeback branch owns that card");
+  assert.equal(buildToday(dpw3, [], null, [], now).gap_note, null, "never trained: there is no gap to reassure about");
+  const both = buildToday(dpw3, at(5), { level: "normal", score: 3 }, [], now);
+  assert.ok(both.gap_note && both.coach_note, "gap note and readiness note coexist without contradiction");
 });
 
 check("suggestWeight: double progression adds load only when top of range is hit", () => {
