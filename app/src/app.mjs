@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
@@ -780,12 +780,13 @@ export function createApp(store, config = {}) {
       const j = u.program.sessions.findIndex((s) => s.name === String(b.day ?? ""));
       if (j < 0) { reason = "unknown-day"; return u; }
       const st = rotationState(u.program, sessions, u.plan_meta);
-      // Start from the live map when one is active for THIS program+cycle (the
-      // rotationState validity rules), else identity. Re-derived inside the CAS
-      // so a concurrent swap composes rather than being clobbered.
+      // Start from the live map when one is active for THIS program+cycle —
+      // judged by the SAME predicate rotationState reads with, so the write side
+      // can never build on a map the read side ignores. Re-derived inside the
+      // CAS so a concurrent swap composes rather than being clobbered.
       const active = u.plan_meta?.cycle_swap;
       const live = active && active.program === u.program.id && active.cycle === st.cycle
-        && Array.isArray(active.map) && active.map.length === st.n ? active.map : null;
+        && isPermutation(active.map, st.n) ? active.map : null;
       const map = live ? [...live] : u.program.sessions.map((_, i) => i);
       const displayed = map[st.rawIdx];
       if (displayed === j) { reason = "same-day"; return u; }

@@ -156,7 +156,10 @@ export function nextSessionIndex(program, sessionCount) {
   return ((sessionCount % n) + n) % n;
 }
 
-const isPermutation = (map, n) =>
+// Exported so the swap ROUTE starts its write from the same validity predicate
+// this file reads with — two slightly different "is this map live?" checks would
+// let a map one side honors and the other ignores slip between them (lesson 1).
+export const isPermutation = (map, n) =>
   Array.isArray(map) && map.length === n && new Set(map).size === n && map.every((v) => Number.isInteger(v) && v >= 0 && v < n);
 
 // THE rotation pointer — the single source of truth for "which program session is
