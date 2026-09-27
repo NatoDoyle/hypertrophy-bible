@@ -2474,7 +2474,9 @@ async function renderProgress() {
     ? `<div class="card"><b>📓 Workout history</b>
         <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
         <button class="btn ghost" id="open-history">Workout history — view &amp; fix</button></div>`
-    : "";
+    : `<div class="card"><b>📓 Workout history</b>
+        <p class="muted">Nothing logged yet. Already trained this week before you had the app? Log it — it counts toward everything, just like a live session.</p>
+        <button class="btn ghost" id="open-retro">➕ Log a past workout</button></div>`;
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
@@ -2530,6 +2532,7 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  if ($("#open-retro")) $("#open-retro").onclick = () => renderRetroLog();
   app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
   if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
   if ($("#pr-all")) $("#pr-all").onclick = () => { prFullView = true; renderProgress(); };
