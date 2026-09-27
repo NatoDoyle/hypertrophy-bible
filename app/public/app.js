@@ -852,7 +852,8 @@ async function renderPlan() {
         <div style="flex:1"><b>${esc(exName(e.exercise))}</b>${x.lengthened_bias ? ` <span class="chip stretch">🎯 stretch-focused</span>` : ""}<br>
           <span class="muted">${e.sets} sets × ${esc(e.rep_range)} reps${x.unilateral ? " <b>each side</b>" : ""}${e.superset_with ? ` · <b>🔗 superset with ${esc(exName(e.superset_with))}</b>` : ""}${x.primary_muscles ? ` · works ${esc(friendlyMuscles(x.primary_muscles))}` : ""}</span>
         </div><span class="muted">›</span></button>`;
-    }).join("")}</div>`).join("");
+    }).join("")}
+    ${(d.program?.sessions ?? []).length > 1 ? `<button class="btn ghost inline" data-do-today="${esc(s.name)}" style="margin-top:8px">🔁 Do this one today</button>` : ""}</div>`).join("");
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${sessionCards}
@@ -862,6 +863,17 @@ async function renderPlan() {
     ${cardioBlock}`;
   wireLearnLinks();
   $("#edit-plan").onclick = renderPlanEdit;
+  // "Do this one today": the same server-side day swap the Today sheet does —
+  // the chosen day and today's trade places for this cycle. Mid-session it's
+  // refused client-side (the live session's exercises are already dealt).
+  app.querySelectorAll("[data-do-today]").forEach((b) => b.onclick = async () => {
+    if (sess) { say("Finish or discard your current workout first."); return; }
+    let res; try { res = await api("/api/today/swap", { method: "POST", body: JSON.stringify({ user_id: uid, day: b.dataset.doToday }) }); } catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+    pendingNotice = res.error
+      ? (res.error === "same-day" ? "That's already today's workout." : "Couldn't swap that day — nothing moved.")
+      : `🔁 Swapped — ${res.today} is up today.`;
+    tab = "today"; render();
+  });
   app.querySelectorAll("[data-ex-open]").forEach((b) => b.onclick = async () => {
     const id = b.dataset.exOpen;
     // The bundle now carries every KB exercise (offline-capable). The API
@@ -1300,14 +1312,17 @@ async function renderToday() {
   // both actions; honour it here (its only reader was lost in the Wave-47 hub rewrite,
   // so skipping did nothing and the check-in stayed the highlighted next step).
   const ckDismissed = !dy.checked_in && (() => { try { return localStorage.getItem("hb_ck_dismissed") === localDay(); } catch { return false; } })();
+  // A marked rest day settles the workout step (calm, not nagging) without ever
+  // locking it — Start stays tappable; rest is informational, never a gate.
+  const restDay = dy.rest_day === true && !workoutDone;
   const steps = [
     { key: "checkin", icon: "☀️", label: "Daily check-in", sub: "Weight + how you're feeling", done: dy.checked_in, dismissed: ckDismissed, cta: "Check in" },
-    { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, cta: "Start" },
+    { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, dismissed: restDay, dismissedLabel: "Rest day — recovery is training too", cta: "Start" },
     { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
   // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
   // came to train — an optional survey must never read as the gate before it (Goal 3).
-  const firstUndone = (s.day_number === 1 && !workoutDone)
+  const firstUndone = (s.day_number === 1 && !workoutDone && !restDay)
     ? steps.find((x) => x.key === "workout")
     : steps.find((x) => !x.done && !x.dismissed);
   const stepRow = (x) => {
@@ -1318,7 +1333,7 @@ async function renderToday() {
       : `<button class="btn inline ${isNext ? "" : "secondary"}" data-step="${x.key}" style="margin:0">${x.cta}</button>`;
     return `<div class="row" ${isNext ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
       <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
-      <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? "Skipped for today" : x.sub}</span></div>
+      <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? (x.dismissedLabel ?? "Skipped for today") : x.sub}</span></div>
       ${right}</div>`;
   };
   // When calories is the next step, drop an inline quick-log right here so the
@@ -1337,8 +1352,12 @@ async function renderToday() {
   // not have, which is what made hiding it feel necessary.
   const commitment = commitmentCard(adh.commitment);
 
-  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${blockCard}${readinessCard}
-    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>`}
+  // Missed-day reassurance: its own calm card (gap_note is server-derived and
+  // bounded below the comeback threshold, so the two copies never share a screen).
+  const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
+  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
+    ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+    <button class="btn ghost inline" id="change-workout">🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}`;
   wireCommitmentCard();
   // daily-flow actions
@@ -1349,6 +1368,7 @@ async function renderToday() {
     else { tab = "fuel"; render(); } // calories: the Fuel tab logs it with target context
   });
   if ($("#checkin")) $("#checkin").onclick = renderCheckin;
+  if ($("#change-workout")) $("#change-workout").onclick = () => renderTodaySwap(s);
   if ($("#hub-log")) $("#hub-log").onclick = async () => {
     const kcal = parseFloat($("#hub-kcal").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#hub-kcal").focus(); return; }
@@ -1357,6 +1377,79 @@ async function renderToday() {
   };
   wireLearnLinks();
   if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+}
+
+// Change today's workout: swap in another day (the two trade places for this
+// cycle), skip past it (it returns next cycle), or mark a deliberate rest day.
+// All three are narrow server-side POSTs — the rotation pointer lives on the
+// server so /api/today keeps serving the full player payload (weights, RIR,
+// PR-watch) for whatever day ends up on the card. NONE of them offline-queue:
+// a skip or swap replayed from a queue tomorrow would shuffle a different week
+// than the one the user was looking at (the check-in rule at its sibling door).
+// Two-tap confirms live in closure state, so navigating away disarms them.
+async function renderTodaySwap(s) {
+  app.innerHTML = `<h1>Change today's workout</h1><p class="muted">Loading your week…</p>`;
+  let d;
+  try { d = await api(`/api/plan/explain`); if (!d || d.error) throw new Error("no plan"); }
+  catch {
+    app.innerHTML = `<h1>Change today's workout</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Swapping or skipping shuffles your plan on the server, so it needs a connection — today's workout is unchanged.</p></div>
+      <button class="btn" id="back">‹ Back to Today</button>`;
+    $("#back").onclick = () => { tab = "today"; render(); };
+    return;
+  }
+  const days = d.program?.sessions ?? [];
+  const back = () => { tab = "today"; render(); };
+  const offline = () => alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment.");
+  let pending = null; // which two-tap confirm is armed: "skip" | "rest"
+  const draw = () => {
+    const others = days.filter((x) => x.name !== s.name);
+    const rows = others.map((x) => `<button class="choice" data-day="${esc(x.name)}"><b>Do ${esc(x.name)} today</b> <span class="muted">${x.exercises.length} exercise${x.exercises.length === 1 ? "" : "s"} · trades places with ${esc(s.name)}</span></button>`).join("");
+    app.innerHTML = `<h1>Change today's workout</h1>
+      <p class="muted">Today is <b>${esc(s.name)}</b>. Pick another day to do instead — the two trade places this cycle, so nothing drops out of your week.</p>
+      ${rows || `<p class="muted">This plan has just one workout, so there's no other day to swap in.</p>`}
+      <div class="card"><b>⏭️ Skip this workout</b>
+        <p class="muted">Not doing ${esc(s.name)} — your next workout moves up, and ${esc(s.name)} comes back around next cycle.</p>
+        <button class="btn secondary inline" id="skip-day">${pending === "skip" ? "Tap again to skip it" : "Skip today's workout"}</button></div>
+      <div class="card"><b>🌿 Rest day</b>
+        <p class="muted">Recovery is training too. This marks today as deliberate rest — your workout simply waits for your next gym day, and tonight's reminder stays quiet.</p>
+        <button class="btn secondary inline" id="rest-day">${pending === "rest" ? "Tap again to confirm" : "Mark today as a rest day"}</button></div>
+      <button class="btn ghost" id="back">‹ Back to Today</button>`;
+    $("#back").onclick = back;
+    app.querySelectorAll("[data-day]").forEach((b) => b.onclick = async () => {
+      let res; try { res = await api("/api/today/swap", { method: "POST", body: JSON.stringify({ user_id: uid, day: b.dataset.day }) }); } catch { offline(); return; }
+      if (res.error) { pendingNotice = res.error === "same-day" ? "That's already today's workout." : "Couldn't swap that day — your plan may have just changed. Nothing moved."; back(); return; }
+      pendingNotice = `🔁 Swapped — ${res.today} is up today; ${s.name} takes its old slot later this cycle.`;
+      back();
+    });
+    $("#skip-day").onclick = async () => {
+      if (pending !== "skip") { pending = "skip"; draw(); return; }
+      let res; try { res = await api("/api/today/skip", { method: "POST", body: JSON.stringify({ user_id: uid }) }); } catch { pending = null; draw(); offline(); return; }
+      if (res.error) { pending = null; draw(); alertBar("Couldn't skip — nothing changed."); return; }
+      // Success state stays on this sheet: right after skipping is the one moment
+      // an Undo is honest (nothing else has moved yet).
+      app.innerHTML = `<h1>Skipped</h1>
+        <div class="card"><p>⏭️ <b>${esc(res.skipped)}</b> skipped — <b>${esc(res.today)}</b> is up next. ${esc(res.skipped)} comes back around next cycle.</p></div>
+        <button class="btn" id="to-today">Back to Today</button>
+        <button class="btn ghost" id="undo-skip">↩️ Undo the skip</button>`;
+      say(`Skipped ${res.skipped}. ${res.today} is next.`);
+      $("#to-today").onclick = back;
+      $("#undo-skip").onclick = async () => {
+        let un; try { un = await api("/api/today/skip", { method: "POST", body: JSON.stringify({ user_id: uid, undo: true }) }); } catch { offline(); return; }
+        if (un.error) { alertBar("Couldn't undo that — nothing changed."); return; }
+        pendingNotice = `↩️ Skip undone — ${un.today} is back on today.`;
+        back();
+      };
+    };
+    $("#rest-day").onclick = async () => {
+      if (pending !== "rest") { pending = "rest"; draw(); return; }
+      let res; try { res = await api("/api/rest-day", { method: "POST", body: JSON.stringify({ user_id: uid, date: localDay() }) }); } catch { pending = null; draw(); offline(); return; }
+      if (res.error) { pending = null; draw(); alertBar("Couldn't mark that — nothing changed."); return; }
+      pendingNotice = "🌿 Rest day marked. Recovery is where the growth shows up — see you next session.";
+      back();
+    };
+  };
+  draw();
 }
 
 // Optional daily check-in survey — four 1-5 taps; low readiness eases today.
@@ -2381,7 +2474,9 @@ async function renderProgress() {
     ? `<div class="card"><b>📓 Workout history</b>
         <p class="muted">Everything above is worked out from what you logged. Mistyped a weight? Fix it and these recalculate.</p>
         <button class="btn ghost" id="open-history">Workout history — view &amp; fix</button></div>`
-    : "";
+    : `<div class="card"><b>📓 Workout history</b>
+        <p class="muted">Nothing logged yet. Already trained this week before you had the app? Log it — it counts toward everything, just like a live session.</p>
+        <button class="btn ghost" id="open-retro">➕ Log a past workout</button></div>`;
   const t = p.bodyweight_trend;
   const slopeDisp = t ? (unitPref() === "lb" ? Math.round(t.slope_kg_per_week * LB_PER_KG * 100) / 100 : t.slope_kg_per_week) : 0;
   const eb = p.energy_balance || {};
@@ -2437,6 +2532,7 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  if ($("#open-retro")) $("#open-retro").onclick = () => renderRetroLog();
   app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
   if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
   if ($("#pr-all")) $("#pr-all").onclick = () => { prFullView = true; renderProgress(); };
@@ -2725,6 +2821,13 @@ async function renderHistory() {
             : `<button class="btn secondary" data-fix-date="${esc(sess.session_id)}">🗓 Fix date</button>`}
         </div>`
       : "";
+    if (sess.rest_day) {
+      const ms = Date.parse(`${sess.rest_day}T12:00:00`);
+      const label = Number.isFinite(ms) ? new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date(ms)) : sess.rest_day;
+      return `<div class="card row"><div style="flex:1"><b>🌿 Rest day</b>
+        <div class="muted" style="font-size:.85rem">${esc(label)} · marked on purpose</div></div>
+        <button class="btn ghost inline" data-rm-rest="${esc(sess.rest_day)}" style="margin:0">Remove</button></div>`;
+    }
     return `<div class="card"${voided ? ' style="opacity:.55"' : ""}>
       <button class="row" data-detail="${esc(sess.session_id)}" style="width:100%;text-align:left;background:none;border:0;color:var(--text);padding:0;cursor:pointer" aria-label="View this workout's sets"><div style="flex:1">
         <b>${esc(sess.session_name || "Workout")}</b>${voided ? ' <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' <span class="chip">edited</span>' : ""}
@@ -2742,7 +2845,15 @@ async function renderHistory() {
   // scroll cost. Unparseable-date rows lead in their own group so the repair
   // card can never sink beneath weeks it doesn't belong to; voided rows stay
   // visible inside their week (never lose logged data — hiding is not grouping).
-  const groups = groupSessionsByWeek(list, (s) => validHistoryCalendarDate(s.local_date) || validHistoryCalendarDate(String(s.date ?? "").slice(0, 10)));
+  // Deliberate rest-day markers interleave into their weeks by calendar date —
+  // they're pseudo-rows ({ rest_day }), never sessions, so nothing here can
+  // mistake one for a workout. Quarantined rows keep their pinned lead; the sort
+  // is stable, so same-day siblings keep their newest-first order.
+  const calOf = (s) => s.rest_day ?? (validHistoryCalendarDate(s.local_date) || validHistoryCalendarDate(String(s.date ?? "").slice(0, 10)));
+  const restRows = (d.rest_days ?? []).map((day) => ({ rest_day: day }));
+  const pinnedRows = list.filter((x) => x.time_quarantine);
+  const datedRows = [...list.filter((x) => !x.time_quarantine), ...restRows].sort((a, b) => String(calOf(b) ?? "").localeCompare(String(calOf(a) ?? "")));
+  const groups = groupSessionsByWeek([...pinnedRows, ...datedRows], calOf);
   const dateless = groups.filter((g) => g.week === null);
   const dated = groups.filter((g) => g.week !== null);
   const shown = dated.slice(0, historyWeeksShown);
@@ -2754,9 +2865,17 @@ async function renderHistory() {
     || `<div class="card"><p class="muted">No workouts logged yet. Once you've trained, they'll show up here — and you can correct anything that went in wrong.</p></div>`;
   app.innerHTML = `<h1>Workout history</h1>
     <p class="muted">Mistyped a weight? Fix it here and every trend recalculates. Nothing is ever deleted — a workout you take back stays on this list and can be put straight back.</p>
+    <button class="btn secondary inline" id="retro-log">➕ Log a past workout</button>
     ${rows}
     <button class="btn ghost" id="hback">‹ Back to progress</button>`;
   if ($("#more-weeks")) $("#more-weeks").onclick = () => { historyWeeksShown += 4; renderHistory(); };
+  $("#retro-log").onclick = renderRetroLog;
+  app.querySelectorAll("[data-rm-rest]").forEach((b) => b.onclick = async () => {
+    let res; try { res = await api("/api/rest-day", { method: "POST", body: JSON.stringify({ user_id: uid, date: b.dataset.rmRest, remove: true }) }); } catch { say("Couldn't remove that — try again when connected."); return; }
+    if (res.error) { say("Couldn't remove that — try again."); return; }
+    say("Rest day removed.");
+    renderHistory();
+  });
   $("#hback").onclick = () => { historyWeeksShown = 4; tab = "progress"; render(); };
   app.querySelectorAll("[data-detail]").forEach((b) => b.onclick = () => { historyDateFix = null; historyDetail = b.dataset.detail; renderHistory(); });
   app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDateFix = null; historyEdit = b.dataset.edit; renderHistory(); });
@@ -2812,6 +2931,83 @@ async function historySetVoid(sessionId, voided) {
 function wireHistoryVoidButtons() {
   app.querySelectorAll("[data-void]").forEach((b) => b.onclick = () => historySetVoid(b.dataset.void, true));
   app.querySelectorAll("[data-unvoid]").forEach((b) => b.onclick = () => historySetVoid(b.dataset.unvoid, false));
+}
+
+// Retro-log: a workout done off-app on a past day, entered as a simple form
+// rather than the live player (no suggestions, no timer — you already did it).
+// It goes through the ORDINARY session door with the past date, so it counts
+// everywhere a live session counts — including advancing the day rotation,
+// which is correct: it was trained. postOrQueue is safe here, unlike skip/swap/
+// rest: the payload is date-pinned, so a delayed sync can't tell a stale story.
+async function renderRetroLog() {
+  app.innerHTML = `<h1>Log a past workout</h1><p class="muted">Loading your plan…</p>`;
+  let d, exs;
+  try { [d, exs] = await Promise.all([api(`/api/plan/explain`), api(`/api/exercises`)]); if (!d || d.error) throw new Error("no plan"); }
+  catch {
+    app.innerHTML = `<h1>Log a past workout</h1><div class="card"><p>📴 You're offline.</p>
+      <p class="muted">Your plan's day list is needed to log against — try again when you're connected.</p></div>
+      <button class="btn" id="back">‹ Back to history</button>`;
+    $("#back").onclick = renderHistory;
+    return;
+  }
+  allExercises = exs; // exName() resolves through this, custom exercises included
+  const days = d.program?.sessions ?? [];
+  const localDayAgo = (n) => { const dt = new Date(Date.now() - n * 86400000); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; };
+  const inputStyle = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem";
+  let chosen = null; // the picked program day
+  const draw = () => {
+    if (!chosen) {
+      app.innerHTML = `<h1>Log a past workout</h1>
+        <p class="muted">Trained without the app? Pick which workout it was, then the day and your numbers. It counts toward everything, just like a live session.</p>
+        ${days.map((x, i) => `<button class="choice" data-pick="${i}"><b>${esc(x.name)}</b> <span class="muted">${x.exercises.slice(0, 3).map((e) => esc(exName(e.exercise))).join(", ")}${x.exercises.length > 3 ? "…" : ""}</span></button>`).join("")}
+        <button class="btn ghost" id="back">‹ Back to history</button>`;
+      $("#back").onclick = renderHistory;
+      app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = () => { chosen = days[+b.dataset.pick]; draw(); });
+      return;
+    }
+    const rows = chosen.exercises.map((e, i) => `<div style="border-bottom:1px solid var(--line);padding:10px 0">
+      <b>${esc(exName(e.exercise))}</b> <span class="muted" style="font-size:.85rem">planned ${e.sets} × ${esc(e.rep_range)}</span>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+        <input data-rw="${i}" type="number" step="0.25" inputmode="decimal" placeholder="weight" aria-label="weight for ${esc(exName(e.exercise))}" style="flex:1;min-width:0;${inputStyle}">
+        <span class="muted">${unitLabelFor(e.exercise)}</span>
+        <input data-rr="${i}" type="number" step="1" inputmode="numeric" placeholder="reps" aria-label="reps for ${esc(exName(e.exercise))}" style="width:4rem;${inputStyle}">
+        <span class="muted">×</span>
+        <input data-rs="${i}" type="number" step="1" inputmode="numeric" value="${e.sets}" aria-label="sets for ${esc(exName(e.exercise))}" style="width:3rem;${inputStyle}">
+        <span class="muted">sets</span>
+      </div>
+    </div>`).join("");
+    app.innerHTML = `<h1>Log a past workout</h1>
+      <p class="muted"><b>${esc(chosen.name)}</b> — set the day and what you lifted. Leave a lift blank if you skipped it.</p>
+      <label class="muted" for="retro-date">Workout date</label>
+      <input id="retro-date" type="date" value="${localDayAgo(1)}" min="${localDayAgo(30)}" max="${historyTomorrow()}"
+        style="width:100%;${inputStyle};border-radius:12px;padding:12px;font-size:1.05rem;margin:4px 0 10px">
+      <div class="card">${rows}</div>
+      <p class="muted" data-retro-msg></p>
+      <button class="btn" id="retro-save">Save workout</button>
+      <button class="btn ghost" id="retro-back">‹ Pick a different workout</button>`;
+    $("#retro-back").onclick = () => { chosen = null; draw(); };
+    $("#retro-save").onclick = async () => {
+      const msg = app.querySelector("[data-retro-msg]");
+      const date = $("#retro-date").value || "";
+      if (!validHistoryCalendarDate(date) || date > historyTomorrow()) { if (msg) msg.textContent = "Pick a real date, up to today."; $("#retro-date").focus(); return; }
+      const sets = [];
+      chosen.exercises.forEach((e, i) => {
+        const w = parseFloat(app.querySelector(`[data-rw="${i}"]`)?.value);
+        const r = parseInt(app.querySelector(`[data-rr="${i}"]`)?.value, 10);
+        const n = Math.max(0, Math.min(10, parseInt(app.querySelector(`[data-rs="${i}"]`)?.value, 10) || 0));
+        if (!Number.isFinite(w) || !Number.isFinite(r) || r <= 0 || n <= 0) return; // blank/partial row = a lift you skipped
+        for (let k = 0; k < n; k++) sets.push({ exercise: e.exercise, set_type: "work", weight_kg: toKgFor(w, e.exercise), reps: r, completed_at: `${date}T12:00:00.000Z` });
+      });
+      if (!sets.length) { if (msg) msg.textContent = "Enter a weight and reps for at least one lift."; return; }
+      $("#retro-save").disabled = true;
+      if (msg) msg.textContent = "Saving…";
+      const res = await postOrQueue("/api/session", { session_id: genQueueId(), user_id: uid, date, local_date: date, session_name: chosen.name, sets });
+      if (!res.ok && !res.queued) { $("#retro-save").disabled = false; if (msg) msg.textContent = "Couldn't save or queue it — nothing was sent; try again."; return; }
+      say(res.ok ? `Workout logged for ${date}. Your trends include it now.` : "Saved on this device — it'll sync the moment you're back online.");
+      renderHistory();
+    };
+  };
+  draw();
 }
 
 // ---------- Fuel (nutrition: calorie/macro targets + daily intake log) ----------

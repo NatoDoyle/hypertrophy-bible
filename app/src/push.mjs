@@ -168,7 +168,7 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 // applied to this file's other tz-aware functions, but not this sibling call).
 // Missing tz falls back to raw UTC, same "don't starve delivery over missing
 // data" choice isUserPushHour makes for its own legacy slot.
-export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin }) {
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin, restDays = [] }) {
   if (paused || remindersOff || !commitment?.days?.length) return false;
   const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
   const localNow = +new Date(now) + offsetMs;
@@ -179,6 +179,11 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   // delivering it, not toward silence.
   if (weekHasPassed(commitment.week, localNow, 0)) return false;
   if (!commitment.days.includes(weekDayKey(localNow))) return false;
+  // A day the user explicitly marked as rest is answered, not lapsed — nudging
+  // "you planned to train today" at someone who deliberately chose recovery
+  // teaches them the rest-day button is fake. Same local-day frame as the
+  // trained-today check below.
+  if (restDays.includes(new Date(localNow).toISOString().slice(0, 10))) return false;
   if (!lastSessionAt) return true;
   const localLast = +new Date(lastSessionAt) + offsetMs;
   return new Date(localLast).toISOString().slice(0, 10) !== new Date(localNow).toISOString().slice(0, 10);
@@ -517,7 +522,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         // (a brand-new device shouldn't be nagged on day one), so this stays in
         // the per-subscription loop.
         const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
-          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min });
+          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min, restDays: user.rest_days ?? [] });
         if (!hit) continue;
         // Never POST to a non-push-service host, even if an old row slipped one in.
         if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }

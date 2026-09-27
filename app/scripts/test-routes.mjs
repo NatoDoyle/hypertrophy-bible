@@ -125,6 +125,130 @@ try {
   ok("no-op plan save succeeds", noop.status === 200);
   ok("an unchanged plan save does not flip custom:true", !(await store.getUser(uid)).program.custom);
 
+  // --- Skip / swap / rest-day / retro-log (change today's workout from the app) ---
+  const rsUid = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  const rsProg = (await store.getUser(rsUid)).program;
+  const rsNames = rsProg.sessions.map((s) => s.name);
+  ok("skip/swap precondition: a 3-day program with unique day names, or nothing below is tested",
+    rsNames.length === 3 && new Set(rsNames).size === 3);
+  const todaySession = async (u) => (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session;
+
+  // SKIP: the cycle advances past today's workout; no phantom session row.
+  ok("fresh user opens at Day A", (await todaySession(rsUid)).name === rsNames[0]);
+  const rowsBefore = (await store.listSessions(rsUid)).length;
+  const skip1 = await json("POST", "/api/today/skip", { user_id: rsUid });
+  ok("skip succeeds and names both sides", skip1.status === 200 && skip1.data.skipped === rsNames[0] && skip1.data.today === rsNames[1]);
+  ok("after a skip /api/today serves the next day", (await todaySession(rsUid)).name === rsNames[1]);
+  ok("the skip is a plan_meta counter, never a session row",
+    (await store.getUser(rsUid)).plan_meta.rotation_skips === 1 && (await store.listSessions(rsUid)).length === rowsBefore);
+  const unskip = await json("POST", "/api/today/skip", { user_id: rsUid, undo: true });
+  ok("undo walks the skip back", unskip.status === 200 && unskip.data.today === rsNames[0] && (await store.getUser(rsUid)).plan_meta.rotation_skips == null);
+  ok("a second undo refuses honestly", (await json("POST", "/api/today/skip", { user_id: rsUid, undo: true })).status === 400);
+  ok("skip without a user_id is a 404, not a 500", (await json("POST", "/api/today/skip", {})).status === 404);
+  ok("skip for an unknown user is a 404", (await json("POST", "/api/today/skip", { user_id: "nobody" })).status === 404);
+
+  // SWAP: today's day and the chosen day trade places for this cycle.
+  const swapTo = await json("POST", "/api/today/swap", { user_id: rsUid, day: rsNames[2] });
+  ok("swap serves the chosen day today", swapTo.status === 200 && swapTo.data.today === rsNames[2] && (await todaySession(rsUid)).name === rsNames[2]);
+  ok("swapping to the already-served day refuses", (await json("POST", "/api/today/swap", { user_id: rsUid, day: rsNames[2] })).data?.error === "same-day");
+  ok("an unknown day name refuses", (await json("POST", "/api/today/swap", { user_id: rsUid, day: "Leg Dayz" })).data?.error === "unknown-day");
+  const swapBack = await json("POST", "/api/today/swap", { user_id: rsUid, day: rsNames[0] });
+  ok("swapping back restores Day A AND drops the identity map (free undo)",
+    swapBack.status === 200 && swapBack.data.today === rsNames[0] && (await store.getUser(rsUid)).plan_meta.cycle_swap == null);
+
+  // The full trade, end to end through the log door: A<->C swapped, then the
+  // served order this cycle is C, B, A — nothing dropped, nothing doubled.
+  await json("POST", "/api/today/swap", { user_id: rsUid, day: rsNames[2] });
+  const served = [];
+  for (let i = 0; i < 3; i++) {
+    served.push((await todaySession(rsUid)).name);
+    await json("POST", "/api/session", { user_id: rsUid, session_id: `rs-trade-${i}`, date: dAgo(0),
+      sets: [{ exercise: rsProg.sessions[0].exercises[0]?.exercise ?? "push-up", set_type: "work", weight_kg: 20, reps: 8 }] });
+  }
+  ok("swap trades places: the cycle serves C, B, A", served.join(",") === [rsNames[2], rsNames[1], rsNames[0]].join(","));
+  ok("the next cycle resumes natural order (the swap expired with its cycle)", (await todaySession(rsUid)).name === rsNames[0]);
+
+  // REST DAY: a record on the user doc — no session row, nothing blocked.
+  const localToday = new Date().toISOString().slice(0, 10);
+  const restRows = (await store.listSessions(rsUid)).length;
+  const rest1 = await json("POST", "/api/rest-day", { user_id: rsUid });
+  ok("rest day records today", rest1.status === 200 && rest1.data.rest_days.includes(localToday));
+  ok("rest day is idempotent", (await json("POST", "/api/rest-day", { user_id: rsUid })).data.rest_days.filter((d) => d === localToday).length === 1);
+  const restToday = await (await app.request(`/api/today?d=${localToday}`, { headers: { "X-HB-User": rsUid } })).json();
+  ok("daily.rest_day rides /api/today and the served workout is unchanged",
+    restToday.daily.rest_day === true && restToday.session.name === rsNames[0]);
+  ok("a rest day creates NO session row (it must never advance the rotation)", (await store.listSessions(rsUid)).length === restRows);
+  const histRest = await (await app.request("/api/sessions", { headers: { "X-HB-User": rsUid } })).json();
+  ok("rest days ride /api/sessions for the History screen", (histRest.rest_days ?? []).includes(localToday));
+  const restRm = await json("POST", "/api/rest-day", { user_id: rsUid, remove: true });
+  ok("remove un-marks the rest day", restRm.status === 200 && !restRm.data.rest_days.includes(localToday));
+
+  // RETRO-LOG: a past-dated workout through the ordinary session door counts,
+  // is not quarantined, and advances the rotation like any trained session.
+  const retroDay = dAgo(5).slice(0, 10);
+  const retro = await json("POST", "/api/session", { user_id: rsUid, session_id: "rs-retro", date: retroDay, local_date: retroDay,
+    session_name: rsNames[0], sets: [{ exercise: rsProg.sessions[0].exercises[0]?.exercise ?? "push-up", set_type: "work", weight_kg: 20, reps: 8 }] });
+  ok("retro-log accepted", retro.status === 200);
+  const retroRow = ((await (await app.request("/api/sessions", { headers: { "X-HB-User": rsUid } })).json()).sessions ?? []).find((s) => s.session_id === "rs-retro");
+  ok("retro-log lands on its own past day, unquarantined", !!retroRow && !retroRow.time_quarantine && retroRow.local_date === retroDay);
+  ok("a retro-logged workout advances the rotation (it was trained)", (await todaySession(rsUid)).name === rsNames[1]);
+
+  // EXPIRY at the block boundary: skips and swaps die with the wholesale
+  // plan_meta rebuild — the rebase to Day A is their intended expiry.
+  for (let w = 1; w <= 7; w++) {
+    await json("POST", "/api/session", { user_id: rsUid, session_id: `rs-blk-${w}`, date: dAgo(w * 7),
+      sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+  }
+  await store.updateUser(rsUid, (u) => {
+    u.plan_meta = { ...u.plan_meta, block_start: dAgo(60), block_index: 0, rotation_skips: 2, cycle_swap: { program: u.program.id, cycle: 0, map: [2, 1, 0] } };
+    return u;
+  });
+  await app.request("/api/today", { headers: { "X-HB-User": rsUid } }); // crosses the boundary
+  const rolledMeta = (await store.getUser(rsUid)).plan_meta;
+  ok("the block boundary drops skips and swaps with the rest of the old block's stamps",
+    rolledMeta.block_index === 1 && rolledMeta.rotation_skips == null && rolledMeta.cycle_swap == null);
+
+  // A COSMETIC settings save must NOT undo a skip/swap; a real training change must.
+  await json("POST", "/api/today/skip", { user_id: rsUid });
+  const afterSkipName = (await todaySession(rsUid)).name;
+  const otherDay = (await store.getUser(rsUid)).program.sessions.map((s) => s.name).find((n) => n !== afterSkipName);
+  await json("POST", "/api/today/swap", { user_id: rsUid, day: otherDay });
+  ok("precondition: a skip and a swap are set before the cosmetic save",
+    (await store.getUser(rsUid)).plan_meta.rotation_skips === 1 && !!(await store.getUser(rsUid)).plan_meta.cycle_swap);
+  await json("POST", "/api/plan/regenerate", { user_id: rsUid, profile: { units: "imperial" } });
+  const cosMeta = (await store.getUser(rsUid)).plan_meta;
+  ok("a cosmetic save keeps the skip and the swap (units must not reshuffle the week)",
+    cosMeta.rotation_skips === 1 && !!cosMeta.cycle_swap);
+  await json("POST", "/api/plan/regenerate", { user_id: rsUid, profile: { days_per_week: 4 } });
+  const trainMeta = (await store.getUser(rsUid)).plan_meta;
+  ok("a real training change drops both (fresh plan, fresh rotation — lesson 13's direction)",
+    trainMeta.rotation_skips == null && trainMeta.cycle_swap == null);
+
+  // A real plan EDIT clears the swap: its stored index positions are meaningless
+  // against a reordered/resized day list (same-length edits included).
+  const editProg = (await store.getUser(rsUid)).program;
+  const editCurrent = (await todaySession(rsUid)).name;
+  await json("POST", "/api/today/swap", { user_id: rsUid, day: editProg.sessions.map((s) => s.name).find((n) => n !== editCurrent) });
+  ok("precondition: a swap is live before the plan edit", !!(await store.getUser(rsUid)).plan_meta.cycle_swap);
+  const editedSessions = editProg.sessions.map((s, i) => i === 0 ? { ...s, exercises: s.exercises.slice(0, -1) } : s);
+  await json("POST", "/api/plan/save", { user_id: rsUid, program: { name: editProg.name, sessions: editedSessions } });
+  ok("a real plan edit clears the day swap", (await store.getUser(rsUid)).plan_meta.cycle_swap == null);
+
+  // GAP NOTE end-to-end: a real miss gets one reassuring line; routine rest doesn't.
+  const gapUid = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"],
+  } })).data.user_id;
+  await json("POST", "/api/session", { user_id: gapUid, session_id: "gap-1", date: dAgo(6),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+  ok("a 6-day gap at 3 days/week carries the missed-day reassurance", /moved with you/.test((await todaySession(gapUid)).gap_note ?? ""));
+  await json("POST", "/api/session", { user_id: gapUid, session_id: "gap-2", date: dAgo(1),
+    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+  ok("a 1-day gap carries no gap note (routine rest is not a miss)", (await todaySession(gapUid)).gap_note === null);
+
   // --- Wave 4-B: auth + data-loss guardrails ---
 
   // #16: the credential must NOT be accepted from a URL query string anymore — a
@@ -471,7 +595,7 @@ try {
   // survivor keeps it during the merge, but a later safe-copy restore must never
   // resurrect that public capability on the new account.
   const devQShare = (await json("POST", "/api/share", { user_id: devQ })).data.share_id;
-  await store.updateUser(devQ, (u) => { u.custom_exercises = [{ id: "custom-x", name: "My Move" }]; return u; });
+  await store.updateUser(devQ, (u) => { u.custom_exercises = [{ id: "custom-x", name: "My Move" }]; u.rest_days = ["2026-01-05"]; return u; });
   const linkP = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devP });
   const linkQ = await requestMagicLink(store, { email: "twodevices@t.com", anonUserId: devQ });
   const firstDev = await json("POST", "/api/auth/consume", { token: linkP.token });
@@ -490,6 +614,8 @@ try {
     (await store.listPushSubscriptions()).some((s) => s.endpoint === "https://fcm.googleapis.com/fcm/send/merge26" && s.user_id === devP));
   ok("#26 the custom exercise survived the CAS merge onto the surviving user",
     ((await store.getUser(devP)).custom_exercises ?? []).some((x) => x.id === "custom-x"));
+  ok("rest days marked on the merged-away device follow the user (lesson-16 wiring at birth)",
+    ((await store.getUser(devP)).rest_days ?? []).includes("2026-01-05"));
   // Wave 211 (BLOCKERS #6b): the merged-away user is a TOMBSTONE — every route
   // answers exactly as if the row were deleted, but nothing was destroyed.
   const tbRes = await app.request("/api/today", { headers: { "X-HB-User": devQ } });
