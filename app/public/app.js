@@ -1315,9 +1315,14 @@ async function renderToday() {
   // A marked rest day settles the workout step (calm, not nagging) without ever
   // locking it — Start stays tappable; rest is informational, never a gate.
   const restDay = dy.rest_day === true && !workoutDone;
+  // The change-the-plan door belongs HERE, beside the workout it changes: the
+  // first version lived at the bottom of the exercise list, 2.5 phone-screens
+  // down, and was reported as simply not findable. Both entry points share the
+  // `data-change-workout` hook so there is one handler, never two that drift.
+  const changeLink = `<button class="btn ghost inline" data-change-workout style="padding:2px 8px;font-size:.85rem;margin:4px 0 0">🔁 Swap, skip or rest day</button>`;
   const steps = [
     { key: "checkin", icon: "☀️", label: "Daily check-in", sub: "Weight + how you're feeling", done: dy.checked_in, dismissed: ckDismissed, cta: "Check in" },
-    { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, dismissed: restDay, dismissedLabel: "Rest day — recovery is training too", cta: "Start" },
+    { key: "workout", icon: "🏋️", label: "Today's workout", sub: workoutDone ? "Logged — nice." : esc(s.name), done: workoutDone, dismissed: restDay, dismissedLabel: "Rest day — recovery is training too", cta: "Start", action: workoutDone ? null : changeLink },
     { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
   // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
@@ -1333,7 +1338,7 @@ async function renderToday() {
       : `<button class="btn inline ${isNext ? "" : "secondary"}" data-step="${x.key}" style="margin:0">${x.cta}</button>`;
     return `<div class="row" ${isNext ? 'style="background:var(--card2);border-radius:12px;padding:8px;margin:2px -4px"' : ""}>
       <span style="font-size:1.4rem;margin-right:10px" aria-hidden="true">${x.done ? "✅" : x.icon}</span>
-      <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? (x.dismissedLabel ?? "Skipped for today") : x.sub}</span></div>
+      <div style="flex:1"><b${settled ? ' style="opacity:.6"' : ""}>${x.label}</b><br><span class="muted" style="font-size:.85rem">${x.dismissed ? (x.dismissedLabel ?? "Skipped for today") : x.sub}</span>${x.action ? `<br>${x.action}` : ""}</div>
       ${right}</div>`;
   };
   // When calories is the next step, drop an inline quick-log right here so the
@@ -1357,7 +1362,7 @@ async function renderToday() {
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
   app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
-    <button class="btn ghost inline" id="change-workout">🔁 Not this workout? Swap, skip, or rest</button>`}
+    <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}`;
   wireCommitmentCard();
   // daily-flow actions
@@ -1368,7 +1373,7 @@ async function renderToday() {
     else { tab = "fuel"; render(); } // calories: the Fuel tab logs it with target context
   });
   if ($("#checkin")) $("#checkin").onclick = renderCheckin;
-  if ($("#change-workout")) $("#change-workout").onclick = () => renderTodaySwap(s);
+  app.querySelectorAll("[data-change-workout]").forEach((b) => b.onclick = () => renderTodaySwap(s));
   if ($("#hub-log")) $("#hub-log").onclick = async () => {
     const kcal = parseFloat($("#hub-kcal").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#hub-kcal").focus(); return; }
