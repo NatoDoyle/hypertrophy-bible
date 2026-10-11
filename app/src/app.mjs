@@ -450,10 +450,10 @@ export function createApp(store, config = {}) {
     const all = user
       ? userExercises(user.profile, user.custom_exercises || [])
       : [...exerciseById.values()];
-    // unilateral / lengthened_bias / movement_pattern travel with the row so a
-    // mid-workout swap can carry the "one side at a time", "stretch-focused", and
+    // unilateral / alternating / lengthened_bias / movement_pattern travel with the
+    // row so a mid-workout swap can carry the side, "stretch-focused", and
     // inline-demo cues onto the new lift instead of silently dropping them.
-    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, custom: !!e.custom })));
+    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, custom: !!e.custom })));
   });
 
   // Add a custom exercise to the user's personal library. Resolves everywhere

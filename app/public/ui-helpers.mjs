@@ -77,3 +77,27 @@ export function linePath(values, w, h, pad = 4) {
   const y = (v) => span === 0 ? h / 2 : (h - pad) - ((v - min) * (h - 2 * pad)) / span;
   return { pts: vals.map((v, i) => [Math.round(x(i) * 10) / 10, Math.round(y(v) * 10) / 10]), min, max };
 }
+
+// The "how do I do both sides?" cue for a unilateral lift, written to match how
+// the player BANKS it: one ✓ = one set = both sides. The old copy said "do all N
+// sets with your left, then repeat with your right" — impossible for a lift that
+// alternates by design (the owner's walking lunge; its own execution steps say
+// "continue alternating legs"), and wrong for every other unilateral lift too,
+// because the player moves on after N ✓ taps, before the right side ever starts.
+// Returns HTML for a .cue div; only parsed numbers are interpolated, never raw
+// plan text, so nothing here needs escaping.
+const LOWER_BODY_PATTERN = /lunge|squat|hinge|knee|hip|plantarflexion/;
+export function sideCue(ex, { station = false } = {}) {
+  if (!ex?.unilateral) return "";
+  if (ex.alternating) {
+    const leg = LOWER_BODY_PATTERN.test(ex.movement_pattern ?? "");
+    const limb = leg ? "leg" : "side", unit = leg ? "steps" : "reps";
+    const m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(String(ex.rep_range ?? "").trim());
+    const each = m ? (m[2] ? `${m[1]}-${m[2]}` : m[1]) : null;
+    const total = m ? (m[2] ? `${2 * m[1]}-${2 * m[2]}` : `${2 * m[1]}`) : null;
+    return `↔️ <b>Alternate ${limb}s every rep</b> — count each ${limb}${each ? `, so ${each} each ${limb} is ${total} ${unit} in total` : ""}. ${station ? "One round is one set like that." : "Tap ✓ when the set's done."}`;
+  }
+  return station
+    ? `↔️ <b>One side, then the other</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).`
+    : `↔️ <b>One side, then the other</b> — each set is your <b>left</b> side, then straight into your <b>right</b>. Tap ✓ once both are done, logging the weight you used per side.`;
+}

@@ -20,6 +20,7 @@
   "lengthened_bias": true,
   "stability": "low",
   "unilateral": true,
+  "alternating": true,
   "cns_cost": "moderate",
   "difficulty": "beginner",
   "cues": [

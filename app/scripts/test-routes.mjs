@@ -2658,6 +2658,28 @@ try {
     unRegen.status === 200 // the save must actually happen, or both assertions below hold vacuously
     && unAfter["leg-press"] === "imperial" && !("smuggled-lift" in unAfter));
 
+  // --- #alternating: the per-side field reaches every door the player reads (W267).
+  // The player's cue for a walking lunge told the owner to "do all sets with your left,
+  // then your right" — impossible for a lift that alternates by design. The data says
+  // which lifts alternate; this proves that fact actually reaches the screen's inputs.
+  const altU = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"],
+  } })).data.user_id;
+  const altSave = await json("POST", "/api/plan/save", { user_id: altU, program: { name: "Alt", sessions: [{ name: "Legs", exercises: [
+    { exercise: "walking-lunge", sets: 3, rep_range: "8-12", rir: "1-2" },
+    { exercise: "bulgarian-split-squat", sets: 3, rep_range: "8-12", rir: "1-2" },
+  ] }] } });
+  const altToday = await (await app.request("/api/today", { headers: { "X-HB-User": altU } })).json();
+  const altEx = Object.fromEntries((altToday.session?.exercises ?? []).map((e) => [e.exercise, e]));
+  ok("#alternating /api/today marks a walking lunge alternating (and still unilateral)",
+    altSave.status === 200 && altEx["walking-lunge"]?.alternating === true && altEx["walking-lunge"]?.unilateral === true);
+  ok("#alternating …and a one-side-at-a-time lift explicitly not",
+    altEx["bulgarian-split-squat"]?.alternating === false && altEx["bulgarian-split-squat"]?.unilateral === true);
+  const altLib = await (await app.request("/api/exercises", { headers: { "X-HB-User": altU } })).json();
+  ok("#alternating /api/exercises rows carry it too (a mid-session swap builds its replacement from these)",
+    altLib.find((e) => e.id === "walking-lunge")?.alternating === true && altLib.find((e) => e.id === "bulgarian-split-squat")?.alternating === false);
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

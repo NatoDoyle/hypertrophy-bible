@@ -77,6 +77,13 @@ for (const e of exercises) {
       errors++;
     }
   }
+  // `alternating` only means something on a unilateral lift: the player's side cue
+  // (ui-helpers sideCue) reads it ONLY when `unilateral` is true, so the flag on a
+  // bilateral lift is dead data that reads as shipped (lesson 15).
+  if (e.alternating === true && e.unilateral !== true) {
+    console.error(`  ✗ exercise '${e.id}': alternating:true needs unilateral:true (the side cue never reads it otherwise)`);
+    errors++;
+  }
 }
 
 // Programs -> exercise + progression refs

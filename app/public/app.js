@@ -2,7 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1903,7 +1903,7 @@ function renderPlayer(resting = 0) {
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
-    ${e.unilateral ? `<div class="cue">↔️ One side at a time — do all ${e.sets} sets with your <b>left</b>, then repeat with your <b>right</b> (or alternate). Log the weight you used per side.</div>` : ""}
+    ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
     ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
@@ -2059,7 +2059,7 @@ function renderSupersetStation(L, P, resting = 0) {
     return `<div class="card">
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
-      ${m.unilateral ? `<div class="cue">↔️ <b>One side at a time</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).</div>` : ""}
+      ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
@@ -2261,7 +2261,7 @@ async function renderSwap() {
       // stretch-focused" guidance instead of inheriting a blank. movement_pattern
       // travels too, or the swapped-in lift would show the OLD lift's inline demo.
       suggested_kg: null, cue: null,
-      unilateral: !!chosen?.unilateral, lengthened_bias: !!chosen?.lengthened_bias,
+      unilateral: !!chosen?.unilateral, alternating: !!chosen?.alternating, lengthened_bias: !!chosen?.lengthened_bias,
       movement_pattern: chosen?.movement_pattern ?? null,
       superset_with: undefined, superset_with_name: undefined,
     };

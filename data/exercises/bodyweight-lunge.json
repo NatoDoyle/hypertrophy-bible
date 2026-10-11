@@ -16,6 +16,7 @@
   "loading_bias": "lengthened",
   "lengthened_bias": true,
   "unilateral": true,
+  "alternating": true,
   "cns_cost": "low",
   "difficulty": "beginner",
   "cues": [
