@@ -4,6 +4,7 @@ import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
+import { magicLinkEmail } from "../src/email.mjs";
 import {
   requestMagicLink, consumeMagicLink, normalizeEmail, canonicalEmail, sha256hex, generateToken, TTL_MS,
 } from "../src/auth.mjs";
@@ -349,6 +350,47 @@ try {
   const upd = await store.updateUser("bw-u", (u) => { u.paused = { from: "2026-07-12" }; return u; });
   ok("updateUser applies the mutation", upd.paused?.from === "2026-07-12");
   ok("updateUser on a missing user returns null", (await store.updateUser("nope", (u) => u)) === null);
+
+  // --- #kind (W269): which situation a request is in decides what the EMAIL says ---
+  // Owner report: "it asked me to sign up with my email to save progress but then
+  // sent me a link to restore my progress." Every request for an already-bound email
+  // was a "restore" — even a device backing up its own fresh workout, even the bound
+  // user asking again (which then minted a merge grant nothing could ever use).
+  for (const u of ["kindA", "kindB", "kindC"]) await store.saveUser(u, { profile: {} });
+  const kNew = await requestMagicLink(store, { email: "kind@t.com", anonUserId: "kindA" });
+  ok("#kind a never-seen email from a device is 'new' (stored as a claim)", kNew.kind === "new" && kNew.purpose === "claim");
+  await consumeMagicLink(store, { token: kNew.token }); // kind@t.com → kindA
+  const kRe = await requestMagicLink(store, { email: "kind@t.com", anonUserId: "kindA" });
+  ok("#reconfirm the account's own user asking again is 'reconfirm', stored as a CLAIM", kRe.kind === "reconfirm" && kRe.purpose === "claim" && kRe.boundUserId === "kindA");
+  ok("#reconfirm …so consuming it stays a claim (no merge grant for a merge that can't happen)", (await consumeMagicLink(store, { token: kRe.token })).purpose === "claim");
+  const kMerge = await requestMagicLink(store, { email: "kind@t.com", anonUserId: "kindB" });
+  ok("#kind another device's anonymous user asking for a bound email is 'merge' (a restore of the account)",
+    kMerge.kind === "merge" && kMerge.purpose === "restore" && kMerge.boundUserId === "kindA");
+  await store.saveAccount("other@t.com", "kindC", new Date().toISOString());
+  const kSwitch = await requestMagicLink(store, { email: "kind@t.com", anonUserId: "kindC" });
+  ok("#kind a device already signed in to a DIFFERENT account is 'switch' (an account is never merged away)", kSwitch.kind === "switch" && kSwitch.purpose === "restore");
+  const kSignin = await requestMagicLink(store, { email: "kind@t.com" });
+  ok("#kind no device user at all is 'signin'", kSignin.kind === "signin" && kSignin.purpose === "restore");
+
+  // --- #email-copy (W269): the mail says what tapping it will actually do (lesson 60) ---
+  const mlink = "https://x.test/verify.html?token=abc";
+  const mNew = magicLinkEmail({ link: mlink, kind: "new" });
+  ok("#email-copy new: confirm your email to save your progress", mNew.subject === "Confirm your email to save your progress");
+  const mRe = magicLinkEmail({ link: mlink, kind: "reconfirm" });
+  ok("#email-copy reconfirm: says the progress is already saved to this address", mRe.subject === "Confirm your email" && /already saved to this email/.test(mRe.html));
+  const mMerge = magicLinkEmail({ link: mlink, kind: "merge" });
+  ok("#email-copy merge: 'You already have an account' — and the word 'restore' appears nowhere",
+    mMerge.subject === "You already have a Hypertrophy Bible account" && !/restore/i.test(mMerge.subject + mMerge.html));
+  ok("#email-copy merge: promises only what the merge does — this phone's workouts come along, the saved plan comes back",
+    /workouts/.test(mMerge.html) && /saved plan/.test(mMerge.html));
+  const mSwitch = magicLinkEmail({ link: mlink, kind: "switch" });
+  ok("#email-copy switch: says the phone switches accounts and promises no merge", /switches this phone/.test(mSwitch.html) && !/workouts/.test(mSwitch.html));
+  const mSignin = magicLinkEmail({ link: mlink, kind: "signin" });
+  ok("#email-copy signin: sign-in copy", mSignin.subject === "Sign in to your Hypertrophy Bible account");
+  const mPlan = magicLinkEmail({ link: mlink, kind: "new", plan: { name: "PPL", sessions: [{ name: "Push <A>", exercises: [{ name: "Bench", sets: 3, rep_range: "8-12" }] }] } });
+  ok("#email-copy a backup that carries the plan keeps the plan-screen's 'Your training week' promise (escaped)",
+    mPlan.subject === "Your training week" && /Bench — 3 × 8-12/.test(mPlan.html) && mPlan.html.includes("Push &lt;A&gt;"));
+  ok("#email-copy every kind carries the link", [mNew, mRe, mMerge, mSwitch, mSignin, mPlan].every((m) => m.html.includes(mlink)));
 
   console.log(`\n${pass} auth test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

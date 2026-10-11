@@ -2607,6 +2607,23 @@ try {
   ok("#the emailed plan resolves a CUSTOM lift's name, not its raw slug",
     mailNames.includes("My Cable Fly") && !mailNames.includes("custom-my-fly"));
 
+  // --- #auth-kind (W269): the MAIL names the situation; the HTTP answer never does.
+  // Anti-enumeration is why /api/auth/request answers a generic {sent:true}; the
+  // inbox is the one place it's safe to say "you already have an account".
+  const kindMail = [];
+  const kindApp = createApp(store, { sendEmail: async (m) => { kindMail.push(m); return { ok: true }; } });
+  const kindReq = async (body, ip) => { const r = await kindApp.request("/api/auth/request", { method: "POST",
+    headers: { "content-type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify(body) }); return { status: r.status, text: await r.text() }; };
+  const kindOwner = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const kindPhone = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.saveAccount("owner-kind@t.com", kindOwner, new Date().toISOString());
+  const kindFresh = await kindReq({ email: "fresh-kind@t.com", user_id: kindPhone }, "10.77.0.1");
+  const kindBound = await kindReq({ email: "owner-kind@t.com", user_id: kindPhone }, "10.77.0.2");
+  ok("#auth-kind an existing email's HTTP answer is byte-identical to a new one's (no account probing)",
+    kindFresh.status === 200 && kindFresh.status === kindBound.status && kindFresh.text === kindBound.text);
+  ok("#auth-kind …while the mail to the existing address is told it's a 'merge', not a bare 'restore'",
+    kindMail.at(-1)?.kind === "merge" && kindMail.at(-2)?.kind === "new");
+
   // --- Units: the narrow doors (global + per-exercise kg/lb) --------------------
   // /api/profile/units shipped with NO test at all (the lesson-59 record fixed the
   // caller, the route stayed unproven); its new per-exercise sibling gets the same

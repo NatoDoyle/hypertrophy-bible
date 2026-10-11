@@ -1811,7 +1811,7 @@ export function createApp(store, config = {}) {
         })) };
       }
     }
-    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose, plan });
+    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose, kind: result.kind, plan });
     // A real send that failed: tell the client so it can offer a retry, rather
     // than a false "check your inbox". (Only reachable after a valid request, so
     // this never reveals whether an unknown email has an account.)

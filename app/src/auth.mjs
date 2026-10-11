@@ -7,6 +7,8 @@
 // account:
 //   claim   — email is new → bind it to the caller's current (anonymous) user_id
 //   restore — email exists → hand its user_id back so a new device adopts it
+// (A re-request by the account's own user is a claim of itself. `kind` in
+// requestMagicLink names the finer situation, which only the email copy reads.)
 
 const enc = new TextEncoder();
 
@@ -63,9 +65,26 @@ export async function requestMagicLink(store, { email, anonUserId, ip = null, no
   if (ip && (await store.countRecentByIp(ip, since)) >= MAX_LINKS_PER_IP) return { error: "rate-limited" };
 
   const existing = await store.getAccountByEmail(norm);
-  const purpose = existing ? "restore" : "claim";
-  const boundUserId = existing ? existing.user_id : anonUserId;
-  if (!boundUserId) return { error: "no-user" }; // restore for an unknown email with no anon id
+  // WHICH situation this request is in decides what the EMAIL says — never the HTTP
+  // answer, which stays a generic {sent:true} so the route can't probe for accounts;
+  // the inbox is the one place it's safe to say "you already have an account". Every
+  // request for a bound email used to be a bare "restore", so a device backing up its
+  // own fresh workout was mailed "Restore your progress" (owner report), and the bound
+  // user asking again minted a merge grant nothing could ever spend.
+  //   new       — no account yet: bind it to this device's user (claim)
+  //   reconfirm — the account IS this device's user: a claim of itself, nothing to merge
+  //   merge     — another account, and this device's user has none: its workouts can come along
+  //   switch    — this device's user is bound to a different email: switch, never merge
+  //   signin    — no device user (a fresh device signing in)
+  let kind, purpose, boundUserId;
+  if (!existing) { kind = "new"; purpose = "claim"; boundUserId = anonUserId; }
+  else if (anonUserId && existing.user_id === anonUserId) { kind = "reconfirm"; purpose = "claim"; boundUserId = anonUserId; }
+  else {
+    purpose = "restore";
+    boundUserId = existing.user_id;
+    kind = !anonUserId ? "signin" : (await store.accountEmail(anonUserId)) ? "switch" : "merge";
+  }
+  if (!boundUserId) return { error: "no-user" }; // a new email with no anon id: nothing to bind
 
   const { token, tokenHash } = await generateToken();
   await store.createMagicLink({
@@ -79,7 +98,7 @@ export async function requestMagicLink(store, { email, anonUserId, ip = null, no
     used: 0,
     created_at: now,
   });
-  return { token, purpose, email: norm, boundUserId };
+  return { token, purpose, kind, email: norm, boundUserId };
 }
 
 export async function consumeMagicLink(store, { token, now = Date.now() }) {
