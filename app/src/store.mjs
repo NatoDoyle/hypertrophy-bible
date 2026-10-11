@@ -485,6 +485,9 @@ export function createFileStore(path) {
       flush();
       return row;
     },
+    // A code whose email never left (a failed send) is retired, so it can't displace
+    // the delivered one under the newest-only rule.
+    async deleteLinkCode(tokenHash) { delete db.magic_link_codes[tokenHash]; flush(); },
     async latestLinkCode(rlKey, sinceMs) {
       let best = null;
       for (const r of Object.values(db.magic_link_codes)) if (r.rl_key === rlKey && r.created_at >= sinceMs && (!best || r.created_at >= best.created_at)) best = r;

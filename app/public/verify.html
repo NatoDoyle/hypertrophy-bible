@@ -21,7 +21,7 @@
     // spent here via an explicit POST, so mail-server link scanners can't burn it.
     // Adopting the account is the SAME decision tree the app's code box runs
     // (account-adopt.mjs) — one implementation, two doors.
-    import { resolveAdoption, adoptionMessage, isIOSBrowserTab } from "/account-adopt.mjs";
+    import { resolveAdoption, adoptionMessage, isIOSBrowserTab, verifyBootAction } from "/account-adopt.mjs";
     const msg = document.getElementById("msg");
     const sub = document.getElementById("sub");
     const go = document.getElementById("go");
@@ -73,15 +73,16 @@
       }
     }
 
-    if (!token) {
+    // The boot decision is account-adopt.mjs's verifyBootAction (tested there): on
+    // iPhone this page opens in Safari, whose storage is separate from the Home-Screen
+    // app — signing in HERE can never reach the app — and the link and the code are
+    // one single-use credential, so consuming here would kill the code. Ask first.
+    const action = verifyBootAction({ token, iosTab: isIOSBrowserTab({ userAgent: navigator.userAgent, platform: navigator.platform,
+      maxTouchPoints: navigator.maxTouchPoints, standalone: navigator.standalone === true || window.matchMedia?.("(display-mode: standalone)").matches }) });
+    if (action === "missing") {
       msg.textContent = "This link is missing its code.";
       go.hidden = false;
-    } else if (isIOSBrowserTab({ userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints,
-        standalone: navigator.standalone === true || window.matchMedia?.("(display-mode: standalone)").matches })) {
-      // On iPhone this page opens in Safari, whose storage is separate from the
-      // Home-Screen app — signing in HERE can never reach the app. And the link and
-      // the code are one single-use credential, so consuming it here would kill the
-      // code the app needs. Ask first.
+    } else if (action === "ask") {
       msg.textContent = "One more tap";
       sub.textContent = "Using the app from your Home Screen? Open it and type the 6-digit code from the email — this page can't reach the app on iPhone. Using Safari? Continue here.";
       cont.hidden = false;

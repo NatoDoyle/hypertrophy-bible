@@ -2651,6 +2651,29 @@ try {
   for (let i = 0; i < 10; i++) await codeReq("/api/auth/code", { email: "lock-route@t.com", code: "111111" }, `10.66.1.${i}`);
   ok("#auth-code the 11th try on one address in a day is a 429, from any IP",
     (await codeReq("/api/auth/code", { email: "lock-route@t.com", code: "111111" }, "10.66.1.99")).status === 429);
+  // A resend whose mail FAILED must not retire the code from the email the user already
+  // has (W270b review): newest-only meant the undelivered code silently killed it.
+  let flakyCalls = 0;
+  const flakyMail = [];
+  const flakyApp = createApp(store, { sendEmail: async (m) => { flakyMail.push(m); return ++flakyCalls === 2 ? { dev: false, ok: false } : { ok: true }; } });
+  const flakyU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const flakyReq = (ip) => flakyApp.request("/api/auth/request", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ email: "flaky@t.com", user_id: flakyU }) });
+  await flakyReq("10.55.0.1");
+  const deliveredCode = flakyMail[0]?.code;
+  const failedSend = await flakyReq("10.55.0.2");
+  const afterFail = await codeReq("/api/auth/code", { email: "flaky@t.com", code: deliveredCode }, "10.55.0.3");
+  ok("#auth-code a failed resend (502) leaves the DELIVERED email's code working",
+    failedSend.status === 502 && afterFail.status === 200 && afterFail.data?.user_id === flakyU);
+
+  // The adoption probe reads the current device's account from /api/progress — a
+  // read-only route — never /api/adherence, which advances seen-once watermarks
+  // (a declined sign-in used to cost the user an unseen partner nudge).
+  const progOwner = await (await app.request("/api/progress", { headers: { "X-HB-User": caOwner } })).json();
+  const anonU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const progAnon = await (await app.request("/api/progress", { headers: { "X-HB-User": anonU } })).json();
+  ok("#auth-code /api/progress names the device's account (or null) for the adoption probe",
+    progOwner.account_email === "owner-code@t.com" && progAnon.account_email === null);
+
   const devApp = createApp(store, { sendEmail: async () => ({ dev: true }), exposeDevLink: true });
   const devRes = await (await devApp.request("/api/auth/request", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "10.66.2.1" },
     body: JSON.stringify({ email: "dev-code@t.com", user_id: caOwner }) })).json();

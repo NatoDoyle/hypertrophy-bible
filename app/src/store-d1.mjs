@@ -645,6 +645,10 @@ export function createD1Store(db) {
         .bind(row.token_hash, row.rl_key, row.code_hash, row.created_at).run();
       return row;
     },
+    async deleteLinkCode(tokenHash) {
+      await ensureExtensions(db);
+      await db.prepare("DELETE FROM magic_link_codes WHERE token_hash = ?").bind(tokenHash).run();
+    },
     async latestLinkCode(rlKey, sinceMs) {
       await ensureExtensions(db);
       return (await db.prepare("SELECT token_hash, rl_key, code_hash, created_at FROM magic_link_codes WHERE rl_key = ? AND created_at >= ? ORDER BY created_at DESC, rowid DESC LIMIT 1")

@@ -2,7 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
-import { resolveAdoption, adoptionMessage } from "/account-adopt.mjs";
+import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -317,16 +317,19 @@ function showCodeBox(afterEl, email) {
   const input = box.querySelector(".code-in"), btn = box.querySelector(".code-go"), out = box.querySelector(".code-msg");
   btn.onclick = async () => {
     const code = input.value.replace(/\s+/g, "");
-    if (!/^\d{6}$/.test(code)) { out.textContent = "That's the 6 digits from the newest email."; input.focus(); return; }
+    if (!/^\d{6}$/.test(code)) { out.textContent = "That's the 6 digits from the newest email we sent."; input.focus(); return; }
     btn.disabled = true; out.textContent = "Checking…";
     let d; try { d = await api("/api/auth/code", { method: "POST", body: JSON.stringify({ email, code }) }); }
     catch { btn.disabled = false; out.textContent = "📴 You're offline — try again when you have signal."; return; }
     if (!d?.user_id) {
       btn.disabled = false;
-      out.textContent = d?.error === "too-many-attempts" ? "Too many tries for now — use the button in the email instead."
-        : d?.error === "used" ? "That code was already used — you may already be signed in."
-        : d?.error === "expired" ? "That code has expired — send yourself a fresh email."
-        : "That code didn't work — check it's from the newest email.";
+      // No "expired" branch: the code door answers one uniform "invalid" for a wrong,
+      // old or replaced code (telling them apart would be an account probe), so the
+      // copy names every case it covers. The lockout copy offers nothing that can't
+      // reach the app — on iPhone the email's button opens Safari.
+      out.textContent = d?.error === "too-many-attempts" ? "Too many tries for this address today — try again tomorrow."
+        : d?.error === "used" ? "That code was already used — if that was you, you're signed in."
+        : "That code didn't work. It has to be from the newest email we sent, within 30 minutes — if it's older, send yourself a fresh one.";
       return;
     }
     out.textContent = "";
@@ -344,18 +347,34 @@ async function adoptHere(d) {
     current: before, storage: localStorage,
     fetchJson: (path, opts = {}) => fetch(path, opts).then((x) => x.json()),
     ask: async (q) => confirm(q),
-    // The identity this phone leaves behind must stop sending it reminders — unless
-    // its data was just merged into the account (its subscription moved with it).
+    // The identity this phone leaves must stop sending it reminders (account-adopt.mjs
+    // owns the policy and its tests; a failure never blocks the sign-in).
     beforeAdopt: async ({ merged }) => {
-      if (!before || before === d.user_id || merged || localStorage.getItem("hb_push") !== "1") return;
-      try { await removePushBeforeAccountSwitch(before); localStorage.removeItem("hb_push"); }
-      catch { reminderNote = " If this phone still gets reminders meant for its old setup, turn reminders off and on again in Me."; }
+      reminderNote = await retireOldReminder({ before, newUser: d.user_id, merged, storage: localStorage, remove: removePushBeforeAccountSwitch });
     },
   });
   if (!res.adopted) { alertBar("Kept this phone as it was — nothing changed."); return; }
+  clearPendingCode(localStorage);
   const done = adoptionMessage(d, res);
   try { sessionStorage.setItem("hb_adopt_notice", `${done.title} ${done.sub}${reminderNote}`); } catch {}
   location.reload();
+}
+// "Finish signing in": the code box again, for the code's 30 minutes after a send —
+// so a re-render, a tab switch, or iOS evicting the app never strands the code (a
+// resend would only mint a new one and retire the one in the user's inbox).
+function pendingCodeCard() {
+  const p = pendingCode(localStorage, Date.now());
+  if (!p) return "";
+  if (localStorage.getItem("hb_email") === p.email) { clearPendingCode(localStorage); return ""; } // already finished
+  return `<div class="card" id="pending-code"><b>📩 Finish signing in</b>
+    <p class="muted" id="pending-code-msg" style="margin:4px 0 0">Type the 6-digit code we emailed to <b>${esc(p.email)}</b> — or tap the button in that email.</p>
+    <button class="btn ghost inline" id="pending-code-dismiss" style="margin:6px 0 0">Not now</button></div>`;
+}
+function wirePendingCodeCard() {
+  const p = pendingCode(localStorage, Date.now());
+  if (!p || !$("#pending-code-msg")) return;
+  showCodeBox($("#pending-code-msg"), p.email);
+  $("#pending-code-dismiss").onclick = () => { clearPendingCode(localStorage); $("#pending-code")?.remove(); };
 }
 // Inline failure notice: never a silent dead button.
 function alertBar(msg) {
@@ -657,7 +676,7 @@ async function renderSettings(soloKey = null) {
 function renderOnboarding() {
   nav.hidden = true;
   if (!onbStarted) {
-    app.innerHTML = `<div class="center" style="padding-top:14vh">
+    app.innerHTML = `<div class="center" style="padding-top:14vh">${pendingCodeCard()}
       <h1>The Hypertrophy Bible</h1>
       <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
       <button class="btn" id="go">Start</button>
@@ -669,6 +688,7 @@ function renderOnboarding() {
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
         <button class="btn secondary" id="sendrestore">Email me a restore link</button>
         <p class="muted" id="rmsg"></p></div></div>`;
+    wirePendingCodeCard();
     $("#go").onclick = () => { onbStarted = true; onbStep = 0; saveOnb(); renderOnboarding(); };
     $("#healthnote").onclick = (e) => { e.preventDefault(); renderHealthNote(renderOnboarding); };
     $("#restore").onclick = () => { const b = $("#restorebox"); b.hidden = !b.hidden; if (!b.hidden) $("#remail").focus(); };
@@ -680,8 +700,9 @@ function renderOnboarding() {
       catch { $("#rmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendrestore").disabled = false; return; }
       if (r.error === "invalid-email") { $("#rmsg").textContent = "That doesn't look like an email."; $("#sendrestore").disabled = false; return; }
       if (r.sent === false) { $("#rmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendrestore").disabled = false; return; }
-      $("#rmsg").innerHTML = "If that email has saved progress, a sign-in email is on its way — its button and its code each work once and expire in 30 minutes."
+      $("#rmsg").innerHTML = "If that email has saved progress, a sign-in email is on its way. Tap its button or type its 6-digit code below — either one, once, within 30 minutes. Sending again replaces the code."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      rememberPendingCode(localStorage, val, Date.now());
       showCodeBox($("#rmsg"), val);
       // Typos are the common failure here (a wrong-but-valid email still shows the
       // hedged success line) — always leave a way to correct and resend in place,
@@ -1074,7 +1095,8 @@ async function renderPlanExplain(firstTime) {
     // and unknown-user too (deliberately generic, to stop account enumeration), so
     // the flag could be set when no email was sent at all.
     planEmailSent = true;   // session-only: enough to stop re-offering the form here
-    if (msg) msg.textContent = "Sent — tap the button in that email, or type its 6-digit code below. You can start training now either way.";
+    if (msg) msg.textContent = "Sent — tap the button in that email, or type its 6-digit code below (within 30 minutes). You can start training now either way.";
+    rememberPendingCode(localStorage, email, Date.now());
     showCodeBox(msg, email);
   };
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
@@ -1462,10 +1484,11 @@ async function renderToday() {
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}`;
+  wirePendingCodeCard();
   wireCommitmentCard();
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
@@ -3709,7 +3732,7 @@ function renderMe() {
   </div>`;
   const recovery = mergeArchiveCard(uid);
   const care = `<div id="care-slot"><h2>Reminders &amp; pause</h2><div class="card"><p class="muted">Loading…</p></div></div>`;
-  app.innerHTML = `<h1>Me</h1>
+  app.innerHTML = `<h1>Me</h1>${pendingCodeCard()}
     <div id="me-nudge"></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
@@ -3728,6 +3751,7 @@ function renderMe() {
     <button class="btn ghost inline" id="healthnote-me">Health &amp; safety note</button>
     <button class="btn ghost inline" id="reset">Reset (start over)</button>`;
   fillMeCare();
+  wirePendingCodeCard();
   $("#healthnote-me").onclick = () => renderHealthNote(() => { tab = "me"; render(); });
   $("#settings").onclick = renderTrainingSettings;
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
@@ -3765,8 +3789,9 @@ function renderMe() {
       catch { $("#bmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendlink").disabled = false; return; }
       if (r.error === "invalid-email") { $("#bmsg").textContent = "That doesn't look like an email."; $("#sendlink").disabled = false; return; }
       if (r.sent === false) { $("#bmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendlink").disabled = false; return; }
-      $("#bmsg").innerHTML = "Check your inbox — tap the button in the email, or type its 6-digit code below. Both work once and expire in 30 minutes."
+      $("#bmsg").innerHTML = "Check your inbox — tap the button in the email, or type its 6-digit code below. Either one, once, within 30 minutes; sending again replaces the code."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      rememberPendingCode(localStorage, val, Date.now());
       showCodeBox($("#bmsg"), val);
     };
     // Sign in from another phone's saved progress — WITHOUT user_id, which is the
@@ -3785,8 +3810,9 @@ function renderMe() {
       // user to conclude their account doesn't exist (the sibling send buttons
       // both carry this guard; omitting it here was the audit's finding).
       if (r.sent === false) { $("#me-restore-msg").textContent = "Couldn't send right now — try again in a moment."; return; }
-      $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in email is on its way — its button and its code each work once and expire in 30 minutes."
+      $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in email is on its way. Tap its button or type its 6-digit code below — either one, once, within 30 minutes. Sending again replaces the code."
         + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      rememberPendingCode(localStorage, val, Date.now());
       showCodeBox($("#me-restore-msg"), val);
     };
   }

@@ -67,11 +67,12 @@ export function generateCode() {
   return String(buf[0] % CODE_SPACE).padStart(6, "0");
 }
 // A code is only 10^6 guesses, so the store hash is defence in depth; the real
-// protection is the 30-minute expiry, single use, NEWEST-code-only, and these caps
-// (checked BEFORE any comparison, so a locked address can't be probed even with
-// the right code). Per address per day: ~1e-5 odds a day for a targeted guesser.
-export const CODE_FAILS_PER_EMAIL = 10; // per canonical address, per 24h
-export const CODE_FAILS_PER_IP = 30;    // per requester IP, per hour
+// protection is the 30-minute expiry, single use, NEWEST-code-only, and these caps.
+// Every TRY counts (success or not), and a try is RESERVED before anything is
+// compared, so at most CODE_TRIES_PER_EMAIL comparisons a day can ever happen for an
+// address — ~1e-5 odds a day for a targeted guesser — however the tries interleave.
+export const CODE_TRIES_PER_EMAIL = 10; // per canonical address, per 24h
+export const CODE_TRIES_PER_IP = 30;    // per requester IP, per hour
 const codeHash = (tokenHash, code) => sha256hex(`${tokenHash}:${code}`);
 
 export async function requestMagicLink(store, { email, anonUserId, ip = null, now = Date.now(), ttlMs = TTL_MS }) {
@@ -119,7 +120,7 @@ export async function requestMagicLink(store, { email, anonUserId, ip = null, no
   });
   const code = generateCode();
   await store.saveLinkCode({ token_hash: tokenHash, rl_key: rlKey, code_hash: await codeHash(tokenHash, code), created_at: now });
-  return { token, code, purpose, kind, email: norm, boundUserId };
+  return { token, tokenHash, code, purpose, kind, email: norm, boundUserId };
 }
 
 // ONE consume core for both doors (the emailed token and the typed code): a code is
@@ -174,23 +175,38 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
   return consumeLinkRow(store, await store.getMagicLink(await sha256hex(token)), now);
 }
 
-// The typed-code door. Every failure — unknown address, no live code, wrong code,
-// malformed input — answers the same "invalid" and leaves marker rows in their own
-// buckets (ip NULL, so the link-request caps never see them).
+// The typed-code door. Every failure — unknown address, no live code, an expired or
+// wrong code, malformed input — answers the same "invalid".
+//
+// The caps RESERVE before they compare. The first version counted earlier failures
+// and wrote its own only after comparing, so a parallel burst of 500 wrong codes all
+// read "0 failures so far" — and the real code at the end of the burst signed an
+// attacker in (reproduced by the W270 review). Now each try inserts its marker FIRST
+// and then counts, the count including itself: tries land in the store in some order,
+// and a try in position p sees a count of at least p, so no interleaving lets more
+// than the cap's worth of tries through to the comparison.
+//
+// Uniform on purpose: a try is charged whether or not the address has an account or a
+// live code. Charging only addresses with a live code would make "429 after 10 tries"
+// an account probe — an attacker can mint a code only for an address that already has
+// an account (a no-user_id request for an unknown address creates nothing). The cost
+// is that someone who knows an address can spend its tries for the day; the emailed
+// link still works, and the address's next day is a fresh budget.
 export async function consumeMagicCode(store, { email, code, ip = null, now = Date.now() }) {
   const norm = normalizeEmail(email);
   const rlKey = norm ? canonicalEmail(norm) : null;
-  if (ip && (await store.countRecentLinks("codefail-ip:" + ip, now - 60 * 60 * 1000)) >= CODE_FAILS_PER_IP) return { error: "too-many-attempts" };
-  if (rlKey && (await store.countRecentLinks("codefail:" + rlKey, now - 24 * 60 * 60 * 1000)) >= CODE_FAILS_PER_EMAIL) return { error: "too-many-attempts" };
-  const failed = async () => {
-    const marker = (rl_key) => store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key, ip: null, user_id: "codefail-marker", purpose: "codefail-marker", expires_at: now, used: 1, created_at: now });
-    if (rlKey) await marker("codefail:" + rlKey);
-    if (ip) await marker("codefail-ip:" + ip);
-    return { error: "invalid" };
+  const reserve = async (key, windowMs, cap) => {
+    await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: key, ip: null, user_id: "codetry-marker", purpose: "codetry-marker", expires_at: now, used: 1, created_at: now });
+    return (await store.countRecentLinks(key, now - windowMs)) <= cap;
   };
+  if (ip && !(await reserve("codetry-ip:" + ip, 60 * 60 * 1000, CODE_TRIES_PER_IP))) return { error: "too-many-attempts" };
+  if (!rlKey) return { error: "invalid" };
+  if (!(await reserve("codetry:" + rlKey, 24 * 60 * 60 * 1000, CODE_TRIES_PER_EMAIL))) return { error: "too-many-attempts" };
+  // An input bound, not a behaviour: anything that isn't six digits fails the hash
+  // compare anyway — this just keeps a huge body from being hashed.
   const typed = String(code ?? "").replace(/\s+/g, "");
-  if (!rlKey || !/^\d{6}$/.test(typed)) return failed();
+  if (!/^\d{6}$/.test(typed)) return { error: "invalid" };
   const row = await store.latestLinkCode(rlKey, now - TTL_MS);
-  if (!row || (await codeHash(row.token_hash, typed)) !== row.code_hash) return failed();
+  if (!row || (await codeHash(row.token_hash, typed)) !== row.code_hash) return { error: "invalid" };
   return consumeLinkRow(store, await store.getMagicLink(row.token_hash), now);
 }

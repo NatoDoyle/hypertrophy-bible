@@ -39,14 +39,15 @@ export function magicLinkEmail({ link, code = null, kind = "new", plan = null })
   const codeHtml = shown
     ? `<p style="margin:16px 0 4px">Using the app from your Home Screen? Type this code in the app:</p>
       <p style="font-size:28px;font-weight:800;letter-spacing:4px;margin:0 0 4px">${shown}</p>
-      <p style="color:#666;font-size:13px;margin:0">On iPhone the button below opens your browser, not the app.</p>`
+      <p style="color:#666;font-size:13px;margin:0">On iPhone the button below opens your browser, not the app.</p>
+      <p style="color:#b00020;font-size:13px;margin:6px 0 0"><b>Never share this code.</b> We'll never ask you for it, and anyone who has it can open your account.</p>`
     : "";
   const subject = planHtml ? "Your training week" : copy.subject;
   const lead = planHtml && kind === "new" ? "Tap below to save this to your account so it follows you to any device." : copy.lead;
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:24px auto;color:#111">
       <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
       ${planHtml}
-      <p>${lead} ${code ? "The code and the button each work once" : "This link works once"} and expire${code ? "" : "s"} in 30 minutes.</p>
+      <p>${lead} ${shown ? "Use the code or the button — either one, once, within 30 minutes. Sending yourself another email replaces this code." : "This link works once and expires in 30 minutes."}</p>
       ${codeHtml}
       <p style="margin:20px 0"><a href="${link}" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">${copy.button}</a></p>
       <p style="color:#888;font-size:14px">If you didn't request this, you can safely ignore it. Replies to this address aren't read — this mailbox only sends.</p></div>`;

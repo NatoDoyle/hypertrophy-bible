@@ -680,6 +680,9 @@ try {
     (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie" && (await file.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie");
   same("latestLinkCode: nothing inside the window → identical in both", await file.latestLinkCode("codes@t.com", 2001), await d1.latestLinkCode("codes@t.com", 2001));
   ok("latestLinkCode: …and that's null", (await d1.latestLinkCode("codes@t.com", 2001)) === null);
+  for (const st of [file, d1]) await st.deleteLinkCode("lc-tie");
+  same("deleteLinkCode: retiring the newest code hands 'newest' back to the previous one, identically", await file.latestLinkCode("codes@t.com", 0), await d1.latestLinkCode("codes@t.com", 0));
+  ok("deleteLinkCode: …which is lc-new", (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-new");
 
   // `ensureExtensions` must be scoped to an individual D1 binding. The primary
   // shim above has already initialized it; a fresh binding with all extension

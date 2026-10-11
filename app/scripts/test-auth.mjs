@@ -396,6 +396,13 @@ try {
   ok("#email-copy every kind carries the code BEFORE the button (a Home-Screen user reads it first)",
     withCode.every((m) => m.html.includes("482 913") && m.html.indexOf("482 913") < m.html.indexOf(mlink)));
   ok("#email-copy the code never rides in a subject line", withCode.every((m) => !m.subject.includes("482")));
+  // W270b review: the button and the code are ONE credential (a resend also replaces
+  // the code), so "each work once" was false; and a 6-digit code that hands out the
+  // account is the classic phishing ask, so the mail must say never to share it.
+  ok("#email-copy says the truth about the credential: either one, once, and a resend replaces the code",
+    withCode.every((m) => /either one, once, within 30 minutes/.test(m.html) && /replaces this code/.test(m.html) && !/each work once/.test(m.html)));
+  ok("#email-copy every code comes with 'never share it — we'll never ask'",
+    withCode.every((m) => /Never share this code/.test(m.html) && /never ask you for it/.test(m.html)));
 
   // --- #code (W270): a 6-digit code in every magic-link email, typed into the app. On
   // iPhone an emailed link opens in Safari, whose storage is separate from the
@@ -431,6 +438,68 @@ try {
   ok("#code 30 failures from one IP in an hour lock that IP out, whatever address it tries next",
     (await consumeMagicCode(store, { email: "ipvictim@t.com", code: ipLink.code, ip: "9.9.9.3" })).error === "too-many-attempts");
   ok("#code …without locking the address for anyone else", (await consumeMagicCode(store, { email: "ipvictim@t.com", code: ipLink.code, ip: "9.9.9.4" })).user_id === "ipU");
+  // --- #code-race (W270b, review finding): the lockout used to be check-then-act — every
+  // request read the failure count BEFORE any request wrote its marker, so one parallel
+  // burst of 500 wrong codes + the real one signed an attacker in (reproduced). A try is
+  // now RESERVED (inserted) before anything is compared and the count includes it, so no
+  // interleaving lets more than the cap's worth of tries reach the comparison.
+  await store.saveUser("raceU", { profile: {} });
+  await store.saveAccount("race@t.com", "raceU", new Date().toISOString());
+  const raceLink = await requestMagicLink(store, { email: "race@t.com" }); // attacker-initiated signin
+  const raceWrong = (i) => String((Number(raceLink.code) + 1 + i) % 1e6).padStart(6, "0");
+  const burst = await Promise.all([...Array.from({ length: 50 }, (_, i) => consumeMagicCode(store, { email: "race@t.com", code: raceWrong(i), ip: `7.7.${i}.1` })),
+    consumeMagicCode(store, { email: "race@t.com", code: raceLink.code, ip: "7.7.99.1" })]);
+  ok("#code-race a parallel burst can't buy more tries than the cap: at most 10 answers aren't 'too-many-attempts'",
+    burst.filter((r) => r.error !== "too-many-attempts").length <= 10);
+  ok("#code-race …so the real code at the end of a 51-try burst does NOT sign anyone in", !burst.at(-1).user_id);
+
+  // --- #code-windows (W270b): both lockout windows pinned with literal times (lesson 42) —
+  // shrinking the address's 24h to 1h, or stretching the IP's 1h to 24h, was invisible.
+  const T0 = Date.UTC(2026, 0, 5, 9, 0, 0);
+  await store.saveUser("winU", { profile: {} });
+  const winLink = await requestMagicLink(store, { email: "win@t.com", anonUserId: "winU", now: T0 });
+  for (let i = 0; i < 10; i++) await consumeMagicCode(store, { email: "win@t.com", code: winLink.code === "111111" ? "222222" : "111111", now: T0 + i * 1000 });
+  const winRight = (at) => consumeMagicCode(store, { email: "win@t.com", code: winLink.code, now: at });
+  ok("#code-windows the address stays locked 2 hours later…", (await winRight(T0 + 2 * 3600e3)).error === "too-many-attempts");
+  ok("#code-windows …and 23 hours later", (await winRight(T0 + 23 * 3600e3)).error === "too-many-attempts");
+  const winFresh = await requestMagicLink(store, { email: "win@t.com", anonUserId: "winU", now: T0 + 25 * 3600e3 });
+  ok("#code-windows …and a fresh code works once the day has passed", (await consumeMagicCode(store, { email: "win@t.com", code: winFresh.code, now: T0 + 25 * 3600e3 + 1000 })).user_id === "winU");
+  for (let i = 0; i < 30; i++) await consumeMagicCode(store, { email: `ipwin${i}@t.com`, code: "123456", ip: "8.8.1.1", now: T0 + i * 1000 });
+  ok("#code-windows an IP that spent its 30 tries is still locked 59 minutes later",
+    (await consumeMagicCode(store, { email: "ipwin-x@t.com", code: "123456", ip: "8.8.1.1", now: T0 + 59 * 60e3 })).error === "too-many-attempts");
+  ok("#code-windows …and free again 61 minutes later",
+    (await consumeMagicCode(store, { email: "ipwin-y@t.com", code: "123456", ip: "8.8.1.1", now: T0 + 61 * 60e3 })).error === "invalid");
+
+  // --- #code-canonical (W270b): the code is looked up under the CANONICAL address, the
+  // same bucket the request saved it in — a dotted or +aliased Gmail must still work.
+  // Both directions, each with an address whose canonical form DIFFERS from what is typed
+  // (a fixture that types the canonical form itself can't tell canonical keying from
+  // normalized keying — the first draft of this test survived exactly that tamper).
+  for (const u of ["canonU", "canonW", "canonV"]) await store.saveUser(u, { profile: {} });
+  const canonSaved = await requestMagicLink(store, { email: "First.Last+hb@gmail.com", anonUserId: "canonU" });
+  ok("#code-canonical requested as First.Last+hb@gmail.com, accepted as firstlast@gmail.com (save keys the canonical form)",
+    (await consumeMagicCode(store, { email: "firstlast@gmail.com", code: canonSaved.code })).user_id === "canonU");
+  const canonPlain = await requestMagicLink(store, { email: "second@gmail.com", anonUserId: "canonW" });
+  ok("#code-canonical requested as second@gmail.com, accepted as Sec.Ond+x@gmail.com (lookup keys the canonical form)",
+    (await consumeMagicCode(store, { email: "Sec.Ond+x@gmail.com", code: canonPlain.code })).user_id === "canonW");
+  const canonOld = await requestMagicLink(store, { email: "nl@t.com", anonUserId: "canonV" });
+  const canonNew = await requestMagicLink(store, { email: "nl+x@t.com", anonUserId: "canonV" });
+  ok("#code-canonical newest-only spans aliases: the plain address's older code is dead once an alias asked again",
+    canonOld.code === canonNew.code || (await consumeMagicCode(store, { email: "NL+y@t.com", code: canonOld.code })).error === "invalid");
+  ok("#code-canonical …and the newer code is accepted under a third spelling", (await consumeMagicCode(store, { email: "NL+y@t.com", code: canonNew.code })).user_id === "canonV");
+
+  // --- #code-expired (W270b): a code past its 30 minutes reads exactly like a wrong one.
+  // Telling "expired" apart would reveal that an address had a code minted — and an
+  // attacker can mint one only for an address that HAS an account (a no-user_id request
+  // for an unknown address creates nothing), which would make this door an account probe.
+  await store.saveUser("expU", { profile: {} });
+  await store.saveAccount("exp@t.com", "expU", new Date().toISOString());
+  const expLink = await requestMagicLink(store, { email: "exp@t.com", now: T0 });
+  ok("#code-expired the right code 31 minutes later is just 'invalid' (no existence oracle)",
+    (await consumeMagicCode(store, { email: "exp@t.com", code: expLink.code, now: T0 + 31 * 60e3 })).error === "invalid");
+  ok("#code-expired …the same answer an address with no account at all gets",
+    (await consumeMagicCode(store, { email: "never-here@t.com", code: expLink.code, now: T0 + 31 * 60e3 })).error === "invalid");
+
   // One consume core for both doors: a restore mints its merge grant there, and a grant
   // (or any non-link row) can never be spent as a link.
   const gReq = await requestMagicLink(store, { email: "code@t.com" });

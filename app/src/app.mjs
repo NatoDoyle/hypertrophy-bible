@@ -1634,7 +1634,10 @@ export function createApp(store, config = {}) {
     // Check-ins feed the concurrent-training read's readiness corroborator;
     // progressReport windows them to the same 42-day block as the bodyweight trend.
     const [sessions, bodyweights, checkins] = await Promise.all([store.listSessions(id), store.listBodyweights(id), store.listCheckins(id)]);
-    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz));
+    // account_email rides along for the sign-in adoption probe (account-adopt.mjs):
+    // this route is read-only, unlike /api/adherence, whose GET advances seen-once
+    // watermarks — a declined sign-in must not cost the user an unseen partner nudge.
+    return c.json({ ...progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz), account_email: await store.accountEmail(id) });
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).
@@ -1815,7 +1818,12 @@ export function createApp(store, config = {}) {
     // A real send that failed: tell the client so it can offer a retry, rather
     // than a false "check your inbox". (Only reachable after a valid request, so
     // this never reveals whether an unknown email has an account.)
-    if (sent && sent.dev === false && sent.ok === false) return c.json({ sent: false, error: "send-failed" }, 502);
+    if (sent && sent.dev === false && sent.ok === false) {
+      // The undelivered code must not displace the code in an email the user already
+      // has (newest-only) — retire it before answering.
+      await store.deleteLinkCode(result.tokenHash).catch(() => {});
+      return c.json({ sent: false, error: "send-failed" }, 502);
+    }
     return c.json({ sent: true, ...(sent?.dev && exposeDevLink ? { dev_link: link, dev_code: result.code } : {}) });
   });
 
