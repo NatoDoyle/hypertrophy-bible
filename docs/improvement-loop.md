@@ -1087,6 +1087,10 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      exercise-science dispute is rule 1's one-skeptic case — pure reasoning, no code execution,
      no isolation; a sandbox adds cost for nothing. **No auto-PR / no-human-in-the-loop merges**
      — "iterate until tests pass" optimizes the exact signal lessons 34/42/54 prove insufficient.
+   - **Hosted PR-opening cloud agents don't qualify** (Hoplite.sh, evaluated 2026-10). They clone
+     from GitHub with a token that can push and merge, and their "PR autofix" is the
+     iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
+     tournament remain the sanctioned sandbox path.
 7i. **Telemetry (Waves 262–264, 2026-09-06).** All three owner considerations closed;
    the third's premise overturned by exploration. **Wave 262** (typed weight/reps
    entry + the per-exercise kg/lb override): planning 2 Explore agents (~271k) +
