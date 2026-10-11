@@ -57,6 +57,18 @@ CREATE TABLE IF NOT EXISTS magic_links (
 CREATE INDEX IF NOT EXISTS idx_magic_links_rlkey ON magic_links(rl_key);
 CREATE INDEX IF NOT EXISTS idx_magic_links_ip ON magic_links(ip);
 
+-- The 6-digit sign-in code (W270): a POINTER to its magic link by token_hash, so a
+-- link spent through either door (emailed token or typed code) is spent for both.
+-- code_hash = sha256(token_hash:code). Self-initialized by store-d1's
+-- ensureExtensions too, so the live database needs no migration.
+CREATE TABLE IF NOT EXISTS magic_link_codes (
+  token_hash TEXT PRIMARY KEY,
+  rl_key     TEXT NOT NULL,       -- canonical email: only the NEWEST code per address is valid
+  code_hash  TEXT NOT NULL,
+  created_at INTEGER NOT NULL     -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS idx_magic_link_codes_rl ON magic_link_codes(rl_key, created_at);
+
 -- Web Push subscriptions (device reminders). The endpoint URL is the identity
 -- (unguessable, one per browser registration); keys are stored for future
 -- payload encryption but unused by the empty-push v1.

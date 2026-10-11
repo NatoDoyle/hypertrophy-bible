@@ -32,12 +32,22 @@ export function magicLinkEmail({ link, code = null, kind = "new", plan = null })
          ${(sn.exercises ?? []).map((e) => `<div style="color:#444;font-size:14px">${esc(e.name)} — ${e.sets} × ${esc(e.rep_range)}</div>`).join("")}
        </div>`).join("")}`
     : "";
+  // The code goes FIRST, above the button: on iPhone the button opens Safari, whose
+  // storage is separate from the Home-Screen app, so for an app user the code is the
+  // only way in. Never in the subject line (lock-screen previews show subjects).
+  const shown = code && /^\d{6}$/.test(String(code)) ? `${String(code).slice(0, 3)} ${String(code).slice(3)}` : null;
+  const codeHtml = shown
+    ? `<p style="margin:16px 0 4px">Using the app from your Home Screen? Type this code in the app:</p>
+      <p style="font-size:28px;font-weight:800;letter-spacing:4px;margin:0 0 4px">${shown}</p>
+      <p style="color:#666;font-size:13px;margin:0">On iPhone the button below opens your browser, not the app.</p>`
+    : "";
   const subject = planHtml ? "Your training week" : copy.subject;
   const lead = planHtml && kind === "new" ? "Tap below to save this to your account so it follows you to any device." : copy.lead;
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:24px auto;color:#111">
       <h2 style="margin:0 0 12px">The Hypertrophy Bible</h2>
       ${planHtml}
-      <p>${lead} This link works once and expires in 30 minutes.</p>
+      <p>${lead} ${code ? "The code and the button each work once" : "This link works once"} and expire${code ? "" : "s"} in 30 minutes.</p>
+      ${codeHtml}
       <p style="margin:20px 0"><a href="${link}" style="display:inline-block;background:#3fd07a;color:#06210f;font-weight:700;padding:14px 24px;border-radius:12px;text-decoration:none">${copy.button}</a></p>
       <p style="color:#888;font-size:14px">If you didn't request this, you can safely ignore it. Replies to this address aren't read — this mailbox only sends.</p></div>`;
   return { subject, html };

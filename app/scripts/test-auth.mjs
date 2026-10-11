@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { magicLinkEmail } from "../src/email.mjs";
 import {
-  requestMagicLink, consumeMagicLink, normalizeEmail, canonicalEmail, sha256hex, generateToken, TTL_MS,
+  requestMagicLink, consumeMagicLink, consumeMagicCode, normalizeEmail, canonicalEmail, sha256hex, generateToken, TTL_MS,
 } from "../src/auth.mjs";
 
 let pass = 0, fail = 0;
@@ -391,6 +391,52 @@ try {
   ok("#email-copy a backup that carries the plan keeps the plan-screen's 'Your training week' promise (escaped)",
     mPlan.subject === "Your training week" && /Bench — 3 × 8-12/.test(mPlan.html) && mPlan.html.includes("Push &lt;A&gt;"));
   ok("#email-copy every kind carries the link", [mNew, mRe, mMerge, mSwitch, mSignin, mPlan].every((m) => m.html.includes(mlink)));
+
+  const withCode = ["new", "reconfirm", "merge", "switch", "signin"].map((kind) => magicLinkEmail({ link: mlink, code: "482913", kind }));
+  ok("#email-copy every kind carries the code BEFORE the button (a Home-Screen user reads it first)",
+    withCode.every((m) => m.html.includes("482 913") && m.html.indexOf("482 913") < m.html.indexOf(mlink)));
+  ok("#email-copy the code never rides in a subject line", withCode.every((m) => !m.subject.includes("482")));
+
+  // --- #code (W270): a 6-digit code in every magic-link email, typed into the app. On
+  // iPhone an emailed link opens in Safari, whose storage is separate from the
+  // Home-Screen app, so a link alone can never sign the app itself in.
+  for (const u of ["codeA", "codeB"]) await store.saveUser(u, { profile: {} });
+  const c1 = await requestMagicLink(store, { email: "Code+x@T.com", anonUserId: "codeA" });
+  ok("#code every link carries a 6-digit code", /^\d{6}$/.test(c1.code ?? ""));
+  const c2 = await requestMagicLink(store, { email: "code@t.com", anonUserId: "codeA" }); // same canonical address, newer
+  ok("#code an older email's code is dead once a newer one exists — only the newest counts",
+    c1.code === c2.code || (await consumeMagicCode(store, { email: "code@t.com", code: c1.code, ip: "9.9.9.1" })).error === "invalid");
+  const viaCode = await consumeMagicCode(store, { email: "CODE@t.com", code: `${c2.code.slice(0, 3)} ${c2.code.slice(3)}`, ip: "9.9.9.1" });
+  ok("#code the right code (any case of the address, a space allowed) consumes the link", viaCode.user_id === "codeA" && viaCode.purpose === "claim");
+  ok("#code …and spends the TOKEN with it — one link, two doors, single use", (await consumeMagicLink(store, { token: c2.token })).error === "used");
+  const c3 = await requestMagicLink(store, { email: "code@t.com", anonUserId: "codeB" });
+  await consumeMagicLink(store, { token: c3.token });
+  ok("#code a code whose link its token already spent answers 'used'", (await consumeMagicCode(store, { email: "code@t.com", code: c3.code, ip: "9.9.9.1" })).error === "used");
+  ok("#code an unknown address and a wrong code get the identical answer", (await consumeMagicCode(store, { email: "nobody@t.com", code: "123456", ip: "9.9.9.5" })).error === "invalid");
+  ok("#code a malformed code is just 'invalid'", (await consumeMagicCode(store, { email: "code@t.com", code: "12ab56", ip: "9.9.9.5" })).error === "invalid");
+  // Lockouts are checked BEFORE comparing: a locked address can't be probed even with the right code.
+  await store.saveUser("lockU", { profile: {} });
+  const lk = await requestMagicLink(store, { email: "lock@t.com", anonUserId: "lockU" });
+  const wrong = lk.code === "000000" ? "000001" : "000000";
+  const lkBefore = { email: await store.countRecentLinks(canonicalEmail("lock@t.com"), 0), ip: await store.countRecentByIp("9.9.9.2", 0) };
+  for (let i = 0; i < 10; i++) await consumeMagicCode(store, { email: "lock@t.com", code: wrong, ip: "9.9.9.2" });
+  ok("#code after 10 wrong codes in a day the RIGHT code is refused too (lock before compare)",
+    (await consumeMagicCode(store, { email: "lock@t.com", code: lk.code, ip: "9.9.9.6" })).error === "too-many-attempts");
+  ok("#code failure markers never spend the address's email budget or the IP's link budget",
+    (await store.countRecentLinks(canonicalEmail("lock@t.com"), 0)) === lkBefore.email && (await store.countRecentByIp("9.9.9.2", 0)) === lkBefore.ip);
+  ok("#code …and the emailed LINK still works while the code door is locked", (await consumeMagicLink(store, { token: lk.token })).user_id === "lockU");
+  await store.saveUser("ipU", { profile: {} });
+  const ipLink = await requestMagicLink(store, { email: "ipvictim@t.com", anonUserId: "ipU" });
+  for (let i = 0; i < 30; i++) await consumeMagicCode(store, { email: `spray${i}@t.com`, code: "123456", ip: "9.9.9.3" });
+  ok("#code 30 failures from one IP in an hour lock that IP out, whatever address it tries next",
+    (await consumeMagicCode(store, { email: "ipvictim@t.com", code: ipLink.code, ip: "9.9.9.3" })).error === "too-many-attempts");
+  ok("#code …without locking the address for anyone else", (await consumeMagicCode(store, { email: "ipvictim@t.com", code: ipLink.code, ip: "9.9.9.4" })).user_id === "ipU");
+  // One consume core for both doors: a restore mints its merge grant there, and a grant
+  // (or any non-link row) can never be spent as a link.
+  const gReq = await requestMagicLink(store, { email: "code@t.com" });
+  const gCons = await consumeMagicLink(store, { token: gReq.token });
+  ok("#code a restore mints its merge grant inside the shared consume core", gCons.purpose === "restore" && typeof gCons.merge_grant === "string");
+  ok("#code a merge grant can never be spent at the link door", (await consumeMagicLink(store, { token: gCons.merge_grant })).error === "invalid");
 
   console.log(`\n${pass} auth test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

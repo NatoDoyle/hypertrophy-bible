@@ -12,18 +12,26 @@
     <div class="center" style="padding-top:20vh">
       <h1 id="msg">Confirming…</h1>
       <p class="muted" id="sub"></p>
+      <button class="btn" id="cont" hidden>Continue in Safari</button>
       <a class="btn" id="go" href="/" hidden>Open the app</a>
     </div>
   </main>
-  <script>
+  <script type="module">
     // The emailed link is a GET that just loads this page; the single-use token is
     // spent here via an explicit POST, so mail-server link scanners can't burn it.
-    (async () => {
-      const msg = document.getElementById("msg");
-      const sub = document.getElementById("sub");
-      const go = document.getElementById("go");
-      const token = new URLSearchParams(location.search).get("token");
-      if (!token) { msg.textContent = "This link is missing its code."; go.hidden = false; return; }
+    // Adopting the account is the SAME decision tree the app's code box runs
+    // (account-adopt.mjs) — one implementation, two doors.
+    import { resolveAdoption, adoptionMessage, isIOSBrowserTab } from "/account-adopt.mjs";
+    const msg = document.getElementById("msg");
+    const sub = document.getElementById("sub");
+    const go = document.getElementById("go");
+    const cont = document.getElementById("cont");
+    const token = new URLSearchParams(location.search).get("token");
+
+    async function consume() {
+      cont.hidden = true;
+      msg.textContent = "Confirming…";
+      sub.textContent = "";
       try {
         const r = await fetch("/api/auth/consume", {
           method: "POST",
@@ -31,80 +39,56 @@
           body: JSON.stringify({ token }),
         });
         const d = await r.json();
-        if (d.user_id) {
-          const current = localStorage.getItem("hb_user");
-          // Adopt the account, and re-point any offline-queued workouts at it so
-          // they sync to the account (not a stale/deleted anonymous user).
-          const adopt = () => {
-            try {
-              const q = JSON.parse(localStorage.getItem("hb_queue") || "[]");
-              if (q.length) localStorage.setItem("hb_queue", JSON.stringify(q.map((it) => {
-                try { return { ...it, body: JSON.stringify({ ...JSON.parse(it.body), user_id: d.user_id }) }; } catch { return it; }
-              })));
-            } catch (_) {}
-            localStorage.setItem("hb_user", d.user_id);
-            localStorage.setItem("hb_email", d.email);
-            if (d.program_name) localStorage.setItem("hb_program", d.program_name);
-            if (d.units) localStorage.setItem("hb_units", d.units); // restored device shows kg/lb correctly from the first screen
-            // Per-exercise overrides: adopting an account takes ITS map — and when it
-            // has none, the previous account's map must not linger on this device.
-            if (d.exercise_units && typeof d.exercise_units === "object" && Object.keys(d.exercise_units).length) localStorage.setItem("hb_ex_units", JSON.stringify(d.exercise_units));
-            else localStorage.removeItem("hb_ex_units");
-          };
-          if (current && current !== d.user_id) {
-            // Does this device hold data of its own? Count server-side sessions +
-            // bodyweights AND anything still queued offline. If we can't check,
-            // assume yes and prompt rather than silently discard.
-            let localItems = 0, probeFailed = false, queued = 0;
-            try { queued = JSON.parse(localStorage.getItem("hb_queue") || "[]").filter((it) => it.path === "/api/session").length; } catch (_) {}
-            try {
-              const p = await fetch("/api/progress", { headers: { "X-HB-User": current } }).then((x) => x.json());
-              localItems = (p.sessions_logged || 0) + (p.bodyweights_logged || 0) + queued;
-            } catch (_) { probeFailed = true; }
-            const hasLocal = localItems > 0 || probeFailed;
-            if (d.purpose === "restore" && hasLocal) {
-              const wantMerge = confirm("This device has workouts logged on it. Bring them into your backup so nothing is lost?");
-              if (wantMerge && d.merge_grant) {
-                const m = await fetch("/api/auth/merge", {
-                  // X-HB-User proves this device holds `from` (the merge route deletes
-                  // it, so it demands from-side possession, not just the id in the body).
-                  method: "POST", headers: { "content-type": "application/json", "X-HB-User": current },
-                  body: JSON.stringify({ grant: d.merge_grant, from_user_id: current, to_user_id: d.user_id }),
-                }).then((x) => x.json()).catch(() => null);
-                if (!m || !m.merged) {
-                  const proceed = confirm("Couldn't merge the already-saved workouts right now. Switch to the backup anyway? (Offline ones still follow; synced ones stay behind.)");
-                  if (!proceed) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
-                }
-              } else if (!wantMerge) {
-                const proceed = confirm("Switch to the backup for " + d.email + " without them? Already-synced workouts on this device stay behind.");
-                if (!proceed) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
-              }
-            } else if (hasLocal) {
-              const okToSwitch = confirm(
-                "This device already has data. Loading the backup for " + d.email +
-                " will switch this device to that account. Continue?"
-              );
-              if (!okToSwitch) { msg.textContent = "Kept this device's data."; sub.textContent = "Nothing was changed."; go.hidden = false; return; }
-            }
-          }
-          adopt();
-          msg.textContent = "You're all set 💪";
-          sub.textContent = "Your progress is backed up to " + d.email + ".";
-          go.hidden = false;
-          setTimeout(() => location.replace("/"), 1200);
-        } else {
+        if (!d.user_id) {
           msg.textContent = d.error === "expired" ? "That link has expired."
             : d.error === "used" ? "That link was already used."
             : "That link isn't valid.";
-          sub.textContent = "Head back to the app and request a fresh one.";
+          sub.textContent = d.error === "used"
+            ? "If you typed the code from the same email into the app, you're already signed in there."
+            : "Head back to the app and request a fresh one.";
           go.hidden = false;
+          return;
         }
+        const res = await resolveAdoption(d, {
+          current: localStorage.getItem("hb_user"),
+          storage: localStorage,
+          fetchJson: (path, opts = {}) => fetch(path, opts).then((x) => x.json()),
+          ask: async (question) => confirm(question),
+        });
+        if (!res.adopted) {
+          msg.textContent = "Kept this device's data.";
+          sub.textContent = "Nothing was changed.";
+          go.hidden = false;
+          return;
+        }
+        const done = adoptionMessage(d, res);
+        msg.textContent = done.title;
+        sub.textContent = done.sub;
+        go.hidden = false;
+        setTimeout(() => location.replace("/"), 1800);
       } catch (e) {
         msg.textContent = "Something went wrong.";
         sub.textContent = "Please try the link again.";
         go.hidden = false;
       }
-    })();
+    }
+
+    if (!token) {
+      msg.textContent = "This link is missing its code.";
+      go.hidden = false;
+    } else if (isIOSBrowserTab({ userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints,
+        standalone: navigator.standalone === true || window.matchMedia?.("(display-mode: standalone)").matches })) {
+      // On iPhone this page opens in Safari, whose storage is separate from the
+      // Home-Screen app — signing in HERE can never reach the app. And the link and
+      // the code are one single-use credential, so consuming it here would kill the
+      // code the app needs. Ask first.
+      msg.textContent = "One more tap";
+      sub.textContent = "Using the app from your Home Screen? Open it and type the 6-digit code from the email — this page can't reach the app on iPhone. Using Safari? Continue here.";
+      cont.hidden = false;
+      cont.onclick = consume;
+    } else {
+      consume();
+    }
   </script>
 </body>
 </html>

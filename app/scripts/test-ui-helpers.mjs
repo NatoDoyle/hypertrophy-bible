@@ -150,5 +150,25 @@ check("iOS: every form control renders at >= 16px (anything smaller zooms the pa
   assert.deepEqual(small, [], `form controls below 16px: ${small.join(", ")}`);
 });
 
+check("the hidden attribute always wins over a class's display (a hidden .btn must never show)", () => {
+  // .btn{display:block} outranks the browser's own [hidden] rule, so verify.html's
+  // hidden "Open the app" link showed on every screen — on the iPhone prompt it
+  // would open Safari's copy, not the Home-Screen app the copy tells you to use.
+  assert.ok(cssRules.some((r) => r.sels.includes("[hidden]") && /display\s*:\s*none\s*!important/.test(r.body)), "need [hidden]{display:none !important}");
+});
+
+// --- Offline shell invariant (lesson 7, enforced instead of remembered): every ESM
+// module the app shell imports must be precached, or an offline open fails on a
+// broken import. W270 added account-adopt.mjs — imported by app.js AND verify.html.
+check("sw.js precaches every module app.js and verify.html import", () => {
+  const sw = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
+  const verify = readFileSync(new URL("../public/verify.html", import.meta.url), "utf8");
+  const shell = JSON.parse(sw.match(/const SHELL = (\[[^\]]*\]);/)[1]);
+  const imported = [...`${appJs}\n${verify}`.matchAll(/^\s*import\s[^;]*?from\s+"(\/[^"]+\.mjs)"/gm)].map((m) => m[1]);
+  assert.ok(imported.includes("/account-adopt.mjs"), "the scan must see the new module (else this check proves nothing)");
+  const missing = [...new Set(imported)].filter((p) => !shell.includes(p));
+  assert.deepEqual(missing, [], `imported but not precached: ${missing.join(", ")}`);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

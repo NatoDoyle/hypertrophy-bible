@@ -2,6 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
+import { resolveAdoption, adoptionMessage } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
@@ -295,6 +296,67 @@ let deferredInstallPrompt = null;
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstallPrompt = e; });
 window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; });
 let pendingNotice = null; // a one-shot notice for the NEXT screen (survives re-render)
+// …and one that survives the RELOAD an in-app sign-in ends with (adoptHere).
+try { const n = sessionStorage.getItem("hb_adopt_notice"); if (n) { pendingNotice = n; sessionStorage.removeItem("hb_adopt_notice"); } } catch {}
+
+// After "check your inbox": a box for the 6-digit code from that same email. On
+// iPhone the emailed button opens Safari, whose storage is separate from this
+// Home-Screen app, so for an app user the code is the only way the email's proof
+// reaches HERE (owner report: "it sent me a link to restore my progress" — and the
+// link could never sign the app itself in). One box per message; resending replaces it.
+function showCodeBox(afterEl, email) {
+  if (!afterEl) return;
+  afterEl.parentElement?.querySelector(".codebox")?.remove();
+  const box = document.createElement("div");
+  box.className = "codebox";
+  box.innerHTML = `<label class="muted" style="display:block;margin:10px 0 4px">Got the email? Type its 6-digit code — the button in the email opens your browser; the code works right here in the app.</label>
+    <div style="display:flex;gap:8px"><input class="code-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" aria-label="6-digit code from the email"
+      style="flex:1;min-width:0;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.2rem;letter-spacing:2px">
+    <button class="btn inline code-go" style="margin:0">Use code</button></div><p class="muted code-msg" style="margin:6px 0 0"></p>`;
+  afterEl.after(box);
+  const input = box.querySelector(".code-in"), btn = box.querySelector(".code-go"), out = box.querySelector(".code-msg");
+  btn.onclick = async () => {
+    const code = input.value.replace(/\s+/g, "");
+    if (!/^\d{6}$/.test(code)) { out.textContent = "That's the 6 digits from the newest email."; input.focus(); return; }
+    btn.disabled = true; out.textContent = "Checking…";
+    let d; try { d = await api("/api/auth/code", { method: "POST", body: JSON.stringify({ email, code }) }); }
+    catch { btn.disabled = false; out.textContent = "📴 You're offline — try again when you have signal."; return; }
+    if (!d?.user_id) {
+      btn.disabled = false;
+      out.textContent = d?.error === "too-many-attempts" ? "Too many tries for now — use the button in the email instead."
+        : d?.error === "used" ? "That code was already used — you may already be signed in."
+        : d?.error === "expired" ? "That code has expired — send yourself a fresh email."
+        : "That code didn't work — check it's from the newest email.";
+      return;
+    }
+    out.textContent = "";
+    await adoptHere(d);
+  };
+}
+// The SAME decision tree verify.html runs (account-adopt.mjs), then a reload so no
+// per-user in-memory state (plan editor, history views, caches) can outlive the
+// identity it belonged to. Nothing is deleted: the offline queue is re-pointed at the
+// account, and an in-progress session (hb_session) resumes under it.
+async function adoptHere(d) {
+  const before = uid;
+  let reminderNote = "";
+  const res = await resolveAdoption(d, {
+    current: before, storage: localStorage,
+    fetchJson: (path, opts = {}) => fetch(path, opts).then((x) => x.json()),
+    ask: async (q) => confirm(q),
+    // The identity this phone leaves behind must stop sending it reminders — unless
+    // its data was just merged into the account (its subscription moved with it).
+    beforeAdopt: async ({ merged }) => {
+      if (!before || before === d.user_id || merged || localStorage.getItem("hb_push") !== "1") return;
+      try { await removePushBeforeAccountSwitch(before); localStorage.removeItem("hb_push"); }
+      catch { reminderNote = " If this phone still gets reminders meant for its old setup, turn reminders off and on again in Me."; }
+    },
+  });
+  if (!res.adopted) { alertBar("Kept this phone as it was — nothing changed."); return; }
+  const done = adoptionMessage(d, res);
+  try { sessionStorage.setItem("hb_adopt_notice", `${done.title} ${done.sub}${reminderNote}`); } catch {}
+  location.reload();
+}
 // Inline failure notice: never a silent dead button.
 function alertBar(msg) {
   let el = $("#alertbar");
@@ -618,8 +680,9 @@ function renderOnboarding() {
       catch { $("#rmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendrestore").disabled = false; return; }
       if (r.error === "invalid-email") { $("#rmsg").textContent = "That doesn't look like an email."; $("#sendrestore").disabled = false; return; }
       if (r.sent === false) { $("#rmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendrestore").disabled = false; return; }
-      $("#rmsg").innerHTML = "If that email has a backup, a restore link is on its way — it works once and expires in 30 minutes."
-        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+      $("#rmsg").innerHTML = "If that email has saved progress, a sign-in email is on its way — its button and its code each work once and expire in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      showCodeBox($("#rmsg"), val);
       // Typos are the common failure here (a wrong-but-valid email still shows the
       // hedged success line) — always leave a way to correct and resend in place,
       // never a permanently dead button.
@@ -1011,7 +1074,8 @@ async function renderPlanExplain(firstTime) {
     // and unknown-user too (deliberately generic, to stop account enumeration), so
     // the flag could be set when no email was sent at all.
     planEmailSent = true;   // session-only: enough to stop re-offering the form here
-    if (msg) msg.textContent = "Sent — open the link in your inbox to finish. You can start training now either way.";
+    if (msg) msg.textContent = "Sent — tap the button in that email, or type its 6-digit code below. You can start training now either way.";
+    showCodeBox(msg, email);
   };
   $("#explain-go").onclick = () => { tab = firstTime ? "today" : "me"; render(); };
 }
@@ -3701,8 +3765,9 @@ function renderMe() {
       catch { $("#bmsg").textContent = "📴 You're offline — try again when you have signal."; $("#sendlink").disabled = false; return; }
       if (r.error === "invalid-email") { $("#bmsg").textContent = "That doesn't look like an email."; $("#sendlink").disabled = false; return; }
       if (r.sent === false) { $("#bmsg").textContent = "Couldn't send right now — try again in a moment."; $("#sendlink").disabled = false; return; }
-      $("#bmsg").innerHTML = "Check your inbox for a link to finish — it works once and expires in 30 minutes."
-        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+      $("#bmsg").innerHTML = "Check your inbox — tap the button in the email, or type its 6-digit code below. Both work once and expire in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      showCodeBox($("#bmsg"), val);
     };
     // Sign in from another phone's saved progress — WITHOUT user_id, which is the
     // welcome-screen restore semantics: sending this device's id would CLAIM the
@@ -3720,8 +3785,9 @@ function renderMe() {
       // user to conclude their account doesn't exist (the sibling send buttons
       // both carry this guard; omitting it here was the audit's finding).
       if (r.sent === false) { $("#me-restore-msg").textContent = "Couldn't send right now — try again in a moment."; return; }
-      $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in link is on its way — it works once and expires in 30 minutes."
-        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a>` : "");
+      $("#me-restore-msg").innerHTML = "If that address has progress saved, a sign-in email is on its way — its button and its code each work once and expire in 30 minutes."
+        + (r.dev_link ? ` <a href="${esc(r.dev_link)}">[dev link]</a> <code>${esc(r.dev_code ?? "")}</code>` : "");
+      showCodeBox($("#me-restore-msg"), val);
     };
   }
   $("#reset").onclick = () => {

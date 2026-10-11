@@ -55,6 +55,25 @@ export async function generateToken() {
   return { token, tokenHash: await sha256hex(token) };
 }
 
+// The 6-digit sign-in code (W270). On iPhone an emailed link opens in Safari, whose
+// storage is separate from the Home-Screen app the app asks iOS users to install —
+// so the link can sign SAFARI in but never the app itself. The code is typed into
+// the app instead. Uniform over 000000-999999: draw 32 bits, rejecting the top
+// sliver that would bias `% 1e6` (2^32 mod 1e6 = 967296).
+const CODE_SPACE = 1e6, CODE_REJECT_AT = 2 ** 32 - (2 ** 32 % CODE_SPACE);
+export function generateCode() {
+  const buf = new Uint32Array(1);
+  do crypto.getRandomValues(buf); while (buf[0] >= CODE_REJECT_AT);
+  return String(buf[0] % CODE_SPACE).padStart(6, "0");
+}
+// A code is only 10^6 guesses, so the store hash is defence in depth; the real
+// protection is the 30-minute expiry, single use, NEWEST-code-only, and these caps
+// (checked BEFORE any comparison, so a locked address can't be probed even with
+// the right code). Per address per day: ~1e-5 odds a day for a targeted guesser.
+export const CODE_FAILS_PER_EMAIL = 10; // per canonical address, per 24h
+export const CODE_FAILS_PER_IP = 30;    // per requester IP, per hour
+const codeHash = (tokenHash, code) => sha256hex(`${tokenHash}:${code}`);
+
 export async function requestMagicLink(store, { email, anonUserId, ip = null, now = Date.now(), ttlMs = TTL_MS }) {
   const norm = normalizeEmail(email);
   if (!norm) return { error: "invalid-email" };
@@ -98,13 +117,19 @@ export async function requestMagicLink(store, { email, anonUserId, ip = null, no
     used: 0,
     created_at: now,
   });
-  return { token, purpose, kind, email: norm, boundUserId };
+  const code = generateCode();
+  await store.saveLinkCode({ token_hash: tokenHash, rl_key: rlKey, code_hash: await codeHash(tokenHash, code), created_at: now });
+  return { token, code, purpose, kind, email: norm, boundUserId };
 }
 
-export async function consumeMagicLink(store, { token, now = Date.now() }) {
-  if (!token) return { error: "no-token" };
-  const link = await store.getMagicLink(await sha256hex(token));
+// ONE consume core for both doors (the emailed token and the typed code): a code is
+// only a pointer to its link row, so single use across the two comes for free, and
+// the merge grant is minted in exactly one place.
+async function consumeLinkRow(store, link, now) {
   if (!link) return { error: "invalid" };
+  // Only a real sign-in link is consumable here — never a merge grant or a
+  // rate-limit marker row that happens to live in the same table.
+  if (link.purpose !== "claim" && link.purpose !== "restore") return { error: "invalid" };
   if (link.used) return { error: "used" };
   if (now > link.expires_at) return { error: "expired" };
 
@@ -127,5 +152,45 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
   // the merge offer in verify.html, silently abandoning that data. A claim that
   // bound its own user stays a claim (nothing to merge).
   const purpose = link.purpose === "claim" && boundUserId !== link.user_id ? "restore" : link.purpose;
-  return { user_id: boundUserId, email: link.email, purpose };
+  // The merge grant goes ONLY with a restore — the one flow that folds a device's
+  // local logs into a re-adopted account. A claim binds the caller's OWN user, so
+  // there is nothing to merge; minting a grant there would hand out a "move + delete
+  // any anonymous user" primitive far broader than intended (#19). Distinct rl_key
+  // bucket: server-minted grants must never consume the user's 5/hour email budget.
+  let merge_grant = null;
+  if (purpose === "restore") {
+    const { token: grant, tokenHash } = await generateToken();
+    await store.createMagicLink({
+      token_hash: tokenHash, email: link.email, rl_key: "grant:" + link.email, ip: null,
+      user_id: boundUserId, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
+    });
+    merge_grant = grant;
+  }
+  return { user_id: boundUserId, email: link.email, purpose, merge_grant };
+}
+
+export async function consumeMagicLink(store, { token, now = Date.now() }) {
+  if (!token) return { error: "no-token" };
+  return consumeLinkRow(store, await store.getMagicLink(await sha256hex(token)), now);
+}
+
+// The typed-code door. Every failure — unknown address, no live code, wrong code,
+// malformed input — answers the same "invalid" and leaves marker rows in their own
+// buckets (ip NULL, so the link-request caps never see them).
+export async function consumeMagicCode(store, { email, code, ip = null, now = Date.now() }) {
+  const norm = normalizeEmail(email);
+  const rlKey = norm ? canonicalEmail(norm) : null;
+  if (ip && (await store.countRecentLinks("codefail-ip:" + ip, now - 60 * 60 * 1000)) >= CODE_FAILS_PER_IP) return { error: "too-many-attempts" };
+  if (rlKey && (await store.countRecentLinks("codefail:" + rlKey, now - 24 * 60 * 60 * 1000)) >= CODE_FAILS_PER_EMAIL) return { error: "too-many-attempts" };
+  const failed = async () => {
+    const marker = (rl_key) => store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key, ip: null, user_id: "codefail-marker", purpose: "codefail-marker", expires_at: now, used: 1, created_at: now });
+    if (rlKey) await marker("codefail:" + rlKey);
+    if (ip) await marker("codefail-ip:" + ip);
+    return { error: "invalid" };
+  };
+  const typed = String(code ?? "").replace(/\s+/g, "");
+  if (!rlKey || !/^\d{6}$/.test(typed)) return failed();
+  const row = await store.latestLinkCode(rlKey, now - TTL_MS);
+  if (!row || (await codeHash(row.token_hash, typed)) !== row.code_hash) return failed();
+  return consumeLinkRow(store, await store.getMagicLink(row.token_hash), now);
 }

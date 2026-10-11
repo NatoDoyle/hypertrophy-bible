@@ -11,6 +11,9 @@ html,body{margin:0;height:100%}
 html,button,a,input,select,label,[role=button]{touch-action:manipulation}
 /* iOS zooms the whole page when a form control under 16px takes focus. */
 input,select,textarea{font-size:16px}
+/* The hidden attribute must beat any class's display: .btn{display:block} outranks
+   the browser's own [hidden] rule, so a hidden button stayed on screen. */
+[hidden]{display:none !important}
 body{
   background:var(--bg); color:var(--text);
   font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
