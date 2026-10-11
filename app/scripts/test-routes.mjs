@@ -2658,6 +2658,31 @@ try {
     unRegen.status === 200 // the save must actually happen, or both assertions below hold vacuously
     && unAfter["leg-press"] === "imperial" && !("smuggled-lift" in unAfter));
 
+  // --- #nutrition-date: the intake door gets the weigh-in doors' date guard (W268).
+  // POST /api/nutrition/log checked its date with a FORMAT regex only, so an
+  // impossible day ("2026-02-30") or a far-future one entered the 28-day adaptive
+  // window — where no calendar can reach it to correct it. The three weigh-in doors
+  // were bounded in Wave 174; this sink never was (lesson 33: grep the sink). Owner
+  // report alongside: "I can't log yesterday's calories" — the back-dated write the
+  // new day chooser sends must still land on the day it names.
+  const nGuard = (await json("POST", "/api/onboard", { profile: {
+    units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell"],
+  } })).data.user_id;
+  const nGuardToday = new Date().toISOString().slice(0, 10);
+  const nYesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  await json("POST", "/api/nutrition/log", { user_id: nGuard, kcal: 2500, date: "9999-12-31" });
+  const nAfterFuture = await store.listNutritionLog(nGuard);
+  ok("#nutrition-date a far-future intake day is refused a slot outside every calendar",
+    nAfterFuture.length === 1 && nAfterFuture[0].date === nGuardToday);
+  await json("POST", "/api/nutrition/log", { user_id: nGuard, kcal: 2400, date: "2026-02-30" });
+  ok("#nutrition-date an impossible calendar day is never stored as one",
+    (await store.listNutritionLog(nGuard)).every((e) => e.date !== "2026-02-30"));
+  await json("POST", "/api/nutrition/log", { user_id: nGuard, kcal: 2300, protein_g: 160, date: nYesterday });
+  const nBack = (await store.listNutritionLog(nGuard)).find((e) => e.date === nYesterday);
+  ok("#nutrition-date a back-dated (yesterday) intake lands on yesterday, untouched by the guard",
+    nBack?.kcal === 2300 && nBack?.protein_g === 160);
+
   // --- #alternating: the per-side field reaches every door the player reads (W267).
   // The player's cue for a walking lunge told the owner to "do all sets with your left,
   // then your right" — impossible for a lift that alternates by design. The data says

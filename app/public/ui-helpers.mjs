@@ -101,3 +101,28 @@ export function sideCue(ex, { station = false } = {}) {
     ? `↔️ <b>One side, then the other</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).`
     : `↔️ <b>One side, then the other</b> — each set is your <b>left</b> side, then straight into your <b>right</b>. Tap ✓ once both are done, logging the weight you used per side.`;
 }
+
+// Whole calendar days from a local YYYY-MM-DD, by UTC-noon date arithmetic —
+// never "now minus n×24h", which skips or repeats a day across a DST change.
+// Returns null for anything that isn't a real calendar day.
+export function shiftDay(ymd, n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ""));
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  if (d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return null;
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// How a chosen log day reads on a button: "today", "yesterday", else "Mon 5 Oct".
+// Fixed English names so the label is deterministic (matches weekLabelOf's style).
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function dayLabel(ymd, todayYmd) {
+  if (ymd === todayYmd) return "today";
+  if (ymd === shiftDay(todayYmd, -1)) return "yesterday";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ""));
+  if (!m) return String(ymd ?? "");
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  return `${WEEKDAY_SHORT[d.getUTCDay()]} ${+m[3]} ${MONTH_SHORT[+m[2] - 1]}`;
+}

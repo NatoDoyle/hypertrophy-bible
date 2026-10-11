@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -68,6 +68,26 @@ check("linePath: spreads x across the width, inverts y, pads, and centers a flat
   assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
   assert.deepEqual(linePath([], 100, 50).pts, []);
   assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
+});
+
+// --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
+// Calendar-day arithmetic on YYYY-MM-DD strings: subtracting 24h from an instant
+// skips or repeats a day across a DST change (the retro-log's localDayAgo did).
+check("shiftDay: whole calendar days across month, year and leap edges — no clock, no DST", () => {
+  assert.equal(shiftDay("2026-10-11", -1), "2026-10-10");
+  assert.equal(shiftDay("2026-03-01", -1), "2026-02-28");
+  assert.equal(shiftDay("2028-03-01", -1), "2028-02-29"); // leap year
+  assert.equal(shiftDay("2026-01-01", -1), "2025-12-31");
+  assert.equal(shiftDay("2026-10-11", -30), "2026-09-11");
+  assert.equal(shiftDay("2026-12-31", 1), "2027-01-01");
+  assert.equal(shiftDay("not-a-day", -1), null);
+});
+
+check("dayLabel: today / yesterday in words, older days as a short weekday + date", () => {
+  assert.equal(dayLabel("2026-10-11", "2026-10-11"), "today");
+  assert.equal(dayLabel("2026-10-10", "2026-10-11"), "yesterday");
+  assert.equal(dayLabel("2026-10-05", "2026-10-11"), "Mon 5 Oct");
+  assert.equal(dayLabel("2025-12-31", "2026-01-01"), "yesterday");
 });
 
 // --- Side cues (owner report: "walking lunges say do one leg at a time, which is

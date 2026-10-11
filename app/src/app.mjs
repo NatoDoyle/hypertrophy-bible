@@ -1768,7 +1768,10 @@ export function createApp(store, config = {}) {
     // negative intake bar, a huge kcal as an absurd "today so far". Clamp at the door.
     const macro = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(2000, Math.round(n))) : undefined; };
     if (!(await store.addNutritionLog(b.user_id, {
-      date: (b.date && /^\d{4}-\d{2}-\d{2}$/.test(b.date) ? b.date : new Date().toISOString().slice(0, 10)),
+      // The weigh-in doors' date guard (Wave 174), finally at this sink too: a
+      // format regex let "2026-02-30" and far-future days into the 28-day adaptive
+      // window, where no calendar can reach them to correct them (lesson 33).
+      date: boundLocalDate(b.date),
       kcal: Math.min(20000, Math.round(Number(b.kcal))),
       ...(macro(b.protein_g) != null ? { protein_g: macro(b.protein_g) } : {}),
       ...(macro(b.carbs_g) != null ? { carbs_g: macro(b.carbs_g) } : {}),

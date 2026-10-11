@@ -2,7 +2,7 @@
 // higher-order is derived server-side. No build step, no framework.
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -315,6 +315,44 @@ const DONATE_URL = "";
 // morning, west of UTC it suppressed the NEXT day's check-in. (Server-facing dates
 // keep ISO/UTC — this is only for what "today" means to the person holding the phone.)
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// "Today · Yesterday · Pick a day" for a log form (owner: "I don't have the option
+// to log yesterday's weight or calories if I forgot"). The server always accepted
+// past dates — the door was missing. Up to 30 days back (the retro-log's bound),
+// never a future day; calendar-day math via shiftDay, never now-minus-24h (DST).
+const dayChooserHtml = (id) => { const today = localDay(); return `<div role="group" aria-label="Which day are you logging?" style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+    <button type="button" class="tapchip" data-dc="${id}" data-dc-day="today" aria-pressed="true">Today</button>
+    <button type="button" class="tapchip" data-dc="${id}" data-dc-day="yesterday" aria-pressed="false">Yesterday</button>
+    <button type="button" class="tapchip" data-dc="${id}" data-dc-day="pick" aria-pressed="false">Pick a day</button></div>
+  <input type="date" id="${id}-pick" class="hidden" min="${shiftDay(today, -30)}" max="${today}" aria-label="Day you're logging" style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1rem;margin:0 0 8px">`; };
+const fuelReplaceHint = (lbl, kcal) => `Already logged for ${lbl}: ${kcal} kcal. Enter the whole day's total — it replaces that number.`;
+// Reflect a day chosen by ANY path (chips, picker, a tapped history row) on the
+// chips, so the pressed chip never contradicts what the save button says.
+function pressDayChoice(id, ymd) {
+  const today = localDay();
+  const which = !ymd || ymd === today ? "today" : ymd === shiftDay(today, -1) ? "yesterday" : "pick";
+  app.querySelectorAll(`[data-dc="${id}"]`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.dcDay === which)));
+}
+function wireDayChooser(id, onDay) {
+  const today = localDay(), oldest = shiftDay(today, -30);
+  const pick = $(`#${id}-pick`);
+  if (!pick) return;
+  app.querySelectorAll(`[data-dc="${id}"]`).forEach((b) => b.onclick = () => {
+    if (b.dataset.dcDay === "pick") {
+      app.querySelectorAll(`[data-dc="${id}"]`).forEach((c) => c.setAttribute("aria-pressed", String(c === b)));
+      pick.classList.remove("hidden"); pick.focus(); return;
+    }
+    pick.classList.add("hidden");
+    const ymd = b.dataset.dcDay === "today" ? today : shiftDay(today, -1);
+    pressDayChoice(id, ymd);
+    onDay(ymd);
+  });
+  pick.onchange = () => {
+    const v = pick.value;
+    if (!v || v > today || v < oldest) { say("Pick a day in the last 30 days."); return; }
+    pressDayChoice(id, v);
+    onDay(v);
+  };
+}
 const QKEY = "hb_queue";
 const getQueue = () => { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } };
 const setQueue = (q) => localStorage.setItem(QKEY, JSON.stringify(q));
@@ -2526,6 +2564,7 @@ async function renderProgress() {
         <p class="muted">${esc(eb.suggestion || "")}</p>` : `<p class="muted">Add a few bodyweights to infer your energy balance — no calorie counting needed.</p>`}
       ${(p.bodyweight_series ?? []).length >= 2 ? trendChart((p.bodyweight_series ?? []).slice(-60).map((b) => dispBw(b.kg)), { unit: ` ${unitLabel()}`, capId: "bw-cap" }) : ""}
       <div class="stepper"><label for="bw">Log weight</label><input id="bw" type="number" step="0.1" inputmode="decimal" placeholder="${unitLabel()}" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.1rem"></div>
+      ${dayChooserHtml("bwday")}
       <button class="btn secondary" id="logbw">Add today's weight</button>
       ${(p.bodyweight_series ?? []).length ? `<button class="btn ghost inline" id="bw-hist-toggle">✏️ View &amp; edit past days</button>
       <div id="bw-hist" class="hidden">${(p.bodyweight_series ?? []).slice(-14).reverse().map((b) => `<button class="row" data-bw-edit="${esc(b.date)}" data-bw-kg="${b.kg}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:8px 0;cursor:pointer"><span style="flex:1">${esc(b.date)}</span><span>${dispBw(b.kg)} ${unitLabel()}</span></button>`).join("")}</div>` : ""}
@@ -2548,7 +2587,8 @@ async function renderProgress() {
     // by date, so this is the same single door the daily log already uses).
     bwEditDate = b.dataset.bwEdit;
     $("#bw").value = dispBw(parseFloat(b.dataset.bwKg));
-    $("#logbw").textContent = `Save for ${bwEditDate}`;
+    $("#logbw").textContent = `Update ${dayLabel(bwEditDate, localDay())}'s weight`;
+    pressDayChoice("bwday", bwEditDate);
     $("#bw").focus();
   });
   wireChartTap("bw-cap", (p.bodyweight_series ?? []).slice(-60), (b) => `${b.date}: ${dispBw(b.kg)} ${unitLabel()}`);
@@ -2557,9 +2597,21 @@ async function renderProgress() {
   if (bwEditArm) {
     bwEditDate = bwEditArm.date;
     $("#bw").value = dispBw(bwEditArm.kg);
-    $("#logbw").textContent = `Save for ${bwEditDate}`;
+    $("#logbw").textContent = `Update ${dayLabel(bwEditDate, localDay())}'s weight`;
+    pressDayChoice("bwday", bwEditDate);
     bwEditArm = null;
   }
+  // Log a day you missed: the chosen day pre-fills its existing weigh-in (one per
+  // day, replaced by date), so a correction never silently overwrites a value the
+  // user can't see.
+  wireDayChooser("bwday", (ymd) => {
+    const today = localDay();
+    const have = (p.bodyweight_series ?? []).find((b) => b.date === ymd);
+    bwEditDate = ymd === today ? null : ymd;
+    $("#bw").value = have ? dispBw(have.kg) : "";
+    $("#logbw").textContent = have ? `Update ${dayLabel(ymd, today)}'s weight` : ymd === today ? "Add today's weight" : `Save for ${dayLabel(ymd, today)}`;
+    $("#bw").focus();
+  });
   $("#logbw").onclick = async () => {
     const val = parseFloat($("#bw").value);
     // Never a silent dead button: an empty/non-numeric field must say why nothing
@@ -2579,6 +2631,7 @@ async function renderProgress() {
     // doesn't), or a second tap saves to TODAY under a stale "Save for <past day>"
     // label (Wave 254 audit).
     $("#logbw").textContent = "Add today's weight";
+    pressDayChoice("bwday", null);
     $("#bw").value = "";
     const note = document.createElement("p");
     note.className = "muted";
@@ -2957,7 +3010,9 @@ async function renderRetroLog() {
   }
   allExercises = exs; // exName() resolves through this, custom exercises included
   const days = d.program?.sessions ?? [];
-  const localDayAgo = (n) => { const dt = new Date(Date.now() - n * 86400000); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`; };
+  // Calendar-day math, not now-minus-24h: subtracting instants skips or repeats a
+  // day across a DST change (the same class shiftDay exists to close).
+  const localDayAgo = (n) => shiftDay(localDay(), -n);
   const inputStyle = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem";
   let chosen = null; // the picked program day
   const draw = () => {
@@ -3020,6 +3075,9 @@ const fld = (id, label, val, ph, extra = "") => `<label for="${id}" class="muted
   <input id="${id}" type="number" inputmode="decimal" value="${val ?? ""}" placeholder="${ph}" ${extra}
     style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:2px 0 10px">`;
 let fuelEdit = false;
+// A one-shot "Logged — N days in" line carried across the re-render that follows
+// every save (the re-render is what resets the day chooser and button label).
+let fuelNotice = null;
 async function renderFuel() {
   app.innerHTML = `<h1>Fuel</h1><p class="muted">Loading…</p>`;
   let n; try { n = await api("/api/nutrition?d=" + localDay()); } catch {
@@ -3126,11 +3184,13 @@ async function renderFuel() {
     <div class="card"><div class="row"><div style="flex:1"><b>🥩 Protein</b><br><span class="muted">${t.protein_g} g (${t.protein_per_kg} g/kg — the priority)</span></div></div>
       <div class="row"><div style="flex:1"><b>🍚 Carbs</b><br><span class="muted">${t.carbs_g} g — fuel your training</span></div></div>
       <div class="row"><div style="flex:1"><b>🥑 Fat</b><br><span class="muted">${t.fat_g} g</span></div></div></div>
-    <h2>Log today's intake</h2>
+    <h2>Log your intake</h2>
     <div class="card"><p class="muted">Log what you ate (a rough daily total is fine). After ~2 weeks I re-estimate your real maintenance from your food + weight — no formula beats your own data.</p>
-      ${fld("f-kcal", "Calories eaten today", "", "e.g. 2600")}
-      ${fld("f-protein", "Protein (g, optional)", "", "e.g. 180")}
-      <button class="btn" id="f-log">Log today</button><p class="muted" id="f-logmsg">${n.logged_days ? `${n.logged_days} day${n.logged_days === 1 ? "" : "s"} logged.` : ""}</p></div>
+      ${dayChooserHtml("flday")}
+      ${fld("f-kcal", "Calories eaten — the whole day's total", n.today?.kcal ?? "", "e.g. 2600")}
+      ${fld("f-protein", "Protein (g, optional)", n.today?.protein_g ?? "", "e.g. 180")}
+      <p class="muted" id="f-hint">${n.today?.kcal ? fuelReplaceHint("today", n.today.kcal) : ""}</p>
+      <button class="btn" id="f-log">${n.today?.kcal ? "Update today's total" : "Log today"}</button><p class="muted" id="f-logmsg">${fuelNotice ?? (n.logged_days ? `${n.logged_days} day${n.logged_days === 1 ? "" : "s"} logged.` : "")}</p></div>
     ${(n.log ?? []).length >= 2 ? `<h2>Intake history</h2><div class="card">
       <p class="muted" style="margin:0 0 4px">Daily calories — the dashed line is your ${t.calorie_target} kcal target.</p>
       ${trendChart((n.log ?? []).slice(-30).map((e) => e.kcal), { unit: "", target: t.calorie_target, capId: "kcal-cap" })}
@@ -3139,6 +3199,7 @@ async function renderFuel() {
       ${(n.log ?? []).length > 14 ? `<button class="btn ghost inline" id="fl-full">📈 Full history (${(n.log ?? []).length} days)</button>` : ""}</div>` : ""}
     <div class="card"><p class="muted">Maintenance estimate: <b>${t.tdee}</b> kcal (${t.tdee_basis}). ${esc(t.note)}</p></div>
     <button class="btn ghost" id="f-editstats">Edit my stats</button>`;
+  fuelNotice = null;
   wireLearnLinks();
   $("#f-editstats").onclick = () => { fuelEdit = true; renderFuel(); };
   if ($("#fl-hist-toggle")) $("#fl-hist-toggle").onclick = () => $("#fl-hist").classList.toggle("hidden");
@@ -3147,7 +3208,9 @@ async function renderFuel() {
     fuelLogDate = b.dataset.flEdit;
     $("#f-kcal").value = b.dataset.flKcal;
     $("#f-protein").value = b.dataset.flProtein || "";
-    $("#f-log").textContent = `Save for ${fuelLogDate}`;
+    $("#f-log").textContent = `Update ${dayLabel(fuelLogDate, localDay())}'s total`;
+    $("#f-hint").textContent = fuelReplaceHint(dayLabel(fuelLogDate, localDay()), b.dataset.flKcal);
+    pressDayChoice("flday", fuelLogDate);
     $("#f-kcal").focus();
   });
   // A day tapped in the FULL intake view lands back here with the form armed.
@@ -3155,19 +3218,40 @@ async function renderFuel() {
     fuelLogDate = fuelEditArm.date;
     $("#f-kcal").value = fuelEditArm.kcal;
     $("#f-protein").value = fuelEditArm.protein ?? "";
-    $("#f-log").textContent = `Save for ${fuelLogDate}`;
+    $("#f-log").textContent = `Update ${dayLabel(fuelLogDate, localDay())}'s total`;
+    $("#f-hint").textContent = fuelReplaceHint(dayLabel(fuelLogDate, localDay()), fuelEditArm.kcal);
+    pressDayChoice("flday", fuelLogDate);
     fuelEditArm = null;
   }
+  // Log a day you missed. One intake row per day, REPLACED on save (both stores),
+  // so the chosen day pre-fills what's already there and the button says "Update":
+  // a meal-by-meal logger can never silently wipe the number they logged earlier.
+  wireDayChooser("flday", (ymd) => {
+    const today = localDay();
+    const have = ymd === today ? n.today : (n.log ?? []).find((e) => e.date === ymd);
+    fuelLogDate = ymd === today ? null : ymd;
+    $("#f-kcal").value = have?.kcal ?? "";
+    $("#f-protein").value = have?.protein_g ?? "";
+    const lbl = dayLabel(ymd, today);
+    $("#f-log").textContent = have?.kcal ? `Update ${lbl}'s total` : `Log ${lbl}`;
+    $("#f-hint").textContent = have?.kcal ? fuelReplaceHint(lbl, have.kcal) : "";
+    $("#f-kcal").focus();
+  });
   wireChartTap("kcal-cap", (n.log ?? []).slice(-30), (e) => `${e.date}: ${e.kcal} kcal${e.protein_g ? ` · ${e.protein_g}g protein` : ""}`);
   $("#f-log").onclick = async () => {
     const kcal = parseFloat($("#f-kcal").value); const protein = parseFloat($("#f-protein").value);
-    if (!Number.isFinite(kcal) || kcal <= 0) { $("#f-logmsg").textContent = "Enter today's calories."; return; }
+    if (!Number.isFinite(kcal) || kcal <= 0) { $("#f-logmsg").textContent = "Enter the day's calories."; return; }
     try {
       const r = await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: fuelLogDate ?? localDay(), ...(Number.isFinite(protein) && protein > 0 ? { protein_g: protein } : {}) }) });
+      // Always re-render from the server's truth: it resets the chooser, the label
+      // and the pre-filled total together. The old partial reset left "Save for
+      // <past day>" on the button whenever targets didn't change, so the NEXT tap
+      // wrote today's number under a past day's label (the Wave-254 bodyweight
+      // fix that never reached this door).
       fuelLogDate = null;
-      say("Logged."); $("#f-logmsg").textContent = `Logged — ${r.logged_days} day${r.logged_days === 1 ? "" : "s"} in. ${r.nutrition.tdee_basis === "logged" ? "Targets updated from your data." : ""}`;
-      $("#f-kcal").value = ""; $("#f-protein").value = "";
-      if (r.nutrition.tdee_basis === "logged") renderFuel();
+      fuelNotice = `Logged — ${r.logged_days} day${r.logged_days === 1 ? "" : "s"} in. ${r.nutrition.tdee_basis === "logged" ? "Targets updated from your data." : ""}`;
+      say("Logged.");
+      renderFuel();
     } catch { $("#f-logmsg").textContent = "📴 Couldn't log — try again when connected."; }
   };
 }
