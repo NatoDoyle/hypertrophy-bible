@@ -77,3 +77,52 @@ export function linePath(values, w, h, pad = 4) {
   const y = (v) => span === 0 ? h / 2 : (h - pad) - ((v - min) * (h - 2 * pad)) / span;
   return { pts: vals.map((v, i) => [Math.round(x(i) * 10) / 10, Math.round(y(v) * 10) / 10]), min, max };
 }
+
+// The "how do I do both sides?" cue for a unilateral lift, written to match how
+// the player BANKS it: one ✓ = one set = both sides. The old copy said "do all N
+// sets with your left, then repeat with your right" — impossible for a lift that
+// alternates by design (the owner's walking lunge; its own execution steps say
+// "continue alternating legs"), and wrong for every other unilateral lift too,
+// because the player moves on after N ✓ taps, before the right side ever starts.
+// Returns HTML for a .cue div; only parsed numbers are interpolated, never raw
+// plan text, so nothing here needs escaping.
+const LOWER_BODY_PATTERN = /lunge|squat|hinge|knee|hip|plantarflexion/;
+export function sideCue(ex, { station = false } = {}) {
+  if (!ex?.unilateral) return "";
+  if (ex.alternating) {
+    const leg = LOWER_BODY_PATTERN.test(ex.movement_pattern ?? "");
+    const limb = leg ? "leg" : "side", unit = leg ? "steps" : "reps";
+    const m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(String(ex.rep_range ?? "").trim());
+    const each = m ? (m[2] ? `${m[1]}-${m[2]}` : m[1]) : null;
+    const total = m ? (m[2] ? `${2 * m[1]}-${2 * m[2]}` : `${2 * m[1]}`) : null;
+    return `↔️ <b>Alternate ${limb}s every rep</b> — count each ${limb}${each ? `, so ${each} each ${limb} is ${total} ${unit} in total` : ""}. ${station ? "One round is one set like that." : "Tap ✓ when the set's done."}`;
+  }
+  return station
+    ? `↔️ <b>One side, then the other</b> — this round is one set with your <b>left</b> and one with your <b>right</b> (log the weight per side).`
+    : `↔️ <b>One side, then the other</b> — each set is your <b>left</b> side, then straight into your <b>right</b>. Tap ✓ once both are done, logging the weight you used per side.`;
+}
+
+// Whole calendar days from a local YYYY-MM-DD, by UTC-noon date arithmetic —
+// never "now minus n×24h", which skips or repeats a day across a DST change.
+// Returns null for anything that isn't a real calendar day.
+export function shiftDay(ymd, n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ""));
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  if (d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return null;
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// How a chosen log day reads on a button: "today", "yesterday", else "Mon 5 Oct".
+// Fixed English names so the label is deterministic (matches weekLabelOf's style).
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function dayLabel(ymd, todayYmd) {
+  if (ymd === todayYmd) return "today";
+  if (ymd === shiftDay(todayYmd, -1)) return "yesterday";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ""));
+  if (!m) return String(ymd ?? "");
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  return `${WEEKDAY_SHORT[d.getUTCDay()]} ${+m[3]} ${MONTH_SHORT[+m[2] - 1]}`;
+}

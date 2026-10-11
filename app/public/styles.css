@@ -5,6 +5,12 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
+/* iOS: two quick taps on a − / + stepper must land as two taps, never a zoom.
+   `manipulation` removes only double-tap zoom — scrolling and pinch-zoom (an
+   accessibility need) stay. touch-action isn't inherited, so controls opt in too. */
+html,button,a,input,select,label,[role=button]{touch-action:manipulation}
+/* iOS zooms the whole page when a form control under 16px takes focus. */
+input,select,textarea{font-size:16px}
 body{
   background:var(--bg); color:var(--text);
   font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;

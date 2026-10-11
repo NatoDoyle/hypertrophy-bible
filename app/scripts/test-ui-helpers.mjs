@@ -2,7 +2,8 @@
 // path shorteners. app.js itself cannot be imported under Node (top-level DOM), so
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "../public/ui-helpers.mjs";
+import { readFileSync } from "node:fs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -67,6 +68,86 @@ check("linePath: spreads x across the width, inverts y, pads, and centers a flat
   assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
   assert.deepEqual(linePath([], 100, 50).pts, []);
   assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
+});
+
+// --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
+// Calendar-day arithmetic on YYYY-MM-DD strings: subtracting 24h from an instant
+// skips or repeats a day across a DST change (the retro-log's localDayAgo did).
+check("shiftDay: whole calendar days across month, year and leap edges — no clock, no DST", () => {
+  assert.equal(shiftDay("2026-10-11", -1), "2026-10-10");
+  assert.equal(shiftDay("2026-03-01", -1), "2026-02-28");
+  assert.equal(shiftDay("2028-03-01", -1), "2028-02-29"); // leap year
+  assert.equal(shiftDay("2026-01-01", -1), "2025-12-31");
+  assert.equal(shiftDay("2026-10-11", -30), "2026-09-11");
+  assert.equal(shiftDay("2026-12-31", 1), "2027-01-01");
+  assert.equal(shiftDay("not-a-day", -1), null);
+});
+
+check("dayLabel: today / yesterday in words, older days as a short weekday + date", () => {
+  assert.equal(dayLabel("2026-10-11", "2026-10-11"), "today");
+  assert.equal(dayLabel("2026-10-10", "2026-10-11"), "yesterday");
+  assert.equal(dayLabel("2026-10-05", "2026-10-11"), "Mon 5 Oct");
+  assert.equal(dayLabel("2025-12-31", "2026-01-01"), "yesterday");
+});
+
+// --- Side cues (owner report: "walking lunges say do one leg at a time, which is
+// impossible"). The player banks ONE set per ✓, so a cue must describe one set as
+// both sides; an alternating lift must never be told to finish one side first.
+check("sideCue: an alternating lift alternates every rep and counts each leg (never 'all sets left first')", () => {
+  const cue = sideCue({ unilateral: true, alternating: true, movement_pattern: "lunge", rep_range: "8-12" });
+  assert.match(cue, /Alternate legs every rep/);
+  assert.match(cue, /8-12 each leg is 16-24 steps in total/);
+  assert.match(cue, /Tap ✓ when the set's done/);
+  assert.doesNotMatch(cue, /all \d+ sets|left\b/i);
+});
+
+check("sideCue: a one-side-at-a-time lift does left then right inside ONE set (one ✓ per set, matching how sets bank)", () => {
+  const cue = sideCue({ unilateral: true, movement_pattern: "horizontal-pull", rep_range: "10" });
+  assert.match(cue, /each set is your <b>left<\/b> side, then straight into your <b>right<\/b>/);
+  assert.match(cue, /Tap ✓ once both are done/);
+  assert.doesNotMatch(cue, /all \d+ sets with your/);
+});
+
+check("sideCue: superset station rounds say the same thing in round terms", () => {
+  assert.match(sideCue({ unilateral: true, rep_range: "10-15" }, { station: true }), /this round is one set with your <b>left<\/b> and one with your <b>right<\/b>/);
+  assert.match(sideCue({ unilateral: true, alternating: true, movement_pattern: "lunge", rep_range: "10" }, { station: true }), /Alternate legs every rep.*10 each leg is 20 steps in total.*One round is one set like that/);
+});
+
+check("sideCue: bilateral lifts get no cue; an unreadable rep range drops the arithmetic, never prints raw text", () => {
+  assert.equal(sideCue({ unilateral: false, alternating: true }), "");
+  assert.equal(sideCue(null), "");
+  const odd = sideCue({ unilateral: true, alternating: true, movement_pattern: "lunge", rep_range: "AMRAP<script>" });
+  assert.match(odd, /count each leg\./);
+  assert.doesNotMatch(odd, /script|AMRAP/);
+});
+
+// --- iOS gesture invariants (owner report: "double-tapping + zooms the screen") ---
+// Static source checks, because the zoom itself only reproduces on a real iPhone:
+// what CAN be pinned here is the CSS that tells Safari not to treat two quick taps
+// as a zoom gesture, and that no form control is small enough to focus-zoom.
+const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+const indexHtml = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const cssRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({ sels: sel.split(",").map((s) => s.trim()), body }));
+
+check("iOS: two quick taps never zoom — touch-action:manipulation on the page and every tappable control, pinch-zoom kept", () => {
+  const opted = cssRules.filter((r) => /touch-action\s*:\s*manipulation/.test(r.body)).flatMap((r) => r.sels);
+  for (const sel of ["html", "button", "a", "input", "select", "label"]) assert.ok(opted.includes(sel), `touch-action:manipulation missing on ${sel}`);
+  // Disabling zoom outright would fix the gesture by breaking accessibility.
+  assert.doesNotMatch(indexHtml, /user-scalable\s*=\s*no|maximum-scale/);
+});
+
+check("iOS: every form control renders at >= 16px (anything smaller zooms the page on focus)", () => {
+  const base = cssRules.find((r) => r.sels.includes("input") && r.sels.includes("select") && r.sels.includes("textarea"));
+  assert.ok(base && /font-size\s*:\s*16px/.test(base.body), "a base input/select/textarea rule must set font-size:16px");
+  const small = [];
+  for (const [tag] of appJs.matchAll(/<(?:input|select|textarea)\b[^>]*>/g)) {
+    const fs = tag.match(/font-size\s*:\s*([\d.]+)(rem|em|px)/);
+    if (!fs) continue;
+    const px = fs[2] === "px" ? Number(fs[1]) : Number(fs[1]) * 16;
+    if (px < 16) small.push(tag.match(/id="([^"]+)"/)?.[1] ?? tag.slice(0, 50));
+  }
+  assert.deepEqual(small, [], `form controls below 16px: ${small.join(", ")}`);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

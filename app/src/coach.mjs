@@ -610,6 +610,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       rir: rirBand,
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
+      alternating: !!e?.alternating,             // → the side cue says "alternate every rep", never "all sets left first" (walking lunge)
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,

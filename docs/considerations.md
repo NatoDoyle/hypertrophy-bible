@@ -4,30 +4,12 @@ Goal: to make note of my thoughts, ideas, suggestions and questions so that they
 
 Everything below should be taken under consideration for implementation. Once it has been thoroughly considered against the goals of the project, the recommended actions should be implemented and then delete the consideration 
 
-*(No open considerations. All three handled in Waves 262–264 (2026-09-06):*
+- When I double tap the screen consecutively when try to increase weight for example it zooms in when I don’t want it to
+- The rest time is set to 120 seconds but what if someone wants 60s or 300s?
+- When I finished my workout it asked me if I wanted to sign up with my email to save progress but then sent me a link to restore my progress 
+- Its not aware of what day it is. If I put in what days I plan to workout, why is it asking me to log a workout, if we add in that it's aware of which day it is and which days I've said I'm going to work out, it also needs to give me the option to change those days in case my schedule changes. 
+- I don't have the option to log yesterday's weight or calories if I forgot to log it. 
+- If I accidentally enter the wrong weight of reps during a workout, I have no way to go back and rectify the mistake.
+- The walking lunges exercise instructions say to do one leg at a time which is impossible 
+- When I start a new program and I’m going through the workout. Sometime sometimes you've added an exercise that I don't have the machine for, so I need a button to press where it's like, "I can't do this exercise." It adds in the next best option and then makes a permanent edit to the main program, or asks if I want to make this a permanent edit. 
 
-*• "Type in my weight and reps" + "change the weight to lbs because some machines use lbs" —
-DONE as Wave 262, designed together. The value between the − / + stepper buttons is now a real
-type-able input in both players (typing is the fast path for a big jump; steppers stay for
-nudges; an emptied field restores the last good value on blur). The unit label beside the
-weight is a tappable per-exercise kg↔lb toggle for the mixed-unit gym — a machine's lb stack
-flips to lb while the bars stay kg, remembered for future sessions (`profile.exercise_units`
-via its own narrow route, mirrored per-device, inherited by new devices via /api/today). The
-global Me → Units switch already existed and is unchanged. Storage stays kg everywhere — the
-override is display/entry-only; each in-progress session stamps the unit per entry and one
-pure, unit-tested migration converts on any flip, so est-1RM/PRs/stall detection/suggestions
-never see a pound. Adversarially reviewed (3 lenses, 11 findings → 9 fixed, 2 accepted +
-documented); 19 + 4 Playwright checks including the typo-confirm × typed-input interplay,
-mixed-unit superset rounds, and crash-resume.*
-
-*• "Some exercises, e.g. the kettlebell lateral raise, are missing the page that explains
-when to use them" — DONE as Waves 263–264, and the audit overturned the premise: the content
-was never missing (all 171 exercises carry cues, steps, good-pick-when/skip-when), it was
-UNREACHABLE — the Plan tab resolved sheets against the 64 prose-referenced bundle only, so
-107 lifts (all smith-machine, 12/14 kettlebell, 18/21 band) got a false "No guide for this
-one" toast. Now every exercise's sheet is bundled (owner chose full offline parity over
-~180 KB raw bundle growth), the Plan tab falls back to the API for custom lifts, the coverage
-gate is a corpus-derived floor instead of a frozen `=== 64` (which had frozen the gap in
-place), and the authored-but-never-displayed `progressions`/`regressions` on ~141 exercises
-now render as "Make it easier / Make it harder" on the sheet. Deferred, recorded: `rom_notes`
-(28/171, the sheet already shows "Where it's hardest") and richer per-exercise prose pages.)*

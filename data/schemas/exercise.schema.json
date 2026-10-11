@@ -55,6 +55,10 @@
     },
     "stability": { "enum": ["high", "moderate", "low"] },
     "unilateral": { "type": "boolean" },
+    "alternating": {
+      "type": "boolean",
+      "description": "A unilateral lift whose sides alternate every rep by design (walking lunge) rather than finishing one side first. The session player's side cue reads it; check-data-refs requires unilateral:true alongside it."
+    },
     "cns_cost": {
       "enum": ["low", "moderate", "high"],
       "description": "Systemic / central-nervous-system fatigue cost per hard set. Heavy multi-joint barbell lifts (squat, deadlift) are 'high'; most machine/cable isolations are 'low'. Informs how many can be programmed together and recovery between sessions."
