@@ -3745,7 +3745,7 @@ async function renderStory() {
       <div id="sharebox" class="hidden" style="margin-top:10px"></div></div>` : ""}
     <div class="card"><b>🤝 Training partners</b>
       <p class="muted" style="margin-top:8px">Follow a friend's share link and their streak shows up here — a little mutual accountability. Paste the link they sent you:</p>
-      <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary inline" id="followbtn" style="margin:0">Follow</button></div>
+      <div class="row" style="gap:8px;margin-top:4px"><input id="followurl" placeholder="Paste a share link…" style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:1rem"><button class="btn secondary inline" id="followbtn" style="margin:0">Follow</button></div>
       <p class="muted" id="followmsg" style="margin-top:6px"></p>
       ${(fw.partners || []).some((p) => p.active) ? `<div style="margin-top:10px">${rankPartners({ streak_weeks: a.streak_weeks, level: a.level }, fw.partners).map((r) => {
         const race = r.isYou ? null : weeklyRaceStatus(a.week.sessions, r.sessions_this_week);
@@ -3809,7 +3809,7 @@ async function renderStory() {
       box.classList.remove("hidden");
       // Build the row structurally and set the URL via .value (a property, never
       // interpolated into HTML) so there is no injection surface.
-      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:.9rem"><button class="btn secondary inline" id="sharecopy" style="margin:0">Copy</button></div>${r.new_cheers > 0 ? `<p style="margin-top:8px;color:var(--accent);font-weight:600">🎉 ${r.new_cheers} new cheer${r.new_cheers === 1 ? "" : "s"} since you last looked!</p>` : ""}${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
+      box.innerHTML = `<div class="row" style="gap:8px"><input id="shareurl" readonly style="flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:1rem"><button class="btn secondary inline" id="sharecopy" style="margin:0">Copy</button></div>${r.new_cheers > 0 ? `<p style="margin-top:8px;color:var(--accent);font-weight:600">🎉 ${r.new_cheers} new cheer${r.new_cheers === 1 ? "" : "s"} since you last looked!</p>` : ""}${r.cheers > 0 ? `<p class="muted" style="margin-top:8px">💪 ${r.cheers} ${r.cheers === 1 ? "person has" : "people have"} cheered you on.</p>` : ""}<button class="btn" id="sharerevoke" style="margin-top:8px">Turn sharing off</button>`;
       $("#shareurl").value = url;
       $("#sharecopy").onclick = () => { try { navigator.clipboard?.writeText(url); } catch {} $("#shareurl").select(); say("Link copied."); };
       $("#sharerevoke").onclick = async () => {

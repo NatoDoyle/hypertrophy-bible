@@ -2,6 +2,7 @@
 // path shorteners. app.js itself cannot be imported under Node (top-level DOM), so
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
@@ -67,6 +68,35 @@ check("linePath: spreads x across the width, inverts y, pads, and centers a flat
   assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
   assert.deepEqual(linePath([], 100, 50).pts, []);
   assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
+});
+
+// --- iOS gesture invariants (owner report: "double-tapping + zooms the screen") ---
+// Static source checks, because the zoom itself only reproduces on a real iPhone:
+// what CAN be pinned here is the CSS that tells Safari not to treat two quick taps
+// as a zoom gesture, and that no form control is small enough to focus-zoom.
+const css = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const appJs = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+const indexHtml = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+const cssRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({ sels: sel.split(",").map((s) => s.trim()), body }));
+
+check("iOS: two quick taps never zoom — touch-action:manipulation on the page and every tappable control, pinch-zoom kept", () => {
+  const opted = cssRules.filter((r) => /touch-action\s*:\s*manipulation/.test(r.body)).flatMap((r) => r.sels);
+  for (const sel of ["html", "button", "a", "input", "select", "label"]) assert.ok(opted.includes(sel), `touch-action:manipulation missing on ${sel}`);
+  // Disabling zoom outright would fix the gesture by breaking accessibility.
+  assert.doesNotMatch(indexHtml, /user-scalable\s*=\s*no|maximum-scale/);
+});
+
+check("iOS: every form control renders at >= 16px (anything smaller zooms the page on focus)", () => {
+  const base = cssRules.find((r) => r.sels.includes("input") && r.sels.includes("select") && r.sels.includes("textarea"));
+  assert.ok(base && /font-size\s*:\s*16px/.test(base.body), "a base input/select/textarea rule must set font-size:16px");
+  const small = [];
+  for (const [tag] of appJs.matchAll(/<(?:input|select|textarea)\b[^>]*>/g)) {
+    const fs = tag.match(/font-size\s*:\s*([\d.]+)(rem|em|px)/);
+    if (!fs) continue;
+    const px = fs[2] === "px" ? Number(fs[1]) : Number(fs[1]) * 16;
+    if (px < 16) small.push(tag.match(/id="([^"]+)"/)?.[1] ?? tag.slice(0, 50));
+  }
+  assert.deepEqual(small, [], `form controls below 16px: ${small.join(", ")}`);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
