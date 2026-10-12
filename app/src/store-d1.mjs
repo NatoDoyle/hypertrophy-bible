@@ -624,6 +624,9 @@ export function createD1Store(db) {
     // including rl_key/ip) — a caller reading them off getMagicLink's result
     // (rather than the dedicated countRecentLinks/countRecentByIp queries)
     // must not silently get undefined only in production.
+    async deleteMagicLink(tokenHash) {
+      await db.prepare("DELETE FROM magic_links WHERE token_hash = ?").bind(tokenHash).run();
+    },
     async getMagicLink(tokenHash) {
       return (await db
         .prepare("SELECT token_hash, email, rl_key, ip, user_id, purpose, expires_at, used, created_at FROM magic_links WHERE token_hash = ?")
@@ -636,6 +639,23 @@ export function createD1Store(db) {
     async markMagicLinkUsed(tokenHash) {
       const res = await db.prepare("UPDATE magic_links SET used = 1 WHERE token_hash = ? AND used = 0").bind(tokenHash).run();
       return (res.meta?.changes ?? 0) === 1;
+    },
+    // The 6-digit sign-in code's pointer table (W270) — self-initialized like the
+    // other extension tables, so no migration is needed on the live database.
+    async saveLinkCode(row) {
+      await ensureExtensions(db);
+      await db.prepare("INSERT INTO magic_link_codes (token_hash, rl_key, code_hash, created_at) VALUES (?, ?, ?, ?)")
+        .bind(row.token_hash, row.rl_key, row.code_hash, row.created_at).run();
+      return row;
+    },
+    async deleteLinkCode(tokenHash) {
+      await ensureExtensions(db);
+      await db.prepare("DELETE FROM magic_link_codes WHERE token_hash = ?").bind(tokenHash).run();
+    },
+    async latestLinkCode(rlKey, sinceMs) {
+      await ensureExtensions(db);
+      return (await db.prepare("SELECT token_hash, rl_key, code_hash, created_at FROM magic_link_codes WHERE rl_key = ? AND created_at >= ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
+        .bind(rlKey, sinceMs).first()) ?? null;
     },
     async countRecentLinks(rlKey, sinceMs) {
       const row = await db.prepare("SELECT COUNT(*) AS n FROM magic_links WHERE rl_key = ? AND created_at >= ?").bind(rlKey, sinceMs).first();
@@ -709,6 +729,8 @@ function ensureExtensions(db) {
       db.prepare("CREATE TABLE IF NOT EXISTS push_deliveries (endpoint TEXT PRIMARY KEY, last_ok_at INTEGER NOT NULL)"),
       db.prepare("CREATE TABLE IF NOT EXISTS merge_archives (archive_id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, source_user_id TEXT NOT NULL, created_at TEXT NOT NULL, snapshot TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'available', restored_user_id TEXT, restored_at TEXT)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_merge_archives_owner ON merge_archives(owner_user_id, created_at)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS magic_link_codes (token_hash TEXT PRIMARY KEY, rl_key TEXT NOT NULL, code_hash TEXT NOT NULL, created_at INTEGER NOT NULL)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_magic_link_codes_rl ON magic_link_codes(rl_key, created_at)"),
     ]).catch((e) => { extensionReady.delete(db); throw e; });
     extensionReady.set(db, ready);
   }

@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey } from "../../tools/derive-core.mjs";
-import { requestMagicLink, consumeMagicLink, generateToken, sha256hex } from "./auth.mjs";
+import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
@@ -1634,7 +1634,10 @@ export function createApp(store, config = {}) {
     // Check-ins feed the concurrent-training read's readiness corroborator;
     // progressReport windows them to the same 42-day block as the bodyweight trend.
     const [sessions, bodyweights, checkins] = await Promise.all([store.listSessions(id), store.listBodyweights(id), store.listCheckins(id)]);
-    return c.json(progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz));
+    // account_email rides along for the sign-in adoption probe (account-adopt.mjs):
+    // this route is read-only, unlike /api/adherence, whose GET advances seen-once
+    // watermarks — a declined sign-in must not cost the user an unseen partner nudge.
+    return c.json({ ...progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz), account_email: await store.accountEmail(id) });
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).
@@ -1811,13 +1814,34 @@ export function createApp(store, config = {}) {
         })) };
       }
     }
-    const sent = await sendEmail({ email: result.email, link, purpose: result.purpose, plan });
+    const sent = await sendEmail({ email: result.email, link, code: result.code, purpose: result.purpose, kind: result.kind, plan });
     // A real send that failed: tell the client so it can offer a retry, rather
     // than a false "check your inbox". (Only reachable after a valid request, so
     // this never reveals whether an unknown email has an account.)
-    if (sent && sent.dev === false && sent.ok === false) return c.json({ sent: false, error: "send-failed" }, 502);
-    return c.json({ sent: true, ...(sent?.dev && exposeDevLink ? { dev_link: link } : {}) });
+    if (sent && sent.dev === false && sent.ok === false) {
+      // The undelivered code must not displace the code in an email the user already
+      // has (newest-only) — retire it before answering.
+      await store.deleteLinkCode(result.tokenHash).catch(() => {});
+      return c.json({ sent: false, error: "send-failed" }, 502);
+    }
+    return c.json({ sent: true, ...(sent?.dev && exposeDevLink ? { dev_link: link, dev_code: result.code } : {}) });
   });
+
+  // What a device needs to adopt the account it just proved it owns — ONE builder
+  // for both consume doors (the emailed link via verify.html, the typed code via the
+  // app), so the two can never hand a device different things.
+  const consumedResponse = async (c, result) => {
+    const user = await store.getUser(result.user_id);
+    return c.json({
+      user_id: result.user_id,
+      email: result.email,
+      purpose: result.purpose,
+      program_name: user?.program?.name ?? null,
+      units: user?.profile?.units ?? null, // so a fresh device shows weights in the user's unit immediately
+      exercise_units: user?.profile?.exercise_units ?? null, // same contract for the per-exercise kg/lb overrides
+      merge_grant: result.merge_grant ?? null,
+    });
+  };
 
   // Consume a magic link -> bind the account and hand back its user_id so the
   // device can adopt it. Called by /verify.html (a POST, not the emailed GET,
@@ -1826,33 +1850,24 @@ export function createApp(store, config = {}) {
     const { token } = await c.req.json().catch(() => ({}));
     const result = await consumeMagicLink(store, { token });
     if (result.error) return c.json({ error: result.error }, 400);
-    const user = await store.getUser(result.user_id);
-    // Issue the merge grant ONLY for a restore — the one flow that folds a device's
-    // local logs into a re-adopted account. A claim binds the caller's OWN user, so
-    // there is nothing to merge; minting a grant there would hand out a "move + delete
-    // any anonymous user" primitive far broader than intended (#19).
-    let merge_grant = null;
-    if (result.purpose === "restore") {
-      const now = Date.now();
-      const { token: grant, tokenHash } = await generateToken();
-      await store.createMagicLink({
-        // Distinct rl_key bucket: server-minted grants must never consume the
-        // user's 5/hour email budget (the 4th restore in a sitting was silently
-        // sending nothing because internal grants had filled the bucket).
-        token_hash: tokenHash, email: result.email, rl_key: "grant:" + result.email, ip: null,
-        user_id: result.user_id, purpose: "merge-grant", expires_at: now + 10 * 60 * 1000, used: 0, created_at: now,
-      });
-      merge_grant = grant;
-    }
-    return c.json({
-      user_id: result.user_id,
-      email: result.email,
-      purpose: result.purpose,
-      program_name: user?.program?.name ?? null,
-      units: user?.profile?.units ?? null, // so a fresh device shows weights in the user's unit immediately
-      exercise_units: user?.profile?.exercise_units ?? null, // same contract for the per-exercise kg/lb overrides
-      merge_grant,
-    });
+    // consumeMagicLink mints the merge grant ONLY for a restore — the one flow that
+    // folds a device's local logs into a re-adopted account (auth.mjs, #19).
+    return consumedResponse(c, result);
+  });
+
+  // The typed-code door (W270): the same consume, reached from INSIDE the app. On
+  // iPhone the emailed link opens Safari, whose storage is separate from the
+  // Home-Screen app, so a link alone can never sign the app itself in. No user id
+  // is taken: the code proves the inbox, exactly as the link does. Every failure is
+  // the same 400 "invalid" (no probing which addresses have accounts); too many
+  // failures for an address or an IP is a 429 checked before any comparison.
+  app.post("/api/auth/code", async (c) => {
+    const { email, code } = await c.req.json().catch(() => ({}));
+    const ip = c.req.header("CF-Connecting-IP") || c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const result = await consumeMagicCode(store, { email, code, ip });
+    if (result.error === "too-many-attempts") return c.json({ error: "too-many-attempts" }, 429);
+    if (result.error) return c.json({ error: result.error }, 400);
+    return consumedResponse(c, result);
   });
 
   // Merge a device's anonymous logs into a restored account (offered by

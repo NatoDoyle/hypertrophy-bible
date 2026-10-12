@@ -14,6 +14,7 @@ export function createFileStore(path) {
     : { users: {}, sessions: {}, bodyweights: {}, accounts: {}, magic_links: {}, checkins: {} };
   db.accounts ??= {};        // tolerate stores written before email backup existed
   db.magic_links ??= {};
+  db.magic_link_codes ??= {}; // sign-in codes: token_hash → { rl_key, code_hash, created_at } (parity with store-d1)
   db.checkins ??= {};
   db.shares ??= {};          // opt-in shareable progress cards (share_id → user_id)
   db.share_cheers ??= {};    // public "cheer" tally per share (share_id → count)
@@ -461,6 +462,9 @@ export function createFileStore(path) {
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
     async getMagicLink(tokenHash) { return db.magic_links[tokenHash] ?? null; },
+    // Only the code door's own over-cap reservation is ever deleted (auth.mjs reserve):
+    // a refused try must leave nothing behind in a table nothing prunes.
+    async deleteMagicLink(tokenHash) { delete db.magic_links[tokenHash]; flush(); },
     // Atomic single-use flip: returns true only if THIS call consumed the link
     // (0 -> 1). A second concurrent consume gets false, so a token can't be
     // spent twice (and a duplicate merge grant can't be minted).
@@ -474,6 +478,23 @@ export function createFileStore(path) {
     },
     async countRecentByIp(ip, sinceMs) {
       return Object.values(db.magic_links).filter((l) => l.ip === ip && l.created_at >= sinceMs).length;
+    },
+    // The 6-digit sign-in code (W270) is a POINTER to its magic link (by token_hash),
+    // so a link spent through either door is spent for both. Only the NEWEST code for
+    // a canonical address inside the window is valid: a same-ms tie goes to the later
+    // insert, matching store-d1's ORDER BY created_at DESC, rowid DESC.
+    async saveLinkCode(row) {
+      db.magic_link_codes[row.token_hash] = { token_hash: row.token_hash, rl_key: row.rl_key, code_hash: row.code_hash, created_at: row.created_at };
+      flush();
+      return row;
+    },
+    // A code whose email never left (a failed send) is retired, so it can't displace
+    // the delivered one under the newest-only rule.
+    async deleteLinkCode(tokenHash) { delete db.magic_link_codes[tokenHash]; flush(); },
+    async latestLinkCode(rlKey, sinceMs) {
+      let best = null;
+      for (const r of Object.values(db.magic_link_codes)) if (r.rl_key === rlKey && r.created_at >= sinceMs && (!best || r.created_at >= best.created_at)) best = r;
+      return best ? { ...best } : null;
     },
 
     // --- Shareable progress cards (opt-in social) — parity with store-d1.mjs ---

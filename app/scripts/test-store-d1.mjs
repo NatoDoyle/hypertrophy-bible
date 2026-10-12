@@ -666,6 +666,30 @@ try {
   ok("archive restore: no push subscription or share is reactivated for the copy (file)", await noExternalCapabilitiesOnCopy(file));
   ok("archive restore: no push subscription or share is reactivated for the copy (D1)", await noExternalCapabilitiesOnCopy(d1));
 
+  // --- #link-codes (W270): the sign-in code's pointer table, both stores. A code row
+  // points at its magic link by token_hash; the only valid code is the NEWEST one for
+  // a canonical email inside the window, so "newest" must mean the same thing in both.
+  for (const st of [file, d1]) {
+    await st.saveLinkCode({ token_hash: "lc-old", rl_key: "codes@t.com", code_hash: "h-old", created_at: 1000 });
+    await st.saveLinkCode({ token_hash: "lc-new", rl_key: "codes@t.com", code_hash: "h-new", created_at: 2000 });
+    await st.saveLinkCode({ token_hash: "lc-tie", rl_key: "codes@t.com", code_hash: "h-tie", created_at: 2000 }); // same ms, inserted later
+    await st.saveLinkCode({ token_hash: "lc-other", rl_key: "other@t.com", code_hash: "h-other", created_at: 3000 });
+  }
+  same("latestLinkCode: identical newest row in both stores", await file.latestLinkCode("codes@t.com", 0), await d1.latestLinkCode("codes@t.com", 0));
+  ok("latestLinkCode: a same-ms tie goes to the LATER insert (and never crosses addresses)",
+    (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie" && (await file.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie");
+  same("latestLinkCode: nothing inside the window → identical in both", await file.latestLinkCode("codes@t.com", 2001), await d1.latestLinkCode("codes@t.com", 2001));
+  ok("latestLinkCode: …and that's null", (await d1.latestLinkCode("codes@t.com", 2001)) === null);
+  for (const st of [file, d1]) await st.deleteLinkCode("lc-tie");
+  same("deleteLinkCode: retiring the newest code hands 'newest' back to the previous one, identically", await file.latestLinkCode("codes@t.com", 0), await d1.latestLinkCode("codes@t.com", 0));
+  ok("deleteLinkCode: …which is lc-new", (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-new");
+  for (const st of [file, d1]) {
+    await st.createMagicLink({ token_hash: "dm-1", email: "", rl_key: "codetry:dm@t.com", ip: null, user_id: "codetry-marker", purpose: "codetry-marker", expires_at: 1, used: 1, created_at: 1 });
+    await st.deleteMagicLink("dm-1");
+  }
+  same("deleteMagicLink: a deleted reservation is gone from the count in both stores", await file.countRecentLinks("codetry:dm@t.com", 0), await d1.countRecentLinks("codetry:dm@t.com", 0));
+  ok("deleteMagicLink: …to zero", (await d1.countRecentLinks("codetry:dm@t.com", 0)) === 0 && (await d1.getMagicLink("dm-1")) === null);
+
   // `ensureExtensions` must be scoped to an individual D1 binding. The primary
   // shim above has already initialized it; a fresh binding with all extension
   // tables removed should still create shares, cheer tallies, deliveries, and
@@ -673,7 +697,7 @@ try {
   const extensionSchema = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8");
   const secondShim = createD1Shim();
   secondShim.exec(extensionSchema);
-  secondShim.exec("DROP TABLE merge_archives; DROP TABLE push_deliveries; DROP TABLE share_cheers; DROP TABLE shares;");
+  secondShim.exec("DROP TABLE merge_archives; DROP TABLE push_deliveries; DROP TABLE share_cheers; DROP TABLE shares; DROP TABLE IF EXISTS magic_link_codes;");
   const secondD1 = createD1Store(secondShim);
   let freshBindingError = null;
   let freshBindingTables = [];
@@ -686,12 +710,13 @@ try {
     await secondD1.markPushDelivered("https://push/fresh-binding", 1);
     await secondD1.reassignUserData("fresh-ext-from", "fresh-ext-to", { archiveId: "fresh-ext-archive", now: "2026-08-17T15:00:00.000Z" });
     await secondD1.listMergeArchives("fresh-ext-to");
-    freshBindingTables = (await secondShim.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('shares', 'share_cheers', 'push_deliveries', 'merge_archives') ORDER BY name").all()).results.map((r) => r.name);
+    await secondD1.saveLinkCode({ token_hash: "fresh-lc", rl_key: "fresh@t.com", code_hash: "h", created_at: 1 });
+    freshBindingTables = (await secondShim.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('shares', 'share_cheers', 'push_deliveries', 'merge_archives', 'magic_link_codes') ORDER BY name").all()).results.map((r) => r.name);
   } catch (error) {
     freshBindingError = error;
   }
   ok("D1 extensions: a second binding recreates every extension table after they were dropped", !freshBindingError
-    && freshBindingTables.join(",") === "merge_archives,push_deliveries,share_cheers,shares");
+    && freshBindingTables.join(",") === "magic_link_codes,merge_archives,push_deliveries,share_cheers,shares");
 
   // A stale device can have passed a route's getUser() check just before a merge
   // commits. Child writers therefore fence tombstoned owners at the store boundary:

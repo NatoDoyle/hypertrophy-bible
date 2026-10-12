@@ -2607,6 +2607,80 @@ try {
   ok("#the emailed plan resolves a CUSTOM lift's name, not its raw slug",
     mailNames.includes("My Cable Fly") && !mailNames.includes("custom-my-fly"));
 
+  // --- #auth-kind (W269): the MAIL names the situation; the HTTP answer never does.
+  // Anti-enumeration is why /api/auth/request answers a generic {sent:true}; the
+  // inbox is the one place it's safe to say "you already have an account".
+  const kindMail = [];
+  const kindApp = createApp(store, { sendEmail: async (m) => { kindMail.push(m); return { ok: true }; } });
+  const kindReq = async (body, ip) => { const r = await kindApp.request("/api/auth/request", { method: "POST",
+    headers: { "content-type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify(body) }); return { status: r.status, text: await r.text() }; };
+  const kindOwner = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const kindPhone = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.saveAccount("owner-kind@t.com", kindOwner, new Date().toISOString());
+  const kindFresh = await kindReq({ email: "fresh-kind@t.com", user_id: kindPhone }, "10.77.0.1");
+  const kindBound = await kindReq({ email: "owner-kind@t.com", user_id: kindPhone }, "10.77.0.2");
+  ok("#auth-kind an existing email's HTTP answer is byte-identical to a new one's (no account probing)",
+    kindFresh.status === 200 && kindFresh.status === kindBound.status && kindFresh.text === kindBound.text);
+  ok("#auth-kind …while the mail to the existing address is told it's a 'merge', not a bare 'restore'",
+    kindMail.at(-1)?.kind === "merge" && kindMail.at(-2)?.kind === "new");
+
+  // --- #auth-code (W270): the code door, through the route the app's code box uses ---
+  const codeMail = [];
+  const codeApp = createApp(store, { sendEmail: async (m) => { codeMail.push(m); return { ok: true }; } });
+  const codeReq = async (url, body, ip, headers = {}) => { const r = await codeApp.request(url, { method: "POST",
+    headers: { "content-type": "application/json", "CF-Connecting-IP": ip, ...headers }, body: JSON.stringify(body) });
+    return { status: r.status, data: await r.json().catch(() => null) }; };
+  const caOwner = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const caPhone = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.saveAccount("owner-code@t.com", caOwner, new Date().toISOString());
+  await json("POST", "/api/session", { user_id: caPhone, session_id: "ca-phone-1", date: new Date(Date.now() - 3600e3).toISOString(),
+    sets: [{ exercise: "push-up", set_type: "work", weight_kg: 0, reps: 12 }] });
+  await codeReq("/api/auth/request", { email: "owner-code@t.com", user_id: caPhone }, "10.66.0.1");
+  const caMail = codeMail.at(-1);
+  ok("#auth-code the request hands the mail a 6-digit code", /^\d{6}$/.test(caMail?.code ?? ""));
+  const caCode = await codeReq("/api/auth/code", { email: "owner-code@t.com", code: caMail?.code }, "10.66.0.2");
+  ok("#auth-code typing it in the app consumes the link as a restore, with a merge grant",
+    caCode.status === 200 && caCode.data?.user_id === caOwner && caCode.data?.purpose === "restore" && typeof caCode.data?.merge_grant === "string");
+  const caMerge = await codeReq("/api/auth/merge", { grant: caCode.data?.merge_grant, from_user_id: caPhone, to_user_id: caOwner }, "10.66.0.2", { "X-HB-User": caPhone });
+  ok("#auth-code …and that grant merges this phone's workout into the account",
+    caMerge.status === 200 && (await store.listSessions(caOwner)).some((x) => x.session_id === "ca-phone-1"));
+  const caWrong = await codeReq("/api/auth/code", { email: "owner-code@t.com", code: caMail?.code === "000000" ? "000001" : "000000" }, "10.66.0.3");
+  const caNobody = await codeReq("/api/auth/code", { email: "nobody-code@t.com", code: "000000" }, "10.66.0.3");
+  ok("#auth-code an unknown address and a wrong code get the identical 400",
+    caWrong.status === 400 && caNobody.status === 400 && JSON.stringify(caWrong.data) === JSON.stringify(caNobody.data));
+  for (let i = 0; i < 10; i++) await codeReq("/api/auth/code", { email: "lock-route@t.com", code: "111111" }, `10.66.1.${i}`);
+  ok("#auth-code the 11th try on one address in a day is a 429, from any IP",
+    (await codeReq("/api/auth/code", { email: "lock-route@t.com", code: "111111" }, "10.66.1.99")).status === 429);
+  // A resend whose mail FAILED must not retire the code from the email the user already
+  // has (W270b review): newest-only meant the undelivered code silently killed it.
+  let flakyCalls = 0;
+  const flakyMail = [];
+  const flakyApp = createApp(store, { sendEmail: async (m) => { flakyMail.push(m); return ++flakyCalls === 2 ? { dev: false, ok: false } : { ok: true }; } });
+  const flakyU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const flakyReq = (ip) => flakyApp.request("/api/auth/request", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": ip }, body: JSON.stringify({ email: "flaky@t.com", user_id: flakyU }) });
+  await flakyReq("10.55.0.1");
+  const deliveredCode = flakyMail[0]?.code;
+  const failedSend = await flakyReq("10.55.0.2");
+  const afterFail = await codeReq("/api/auth/code", { email: "flaky@t.com", code: deliveredCode }, "10.55.0.3");
+  ok("#auth-code a failed resend (502) leaves the DELIVERED email's code working",
+    failedSend.status === 502 && afterFail.status === 200 && afterFail.data?.user_id === flakyU);
+
+  // The adoption probe reads the current device's account from /api/progress — a
+  // read-only route — never /api/adherence, which advances seen-once watermarks
+  // (a declined sign-in used to cost the user an unseen partner nudge).
+  const progOwner = await (await app.request("/api/progress", { headers: { "X-HB-User": caOwner } })).json();
+  const anonU = (await json("POST", "/api/onboard", { profile: { training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const progAnon = await (await app.request("/api/progress", { headers: { "X-HB-User": anonU } })).json();
+  ok("#auth-code /api/progress names the device's account (or null) for the adoption probe",
+    progOwner.account_email === "owner-code@t.com" && progAnon.account_email === null);
+
+  const devApp = createApp(store, { sendEmail: async () => ({ dev: true }), exposeDevLink: true });
+  const devRes = await (await devApp.request("/api/auth/request", { method: "POST", headers: { "content-type": "application/json", "CF-Connecting-IP": "10.66.2.1" },
+    body: JSON.stringify({ email: "dev-code@t.com", user_id: caOwner }) })).json();
+  const prodRes = await (await createApp(store, { sendEmail: async () => ({ dev: true }) }).request("/api/auth/request", { method: "POST",
+    headers: { "content-type": "application/json", "CF-Connecting-IP": "10.66.2.2" }, body: JSON.stringify({ email: "prod-code@t.com", user_id: caOwner }) })).json();
+  ok("#auth-code the code is exposed beside the dev link ONLY under exposeDevLink", /^\d{6}$/.test(devRes.dev_code ?? "") && !("dev_code" in prodRes));
+
   // --- Units: the narrow doors (global + per-exercise kg/lb) --------------------
   // /api/profile/units shipped with NO test at all (the lesson-59 record fixed the
   // caller, the route stayed unproven); its new per-exercise sibling gets the same
