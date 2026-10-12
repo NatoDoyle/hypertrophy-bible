@@ -1188,5 +1188,52 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
       && (!v.maintenance || v.target_sets === (muscleById.get(m).landmarks.mv?.min ?? v.target_sets)))));
 }
 
+// --- #golden (W272): a byte-level pin of the engine's whole output. The determinism
+// checks above compare the engine to ITSELF (run twice, absent vs empty), so a refactor
+// that changes what it emits stays green there (lesson 66). This pins program +
+// rationale + meta over a fixed grid — every status × day count × two lengths × every
+// goal × three equipment sets, plus the opts paths a default profile never touches
+// (block rotation, stalled demotion, the adaptive tune, injuries, priorities,
+// specialization on and expired, forced undulation, a clamped day count) — against a
+// digest computed on the engine BEFORE W272 touched it.
+// The KB is FROZEN in tools/fixtures/golden-kb.json (exercises cut to the fields the
+// engine reads: id, name, primary/secondary_muscles, movement_pattern, mechanic,
+// equipment, lengthened_bias, difficulty, cns_cost, citations; muscles,
+// contraindications and the cardio guideline whole), so a KB data wave never moves
+// this pin — only an engine change does. If the engine's output is MEANT to change,
+// re-pin deliberately and say why in the commit; never re-pin to make it pass.
+{
+  const { createHash } = await import("node:crypto");
+  const gkb = JSON.parse(readFileSync("tools/fixtures/golden-kb.json"));
+  const EQ = { full: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], db: ["dumbbell", "bodyweight"], bw: ["bodyweight"] };
+  const grid = [];
+  for (const status of ["beginner", "intermediate", "advanced"])
+    for (const days of [2, 3, 4, 5, 6])
+      for (const len of [45, 90])
+        for (const goal of ["hypertrophy", "strength", "fat-loss", "recomposition"])
+          for (const eq of Object.keys(EQ))
+            grid.push({ profile: { user_id: `g-${status}-${days}-${len}-${goal}-${eq}`, training_status: status, primary_goal: goal, days_per_week: days, session_length_min: len, available_equipment: EQ[eq] }, opts: {} });
+  const bases = [
+    { user_id: "o-int-4", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: EQ.full },
+    { user_id: "o-adv-6", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 75, available_equipment: EQ.full },
+    { user_id: "o-beg-3", training_status: "beginner", primary_goal: "strength", days_per_week: 3, session_length_min: 45, available_equipment: EQ.db },
+  ];
+  for (const b of bases) {
+    const first = generatePlan(b, gkb).program.sessions[0].exercises.map((e) => e.exercise);
+    for (const blockIndex of [1, 2]) grid.push({ profile: b, opts: { blockIndex } });
+    grid.push({ profile: b, opts: { stalledExercises: first.slice(0, 2) } });
+    grid.push({ profile: b, opts: { blockIndex: 1, stalledExercises: first.slice(0, 1), volumeAdjust: { chest: 2, biceps: -1, quadriceps: 3 } } });
+    grid.push({ profile: { ...b, injuries: [{ region: "lower-back", severity: "moderate" }, { region: "shoulder", severity: "mild" }] }, opts: {} });
+    grid.push({ profile: { ...b, priority_muscles: ["side-delts", "chest"] }, opts: {} });
+    grid.push({ profile: { ...b, priority_muscles: ["side-delts"], specialization: true }, opts: { blockIndex: 0 } });
+    grid.push({ profile: { ...b, priority_muscles: ["side-delts"], specialization: true }, opts: { blockIndex: 1 } });
+    grid.push({ profile: { ...b, periodization: "undulating" }, opts: {} });
+    grid.push({ profile: { ...b, days_per_week: 7 }, opts: {} });
+  }
+  const digestOf = (pts) => createHash("sha256").update(JSON.stringify(pts.map(({ profile, opts }) => generatePlan(profile, gkb, opts)))).digest("hex");
+  ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pre-W272 pin",
+    grid.length === 390 && digestOf(grid) === "f6656b67589b9ae274dfe35e0c6a9bad8577babfb5c018633441851867ceea91");
+}
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
