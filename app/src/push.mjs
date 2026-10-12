@@ -180,8 +180,12 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   // This week's plan, or last week's carried forward (ordinal inside, lesson 40).
   const plan = commitmentForDay(commitment, todayKey);
   if (!plan || !plan.days.includes(weekDayKey(localNow))) return false;
+  // The anchor is the LATEST sign of intent: the last session, the day the plan was
+  // made, or (never trained) the subscription. A lapsed user who sets days today is
+  // re-engaging — anchoring on the stale session alone silenced exactly those days.
   const stampMs = Date.parse(plan.set_on ?? isoWeekMondayKey(plan.week) ?? "");
-  const anchorMs = lastSessionAt ? +new Date(lastSessionAt) : Math.max(Number.isFinite(stampMs) ? stampMs : -Infinity, subscribedAt ? +new Date(subscribedAt) : -Infinity);
+  const finite = (ms) => (Number.isFinite(ms) ? ms : -Infinity);
+  const anchorMs = Math.max(finite(lastSessionAt ? +new Date(lastSessionAt) : NaN), finite(stampMs), lastSessionAt ? -Infinity : finite(subscribedAt ? +new Date(subscribedAt) : NaN));
   if (!Number.isFinite(anchorMs) || Math.floor((+new Date(now) - anchorMs) / 86400000) > PUSH_MAX_LAPSE_DAYS) return false;
   // A day the user explicitly marked as rest is answered, not lapsed — nudging
   // "you planned to train today" at someone who deliberately chose recovery

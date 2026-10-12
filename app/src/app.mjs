@@ -726,7 +726,8 @@ export function createApp(store, config = {}) {
     Object.assign(daily, {
       planned_today: plan ? plan.planned_today : null,
       next_planned_day: plan?.next ?? null,
-      missed_planned_day: plan?.missed ?? null,
+      // Rail #1: a paused (sick/injured) user is never told they missed a day.
+      missed_planned_day: user.paused ? null : (plan?.missed ?? null),
       commitment_days: plan?.days ?? null,
     });
     // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
@@ -889,6 +890,10 @@ export function createApp(store, config = {}) {
     // week's CARRIED forward (W271 — the owner chose a weekly picker that carries
     // itself forward each Monday). Ordinal inside commitmentForDay (lesson 40).
     const commitment = commitmentView(user.profile?.commitment, localDayKey(nowISO, tz));
+    // "No fixed days this week": which days come back next week (the card says so).
+    const storedC = user.profile?.commitment;
+    const commitmentResumeDays = !commitment && Array.isArray(storedC?.days) && !storedC.days.length
+      && (storedC.week ?? "") >= isoWeekKeyLocal(Date.now(), tz) && storedC.resume_days?.length ? storedC.resume_days : null;
     // Surface the cheer tally on the main Coach view (not just buried in the share
     // box) so the social validation actually lands where the user looks. Only an
     // extra read for users who've opted into sharing; null/0 otherwise.
@@ -907,7 +912,7 @@ export function createApp(store, config = {}) {
     // "✓ signed in / your progress is saved" forever — Wave 230 stopped new
     // plantings, but a stopped write does not reach flags already stored (lesson
     // 41); this field is what lets the client reconcile them against the truth.
-    return c.json({ ...adherenceReport(user, sessions, nowISO, tz), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers, nudged,
+    return c.json({ ...adherenceReport(user, sessions, nowISO, tz), reminders_off: user.profile?.reminders_off === true, commitment, commitment_resume_days: commitmentResumeDays, share_cheers: shareCheers, nudged,
       account_email: await store.accountEmail(id) });
   });
 
@@ -932,7 +937,11 @@ export function createApp(store, config = {}) {
       // UTC. `set_on` is the local day the promise was made: days of THIS week before
       // it are never "missed" (W271). An empty `days` CLEARS the plan (no carry).
       const tzNow = headerTz ?? u.profile?.tz_offset_min;
-      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKeyLocal(Date.now(), tzNow), days, set_on: localDayKey(Date.now(), tzNow) } };
+      const today = localDayKey(Date.now(), tzNow);
+      // "No fixed days this week" is week-scoped, exactly as it says: keep the days
+      // in force today to RESUME once this week has passed (commitmentForDay).
+      const resume = days.length ? null : (commitmentForDay(u.profile?.commitment, today)?.days ?? u.profile?.commitment?.resume_days ?? null);
+      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKeyLocal(Date.now(), tzNow), days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);

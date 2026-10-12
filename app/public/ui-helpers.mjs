@@ -138,7 +138,22 @@ export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) 
   if (daily.workout_logged) return "done";
   if (daily.rest_day) return "rest";
   if (session.never_trained || status.state === "comeback") return "start";
-  if (daily.missed_planned_day) return "missed";
+  // Rail #1: a paused (sick/injured) user is promised no pressure — never "missed".
+  if (daily.missed_planned_day && status.state !== "paused") return "missed";
   if (daily.planned_today === false) return "unplanned";
   return "start";
+}
+
+// The phone calendar's recurring event (the .ics export) is the one reminder the app
+// can't edit or silence. When the plan's days no longer match the days last exported
+// (Monday-0 indices, as seedCalendarDays stores them), name the calendar's stale days
+// so the user can replace that event. Null when nothing was exported or they match.
+const SHORT_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_INDEX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+export function calendarDrift(exportedIdx, commitDays) {
+  const exported = (Array.isArray(exportedIdx) ? exportedIdx : []).filter((i) => Number.isInteger(i) && i >= 0 && i < 7);
+  if (!exported.length) return null;
+  const now = new Set((commitDays ?? []).map((d) => DAY_INDEX[d]).filter((i) => i != null));
+  const same = exported.length === now.size && exported.every((i) => now.has(i));
+  return same ? null : { stale: [...new Set(exported)].sort((a, b) => a - b).map((i) => SHORT_DAY[i]) };
 }

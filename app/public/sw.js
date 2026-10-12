@@ -1,8 +1,19 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v185";
+const VERSION = "hb-shell-v186";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/ui-helpers.mjs", "/account-adopt.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
+
+// The app's ES modules update ATOMICALLY. app.js statically imports named exports from
+// the helper modules, so a NEW app.js cached beside an OLD helper (that one file's
+// refresh failed on a flaky deploy-day load) fails its imports and blanks the app on
+// the next open — an in-progress workout included. When a module changes, re-fetch
+// every module and cache all of them or none (app/scripts/test-sw.mjs).
+const MODULES = SHELL.filter((p) => p === "/app.js" || p.endsWith(".mjs"));
+async function refreshModules(cache) {
+  const fresh = await Promise.all(MODULES.map((p) => fetch(p).then((r) => (r.ok ? r : Promise.reject(new Error(`${p} ${r.status}`))))));
+  await Promise.all(MODULES.map((p, i) => cache.put(p, fresh[i])));
+}
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -29,8 +40,18 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {
       const cached = await cache.match(e.request);
+      // Copy BEFORE the cached body is handed to the page (a used body can't be cloned).
+      const cachedCopy = cached ? cached.clone() : null;
+      const isModule = MODULES.includes(url.pathname);
       const refresh = fetch(e.request)
-        .then((res) => { if (res.ok) cache.put(e.request, res.clone()); return res; })
+        .then(async (res) => {
+          if (!res.ok) return res;
+          if (!isModule) { await cache.put(e.request, res.clone()); return res; }
+          // A module: if it changed, the whole module graph moves together — or not at all.
+          const before = cachedCopy ? await cachedCopy.text() : null;
+          if (before !== (await res.clone().text())) await refreshModules(cache).catch(() => {});
+          return res;
+        })
         .catch(() => null);
       // Hold the background revalidation with waitUntil, or the browser can kill
       // the SW the moment the cached response is returned — before cache.put

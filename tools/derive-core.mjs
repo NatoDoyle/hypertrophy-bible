@@ -402,12 +402,25 @@ export function isoWeekMondayKey(week) {
 // CARRIED forward (indefinitely — the stamp's age is still visible as `week` for any
 // consumer that must bound it, e.g. the push cap). Null when never set or cleared.
 export function commitmentForDay(stored, todayKey) {
-  const days = (Array.isArray(stored?.days) ? stored.days : []).filter((d) => WEEK_DAY_KEYS.includes(d));
-  if (!days.length || !todayKey) return null;
-  const week = typeof stored.week === "string" ? stored.week : null;
+  if (!stored || !todayKey) return null;
+  const valid = (list) => (Array.isArray(list) ? list : []).filter((d) => WEEK_DAY_KEYS.includes(d));
+  const week = typeof stored.week === "string" && /^\d{4}-W\d{2}$/.test(stored.week) ? stored.week : null;
+  const set_on = typeof stored.set_on === "string" ? stored.set_on : null;
+  const curWeek = isoWeekKey(todayKey);
   // Ordinal, never equality (lesson 40): a stamp that reads as a FUTURE week (a tz
   // change between stamp and read) is current, never stale.
-  return { days, week, set_on: typeof stored.set_on === "string" ? stored.set_on : null, carried: !!week && week < isoWeekKey(todayKey) };
+  const carried = !!week && week < curWeek;
+  let days = valid(stored.days);
+  // "No fixed days this week" clears THIS week only: the usual days (resume_days) come
+  // back once that week has passed, carried like any other plan.
+  if (!days.length && carried) days = valid(stored.resume_days);
+  if (!days.length) return null;
+  // A PRE-W271 answer (no set_on) was given to "which days will you train THIS week?":
+  // it carries into the next week — the owner's "each Monday it carries last week's
+  // choice forward" — and no further. Reviving a months-old one would gate today's hub
+  // and quiet comeback nudges on a schedule nobody chose (lesson 37).
+  if (!set_on && (!week || (carried && week < isoWeekKey(shiftDayKey(todayKey, -7))))) return null;
+  return { days, week, set_on, carried };
 }
 
 export function effectiveCommitment(profile, nowMs, tzOffsetMin) {

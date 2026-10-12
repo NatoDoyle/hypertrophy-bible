@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, weekHasPassed, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP, localDayKey, commitmentForDay, WEEK_DAY_KEYS, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, weekHasPassed, isHardSet, sessionWeekKey, sessionDayKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP, localDayKey, plannedDayState, WEEK_DAY_KEYS, weekDayKey } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -233,11 +233,14 @@ export function celebrationCopy(cel) {
 // `now` is the real INSTANT (the comeback threshold is a duration and must fire with
 // the deload it announces); `weekNow` is the user's own calendar day, for the week
 // question (W271 — the UTC instant read a west-of-UTC Sunday evening as next week).
-// With a weekly plan (`commitDays`), the week isn't "at risk" while a planned day is
-// still ahead; on the last planned day, or with none left, the loss-aversion copy
-// returns (Goal 4). A planned TODAY never counts as "ahead": today is the chance.
+// With a weekly plan (`plan` — plannedDayState, the SAME predicate the Today hub
+// reads, so the header and the hub can never contradict each other on one screen):
+// a day off the plan or a marked rest day never asks for a session (the owner's
+// complaint); a missed planned day agrees with the hub's catch-up line; a planned
+// today with a later planned day still ahead is calm; the LAST planned day — or no
+// plan at all — brings the loss-aversion copy back (Goal 4).
 const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
-export function adherenceStatus(sessions, now, paused, { weekNow = now, commitDays = null } = {}) {
+export function adherenceStatus(sessions, now, paused, { weekNow = now, plan = null, restToday = false } = {}) {
   if (paused) return { state: "paused", message: "Paused — heal up. Nothing's at stake and your streak is safe." };
   const times = sessions.filter((s) => s.date).map((s) => +new Date(s.date)).sort((a, b) => b - a);
   if (!times.length) return { state: "new", message: "Log your first session to start your streak." };
@@ -247,14 +250,17 @@ export function adherenceStatus(sessions, now, paused, { weekNow = now, commitDa
   if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
   const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === weekOrdinal(weekNow));
   if (!trainedThisWeek) {
+    const atRisk = { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
+    if (!plan) return atRisk;
     const todayIdx = WEEK_DAY_KEYS.indexOf(weekDayKey(weekNow));
-    const ahead = (commitDays ?? []).map((d) => WEEK_DAY_KEYS.indexOf(d)).filter((i) => i > todayIdx).sort((a, b) => a - b);
-    if (ahead.length) {
-      const next = DAY_NAME[WEEK_DAY_KEYS[ahead[0]]];
-      const today = (commitDays ?? []).includes(WEEK_DAY_KEYS[todayIdx]);
-      return { state: "scheduled", message: today ? `Today's a training day — and ${next} is still ahead this week.` : `Next training day: ${next} — the week's still yours.` };
-    }
-    return { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
+    const nextIdx = plan.next ? WEEK_DAY_KEYS.indexOf(plan.next.day) : -1;
+    const nextName = plan.next ? DAY_NAME[plan.next.day] : null;
+    const nextThisWeek = plan.next && nextIdx > todayIdx;
+    if (restToday) return { state: "scheduled", message: nextName ? `Rest day today — next training day: ${nextName}.` : "Rest day today." };
+    if (plan.missed) return { state: "at-risk", message: `Missed ${DAY_NAME[plan.missed.day]}? A session today keeps the chain alive.` };
+    if (!plan.planned_today) return { state: "scheduled", message: nextName ? `Next training day: ${nextName}${nextThisWeek ? " — the week's still yours" : ""}.` : "No training day planned." };
+    if (nextThisWeek) return { state: "scheduled", message: `Today's a training day — and ${nextName} is still ahead this week.` };
+    return atRisk;
   }
   return { state: "on-track", message: "On track this week. Nice." };
 }
@@ -412,14 +418,15 @@ export function adherenceReport(user, sessions, now = new Date().toISOString(), 
   const paused = !!user.paused;
   const freezes = user.streak_freezes || [];
   const weekNow = localDayKey(now, tz) ?? now;
-  const commitDays = commitmentForDay(user.profile?.commitment, weekNow)?.days ?? null;
+  const restDays = user.rest_days ?? [];
+  const plan = plannedDayState(user.profile?.commitment, weekNow, { sessionDays: sessions.map(sessionDayKey).filter(Boolean), restDays });
   const streak = weeksConsistent(sessions, weekNow, user.paused || null, user.pause_history || [], freezes);
   return {
     streak_weeks: streak,
     ...xpAndLevel(sessions),
     sessions_logged: sessions.length,
     milestones: milestones(sessions.length),
-    status: adherenceStatus(sessions, now, paused, { weekNow, commitDays }),
+    status: adherenceStatus(sessions, now, paused, { weekNow, plan, restToday: restDays.includes(weekNow) }),
     week: weeklySummary(sessions, weekNow),
     paused,
     streak_freeze: streakFreezeState(sessions, weekNow, freezes, user.paused || null, user.pause_history || []),

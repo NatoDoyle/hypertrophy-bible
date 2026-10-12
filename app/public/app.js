@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1273,7 +1273,15 @@ function renderResume() {
 // yet — not just reactively after they've already gone quiet.
 const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
 const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
-function commitmentCard(commitment, prefill = []) {
+// The phone-calendar event (.ics) is the one reminder the app can't change: when the
+// plan's days drifted from the days last exported, say which days it still holds.
+function calendarDriftNote(days) {
+  let exported = null;
+  try { exported = JSON.parse(localStorage.getItem("hb_cal_days") || "null"); } catch {}
+  const d = calendarDrift(exported, days);
+  return d ? `<p class="muted" id="cal-drift" style="margin:6px 0 0">📆 Your phone calendar still reminds you on ${esc(d.stale.join(", "))} — ${days.length ? "add the new days below, then delete the old event" : "delete that event if those days are done"}.</p>` : "";
+}
+function commitmentCard(commitment, prefill = [], resumeDays = null) {
   if (commitment && commitment.days?.length) {
     const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
     // The calendar export lives HERE now (it sat on the Coach tab behind ~10
@@ -1288,7 +1296,7 @@ function commitmentCard(commitment, prefill = []) {
         <input id="sched-time" type="time" value="${esc(localStorage.getItem("hb_cal_time") || "18:00")}" aria-label="Training time"
           style="background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:1rem">
         <button class="btn ghost inline" id="addcal" style="margin:0">📆 Add these days to my calendar</button>
-      </div><p class="muted" id="calmsg" style="margin:4px 0 0"></p></div>`;
+      </div><p class="muted" id="calmsg" style="margin:4px 0 0"></p>${calendarDriftNote(commitment.days)}</div>`;
   }
   // The copy used to promise "a quick reminder lands on the days you say". That is
   // delivered by shouldPushForCommitment, which runs inside a loop over the user's
@@ -1305,14 +1313,17 @@ function commitmentCard(commitment, prefill = []) {
   // change exists to remove, for every user who gave an address. Caught by the
   // browser walkthrough, which is the only place the two halves meet.
   const canRemind = localStorage.getItem("hb_push") === "1";
-  return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>
+  const resumeNote = resumeDays?.length
+    ? `<p class="muted" style="margin:4px 0 0">No fixed days this week — ${esc(resumeDays.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", "))} come back next week by themselves.</p>`
+    : "";
+  return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>${resumeNote}
     <p class="muted" style="margin:4px 0 8px">${canRemind
       ? "A quick reminder lands on the days you say — not just once you've gone quiet."
       : "Naming the days is most of the work — deciding once beats deciding daily. Save them and the calendar button appears right here — the reminder comes from the phone itself."}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="${prefill.includes(k)}">${label}</button>`).join("")}</div>
     <button class="btn secondary inline" id="save-commitment" style="margin-top:10px">Save my days</button>
     ${prefill.length ? `<button class="btn ghost inline" id="clear-commitment" style="margin-top:10px">No fixed days this week</button>` : ""}
-    <p class="muted" style="margin:6px 0 0;font-size:.85rem">Your days carry over to next week by themselves — change them whenever your week changes.</p></div>`;
+    <p class="muted" style="margin:6px 0 0;font-size:.85rem">Your days carry over to next week by themselves — change them whenever your week changes.</p>${prefill.length ? "" : calendarDriftNote([])}</div>`;
 }
 function wireCommitmentCard() {
   const chips = [...app.querySelectorAll("[data-day]")];
@@ -1472,7 +1483,9 @@ async function renderToday() {
   ];
   // Day 1: the WORKOUT is the hero, not the optional morning check-in. A first-timer
   // came to train — an optional survey must never read as the gate before it (Goal 3).
-  const firstUndone = (s.day_number === 1 && !workoutDone && !restDay)
+  // Day one: the WORKOUT is the hero — but only when the hub's one decision says
+  // "start" (a voided-only user on a day off the plan is not a first-timer).
+  const firstUndone = (s.day_number === 1 && hubState === "start")
     ? steps.find((x) => x.key === "workout")
     : steps.find((x) => !x.done && !x.dismissed);
   const stepRow = (x) => {
@@ -1500,7 +1513,7 @@ async function renderToday() {
   // app's one proactive lever was invisible to exactly the people it exists for.
   // It shows on day 1 now; the copy above no longer promises a channel they may
   // not have, which is what made hiding it feel necessary.
-  const commitment = commitmentCard(adh.commitment);
+  const commitment = commitmentCard(adh.commitment, [], adh.commitment_resume_days);
 
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
@@ -1567,7 +1580,7 @@ async function renderTodaySwap(s) {
         <p class="muted">Not doing ${esc(s.name)} — your next workout moves up, and ${esc(s.name)} comes back around next cycle.</p>
         <button class="btn secondary inline" id="skip-day">${pending === "skip" ? "Tap again to skip it" : "Skip today's workout"}</button></div>
       <div class="card"><b>🌿 Rest day</b>
-        <p class="muted">Recovery is training too. This marks today as deliberate rest — your workout simply waits for your next gym day, and tonight's reminder stays quiet.</p>
+        <p class="muted">Recovery is training too. This marks today as deliberate rest — your workout simply waits for your next gym day, and the app's reminders stay quiet tonight.</p>
         <button class="btn secondary inline" id="rest-day">${pending === "rest" ? "Tap again to confirm" : "Mark today as a rest day"}</button></div>
       <button class="btn ghost" id="back">‹ Back to Today</button>`;
     $("#back").onclick = back;

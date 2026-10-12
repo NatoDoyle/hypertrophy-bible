@@ -1029,14 +1029,23 @@ try {
   // CARRIES FORWARD ("each Monday it carries last week's choice forward"), marked as
   // carried so the card can say "same as last week". This test asserted the old
   // limitation; it now pins the feature that deleted it (lesson 45's corollary).
-  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"] }; return u; });
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"], set_on: "2020-01-01" }; return u; });
   const carriedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment a prior week's days carry forward via /api/adherence, marked carried",
     carriedAdh.commitment?.carried === true && JSON.stringify(carriedAdh.commitment?.days) === JSON.stringify(["mon"]));
+  // …but a PRE-W271 answer (no set_on) was asked as "this week" only: one stale by
+  // years is no plan, not a revived schedule (lesson 37).
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"] }; return u; });
+  const legacyAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a years-old pre-W271 answer is not revived as a schedule", legacyAdh.commitment === null);
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon", "fri"], set_on: "2020-01-01" }; return u; });
   const cleared = await json("POST", "/api/commitment", { user_id: cUser, days: [] });
   const clearedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
-  ok("#commitment clearing (no days) stops the carry — the one-way door has a way back (lesson 27)",
-    cleared.status === 200 && clearedAdh.commitment === null);
+  ok("#commitment 'No fixed days this week' clears THIS week (no plan now) and keeps the usual days to resume (lesson 27's way back)",
+    cleared.status === 200 && clearedAdh.commitment === null
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  ok("#commitment …and /api/adherence says which days come back, so the card can promise exactly that",
+    JSON.stringify(clearedAdh.commitment_resume_days) === JSON.stringify(["mon", "fri"]));
 
   // --- #weekly-plan (W271): Today knows which days are planned. Fixed PAST dates via
   // ?d= so nothing moves with the clock (lesson 64): 2026-10-05 is a Monday (W41).
@@ -1048,6 +1057,10 @@ try {
   await json("POST", "/api/session", { user_id: wpUser, session_id: "wp-tue", date: "2026-10-06T10:00:00Z", local_date: "2026-10-06", sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
   const wpWed2 = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": wpUser } })).json()).daily;
   ok("#weekly-plan …a Tuesday catch-up answers Monday — Wednesday doesn't ask again", wpWed2?.missed_planned_day === null && wpWed2?.planned_today === false);
+  const sickUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(sickUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" }; u.paused = { from: "2026-10-04", reason: "sick" }; return u; });
+  const sickWed = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": sickUser } })).json()).daily;
+  ok("#weekly-plan a paused (sick/injured) user is never told they missed a day — rail #1", sickWed?.missed_planned_day === null);
   const noPlanToday = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": cUser } })).json()).daily;
   ok("#weekly-plan no commitment → no planned-day fields claim anything", noPlanToday?.planned_today === null && noPlanToday?.next_planned_day === null);
   // set_on: the day the promise was made, in the CALLER's frame — days before it are never "missed".

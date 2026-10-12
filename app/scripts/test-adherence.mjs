@@ -380,6 +380,20 @@ ok("scheduled: Wednesday with Friday planned and nothing done yet is 'scheduled'
 ok("scheduled: …Friday itself, untrained, is the last chance — 'at-risk'", adherenceReport(planUser(["fri"]), lastWeekOnly, "2026-10-16T12:00:00Z").status.state === "at-risk");
 ok("scheduled: …a plan whose days have all passed is 'at-risk'", adherenceReport(planUser(["mon"]), lastWeekOnly, wedNoon).status.state === "at-risk");
 ok("scheduled: …no plan at all keeps the old rule", adherenceReport({ profile: { tz_offset_min: 0 } }, lastWeekOnly, wedNoon).status.state === "at-risk");
+// W271 review: the header reads the SAME planned-day predicate as the hub, so the two
+// can never contradict each other on one screen (and never ask for a session on a day
+// the user said isn't for training — the owner's complaint).
+const thuSetMonWed = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W42", days: ["mon", "wed"], set_on: "2026-10-15" } } },
+  [{ local_date: "2026-10-09", date: "2026-10-09T10:00:00Z", sets: [] }], "2026-10-15T12:00:00Z").status;
+ok("scheduled: days set on Thursday (Mon/Wed) — no nag on a day off the plan; the header names next Monday",
+  thuSetMonWed.state === "scheduled" && /Next training day: Monday/.test(thuSetMonWed.message) && !/Keep the chain alive/.test(thuSetMonWed.message));
+const restMarkedMon = adherenceReport({ rest_days: ["2026-10-12"], profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-12T12:00:00Z").status;
+ok("scheduled: a planned day the user marked as rest never reads 'Today's a training day'",
+  /Rest day today/.test(restMarkedMon.message) && !/Today's a training day/.test(restMarkedMon.message));
+const missedMon = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("scheduled: a missed planned day — the header agrees with the hub's catch-up line", /Missed Monday/.test(missedMon.message));
 const todayToo = adherenceReport(planUser(["wed", "fri"]), lastWeekOnly, wedNoon).status;
 ok("scheduled: a planned TODAY with a later day still ahead says so honestly", todayToo.state === "scheduled" && /Today's a training day/.test(todayToo.message) && /Friday/.test(todayToo.message));
 

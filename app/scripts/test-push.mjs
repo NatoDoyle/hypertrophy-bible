@@ -858,10 +858,15 @@ try {
     const LAST_WEEK = isoWeekKey(NOW - 7 * 86400000);
     ok("#carry last week's days carry forward: a carried commitment fires on its day",
       shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(3), now: NOW }) === true);
-    ok("#carry …but not once training has lapsed past the cap (the comeback owns that)",
-      shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(PUSH_MAX_LAPSE_DAYS + 9), now: NOW }) === false);
+    ok("#carry …but goes quiet once BOTH the last session and the plan are older than the cap (the comeback owns that)",
+      shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 35 * 86400000), days: [TODAY_KEY], set_on: daysAgo(35) }, lastSessionAt: daysAgo(PUSH_MAX_LAPSE_DAYS + 9), now: NOW }) === false);
     ok("#carry never-trained: a recent plan still fires, anchored on when it was made",
       shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, subscribedAt: daysAgo(10), now: NOW }) === true);
+    // W271 review: the cap's anchor is the LATER of the last session and when the plan was
+    // made — a lapsed user who sets their days today is re-engaging, and those days are
+    // exactly when a reminder helps (before W271 this week's plan always fired).
+    ok("#carry a lapsed user (30 days) who sets days TODAY is reminded on them — a fresh plan re-arms the cap",
+      shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY], set_on: daysAgo(0) }, lastSessionAt: daysAgo(30), now: NOW }) === true);
     ok("#carry never-trained: a 5-week-old plan on a 40-day-old subscription is silent — never pushed forever",
       shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 35 * 86400000), days: [TODAY_KEY] }, lastSessionAt: null, subscribedAt: daysAgo(40), now: NOW }) === false);
 

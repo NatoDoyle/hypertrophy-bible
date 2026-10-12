@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -84,6 +84,18 @@ check("hubWorkoutState: done and rest win; a first-ever workout and a comeback a
   assert.equal(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } } }), "missed");
   assert.equal(st({ daily: { planned_today: true } }), "start");
   assert.equal(st({ daily: { planned_today: null } }), "start", "no plan at all: exactly as before");
+  // W271 review: a PAUSED (sick/injured) user is promised no pressure — never "Missed Monday? Catch up today".
+  assert.notEqual(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } }, status: { state: "paused" } }), "missed");
+});
+
+// --- The phone-calendar file is the one reminder the app can't change (W271 review):
+// when the days in the app no longer match the days last exported, say which.
+check("calendarDrift: names the calendar's stale days when the plan changed, nothing when they match or nothing was exported", () => {
+  assert.deepEqual(calendarDrift([0, 3], ["mon", "wed"]), { stale: ["Mon", "Thu"] }, "exported Mon/Thu, now Mon/Wed");
+  assert.equal(calendarDrift([0, 2], ["wed", "mon"]), null, "same days, any order");
+  assert.equal(calendarDrift(null, ["mon"]), null, "never exported");
+  assert.equal(calendarDrift([], ["mon"]), null);
+  assert.deepEqual(calendarDrift([1], []), { stale: ["Tue"] }, "days cleared but the calendar still reminds");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
