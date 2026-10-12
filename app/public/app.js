@@ -2651,7 +2651,10 @@ async function renderCantDo() {
     if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
-        text: r.replaced_by === r.today.id && !(r.dropped ?? []).length ? `Swapped for ${r.today.name} — from now on.` : `${planLine}. ${r.today.name} for today.` });
+        // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
+        text: r.replaced_by === r.today.id
+          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
+          : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
