@@ -624,6 +624,9 @@ export function createD1Store(db) {
     // including rl_key/ip) — a caller reading them off getMagicLink's result
     // (rather than the dedicated countRecentLinks/countRecentByIp queries)
     // must not silently get undefined only in production.
+    async deleteMagicLink(tokenHash) {
+      await db.prepare("DELETE FROM magic_links WHERE token_hash = ?").bind(tokenHash).run();
+    },
     async getMagicLink(tokenHash) {
       return (await db
         .prepare("SELECT token_hash, email, rl_key, ip, user_id, purpose, expires_at, used, created_at FROM magic_links WHERE token_hash = ?")

@@ -452,6 +452,11 @@ try {
   ok("#code-race a parallel burst can't buy more tries than the cap: at most 10 answers aren't 'too-many-attempts'",
     burst.filter((r) => r.error !== "too-many-attempts").length <= 10);
   ok("#code-race …so the real code at the end of a 51-try burst does NOT sign anyone in", !burst.at(-1).user_id);
+  // A refused try must leave NOTHING behind: magic_links is never pruned, so a locked
+  // door that still wrote a row per request let one IP grow the table without bound.
+  for (let i = 0; i < 40; i++) await consumeMagicCode(store, { email: "spam@t.com", code: "123456", ip: "7.8.9.10" });
+  ok("#code-race a door spammed 40 times from one IP keeps at most its caps' worth of rows (10 address, 30 IP)",
+    (await store.countRecentLinks("codetry:spam@t.com", 0)) <= 10 && (await store.countRecentLinks("codetry-ip:7.8.9.10", 0)) <= 30);
 
   // --- #code-windows (W270b): both lockout windows pinned with literal times (lesson 42) —
   // shrinking the address's 24h to 1h, or stretching the IP's 1h to 24h, was invisible.

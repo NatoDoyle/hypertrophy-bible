@@ -683,6 +683,12 @@ try {
   for (const st of [file, d1]) await st.deleteLinkCode("lc-tie");
   same("deleteLinkCode: retiring the newest code hands 'newest' back to the previous one, identically", await file.latestLinkCode("codes@t.com", 0), await d1.latestLinkCode("codes@t.com", 0));
   ok("deleteLinkCode: …which is lc-new", (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-new");
+  for (const st of [file, d1]) {
+    await st.createMagicLink({ token_hash: "dm-1", email: "", rl_key: "codetry:dm@t.com", ip: null, user_id: "codetry-marker", purpose: "codetry-marker", expires_at: 1, used: 1, created_at: 1 });
+    await st.deleteMagicLink("dm-1");
+  }
+  same("deleteMagicLink: a deleted reservation is gone from the count in both stores", await file.countRecentLinks("codetry:dm@t.com", 0), await d1.countRecentLinks("codetry:dm@t.com", 0));
+  ok("deleteMagicLink: …to zero", (await d1.countRecentLinks("codetry:dm@t.com", 0)) === 0 && (await d1.getMagicLink("dm-1")) === null);
 
   // `ensureExtensions` must be scoped to an individual D1 binding. The primary
   // shim above has already initialized it; a fresh binding with all extension

@@ -462,6 +462,9 @@ export function createFileStore(path) {
     },
     async createMagicLink(row) { db.magic_links[row.token_hash] = row; flush(); return row; },
     async getMagicLink(tokenHash) { return db.magic_links[tokenHash] ?? null; },
+    // Only the code door's own over-cap reservation is ever deleted (auth.mjs reserve):
+    // a refused try must leave nothing behind in a table nothing prunes.
+    async deleteMagicLink(tokenHash) { delete db.magic_links[tokenHash]; flush(); },
     // Atomic single-use flip: returns true only if THIS call consumed the link
     // (0 -> 1). A second concurrent consume gets false, so a token can't be
     // spent twice (and a duplicate merge grant can't be minted).

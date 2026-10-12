@@ -195,9 +195,16 @@ export async function consumeMagicLink(store, { token, now = Date.now() }) {
 export async function consumeMagicCode(store, { email, code, ip = null, now = Date.now() }) {
   const norm = normalizeEmail(email);
   const rlKey = norm ? canonicalEmail(norm) : null;
+  // A refused try deletes its OWN reservation, so a locked door leaves nothing behind
+  // (magic_links is never pruned — a row per refused request let one IP grow it without
+  // bound). Still race-safe: passes never delete, so at the LATEST-reading pass every
+  // earlier pass's marker is in the store — an 11th pass would read a count of 11.
   const reserve = async (key, windowMs, cap) => {
-    await store.createMagicLink({ token_hash: crypto.randomUUID(), email: "", rl_key: key, ip: null, user_id: "codetry-marker", purpose: "codetry-marker", expires_at: now, used: 1, created_at: now });
-    return (await store.countRecentLinks(key, now - windowMs)) <= cap;
+    const token_hash = crypto.randomUUID();
+    await store.createMagicLink({ token_hash, email: "", rl_key: key, ip: null, user_id: "codetry-marker", purpose: "codetry-marker", expires_at: now, used: 1, created_at: now });
+    if ((await store.countRecentLinks(key, now - windowMs)) <= cap) return true;
+    await store.deleteMagicLink(token_hash);
+    return false;
   };
   if (ip && !(await reserve("codetry-ip:" + ip, 60 * 60 * 1000, CODE_TRIES_PER_IP))) return { error: "too-many-attempts" };
   if (!rlKey) return { error: "invalid" };
