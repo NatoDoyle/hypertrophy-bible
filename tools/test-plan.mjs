@@ -1233,8 +1233,13 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     grid.push({ profile: { ...b, days_per_week: 7 }, opts: {} });
   }
   const digestOf = (pts) => createHash("sha256").update(JSON.stringify(pts.map(({ profile, opts }) => generatePlan(profile, gkb, opts)))).digest("hex");
-  ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pre-W272 pin",
-    grid.length === 390 && digestOf(grid) === "f6656b67589b9ae274dfe35e0c6a9bad8577babfb5c018633441851867ceea91");
+  // Re-pinned ONCE, deliberately (Wave 276): the only change across all 390 plans was the
+  // side-delts warning on the 80 bodyweight-only plans — "below-mev" ("an extra training
+  // day would let the plan give it more") became the honest "no-coverage" (no bodyweight
+  // lift trains side delts directly). Programs, meta and every other rationale field were
+  // diffed byte-identical against the previous engine before re-pinning.
+  ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
+    grid.length === 390 && digestOf(grid) === "d5e6e67c574d1408195f74da7497e5052b3c4bc0295329b329582dacac584457");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
@@ -1367,6 +1372,15 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
               const couldPair = bestSubstitutes(X, { profile, kb, program: plan.program, rationale: plan.rationale, sessionName: s.name }).some((c) => c.fits && c.keeps_pair);
               if (partnerStill?.superset_with) pairKept++;
               else if (couldPair) { pairLostWithAPairingOption++; bad.push(`${tag}: ${s.name} lost its superset though a pairing replacement fitted`); }
+              // Wave 276: whichever member X was, a rescue BONUS never runs unpaired (its time is
+              // paid only by a pairing): it is re-paired with another non-competing isolation in
+              // the session — the generator's own rescue rule — or it leaves.
+              for (const c of r.rationale.exercise_choices) {
+                if (c.session !== s.name || !/^superset — fits extra volume/.test(c.why?.[0] ?? "")) continue;
+                const item = after.exercises.find((x) => x.exercise === c.exercise);
+                if (!item?.superset_with) bad.push(`${tag}: ${s.name}'s bonus ${c.exercise} runs unpaired`);
+              }
+              if (r.rationale.exercise_choices.some((c) => (c.why ?? []).some((w) => /now on its own/.test(w)))) bad.push(`${tag}: a bonus was left 'on its own'`);
               // A rescue BONUS (its time is paid only by the pairing) never stays as a lone extra lift.
               const bonusWhy = (plan.rationale.exercise_choices.find((c) => c.session === s.name && c.exercise === X)?.why ?? [])[0] ?? "";
               if (/^superset — fits extra volume/.test(bonusWhy) && !partnerStill?.superset_with && after.exercises.some((x) => !plan.program.sessions.find((y) => y.name === s.name).exercises.some((y) => y.exercise === x.exercise) && !x.superset_with))
@@ -1374,6 +1388,49 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
             }
           }
           if (JSON.stringify(plan) !== before) bad.push(`${profile.user_id}: applySubstitution mutated its input`);
+  }
+  // …and the re-pairing path is really exercised (not vacuously green).
+  let rePaired = 0, bonusDropped = 0;
+  for (const { profile, blockIndex } of grid) {
+    const plan = generatePlan(profile, kb, { blockIndex });
+    for (const s of plan.program.sessions) for (const e of s.exercises) {
+      if (!e.superset_with) continue;
+      const bonus = plan.rationale.exercise_choices.find((c) => c.session === s.name && c.exercise === e.superset_with && /^superset — fits extra volume/.test(c.why?.[0] ?? ""));
+      if (!bonus) continue; // e is the bonus itself, or not a rescue pair
+      const r = applySubstitution(plan.program, plan.rationale, e.exercise, { profile, kb, blockIndex, sessionName: s.name });
+      if (r.error) continue;
+      const after = r.program.sessions.find((x) => x.name === s.name);
+      const b = after.exercises.find((x) => x.exercise === bonus.exercise);
+      if (b?.superset_with && b.superset_with !== e.exercise && !r.replaced.some((x) => x.to === b.superset_with)) rePaired++;
+      if (!b) bonusDropped++;
+    }
+  }
+  ok(`#always a partner swap whose replacement can't pair takes the bonus out when nothing else can pair it (${bonusDropped} left, ${rePaired} re-paired in generated plans)`, bonusDropped > 0 && bad.length === 0);
+  // The re-pair path, on a session built to need it: leg extension (quads) carries the
+  // rescue bonus (a cable curl); a triceps extension sits unpaired beside them; every
+  // other quad isolation is excluded, so leg extension's replacement must be a compound —
+  // which can't pair. The curl's time is still paid by a pairing: it moves to the
+  // triceps extension (non-competing), exactly as the generator's 4c rescue would.
+  {
+    const prof = { user_id: "repair-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL,
+      unavailable_exercises: exercises.filter((e) => e.mechanic === "isolation" && e.primary_muscles.includes("quadriceps") && e.id !== "leg-extension").map((e) => ({ id: e.id })) };
+    const program = { id: "gen-test", sessions: [{ name: "Mix", exercises: [
+      { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" },
+      { exercise: "leg-extension", sets: 3, rep_range: "10-15", rir: "1-2", superset_with: "cable-curl" },
+      { exercise: "overhead-cable-triceps-extension", sets: 3, rep_range: "10-15", rir: "1-2" },
+      { exercise: "cable-curl", sets: 2, rep_range: "10-15", rir: "1-2", superset_with: "leg-extension" }] }] };
+    const rationale = { exercise_choices: [
+      { exercise: "barbell-bench-press", for_muscle: "chest", session: "Mix", why: ["compound before isolations"] },
+      { exercise: "leg-extension", for_muscle: "quadriceps", session: "Mix", why: ["fills residual volume for quadriceps"] },
+      { exercise: "overhead-cable-triceps-extension", for_muscle: "triceps", session: "Mix", why: ["fills residual volume for triceps"] },
+      { exercise: "cable-curl", for_muscle: "biceps", session: "Mix", why: ["superset — fits extra volume into your session length", "paired with leg-extension"] }] };
+    const r = applySubstitution(program, rationale, "leg-extension", { profile: prof, kb, sessionName: "Mix" });
+    const mix = r.program?.sessions[0].exercises ?? [];
+    const curl = mix.find((e) => e.exercise === "cable-curl"), tri = mix.find((e) => e.exercise === "overhead-cable-triceps-extension");
+    const quadSub = r.replaced?.[0]?.to;
+    ok("#always a partner swap that can't keep the pair RE-PAIRS the bonus with another non-competing isolation (the 4c rule), why updated",
+      !r.error && exOf.get(quadSub)?.mechanic === "compound" && curl?.superset_with === "overhead-cable-triceps-extension" && tri?.superset_with === "cable-curl"
+      && r.rationale.exercise_choices.find((c) => c.exercise === "cable-curl")?.why.includes("paired with overhead-cable-triceps-extension") && !r.dropped.length);
   }
   ok(`#always the permanent swap keeps every generator invariant (${applied} applied, ${refused} refused with no write; ${pairKept} pairings kept)${bad.length ? " — " + bad.slice(0, 3).join("; ") : ""}`,
     applied > 1000 && bad.length === 0 && pairKept > 0 && grid.length === 77);
@@ -1388,6 +1445,24 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok("#exclude …and with none at all", noAbs && /marked unavailable/.test(noAbs.message) && !/other lifts give it/.test(noAbs.message));
   const dbAbs = generatePlan({ ...base, available_equipment: ["dumbbell"] }, kb).rationale.warnings.find((w) => w.code === "no-coverage" && w.muscle === "abs");
   ok("#exclude …while a gap no exclusion caused keeps the equipment copy", dbAbs && !/unavailable/.test(dbAbs.message) && /your equipment/.test(dbAbs.message));
+  // Wave 276: a muscle NOTHING the plan could place trains directly (side delts with
+  // bodyweight only — no KB bodyweight lift trains them as a primary) was told "an extra
+  // training day would let the plan give it more". No day, minute or priority can add
+  // direct work there; the honest warning names what other lifts give it and the levers
+  // that CAN help.
+  const bwNc = generatePlan({ user_id: "nc-bw", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["bodyweight"] }, kb);
+  const sdW = bwNc.rationale.warnings.filter((w) => w.muscle === "side-delts");
+  ok("#no-direct side delts with bodyweight only: one honest warning — no direct exercise, what other lifts give it — never 'an extra training day'",
+    sdW.length === 1 && sdW[0].code === "no-coverage" && /directly/.test(sdW[0].message) && /sets\/wk/.test(sdW[0].message) && !/training day|session time|session length|priority/i.test(sdW[0].message));
+  const ncBad = [];
+  for (const [en, eq] of Object.entries({ bw: ["bodyweight"], dbonly: ["dumbbell"], band: ["band", "bodyweight"], kbell: ["kettlebell", "bodyweight"] }))
+    for (const st of ["beginner", "intermediate", "advanced"]) for (const d of [2, 4, 6]) {
+      const prof = { user_id: `nc-${en}-${st}-${d}`, training_status: st, primary_goal: "hypertrophy", days_per_week: d, session_length_min: 60, available_equipment: eq };
+      const pool = candidatePool(prof, kb);
+      for (const w of generatePlan(prof, kb).rationale.warnings)
+        if (w.muscle && !pool.some((e) => (e.primary_muscles ?? []).includes(w.muscle)) && /training day|session time|longer session|priority muscle/i.test(w.message)) ncBad.push(`${prof.user_id}/${w.muscle}/${w.code}`);
+    }
+  ok(`#no-direct no muscle without a placeable exercise is ever sent to a day/time/priority lever${ncBad.length ? " — " + ncBad.slice(0, 3).join(", ") : ""}`, ncBad.length === 0);
   ok("#always all-or-nothing: a refusal names why and returns no program", (() => {
     const r = applySubstitution(basePlan.program, basePlan.rationale, "not-a-lift-in-this-plan", { profile: base, kb });
     return r.error === "not-in-plan" && !r.program;

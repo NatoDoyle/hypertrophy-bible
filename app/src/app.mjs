@@ -626,7 +626,7 @@ export function createApp(store, config = {}) {
       u.profile = { ...u.profile, unavailable_exercises: list };
       const keep = new Set(list.map((x) => x.id));
       u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}), [X]: snap }).filter(([id]) => keep.has(id)));
-      outcome = { replaced_by: r.replaced_by, sessions: [...touched] };
+      outcome = { replaced_by: r.replaced_by, sessions: [...touched], dropped: r.dropped ?? [] };
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
@@ -646,6 +646,9 @@ export function createApp(store, config = {}) {
     }
     return c.json({ ok: true, scope, exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
       today: todayId ? { id: todayId, name: nameOf(todayId) } : null,
+      // A rescue superset bonus that had to leave with its partner (Wave 276) — the plan
+      // changed beyond the lift tapped, so the answer says which lift and where.
+      dropped: (outcome.dropped ?? []).map((d) => ({ id: d.exercise, name: nameOf(d.exercise), session: d.session })),
       ...(outcome.already ? { already: true } : {}), ...(outcome.plan_unchanged ? { plan_unchanged: true } : {}), row });
   });
 

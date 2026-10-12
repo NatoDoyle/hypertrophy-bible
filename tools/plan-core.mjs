@@ -1396,9 +1396,19 @@ export function generatePlan(profile, kb, opts = {}) {
     // "an extra training day" would send them to a setting that can't help.
     const emptiedByExclusion = !hasExercise && reachableBeforeExclusion
       && exercises.some((e) => excluded.has(e.id) && (e.primary_muscles ?? []).includes(m) && reachableBeforeExclusion.has(e.id));
-    if (emptiedByExclusion && proj < (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity)) warnings.push({ code: "no-coverage", muscle: m,
-      message: `No exercise trains ${m} with your equipment and the lifts you've marked unavailable${proj > 0 ? ` (other lifts give it only ~${proj} sets/wk)` : ""} — bring one back on the Plan tab, or add a custom exercise.` });
-    else if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
+    // NOTHING the plan could place trains this muscle directly (side delts with bodyweight
+    // only; a pool emptied by exclusions): no extra day, longer session or priority can
+    // add direct work, so every lever below would send the user to a setting that can't
+    // help (Wave 276 — it was told "an extra training day would let the plan give it
+    // more"). Say what's true — what other lifts give it, and the levers that CAN help.
+    // Over the recoverable ceiling is still a fact, and is still reported below.
+    if (!hasExercise && r.projected_status !== "over-MRV") {
+      if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity) || proj < r.target_sets * 0.6) warnings.push({ code: "no-coverage", muscle: m, message: emptiedByExclusion
+        ? `No exercise trains ${m} with your equipment and the lifts you've marked unavailable${proj > 0 ? ` (other lifts give it only ~${proj} sets/wk)` : ""} — bring one back on the Plan tab, or add a custom exercise.`
+        : proj > 0
+          ? `No exercise trains ${m} directly with your equipment — other lifts give it only ~${proj} sets/wk. Add one (custom exercise) or broaden your equipment.`
+          : `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
+    }
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit this week — ${levers}.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. ${levers[0].toUpperCase()}${levers.slice(1)}.` });
@@ -1602,6 +1612,7 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   const priority = new Set(profile?.priority_muscles ?? []);
   const specialization = specializationActive(profile ?? {}, kb.muscles ?? [], blockIndex);
   const replaced = [];
+  const dropped = []; // rescue bonuses that left because their pairing couldn't be kept
   let preferred = null;
   for (const s of holding) {
     while (s.exercises.some((e) => e.exercise === exId)) {
@@ -1625,22 +1636,36 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
       const pick = (preferred && pairing.find((c) => c.id === preferred)) || pairing[0] || (preferred && fitting.find((c) => c.id === preferred)) || fitting[0];
       if (!pick) return { error: "no-candidate", session: s.name };
       preferred ??= pick.id;
+      // Is X's partner the 4c rescue BONUS? (Read before anything below rewrites the rationale.)
+      const partnerIsBonus = !!partner && /^superset — fits extra volume/.test(rat?.exercise_choices?.find((c) => c.session === s.name && c.exercise === partner.exercise)?.why?.[0] ?? "");
       const next = { exercise: pick.id, sets: slot.sets, rep_range: slot.rep_range, ...(slot.rir != null ? { rir: slot.rir } : {}) };
       if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
       else if (partner) delete partner.superset_with;
       s.exercises[idx] = next;
+      // X was the PARTNER of a rescue bonus, and nothing that can pair replaced it. The
+      // bonus's time was paid only by a pairing (Wave 276), so it re-pairs with another
+      // non-competing isolation in this session — the generator's own 4c rescue rule — or,
+      // with none, it leaves rather than run as an unbudgeted extra lift.
+      let rePairedWith = null;
+      if (partner && !pick.keeps_pair && partnerIsBonus) {
+        const bonusMuscles = musclesOf(lookup.get(partner.exercise));
+        const mate = s.exercises.find((e) => e !== partner && !e.superset_with && lookup.get(e.exercise)?.mechanic === "isolation"
+          && ![...musclesOf(lookup.get(e.exercise))].some((mm) => bonusMuscles.has(mm)));
+        if (mate) { partner.superset_with = mate.exercise; mate.superset_with = partner.exercise; rePairedWith = mate.exercise; }
+        else { s.exercises.splice(s.exercises.indexOf(partner), 1); dropped.push({ session: s.name, exercise: partner.exercise }); }
+      }
       if (rat?.exercise_choices) {
         const Y = lookup.get(pick.id);
         for (const c of rat.exercise_choices) {
           if (c.session !== s.name) continue;
           if (c.exercise === exId) Object.assign(c, { exercise: pick.id, why: [`swapped in — ${X?.name ?? exId} isn't available at your gym`], difficulty: Y?.difficulty, citations: Y?.citations ?? [] });
           else if (partner && c.exercise === partner.exercise && Array.isArray(c.why)) {
-            c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pick.keeps_pair ? ["paired with " + pick.id] : []) : [w]));
-            // A surviving bonus whose pairing is gone no longer "fits extra volume into
-            // your session" by pairing — say what it is now.
-            if (!pick.keeps_pair && /^superset — fits extra volume/.test(c.why[0] ?? "")) c.why = [`extra volume — was paired with ${X?.name ?? exId}, now on its own`];
+            const pairedNow = pick.keeps_pair ? pick.id : rePairedWith;
+            c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pairedNow ? ["paired with " + pairedNow] : []) : [w]));
           }
         }
+        // A bonus that left takes its explanation with it.
+        if (dropped.some((d) => d.session === s.name)) rat.exercise_choices = rat.exercise_choices.filter((c) => !(c.session === s.name && dropped.some((d) => d.session === s.name && d.exercise === c.exercise)));
       }
       replaced.push({ session: s.name, from: exId, to: pick.id });
     }
@@ -1648,7 +1673,7 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   }
   sweepDanglingSupersets(prog.sessions);
   if (rat?.volume_by_muscle) reprojectVolumes(prog, rat, kb, lookup);
-  return { program: prog, rationale: rat, replaced, replaced_by: preferred };
+  return { program: prog, rationale: rat, replaced, replaced_by: preferred, dropped };
 }
 
 // After a swap, the rationale's weekly volumes must describe the plan AS SWAPPED (lesson

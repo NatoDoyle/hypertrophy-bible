@@ -13,6 +13,7 @@ import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds } fro
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
+import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -2940,6 +2941,24 @@ try {
       if (moved) warnMoved++;
     }
     ok("#cant-do a swap that moves the volume warnings is still undone byte-exactly (volumes + warnings restored)", warnMoved > 0 && warnUndoExact);
+
+    // Wave 276: a superset partner swapped for a lift that can't pair takes its rescue
+    // bonus out (nothing else in the session can pair it), and the answer SAYS which lift
+    // left — the plan changed beyond the lift the user tapped. Undo puts it back exactly.
+    {
+      const seedProfile = { user_id: "al-beginner-4-bw-hypertrophy", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["bodyweight"] };
+      const bnU = (await json("POST", "/api/onboard", { profile: { ...prof, ...seedProfile, user_id: undefined } })).data.user_id;
+      const fixed = generateUserPlan(seedProfile);
+      await store.updateUser(bnU, (u) => { u.profile = { ...u.profile, user_id: seedProfile.user_id }; u.program = fixed.program; u.plan_rationale = fixed.rationale; return u; });
+      const bn0 = await store.getUser(bnU);
+      const r = await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "always", session: "Upper B" });
+      const upperB = (await store.getUser(bnU)).program.sessions.find((x) => x.name === "Upper B");
+      ok("#cant-do a partner swap that can't keep the superset takes the bonus out — and the answer names it",
+        r.status === 200 && r.data.dropped?.some((d) => d.id === "prone-reverse-fly" && d.name) && !upperB.exercises.some((e) => e.exercise === "prone-reverse-fly"));
+      await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "undo" });
+      const bn1 = await store.getUser(bnU);
+      ok("#cant-do …and Undo restores the bonus and its pairing exactly", JSON.stringify(bn1.program) === JSON.stringify(bn0.program) && JSON.stringify(bn1.plan_rationale) === JSON.stringify(bn0.plan_rationale));
+    }
 
     // After a REBUILD the snapshot is stale: "bring back" must rebuild with X available
     // — here, the very plan the user had (a sex-only Settings save changes nothing the

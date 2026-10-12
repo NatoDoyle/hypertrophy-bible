@@ -2639,7 +2639,9 @@ async function renderCantDo() {
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }
     // What the plan did (replaced_by: its permanent replacement, or none) and what stands
     // in TODAY (r.today) are separate answers from the server.
-    const planLine = r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan from now on` : `${cur.name} won't come back in your plan`;
+    const planLine = (r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan from now on` : `${cur.name} won't come back in your plan`)
+      // A superset bonus that only fit paired with it leaves too — say so (Wave 276).
+      + ((r.dropped ?? []).length ? ` (and ${r.dropped.map((d) => `${d.name} leaves ${d.session}`).join(", ")} — it only fit there as a superset)` : "");
     if (!stillHere()) {
       // The PLAN changed even though the user moved on — say so where they are now.
       if (!r.error) alertBar(`${planLine} — bring it back on the Plan tab if you didn't mean that.`);
@@ -2649,7 +2651,7 @@ async function renderCantDo() {
     if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
-        text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — from now on.` : `${planLine}. ${r.today.name} for today.` });
+        text: r.replaced_by === r.today.id && !(r.dropped ?? []).length ? `Swapped for ${r.today.name} — from now on.` : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
