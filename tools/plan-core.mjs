@@ -329,6 +329,11 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
     .map((x) => x.e);
 }
 function hashStr(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+// A short, stable fingerprint of any JSON value (FNV-1a over its serialization) —
+// change detection, not security: "is this still exactly the plan a swap wrote?"
+export function contentSig(value) {
+  return hashStr(JSON.stringify(value ?? null)).toString(16);
+}
 // Cyclically shift the top `k` of a quality-ranked pool by `shift` (the block
 // index) — mesocycle accessory variation that only ever swaps among the best
 // options, never drifting to a worse one. shift 0 (default block) is a no-op, so

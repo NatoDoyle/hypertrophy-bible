@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, sessionDayKey } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
@@ -285,7 +285,13 @@ export function createApp(store, config = {}) {
     // card exists to prevent).
     const personalization = user.plan_rationale
       ? explainUserPlan(user.profile, user.plan_rationale, user.program) : null;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization });
+    // "Not available at your gym" (W272): the lifts the user said they can't do, by
+    // name, each with its "Bring back" door — resolved here so the client never has to
+    // look up a lift the filtered exercise list deliberately no longer carries.
+    const unavailable = (user.profile?.unavailable_exercises ?? []).map((r) => ({
+      id: r.id, name: exerciseNameFor(user, r.id), replaced_by: r.replaced_by ?? null,
+      replaced_by_name: r.replaced_by ? exerciseNameFor(user, r.replaced_by) : null, at: r.at ?? null }));
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
@@ -330,10 +336,21 @@ export function createApp(store, config = {}) {
       const before = u.profile;
       const next = profilePatch ? { ...u.profile, ...profilePatch, user_id: id } : u.profile;
       const trainingChanged = TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
-      // Cosmetic edit (units, sex): keep the CURRENT block's accessory rotation and
-      // mesocycle position. Training change: fresh block 0 (week-1 ramp, rebased rotation).
-      const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
       u.profile = next;
+      out = rebuildPlan(u, { trainingChanged, priorSessions, nowISO });
+      return u;
+    }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+    if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+    return c.json({ program: { id: out.id, name: out.name, split: out.split, days_per_week: out.days_per_week } });
+  });
+
+  // Rebuild the generated plan from the STORED profile, in place on `u` (inside a CAS
+  // mutator). A cosmetic rebuild (trainingChanged false) keeps the CURRENT block's
+  // accessory rotation and mesocycle position; a training change starts a fresh block
+  // 0 (week-1 ramp, rebased rotation). Shared by the Settings save and "Bring back"
+  // after a rebuild (W272) — one copy of the rules, or the two drift (lesson 1).
+  function rebuildPlan(u, { trainingChanged, priorSessions, nowISO }) {
+      const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
       // Preserve the adaptive per-muscle tune across a settings edit — a change in
       // days/equipment doesn't invalidate "this person's chest responds to more
       // volume". (Specialization muscles ignore it; their target is overridden.)
@@ -371,12 +388,8 @@ export function createApp(store, config = {}) {
           ? priorSessions.filter((s) => !s.program_ref || s.program_ref === program.id).length
           : (u.plan_meta?.rotation_base ?? 0),
       };
-      out = program;
-      return u;
-    }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
-    if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
-    return c.json({ program: { id: out.id, name: out.name, split: out.split, days_per_week: out.days_per_week } });
-  });
+      return program;
+  }
 
   // KB critique of the current (or a supplied) plan: volume vs landmarks, gaps,
   // balance, ordering — the same analysis for a generated or a user-built plan.
@@ -409,10 +422,7 @@ export function createApp(store, config = {}) {
       .filter((s) => s.exercises.length);
     if (!sessions.length) return c.json({ error: "empty-program" }, 400);
     // an edit can remove one half of a superset pair — never keep a dangling link
-    for (const sess of sessions) {
-      const ids = new Set(sess.exercises.map((e) => e.exercise));
-      for (const e of sess.exercises) if (e.superset_with && !ids.has(e.superset_with)) delete e.superset_with;
-    }
+    sweepDanglingSupersets(sessions);
     let program = null;
     const updated = await store.updateUser(b.user_id, (u) => {
       // Only mark the plan `custom` (which permanently opts it out of mesocycle
@@ -454,6 +464,142 @@ export function createApp(store, config = {}) {
     // row so a mid-workout swap can carry the side, "stretch-focused", and
     // inline-demo cues onto the new lift instead of silently dropping them.
     return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, custom: !!e.custom })));
+  });
+
+  const exerciseNameFor = (user, id) => exerciseById.get(id)?.name ?? (user.custom_exercises || []).find((x) => x.id === id)?.name ?? id;
+  const planHolds = (program, id) => (program?.sessions ?? []).some((s) => s.exercises.some((e) => e.exercise === id));
+
+  // "CAN'T DO THIS ONE?" (W272 — owner report: "I can't do this exercise"). The
+  // player's set-0 door asks WHY:
+  //   always — "No machine for this": X leaves every session for the engine's own pick
+  //            (all-or-nothing) and stays out of every future plan — the exclusion
+  //            lives on the profile (server-owned), so every rebuild honours it. A
+  //            client pick is refused: the server chooses, so a forged id can never
+  //            enter the stored plan.
+  //   today  — "It's busy right now" / "Pick one myself": nothing is written. The row
+  //            for the substitute is built by buildToday on a patched copy of the plan
+  //            — the same producer as /api/today — so it carries the substitute's OWN
+  //            history, today's prescription and any deload/taper scaling.
+  //   undo   — Undo / "Bring back": the EXACT inverse while the plan is still the one
+  //            the swap wrote (content fingerprints); after any rebuild, a rebuild with
+  //            X available (a generated plan) — never X spliced back into a plan built
+  //            around its absence — or, for a hand-built plan, the exclusion lifted.
+  const MAX_EXCLUSIONS = 30;
+  // The row a substitute gets today: buildToday on a copy with X → Y everywhere.
+  const substituteRow = (user, ctx, nowISO, X, Y) => {
+    const program = JSON.parse(JSON.stringify(user.program));
+    for (const s of program.sessions) for (const e of s.exercises) if (e.exercise === X) { e.exercise = Y; delete e.superset_with; }
+    sweepDanglingSupersets(program.sessions); // X's partner no longer has one
+    return buildTodayFor({ ...user, program }, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null;
+  };
+  app.post("/api/exercise/cant-do", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // before the store call (D1 throws on an undefined bind)
+    const user = await store.getUser(b.user_id);
+    if (!user?.program) return c.json({ error: "unknown user" }, 404);
+    const X = typeof b.exercise === "string" ? b.exercise : "";
+    const scope = b.scope;
+    if (!["always", "today", "undo"].includes(scope)) return c.json({ error: "bad-scope" }, 400);
+    const sessionName = typeof b.session === "string" ? b.session.slice(0, 80) : null;
+    const nowISO = new Date().toISOString();
+    const nameOf = (id) => exerciseNameFor(user, id);
+
+    if (scope === "undo") {
+      const priorSessions = await store.listSessions(b.user_id);
+      let outcome = null;
+      const updated = await store.updateUser(b.user_id, (u) => {
+        outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
+        const list = u.profile?.unavailable_exercises ?? [];
+        if (!list.some((r) => r.id === X)) { outcome = { error: "not-excluded" }; return u; }
+        const snap = u.substitution_undo?.[X];
+        u.profile = { ...u.profile, unavailable_exercises: list.filter((r) => r.id !== X) };
+        if (u.substitution_undo) { const rest = { ...u.substitution_undo }; delete rest[X]; u.substitution_undo = rest; }
+        if (snap && snap.program_sig === contentSig(u.program) && snap.rationale_sig === contentSig(u.plan_rationale ?? null)) {
+          for (const [name, exercises] of Object.entries(snap.sessions)) { const s = u.program.sessions.find((x) => x.name === name); if (s) s.exercises = exercises; }
+          if (u.plan_rationale?.exercise_choices) for (const [i, entry] of snap.choices) u.plan_rationale.exercise_choices[i] = entry;
+          outcome = { mode: "exact", restored: Object.keys(snap.sessions).length };
+        } else if (!u.program?.custom) {
+          rebuildPlan(u, { trainingChanged: false, priorSessions, nowISO });
+          outcome = { mode: "rebuilt", restored: planHolds(u.program, X) ? 1 : 0 };
+        } else {
+          outcome = { mode: "lifted", restored: 0 }; // a hand-built plan is the user's to edit
+        }
+        return u;
+      }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+      if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+      if (outcome?.error) return c.json({ error: outcome.error }, 404);
+      return c.json({ ok: true, scope, ...outcome, exercise: X, name: nameOf(X) });
+    }
+
+    const tz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min;
+    const dq = c.req.query("d");
+    const clientDay = dq && /^\d{4}-\d{2}-\d{2}$/.test(dq) ? dq : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10));
+    const ctx = await todayContext(b.user_id, clientDay);
+    // A lift the user has plateaued on is demoted exactly as every rebuild demotes it.
+    const stalled = stalledExerciseIds(ctx.sessions, user.custom_exercises || [], nowISO);
+
+    if (scope === "today") {
+      const live = Array.isArray(b.live) ? b.live.filter((x) => typeof x === "string").slice(0, 30) : null;
+      const fitting = userSubstitutes(user, X, { sessionName, stalled, live, scope: "today" }).filter((s) => s.fits);
+      if (b.pick != null && !fitting.some((s) => s.id === b.pick)) return c.json({ error: "bad-pick" }, 400);
+      const Y = b.pick ?? fitting[0]?.id;
+      if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
+      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y) });
+    }
+
+    // scope === "always"
+    if (b.pick != null) return c.json({ error: "bad-pick", message: "A permanent swap is chosen for you — 'Pick one myself' swaps for today only." }, 400);
+    if (!exerciseById.has(X)) return c.json({ error: "unknown-exercise" }, 400);
+    let outcome = null;
+    const updated = await store.updateUser(b.user_id, (u) => {
+      outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
+      const existing = (u.profile?.unavailable_exercises ?? []).find((r) => r.id === X);
+      // A replay (double tap, retried request): the swap already happened.
+      if (existing && !planHolds(u.program, X)) { outcome = { already: true, replaced_by: existing.replaced_by ?? null }; return u; }
+      const r = userApplySubstitution(u, X, { sessionName, stalled });
+      if (r.error) { outcome = { error: r.error }; return u; }
+      const touched = new Set(r.replaced.map((x) => x.session));
+      // The exact inverse, kept server-side (never shipped to the client): the touched
+      // sessions and rationale entries as they were, plus fingerprints of what this
+      // write produced — Undo restores them only while the plan is still exactly that.
+      const snap = {
+        sessions: Object.fromEntries([...touched].map((name) => [name, u.program.sessions.find((s) => s.name === name).exercises])),
+        choices: (u.plan_rationale?.exercise_choices ?? []).map((entry, i) => [i, entry]).filter(([, entry]) => touched.has(entry.session)),
+        program_sig: contentSig(r.program),
+        rationale_sig: contentSig(r.rationale ?? null),
+      };
+      u.program = r.program;
+      u.plan_rationale = r.rationale;
+      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: r.replaced_by, at: nowISO }].slice(-MAX_EXCLUSIONS);
+      u.profile = { ...u.profile, unavailable_exercises: list };
+      const keep = new Set(list.map((x) => x.id));
+      u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}), [X]: snap }).filter(([id]) => keep.has(id)));
+      outcome = { replaced_by: r.replaced_by, sessions: [...touched] };
+      return u;
+    }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+    if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+    if (outcome?.error === "not-in-plan") return c.json({ error: "not-in-plan" }, 409);
+    if (outcome?.error) return c.json({ error: "no-candidate", message: `Nothing else that trains the same muscle fits your plan without doubling up — try "It's busy right now" for today, or edit your plan.` }, 409);
+    const Y = outcome.replaced_by;
+    const row = Y ? buildTodayFor(updated, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
+    return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [], ...(outcome.already ? { already: true } : {}), row });
+  });
+
+  // "Pick one myself": the ranked list for TODAY's live session (header auth — the
+  // user_id never travels in a URL). Fitting replacements only.
+  app.get("/api/exercise/:id/alternatives", async (c) => {
+    const { id, user, error } = await requireUser(c);
+    if (error) return error;
+    if (!user.program) return c.json({ alternatives: [] });
+    const X = c.req.param("id");
+    const live = (c.req.query("live") ?? "").split(",").filter(Boolean).slice(0, 30);
+    const stalled = stalledExerciseIds(await store.listSessions(id), user.custom_exercises || [], new Date().toISOString());
+    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today" })
+      .filter((s) => s.fits).slice(0, 12);
+    return c.json({ alternatives: list.map((s) => {
+      const e = exerciseById.get(s.id);
+      return { id: s.id, name: e?.name ?? s.id, equipment: e?.equipment ?? null, primary_muscles: e?.primary_muscles ?? [], tier: s.tier, fits: s.fits };
+    }) });
   });
 
   // Add a custom exercise to the user's personal library. Resolves everywhere
@@ -506,6 +652,27 @@ export function createApp(store, config = {}) {
   };
 
   // Today: the one-decision card + the fully pre-filled session.
+  // buildToday's inputs, assembled ONCE for every caller — /api/today and the "Can't do
+  // this one?" substitute row (W272) — so a swapped-in lift is built exactly as Today
+  // builds every row (deload/taper scaling, its own history, today's readiness).
+  const todayContext = async (id, clientDay, lists = null) => {
+    const [sessions, checkins, bodyweights] = lists ?? await Promise.all([store.listSessions(id), store.listCheckins(id), store.listBodyweights(id)]);
+    return {
+      sessions,
+      readiness: dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === clientDay)),
+      // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
+      // guess for a lift with no history. `bodyweights` is ASC-sorted (byDate), so the
+      // last entry is the most recent; no log yet -> null, and buildToday falls back
+      // to the safe empty-bar default the client already applies.
+      latestBodyweightKg: bodyweights.length ? bodyweights[bodyweights.length - 1].kg : null,
+      // `sessions` here is the derivable list, so it cannot distinguish "never
+      // trained" from "trained, but every row is voided or timing-quarantined".
+      // buildToday needs the difference before it calls someone a first-timer.
+      everLogged: sessions.length > 0 || (await store.hasAnySession(id)),
+    };
+  };
+  const buildTodayFor = (user, ctx, nowISO) => buildToday(user, ctx.sessions, ctx.readiness, user.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged);
+
   app.get("/api/today", async (c) => {
     let { id, user, tz, error } = await requireUser(c);
     if (error) return error;
@@ -701,7 +868,6 @@ export function createApp(store, config = {}) {
         if (stamped) user = stamped; // act on what was PERSISTED, not the local guess (lesson 21)
       }
     }
-    const readiness = dailyReadiness(checkins.find((ck) => (ck.date || "").slice(0, 10) === clientDay));
     // Daily-flow status (considerations #6): the three things a user does across a
     // day — morning check-in (incl. weight), the workout, and evening calories — so
     // the Today hub can show, at a glance, what's done and what's next.
@@ -730,18 +896,9 @@ export function createApp(store, config = {}) {
       missed_planned_day: user.paused ? null : (plan?.missed ?? null),
       commitment_days: plan?.days ?? null,
     });
-    // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
-    // guess for a lift with no history. `bodyweights` is ASC-sorted (byDate), so the
-    // last entry is the most recent; no log yet -> null, and buildToday falls back
-    // to the safe empty-bar default the client already applies.
-    const latestBodyweightKg = bodyweights.length ? bodyweights[bodyweights.length - 1].kg : null;
-    // `sessions` here is the derivable list, so it cannot distinguish "never
-    // trained" from "trained, but every row is voided or timing-quarantined".
-    // buildToday needs the difference before it calls someone a first-timer.
-    const everLogged = sessions.length > 0 || (await store.hasAnySession(id));
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
-    const session = buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged);
+    const session = buildTodayFor(user, await todayContext(id, clientDay, [sessions, checkins, bodyweights]), nowISO);
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
