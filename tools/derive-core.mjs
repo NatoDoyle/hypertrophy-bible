@@ -1308,8 +1308,10 @@ export function buildFeatureReport({ profile, sessions = [], checkins = [], body
 //   other compounds, and the systemic "isolations" (hip thrusts, Nordics, rollouts:
 //     moderate CNS) — 2 min, the "moderate compounds and machine presses/rows" row;
 //   low-fatigue isolation — 90 s, mid-way through "1–2 min".
-// Unknown or custom lifts keep the 120 s the app always used. A starting point the
-// user can adjust in the player — the KB's real rule is readiness, not a stopwatch.
+// A custom lift is tiered like any other from the mechanic and equipment its author gave
+// it (the custom form always sets both — a custom isolation rests 90 s); only a row with
+// no mechanic at all keeps the 120 s the app always used. A starting point the user can
+// adjust in the player — the KB's real rule is readiness, not a stopwatch.
 export const REST_HEAVY_S = 180, REST_MODERATE_S = 120, REST_ISOLATION_S = 90;
 export function restSeconds(ex) {
   if (!ex?.mechanic) return REST_MODERATE_S;

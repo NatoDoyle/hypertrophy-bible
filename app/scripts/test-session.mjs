@@ -8,7 +8,7 @@
 import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
-  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "../public/session-core.mjs";
+  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -512,6 +512,19 @@ check("units round-trip: a deliberate lb entry never trips the lb/kg typo guard"
   assert.equal(isImplausibleSet(bankedKg, 8, { lastKg: 60 }), false);
 });
 
+// --- #swap-undo (W275 review): the player's Undo belongs to ONE session — the card from
+// Monday's swap must never offer to "undo" Thursday's planned lift.
+check("#swap-undo applies only in the session it was made in, on its own lift, before any work is banked", () => {
+  const sess = { session_id: "s1", set: 0, logged: [], ex: [{ exercise: "hack-squat" }] };
+  const undo = { to: "hack-squat", session_id: "s1" };
+  assert.equal(undoApplies(undo, sess, sess.ex[0]), true);
+  assert.equal(undoApplies({ ...undo, session_id: "s0" }, sess, sess.ex[0]), false, "an older workout's undo");
+  assert.equal(undoApplies({ to: "hack-squat" }, sess, sess.ex[0]), false, "an unstamped undo is never trusted");
+  assert.equal(undoApplies(undo, { ...sess, logged: [{ exercise: "hack-squat", set_type: "work" }] }, sess.ex[0]), false, "work banked");
+  assert.equal(undoApplies(undo, { ...sess, set: 1 }, sess.ex[0]), false);
+  assert.equal(undoApplies(null, sess, sess.ex[0]), false);
+});
+
 // --- #replace-slot (W272): "Can't do this one?" swaps the lift at slot i for a row the
 // server built for the replacement. The old swap spread {...cur}: the old lift's
 // last_kg, pr_watch, eased and suggestion note rode onto the new one — a wrong "Last
@@ -612,6 +625,9 @@ check("#rest-state activeRest: a stored rest counts only while plausible AND sti
 check("#rest-state formatRest: m:ss", () => {
   assert.equal(formatRest(125), "2:05"); assert.equal(formatRest(60), "1:00"); assert.equal(formatRest(9), "0:09"); assert.equal(formatRest(0), "0:00");
 });
+check("#rest-state a nudge on a row from before W273 (no rest_s) teaches nothing — an offset from the 120 s fallback would land on the lift's real rest later", () => {
+  assert.equal(adjustRest(newRest({ kind: "set", length: 120, ex: "squat", logged: 1 }, 0), 60, { exercise: "squat" }).remember, null);
+});
 check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), clamped; only a SET rest teaches the lift its offset", () => {
   const start = 1_000_000;
   const r = newRest({ kind: "set", length: 120, ex: "squat", logged: 2 }, start);
@@ -672,8 +688,31 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
     assert.equal(parseEdit("", "kg"), null); assert.equal(parseEdit("abc", "lb"), null); assert.equal(parseEdit("-5", "kg"), null);
   });
   check("#edit-confirm an edit's typo confirmation lives in its OWN key space — it can never wave the Done button's guard through", () => {
-    assert.equal(editConfirmKey({ completed_at: t(1) }), `edit:${t(1)}`);
-    assert.deepStrictEqual(unconfirmedFlagged([0], () => "L", () => true, new Set([editConfirmKey(L1)])), [0]);
+    assert.ok(editConfirmKey(L1, 0).startsWith("edit:"));
+    assert.deepStrictEqual(unconfirmedFlagged([0], () => "L", () => true, new Set([editConfirmKey(L1, 0)])), [0]);
+  });
+  check("#edit-confirm one 'Keep it' approves ONE set: a station round's two members (same millisecond) and legacy entries (no completed_at) get distinct keys", () => {
+    const sameMs = { exercise: "L", completed_at: t(7) }, other = { exercise: "P", completed_at: t(7) };
+    assert.notEqual(editConfirmKey(sameMs, 0), editConfirmKey(other, 1), "W275 review: both members of a round shared edit:<T>");
+    assert.notEqual(editConfirmKey({ exercise: "L" }, 2), editConfirmKey({ exercise: "L" }, 5), "every legacy entry shared 'edit:'");
+  });
+  check("#edit-resolve a value the typo guard flags is NOT written until confirmed — the log keeps the ORIGINAL, never a half-typed intermediate", () => {
+    const entry0 = { exercise: "L", set_type: "work", weight_kg: 20.41, reps: 8, completed_at: t(1) };
+    const ctx = { entry0, shownW: "45", shownR: "8", unit: "lb", lastKg: 20, priorBests: null, confirmed: false };
+    // clear-and-retype "100": "1" and "10" are plausible and written through…
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "10", rText: "8" }), { patch: { weight_kg: 4.54, reps: 8 }, flagged: false });
+    // …but "100" lb (45.36 kg) trips the guard: the ORIGINAL goes back, not "10" lb
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "100", rText: "8" }), { patch: { weight_kg: 20.41, reps: 8 }, flagged: true });
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "100", rText: "8", confirmed: true }), { patch: { weight_kg: 45.36, reps: 8 }, flagged: false }, "confirmed: written");
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "45", rText: "8" }), { patch: { weight_kg: 20.41, reps: 8 }, flagged: false }, "text as shown → the stored value, exactly");
+    assert.equal(resolveEdit({ ...ctx, entry0: { ...entry0, set_type: "warmup" }, wText: "100", rText: "8" }).flagged, false, "warm-ups aren't typo-guarded at banking either");
+  });
+  check("#pr-latch an edit can only CLEAR the latch — a PR made by an edit is never 'celebrated' silently, so the session's real later PR still toasts", () => {
+    const watch = { e1rm_kg: 125, load_kg: 100 };
+    const fixedToPr = [{ exercise: "bench", set_type: "work", weight_kg: 105, reps: 8, completed_at: t(1) }];
+    assert.equal(nextPrLatch(false, fixedToPr, "bench", watch), false, "unlatched stays unlatched");
+    assert.equal(nextPrLatch(true, fixedToPr, "bench", watch), true, "a celebrated PR that still stands stays latched");
+    assert.equal(nextPrLatch(true, [{ ...fixedToPr[0], weight_kg: 10 }], "bench", watch), false, "a typo PR corrected away clears it");
   });
   check("#pr-latch recomputed from the log after an edit: a typo PR corrected away clears it; a deload set never sets it; a real one does", () => {
     const watch = { e1rm_kg: 30, load_kg: 25 };

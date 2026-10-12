@@ -3,6 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
   accessibleExercises, candidatePool, bestSubstitutes, applySubstitution, orderSessionItems } from "./plan-core.mjs";
+import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
@@ -1284,6 +1285,8 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
       .every((c) => exOf.get(c.id).movement_pattern !== "carry" && c.id !== e.exercise && (!c.fits || !s.exercises.some((o) => o.exercise === c.id))))));
   const stalledTop = bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name, stalled: [hackTop?.id] }).find((c) => c.fits);
   ok("#subs a lift the user has stalled on is never the first pick when another fits", stalledTop && stalledTop.id !== hackTop?.id);
+  ok("#subs a lift ruled out earlier today (exclude) is never handed back by a second 'Can't do' (W275 review)",
+    hackTop && !bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name, scope: "today", exclude: [hackTop.id] }).some((c) => c.id === hackTop.id));
   ok("#subs today's scope judges the LIVE session: a lift already swapped in today is never offered twice",
     !bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name, scope: "today", live: [...lowerB.exercises.map((e) => e.exercise), hackTop?.id] })
       .some((c) => c.fits && c.id === hackTop?.id));
@@ -1293,15 +1296,31 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const PATTERN_CAP = 2, HIGH_CNS_CAP = 2;
   let applied = 0, refused = 0;
   const bad = [];
+  const grid = [];
   for (const status of ["beginner", "intermediate", "advanced"])
     for (const days of [3, 4, 5, 6])
       for (const [eqName, eq] of Object.entries({ full: FULL, db: ["dumbbell", "bodyweight"], bw: ["bodyweight"] }))
-        for (const goal of ["hypertrophy", "strength"]) {
-          const profile = { user_id: `al-${status}-${days}-${eqName}-${goal}`, training_status: status, primary_goal: goal, days_per_week: days, session_length_min: 60, available_equipment: eq };
-          const plan = generatePlan(profile, kb);
+        for (const goal of ["hypertrophy", "strength"])
+          grid.push({ profile: { user_id: `al-${status}-${days}-${eqName}-${goal}`, training_status: status, primary_goal: goal, days_per_week: days, session_length_min: 60, available_equipment: eq }, blockIndex: 0 });
+  // W275 review: priority and specialization reorder sessions — swaps must keep THAT order
+  // (an active block promotes the priority muscle; an expired one reverts to plain order).
+  for (const days of [4, 5])
+    for (const blockIndex of [0, 1])
+      grid.push({ profile: { user_id: `al-spec-${days}-${blockIndex}`, training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: days, session_length_min: 60, available_equipment: FULL, priority_muscles: ["side-delts"], specialization: true }, blockIndex });
+  grid.push({ profile: { user_id: "al-pri", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 75, available_equipment: FULL, priority_muscles: ["chest", "biceps"] }, blockIndex: 0 });
+  const musclesIdx = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
+  const freshVolume = (program) => {
+    const exIdx = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
+    const w = perMuscleWeeklyVolume([{ date: "2026-01-05", sets: program.sessions.flatMap((s) => s.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work" })))) }], exIdx);
+    return w[Object.keys(w)[0]] ?? {};
+  };
+  let pairKept = 0, pairLostWithAPairingOption = 0;
+  for (const { profile, blockIndex } of grid) {
+          const plan = generatePlan(profile, kb, { blockIndex });
+          const spec = specializationActive(profile, muscles, blockIndex);
           const before = JSON.stringify(plan);
           for (const X of placed(plan)) {
-            const r = applySubstitution(plan.program, plan.rationale, X, { profile, kb });
+            const r = applySubstitution(plan.program, plan.rationale, X, { profile, kb, blockIndex });
             if (r.error) { refused++; continue; }
             applied++;
             const ses = r.program.sessions;
@@ -1322,21 +1341,42 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
                 if (!p) bad.push(`${tag}: dangling superset in ${s.name}`);
                 else if (exOf.get(e.exercise).mechanic !== "isolation" || exOf.get(p.exercise).mechanic !== "isolation" || [...mus(exOf.get(e.exercise))].some((m) => mus(exOf.get(p.exercise)).has(m))) bad.push(`${tag}: a superset that isn't two non-competing isolations in ${s.name}`);
               }
-              const sorted = JSON.stringify(orderSessionItems(s.exercises.map((e) => ({ ...e })), exOf, { priority: new Set(profile.priority_muscles ?? []) }));
+              const sorted = JSON.stringify(orderSessionItems(s.exercises.map((e) => ({ ...e })), exOf, { priority: new Set(profile.priority_muscles ?? []), specialization: spec }));
               if (sorted !== JSON.stringify(s.exercises)) bad.push(`${tag}: ${s.name} not in lifting order`);
             }
             if (Object.values(weekUse).some((n) => n > 2)) bad.push(`${tag}: a lift in 3 sessions`);
             const choices = r.rationale.exercise_choices;
             if (choices.some((c) => c.exercise === X)) bad.push(`${tag}: rationale still explains X`);
             for (const { session, to } of r.replaced) {
+              if (to == null) continue; // a superset bonus that couldn't be re-paired leaves (checked below)
               const c = choices.find((cc) => cc.session === session && cc.exercise === to);
               if (!c || !c.why.some((w) => /isn't available/.test(w))) bad.push(`${tag}: no honest 'why' for ${to} in ${session}`);
             }
+            // W275 review: the rationale's weekly volumes describe the plan AS SWAPPED.
+            const fresh = freshVolume(r.program);
+            const vsLm = volumeVsLandmarks(fresh, musclesIdx);
+            for (const [m, v] of Object.entries(r.rationale.volume_by_muscle ?? {})) {
+              if ((v.projected_sets ?? 0) !== (fresh[m] ?? 0)) bad.push(`${tag}: ${m} projected ${v.projected_sets}, the plan gives ${fresh[m] ?? 0}`);
+              const plain = !v.secondary_served && !v.eased && !v.maintenance;
+              if (plain && v.frequency && v.projected_status !== (vsLm[m]?.status ?? "no-data")) bad.push(`${tag}: ${m} status ${v.projected_status} ≠ ${vsLm[m]?.status}`);
+            }
+            // …and a superset slot keeps its pairing whenever any fitting replacement could.
+            for (const s of plan.program.sessions) for (const e of s.exercises) if (e.exercise === X && e.superset_with) {
+              const after = r.program.sessions.find((x) => x.name === s.name);
+              const partnerStill = after.exercises.find((x) => x.exercise === e.superset_with);
+              const couldPair = bestSubstitutes(X, { profile, kb, program: plan.program, rationale: plan.rationale, sessionName: s.name }).some((c) => c.fits && c.keeps_pair);
+              if (partnerStill?.superset_with) pairKept++;
+              else if (couldPair) { pairLostWithAPairingOption++; bad.push(`${tag}: ${s.name} lost its superset though a pairing replacement fitted`); }
+              // A rescue BONUS (its time is paid only by the pairing) never stays as a lone extra lift.
+              const bonusWhy = (plan.rationale.exercise_choices.find((c) => c.session === s.name && c.exercise === X)?.why ?? [])[0] ?? "";
+              if (/^superset — fits extra volume/.test(bonusWhy) && !partnerStill?.superset_with && after.exercises.some((x) => !plan.program.sessions.find((y) => y.name === s.name).exercises.some((y) => y.exercise === x.exercise) && !x.superset_with))
+                bad.push(`${tag}: the bonus became an unpaired extra lift in ${s.name}`);
+            }
           }
           if (JSON.stringify(plan) !== before) bad.push(`${profile.user_id}: applySubstitution mutated its input`);
-        }
-  ok(`#always the permanent swap keeps every generator invariant (${applied} applied, ${refused} refused with no write)${bad.length ? " — " + bad.slice(0, 3).join("; ") : ""}`,
-    applied > 1000 && bad.length === 0);
+  }
+  ok(`#always the permanent swap keeps every generator invariant (${applied} applied, ${refused} refused with no write; ${pairKept} pairings kept)${bad.length ? " — " + bad.slice(0, 3).join("; ") : ""}`,
+    applied > 1000 && bad.length === 0 && pairKept > 0 && grid.length === 77);
   // A muscle emptied by the user's OWN exclusions is told the lever that will help.
   const calfIds = candidatePool(base, kb).filter((e) => e.primary_muscles.includes("calves")).map((e) => e.id);
   const noCalves = generatePlan({ ...base, unavailable_exercises: calfIds.map((id) => ({ id })) }, kb).rationale.warnings.find((w) => w.code === "no-coverage" && w.muscle === "calves");

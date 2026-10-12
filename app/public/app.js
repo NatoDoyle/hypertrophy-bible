@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy } from "/ui-helpers.mjs";
@@ -2091,33 +2091,26 @@ function openSetEditor(idx, host, rerender) {
   const apply = () => {
     const ed = setEditor;
     if (!ed || !sess) return;
-    const wText = $("#fix-w").value.trim(), rText = $("#fix-r").value.trim();
-    const patch = {};
-    const kg = wText === shownW ? entry0.weight_kg : parseEdit(wText, ed.unit);
-    if (kg != null) patch.weight_kg = kg;
-    const reps = rText === shownR ? entry0.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : null);
-    if (reps != null) patch.reps = reps;
-    // The same typo guard as banking, on the corrected numbers; a suspect value waits
-    // for an explicit "keep it" before it is written.
+    // resolveEdit (session-core): untouched text keeps the stored value exactly; a value
+    // the banking typo guard flags writes the ORIGINAL back until "Keep it" — the log
+    // never holds a half-typed intermediate of a suspect number.
     const row = sess.ex.find((x) => x.exercise === ed.exercise);
-    const cand = { ...sess.logged[ed.idx], ...patch };
-    const key = editConfirmKey(entry0);
-    if ((cand.set_type ?? "work") === "work" && !editConfirmed.has(key) && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null })) {
-      $("#fix-note").innerHTML = `That looks like a typo — far above what you usually lift here. <button class="btn ghost inline" id="fix-keep" style="margin:0">Keep it</button>`;
+    const key = editConfirmKey(entry0, ed.idx);
+    const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, shownW, shownR, unit: ed.unit,
+      lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null, confirmed: editConfirmed.has(key) });
+    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
+    if (next !== sess.logged) {
+      sess.logged = next;
+      // The latch means "a PR was celebrated": an edit may clear it, never set it silently.
+      if (row) { sess.prCelebrated = { ...(sess.prCelebrated ?? {}) }; if (!nextPrLatch(sess.prCelebrated[ed.exercise], sess.logged, ed.exercise, row.pr_watch)) delete sess.prCelebrated[ed.exercise]; }
+      saveSess();
+    }
+    if (flagged) {
+      $("#fix-note").innerHTML = `That looks like a typo — far above what you usually lift here. Your original numbers are kept until you confirm. <button class="btn ghost inline" id="fix-keep" style="margin:0">Keep it</button>`;
       $("#fix-keep").onclick = () => { editConfirmed.add(key); apply(); };
       return;
     }
-    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
-    if (next === sess.logged) { $("#fix-note").textContent = ""; return; }
-    sess.logged = next;
-    // The PR latch follows the log, silently — an edit never re-toasts.
-    if (row) {
-      sess.prCelebrated = { ...(sess.prCelebrated ?? {}) };
-      if (recomputePrLatch(sess.logged, ed.exercise, row.pr_watch)) sess.prCelebrated[ed.exercise] = true;
-      else delete sess.prCelebrated[ed.exercise];
-    }
-    saveSess();
-    $("#fix-note").textContent = "Saved.";
+    $("#fix-note").textContent = next !== sess.logged || Object.keys(patch).length ? "Saved." : "";
   };
   $("#fix-w").oninput = apply;
   $("#fix-r").oninput = apply;
@@ -2169,6 +2162,7 @@ function showRest(rest, nextLine, row, onDone, announce) {
 function renderPlayer() {
   stopRestTimer();
   setEditor = null;
+  cantDoGen++; // an open "Can't do" sheet's late answer must not repaint over this
   // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
   // slips through may crash the recovery path for a user's unposted sets.
   if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
@@ -2537,25 +2531,29 @@ function renderExerciseSheet(ex, d, back) {
 // spread carried the old lift's last weight and PR baseline onto the new one); and it
 // refuses rather than replace a lift with banked work, a slot the cursor has left, or
 // with a lift already in the workout.
-let swapUndo = null; // the live Undo for the last swap: { to, toName, from, fromName, saved, permanent }
+// The live Undo for the last swap lives IN the session (sess.swapUndo, stamped with its
+// session_id): crash-mirrored, so it survives a reload, and gone with the workout —
+// a module-level copy outlived it and offered Monday's undo on Thursday.
 function swapUndoCard(e) {
-  if (!swapUndo || e.exercise !== swapUndo.to || sess.set !== 0 || loggedWorkSets(sess.logged, swapUndo.to) > 0) return "";
-  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(swapUndo.permanent ? `Swapped for ${swapUndo.toName} — from now on.` : `Swapped for ${swapUndo.toName} — just for today.`)}</p>
+  const u = sess?.swapUndo;
+  if (!undoApplies(u, sess, e)) return "";
+  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(u.text ?? (u.permanent ? `Swapped for ${u.toName} — from now on.` : `Swapped for ${u.toName} — just for today.`))}</p>
     <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
 }
 // Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
 function applyReplacement(expect, row, undo) {
   const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect });
   if (!r.ok) return r.reason;
-  sess = r.sess; saveSess();
-  swapUndo = undo;
+  // Remember what was ruled out today, so a second "Can't do" never hands it back.
+  sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
+  saveSess();
   say(undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`);
   renderPlayer(0);
   return null;
 }
 async function undoSwap() {
-  const u = swapUndo;
-  if (!u) return;
+  const u = sess?.swapUndo;
+  if (!undoApplies(u, sess, sess?.ex?.[sess.i])) return;
   if (u.permanent) {
     let r;
     try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: u.from, scope: "undo" }) }); }
@@ -2565,16 +2563,33 @@ async function undoSwap() {
   // The saved row is the old lift's OWN server-built row, so reverting with it can't
   // leak anything; the same guards apply (a banked set of the substitute stays).
   const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to });
-  if (back.ok) { sess = back.sess; saveSess(); }
-  swapUndo = null;
+  sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from) };
+  saveSess();
   renderPlayer(0);
   alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName }));
 }
+// One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
+// so a slow or doubled response can tell it has been overtaken.
+let cantDoGen = 0;
 async function renderCantDo() {
+  const gen = ++cantDoGen;
   const cur = sess.ex[sess.i];
   const canLater = sess.i < sess.ex.length - 1;
   const live = () => sess.ex.map((x) => x.exercise);
-  const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null, ...body }) });
+  // Lifts swapped away TODAY are never offered back by a second "Can't do".
+  const exclude = () => sess.ruledOut ?? [];
+  // The live slot's prescription rides along: the server builds the substitute's row FOR
+  // this slot, even when the stored plan doesn't hold the lift (a today-only swap).
+  const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
+    exclude: exclude(), prescription: { sets: cur.sets, rep_range: cur.rep_range, rir: cur.rir }, ...body }) });
+  // Still on THIS sheet for THIS lift? A response that lands after the user moved on
+  // must never repaint over whatever they're looking at now.
+  const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
+  // A tap locks the sheet (no doubled request) and says it's working.
+  const lock = (label) => {
+    app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
+    const st = document.createElement("p"); st.className = "muted"; st.setAttribute("role", "status"); st.textContent = label; app.appendChild(st);
+  };
   const tail = `${canLater ? `<button class="btn ghost" id="cd-later">⤵️ Do it later in this workout</button>` : ""}
     <button class="btn ghost" id="cd-back">Keep ${esc(cur.name)}</button>`;
   const wireTail = () => {
@@ -2589,8 +2604,9 @@ async function renderCantDo() {
   const pickList = async (lead = "") => {
     app.innerHTML = `<h1>Pick a replacement</h1><p class="muted">Finding the best alternatives…</p>`;
     let d;
-    try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}`); }
-    catch { return offline(); }
+    try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}&exclude=${encodeURIComponent(exclude().join(","))}`); }
+    catch { return stillHere() ? offline() : undefined; }
+    if (!stillHere()) return;
     const alts = d?.alternatives ?? [];
     if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
     app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
@@ -2600,7 +2616,9 @@ async function renderCantDo() {
     wireTail();
     app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = async () => {
       const a = alts.find((x) => x.id === b.dataset.pick);
-      let r; try { r = await post({ scope: "today", live: live(), pick: a.id }); } catch { return offline(); }
+      lock(`Swapping in ${a.name}…`);
+      let r; try { r = await post({ scope: "today", live: live(), pick: a.id }); } catch { return stillHere() ? offline() : undefined; }
+      if (!stillHere()) return; // a today-only swap wrote nothing: dropping a stale answer is safe
       if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
       const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
         { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
@@ -2617,16 +2635,29 @@ async function renderCantDo() {
     ${tail}`;
   wireTail();
   $("#cd-machine").onclick = async () => {
-    let r; try { r = await post({ scope: "always" }); } catch { return offline(); }
+    lock("Finding the best replacement…");
+    let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }
+    // What the plan did (replaced_by: its permanent replacement, or none) and what stands
+    // in TODAY (r.today) are separate answers from the server.
+    const planLine = r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan from now on` : `${cur.name} won't come back in your plan`;
+    if (!stillHere()) {
+      // The PLAN changed even though the user moved on — say so where they are now.
+      if (!r.error) alertBar(`${planLine} — bring it back on the Plan tab if you didn't mean that.`);
+      return;
+    }
     if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);
-    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
-      { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true });
+    if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
+      { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — from now on.` : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
-    if (why) pickList(`From your next session ${cur.name} is swapped for ${r.replaced_by_name}. ${refused(why, r.replaced_by_name)} For today:`);
+    if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
   };
   $("#cd-busy").onclick = async () => {
-    let r; try { r = await post({ scope: "today", live: live() }); } catch { return offline(); }
+    lock("Finding a replacement for today…");
+    let r; try { r = await post({ scope: "today", live: live() }); } catch { return stillHere() ? offline() : undefined; }
+    if (!stillHere()) return;
     if (r.error) return note(r.message ?? `Nothing to swap ${cur.name} for right now.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
       { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
@@ -2643,7 +2674,9 @@ async function renderCantDo() {
     $("#cd-back").onclick = () => renderCantDo();
     app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
       const region = b.dataset.hurt;
-      let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return offline(); }
+      lock("Saving…");
+      let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return stillHere() ? offline() : undefined; }
+      if (!stillHere()) return;
       pickList(res.error ? "Couldn't save that — pick a replacement for today instead." : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan. For today:`);
     });
   };
@@ -4494,6 +4527,7 @@ async function renderLearnPage(slug) {
 
 // ---------- Router ----------
 function render() {
+  cantDoGen++; // a tab switch leaves any open "Can't do" sheet: its late answer must not repaint here
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; settingsSolo = null; // navigating away abandons an in-progress settings edit cleanly
   if (tab !== "history") { historyEdit = null; historyDateFix = null; } // ...and an in-progress workout correction/date repair
