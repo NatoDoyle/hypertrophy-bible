@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -68,6 +68,45 @@ check("linePath: spreads x across the width, inverts y, pads, and centers a flat
   assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
   assert.deepEqual(linePath([], 100, 50).pts, []);
   assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
+});
+
+// --- The Today hub's ONE workout decision (W271): day one, rest, missed and unplanned
+// can't drift apart when one function decides. A never-trained user's first workout is
+// ALWAYS the hero — saving days on the day-one card must not demote it (critic, W271).
+check("hubWorkoutState: done and rest win; a first-ever workout and a comeback are always 'start'", () => {
+  const base = { daily: { workout_logged: false, rest_day: false, planned_today: false, missed_planned_day: null }, session: { never_trained: false }, status: { state: "on-track" } };
+  const st = (patch) => hubWorkoutState({ daily: { ...base.daily, ...patch.daily }, session: { ...base.session, ...patch.session }, status: { ...base.status, ...patch.status } });
+  assert.equal(st({ daily: { workout_logged: true } }), "done");
+  assert.equal(st({ daily: { rest_day: true } }), "rest");
+  assert.equal(st({ session: { never_trained: true } }), "start", "day one beats an off-plan day");
+  assert.equal(st({ status: { state: "comeback" } }), "start", "a returner isn't gated behind an old schedule");
+  assert.equal(st({}), "unplanned");
+  assert.equal(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } } }), "missed");
+  assert.equal(st({ daily: { planned_today: true } }), "start");
+  assert.equal(st({ daily: { planned_today: null } }), "start", "no plan at all: exactly as before");
+  // W271 review: a PAUSED (sick/injured) user is promised no pressure — never "Missed Monday? Catch up today".
+  assert.notEqual(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } }, status: { state: "paused" } }), "missed");
+});
+
+// --- The phone-calendar file is the one reminder the app can't change (W271 review):
+// when the days in the app no longer match the days last exported, say which.
+check("calendarDrift: names the calendar's stale days when the plan changed, nothing when they match or nothing was exported", () => {
+  assert.deepEqual(calendarDrift([0, 3], ["mon", "wed"]), { stale: ["Mon", "Thu"] }, "exported Mon/Thu, now Mon/Wed");
+  assert.equal(calendarDrift([0, 2], ["wed", "mon"]), null, "same days, any order");
+  assert.equal(calendarDrift(null, ["mon"]), null, "never exported");
+  assert.equal(calendarDrift([], ["mon"]), null);
+  assert.deepEqual(calendarDrift([1], []), { stale: ["Tue"] }, "days cleared but the calendar still reminds");
+});
+
+// Review C2/C9: the card must never tell someone to delete the calendar event that
+// holds the days the SAME card says are coming back.
+check("calendarAdvice: compares the export with the days really in force (or coming back), and says what to do", () => {
+  assert.equal(calendarAdvice([0, 2], { days: [], resumeDays: ["mon", "wed"] }), null, "cleared this week, the same days come back: keep the event");
+  assert.deepEqual(calendarAdvice([0, 2], { days: [], resumeDays: ["fri"] }), { stale: ["Mon", "Wed"], advice: "delete-if-done" });
+  assert.deepEqual(calendarAdvice([0, 2], { days: [], resumeDays: null }), { stale: ["Mon", "Wed"], advice: "save-or-delete" }, "no plan at all (e.g. an expired pre-W271 answer)");
+  assert.deepEqual(calendarAdvice([0, 2], { days: ["mon", "thu"] }), { stale: ["Mon", "Wed"], advice: "replace" });
+  assert.equal(calendarAdvice([0, 3], { days: ["thu", "mon"] }), null);
+  assert.equal(calendarAdvice(null, { days: [] }), null, "never exported");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -169,6 +208,8 @@ check("sw.js precaches every module app.js and verify.html import", () => {
   const missing = [...new Set(imported)].filter((p) => !shell.includes(p));
   assert.deepEqual(missing, [], `imported but not precached: ${missing.join(", ")}`);
 });
+
+// (The /verify cache bypass is proven through the real fetch handler in test-sw.mjs.)
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

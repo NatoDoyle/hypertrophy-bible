@@ -342,5 +342,71 @@ ok("paused user -> report reflects the safety rail", adherenceReport({ paused: {
     ["milestone", "streak", "pr", "level"].every((kind) => celebrationCopy({ kind, count: 1, weeks: 4, level: 2 }).tag === "hb-celebrate"));
 }
 
+// --- #22 (W271): every adherence WEEK is the user's own calendar week -------------
+// The week maths ran on the server's UTC instant while sessions are filed by local day:
+// at UTC-7, Sunday 20:00 local is already Monday in UTC, so a user who trained that
+// Wednesday read "at-risk" all Sunday evening. Localized ONCE to a date-only day key;
+// durations (the comeback threshold) stay on the real instant.
+const westUser = { profile: { tz_offset_min: -420 } };
+const wedW41 = { local_date: "2026-10-07", date: "2026-10-07T18:00:00Z", sets: [{ set_type: "work", weight_kg: 50, reps: 10 }] };
+const sunEveWest = "2026-10-12T03:00:00Z"; // Sunday 2026-10-11 20:00 at UTC-7 (ISO W41)
+const westRep = adherenceReport(westUser, [wedW41], sunEveWest);
+ok("#22 UTC-7 Sunday evening after a Wednesday session reads on-track, not at-risk", westRep.status.state === "on-track");
+ok("#22 …and the week summary counts that Wednesday", westRep.week.sessions === 1);
+const comebackAt = (days, tz) => adherenceReport({ profile: { tz_offset_min: tz } }, [{ date: new Date(Date.parse("2026-10-20T12:00:00Z") - days * 86400000).toISOString(), sets: [] }], "2026-10-20T12:00:00Z").status.state;
+ok("#22 the comeback threshold is an instant, not a frame: 11.4 days is never 'comeback' in any timezone", [720, -720, null].every((tz) => comebackAt(11.4, tz) !== "comeback"));
+ok("#22 …and 12.6 days is 'comeback' in every timezone (the deload fires at the same moment)", [720, -720, null].every((tz) => comebackAt(12.6, tz) === "comeback"));
+const monStreak = celebrationEvent({ local_date: "2026-10-12", date: "2026-10-12T15:00:00Z", sets: [] },
+  ["2026-09-21", "2026-09-28", "2026-10-05"].map((d) => ({ local_date: d, date: `${d}T15:00:00Z`, sets: [] })), westUser, "2026-10-12");
+ok("#22 a west-of-UTC Monday session still lands its 4-week streak celebration (its date is already local — never shifted twice)",
+  monStreak?.kind === "streak" && monStreak.weeks === 4);
+// Freeze at the Monday boundary (live tonight: 00:30 Monday in UTC+1 is still Sunday in UTC).
+// W33..W40 (8 trained weeks → 2 freezes earned). 2026-10-05 would be W41's Monday — excluded.
+const throughW40 = ["2026-08-10", "2026-08-17", "2026-08-24", "2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"]
+  .map((d) => ({ local_date: d, date: `${d}T10:00:00Z`, sets: [] }));
+const earlyMon = adherenceReport({ profile: { tz_offset_min: 60 }, streak_freezes: [] }, throughW40, "2026-10-11T23:30:00Z");
+ok("#22 00:30 Monday at UTC+1: last week (W41) is the protectable one — in the user's week, not UTC's",
+  earlyMon.streak_freeze.protectable_week === "2026-W41");
+ok("#22 …(control: in UTC's week, still Sunday of W41, nothing is protectable yet — the frames really differ here)",
+  adherenceReport({ profile: { tz_offset_min: 0 }, streak_freezes: [] }, throughW40, "2026-10-11T23:30:00Z").streak_freeze.protectable_week !== "2026-W41");
+
+// --- 'scheduled' (W271): with a weekly plan, the week isn't at risk while a planned
+// day is still AHEAD; on the last planned day (or none left) the loss-aversion copy returns.
+const planUser = (days) => ({ profile: { tz_offset_min: 0, commitment: { week: "2026-W42", days } } });
+const lastWeekOnly = [{ local_date: "2026-10-07", date: "2026-10-07T10:00:00Z", sets: [] }];
+const wedNoon = "2026-10-14T12:00:00Z"; // Wednesday, W42
+const sched = adherenceReport(planUser(["fri"]), lastWeekOnly, wedNoon).status;
+ok("scheduled: Wednesday with Friday planned and nothing done yet is 'scheduled', naming Friday", sched.state === "scheduled" && /Friday/.test(sched.message));
+ok("scheduled: …Friday itself, untrained, is the last chance — 'at-risk'", adherenceReport(planUser(["fri"]), lastWeekOnly, "2026-10-16T12:00:00Z").status.state === "at-risk");
+ok("scheduled: …a plan whose days have all passed is 'at-risk'", adherenceReport(planUser(["mon"]), lastWeekOnly, wedNoon).status.state === "at-risk");
+ok("scheduled: …no plan at all keeps the old rule", adherenceReport({ profile: { tz_offset_min: 0 } }, lastWeekOnly, wedNoon).status.state === "at-risk");
+// W271 review: the header reads the SAME planned-day predicate as the hub, so the two
+// can never contradict each other on one screen (and never ask for a session on a day
+// the user said isn't for training — the owner's complaint).
+const thuSetMonWed = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W42", days: ["mon", "wed"], set_on: "2026-10-15" } } },
+  [{ local_date: "2026-10-09", date: "2026-10-09T10:00:00Z", sets: [] }], "2026-10-15T12:00:00Z").status;
+ok("scheduled: days set on Thursday (Mon/Wed) — no nag on a day off the plan; the header names next Monday",
+  thuSetMonWed.state === "scheduled" && /Next training day: Monday/.test(thuSetMonWed.message) && !/Keep the chain alive/.test(thuSetMonWed.message));
+const restMarkedMon = adherenceReport({ rest_days: ["2026-10-12"], profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-12T12:00:00Z").status;
+ok("scheduled: a planned day the user marked as rest never reads 'Today's a training day'",
+  /Rest day today/.test(restMarkedMon.message) && !/Today's a training day/.test(restMarkedMon.message));
+const missedMon = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("scheduled: a missed planned day — the header agrees with the hub's catch-up line", /Missed Monday/.test(missedMon.message));
+// Review C7: Friday still keeps the week — so a missed Monday is NOT loss-aversion yet.
+ok("scheduled: a missed day with a later planned day still ahead is calm (Goal 4), and names it",
+  missedMon.state === "scheduled" && /Friday/.test(missedMon.message) && !/keeps the chain alive/.test(missedMon.message));
+const missedMonTodayPlanned = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("scheduled: missed Monday, today planned and Friday ahead — calm, says today's a training day",
+  missedMonTodayPlanned.state === "scheduled" && /Missed Monday/.test(missedMonTodayPlanned.message) && /Today's a training day/.test(missedMonTodayPlanned.message) && /Friday/.test(missedMonTodayPlanned.message));
+const missedMonLastToday = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "wed"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("at-risk: missed Monday and today is the LAST planned day — now the chain copy is true",
+  missedMonLastToday.state === "at-risk" && /Missed Monday\? A session today keeps the chain alive/.test(missedMonLastToday.message));
+const todayToo = adherenceReport(planUser(["wed", "fri"]), lastWeekOnly, wedNoon).status;
+ok("scheduled: a planned TODAY with a later day still ahead says so honestly", todayToo.state === "scheduled" && /Today's a training day/.test(todayToo.message) && /Friday/.test(todayToo.message));
+
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

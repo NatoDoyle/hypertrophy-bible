@@ -375,6 +375,94 @@ export function graduatedStatus(sessions, currentStatus) {
 export const WEEK_DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 export const weekDayKey = (dateStr) => WEEK_DAY_KEYS[(new Date(dateStr).getUTCDay() + 6) % 7];
 
+// ---- The weekly training-day picker, carried forward (W271) ---------------------
+// Owner (2026-10): keep the weekly "which days will you train?" picker, but carry
+// last week's days forward each Monday — already in effect — and have Today respect
+// them. Pure and DATE-ONLY: callers localize once, passing the user's own calendar
+// day ("YYYY-MM-DD"); nothing here ever shifts an instant (that double-shifts a
+// caller already holding a local date).
+const shiftDayKey = (ymd, n) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d, 12));
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+};
+
+// The Monday ("YYYY-MM-DD") that starts an ISO week key ("YYYY-Www"); null if malformed.
+export function isoWeekMondayKey(week) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(String(week ?? ""));
+  if (!m) return null;
+  const jan4 = new Date(Date.UTC(+m[1], 0, 4, 12));
+  const dow = (jan4.getUTCDay() + 6) % 7; // Mon = 0; ISO week 1 always contains Jan 4
+  jan4.setUTCDate(jan4.getUTCDate() - dow + (+m[2] - 1) * 7);
+  return jan4.toISOString().slice(0, 10);
+}
+
+// The commitment in force on `todayKey`: this week's, else the most recent one
+// CARRIED forward (indefinitely — the stamp's age is still visible as `week` for any
+// consumer that must bound it, e.g. the push cap). Null when never set or cleared.
+export function commitmentForDay(stored, todayKey) {
+  if (!stored || !todayKey) return null;
+  const valid = (list) => (Array.isArray(list) ? list : []).filter((d) => WEEK_DAY_KEYS.includes(d));
+  const week = typeof stored.week === "string" && /^\d{4}-W\d{2}$/.test(stored.week) ? stored.week : null;
+  const set_on = typeof stored.set_on === "string" ? stored.set_on : null;
+  const curWeek = isoWeekKey(todayKey);
+  // Ordinal, never equality (lesson 40): a stamp that reads as a FUTURE week (a tz
+  // change between stamp and read) is current, never stale.
+  const carried = !!week && week < curWeek;
+  // "No fixed days this week" clears THIS week only: the usual days (resume_days) come
+  // back once that week has passed — and a day picked DURING the cleared week was for
+  // that week alone, so they win over it too. `resumed` lets the card say "your usual
+  // days are back" rather than "same days as last week" (last week had none).
+  const resumeDays = valid(stored.resume_days);
+  const resumed = carried && resumeDays.length > 0;
+  const days = resumed ? resumeDays : valid(stored.days);
+  if (!days.length) return null;
+  // A PRE-W271 answer (no set_on) was given to "which days will you train THIS week?":
+  // it carries into the next week — the owner's "each Monday it carries last week's
+  // choice forward" — and no further. Reviving a months-old one would gate today's hub
+  // and quiet comeback nudges on a schedule nobody chose (lesson 37).
+  if (!set_on && (!week || (carried && week < isoWeekKey(shiftDayKey(todayKey, -7))))) return null;
+  return { days, week, set_on, carried, resumed };
+}
+
+export function effectiveCommitment(profile, nowMs, tzOffsetMin) {
+  const key = localDayKey(nowMs, tzOffsetMin);
+  return key ? commitmentForDay(profile?.commitment, key) : null;
+}
+
+// What the committed days mean for TODAY: is it a planned day, which planned day is
+// next, and was the latest one before today missed? Missed means promised AND
+// nothing since: a commitment made THIS week binds only from the day it was made
+// (`set_on`; a legacy stamp without one, from its week's Monday) — so a user who
+// installs on Thursday and picks Mon/Wed/Fri hasn't "missed Wednesday" — while a
+// carried one binds the whole week. And any session (a catch-up counts) or rest
+// mark on or after that day answers it: training Tuesday for a missed Monday must
+// not be asked about Monday again on Wednesday.
+export function plannedDayState(stored, todayKey, { sessionDays = [], restDays = [] } = {}) {
+  const eff = commitmentForDay(stored, todayKey);
+  if (!eff) return null;
+  const todayIdx = WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey));
+  const planned_today = eff.days.includes(WEEK_DAY_KEYS[todayIdx]);
+  let next = null;
+  for (let i = 1; i <= 7 && !next; i++) {
+    const d = shiftDayKey(todayKey, i);
+    if (eff.days.includes(weekDayKey(d))) next = { day: weekDayKey(d), date: d };
+  }
+  const monday = shiftDayKey(todayKey, -todayIdx);
+  const boundFrom = eff.carried ? monday : (eff.set_on && eff.set_on > monday ? eff.set_on : monday);
+  let missed = null;
+  for (let i = 1; i <= todayIdx; i++) {
+    const d = shiftDayKey(todayKey, -i);
+    if (!eff.days.includes(weekDayKey(d))) continue;
+    if (d < boundFrom) break;
+    const answered = sessionDays.some((x) => x >= d && x < todayKey) || restDays.some((x) => x >= d && x < todayKey);
+    if (!answered) missed = { day: weekDayKey(d), date: d };
+    break;
+  }
+  return { days: eff.days, carried: eff.carried, planned_today, next, missed };
+}
+
 // Is a set a "hard working set" that counts toward hypertrophy volume?
 // Warm-ups never count. If effort is logged, it must be near failure (RPE>=gate / RIR<=4).
 // If effort is NOT logged, a work set counts (we don't penalize missing data).

@@ -46,6 +46,7 @@ import {
   loadExerciseIndex,
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
+import { commitmentForDay, plannedDayState, effectiveCommitment } from "./derive-core.mjs";
 
 let passed = 0;
 function check(name, fn) {
@@ -1338,6 +1339,76 @@ check("progression rows carry a week-keyed series matching their endpoints", () 
   const pump = progressionByExercise([wk(0, 20, 15), wk(1, 22.5, 15)], exIndex);
   const prow = pump.find((p) => p.basis === "load");
   assert.ok(Array.isArray(prow?.series) && prow.series.length === 2 && prow.series[1].value === 22.5, "load-basis rows carry the series too");
+});
+
+// --- #carry (W271): the weekly training-day picker, carried forward ---------------
+// Owner: "If I put in what days I plan to work out, why is it asking me to log a
+// workout?" — and they chose to keep the weekly picker but carry last week's days
+// forward each Monday. Fixed dates (lesson 64: never a fixture that moves with the
+// clock). 2026-10-12 is a Monday (ISO 2026-W42); 2026-10-13 a Tuesday.
+check("#carry this week's commitment is current; last week's carries forward; a future stamp is current (ordinal, lesson 40)", () => {
+  assert.deepEqual(commitmentForDay({ week: "2026-W42", days: ["mon", "thu"] }, "2026-10-13"), { days: ["mon", "thu"], week: "2026-W42", set_on: null, carried: false, resumed: false });
+  assert.equal(commitmentForDay({ week: "2026-W41", days: ["mon", "thu"] }, "2026-10-13").carried, true);
+  assert.equal(commitmentForDay({ week: "2025-W02", days: ["fri"], set_on: "2025-01-08" }, "2026-10-13").carried, true, "a plan made since W271 (set_on) carries indefinitely");
+  assert.equal(commitmentForDay({ week: "2026-W43", days: ["mon"] }, "2026-10-13").carried, false, "a tz-skewed future stamp reads as current, never as stale");
+});
+check("#carry a PRE-W271 answer (no set_on — it was asked as 'this week' only) carries at most one week, never revived from months ago", () => {
+  // Lesson 37: a stored answer to a narrower question is not an answer to the new one.
+  assert.equal(commitmentForDay({ week: "2026-W41", days: ["mon"] }, "2026-10-13").carried, true, "last week's legacy answer carries into this week");
+  assert.equal(commitmentForDay({ week: "2026-W40", days: ["mon"] }, "2026-10-13"), null, "an older legacy answer is no plan at all");
+  assert.equal(commitmentForDay({ week: "2026-03", days: ["mon"] }, "2026-10-13"), null, "a malformed legacy week is no plan");
+});
+check("#carry 'No fixed days this week' clears THIS week only — the usual days come back next Monday", () => {
+  const cleared = { week: "2026-W42", days: [], resume_days: ["mon", "fri"], set_on: "2026-10-13" };
+  assert.equal(commitmentForDay(cleared, "2026-10-14"), null, "this week: no plan");
+  assert.deepEqual(commitmentForDay(cleared, "2026-10-19"), { days: ["mon", "fri"], week: "2026-W42", set_on: "2026-10-13", carried: true, resumed: true }, "next week: the usual days, RESUMED (last week had none — never 'same as last week')");
+  assert.equal(commitmentForDay({ week: "2026-W42", days: [], set_on: "2026-10-13" }, "2026-10-19"), null, "a clear with nothing to resume stays clear");
+});
+check("#carry a day picked DURING a cleared week is for that week — the usual days still come back next Monday", () => {
+  // Review C8: the cleared card promises "Mon, Wed come back next week by themselves";
+  // picking Friday from that same card must not quietly replace them for good.
+  const stored = { week: "2026-W42", days: ["fri"], resume_days: ["mon", "wed"], set_on: "2026-10-14" };
+  assert.deepEqual(commitmentForDay(stored, "2026-10-15"), { days: ["fri"], week: "2026-W42", set_on: "2026-10-14", carried: false, resumed: false }, "this week: Friday");
+  assert.deepEqual(commitmentForDay(stored, "2026-10-19"), { days: ["mon", "wed"], week: "2026-W42", set_on: "2026-10-14", carried: true, resumed: true }, "next week: the usual days");
+});
+check("#carry a cleared or never-set commitment is no commitment; unknown day keys are dropped", () => {
+  assert.equal(commitmentForDay({ week: "2026-W42", days: [] }, "2026-10-13"), null);
+  assert.equal(commitmentForDay(null, "2026-10-13"), null);
+  assert.deepEqual(commitmentForDay({ week: "2026-W42", days: ["mon", "funday"] }, "2026-10-13").days, ["mon"]);
+});
+check("#carry effectiveCommitment reads the profile in the user's own calendar day", () => {
+  // 2026-10-12T02:00Z is still Sunday 2026-10-11 at UTC-7: last week's commitment is CURRENT there.
+  const p = { commitment: { week: "2026-W41", days: ["sun"] } };
+  assert.equal(effectiveCommitment(p, Date.parse("2026-10-12T02:00:00Z"), -420).carried, false);
+  assert.equal(effectiveCommitment(p, Date.parse("2026-10-12T02:00:00Z"), 0).carried, true);
+});
+check("#carry a Tuesday with Mon/Thu committed: not a planned day, Monday missed, Thursday next", () => {
+  const st = plannedDayState({ week: "2026-W42", days: ["mon", "thu"] }, "2026-10-13", { sessionDays: [], restDays: [] });
+  assert.equal(st.planned_today, false);
+  assert.deepEqual(st.missed, { day: "mon", date: "2026-10-12" });
+  assert.deepEqual(st.next, { day: "thu", date: "2026-10-15" });
+});
+check("#carry a session on the missed day, a rest mark on it, or a CATCH-UP session since it — each clears the miss", () => {
+  const stored = { week: "2026-W42", days: ["mon", "fri"] };
+  assert.equal(plannedDayState(stored, "2026-10-13", { sessionDays: ["2026-10-12"], restDays: [] }).missed, null);
+  assert.equal(plannedDayState(stored, "2026-10-13", { sessionDays: [], restDays: ["2026-10-12"] }).missed, null);
+  const wed = plannedDayState(stored, "2026-10-14", { sessionDays: ["2026-10-13"], restDays: [] });
+  assert.equal(wed.missed, null, "trained Tuesday to catch up — Wednesday must not re-ask about Monday");
+  assert.equal(wed.planned_today, false); assert.deepEqual(wed.next, { day: "fri", date: "2026-10-16" });
+});
+check("#carry days committed BEFORE the commitment was made are never 'missed' — a carried stamp counts the whole week", () => {
+  const madeThursday = { week: "2026-W42", days: ["mon", "wed", "fri"], set_on: "2026-10-15" };
+  const thu = plannedDayState(madeThursday, "2026-10-15", { sessionDays: [], restDays: [] });
+  assert.equal(thu.missed, null, "installed Thursday, picked Mon/Wed/Fri: Wednesday predates the promise");
+  assert.deepEqual(thu.next, { day: "fri", date: "2026-10-16" });
+  const carried = plannedDayState({ week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-08" }, "2026-10-15", { sessionDays: [], restDays: [] });
+  assert.deepEqual(carried.missed, { day: "wed", date: "2026-10-14" });
+});
+check("#carry Monday has nothing earlier to miss; Sunday's next planned day is next week's", () => {
+  const mon = plannedDayState({ week: "2026-W42", days: ["mon"] }, "2026-10-12", { sessionDays: [], restDays: [] });
+  assert.equal(mon.planned_today, true); assert.equal(mon.missed, null); assert.deepEqual(mon.next, { day: "mon", date: "2026-10-19" });
+  const sun = plannedDayState({ week: "2026-W41", days: ["mon"] }, "2026-10-18", { sessionDays: [], restDays: [] });
+  assert.equal(sun.planned_today, false); assert.deepEqual(sun.next, { day: "mon", date: "2026-10-19" });
 });
 
 console.log(`\n${passed} test(s) passed.`);

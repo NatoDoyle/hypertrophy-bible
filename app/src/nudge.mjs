@@ -13,6 +13,8 @@
 // Pure decision + injectable store/sender, so the whole thing unit-tests on the
 // file store and the Workers cron handler stays a two-liner.
 
+import { localDayKey, commitmentForDay, weekDayKey } from "../../tools/derive-core.mjs";
+
 export const NUDGE_STAGE_1_DAYS = 4;  // "your next session is ready when you are"
 export const NUDGE_STAGE_2_DAYS = 14; // "the door's open — re-entry is eased" (final)
 // Stage 0 is the ACTIVATION nudge: never trained, anchored on account creation.
@@ -21,9 +23,25 @@ export const NUDGE_STAGE_2_DAYS = 14; // "the door's open — re-entry is eased"
 // days did not merely fail to get round to it.
 export const NUDGE_STAGE_0_DAYS = 2;
 
-export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now, createdAt = null, hasAnySession = false }) {
+// A day the user has said is NOT for training — a marked rest day, or, with a weekly
+// plan (carried forward, W271), a day off the plan. Every "train today" reminder
+// stands down on it: lapse, comeback and streak-freeze pushes AND the comeback email,
+// through this ONE predicate (lesson 1). Read in the user's own calendar day.
+export function quietToday(user, now) {
+  const today = localDayKey(now, user?.profile?.tz_offset_min);
+  if (!today) return { today: null, restToday: false, plan: null, plannedToday: null, quiet: false };
+  const restToday = (user?.rest_days ?? []).includes(today);
+  const plan = commitmentForDay(user?.profile?.commitment, today);
+  const plannedToday = plan ? plan.days.includes(weekDayKey(today)) : null;
+  return { today, restToday, plan, plannedToday, quiet: restToday || plannedToday === false };
+}
+
+export function comebackStage({ lastSessionAt, nudge, paused, remindersOff, now, createdAt = null, hasAnySession = false, skipToday = false }) {
   // The pause promise and the opt-out are absolute, and stay the first line.
   if (paused || remindersOff) return null;
+  // A quiet day (quietToday): hold the stage back WITHOUT claiming it, so it goes
+  // out the next eligible day instead of being spent on a day off.
+  if (skipToday) return null;
   if (!lastSessionAt) {
     // This used to `return null` here, under "never-trained users are onboarding's
     // job, not email's". That handed the job to a department that does not exist:
@@ -77,6 +95,7 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       // Already loaded above — the activation branch costs no extra store call.
       createdAt: user.created_at ?? null,
       hasAnySession: !!has_any_session,
+      skipToday: quietToday(user, now).quiet,
     });
     if (!hit) continue;
     // CLAIM first (CAS — the precondition lives INSIDE the mutator, per the

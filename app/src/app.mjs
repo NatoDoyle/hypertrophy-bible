@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, sessionDayKey } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -526,7 +526,9 @@ export function createApp(store, config = {}) {
     // The user's LOCAL calendar day (client passes ?d=YYYY-MM-DD; a date is not a
     // credential so it's fine in the query, unlike user_id). Drives the daily-flow
     // done-state so "logged today" matches the day the user is actually living.
-    const clientDay = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : nowISO.slice(0, 10); })();
+    // The user's own calendar day: the client always sends it (?d=); a caller that
+    // doesn't gets the day in the user's frame, never the raw UTC slice (lesson 22).
+    const clientDay = (() => { const d = c.req.query("d"); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10)); })();
     // GRADUATION (considerations #2, finding 2F). training_status was set once at
     // onboarding and changed by NOTHING afterwards, so a user who joined as a
     // beginner and has trained hard ever since stayed on beginner volume with no
@@ -713,6 +715,21 @@ export function createApp(store, config = {}) {
       calories_logged: nutrition.some((e) => onDay(e.date)),
       rest_day: (user.rest_days ?? []).includes(clientDay),
     };
+    // The weekly plan (W271, owner: "it's not aware of what day it is"): the user's
+    // committed days — this week's, or last week's carried forward — read against
+    // the day the client is living in. All null when there is no plan, so nothing
+    // downstream can claim a schedule the user never set.
+    const plan = plannedDayState(user.profile?.commitment, clientDay, {
+      sessionDays: sessions.map(sessionDayKey).filter(Boolean),
+      restDays: user.rest_days ?? [],
+    });
+    Object.assign(daily, {
+      planned_today: plan ? plan.planned_today : null,
+      next_planned_day: plan?.next ?? null,
+      // Rail #1: a paused (sick/injured) user is never told they missed a day.
+      missed_planned_day: user.paused ? null : (plan?.missed ?? null),
+      commitment_days: plan?.days ?? null,
+    });
     // Latest logged bodyweight (kg) — feeds buildToday's body-scaled starting-weight
     // guess for a lift with no history. `bodyweights` is ASC-sorted (byDate), so the
     // last entry is the most recent; no log yet -> null, and buildToday falls back
@@ -724,8 +741,20 @@ export function createApp(store, config = {}) {
     const everLogged = sessions.length > 0 || (await store.hasAnySession(id));
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
-    return c.json({ card: todayCard(user, sessions), session: buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged), daily, exercise_units: user.profile?.exercise_units ?? {} });
+    const session = buildToday(user, sessions, readiness, user.custom_exercises || [], nowISO, latestBodyweightKg, everLogged);
+    // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
+    // down when the user has said which days they train (the hub's planned-day and
+    // missed-day lines speak to the schedule instead).
+    if (plan && session) session.gap_note = null;
+    return c.json({ card: todayCard(user, sessions), session, daily, exercise_units: user.profile?.exercise_units ?? {} });
   });
+
+  // ONE shape for a commitment wherever it's returned (the save and the read), so a
+  // round-trip is byte-identical: the stored fields plus whether it's carried.
+  const commitmentView = (stored, todayKey) => {
+    const eff = commitmentForDay(stored, todayKey);
+    return eff ? { week: eff.week, days: eff.days, set_on: eff.set_on, carried: eff.carried, resumed: eff.resumed } : null;
+  };
 
   // Skip today's workout: the cycle ADVANCES past it (the next session in the
   // split is up; the skipped one returns next cycle). Stored as a counter on
@@ -852,25 +881,19 @@ export function createApp(store, config = {}) {
 
   // Adherence & gamification: streak, XP/level, milestones, motivational state.
   app.get("/api/adherence", async (c) => {
-    const { id, user, error } = await requireUser(c);
+    const { id, user, tz, error } = await requireUser(c);
     if (error) return error;
     const sessions = await store.listSessions(id);
-    // Only surface a commitment for THE CURRENT iso week — a stale one from a
-    // prior week reads back as unset so the client re-prompts naturally,
-    // without needing its own copy of the iso-week algorithm. Localized by the
-    // user's own tz (isoWeekKeyLocal) so this agrees with the commitment's own
-    // localized storage below AND with push.mjs's localized consumption check
-    // — a raw UTC week here would silently disagree with both near the
-    // UTC week boundary for anyone west of UTC.
-    const curWeek = isoWeekKeyLocal(Date.now(), user.profile?.tz_offset_min);
-    // ORDINAL, not equality (lesson 40): "is this commitment still current" must
-    // read stale only when its week is genuinely PAST. A stamp that reads as a
-    // LATER week than the viewer's frame (tz captured after the save, near the
-    // week boundary — e.g. stamped in the UTC week, read from UTC-8 while its
-    // Monday hasn't arrived) is not stale, and the equality test silently
-    // un-set a commitment the user made an hour ago every early-Monday window.
-    // ISO week keys are zero-padded, so string order IS chronological order.
-    const commitment = (user.profile?.commitment?.week ?? "") >= curWeek ? user.profile.commitment : null;
+    // ONE frame for this whole answer: the request's own clock (header, else stored).
+    const nowISO = new Date().toISOString();
+    // The commitment in force today in the user's own frame: this week's, or last
+    // week's CARRIED forward (W271 — the owner chose a weekly picker that carries
+    // itself forward each Monday). Ordinal inside commitmentForDay (lesson 40).
+    const commitment = commitmentView(user.profile?.commitment, localDayKey(nowISO, tz));
+    // "No fixed days this week" in force: which days come back next week (the card
+    // says so — over an empty week, or over a day picked for this week alone).
+    const storedC = user.profile?.commitment;
+    const commitmentResumeDays = (storedC?.week ?? "") >= isoWeekKeyLocal(Date.parse(nowISO), tz) && storedC?.resume_days?.length ? storedC.resume_days : null;
     // Surface the cheer tally on the main Coach view (not just buried in the share
     // box) so the social validation actually lands where the user looks. Only an
     // extra read for users who've opted into sharing; null/0 otherwise.
@@ -889,7 +912,7 @@ export function createApp(store, config = {}) {
     // "✓ signed in / your progress is saved" forever — Wave 230 stopped new
     // plantings, but a stopped write does not reach flags already stored (lesson
     // 41); this field is what lets the client reconcile them against the truth.
-    return c.json({ ...adherenceReport(user, sessions), reminders_off: user.profile?.reminders_off === true, commitment, share_cheers: shareCheers, nudged,
+    return c.json({ ...adherenceReport(user, sessions, nowISO, tz), reminders_off: user.profile?.reminders_off === true, commitment, commitment_resume_days: commitmentResumeDays, share_cheers: shareCheers, nudged,
       account_email: await store.accountEmail(id) });
   });
 
@@ -907,15 +930,28 @@ export function createApp(store, config = {}) {
     // prod). Validate at the door so both stores answer a malformed request identically.
     if (!b.user_id) return c.json({ error: "unknown user" }, 404);
     const days = Array.isArray(b.days) ? [...new Set(b.days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : [];
+    const headerTz = parseTzOffset(c.req.header("X-HB-TZ"));
     const updated = await store.updateUser(b.user_id, (u) => {
-      // Localized by the user's OWN stored tz (isoWeekKeyLocal) — a raw UTC stamp
-      // can already read as next week while it's still today for anyone west of
-      // UTC, silently disagreeing with push.mjs's own localized consumption check.
-      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKeyLocal(Date.now(), u.profile?.tz_offset_min), days } };
+      // Localized by the user's own clock (the request's header, else the stored
+      // offset) — a raw UTC stamp can already read as next week for anyone west of
+      // UTC. `set_on` is the local day the promise was made: days of THIS week before
+      // it are never "missed" (W271). An empty `days` CLEARS the plan (no carry).
+      const tzNow = headerTz ?? u.profile?.tz_offset_min;
+      const today = localDayKey(Date.now(), tzNow);
+      // "No fixed days this week" is week-scoped, exactly as it says: keep the days
+      // in force today to RESUME once this week has passed (commitmentForDay). While
+      // such a clear is in force, a day picked is for THIS week alone and a second
+      // clear keeps the same usual days — the cleared card promised they come back.
+      const week = isoWeekKeyLocal(Date.now(), tzNow);
+      const stored = u.profile?.commitment;
+      const pending = (stored?.week ?? "") >= week && Array.isArray(stored?.resume_days) && stored.resume_days.length ? stored.resume_days : null;
+      const resume = pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
+      u.profile = { ...(u.profile ?? {}), commitment: { week, days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
-    return c.json({ commitment: updated.profile.commitment });
+    const savedOn = updated.profile.commitment.set_on;
+    return c.json({ commitment: commitmentView(updated.profile.commitment, savedOn) ?? { ...updated.profile.commitment, carried: false } });
   });
 
   // --- Web Push device reminders (#4): subscribe/unsubscribe + the public key.
@@ -1043,11 +1079,15 @@ export function createApp(store, config = {}) {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
     const now = new Date().toISOString();
+    const headerTz = parseTzOffset(c.req.header("X-HB-TZ"));
     const sessions = await store.listSessions(b.user_id);
-    let frozenWeek = null, reason = null;
+    let frozenWeek = null, reason = null, frameTz = null;
     const updated = await store.updateUser(b.user_id, (u) => {
       const freezes = u.streak_freezes || [];
-      const state = streakFreezeState(sessions, now, freezes, u.paused || null, u.pause_history || []);
+      // The SAME frame /api/adherence offered the week in (W271): a UTC frame here
+      // spent a token on a week the user never saw, early on a local Monday.
+      frameTz = headerTz ?? u.profile?.tz_offset_min ?? null;
+      const state = streakFreezeState(sessions, localDayKey(now, frameTz) ?? now, freezes, u.paused || null, u.pause_history || []);
       // Client may name a week to protect; else default to the most recent missed one.
       const week = b.week ? (state.freezable.includes(b.week) ? b.week : null) : state.protectable_week;
       if (state.balance <= 0) { reason = "no-tokens"; return u; }
@@ -1059,7 +1099,7 @@ export function createApp(store, config = {}) {
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
     if (!frozenWeek) return c.json({ error: reason || "cannot-freeze" }, 400);
-    return c.json({ frozen_week: frozenWeek, ...adherenceReport(updated, sessions, now) });
+    return c.json({ frozen_week: frozenWeek, ...adherenceReport(updated, sessions, now, frameTz) });
   });
 
   // --- Shareable progress card (opt-in social, #10) --------------------------

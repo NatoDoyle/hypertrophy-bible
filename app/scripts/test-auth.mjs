@@ -199,6 +199,14 @@ try {
   await store.reassignUserData("mp2-from", "mp2-to");
   const mp2To = await store.getUser("mp2-to");
   ok("merge keeps to's own commitment over from's", mp2To.profile.commitment.days[0] === "fri");
+  // W271: a commitment now CARRIES FORWARD, so a survivor's dormant March plan is live —
+  // the NEWER stamp (the intention stated most recently) must win; a same-week tie still
+  // keeps the survivor's (the line above).
+  await store.saveUser("mpnew-to", { profile: { commitment: { week: "2026-W10", days: ["tue", "thu"] } } });
+  await store.saveUser("mpnew-from", { profile: { commitment: { week: "2026-W42", days: ["mon", "wed", "fri"], set_on: "2026-10-12" } } });
+  await store.reassignUserData("mpnew-from", "mpnew-to");
+  const mpNewTo = await store.getUser("mpnew-to");
+  ok("merge: the newer commitment wins over a survivor's dormant (now carried) one", JSON.stringify(mpNewTo.profile.commitment?.days) === JSON.stringify(["mon", "wed", "fri"]));
   ok("merge dedups an identical streak-freeze week instead of duplicating it", mp2To.streak_freezes.length === 1);
 
   // --- Cloud loop: freeze_pushed_week (Wave 145/146, added after Wave 142's

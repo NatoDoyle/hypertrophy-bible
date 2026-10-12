@@ -5,7 +5,7 @@
 //      pressure/streak-risk with zero penalty.
 //   2. The "streak" is forgiving (counts weeks trained, bridges one missed week,
 //      grace on the in-progress week) and framed as identity, never shame.
-import { isoWeekKey, weekHasPassed, isHardSet, sessionWeekKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP } from "../../tools/derive-core.mjs";
+import { isoWeekKey, weekHasPassed, isHardSet, sessionWeekKey, sessionDayKey, detectPersonalRecords, PR_XP, luckySetsInSession, LUCKY_SET_XP, localDayKey, plannedDayState, WEEK_DAY_KEYS, weekDayKey } from "../../tools/derive-core.mjs";
 import { COMEBACK_GAP_DAYS } from "./coach.mjs"; // ONE threshold — the message and the deload must fire together
 
 // Epoch-ms of the Monday that starts ISO week `week` of ISO year `year`.
@@ -119,13 +119,15 @@ function isoWeekKeyFromOrdinal(ord) {
 // there later can't silently leak. NO email, user_id, name, bodyweight, nutrition,
 // check-ins, injuries, or raw sessions ever cross this boundary.
 export function publicShareCard(user, sessions, now = new Date().toISOString()) {
-  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || [], user.streak_freezes || []);
+  // The OWNER's week, never the viewer's: localized once from the owner's stored tz.
+  const weekNow = localDayKey(now, user.profile?.tz_offset_min) ?? now;
+  const streak = weeksConsistent(sessions, weekNow, user.paused || null, user.pause_history || [], user.streak_freezes || []);
   const { level } = xpAndLevel(sessions);
   // sessions_this_week (#10 social — weekly race): the SAME aggregate-only allowlist
   // model as the other three fields, just resetting every week instead of all-time —
   // it's what turns the static streak/level leaderboard into a comparison with actual
   // urgency (a partner can be "ahead" only until Sunday, not forever).
-  return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length, sessions_this_week: weeklySummary(sessions ?? [], now).sessions };
+  return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length, sessions_this_week: weeklySummary(sessions ?? [], weekNow).sessions };
 }
 
 export function xpAndLevel(sessions) {
@@ -228,7 +230,17 @@ export function celebrationCopy(cel) {
 
 // Motivational state — powers the Today header. Suppressed to "paused" when the
 // user has flagged injury/illness (rail #1: no pressure, no guilt, ever).
-export function adherenceStatus(sessions, now, paused) {
+// `now` is the real INSTANT (the comeback threshold is a duration and must fire with
+// the deload it announces); `weekNow` is the user's own calendar day, for the week
+// question (W271 — the UTC instant read a west-of-UTC Sunday evening as next week).
+// With a weekly plan (`plan` — plannedDayState, the SAME predicate the Today hub
+// reads, so the header and the hub can never contradict each other on one screen):
+// a day off the plan or a marked rest day never asks for a session (the owner's
+// complaint); a missed planned day agrees with the hub's catch-up line; a planned
+// today with a later planned day still ahead is calm; the LAST planned day — or no
+// plan at all — brings the loss-aversion copy back (Goal 4).
+const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+export function adherenceStatus(sessions, now, paused, { weekNow = now, plan = null, restToday = false } = {}) {
   if (paused) return { state: "paused", message: "Paused — heal up. Nothing's at stake and your streak is safe." };
   const times = sessions.filter((s) => s.date).map((s) => +new Date(s.date)).sort((a, b) => b - a);
   if (!times.length) return { state: "new", message: "Log your first session to start your streak." };
@@ -236,8 +248,28 @@ export function adherenceStatus(sessions, now, paused) {
   // Same threshold AND same rounding as suggestWeight's layoff deload, so this
   // message is only ever shown when the weights really are eased.
   if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
-  const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === weekOrdinal(now));
-  if (!trainedThisWeek) return { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
+  const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === weekOrdinal(weekNow));
+  if (!trainedThisWeek) {
+    const atRisk = { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
+    if (!plan) return atRisk;
+    const todayIdx = WEEK_DAY_KEYS.indexOf(weekDayKey(weekNow));
+    const nextIdx = plan.next ? WEEK_DAY_KEYS.indexOf(plan.next.day) : -1;
+    const nextName = plan.next ? DAY_NAME[plan.next.day] : null;
+    const nextThisWeek = plan.next && nextIdx > todayIdx;
+    if (restToday) return { state: "scheduled", message: nextName ? `Rest day today — next training day: ${nextName}.` : "Rest day today." };
+    if (plan.missed) {
+      const missed = DAY_NAME[plan.missed.day];
+      // A planned day still ahead THIS week keeps the week (Goal 4): name it, and save
+      // the loss-aversion line for when today really is the last chance.
+      if (nextThisWeek) return { state: "scheduled", message: plan.planned_today
+        ? `Missed ${missed}? Today's a training day — and ${nextName} is still ahead.`
+        : `Missed ${missed}? Catch up today — or ${nextName} keeps the week on track.` };
+      return { state: "at-risk", message: `Missed ${missed}? A session today keeps the chain alive.` };
+    }
+    if (!plan.planned_today) return { state: "scheduled", message: nextName ? `Next training day: ${nextName}${nextThisWeek ? " — the week's still yours" : ""}.` : "No training day planned." };
+    if (nextThisWeek) return { state: "scheduled", message: `Today's a training day — and ${nextName} is still ahead this week.` };
+    return atRisk;
+  }
   return { state: "on-track", message: "On track this week. Nice." };
 }
 
@@ -385,19 +417,26 @@ export function sessionsInWeek(sessions, weekKey) {
   return (sessions ?? []).filter((s) => (s.local_date || s.date) && sessionWeekKey(s) === weekKey).length;
 }
 
-// The whole adherence payload for the app.
-export function adherenceReport(user, sessions, now = new Date().toISOString()) {
+// The whole adherence payload for the app. `now` is the real instant; `tz` (minutes
+// east of UTC — the request's header, else the user's stored offset) localizes it
+// ONCE into the user's own calendar day for every week question below. Durations
+// keep the instant. Never shift inside the week functions themselves: some callers
+// (celebrationEvent) already hold a local date, and a second shift moves the week.
+export function adherenceReport(user, sessions, now = new Date().toISOString(), tz = user?.profile?.tz_offset_min) {
   const paused = !!user.paused;
   const freezes = user.streak_freezes || [];
-  const streak = weeksConsistent(sessions, now, user.paused || null, user.pause_history || [], freezes);
+  const weekNow = localDayKey(now, tz) ?? now;
+  const restDays = user.rest_days ?? [];
+  const plan = plannedDayState(user.profile?.commitment, weekNow, { sessionDays: sessions.map(sessionDayKey).filter(Boolean), restDays });
+  const streak = weeksConsistent(sessions, weekNow, user.paused || null, user.pause_history || [], freezes);
   return {
     streak_weeks: streak,
     ...xpAndLevel(sessions),
     sessions_logged: sessions.length,
     milestones: milestones(sessions.length),
-    status: adherenceStatus(sessions, now, paused),
-    week: weeklySummary(sessions, now),
+    status: adherenceStatus(sessions, now, paused, { weekNow, plan, restToday: restDays.includes(weekNow) }),
+    week: weeklySummary(sessions, weekNow),
     paused,
-    streak_freeze: streakFreezeState(sessions, now, freezes, user.paused || null, user.pause_history || []),
+    streak_freeze: streakFreezeState(sessions, weekNow, freezes, user.paused || null, user.pause_history || []),
   };
 }

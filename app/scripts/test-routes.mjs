@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey, isoWeekKeyLocal, GRADUATION } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
@@ -1025,11 +1025,74 @@ try {
   // (null on the file store → 404, but a THROW on D1 → 500 in prod — a real bug prod-smoke caught).
   const noUserCommit = await json("POST", "/api/commitment", { days: ["mon"] });
   ok("#commitment with no user_id is a clean 404 (guarded before the store call)", noUserCommit.status === 404);
-  // A commitment stamped for a PRIOR iso week must read back as unset (never a
-  // stale plan silently lingering into a new week).
+  // W271 (owner's choice): a PRIOR week's commitment no longer reads back as unset — it
+  // CARRIES FORWARD ("each Monday it carries last week's choice forward"), marked as
+  // carried so the card can say "same as last week". This test asserted the old
+  // limitation; it now pins the feature that deleted it (lesson 45's corollary).
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"], set_on: "2020-01-01" }; return u; });
+  const carriedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a prior week's days carry forward via /api/adherence, marked carried",
+    carriedAdh.commitment?.carried === true && JSON.stringify(carriedAdh.commitment?.days) === JSON.stringify(["mon"]));
+  // …but a PRE-W271 answer (no set_on) was asked as "this week" only: one stale by
+  // years is no plan, not a revived schedule (lesson 37).
   await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon"] }; return u; });
-  const staleAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
-  ok("#commitment from a prior week reads back as unset via /api/adherence", staleAdh.commitment === null);
+  const legacyAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a years-old pre-W271 answer is not revived as a schedule", legacyAdh.commitment === null);
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: ["mon", "fri"], set_on: "2020-01-01" }; return u; });
+  const cleared = await json("POST", "/api/commitment", { user_id: cUser, days: [] });
+  const clearedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment 'No fixed days this week' clears THIS week (no plan now) and keeps the usual days to resume (lesson 27's way back)",
+    cleared.status === 200 && clearedAdh.commitment === null
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  ok("#commitment …and /api/adherence says which days come back, so the card can promise exactly that",
+    JSON.stringify(clearedAdh.commitment_resume_days) === JSON.stringify(["mon", "fri"]));
+  // Review C8: picking a day from the cleared card is for THIS week; the promised days
+  // still come back — and a second clear keeps the SAME usual days, not the one-off pick.
+  const satPick = await json("POST", "/api/commitment", { user_id: cUser, days: ["sat"] });
+  const satAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a day picked in a cleared week is this week's plan, and the usual days are still promised for next week",
+    satPick.status === 200 && JSON.stringify(satAdh.commitment?.days) === JSON.stringify(["sat"])
+    && JSON.stringify(satAdh.commitment_resume_days) === JSON.stringify(["mon", "fri"])
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  await json("POST", "/api/commitment", { user_id: cUser, days: [] });
+  ok("#commitment …and clearing again keeps the usual days, not the one-off pick",
+    JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: [], resume_days: ["tue"], set_on: "2020-01-01" }; return u; });
+  const resumedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment days back after a cleared week are marked resumed (the card must not say 'same as last week')",
+    resumedAdh.commitment?.resumed === true && resumedAdh.commitment?.carried === true && JSON.stringify(resumedAdh.commitment?.days) === JSON.stringify(["tue"]));
+  await store.updateUser(cUser, (u) => { delete u.profile.commitment; return u; }); // later checks read cUser as plan-less
+
+  // --- #weekly-plan (W271): Today knows which days are planned. Fixed PAST dates via
+  // ?d= so nothing moves with the clock (lesson 64): 2026-10-05 is a Monday (W41).
+  const wpUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(wpUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" }; return u; });
+  const wpWed = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": wpUser } })).json()).daily;
+  ok("#weekly-plan a Wednesday with Mon/Fri planned: not a planned day, Monday missed, Friday next",
+    wpWed?.planned_today === false && wpWed?.missed_planned_day?.date === "2026-10-05" && wpWed?.next_planned_day?.date === "2026-10-09");
+  await json("POST", "/api/session", { user_id: wpUser, session_id: "wp-tue", date: "2026-10-06T10:00:00Z", local_date: "2026-10-06", sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const wpWed2 = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": wpUser } })).json()).daily;
+  ok("#weekly-plan …a Tuesday catch-up answers Monday — Wednesday doesn't ask again", wpWed2?.missed_planned_day === null && wpWed2?.planned_today === false);
+  const sickUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(sickUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" }; u.paused = { from: "2026-10-04", reason: "sick" }; return u; });
+  const sickWed = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": sickUser } })).json()).daily;
+  ok("#weekly-plan a paused (sick/injured) user is never told they missed a day — rail #1", sickWed?.missed_planned_day === null);
+  const noPlanToday = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": cUser } })).json()).daily;
+  ok("#weekly-plan no commitment → no planned-day fields claim anything", noPlanToday?.planned_today === null && noPlanToday?.next_planned_day === null);
+  // set_on: the day the promise was made, in the CALLER's frame — days before it are never "missed".
+  const soUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  const soRes = await app.request("/api/commitment", { method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": "-420" }, body: JSON.stringify({ user_id: soUser, days: ["mon"] }) });
+  const soData = await soRes.json();
+  ok("#weekly-plan a saved commitment records the local day it was made (set_on) in the caller's frame",
+    soData.commitment?.set_on === localDayKey(Date.now(), -420) && soData.commitment?.week === isoWeekKeyLocal(Date.now(), -420));
+  // gap_note: a plan explains a gap, so the "it's been N days" reassurance stands down.
+  const gnUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await json("POST", "/api/session", { user_id: gnUser, session_id: "gn-1", date: dAgo(6), local_date: dAgo(6).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const gnBefore = (await (await app.request("/api/today", { headers: { "X-HB-User": gnUser } })).json()).session;
+  await json("POST", "/api/commitment", { user_id: gnUser, days: ["mon", "thu"] });
+  const gnAfter = (await (await app.request("/api/today", { headers: { "X-HB-User": gnUser } })).json()).session;
+  ok("#weekly-plan a 6-day gap shows the reassurance with no plan, and stands down once a plan explains it",
+    !!gnBefore?.gap_note && gnAfter?.gap_note === null);
 
   // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
   // "does this user actually have an account". The client used to trust a
@@ -1037,7 +1100,7 @@ try {
   // link and never clicked it saw "✓ signed in / your progress is saved" over an
   // account that did not exist, with no way to correct it (lesson 41: stopping the
   // false write does not reach the flags already planted).
-  ok("#account_email is null while no verified account exists", staleAdh.account_email === null);
+  ok("#account_email is null while no verified account exists", carriedAdh.account_email === null);
   const acctLink = await requestMagicLink(store, { email: "trueacct@t.com", anonUserId: cUser });
   await json("POST", "/api/auth/consume", { token: acctLink.token });
   const acctAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();

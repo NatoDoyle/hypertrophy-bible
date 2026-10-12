@@ -126,3 +126,48 @@ export function dayLabel(ymd, todayYmd) {
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
   return `${WEEKDAY_SHORT[d.getUTCDay()]} ${+m[3]} ${MONTH_SHORT[+m[2] - 1]}`;
 }
+
+// The Today hub's workout row, decided in ONE place (W271): what today means for the
+// workout given the weekly plan. Order matters — a logged workout and a deliberate
+// rest day win; a never-trained user's FIRST workout and a comeback always stay the
+// hero (saving days on the day-one card must never demote the first session, and a
+// returner isn't gated behind an old schedule); then a missed planned day asks to
+// catch up; then an unplanned day steps the workout back. No plan → "start", exactly
+// as before the plan existed.
+export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) {
+  if (daily.workout_logged) return "done";
+  if (daily.rest_day) return "rest";
+  if (session.never_trained || status.state === "comeback") return "start";
+  // Rail #1: a paused (sick/injured) user is promised no pressure — never "missed".
+  if (daily.missed_planned_day && status.state !== "paused") return "missed";
+  if (daily.planned_today === false) return "unplanned";
+  return "start";
+}
+
+// The phone calendar's recurring event (the .ics export) is the one reminder the app
+// can't edit or silence. When the plan's days no longer match the days last exported
+// (Monday-0 indices, as seedCalendarDays stores them), name the calendar's stale days
+// so the user can replace that event. Null when nothing was exported or they match.
+const SHORT_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_INDEX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+export function calendarDrift(exportedIdx, commitDays) {
+  const exported = (Array.isArray(exportedIdx) ? exportedIdx : []).filter((i) => Number.isInteger(i) && i >= 0 && i < 7);
+  if (!exported.length) return null;
+  const now = new Set((commitDays ?? []).map((d) => DAY_INDEX[d]).filter((i) => i != null));
+  const same = exported.length === now.size && exported.every((i) => now.has(i));
+  return same ? null : { stale: [...new Set(exported)].sort((a, b) => a - b).map((i) => SHORT_DAY[i]) };
+}
+
+// What the commitment card should say about the phone-calendar event, judged against
+// the days REALLY in force: this week's plan, else the usual days a "No fixed days
+// this week" clear will bring back, else none. Never advises deleting an event that
+// holds the days the same card says are coming back (W271 review).
+//   replace         — a plan is in force and the event holds other days
+//   delete-if-done  — cleared this week; the days coming back differ from the event
+//   save-or-delete  — no plan at all; the event still reminds on old days
+export function calendarAdvice(exportedIdx, { days = [], resumeDays = null } = {}) {
+  const against = days?.length ? days : resumeDays?.length ? resumeDays : [];
+  const d = calendarDrift(exportedIdx, against);
+  if (!d) return null;
+  return { ...d, advice: days?.length ? "replace" : resumeDays?.length ? "delete-if-done" : "save-or-delete" };
+}
