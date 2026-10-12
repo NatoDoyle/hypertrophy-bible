@@ -3,13 +3,13 @@
 // POST /api/session silently dropped the `deload` flag while every unit test —
 // which fed sessions straight into coach.mjs — stayed green. What the client
 // sends must be tested through the same door the client uses.
-import { rmSync } from "node:fs";
+import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
@@ -2844,6 +2844,13 @@ try {
   const altLib = await (await app.request("/api/exercises", { headers: { "X-HB-User": altU } })).json();
   ok("#alternating /api/exercises rows carry it too (a mid-session swap builds its replacement from these)",
     altLib.find((e) => e.id === "walking-lunge")?.alternating === true && altLib.find((e) => e.id === "bulgarian-split-squat")?.alternating === false);
+  // --- #rest (W273): every row the player reads carries the lift's own KB rest length —
+  // a field dropped by a whitelist silently turns the feature off (the reason this file exists).
+  const kbEx = (id) => JSON.parse(readFileSync(new URL(`../../data/exercises/${id}.json`, import.meta.url)));
+  ok("#rest /api/today's rows carry the lift's own rest (rest_s)",
+    ["walking-lunge", "bulgarian-split-squat"].every((id) => Number.isFinite(altEx[id]?.rest_s) && altEx[id].rest_s === restSeconds(kbEx(id))));
+  ok("#rest …and so do /api/exercises rows (a fallback swap row builds from them)",
+    altLib.find((e) => e.id === "walking-lunge")?.rest_s === restSeconds(kbEx("walking-lunge")));
 
   // --- #cant-do (W272): "Can't do this one?" through the real routes. "No machine for
   // this" swaps the lift everywhere and keeps it out of every future plan; "It's busy"

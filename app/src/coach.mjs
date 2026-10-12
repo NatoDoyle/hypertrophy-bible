@@ -5,8 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal,
-} from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
 const parseRange = (s) => {
@@ -611,6 +610,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       alternating: !!e?.alternating,             // → the side cue says "alternate every rep", never "all sets left first" (walking lunge)
+      rest_s: restSeconds(e),                    // → the player's rest timer: the KB table for THIS lift (W273), adjustable in the player
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,

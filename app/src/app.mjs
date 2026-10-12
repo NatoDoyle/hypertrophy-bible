@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, sessionDayKey } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -463,7 +463,7 @@ export function createApp(store, config = {}) {
     // unilateral / alternating / lengthened_bias / movement_pattern travel with the
     // row so a mid-workout swap can carry the side, "stretch-focused", and
     // inline-demo cues onto the new lift instead of silently dropping them.
-    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, custom: !!e.custom })));
+    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, rest_s: restSeconds(e), custom: !!e.custom })));
   });
 
   const exerciseNameFor = (user, id) => exerciseById.get(id)?.name ?? (user.custom_exercises || []).find((x) => x.id === id)?.name ?? id;

@@ -306,3 +306,42 @@ export function formatWeekLabel(weekKey) {
   const m = /^(\d{4})-W(\d{2})$/.exec(weekKey || "");
   return m ? `Week ${Number(m[2])}, ${m[1]}` : String(weekKey ?? "");
 }
+
+// REST (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"). Each
+// lift arrives with its own KB rest length (rest_s); the user can nudge it ±30 s in
+// the player, and the nudge is remembered per lift as an OFFSET from that length. The
+// rest itself is an absolute END TIME in the crash-safe session (sess.rest), so a
+// reload, a locked phone or an app switch resumes it instead of losing it; both
+// renderers derive what to show from these helpers.
+export const REST_DEFAULT_S = 120, REST_MIN_S = 30, REST_MAX_S = 600, REST_STEP_S = 30;
+const clampRest = (s) => Math.min(REST_MAX_S, Math.max(REST_MIN_S, Math.round(s)));
+// A row from before W273 (no rest_s — a workout resumed across the deploy) rests the
+// old 120 s, and a junk offset is ignored: the timer can never read NaN.
+export function restLength(row, offset = 0) {
+  const base = Number.isFinite(row?.rest_s) ? row.rest_s : REST_DEFAULT_S;
+  return clampRest(base + (Number.isFinite(offset) ? offset : 0));
+}
+export function newRest({ kind, length, ex = null, logged }, now) {
+  return { kind, ex, length, logged, start: now, until: now + length * 1000 };
+}
+export const restRemaining = (until, now) => (Number.isFinite(until) ? Math.max(0, Math.ceil((until - now) / 1000)) : 0);
+// A stored rest counts only while plausible (a finite end, not past, not further ahead
+// than the longest rest — a clock jump or a corrupt blob is dropped, never trusted)
+// and while it still follows the set it was started after (a set banked since means
+// it belongs to an older set).
+export function activeRest(sess, now) {
+  const r = sess?.rest;
+  if (!r || !Number.isFinite(r.until) || !Number.isFinite(r.start)) return null;
+  if (r.until <= now || r.until - now > REST_MAX_S * 1000 + 1000) return null;
+  if (r.logged !== (sess.logged?.length ?? -1)) return null;
+  return r;
+}
+export const formatRest = (sec) => { const s = Math.max(0, Math.round(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+// ±30 s moves the END from when the rest began, clamped to 30 s–10 min. Only a rest
+// between sets of ONE lift teaches that lift a new length (as an offset from its own
+// rest): a superset round's or a remainder's fixed 60 s says nothing about it — +30 on
+// a 60 s remainder would otherwise teach a 3-minute lift to rest less.
+export function adjustRest(rest, delta, row) {
+  const length = clampRest(rest.length + delta);
+  return { rest: { ...rest, length, until: rest.start + length * 1000 }, remember: rest.kind === "set" ? length - restLength(row, 0) : null };
+}

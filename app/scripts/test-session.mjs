@@ -6,7 +6,8 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
+  restLength, restRemaining, activeRest, formatRest, adjustRest, newRest } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -578,6 +579,48 @@ check("units round-trip: a deliberate lb entry never trips the lb/kg typo guard"
     assert.ok(!("rest_s" in out), "the old lift's rest length must not ride along");
   });
 }
+
+// --- #rest-state (W273): the rest is an absolute END TIME in the crash-safe session, so a
+// reload, a locked phone or an app switch resumes it; both renderers derive it here.
+check("#rest-state restLength: the lift's own rest plus the remembered offset, clamped to 30 s–10 min — never NaN", () => {
+  assert.equal(restLength({ rest_s: 180 }, 30), 210);
+  assert.equal(restLength({ rest_s: 90 }, -90), 30, "floor");
+  assert.equal(restLength({ rest_s: 180 }, 900), 600, "ceiling");
+  assert.equal(restLength({ exercise: "x" }), 120, "a row from before W273 (no rest_s, a resumed workout) rests the old 120 s");
+  assert.equal(restLength({ rest_s: undefined }, 30), 150);
+  assert.equal(restLength({ rest_s: 180 }, NaN), 180, "a junk offset is ignored");
+  assert.ok(Number.isFinite(restLength({ rest_s: "abc" }, "x")));
+});
+check("#rest-state restRemaining: whole seconds to the end, rounded up, never negative", () => {
+  const now = 1_000_000;
+  assert.equal(restRemaining(now + 5000, now), 5);
+  assert.equal(restRemaining(now + 4001, now), 5);
+  assert.equal(restRemaining(now - 1, now), 0);
+  assert.equal(restRemaining(NaN, now), 0);
+});
+check("#rest-state activeRest: a stored rest counts only while plausible AND still following the set it was started after", () => {
+  const now = 1_000_000;
+  const sess = { logged: [{}, {}], rest: newRest({ kind: "set", length: 120, ex: "squat", logged: 2 }, now - 60_000) };
+  assert.ok(activeRest(sess, now));
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: now - 1 } }, now), null, "over");
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: now + 3_600_000 } }, now), null, "an hour ahead is not a rest (a clock jump, a corrupt blob)");
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: NaN } }, now), null);
+  assert.equal(activeRest({ ...sess, logged: [{}, {}, {}] }, now), null, "a set banked since: the rest belongs to an older set");
+  assert.equal(activeRest({ logged: [] }, now), null);
+});
+check("#rest-state formatRest: m:ss", () => {
+  assert.equal(formatRest(125), "2:05"); assert.equal(formatRest(60), "1:00"); assert.equal(formatRest(9), "0:09"); assert.equal(formatRest(0), "0:00");
+});
+check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), clamped; only a SET rest teaches the lift its offset", () => {
+  const start = 1_000_000;
+  const r = newRest({ kind: "set", length: 120, ex: "squat", logged: 2 }, start);
+  const up = adjustRest(r, 30, { rest_s: 120 });
+  assert.equal(up.rest.length, 150); assert.equal(up.rest.until, start + 150_000); assert.equal(up.remember, 30, "remembered as an OFFSET from the lift's own rest");
+  assert.equal(adjustRest(newRest({ kind: "set", length: 30, ex: "squat", logged: 2 }, start), -30, { rest_s: 120 }).rest.length, 30, "never below 30 s");
+  assert.equal(adjustRest(newRest({ kind: "round", length: 60, ex: null, logged: 4 }, start), 30, { rest_s: 180 }).remember, null, "a superset round's fixed rest never re-tunes a lift");
+  assert.equal(adjustRest(newRest({ kind: "remainder", length: 60, ex: "squat", logged: 4 }, start), 30, { rest_s: 180 }).remember, null,
+    "+30 on a 60 s remainder must not teach a 180 s lift to rest LESS (premortem crash-safety-3d)");
+});
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

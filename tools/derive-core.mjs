@@ -1297,3 +1297,22 @@ export function buildFeatureReport({ profile, sessions = [], checkins = [], body
     proximity_latest_session: sessions.length ? proximityFromRepDropoff(sessions[sessions.length - 1]) : {},
   };
 }
+
+// REST LENGTH (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?").
+// The KB's rest-periods table (content/01-training-variables/rest-periods.md, Grade B:
+// "rest long enough to perform your next set well — usually ~2–3 minutes on compounds
+// and ~1–2 minutes on isolation"), applied per lift from the exercise's own data:
+//   heavy multi-joint (a barbell compound, or any high-CNS one) — 3 min: the table's
+//     "squat, deadlift, press, row: 2–3 min (sometimes more)" and the 3-min arm that
+//     out-grew 1 min (Schoenfeld 2016);
+//   other compounds, and the systemic "isolations" (hip thrusts, Nordics, rollouts:
+//     moderate CNS) — 2 min, the "moderate compounds and machine presses/rows" row;
+//   low-fatigue isolation — 90 s, mid-way through "1–2 min".
+// Unknown or custom lifts keep the 120 s the app always used. A starting point the
+// user can adjust in the player — the KB's real rule is readiness, not a stopwatch.
+export const REST_HEAVY_S = 180, REST_MODERATE_S = 120, REST_ISOLATION_S = 90;
+export function restSeconds(ex) {
+  if (!ex?.mechanic) return REST_MODERATE_S;
+  if (ex.mechanic === "compound") return ex.equipment === "barbell" || ex.cns_cost === "high" ? REST_HEAVY_S : REST_MODERATE_S;
+  return ex.cns_cost === "moderate" || ex.cns_cost === "high" ? REST_MODERATE_S : REST_ISOLATION_S;
+}

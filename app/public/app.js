@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy } from "/ui-helpers.mjs";
@@ -1714,6 +1714,7 @@ function loadSess() {
     if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
     if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
     s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; s.wUnits ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
+    if (s.rest && !activeRest(s, Date.now())) delete s.rest; // over, implausible, or for an older set — dropped, never trusted
     return s;
   } catch { return null; }
 }
@@ -2033,10 +2034,57 @@ function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
 // over whatever screen the user moved to.
 let restTimer = null;
 const stopRestTimer = () => { if (restTimer) { clearInterval(restTimer); restTimer = null; } };
+// REST (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"). Each lift
+// brings its own KB rest (rest_s); ±30 s on the rest screen adjusts THIS rest and, between
+// sets of one lift, is remembered on the device as an offset from that lift's length. The
+// rest is an end time in the crash-safe session (sess.rest), stamped ONCE where a set or
+// round is banked: a reload, a locked phone or any repaint resumes it — never restarts or
+// loses it — and only "I'm ready" or reaching zero clears it.
+const restOffsetFor = (id) => { try { const m = JSON.parse(localStorage.getItem("hb_rest") || "{}"); return Number.isFinite(m?.[id]) ? m[id] : 0; } catch { return 0; } };
+const rememberRestOffset = (id, offset) => {
+  try { const m = JSON.parse(localStorage.getItem("hb_rest") || "{}") || {}; if (offset) m[id] = offset; else delete m[id]; localStorage.setItem("hb_rest", JSON.stringify(m)); } catch {}
+};
+const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); };
+const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } };
+function showRest(rest, nextLine, row, onDone, announce) {
+  app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${formatRest(restRemaining(rest.until, Date.now()))}</div>
+    <div class="row" style="justify-content:center;gap:10px;border:0;padding:0">
+      <button class="btn ghost inline" id="rest-minus" aria-label="Rest 30 seconds less" style="margin:0">−30s</button>
+      <button class="btn ghost inline" id="rest-plus" aria-label="Rest 30 seconds more" style="margin:0">+30s</button></div>
+    <p class="muted">${nextLine}</p>
+    ${restReadiness()}
+    <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
+  wireRestCues(); wireLearnLinks();
+  // Announce ONCE (the per-second #t is not aria-live, or it would spam a screen
+  // reader every tick) and move focus to the only action.
+  say(announce);
+  $("#skip").focus();
+  const tick = () => {
+    const left = restRemaining(sess?.rest?.until, Date.now());
+    if ($("#t")) $("#t").textContent = formatRest(left);
+    if (left > 0) return;
+    stopRestTimer(); endRest();
+    try { navigator.vibrate?.([180, 90, 180]); } catch {}
+    say("Rest over — you're up.");
+    onDone();
+  };
+  // ONE handle (stopRestTimer clears it), and the display is always derived from the
+  // stored end time — a throttled interval on a locked phone shows the truth on wake.
+  restTimer = setInterval(tick, 1000);
+  $("#skip").onclick = () => { stopRestTimer(); endRest(); onDone(); };
+  const nudge = (delta) => {
+    if (!sess?.rest) return;
+    const { rest: next, remember } = adjustRest(sess.rest, delta, row);
+    sess.rest = next; saveSess();
+    if (remember != null && row?.exercise) rememberRestOffset(row.exercise, remember);
+    tick();
+  };
+  $("#rest-minus").onclick = () => nudge(-REST_STEP_S);
+  $("#rest-plus").onclick = () => nudge(REST_STEP_S);
+}
 
-function renderPlayer(resting = 0) {
+function renderPlayer() {
   stopRestTimer();
-  if (resting > 0) quitPending = false; // resting = a set was just done; reset the guard
   // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
   // slips through may crash the recovery path for a user's unposted sets.
   if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
@@ -2051,7 +2099,7 @@ function renderPlayer(resting = 0) {
   if (pIdx >= 0) {
     const L = Math.min(sess.i, pIdx), P = Math.max(sess.i, pIdx);
     if (!stationProgress(sess.logged, sess.ex, L, P).done)
-      return renderSupersetStation(L, P, resting);
+      return renderSupersetStation(L, P);
   }
   // Belt-and-braces: the cursor must never rest on an already-finished exercise.
   // Healthy flow advances via nextExerciseIndex, but a resumed old-build session (or
@@ -2073,20 +2121,11 @@ function renderPlayer(resting = 0) {
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
 
-  if (resting > 0) {
-    app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
-      <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
-      ${restReadiness()}
-      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-    wireRestCues(); wireLearnLinks();
-    // Announce rest ONCE at the start (the per-second #t is not aria-live, or it
-    // would spam a screen reader every tick) and move focus to the only action,
-    // so a keyboard/SR user knows a timer is running and where they are.
-    say(`Resting about ${resting} seconds — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
-    $("#skip").focus();
-    let left = resting;
-    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next set."); renderPlayer(0); } }, 1000);
-    $("#skip").onclick = () => { stopRestTimer(); renderPlayer(0); };
+  const rest = activeRest(sess, Date.now());
+  if (rest) {
+    quitPending = false;
+    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}`, e, () => renderPlayer(0),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
     return;
   }
 
@@ -2208,7 +2247,10 @@ function renderPlayer(resting = 0) {
     const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload); // overrides the say() above if it's a PR — the bigger news
     checkAndCelebrateLucky(e, loggedSet, wasPR);
     if (sess.complete) return finish();
-    renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
+    // A rest between sets of the SAME lift (none between exercises): its own KB length
+    // plus the user's remembered nudge, stamped once, here, in the crash-safe session.
+    if (sess.set > 0) startRest("set", restLength(sess.ex[sess.i], restOffsetFor(sess.ex[sess.i].exercise)), sess.ex[sess.i].exercise);
+    renderPlayer(0);
   };
 }
 
@@ -2219,7 +2261,7 @@ function renderPlayer(resting = 0) {
 // corrupt. L/P are the pair's indices in sess.ex (L < P). Only entered while both
 // members still owe paired rounds; any set-count remainder of the longer move is
 // finished afterwards by the normal single-exercise path.
-function renderSupersetStation(L, P, resting = 0) {
+function renderSupersetStation(L, P) {
   stopRestTimer();
   if (!sess || !sess.ex[L] || !sess.ex[P]) { clearSess(); return render(); }
   normalizeSessUnits();
@@ -2227,18 +2269,11 @@ function renderSupersetStation(L, P, resting = 0) {
   const { paired, round, done } = stationProgress(sess.logged, sess.ex, L, P); // round is 0-indexed
   if (done) return renderPlayer(0); // defensive: paired work done → hand back
 
-  if (resting > 0) {
+  const rest = activeRest(sess, Date.now());
+  if (rest) {
     quitPending = false;
-    app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
-      <p class="muted">Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}</p>
-      ${restReadiness()}
-      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-    wireRestCues(); wireLearnLinks();
-    say(`Resting about ${resting} seconds — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
-    $("#skip").focus();
-    let left = resting;
-    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next round."); renderSupersetStation(L, P, 0); } }, 1000);
-    $("#skip").onclick = () => { stopRestTimer(); renderSupersetStation(L, P, 0); };
+    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}`, null, () => renderSupersetStation(L, P),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
     return;
   }
 
@@ -2315,7 +2350,7 @@ function renderSupersetStation(L, P, resting = 0) {
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
     for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload));
-    if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
+    if (!stationProgress(sess.logged, sess.ex, L, P).done) { startRest("round", 60, null); return renderSupersetStation(L, P); } // alternating already rests each muscle: a short shared rest
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of
     // the longer paired move (it's the earliest unfinished, so it's picked and the
@@ -2329,7 +2364,8 @@ function renderSupersetStation(L, P, resting = 0) {
     saveSess();
     // A rest only when the next move is this pair's own remainder (it follows the
     // last round); moving on to a fresh exercise starts clean, like any handoff.
-    renderPlayer(nx === L || nx === P ? 60 : 0);
+    if (nx === L || nx === P) startRest("remainder", 60, sess.ex[nx].exercise);
+    renderPlayer(0);
   };
   $("#unlink").onclick = () => {
     // The busy-machine escape hatch: a superset needs TWO stations free at once —
@@ -3672,7 +3708,7 @@ function clearAccountLocalState() {
   const keys = [];
   try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
   for (const key of keys) {
-    if (key?.startsWith("hb_") && key !== "hb_rir") {
+    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest") { // hb_rest: per-lift rest nudges, a device preference too
       try { localStorage.removeItem(key); } catch {}
     }
   }
