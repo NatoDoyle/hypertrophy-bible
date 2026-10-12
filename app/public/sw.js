@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v184";
+const VERSION = "hb-shell-v185";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/ui-helpers.mjs", "/account-adopt.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -21,8 +21,10 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   if (url.pathname.startsWith("/api/")) return; // API is always live — never cached
   // The sign-in page spends a single-use credential: a stale cached copy (from before
-  // its iOS guard) could spend the code a Home-Screen user still needs. Always live.
-  if (url.pathname === "/verify.html") return;
+  // its iOS guard) could spend the code a Home-Screen user still needs, and caching it
+  // keeps token-bearing URLs in Cache Storage. Always live — under BOTH spellings:
+  // production's asset handling 307s /verify.html?token=… to /verify?token=….
+  if (url.pathname === "/verify.html" || url.pathname === "/verify") return;
 
   e.respondWith(
     caches.open(VERSION).then(async (cache) => {

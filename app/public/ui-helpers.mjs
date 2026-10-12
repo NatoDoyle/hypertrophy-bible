@@ -126,3 +126,19 @@ export function dayLabel(ymd, todayYmd) {
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
   return `${WEEKDAY_SHORT[d.getUTCDay()]} ${+m[3]} ${MONTH_SHORT[+m[2] - 1]}`;
 }
+
+// The Today hub's workout row, decided in ONE place (W271): what today means for the
+// workout given the weekly plan. Order matters — a logged workout and a deliberate
+// rest day win; a never-trained user's FIRST workout and a comeback always stay the
+// hero (saving days on the day-one card must never demote the first session, and a
+// returner isn't gated behind an old schedule); then a missed planned day asks to
+// catch up; then an unplanned day steps the workout back. No plan → "start", exactly
+// as before the plan existed.
+export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) {
+  if (daily.workout_logged) return "done";
+  if (daily.rest_day) return "rest";
+  if (session.never_trained || status.state === "comeback") return "start";
+  if (daily.missed_planned_day) return "missed";
+  if (daily.planned_today === false) return "unplanned";
+  return "start";
+}

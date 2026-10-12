@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -68,6 +68,22 @@ check("linePath: spreads x across the width, inverts y, pads, and centers a flat
   assert.ok(flat.pts.every(([, y]) => y === 25), "a flat series draws at the midline, never divides by zero");
   assert.deepEqual(linePath([], 100, 50).pts, []);
   assert.deepEqual(linePath([80], 100, 50, 5).pts, [[50, 25]], "a single point centers");
+});
+
+// --- The Today hub's ONE workout decision (W271): day one, rest, missed and unplanned
+// can't drift apart when one function decides. A never-trained user's first workout is
+// ALWAYS the hero — saving days on the day-one card must not demote it (critic, W271).
+check("hubWorkoutState: done and rest win; a first-ever workout and a comeback are always 'start'", () => {
+  const base = { daily: { workout_logged: false, rest_day: false, planned_today: false, missed_planned_day: null }, session: { never_trained: false }, status: { state: "on-track" } };
+  const st = (patch) => hubWorkoutState({ daily: { ...base.daily, ...patch.daily }, session: { ...base.session, ...patch.session }, status: { ...base.status, ...patch.status } });
+  assert.equal(st({ daily: { workout_logged: true } }), "done");
+  assert.equal(st({ daily: { rest_day: true } }), "rest");
+  assert.equal(st({ session: { never_trained: true } }), "start", "day one beats an off-plan day");
+  assert.equal(st({ status: { state: "comeback" } }), "start", "a returner isn't gated behind an old schedule");
+  assert.equal(st({}), "unplanned");
+  assert.equal(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } } }), "missed");
+  assert.equal(st({ daily: { planned_today: true } }), "start");
+  assert.equal(st({ daily: { planned_today: null } }), "start", "no plan at all: exactly as before");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -168,6 +184,15 @@ check("sw.js precaches every module app.js and verify.html import", () => {
   assert.ok(imported.includes("/account-adopt.mjs"), "the scan must see the new module (else this check proves nothing)");
   const missing = [...new Set(imported)].filter((p) => !shell.includes(p));
   assert.deepEqual(missing, [], `imported but not precached: ${missing.join(", ")}`);
+});
+
+check("sw.js never caches the sign-in page under EITHER spelling (prod serves /verify.html as /verify via a 307)", () => {
+  // Measured after the Burst-2 deploy: Cloudflare's asset handling redirects
+  // /verify.html?token=… to /verify?token=…, so a bypass for only "/verify.html"
+  // let the service worker cache token-bearing sign-in pages.
+  const sw = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
+  assert.match(sw, /url\.pathname === "\/verify\.html"/);
+  assert.match(sw, /url\.pathname === "\/verify"(?!\.)/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
