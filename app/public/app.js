@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -976,15 +976,29 @@ async function renderPlan() {
         </div><span class="muted">›</span></button>`;
     }).join("")}
     ${(d.program?.sessions ?? []).length > 1 ? `<button class="btn ghost inline" data-do-today="${esc(s.name)}" style="margin-top:8px">🔁 Do this one today</button>` : ""}</div>`).join("");
+  // "Not available at your gym" (W272): every "No machine for this" answer, with its way
+  // back — the one-way door is never one-way (lesson 27).
+  const unavailableBlock = (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
+    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
+    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${sessionCards}
+    ${unavailableBlock}
     <button class="btn secondary inline" id="edit-plan">Edit plan</button>
     ${personalizationBlock}
     ${whyBlock}
     ${cardioBlock}`;
   wireLearnLinks();
   $("#edit-plan").onclick = renderPlanEdit;
+  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
+    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
+    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
+    await renderPlan();
+    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+  });
   // "Do this one today": the same server-side day swap the Today sheet does —
   // the chosen day and today's trade places for this cycle. Mid-session it's
   // refused client-side (the live session's exercises are already dealt).
@@ -2078,6 +2092,7 @@ function renderPlayer(resting = 0) {
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
+    ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
@@ -2099,7 +2114,7 @@ function renderPlayer(resting = 0) {
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
-    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="swap">🔄 Swap this exercise</button>` : ""}
+    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="cantdo">🙅 Can't do this one?</button>` : ""}
     ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
@@ -2108,7 +2123,8 @@ function renderPlayer(resting = 0) {
   // focus on the exercise heading (tabindex=-1) so they resume at the top of the
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
-  if ($("#swap")) $("#swap").onclick = () => renderSwap();
+  if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
+  if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
   // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
   // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
@@ -2384,68 +2400,128 @@ function renderExerciseSheet(ex, d, back) {
 // player), so the swap is clean — we replace this slot's exercise, keep its sets/
 // reps/RIR target, and reset the weight (a fresh lift you pick a weight for). It's
 // a TEMPORARY, session-only change — the saved plan is untouched.
-async function renderSwap() {
-  const cur = sess.ex[sess.i];
-  app.innerHTML = `<h1>Swap exercise</h1><p class="muted">Loading alternatives…</p>`;
-  let all = [];
-  try { all = await api(`/api/exercises`); } catch {}
-  const inSession = new Set(sess.ex.map((x) => x.exercise));
-  // Same primary muscle(s), the user's own equipment (the endpoint is already
-  // equipment + injury filtered), not the current lift, not already in the session.
-  const curMuscles = new Set(cur.primary_muscles ?? []);
-  const alts = all.filter((x) => x.id !== cur.exercise && !inSession.has(x.id)
-    && (x.primary_muscles ?? []).some((m) => curMuscles.has(m)));
-  if (!alts.length) {
-    app.innerHTML = `<h1>Swap exercise</h1>
-      <div class="card"><p>No alternative for the same muscle with your equipment right now.</p>
-      <p class="muted">Keep going with ${esc(cur.name)}${sess.i < sess.ex.length - 1 ? " — or push it to the end of the workout with “⤵️ Do this later” and move on" : ""}.</p></div>
-      <button class="btn" id="back">Back to ${esc(cur.name)}</button>`;
-    $("#back").onclick = () => renderPlayer(0);
-    return;
+// "CAN'T DO THIS ONE?" (W272 — owner: "I can't do this exercise"). What helps depends
+// on WHY, so the set-0 door asks — one tap each, nothing to configure:
+//   🚫 No machine for this → swapped everywhere, from now on (the server picks the
+//                            replacement; Undo here, "Bring back" on the Plan tab)
+//   ⏳ It's busy right now → swapped for today only (or ⤵️ do it later)
+//   😖 It hurts           → which joint; aggravating movements leave the plan
+//   🔍 Pick one myself    → the ranked alternatives, today only
+// Every replacement goes through replaceSlot (session-core): the slot keeps its sets,
+// reps and effort; everything else is the new lift's OWN (the old swap's {...cur}
+// spread carried the old lift's last weight and PR baseline onto the new one); and it
+// refuses rather than replace a lift with banked work, a slot the cursor has left, or
+// with a lift already in the workout.
+let swapUndo = null; // the live Undo for the last swap: { to, toName, from, fromName, saved, permanent }
+function swapUndoCard(e) {
+  if (!swapUndo || e.exercise !== swapUndo.to || sess.set !== 0 || loggedWorkSets(sess.logged, swapUndo.to) > 0) return "";
+  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(swapUndo.permanent ? `Swapped for ${swapUndo.toName} — from now on.` : `Swapped for ${swapUndo.toName} — just for today.`)}</p>
+    <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
+}
+// Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
+function applyReplacement(expect, row, undo) {
+  const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect });
+  if (!r.ok) return r.reason;
+  sess = r.sess; saveSess();
+  swapUndo = undo;
+  say(undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`);
+  renderPlayer(0);
+  return null;
+}
+async function undoSwap() {
+  const u = swapUndo;
+  if (!u) return;
+  if (u.permanent) {
+    let r;
+    try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: u.from, scope: "undo" }) }); }
+    catch { alertBar(`📴 Couldn't reach the server — bring ${u.fromName} back from the Plan tab when you're connected.`); return; }
+    if (r.error && r.error !== "not-excluded") { alertBar(`Couldn't undo that — use “Bring back” on the Plan tab.`); return; }
   }
-  const rows = alts.slice(0, 20).map((x) => `<button class="choice" data-swap="${esc(x.id)}" data-name="${esc(x.name)}">${esc(x.name)} <span class="muted">${esc(friendlyMuscles(x.primary_muscles))}</span></button>`).join("");
-  app.innerHTML = `<h1>Swap ${esc(cur.name)}</h1>
-    <p class="muted">Pick a replacement that trains the same muscle. Just for today — your saved plan doesn't change.</p>
-    ${rows}
-    <div class="card"><b>😖 Did this hurt?</b>
-      <p class="muted">Swapping only fixes today. If a joint is complaining, tell me which one and I'll keep aggravating movements out of your plan from now on.</p>
-      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}</div>
-    <button class="btn ghost" id="back">Keep ${esc(cur.name)}</button>`;
-  $("#back").onclick = () => renderPlayer(0);
-  // The reactive injury path app-design-spec.md:174 described and nothing implemented:
-  // the swap button was generic, session-only, and never wrote anything down, so the
-  // app could watch you avoid the same lift every week and never learn from it.
-  app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
-    const region = b.dataset.hurt;
-    const res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) });
-    if (res.error) { say("Couldn't save that — swapping for today instead."); return; }
-    say(`Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.`);
-    renderSwap(); // the alternatives list is injury-filtered server-side, so re-fetch it
-  });
-  app.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
-    const id = b.dataset.swap, name = b.dataset.name;
-    const chosen = alts.find((x) => x.id === id);
-    // Replace the slot in place: keep the prescription (sets/rep_range/rir), swap the
-    // exercise + its display fields, and treat it as a fresh lift (no suggested_kg,
-    // so the player prompts for a starting weight). Reset this slot's cached inputs.
-    sess.ex[sess.i] = {
-      ...cur, exercise: id, name,
-      primary_muscles: chosen?.primary_muscles ?? [],
-      equipment: chosen?.equipment ?? null,
-      // Carry the new lift's own coaching cues (the endpoint now returns them) — a
-      // unilateral or stretch-focused replacement keeps its "each side" / "🎯
-      // stretch-focused" guidance instead of inheriting a blank. movement_pattern
-      // travels too, or the swapped-in lift would show the OLD lift's inline demo.
-      suggested_kg: null, cue: null,
-      unilateral: !!chosen?.unilateral, alternating: !!chosen?.alternating, lengthened_bias: !!chosen?.lengthened_bias,
-      movement_pattern: chosen?.movement_pattern ?? null,
-      superset_with: undefined, superset_with_name: undefined,
-    };
-    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.eff[sess.i]; delete sess.wUnits[sess.i];
-    saveSess();
-    say(`Swapped to ${name}.`);
-    renderPlayer(0);
-  });
+  // The saved row is the old lift's OWN server-built row, so reverting with it can't
+  // leak anything; the same guards apply (a banked set of the substitute stays).
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to });
+  if (back.ok) { sess = back.sess; saveSess(); }
+  swapUndo = null;
+  renderPlayer(0);
+  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName }));
+}
+async function renderCantDo() {
+  const cur = sess.ex[sess.i];
+  const canLater = sess.i < sess.ex.length - 1;
+  const live = () => sess.ex.map((x) => x.exercise);
+  const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null, ...body }) });
+  const tail = `${canLater ? `<button class="btn ghost" id="cd-later">⤵️ Do it later in this workout</button>` : ""}
+    <button class="btn ghost" id="cd-back">Keep ${esc(cur.name)}</button>`;
+  const wireTail = () => {
+    $("#cd-back").onclick = () => renderPlayer(0);
+    if ($("#cd-later")) $("#cd-later").onclick = deferCurrentExercise;
+  };
+  const note = (msg) => { app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
+  const offline = () => note(`📴 You're offline — I can't fetch a replacement right now. Keep going with ${cur.name}${canLater ? ", or do it later and come back to it" : ""}.`);
+  const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
+    : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
+      : "The workout moved on — nothing was swapped.";
+  const pickList = async (lead = "") => {
+    app.innerHTML = `<h1>Pick a replacement</h1><p class="muted">Finding the best alternatives…</p>`;
+    let d;
+    try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}`); }
+    catch { return offline(); }
+    const alts = d?.alternatives ?? [];
+    if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
+    app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
+      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. Just for today; your plan doesn't change.</p>
+      ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+      ${tail}`;
+    wireTail();
+    app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = async () => {
+      const a = alts.find((x) => x.id === b.dataset.pick);
+      let r; try { r = await post({ scope: "today", live: live(), pick: a.id }); } catch { return offline(); }
+      if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
+      const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
+        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+      if (why) note(refused(why, a.name));
+    });
+  };
+
+  app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
+    <p class="muted">Tell me why and I'll sort it — your sets and reps stay the same.</p>
+    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
+    <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
+    <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
+    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
+    ${tail}`;
+  wireTail();
+  $("#cd-machine").onclick = async () => {
+    let r; try { r = await post({ scope: "always" }); } catch { return offline(); }
+    if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
+      { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true });
+    // The plan changed either way; only today's live slot can refuse (e.g. the new
+    // lift is already in this workout) — then today needs its own pick.
+    if (why) pickList(`From your next session ${cur.name} is swapped for ${r.replaced_by_name}. ${refused(why, r.replaced_by_name)} For today:`);
+  };
+  $("#cd-busy").onclick = async () => {
+    let r; try { r = await post({ scope: "today", live: live() }); } catch { return offline(); }
+    if (r.error) return note(r.message ?? `Nothing to swap ${cur.name} for right now.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
+      { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+    if (why) note(refused(why, r.replaced_by_name));
+  };
+  $("#cd-pick").onclick = () => pickList();
+  // The reactive injury door (app-design-spec.md:174): tell me which joint and the
+  // plan keeps aggravating movements out from now on; today gets its own pick.
+  $("#cd-hurt").onclick = () => {
+    app.innerHTML = `<h1>Where does it hurt?</h1>
+      <p class="muted">I'll keep movements that aggravate it out of your plan from now on — then pick a replacement for today.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}
+      <button class="btn ghost" id="cd-back">Back</button>`;
+    $("#cd-back").onclick = () => renderCantDo();
+    app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
+      const region = b.dataset.hurt;
+      let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return offline(); }
+      pickList(res.error ? "Couldn't save that — pick a replacement for today instead." : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan. For today:`);
+    });
+  };
 }
 
 // "Do this later" (mid-workout reorder): the machine's busy, so push the current

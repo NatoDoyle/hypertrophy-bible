@@ -6,7 +6,7 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -509,6 +509,75 @@ check("units round-trip: a deliberate lb entry never trips the lb/kg typo guard"
   const bankedKg = Math.round((130 / 2.2046226) * 100) / 100;
   assert.equal(isImplausibleSet(bankedKg, 8, { lastKg: 60 }), false);
 });
+
+// --- #replace-slot (W272): "Can't do this one?" swaps the lift at slot i for a row the
+// server built for the replacement. The old swap spread {...cur}: the old lift's
+// last_kg, pr_watch, eased and suggestion note rode onto the new one — a wrong "Last
+// time", the typo guard judged against the wrong lift, a fake PR toast, a deload tag.
+{
+  const mk = (exs, logged = []) => ({ ex: exs, logged, i: 1, set: 0, weights: { 0: 60, 1: 40, 2: 20 }, reps: { 1: 12 }, eff: { 1: "ok" }, wUnits: { 1: "kg" } });
+  const cur = { exercise: "pushdown", name: "Pushdown", sets: 3, rep_range: "10-15", rir: "1-2", last_kg: 40, last_reps: [12, 11],
+    pr_watch: { e1rm_kg: 55, load_kg: 45 }, eased: true, suggestion_note: "eased after a layoff", suggested_kg: 36, rest_s: 120 };
+  const row = { exercise: "cable-pushdown", name: "Cable pushdown", sets: 4, rep_range: "12-20", rir: "0-1", last_kg: null, last_reps: null,
+    pr_watch: { e1rm_kg: null, load_kg: null }, suggested_kg: null, rest_s: 90, superset_with: "curl", superset_with_name: "Curl",
+    unilateral: false, movement_pattern: "isolation-elbow-extension", primary_muscles: ["triceps"] };
+  const exs = () => [ex("bench", 3), { ...cur }, ex("curl", 3)];
+
+  check("#replace-slot the prescription stays the slot's; every other field is the new lift's own; the pairing is always dropped", () => {
+    const r = replaceSlot(mk(exs()), 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, true);
+    const out = r.sess.ex[1];
+    for (const k of PRESCRIPTION_KEYS) assert.deepStrictEqual(out[k], cur[k], `prescription ${k}`);
+    for (const k of Object.keys(row)) if (!PRESCRIPTION_KEYS.includes(k) && !/^superset_with/.test(k)) assert.deepStrictEqual(out[k], row[k], `row field ${k}`);
+    for (const k of Object.keys(cur)) if (!PRESCRIPTION_KEYS.includes(k) && !(k in row)) assert.ok(!(k in out), `the old lift's ${k} leaked onto the new one`);
+    assert.ok(!("superset_with" in out) && !("superset_with_name" in out), "a pairing never comes back into an unlinked live session");
+  });
+  check("#replace-slot resets ONLY that slot's typed inputs; the log, the other slots and the input are untouched", () => {
+    const s = mk(exs());
+    const before = JSON.stringify(s);
+    const r = replaceSlot(s, 1, row, { expect: "pushdown" });
+    assert.equal(JSON.stringify(s), before, "input not mutated");
+    assert.ok(!(1 in r.sess.weights) && !(1 in r.sess.reps) && !(1 in r.sess.eff) && !(1 in r.sess.wUnits));
+    assert.equal(r.sess.weights[0], 60); assert.equal(r.sess.weights[2], 20);
+    assert.deepStrictEqual(r.sess.logged, s.logged);
+    assert.equal(r.sess.set, 0);
+    assert.deepStrictEqual(r.sess.ex[0], s.ex[0]); assert.deepStrictEqual(r.sess.ex[2], s.ex[2]);
+  });
+  check("#replace-slot refuses a slot that no longer holds the lift that was tapped (a slow response must never hit the next exercise)", () => {
+    const s = mk(exs());
+    const r = replaceSlot(s, 2, row, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "moved"); assert.strictEqual(r.sess, s);
+    assert.equal(replaceSlot(s, 1, row, {}).ok, false, "no expectation, no replace");
+  });
+  check("#replace-slot refuses once the lift has a banked work set — logged work is never orphaned", () => {
+    const s = mk(exs(), [{ exercise: "pushdown", set_type: "work", weight_kg: 40, reps: 12 }]);
+    const r = replaceSlot(s, 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "started");
+    assert.equal(replaceSlot(mk(exs(), [{ exercise: "pushdown", set_type: "warmup", weight_kg: 20, reps: 10 }]), 1, row, { expect: "pushdown" }).ok, true, "a warm-up isn't work");
+  });
+  check("#replace-slot refuses a lift another slot already holds — progress is per exercise id, so a duplicate silently skips one", () => {
+    const r = replaceSlot(mk(exs()), 1, { ...row, exercise: "curl" }, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "duplicate");
+    // …and the harm it prevents, replayed: two slots of one id → the second is never trained.
+    const { logged } = playSession([ex("db-bench", 3), ex("db-bench", 3)]);
+    assert.equal(loggedWorkSets(logged, "db-bench"), 3, "with a duplicate, only ONE slot's sets are ever trained");
+  });
+  check("#replace-slot Undo is the same call in reverse — the saved row comes back exactly; refused once the substitute has work banked", () => {
+    const s0 = mk(exs());
+    const s1 = replaceSlot(s0, 1, row, { expect: "pushdown" }).sess;
+    const s2 = replaceSlot(s1, 1, s0.ex[1], { expect: "cable-pushdown" });
+    assert.equal(s2.ok, true);
+    assert.deepStrictEqual(s2.sess.ex, s0.ex);
+    assert.equal(s2.sess.set, 0);
+    const s1b = { ...s1, logged: [{ exercise: "cable-pushdown", set_type: "work", weight_kg: 30, reps: 15 }] };
+    assert.equal(replaceSlot(s1b, 1, s0.ex[1], { expect: "cable-pushdown" }).ok, false);
+  });
+  check("#replace-slot an older row without a field (e.g. no rest_s from before a deploy) inherits nothing from the old lift", () => {
+    const { rest_s, ...oldShape } = row;
+    const out = replaceSlot(mk(exs()), 1, oldShape, { expect: "pushdown" }).sess.ex[1];
+    assert.ok(!("rest_s" in out), "the old lift's rest length must not ride along");
+  });
+}
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

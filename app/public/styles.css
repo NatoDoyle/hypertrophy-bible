@@ -43,6 +43,9 @@ button{font:inherit;color:inherit;cursor:pointer}
   padding:18px;margin:10px 0;font-size:1.1rem;font-weight:600;text-align:left;
 }
 .choice.sel{border-color:var(--accent);background:#12251a}
+/* A choice that explains itself: the answer on one line, what it does underneath. */
+.choice.reason{display:block}
+.choice.reason .sub{display:block;margin-top:4px;font-weight:400;font-size:.95rem}
 .chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:4px 6px 0 0;font-size:.85rem}
 
 /* Onboarding progress dots */

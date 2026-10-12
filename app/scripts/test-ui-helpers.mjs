@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -107,6 +107,19 @@ check("calendarAdvice: compares the export with the days really in force (or com
   assert.deepEqual(calendarAdvice([0, 2], { days: ["mon", "thu"] }), { stale: ["Mon", "Wed"], advice: "replace" });
   assert.equal(calendarAdvice([0, 3], { days: ["thu", "mon"] }), null);
   assert.equal(calendarAdvice(null, { days: [] }), null, "never exported");
+});
+
+// "Can't do this one?" (W272): the copy says what the server REALLY did (lesson 60).
+check("bringBackCopy: exact restore, a rebuild that used it, a rebuild that didn't, and a hand-built plan each say what happened", () => {
+  assert.equal(bringBackCopy({ mode: "exact", name: "Hack squat" }), "Hack squat is back in your plan.");
+  assert.equal(bringBackCopy({ mode: "rebuilt", restored: 1, name: "Hack squat" }), "Hack squat is back — your plan was rebuilt with it available.");
+  assert.equal(bringBackCopy({ mode: "rebuilt", restored: 0, name: "Hack squat" }), "Hack squat is available again — your plan will use it when it fits.");
+  assert.equal(bringBackCopy({ mode: "lifted", name: "Hack squat" }), "Hack squat is available again — add it back in the plan editor whenever you like.");
+});
+check("swapUndoCopy: an Undo that put the lift back vs one the live session refused (a set of the substitute is banked)", () => {
+  assert.equal(swapUndoCopy({ revertedLive: true, permanent: true, from: "Hack squat", to: "Leg press" }), "Hack squat is back — in today's workout and your plan.");
+  assert.equal(swapUndoCopy({ revertedLive: false, permanent: true, from: "Hack squat", to: "Leg press" }), "Leg press stays for today (you've started it) — Hack squat is back from your next session.");
+  assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Leg press" }), "Hack squat is back.");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").

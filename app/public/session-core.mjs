@@ -44,6 +44,38 @@ export function nextUnfinishedIndex(logged, ex, from) {
   return -1;
 }
 
+// "Can't do this one?" (W272): replace the lift at slot i with `row` — the Today row
+// the server built for the replacement (or a minimal one when it couldn't). The old
+// swap spread {...cur}, so the old lift's last_kg, pr_watch, eased and suggestion note
+// rode onto the new one: a wrong "Last time", the typo guard judged against the wrong
+// lift, fake PR toasts, a deload tag. Now the slot keeps only its PRESCRIPTION — what
+// the plan asked of this slot today, deload scaling included — and every other field
+// is the row's own (a field the row lacks is simply absent, never inherited). The
+// pairing is ALWAYS dropped: pairing is a live-session decision, and tomorrow's Today
+// restores the plan's own.
+// Refuses — { ok: false, reason, sess } with `sess` untouched — unless the slot still
+// holds the lift that was tapped (`expect`: a slow response must never replace
+// whatever the cursor has moved on to), that lift has no banked WORK set (logged work
+// is never orphaned), and no OTHER slot holds the new lift (progress is counted per
+// exercise id, so a duplicate silently skips one of them). Undo is the same call in
+// reverse, with the saved old row. Pure: resets only slot i's typed inputs.
+export const PRESCRIPTION_KEYS = ["sets", "rep_range", "rir"];
+export function replaceSlot(sess, i, row, { expect } = {}) {
+  const cur = sess?.ex?.[i];
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  if (!cur || !row?.exercise) return refuse("no-slot");
+  if (expect == null || cur.exercise !== expect) return refuse("moved");
+  if (loggedWorkSets(sess.logged, expect) > 0) return refuse("started");
+  if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
+  const { superset_with, superset_with_name, ...slot } = row;
+  for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
+  const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
+    weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
+  if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
+  return { ok: true, sess: out };
+}
+
 // Remove exactly the offline-queue item that was just delivered, BY IDENTITY.
 // Position-based removal (queue.slice(1)) drops the WRONG item when two tabs flush
 // concurrently on reconnect — a second tab can shift the head between this tab's
