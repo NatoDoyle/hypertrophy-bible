@@ -1,7 +1,8 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization } from "./plan-core.mjs";
+import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
+  accessibleExercises, candidatePool, bestSubstitutes, applySubstitution, orderSessionItems } from "./plan-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
 const load = (d) => readdirSync(d).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(`${d}/${f}`)));
@@ -1233,6 +1234,124 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const digestOf = (pts) => createHash("sha256").update(JSON.stringify(pts.map(({ profile, opts }) => generatePlan(profile, gkb, opts)))).digest("hex");
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pre-W272 pin",
     grid.length === 390 && digestOf(grid) === "f6656b67589b9ae274dfe35e0c6a9bad8577babfb5c018633441851867ceea91");
+}
+
+// --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
+{
+  const FULL = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const exOf = new Map(exercises.map((e) => [e.id, e]));
+  const placed = (plan) => new Set(plan.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
+  const base = { user_id: "x-intermediate-4", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL };
+  const basePlan = generatePlan(base, kb);
+
+  // #exclude — one predicate, read from the profile, so every rebuild door honours it
+  // with no call-site edits (onboard, regenerate, graduation, block boundary, injury).
+  const victims = [...placed(basePlan)].slice(0, 6);
+  ok("#exclude an excluded lift is never placed — each of six lifts the default plan uses",
+    victims.length === 6 && victims.every((id) => !placed(generatePlan({ ...base, unavailable_exercises: [{ id }] }, kb)).has(id)));
+  ok("#exclude …on every opts path too (block rotation, stalled demotion)",
+    [{ blockIndex: 2 }, { stalledExercises: [victims[1]] }].every((opts) => !placed(generatePlan({ ...base, unavailable_exercises: [{ id: victims[0] }] }, kb, opts)).has(victims[0])));
+  ok("#exclude the editor's pool hides it as well — a lift you said isn't there is never offered back",
+    !accessibleExercises({ ...base, unavailable_exercises: [{ id: victims[0] }] }, kb).some((e) => e.id === victims[0])
+    && accessibleExercises(base, kb).some((e) => e.id === victims[0]));
+  ok("#exclude an empty list is byte-identical to no list (every user today)",
+    JSON.stringify(generatePlan({ ...base, unavailable_exercises: [] }, kb)) === JSON.stringify(basePlan));
+  const kbUser = { ...base, available_equipment: [...FULL, "kettlebell"] };
+  ok("#exclude ONE pool filter: carries are addable in the editor but never auto-placed",
+    candidatePool(kbUser, kb, { includeCarries: true }).some((e) => e.movement_pattern === "carry")
+    && !candidatePool(kbUser, kb).some((e) => e.movement_pattern === "carry"));
+
+  // #subs — the ranked replacements for X in one session.
+  const lowerB = basePlan.program.sessions.find((s) => s.exercises.some((e) => e.exercise === "hack-squat"));
+  const hackSubs = bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name });
+  const hackTop = hackSubs.find((c) => c.fits);
+  ok("#subs hack-squat → its best fitting replacement is a knee-dominant quad compound (same mechanic, same family)",
+    !!lowerB && hackTop && exOf.get(hackTop.id).mechanic === "compound" && ["squat", "lunge"].includes(exOf.get(hackTop.id).movement_pattern)
+    && exOf.get(hackTop.id).primary_muscles.includes("quadriceps") && hackTop.tier === 1);
+  // The fit is judged with X's OWN slot removed: counting the lift being replaced made
+  // every same-pattern option look like a 3rd copy (premortem cant-do-engine-2).
+  const beg = { user_id: "x-beginner-4", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 45, available_equipment: FULL };
+  const begPlan = generatePlan(beg, kb);
+  const upperA = begPlan.program.sessions.find((s) => s.exercises.some((e) => e.exercise === "chest-supported-row") && s.exercises.some((e) => e.exercise === "chest-supported-rear-delt-row"));
+  const rowTop = bestSubstitutes("chest-supported-row", { profile: beg, kb, program: begPlan.program, rationale: begPlan.rationale, sessionName: upperA?.name }).find((c) => c.fits);
+  ok("#subs a row beside another row: the best fitting replacement is still a row (X's slot doesn't count against the pattern cap)",
+    !!upperA && rowTop && exOf.get(rowTop.id).movement_pattern === "horizontal-pull");
+  const begSubs = begPlan.program.sessions.flatMap((s) => s.exercises.flatMap((e) => bestSubstitutes(e.exercise, { profile: beg, kb, program: begPlan.program, rationale: begPlan.rationale, sessionName: s.name })));
+  ok("#subs a beginner is never offered an advanced lift (the generator's hard gate, shared)",
+    begSubs.length > 20 && begSubs.every((c) => exOf.get(c.id).difficulty !== "advanced"));
+  ok("#subs never a carry, never X itself, never a lift already in the session",
+    begPlan.program.sessions.every((s) => s.exercises.every((e) => bestSubstitutes(e.exercise, { profile: beg, kb, program: begPlan.program, rationale: begPlan.rationale, sessionName: s.name })
+      .every((c) => exOf.get(c.id).movement_pattern !== "carry" && c.id !== e.exercise && (!c.fits || !s.exercises.some((o) => o.exercise === c.id))))));
+  const stalledTop = bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name, stalled: [hackTop?.id] }).find((c) => c.fits);
+  ok("#subs a lift the user has stalled on is never the first pick when another fits", stalledTop && stalledTop.id !== hackTop?.id);
+  ok("#subs today's scope judges the LIVE session: a lift already swapped in today is never offered twice",
+    !bestSubstitutes("hack-squat", { profile: base, kb, program: basePlan.program, rationale: basePlan.rationale, sessionName: lowerB?.name, scope: "today", live: [...lowerB.exercises.map((e) => e.exercise), hackTop?.id] })
+      .some((c) => c.fits && c.id === hackTop?.id));
+
+  // #always — the permanent swap: every slot X holds, progressively, all-or-nothing, and
+  // never a program the generator itself could not have emitted.
+  const PATTERN_CAP = 2, HIGH_CNS_CAP = 2;
+  let applied = 0, refused = 0;
+  const bad = [];
+  for (const status of ["beginner", "intermediate", "advanced"])
+    for (const days of [3, 4, 5, 6])
+      for (const [eqName, eq] of Object.entries({ full: FULL, db: ["dumbbell", "bodyweight"], bw: ["bodyweight"] }))
+        for (const goal of ["hypertrophy", "strength"]) {
+          const profile = { user_id: `al-${status}-${days}-${eqName}-${goal}`, training_status: status, primary_goal: goal, days_per_week: days, session_length_min: 60, available_equipment: eq };
+          const plan = generatePlan(profile, kb);
+          const before = JSON.stringify(plan);
+          for (const X of placed(plan)) {
+            const r = applySubstitution(plan.program, plan.rationale, X, { profile, kb });
+            if (r.error) { refused++; continue; }
+            applied++;
+            const ses = r.program.sessions;
+            const tag = `${profile.user_id}/${X}`;
+            if (ses.some((s) => s.exercises.some((e) => e.exercise === X))) bad.push(`${tag}: X still in the plan`);
+            const weekUse = {};
+            for (const s of ses) {
+              const ids = s.exercises.map((e) => e.exercise);
+              if (new Set(ids).size !== ids.length) bad.push(`${tag}: duplicate in ${s.name}`);
+              for (const id of new Set(ids)) weekUse[id] = (weekUse[id] ?? 0) + 1;
+              const fam = {}; let high = 0;
+              for (const e of s.exercises) { const x = exOf.get(e.exercise); if (x.mechanic === "compound") { fam[x.movement_pattern] = (fam[x.movement_pattern] ?? 0) + 1; if (x.cns_cost === "high") high++; } }
+              if (Object.values(fam).some((n) => n > PATTERN_CAP)) bad.push(`${tag}: 3 of one pattern in ${s.name}`);
+              if (high > HIGH_CNS_CAP) bad.push(`${tag}: 3 high-CNS in ${s.name}`);
+              for (const e of s.exercises) if (e.superset_with) {
+                const p = s.exercises.find((o) => o.exercise === e.superset_with);
+                const mus = (x) => new Set([...(x.primary_muscles ?? []), ...(x.secondary_muscles ?? [])]);
+                if (!p) bad.push(`${tag}: dangling superset in ${s.name}`);
+                else if (exOf.get(e.exercise).mechanic !== "isolation" || exOf.get(p.exercise).mechanic !== "isolation" || [...mus(exOf.get(e.exercise))].some((m) => mus(exOf.get(p.exercise)).has(m))) bad.push(`${tag}: a superset that isn't two non-competing isolations in ${s.name}`);
+              }
+              const sorted = JSON.stringify(orderSessionItems(s.exercises.map((e) => ({ ...e })), exOf, { priority: new Set(profile.priority_muscles ?? []) }));
+              if (sorted !== JSON.stringify(s.exercises)) bad.push(`${tag}: ${s.name} not in lifting order`);
+            }
+            if (Object.values(weekUse).some((n) => n > 2)) bad.push(`${tag}: a lift in 3 sessions`);
+            const choices = r.rationale.exercise_choices;
+            if (choices.some((c) => c.exercise === X)) bad.push(`${tag}: rationale still explains X`);
+            for (const { session, to } of r.replaced) {
+              const c = choices.find((cc) => cc.session === session && cc.exercise === to);
+              if (!c || !c.why.some((w) => /isn't available/.test(w))) bad.push(`${tag}: no honest 'why' for ${to} in ${session}`);
+            }
+          }
+          if (JSON.stringify(plan) !== before) bad.push(`${profile.user_id}: applySubstitution mutated its input`);
+        }
+  ok(`#always the permanent swap keeps every generator invariant (${applied} applied, ${refused} refused with no write)${bad.length ? " — " + bad.slice(0, 3).join("; ") : ""}`,
+    applied > 1000 && bad.length === 0);
+  // A muscle emptied by the user's OWN exclusions is told the lever that will help.
+  const calfIds = candidatePool(base, kb).filter((e) => e.primary_muscles.includes("calves")).map((e) => e.id);
+  const noCalves = generatePlan({ ...base, unavailable_exercises: calfIds.map((id) => ({ id })) }, kb).rationale.warnings.find((w) => w.code === "no-coverage" && w.muscle === "calves");
+  ok("#exclude a muscle your exclusions emptied names THAT lever (bring one back on the Plan tab) — even with indirect credit from other lifts",
+    calfIds.length > 0 && noCalves && /marked unavailable/.test(noCalves.message) && /bring one back/.test(noCalves.message)
+    && !generatePlan({ ...base, unavailable_exercises: calfIds.map((id) => ({ id })) }, kb).rationale.warnings.some((w) => w.muscle === "calves" && w.code !== "no-coverage"));
+  const absIds = candidatePool(base, kb).filter((e) => e.primary_muscles.includes("abs")).map((e) => e.id);
+  const noAbs = generatePlan({ ...base, unavailable_exercises: absIds.map((id) => ({ id })) }, kb).rationale.warnings.find((w) => w.code === "no-coverage" && w.muscle === "abs");
+  ok("#exclude …and with none at all", noAbs && /marked unavailable/.test(noAbs.message) && !/other lifts give it/.test(noAbs.message));
+  const dbAbs = generatePlan({ ...base, available_equipment: ["dumbbell"] }, kb).rationale.warnings.find((w) => w.code === "no-coverage" && w.muscle === "abs");
+  ok("#exclude …while a gap no exclusion caused keeps the equipment copy", dbAbs && !/unavailable/.test(dbAbs.message) && /your equipment/.test(dbAbs.message));
+  ok("#always all-or-nothing: a refusal names why and returns no program", (() => {
+    const r = applySubstitution(basePlan.program, basePlan.rationale, "not-a-lift-in-this-plan", { profile: base, kb });
+    return r.error === "not-in-plan" && !r.program;
+  })());
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

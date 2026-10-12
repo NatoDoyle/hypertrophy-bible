@@ -341,6 +341,39 @@ function rotateTopK(arr, shift, k = 3) {
   return [...arr.slice(s, n), ...arr.slice(0, s), ...arr.slice(n)];
 }
 
+// Difficulty is a HARD gate, not a soft penalty: rotation through a small pool was
+// handing pistol squats and Nordic curls to day-one beginners. Keep only exercises at
+// or below the user's level — falling back to the next tier up ONLY when nothing
+// easier trains the muscle (honest > empty).
+// A BEGINNER never gets an advanced exercise, even as a last resort — the whole reason
+// this is a hard gate (day-one lifters were getting pistol squats and sissy squats).
+// So a beginner's fallback ceiling is intermediate; if that leaves an ISOLATION pool
+// empty for some muscle, the compound pool still trains it (and the coverage invariant
+// holds). Intermediate/advanced can fall back to advanced so a muscle is never left
+// with an empty pool for them.
+const DIFF_RANK = { beginner: 0, intermediate: 1, advanced: 2 };
+function difficultyGate(pool, experience) {
+  const userLvl = DIFF_RANK[experience] ?? 1;
+  const ceil = userLvl === 0 ? 1 : 2;
+  for (let lvl = userLvl; lvl <= ceil; lvl++) {
+    const ok = pool.filter((e) => (DIFF_RANK[e.difficulty] ?? 1) <= lvl);
+    if (ok.length) return ok;
+  }
+  return pool.filter((e) => (DIFF_RANK[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
+}
+// Progressive-overload guard: a loaded user never rotates onto a non-loadable
+// bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already sorts
+// these last, but the block-rotation counter still periodically lands on one for a
+// high-frequency muscle on a 5–6-day split, and an int/adv lifter who owns a barbell
+// should overload a loaded variant instead. Drop them outright when ≥1 loadable
+// compound survives; keep them only as the sole fallback, so a bodyweight-only pool
+// (all non-loadable) is left completely untouched. Applied AFTER ranking (rankPool's
+// own "is anything loaded?" test must see the whole pool).
+function loadableOnly(rankedCompounds) {
+  const loadable = rankedCompounds.filter((e) => e.equipment !== "bodyweight" || LOADABLE_BODYWEIGHT.test(e.id));
+  return loadable.length ? loadable : rankedCompounds;
+}
+
 function contraExcluded(ex, injuries, contraindications) {
   if (!injuries?.length || !contraindications) return false;
   const regions = contraindications.regions ?? contraindications;
@@ -356,16 +389,76 @@ function contraExcluded(ex, injuries, contraindications) {
   return false;
 }
 
-// The exercises a given profile can actually perform — the SAME equipment +
-// injury-contraindication filter the generator applies. The plan editor's swap /
-// add pickers use this so they never offer a lift the generator deliberately
-// excluded: an unavailable-equipment one (a dead end for a novice) or a
-// contraindicated one (an injury risk the generator removed for safety).
-export function accessibleExercises(profile, kb) {
+// Lifts the user has said they can't do at their gym ("Can't do this one? → No
+// machine for this", W272). Stored as records on the profile; only the ids matter here.
+export function excludedIds(profile) {
+  return new Set((profile?.unavailable_exercises ?? []).map((x) => (typeof x === "string" ? x : x?.id)).filter((id) => typeof id === "string"));
+}
+
+// ONE available-pool filter — the generator's, the substitute ranker's and the plan
+// editor's (three copies drifted before: the editor offered carries the generator
+// refused to place). The profile's equipment, minus injury contraindications, minus
+// lifts marked unavailable; loaded carries only when asked for (the editor keeps them
+// searchable and addable — there is no honest "3×10" for a carry to auto-place).
+export function candidatePool(profile, kb, { includeCarries = false } = {}) {
   const { exercises, contraindications } = kb;
   const equip = new Set(profile?.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
   const injuries = profile?.injuries ?? [];
-  return exercises.filter((e) => equip.has(e.equipment) && !contraExcluded(e, injuries, contraindications));
+  const excluded = excludedIds(profile);
+  return exercises.filter((e) => equip.has(e.equipment) && (includeCarries || e.movement_pattern !== "carry")
+    && !contraExcluded(e, injuries, contraindications) && !excluded.has(e.id));
+}
+
+// The exercises a given profile can actually perform — the SAME filter the generator
+// applies. The plan editor's swap / add pickers use this so they never offer a lift
+// the generator deliberately excluded: an unavailable-equipment one (a dead end for a
+// novice), a contraindicated one (an injury risk the generator removed for safety),
+// or one the user said their gym doesn't have.
+export function accessibleExercises(profile, kb) {
+  return candidatePool(profile, kb, { includeCarries: true });
+}
+
+// Emit a session in the order you should LIFT it (stable within each tier): the
+// heaviest systemic work first while you're fresh — high-CNS compounds (squats,
+// deadlifts), then the remaining compounds, then isolations (KB exercise-order page:
+// hardest and most fatiguing first, isolation later — Grade D, practice-based). The
+// engine was burying deadlifts mid-session behind whatever pass happened to place
+// first. Within each tier, PRIORITY-muscle exercises lead (KB exercise-order page: do
+// priority work early while fresh — Grade D, effects modest, so we honour it without
+// breaking compound-before-isolation, which the app's own critique checks).
+// Sorts IN PLACE and returns the array. Exported so a permanent swap ("Can't do this
+// one?") re-sorts a touched session with the generator's own comparator.
+export function orderSessionItems(items, exById, { priority = new Set(), specialization = false } = {}) {
+  const key = (it) => {
+    const x = exById.get(it.exercise);
+    if (!x) return 99;
+    const isPri = (x.primary_muscles ?? []).some((m) => priority.has(m));
+    let tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
+    // In a SPECIALIZATION block only, the priority muscle's work is promoted so it
+    // lands while the user is fresh. The KB's weak-point page is explicit about this —
+    // its Placement row reads "Trained first, when you're fresh" — and the plain
+    // tier*2+pri key could never deliver it, because tier always dominated: a
+    // side-delt specialist's lateral raises sat behind every compound on the day,
+    // which is the exact opposite of the prescription, and it went wrong for
+    // precisely the users who opted into specialization. Still behind genuinely heavy
+    // work (a squat outranks a lateral raise even in a delt block — burying the
+    // compound would trade a modest, Grade-D ordering effect for a real one). Gated
+    // on `specialization`, so an ordinary priority plan is byte-identical to before.
+    if (specialization && isPri && tier > 1) tier = 1;
+    return tier * 2 + (isPri ? 0 : 1);
+  };
+  return items.sort((a, b) => key(a) - key(b));
+}
+
+// A superset whose partner left the session (a trim, an edit, a swap) is not a
+// superset: drop the dangling link so the player never routes a lone lift into a
+// station. ONE helper for the generator's trim, the plan editor's save and the swap.
+export function sweepDanglingSupersets(sessions) {
+  for (const sess of sessions) {
+    const ids = new Set(sess.exercises.map((e) => e.exercise));
+    for (const e of sess.exercises) if (e.superset_with && !ids.has(e.superset_with)) delete e.superset_with;
+  }
+  return sessions;
 }
 
 // CARDIO — prescribed, not just described (considerations #1, finding 1A).
@@ -542,7 +635,9 @@ export function generatePlan(profile, kb, opts = {}) {
   // addable with their real execution cues) but never auto-fill a hypertrophy slot.
   // Every muscle a carry serves (abs, forearms) keeps other options, so excluding
   // them never starves the coverage invariant.
-  const avail = exercises.filter((e) => equip.has(e.equipment) && e.movement_pattern !== "carry" && !contraExcluded(e, injuries, contraindications));
+  const avail = candidatePool(profile, kb);
+  const excluded = excludedIds(profile);
+  const reachableBeforeExclusion = excluded.size ? new Set(candidatePool({ ...profile, unavailable_exercises: [] }, kb).map((e) => e.id)) : null;
 
   // 1) split
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
@@ -683,38 +778,10 @@ export function generatePlan(profile, kb, opts = {}) {
   // pools per muscle (filtered + ranked), and a rotation counter for variety
   const compoundPool = {}, isoPool = {}, rot = {};
   for (const m of muscles) {
-    // Difficulty is a HARD gate, not a soft penalty: rotation through a small pool
-    // was handing pistol squats and Nordic curls to day-one beginners. Keep only
-    // exercises at or below the user's level — falling back to the next tier up
-    // ONLY when nothing easier trains the muscle (honest > empty).
-    const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
-    const userLvl = diffRank[experience] ?? 1;
-    // A BEGINNER never gets an advanced exercise, even as a last resort — the whole
-    // reason this is a hard gate (day-one lifters were getting pistol squats and
-    // sissy squats). So a beginner's fallback ceiling is intermediate; if that
-    // leaves an ISOLATION pool empty for some muscle, the compound pool still trains
-    // it (and the coverage invariant holds). Intermediate/advanced can fall back to
-    // advanced as before so a muscle is never left with an empty pool for them.
-    const ceil = userLvl === 0 ? 1 : 2;
-    const gate = (pool) => {
-      for (let lvl = userLvl; lvl <= ceil; lvl++) {
-        const ok = pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= lvl);
-        if (ok.length) return ok;
-      }
-      return pool.filter((e) => (diffRank[e.difficulty] ?? 1) <= ceil); // may be empty for a beginner — that's fine, compounds cover the muscle
-    };
-    compoundPool[m.id] = rankPool(gate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled });
-    // Progressive-overload guard: a loaded user never rotates onto a non-loadable
-    // bodyweight COMPOUND (lunge, inverted row, single-leg RDL). rankPool already
-    // sorts these last, but the block-rotation counter still periodically lands on
-    // one for a high-frequency muscle on a 5–6-day split, and an int/adv lifter who
-    // owns a barbell should overload a loaded variant instead. Drop them outright
-    // when ≥1 loadable compound survives; keep them only as the sole fallback, so a
-    // bodyweight-only pool (all non-loadable) is left completely untouched.
-    {
-      const loadable = compoundPool[m.id].filter((e) => e.equipment !== "bodyweight" || LOADABLE_BODYWEIGHT.test(e.id));
-      if (loadable.length) compoundPool[m.id] = loadable;
-    }
+    // The difficulty gate and the loadable-compound guard live at module scope
+    // (difficultyGate / loadableOnly) so "Can't do this one?" ranks replacements
+    // through the very same filters, in the very same order.
+    compoundPool[m.id] = loadableOnly(rankPool(difficultyGate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id)), experience), { experience, seed, goal, stalled }));
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
     // compounds keep their ranking so double-progression baselines survive blocks.
     // Accessories: rank by quality (lengthened → equipment → low-fatigue), then
@@ -724,7 +791,7 @@ export function generatePlan(profile, kb, opts = {}) {
     // by more than a score-jitter could flip, an explicit top-K rotation is what
     // actually varies them (jitter alone left the single best-equipment move
     // pinned every block). Compounds keep their stable ranking (double-progression).
-    isoPool[m.id] = rotateTopK(rankPool(gate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id))), { experience, seed, goal, stalled }), blockIndex);
+    isoPool[m.id] = rotateTopK(rankPool(difficultyGate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id)), experience), { experience, seed, goal, stalled }), blockIndex);
     rot[m.id] = 0;
   }
   const exById = new Map(avail.map((e) => [e.id, e]));
@@ -1164,37 +1231,7 @@ export function generatePlan(profile, kb, opts = {}) {
       }
     }
     for (const c of exerciseChoices) if (c.session === spec.name) weekServed.add(c.for_muscle);
-    // Emit in the order you should LIFT it (stable within each tier): the heaviest
-    // systemic work first while you're fresh — high-CNS compounds (squats,
-    // deadlifts), then the remaining compounds, then isolations (KB exercise-order
-    // page: hardest and most fatiguing first, isolation later — Grade D,
-    // practice-based). The engine was burying deadlifts mid-session behind
-    // whatever pass happened to place first. Within each tier,
-    // PRIORITY-muscle exercises lead (KB exercise-order page: do priority work
-    // early while fresh — Grade D, effects modest, so we honour it without
-    // breaking compound-before-isolation, which the app's own critique checks).
-    items.sort((a, b) => {
-      const key = (it) => {
-        const x = exById.get(it.exercise);
-        if (!x) return 99;
-        const isPri = (x.primary_muscles ?? []).some((m) => priority.has(m));
-        let tier = x.mechanic === "isolation" ? 3 : x.cns_cost === "high" ? 0 : x.cns_cost === "moderate" ? 1 : 2;
-        // In a SPECIALIZATION block only, the priority muscle's work is promoted so
-        // it lands while the user is fresh. The KB's weak-point page is explicit
-        // about this — its Placement row reads "Trained first, when you're fresh" —
-        // and the plain tier*2+pri key could never deliver it, because tier always
-        // dominated: a side-delt specialist's lateral raises sat behind every
-        // compound on the day, which is the exact opposite of the prescription, and
-        // it went wrong for precisely the users who opted into specialization.
-        // Still behind genuinely heavy work (a squat outranks a lateral raise even
-        // in a delt block — burying the compound would trade a modest, Grade-D
-        // ordering effect for a real one). Gated on `specialization`, so an ordinary
-        // priority plan is byte-identical to before.
-        if (specialization && isPri && tier > 1) tier = 1;
-        return tier * 2 + (isPri ? 0 : 1);
-      };
-      return key(a) - key(b);
-    });
+    orderSessionItems(items, exById, { priority, specialization });
     return { name: spec.name, exercises: items };
   });
 
@@ -1252,10 +1289,7 @@ export function generatePlan(profile, kb, opts = {}) {
     exerciseChoices.length = 0;
     exerciseChoices.push(...reconciled);
     // the trim can remove one half of a superset pair — never leave a dangling link
-    for (const sess of outSessions) {
-      const ids = new Set(sess.exercises.map((e) => e.exercise));
-      for (const e of sess.exercises) if (e.superset_with && !ids.has(e.superset_with)) delete e.superset_with;
-    }
+    sweepDanglingSupersets(outSessions);
   }
 
   // 6) closed-loop self-check on the FINAL (trimmed) plan → rationale + warnings.
@@ -1352,7 +1386,14 @@ export function generatePlan(profile, kb, opts = {}) {
       continue;
     }
     const hasExercise = compoundPool[m].length || isoPool[m].length;
-    if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
+    // A pool emptied by the user's OWN "No machine for this" answers needs THAT lever
+    // named — whatever indirect credit other lifts give it: "broaden your equipment" or
+    // "an extra training day" would send them to a setting that can't help.
+    const emptiedByExclusion = !hasExercise && reachableBeforeExclusion
+      && exercises.some((e) => excluded.has(e.id) && (e.primary_muscles ?? []).includes(m) && reachableBeforeExclusion.has(e.id));
+    if (emptiedByExclusion && proj < (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity)) warnings.push({ code: "no-coverage", muscle: m,
+      message: `No exercise trains ${m} with your equipment and the lifts you've marked unavailable${proj > 0 ? ` (other lifts give it only ~${proj} sets/wk)` : ""} — bring one back on the Plan tab, or add a custom exercise.` });
+    else if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit this week — ${levers}.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. ${levers[0].toUpperCase()}${levers.slice(1)}.` });
@@ -1449,6 +1490,140 @@ export function generatePlan(profile, kb, opts = {}) {
     warnings,
   };
   return { program, rationale, meta: { engine_version: "1.1.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries } } };
+}
+
+// ---------------------------------------------------------------------------------
+// "CAN'T DO THIS ONE?" (W272 — owner report: "I can't do this exercise"). The player's
+// set-0 door asks WHY. "No machine for this" swaps the lift everywhere it appears and
+// keeps it out of every future plan (profile.unavailable_exercises → candidatePool);
+// "It's busy right now" and "Pick one myself" swap it for today only. Both rank
+// replacements HERE, through the generator's own filters and caps, so a swap can never
+// produce a session the generator itself would have refused to build.
+
+const PER_SESSION_MUSCLE_CAP = 10; // the generator's default perMuscleSessionCap
+const musclesOf = (x) => new Set([...(x?.primary_muscles ?? []), ...(x?.secondary_muscles ?? [])]);
+
+// A session's fit state WITHOUT the slot being replaced — what's placed, compounds per
+// raw pattern, high-CNS lifts, direct sets per muscle: the add() caps' own inputs.
+function sessionFit(items, lookup) {
+  const placed = new Set(), fam = {}, direct = {};
+  let high = 0;
+  for (const it of items) {
+    placed.add(it.exercise);
+    const x = lookup.get(it.exercise);
+    if (!x) continue;
+    if (x.mechanic === "compound") fam[x.movement_pattern] = (fam[x.movement_pattern] ?? 0) + 1;
+    if (x.cns_cost === "high") high++;
+    for (const m of x.primary_muscles ?? []) direct[m] = (direct[m] ?? 0) + (Number(it.sets) || 0);
+  }
+  return { placed, fam, high, direct };
+}
+
+// Ranked replacements for `exId` in one session, for the muscle its slot was placed
+// for. Tiers keep a swap honest — same mechanic AND movement family first (a squat for
+// a squat), then same mechanic, then the other mechanic — and within a tier the
+// generator's own ranking decides (lengthened bias, equipment quality, fatigue, stalled
+// lifts last), after its own difficulty gate and loadable-compound guard. `fits` is the
+// generator's add() caps judged with X's slot REMOVED (counting the lift being replaced
+// made every same-pattern option look like a third copy), plus, for a permanent swap,
+// the weekly two-session cap with every X slot removed. `scope: "today"` judges the
+// LIVE session instead — `live` is the ids the player holds right now, so a lift
+// already swapped in today is never offered twice.
+export function bestSubstitutes(exId, { profile, kb, program, rationale = null, sessionName = null, stalled = [], live = null, scope = "always", customExercises = [] } = {}) {
+  const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
+  const X = lookup.get(exId);
+  let session = program?.sessions?.find((s) => s.name === sessionName && s.exercises.some((e) => e.exercise === exId))
+    ?? program?.sessions?.find((s) => s.exercises.some((e) => e.exercise === exId));
+  let slot = session?.exercises.find((e) => e.exercise === exId);
+  // Today only: the lift may itself be a today-swap the stored plan never held.
+  if (!slot && scope === "today") {
+    session = program?.sessions?.find((s) => s.name === sessionName) ?? { name: sessionName, exercises: [] };
+    slot = { exercise: exId, sets: 3 };
+  }
+  if (!X || !slot) return [];
+  const target = rationale?.exercise_choices?.find((c) => c.session === session.name && c.exercise === exId)?.for_muscle ?? X.primary_muscles?.[0];
+  if (!target) return [];
+  const experience = profile?.training_status ?? "intermediate";
+  const rankOpts = { experience, seed: seedFromProfile(profile ?? {}), goal: profile?.primary_goal ?? "hypertrophy", stalled: new Set(stalled ?? []) };
+  const pool = candidatePool(profile, kb).filter((e) => e.id !== exId && (e.primary_muscles ?? []).includes(target));
+  const comp = loadableOnly(rankPool(difficultyGate(pool.filter((e) => e.mechanic === "compound"), experience), rankOpts));
+  const iso = rankPool(difficultyGate(pool.filter((e) => e.mechanic === "isolation"), experience), rankOpts);
+  const xFam = famOf(X.movement_pattern);
+  const tierOf = (e) => (e.mechanic === X.mechanic ? (famOf(e.movement_pattern) === xFam ? 1 : 2) : 3);
+  const ranked = (X.mechanic === "isolation" ? [...iso, ...comp] : [...comp, ...iso]).sort((a, b) => tierOf(a) - tierOf(b)); // stable: rank order within a tier
+  const others = scope === "today" && Array.isArray(live)
+    ? live.filter((id) => id !== exId).map((id) => session.exercises.find((e) => e.exercise === id) ?? { exercise: id, sets: slot.sets })
+    : session.exercises.filter((e) => e.exercise !== exId);
+  const st = sessionFit(others, lookup);
+  let weekUse = null;
+  if (scope !== "today") {
+    weekUse = {};
+    for (const s of program.sessions) for (const id of new Set(s.exercises.map((e) => e.exercise))) if (id !== exId) weekUse[id] = (weekUse[id] ?? 0) + 1;
+  }
+  const partner = slot.superset_with ? session.exercises.find((e) => e.exercise === slot.superset_with) : null;
+  const partnerMuscles = partner ? musclesOf(lookup.get(partner.exercise)) : null;
+  return ranked.map((e) => ({
+    id: e.id, name: e.name, tier: tierOf(e), for_muscle: target,
+    fits: !st.placed.has(e.id)
+      && (!weekUse || (weekUse[e.id] ?? 0) < 2)
+      && !(e.mechanic === "compound" && (st.fam[e.movement_pattern] ?? 0) >= 2)
+      && !(e.mechanic === "compound" && e.cns_cost === "high" && st.high >= 2)
+      && (e.primary_muscles ?? []).every((m) => (st.direct[m] ?? 0) + (Number(slot.sets) || 0) <= PER_SESSION_MUSCLE_CAP),
+    // A superset slot keeps its pairing only for a NON-COMPETING ISOLATION (the
+    // generator's own pairing rule); anything else is swapped in unpaired.
+    keeps_pair: !!partner && e.mechanic === "isolation" && ![...musclesOf(e)].some((m) => partnerMuscles.has(m)),
+  }));
+}
+
+// The PERMANENT swap ("No machine for this"): X leaves every session that holds it,
+// progressively (each slot's fit sees the slots already swapped) and all-or-nothing —
+// if any slot has no fitting replacement nothing is returned to write, because X must
+// never sit half in a plan that also excludes it. The session the user tapped picks the
+// replacement; the others follow it where it fits. The slot's prescription (sets, reps,
+// RIR) is kept; a superset keeps its pairing only for a non-competing isolation (else
+// both are unlinked); a generated session is re-sorted with the generator's own
+// comparator (a user-ordered custom session keeps its order); and the rationale says
+// what really happened. Pure — returns { program, rationale, replaced, replaced_by } or
+// { error }, never mutating its inputs.
+export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0 } = {}) {
+  const prog = JSON.parse(JSON.stringify(program));
+  const rat = rationale ? JSON.parse(JSON.stringify(rationale)) : null;
+  const holding = prog.sessions.filter((s) => s.exercises.some((e) => e.exercise === exId));
+  if (!holding.length) return { error: "not-in-plan" };
+  holding.sort((a, b) => (b.name === sessionName) - (a.name === sessionName));
+  const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
+  const X = lookup.get(exId);
+  const priority = new Set(profile?.priority_muscles ?? []);
+  const specialization = specializationActive(profile ?? {}, kb.muscles ?? [], blockIndex);
+  const replaced = [];
+  let preferred = null;
+  for (const s of holding) {
+    while (s.exercises.some((e) => e.exercise === exId)) {
+      const fitting = bestSubstitutes(exId, { profile, kb, program: prog, rationale: rat, sessionName: s.name, stalled, customExercises }).filter((c) => c.fits);
+      const pick = (preferred && fitting.find((c) => c.id === preferred)) || fitting[0];
+      if (!pick) return { error: "no-candidate", session: s.name };
+      preferred ??= pick.id;
+      const idx = s.exercises.findIndex((e) => e.exercise === exId);
+      const slot = s.exercises[idx];
+      const partner = slot.superset_with ? s.exercises.find((e) => e.exercise === slot.superset_with) : null;
+      const next = { exercise: pick.id, sets: slot.sets, rep_range: slot.rep_range, ...(slot.rir != null ? { rir: slot.rir } : {}) };
+      if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
+      else if (partner) delete partner.superset_with;
+      s.exercises[idx] = next;
+      if (rat?.exercise_choices) {
+        const Y = lookup.get(pick.id);
+        for (const c of rat.exercise_choices) {
+          if (c.session !== s.name) continue;
+          if (c.exercise === exId) Object.assign(c, { exercise: pick.id, why: [`swapped in — ${X?.name ?? exId} isn't available at your gym`], difficulty: Y?.difficulty, citations: Y?.citations ?? [] });
+          else if (partner && c.exercise === partner.exercise && Array.isArray(c.why)) c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pick.keeps_pair ? ["paired with " + pick.id] : []) : [w]));
+        }
+      }
+      replaced.push({ session: s.name, from: exId, to: pick.id });
+    }
+    if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
+  }
+  sweepDanglingSupersets(prog.sessions);
+  return { program: prog, rationale: rat, replaced, replaced_by: preferred };
 }
 
 // Critique any program (generated OR user-built) against the KB: per-muscle
