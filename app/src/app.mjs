@@ -288,9 +288,11 @@ export function createApp(store, config = {}) {
     // "Not available at your gym" (W272): the lifts the user said they can't do, by
     // name, each with its "Bring back" door — resolved here so the client never has to
     // look up a lift the filtered exercise list deliberately no longer carries.
-    const unavailable = (user.profile?.unavailable_exercises ?? []).map((r) => ({
-      id: r.id, name: exerciseNameFor(user, r.id), replaced_by: r.replaced_by ?? null,
-      replaced_by_name: r.replaced_by ? exerciseNameFor(user, r.replaced_by) : null, at: r.at ?? null }));
+    // A replacement a later rebuild dropped is not named (it isn't in the plan any more).
+    const unavailable = (user.profile?.unavailable_exercises ?? []).map((r) => {
+      const by = r.replaced_by && planHolds(user.program, r.replaced_by) ? r.replaced_by : null;
+      return { id: r.id, name: exerciseNameFor(user, r.id), replaced_by: by, replaced_by_name: by ? exerciseNameFor(user, by) : null, at: r.at ?? null };
+    });
     return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable });
   });
 
@@ -485,10 +487,22 @@ export function createApp(store, config = {}) {
   //            X available (a generated plan) — never X spliced back into a plan built
   //            around its absence — or, for a hand-built plan, the exclusion lifted.
   const MAX_EXCLUSIONS = 30;
-  // The row a substitute gets today: buildToday on a copy with X → Y everywhere.
-  const substituteRow = (user, ctx, nowISO, X, Y) => {
+  // The row a substitute gets today: buildToday on a copy of the plan where Y stands in
+  // X's slot and is the ONLY copy of Y (its own original slot elsewhere in the session —
+  // swapped away live earlier — would otherwise answer with ITS prescription). When the
+  // stored session doesn't hold X (X was itself a today-swap), Y takes the live slot's
+  // prescription in the session the player is running.
+  const substituteRow = (user, ctx, nowISO, X, Y, { sessionName = null, prescription = null } = {}) => {
     const program = JSON.parse(JSON.stringify(user.program));
-    for (const s of program.sessions) for (const e of s.exercises) if (e.exercise === X) { e.exercise = Y; delete e.superset_with; }
+    for (const s of program.sessions) s.exercises = s.exercises.filter((e) => e.exercise !== Y);
+    let placed = false;
+    for (const s of program.sessions) for (const e of s.exercises) if (e.exercise === X) { e.exercise = Y; delete e.superset_with; placed = true; }
+    if (!placed && sessionName) {
+      const s = program.sessions.find((x) => x.name === sessionName);
+      const p = prescription ?? {};
+      if (s) s.exercises.push({ exercise: Y, sets: Number.isInteger(p.sets) && p.sets > 0 && p.sets <= 10 ? p.sets : 3,
+        rep_range: typeof p.rep_range === "string" ? p.rep_range.slice(0, 12) : "8-12", ...(typeof p.rir === "string" ? { rir: p.rir.slice(0, 8) } : {}) });
+    }
     sweepDanglingSupersets(program.sessions); // X's partner no longer has one
     return buildTodayFor({ ...user, program }, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null;
   };
@@ -516,7 +530,12 @@ export function createApp(store, config = {}) {
         if (u.substitution_undo) { const rest = { ...u.substitution_undo }; delete rest[X]; u.substitution_undo = rest; }
         if (snap && snap.program_sig === contentSig(u.program) && snap.rationale_sig === contentSig(u.plan_rationale ?? null)) {
           for (const [name, exercises] of Object.entries(snap.sessions)) { const s = u.program.sessions.find((x) => x.name === name); if (s) s.exercises = exercises; }
-          if (u.plan_rationale?.exercise_choices) for (const [i, entry] of snap.choices) u.plan_rationale.exercise_choices[i] = entry;
+          if (u.plan_rationale) {
+            if (Array.isArray(snap.choices) && snap.choices.length && !Array.isArray(snap.choices[0])) u.plan_rationale.exercise_choices = snap.choices;
+            else if (u.plan_rationale.exercise_choices) for (const [i, entry] of snap.choices ?? []) u.plan_rationale.exercise_choices[i] = entry; // records from before W275
+            for (const [m, v] of Object.entries(snap.volume ?? {})) if (u.plan_rationale.volume_by_muscle) u.plan_rationale.volume_by_muscle[m] = v;
+            if (snap.warnings) u.plan_rationale.warnings = snap.warnings;
+          }
           outcome = { mode: "exact", restored: Object.keys(snap.sessions).length };
         } else if (!u.program?.custom) {
           rebuildPlan(u, { trainingChanged: false, priorSessions, nowISO });
@@ -531,6 +550,10 @@ export function createApp(store, config = {}) {
       return c.json({ ok: true, scope, ...outcome, exercise: X, name: nameOf(X) });
     }
 
+    const live = Array.isArray(b.live) ? b.live.filter((x) => typeof x === "string").slice(0, 30) : null;
+    // Lifts the user swapped away earlier TODAY are never handed back (W275 review).
+    const exclude = Array.isArray(b.exclude) ? b.exclude.filter((x) => typeof x === "string").slice(0, 30) : [];
+    const prescription = b.prescription && typeof b.prescription === "object" ? b.prescription : null;
     const tz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min;
     const dq = c.req.query("d");
     const clientDay = dq && /^\d{4}-\d{2}-\d{2}$/.test(dq) ? dq : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10));
@@ -538,13 +561,19 @@ export function createApp(store, config = {}) {
     // A lift the user has plateaued on is demoted exactly as every rebuild demotes it.
     const stalled = stalledExerciseIds(ctx.sessions, user.custom_exercises || [], nowISO);
 
+    // Today's best replacement for X in the live session (today-only swaps, and the live
+    // half of a permanent swap whose plan side changed nothing for today).
+    const todayPick = (u, pick = null) => {
+      const fitting = userSubstitutes(u, X, { sessionName, stalled, live, scope: "today", exclude }).filter((s) => s.fits);
+      if (pick != null && !fitting.some((s) => s.id === pick)) return { error: "bad-pick" };
+      return { id: pick ?? fitting[0]?.id ?? null };
+    };
     if (scope === "today") {
-      const live = Array.isArray(b.live) ? b.live.filter((x) => typeof x === "string").slice(0, 30) : null;
-      const fitting = userSubstitutes(user, X, { sessionName, stalled, live, scope: "today" }).filter((s) => s.fits);
-      if (b.pick != null && !fitting.some((s) => s.id === b.pick)) return c.json({ error: "bad-pick" }, 400);
-      const Y = b.pick ?? fitting[0]?.id;
+      const t = todayPick(user, b.pick ?? null);
+      if (t.error) return c.json({ error: "bad-pick" }, 400);
+      const Y = t.id;
       if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
-      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y) });
+      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription }) });
     }
 
     // scope === "always"
@@ -554,17 +583,40 @@ export function createApp(store, config = {}) {
     const updated = await store.updateUser(b.user_id, (u) => {
       outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
       const existing = (u.profile?.unavailable_exercises ?? []).find((r) => r.id === X);
-      // A replay (double tap, retried request): the swap already happened.
-      if (existing && !planHolds(u.program, X)) { outcome = { already: true, replaced_by: existing.replaced_by ?? null }; return u; }
+      // A replay (double tap, retried request): the swap already happened. Its stored
+      // replacement is only named while the plan still holds it (a rebuild may have
+      // dropped it too).
+      if (existing && !planHolds(u.program, X)) {
+        outcome = { already: true, replaced_by: existing.replaced_by && planHolds(u.program, existing.replaced_by) ? existing.replaced_by : null };
+        return u;
+      }
+      // "No machine" on a lift the stored plan doesn't hold (a today-only substitute): the
+      // promise is "your plan won't use it again" — record that, change nothing else.
+      if (!planHolds(u.program, X)) {
+        const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: null, at: nowISO }].slice(-MAX_EXCLUSIONS);
+        u.profile = { ...u.profile, unavailable_exercises: list };
+        const keep = new Set(list.map((x) => x.id));
+        u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}),
+          [X]: { sessions: {}, choices: [], volume: {}, warnings: null, program_sig: contentSig(u.program), rationale_sig: contentSig(u.plan_rationale ?? null) } }).filter(([id]) => keep.has(id)));
+        outcome = { replaced_by: null, sessions: [], plan_unchanged: true };
+        return u;
+      }
       const r = userApplySubstitution(u, X, { sessionName, stalled });
       if (r.error) { outcome = { error: r.error }; return u; }
       const touched = new Set(r.replaced.map((x) => x.session));
       // The exact inverse, kept server-side (never shipped to the client): the touched
       // sessions and rationale entries as they were, plus fingerprints of what this
       // write produced — Undo restores them only while the plan is still exactly that.
+      const vb = u.plan_rationale?.volume_by_muscle ?? {}, va = r.rationale?.volume_by_muscle ?? {};
       const snap = {
         sessions: Object.fromEntries([...touched].map((name) => [name, u.program.sessions.find((s) => s.name === name).exercises])),
-        choices: (u.plan_rationale?.exercise_choices ?? []).map((entry, i) => [i, entry]).filter(([, entry]) => touched.has(entry.session)),
+        // Every entry of a touched session, by position: the swap may also DROP a
+        // superset bonus, so the whole list for those sessions is restored.
+        choices: u.plan_rationale?.exercise_choices ?? [],
+        // The swap re-projects weekly volumes and the volume warnings (W275 review):
+        // what they were, so Undo is byte-exact.
+        volume: Object.fromEntries(Object.keys(vb).filter((m) => JSON.stringify(vb[m]) !== JSON.stringify(va[m])).map((m) => [m, vb[m]])),
+        warnings: u.plan_rationale?.warnings ?? null,
         program_sig: contentSig(r.program),
         rationale_sig: contentSig(r.rationale ?? null),
       };
@@ -580,9 +632,21 @@ export function createApp(store, config = {}) {
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
     if (outcome?.error === "not-in-plan") return c.json({ error: "not-in-plan" }, 409);
     if (outcome?.error) return c.json({ error: "no-candidate", message: `Nothing else that trains the same muscle fits your plan without doubling up — try "It's busy right now" for today, or edit your plan.` }, 409);
+    // Two answers, kept apart: `replaced_by` is the PLAN's replacement (null when the plan
+    // had nothing to replace, or a superset bonus simply left); `today` is what stands in
+    // the LIVE slot — the plan's replacement when today's session holds it, else today's
+    // own best fitting pick (a lift outside today's session, a dropped bonus, a replay
+    // after a rebuild).
     const Y = outcome.replaced_by;
-    const row = Y ? buildTodayFor(updated, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
-    return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [], ...(outcome.already ? { already: true } : {}), row });
+    let todayId = Y, row = Y ? buildTodayFor(updated, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
+    if (!row) {
+      const t = todayPick(updated);
+      todayId = t.id ?? null;
+      row = todayId ? substituteRow(updated, ctx, nowISO, X, todayId, { sessionName, prescription }) : null;
+    }
+    return c.json({ ok: true, scope, exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
+      today: todayId ? { id: todayId, name: nameOf(todayId) } : null,
+      ...(outcome.already ? { already: true } : {}), ...(outcome.plan_unchanged ? { plan_unchanged: true } : {}), row });
   });
 
   // "Pick one myself": the ranked list for TODAY's live session (header auth — the
@@ -593,8 +657,9 @@ export function createApp(store, config = {}) {
     if (!user.program) return c.json({ alternatives: [] });
     const X = c.req.param("id");
     const live = (c.req.query("live") ?? "").split(",").filter(Boolean).slice(0, 30);
+    const exclude = (c.req.query("exclude") ?? "").split(",").filter(Boolean).slice(0, 30); // swapped away earlier today
     const stalled = stalledExerciseIds(await store.listSessions(id), user.custom_exercises || [], new Date().toISOString());
-    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today" })
+    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today", exclude })
       .filter((s) => s.fits).slice(0, 12);
     return c.json({ alternatives: list.map((s) => {
       const e = exerciseById.get(s.id);

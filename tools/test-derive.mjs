@@ -1431,9 +1431,13 @@ check("#rest other compounds and the systemic 'isolations' (hip thrust, Nordics)
   assert.equal(restSeconds(kbEx("cable-lateral-raise")), 90);
   assert.equal(restSeconds(kbEx("barbell-curl")), 90, "a barbell ISOLATION is still isolation");
 });
-check("#rest a lift with no data (a custom lift, an unknown id) keeps the 120 s the app always used", () => {
+check("#rest a custom lift is tiered from what its author gave it; only a row with no mechanic at all keeps 120 s", () => {
+  // The shape POST /api/exercise/custom really stores (mechanic and equipment always set).
+  assert.equal(restSeconds({ id: "custom-x", mechanic: "isolation", equipment: "other", custom: true }), 90);
+  assert.equal(restSeconds({ id: "custom-y", mechanic: "compound", equipment: "barbell", custom: true }), 180);
+  assert.equal(restSeconds({ id: "custom-z", mechanic: "compound", equipment: "machine", custom: true }), 120);
   assert.equal(restSeconds(null), 120);
-  assert.equal(restSeconds({ id: "my-cable-thing" }), 120);
+  assert.equal(restSeconds({ id: "an-unknown-id" }), 120);
 });
 
 console.log(`\n${passed} test(s) passed.`);

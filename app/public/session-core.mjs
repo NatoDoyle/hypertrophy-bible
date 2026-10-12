@@ -341,9 +341,12 @@ export const formatRest = (sec) => { const s = Math.max(0, Math.round(sec)); ret
 // between sets of ONE lift teaches that lift a new length (as an offset from its own
 // rest): a superset round's or a remainder's fixed 60 s says nothing about it — +30 on
 // a 60 s remainder would otherwise teach a 3-minute lift to rest less.
+// A row from before W273 (no rest_s) teaches nothing either: its offset would be measured
+// from the 120 s fallback and then land on the lift's real rest (3:00 + 60 = 4:00) later.
 export function adjustRest(rest, delta, row) {
   const length = clampRest(rest.length + delta);
-  return { rest: { ...rest, length, until: rest.start + length * 1000 }, remember: rest.kind === "set" ? length - restLength(row, 0) : null };
+  const teaches = rest.kind === "set" && Number.isFinite(row?.rest_s);
+  return { rest: { ...rest, length, until: rest.start + length * 1000 }, remember: teaches ? length - restLength(row, 0) : null };
 }
 
 // FIXING A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). A
@@ -387,14 +390,46 @@ export function parseEdit(text, unit) {
 }
 // An edit's typo confirmation lives in its OWN key space (the Done button's guard keys
 // on exercise ids), so confirming a corrected number can never wave the NEXT set's
-// typo check through.
-export const editConfirmKey = (entry) => `edit:${entry?.completed_at ?? ""}`;
+// typo check through — and it names ONE set: a station round banks both members in the
+// same millisecond, and old entries have no completed_at, so the lift and (failing a
+// timestamp) the absolute log position are part of the key.
+export const editConfirmKey = (entry, idx) => `edit:${entry?.exercise ?? ""}:${entry?.completed_at ?? `#${idx}`}`;
+// What the editor writes for the text in its fields. A field whose text still reads as
+// shown keeps the stored value EXACTLY; a changed one is parsed in the unit it was
+// shown in. A work set the typo guard flags (the banking guard, on the corrected
+// numbers) writes the ORIGINAL values until confirmed — a clear-and-retype passes
+// through plausible intermediates ("1", "10"…), and the log must never keep one of
+// those when the final number is the suspect one.
+export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, confirmed = false }) {
+  const w = String(wText ?? "").trim(), r = String(rText ?? "").trim();
+  const kg = w === shownW ? entry0.weight_kg : parseEdit(w, unit);
+  const reps = r === shownR ? entry0.reps : (/^\d{1,3}$/.test(r) ? Number(r) : null);
+  const patch = {};
+  if (kg != null) patch.weight_kg = kg;
+  if (reps != null) patch.reps = reps;
+  const cand = { ...entry0, ...patch };
+  const flagged = (cand.set_type ?? "work") === "work" && !confirmed && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg, priorBests });
+  return flagged ? { patch: { weight_kg: entry0.weight_kg, reps: entry0.reps }, flagged: true } : { patch, flagged: false };
+}
 // After an edit the lift's "PR already celebrated" latch must match what the log now
 // says: true if ANY banked work set beats its prior bests (deload sets never count — the
 // server's rule), false once a typo PR is corrected away. Recomputed silently: an edit
 // never re-toasts.
+// The latch means "a PR was CELEBRATED this session" — what checkAndCelebratePR relies
+// on to toast once. An edit may only CLEAR it (a typo PR corrected away); it never sets
+// it, or the session's real later PR would never toast (edits don't toast).
+export const nextPrLatch = (was, logged, exId, prWatch) => !!was && recomputePrLatch(logged, exId, prWatch);
 export function recomputePrLatch(logged, exId, prWatch) {
   if (!prWatch) return false;
   return (logged ?? []).some((l) => l.exercise === exId && (l.set_type ?? "work") === "work"
     && !!checkSetPR(exId, l.weight_kg, l.reps, "work", prWatch, l.deload === true));
+}
+
+// The player's live Undo for a "Can't do this one?" swap belongs to ONE session: stamped
+// with its session_id, shown only on the swapped-in lift at set 0 before any work of it
+// is banked. (Module-level state outlived the workout: Monday's card offered to "undo"
+// Thursday's planned lift with Monday's row.)
+export function undoApplies(undo, sess, e) {
+  return !!undo && !!undo.session_id && undo.session_id === sess?.session_id && e?.exercise === undo.to
+    && sess.set === 0 && loggedWorkSets(sess.logged ?? [], undo.to) === 0;
 }

@@ -12,9 +12,9 @@ export function generateUserPlan(profile, opts = {}) {
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
 // swap — bound to the bundled KB and the user's OWN profile, plan, rationale, custom
 // lifts and block (specialization ordering depends on where they are in it).
-export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always" } = {}) {
+export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always", exclude = [] } = {}) {
   return bestSubstitutes(exId, { profile: user.profile, kb: KB, program: user.program, rationale: user.plan_rationale ?? null,
-    sessionName, stalled, live, scope, customExercises: user.custom_exercises || [] });
+    sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [] });
 }
 export function userApplySubstitution(user, exId, { sessionName = null, stalled = [] } = {}) {
   return applySubstitution(user.program, user.plan_rationale ?? null, exId, { profile: user.profile, kb: KB, stalled, sessionName,

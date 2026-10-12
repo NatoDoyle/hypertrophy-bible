@@ -2847,10 +2847,18 @@ try {
   // --- #rest (W273): every row the player reads carries the lift's own KB rest length —
   // a field dropped by a whitelist silently turns the feature off (the reason this file exists).
   const kbEx = (id) => JSON.parse(readFileSync(new URL(`../../data/exercises/${id}.json`, import.meta.url)));
-  ok("#rest /api/today's rows carry the lift's own rest (rest_s)",
-    ["walking-lunge", "bulgarian-split-squat"].every((id) => Number.isFinite(altEx[id]?.rest_s) && altEx[id].rest_s === restSeconds(kbEx(id))));
+  // W275 review: lifts OUTSIDE the 120 s fallback, or a wrong input (the plan slot, a row
+  // with no mechanic) would still read 120 and pass.
+  const restSU = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+    days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  await json("POST", "/api/plan/save", { user_id: restSU, program: { name: "Rest", sessions: [{ name: "Mix", exercises: [
+    { exercise: "barbell-back-squat", sets: 3, rep_range: "5-8", rir: "1-2" }, { exercise: "cable-lateral-raise", sets: 3, rep_range: "12-20", rir: "1-2" }] }] } });
+  const restTodayRows = Object.fromEntries(((await (await app.request("/api/today", { headers: { "X-HB-User": restSU } })).json()).session?.exercises ?? []).map((e) => [e.exercise, e.rest_s]));
+  ok("#rest /api/today's rows carry the lift's own rest: a barbell squat 3:00, a lateral raise 1:30",
+    restTodayRows["barbell-back-squat"] === 180 && restTodayRows["cable-lateral-raise"] === 90 && restSeconds(kbEx("barbell-back-squat")) === 180);
+  const restLib = await (await app.request("/api/exercises", { headers: { "X-HB-User": restSU } })).json();
   ok("#rest …and so do /api/exercises rows (a fallback swap row builds from them)",
-    altLib.find((e) => e.id === "walking-lunge")?.rest_s === restSeconds(kbEx("walking-lunge")));
+    restLib.find((e) => e.id === "barbell-back-squat")?.rest_s === 180 && restLib.find((e) => e.id === "cable-lateral-raise")?.rest_s === 90);
 
   // --- #cant-do (W272): "Can't do this one?" through the real routes. "No machine for
   // this" swaps the lift everywhere and keeps it out of every future plan; "It's busy"
@@ -2871,16 +2879,27 @@ try {
     const forged = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: lifts[0], scope: "always", pick: "barbell-back-squat" });
     ok("#cant-do a permanent swap refuses a client-chosen pick — a forged id never enters the plan",
       forged.status === 400 && JSON.stringify((await store.getUser(cdU)).program) === preProgram);
-    let X = null, always = null, refusedClean = true;
+    let X = null, always = null;
     for (const id of lifts) {
       const r = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: id, scope: "always", session: sessionOf(pre.program, id) });
       if (r.status === 200) { X = id; always = r.data; break; }
-      if (r.status !== 409 || JSON.stringify((await store.getUser(cdU)).program) !== preProgram) refusedClean = false;
+    }
+    // W275 review: the refusal check must SEE a refusal — a bodyweight-only plan has lifts
+    // with nothing that fits; every 409 writes nothing, and at least one 409 happens.
+    const bwU = (await json("POST", "/api/onboard", { profile: { ...prof, available_equipment: ["bodyweight"] } })).data.user_id;
+    const bw0 = await store.getUser(bwU);
+    const snapOf = (u) => JSON.stringify([u.program, u.plan_rationale, u.profile.unavailable_exercises?.length ? u.profile.unavailable_exercises : null]);
+    const bwBefore = snapOf(bw0);
+    let refusals = 0, refusedClean = true;
+    for (const id of [...new Set(bw0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]) {
+      const r = await json("POST", "/api/exercise/cant-do", { user_id: bwU, exercise: id, scope: "always", session: sessionOf(bw0.program, id) });
+      if (r.status === 409) { refusals++; if (snapOf(await store.getUser(bwU)) !== bwBefore) refusedClean = false; }
+      else if (r.status === 200) await json("POST", "/api/exercise/cant-do", { user_id: bwU, exercise: id, scope: "undo" }); // exact undo keeps the baseline
     }
     const post = await store.getUser(cdU);
     ok("#cant-do 'No machine for this' swaps X out of EVERY session for the server's own pick",
       !!X && !!always?.replaced_by && !holds(post.program, X) && holds(post.program, always.replaced_by) && always.replaced_by !== X);
-    ok("#cant-do …a refusal (no fitting replacement) is a 409 that writes nothing", refusedClean);
+    ok("#cant-do …a refusal (no fitting replacement) is a 409 that writes nothing — and the check saw one", refusals > 0 && refusedClean);
     ok("#cant-do …records the exclusion (server-owned), keeps the plan generated and plan_meta untouched (the day-order swap survives)",
       post.profile.unavailable_exercises?.some((r) => r.id === X && r.replaced_by === always?.replaced_by)
       && !post.program.custom && JSON.stringify(post.plan_meta) === preMeta);
@@ -2904,6 +2923,24 @@ try {
     const undoAgain = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
     ok("#cant-do …and undoing something not excluded is a clean 404", undoAgain.status === 404);
 
+    // W275 review: a swap re-projects weekly volumes AND the volume warnings, so the exact
+    // Undo must restore those too. Find a swap that really moves a warning (a beginner
+    // 3-day plan has below-MEV warnings a swap can lift), then require byte-exact undo.
+    const wU = (await json("POST", "/api/onboard", { profile: { ...prof, training_status: "beginner", days_per_week: 3 } })).data.user_id;
+    const w0 = await store.getUser(wU);
+    const w0Rat = JSON.stringify(w0.plan_rationale), w0Prog = JSON.stringify(w0.program);
+    let warnMoved = 0, warnUndoExact = true;
+    for (const id of [...new Set(w0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]) {
+      const r = await json("POST", "/api/exercise/cant-do", { user_id: wU, exercise: id, scope: "always", session: sessionOf(w0.program, id) });
+      if (r.status !== 200) continue;
+      const moved = JSON.stringify((await store.getUser(wU)).plan_rationale.warnings) !== JSON.stringify(w0.plan_rationale.warnings);
+      await json("POST", "/api/exercise/cant-do", { user_id: wU, exercise: id, scope: "undo" });
+      const back = await store.getUser(wU);
+      if (JSON.stringify(back.plan_rationale) !== w0Rat || JSON.stringify(back.program) !== w0Prog) warnUndoExact = false;
+      if (moved) warnMoved++;
+    }
+    ok("#cant-do a swap that moves the volume warnings is still undone byte-exactly (volumes + warnings restored)", warnMoved > 0 && warnUndoExact);
+
     // After a REBUILD the snapshot is stale: "bring back" must rebuild with X available
     // — here, the very plan the user had (a sex-only Settings save changes nothing the
     // engine reads) — never splice X back into a regenerated plan (premortem engine-1).
@@ -2915,9 +2952,20 @@ try {
     const brought = await store.getUser(cdU);
     ok("#cant-do 'Bring back' after a rebuild rebuilds WITH X — exactly the plan the engine builds with it available",
       bringBack.status === 200 && bringBack.data.mode === "rebuilt" && holds(brought.program, X) && JSON.stringify(brought.program) === preProgram);
-    await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always", session: sessionOf(brought.program, X) });
+    const again = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always", session: sessionOf(brought.program, X) });
     await json("POST", "/api/plan/regenerate", { user_id: cdU, profile: { ...prof, sex: "female", days_per_week: 5 } });
     ok("#cant-do a TRAINING change (a fresh block) keeps X out too", !holds((await store.getUser(cdU)).program, X));
+    // W275 review: once a rebuild has dropped the replacement too, nothing may still name it.
+    // Take away the replacement's own equipment so the rebuild CAN'T keep it.
+    const yEquip = kbEx(again.data?.replaced_by).equipment;
+    await json("POST", "/api/plan/regenerate", { user_id: cdU, profile: { ...prof, sex: "female", days_per_week: 5, available_equipment: FULL.filter((e) => e !== yEquip && (yEquip !== "bodyweight" || true)) } });
+    const yGone = !holds((await store.getUser(cdU)).program, again.data?.replaced_by);
+    const exp2 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cdU } })).json();
+    const replay2 = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always", live: [X] });
+    ok("#cant-do after a rebuild drops the replacement, the Plan tab and a replay never name a lift that isn't in the plan",
+      yEquip !== "bodyweight" && yGone && exp2.unavailable.find((u) => u.id === X)?.replaced_by == null && replay2.status === 200
+      && replay2.data.replaced_by === null && replay2.data.today?.id !== again.data.replaced_by,
+      JSON.stringify({ yEquip, yGone, named: exp2.unavailable.find((u) => u.id === X)?.replaced_by, replay: replay2.data?.replaced_by }));
     await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
 
     // TODAY ONLY: nothing written; the row is built by the same producer as /api/today
@@ -2946,6 +2994,35 @@ try {
     ok("#cant-do a pick that isn't a fitting alternative (here, a lift already in the session) is refused", badPick.status === 400);
     const autoPick = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: T.exercise, scope: "today", session: td.name, live });
     ok("#cant-do 'It's busy' without a pick takes the best fitting replacement", autoPick.status === 200 && autoPick.data.replaced_by === Y);
+
+    // W275 review: a second "Can't do" never hands back the lift ruled out earlier today…
+    const liveAfter = live.map((id) => (id === T.exercise ? Y : id));
+    const second = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: Y, scope: "today", session: td.name, live: liveAfter, exclude: [T.exercise] });
+    const altsEx = await (await app.request(`/api/exercise/${Y}/alternatives?session=${encodeURIComponent(td.name)}&live=${liveAfter.join(",")}&exclude=${T.exercise}`, { headers: { "X-HB-User": tdU } })).json();
+    ok("#cant-do a second 'busy' (and the pick list) never offers back the lift swapped away earlier today",
+      second.status === 200 && second.data.replaced_by !== T.exercise && !altsEx.alternatives.some((a) => a.id === T.exercise));
+    // …and "No machine" on a TODAY-ONLY substitute (not in the stored plan) keeps its promise:
+    // the lift is excluded from now on, today gets a replacement, the plan is untouched.
+    const tdPlan = (await store.getUser(tdU)).program;
+    const notInPlan = !tdPlan.sessions.some((s) => s.exercises.some((e) => e.exercise === Y));
+    const machineOnSub = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: Y, scope: "always", session: td.name, live: liveAfter, exclude: [T.exercise] });
+    const afterSub = await store.getUser(tdU);
+    ok("#cant-do 'No machine' on a today-only substitute records the exclusion and swaps today, the plan untouched",
+      notInPlan && machineOnSub.status === 200 && afterSub.profile.unavailable_exercises?.some((r) => r.id === Y)
+      && JSON.stringify(afterSub.program) === JSON.stringify(tdPlan) && machineOnSub.data.replaced_by === null && machineOnSub.data.plan_unchanged === true
+      && machineOnSub.data.today?.id && machineOnSub.data.today.id !== T.exercise && machineOnSub.data.today.id !== Y && machineOnSub.data.row?.exercise === machineOnSub.data.today.id);
+    await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: Y, scope: "undo" });
+
+    // W275 review: the today row is built for the slot it REPLACES, even when the picked lift
+    // still sits elsewhere in the stored session (swapped away live earlier today).
+    const rsU = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: rsU, program: { name: "Chest", sessions: [{ name: "Chest", exercises: [
+      { exercise: "dumbbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "dumbbell-fly", sets: 3, rep_range: "10-15", rir: "0-2" }] }] } });
+    const rsToday = (await (await app.request("/api/today", { headers: { "X-HB-User": rsU } })).json()).session;
+    const fly = rsToday.exercises.find((e) => e.exercise === "dumbbell-fly");
+    const rsPick = await json("POST", "/api/exercise/cant-do", { user_id: rsU, exercise: "dumbbell-fly", scope: "today", session: rsToday.name, live: ["machine-chest-press", "dumbbell-fly"], pick: "dumbbell-bench-press" });
+    ok("#cant-do the substitute's row carries the REPLACED slot's prescription, not its own original slot's",
+      rsPick.status === 200 && rsPick.data.row?.rep_range === fly.rep_range && rsPick.data.row?.sets === fly.sets, JSON.stringify(rsPick.data?.row && { rr: rsPick.data.row.rep_range, sets: rsPick.data.row.sets }));
   }
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

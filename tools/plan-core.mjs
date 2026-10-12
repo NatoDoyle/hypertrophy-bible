@@ -1534,7 +1534,7 @@ function sessionFit(items, lookup) {
 // the weekly two-session cap with every X slot removed. `scope: "today"` judges the
 // LIVE session instead — `live` is the ids the player holds right now, so a lift
 // already swapped in today is never offered twice.
-export function bestSubstitutes(exId, { profile, kb, program, rationale = null, sessionName = null, stalled = [], live = null, scope = "always", customExercises = [] } = {}) {
+export function bestSubstitutes(exId, { profile, kb, program, rationale = null, sessionName = null, stalled = [], live = null, scope = "always", customExercises = [], exclude = [] } = {}) {
   const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
   const X = lookup.get(exId);
   let session = program?.sessions?.find((s) => s.name === sessionName && s.exercises.some((e) => e.exercise === exId))
@@ -1550,7 +1550,8 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   if (!target) return [];
   const experience = profile?.training_status ?? "intermediate";
   const rankOpts = { experience, seed: seedFromProfile(profile ?? {}), goal: profile?.primary_goal ?? "hypertrophy", stalled: new Set(stalled ?? []) };
-  const pool = candidatePool(profile, kb).filter((e) => e.id !== exId && (e.primary_muscles ?? []).includes(target));
+  const ruledOut = new Set(exclude ?? []); // e.g. swapped away earlier today: never handed back
+  const pool = candidatePool(profile, kb).filter((e) => e.id !== exId && !ruledOut.has(e.id) && (e.primary_muscles ?? []).includes(target));
   const comp = loadableOnly(rankPool(difficultyGate(pool.filter((e) => e.mechanic === "compound"), experience), rankOpts));
   const iso = rankPool(difficultyGate(pool.filter((e) => e.mechanic === "isolation"), experience), rankOpts);
   const xFam = famOf(X.movement_pattern);
@@ -1604,13 +1605,26 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   let preferred = null;
   for (const s of holding) {
     while (s.exercises.some((e) => e.exercise === exId)) {
-      const fitting = bestSubstitutes(exId, { profile, kb, program: prog, rationale: rat, sessionName: s.name, stalled, customExercises }).filter((c) => c.fits);
-      const pick = (preferred && fitting.find((c) => c.id === preferred)) || fitting[0];
-      if (!pick) return { error: "no-candidate", session: s.name };
-      preferred ??= pick.id;
       const idx = s.exercises.findIndex((e) => e.exercise === exId);
       const slot = s.exercises[idx];
       const partner = slot.superset_with ? s.exercises.find((e) => e.exercise === slot.superset_with) : null;
+      const fitting = bestSubstitutes(exId, { profile, kb, program: prog, rationale: rat, sessionName: s.name, stalled, customExercises }).filter((c) => c.fits);
+      // A superset keeps its pairing whenever a replacement can: the pairing is what
+      // pays for the 4c rescue's extra lift in the session's time.
+      const pairing = partner ? fitting.filter((c) => c.keeps_pair) : [];
+      const isBonus = !!partner && /^superset — fits extra volume/.test(rat?.exercise_choices?.find((c) => c.session === s.name && c.exercise === exId)?.why?.[0] ?? "");
+      if (isBonus && !pairing.length) {
+        // The rescue BONUS exists only because pairing paid its time; with nothing that
+        // can pair, it leaves rather than become an unbudgeted extra lift.
+        s.exercises.splice(idx, 1);
+        delete partner.superset_with;
+        if (rat?.exercise_choices) rat.exercise_choices = rat.exercise_choices.filter((c) => !(c.session === s.name && c.exercise === exId));
+        replaced.push({ session: s.name, from: exId, to: null });
+        continue;
+      }
+      const pick = (preferred && pairing.find((c) => c.id === preferred)) || pairing[0] || (preferred && fitting.find((c) => c.id === preferred)) || fitting[0];
+      if (!pick) return { error: "no-candidate", session: s.name };
+      preferred ??= pick.id;
       const next = { exercise: pick.id, sets: slot.sets, rep_range: slot.rep_range, ...(slot.rir != null ? { rir: slot.rir } : {}) };
       if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
       else if (partner) delete partner.superset_with;
@@ -1620,7 +1634,12 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
         for (const c of rat.exercise_choices) {
           if (c.session !== s.name) continue;
           if (c.exercise === exId) Object.assign(c, { exercise: pick.id, why: [`swapped in — ${X?.name ?? exId} isn't available at your gym`], difficulty: Y?.difficulty, citations: Y?.citations ?? [] });
-          else if (partner && c.exercise === partner.exercise && Array.isArray(c.why)) c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pick.keeps_pair ? ["paired with " + pick.id] : []) : [w]));
+          else if (partner && c.exercise === partner.exercise && Array.isArray(c.why)) {
+            c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pick.keeps_pair ? ["paired with " + pick.id] : []) : [w]));
+            // A surviving bonus whose pairing is gone no longer "fits extra volume into
+            // your session" by pairing — say what it is now.
+            if (!pick.keeps_pair && /^superset — fits extra volume/.test(c.why[0] ?? "")) c.why = [`extra volume — was paired with ${X?.name ?? exId}, now on its own`];
+          }
         }
       }
       replaced.push({ session: s.name, from: exId, to: pick.id });
@@ -1628,7 +1647,40 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
     if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
   }
   sweepDanglingSupersets(prog.sessions);
+  if (rat?.volume_by_muscle) reprojectVolumes(prog, rat, kb, lookup);
   return { program: prog, rationale: rat, replaced, replaced_by: preferred };
+}
+
+// After a swap, the rationale's weekly volumes must describe the plan AS SWAPPED (lesson
+// 41): the Plan tab and "What your answers changed" read projected_sets/projected_status.
+// Same volume model and the same status rules as the generator's self-check. Per-muscle
+// volume warnings for a muscle whose numbers moved described the OLD plan, so they go; the
+// one that is a plain fact about the new numbers (over the recoverable ceiling) is restated.
+const VOLUME_WARNING_CODES = new Set(["under-target", "below-mev", "below-mev-indirect", "over-mrv", "not-reached", "held-not-reached"]);
+function reprojectVolumes(program, rationale, kb, lookup) {
+  const exIndex = new Map([...lookup.values()].map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
+  const pseudo = [{ date: "2026-01-05", sets: program.sessions.flatMap((s) => s.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work" })))) }];
+  const w = perMuscleWeeklyVolume(pseudo, exIndex);
+  const weekVol = w[Object.keys(w)[0]] ?? {};
+  const muscleIndex = new Map((kb.muscles ?? []).map((m) => [m.id, m.landmarks ?? null]));
+  const vsLm = volumeVsLandmarks(weekVol, muscleIndex);
+  const moved = new Set();
+  for (const [m, r] of Object.entries(rationale.volume_by_muscle)) {
+    const proj = weekVol[m] ?? 0;
+    if (proj === r.projected_sets) continue;
+    moved.add(m);
+    r.projected_sets = proj;
+    r.projected_status = r.secondary_served ? (proj > 0 ? "secondary-served" : "not-reached")
+      : r.eased ? (proj > 0 ? "eased" : "not-reached")
+        : r.maintenance ? (proj > 0 ? "maintenance" : "not-reached")
+          : (r.frequency ? (vsLm[m]?.status ?? "no-data") : "not-in-split");
+  }
+  if (!moved.size) return;
+  rationale.warnings = (rationale.warnings ?? []).filter((x) => !(x.muscle && moved.has(x.muscle) && VOLUME_WARNING_CODES.has(x.code)));
+  for (const m of moved) {
+    const r = rationale.volume_by_muscle[m];
+    if (r.projected_status === "over-MRV") rationale.warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${r.projected_sets} sets/wk is above MRV for ${m}.` });
+  }
 }
 
 // Critique any program (generated OR user-built) against the KB: per-muscle
