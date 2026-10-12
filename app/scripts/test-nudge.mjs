@@ -15,6 +15,7 @@ const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString().slice(0, 10);
 
 // --- pure decision ---
 ok("fresh trainer (2 days) is left alone", comebackStage({ lastSessionAt: daysAgo(2), now: NOW }) === null);
+ok("W271 a quiet day (rest, or off the weekly plan) holds the stage back", comebackStage({ lastSessionAt: daysAgo(5), now: NOW, skipToday: true }) === null);
 ok("4-day lapse → stage 1", comebackStage({ lastSessionAt: daysAgo(4), now: NOW })?.stage === 1);
 ok("stage 1 fires ONCE per lapse", comebackStage({ lastSessionAt: daysAgo(6), nudge: { for_session_at: daysAgo(6), stage: 1 }, now: NOW }) === null);
 ok("14-day lapse → stage 2 even after stage 1", comebackStage({ lastSessionAt: daysAgo(15), nudge: { for_session_at: daysAgo(15), stage: 1 }, now: NOW })?.stage === 2);
@@ -129,6 +130,19 @@ try {
   await store.saveAccount("fail@t.com", "failcase", new Date(NOW).toISOString());
   await runComebackSweep(store, failSend, NOW);
   ok("a FAILED send is not marked sent (next sweep retries)", (await store.getUser("failcase")).nudge == null);
+
+  // W271: a day the user has said is NOT for training (a marked rest day, or a day off
+  // their weekly plan) is not a day to be told their next session is ready — and the
+  // stage must not be CLAIMED, so it goes out the next eligible day instead.
+  await store.saveUser("rest-email", { profile: {}, rest_days: [new Date(NOW).toISOString().slice(0, 10)] });
+  await store.addSession("rest-email", { session_id: "re1", date: daysAgo(5), sets: [] });
+  await store.saveAccount("rest@t.com", "rest-email", new Date(NOW).toISOString());
+  const restSent = [];
+  await runComebackSweep(store, async (m) => { restSent.push(m); return { ok: true }; }, NOW);
+  ok("W271 the comeback email stands down on a marked rest day, and claims nothing",
+    !restSent.some((m) => m.email === "rest@t.com") && (await store.getUser("rest-email")).nudge == null);
+  await runComebackSweep(store, async (m) => { restSent.push(m); return { ok: true }; }, NOW + 86400000);
+  ok("W271 …and goes out the next day instead", restSent.some((m) => m.email === "rest@t.com"));
 
   console.log(`\n${pass} nudge test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

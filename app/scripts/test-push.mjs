@@ -121,7 +121,7 @@ ok("today is a committed day, already trained TODAY -> no push", shouldPushForCo
 ok("today is a committed day, trained YESTERDAY (not today) -> still push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(1), now: NOW }) === true);
 ok("today is NOT a committed day -> no push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: ["not-a-real-day-that-matches-today"] }, lastSessionAt: null, now: NOW }) === false);
 ok("no commitment set -> no push", shouldPushForCommitment({ commitment: null, lastSessionAt: null, now: NOW }) === false);
-ok("a commitment from a PRIOR week is stale and never fires", shouldPushForCommitment({ commitment: { week: "2020-W01", days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === false);
+ok("an ancient (2020) plan with no training never fires — since W271 that is the lapse cap, not staleness (days now carry forward)", shouldPushForCommitment({ commitment: { week: "2020-W01", days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === false);
 ok("paused users are NEVER pushed for a commitment either", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, paused: true, now: NOW }) === false);
 ok("reminders_off is a hard opt-out for commitment pushes too", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, remindersOff: true, now: NOW }) === false);
 // A day explicitly marked as rest is ANSWERED, not lapsed — the commitment nudge
@@ -849,6 +849,50 @@ try {
       const d6 = JSON.parse(await decryptPushPayload({ body: sentBody, uaPrivateJwk: ua.privJwk, auth: ua.auth }));
       ok("training again resets the anchor — a fresh lapse re-earns stage 1", r6.sent === 1 && d6.tag === "hb-comeback" && /ready/.test(d6.body));
     } finally { try { rmSync(cbPath); } catch {} }
+  }
+
+  // --- W271: the weekly commitment CARRIES FORWARD — so a reminder needs a cap anchored on
+  // something every user has (else a never-trained user with a saved plan is pushed three
+  // times a week forever); and every reminder branch respects the plan and rest days.
+  {
+    const LAST_WEEK = isoWeekKey(NOW - 7 * 86400000);
+    ok("#carry last week's days carry forward: a carried commitment fires on its day",
+      shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(3), now: NOW }) === true);
+    ok("#carry …but not once training has lapsed past the cap (the comeback owns that)",
+      shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(PUSH_MAX_LAPSE_DAYS + 9), now: NOW }) === false);
+    ok("#carry never-trained: a recent plan still fires, anchored on when it was made",
+      shouldPushForCommitment({ commitment: { week: LAST_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, subscribedAt: daysAgo(10), now: NOW }) === true);
+    ok("#carry never-trained: a 5-week-old plan on a 40-day-old subscription is silent — never pushed forever",
+      shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 35 * 86400000), days: [TODAY_KEY] }, lastSessionAt: null, subscribedAt: daysAgo(40), now: NOW }) === false);
+
+    const schPath = join(tmpdir(), `hb-push-sched-test-${process.pid}.json`);
+    const schStore = createFileStore(schPath);
+    try {
+      const T = atUtc("2026-07-14T17:00:00Z"); // Tuesday 17:00, the tz-0 user's push hour
+      const sub = (id, keys = { p256dh: "k", auth: "a" }) => schStore.savePushSubscription(id, { endpoint: `https://updates.push.services.mozilla.com/wpush/v2/${id}`, keys });
+      const lapsed3 = (id) => schStore.addSession(id, { session_id: `${id}-1`, date: "2026-07-11T10:00:00Z", local_date: "2026-07-11", sets: [] });
+      await schStore.saveUser("plan-off", { profile: { tz_offset_min: 0, commitment: { week: isoWeekKey(T), days: ["mon", "thu"] } } });
+      await lapsed3("plan-off"); await sub("plan-off");
+      await schStore.saveUser("rest-today", { profile: { tz_offset_min: 0 }, rest_days: ["2026-07-14"] });
+      await lapsed3("rest-today"); await sub("rest-today");
+      await schStore.saveUser("plain", { profile: { tz_offset_min: 0 } });
+      await lapsed3("plain"); await sub("plain");
+      const ua = await fakeUaSubscription();
+      await schStore.saveUser("cb-rest", { profile: { tz_offset_min: 0 }, rest_days: ["2026-07-14"] });
+      await schStore.addSession("cb-rest", { session_id: "cb-rest-1", date: "2026-07-09T10:00:00Z", local_date: "2026-07-09", sets: [] }); // 5 days → comeback stage 1
+      await sub("cb-rest", { p256dh: ua.p256dh, auth: ua.auth });
+      const hits = [];
+      await runPushSweep(schStore, vapid, T, async (url) => { hits.push(url); return { ok: true, status: 201 }; });
+      const hit = (id) => hits.some((u) => u.endsWith(`/${id}`));
+      ok("#carry sweep: a committed user is NOT pushed on a day they didn't plan (the lapse branch gives way)", !hit("plan-off"));
+      ok("#carry sweep: a marked rest day silences the lapse push too (Wave 265's promise, made true)", !hit("rest-today"));
+      ok("#carry sweep: control — no plan, no rest day, a 3-day lapse still pushes", hit("plain"));
+      ok("#carry sweep: the comeback push stands down on a rest day — no send AND no stamp",
+        !hit("cb-rest") && (await schStore.getUser("cb-rest")).profile?.comeback_push == null);
+      const hits2 = [];
+      await runPushSweep(schStore, vapid, T + 86400000, async (url) => { hits2.push(url); return { ok: true, status: 201 }; });
+      ok("#carry sweep: …and fires the next (non-rest) day instead", hits2.some((u) => u.endsWith("/cb-rest")) && (await schStore.getUser("cb-rest")).profile?.comeback_push?.stage === 1);
+    } finally { try { rmSync(schPath); } catch {} }
   }
 
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

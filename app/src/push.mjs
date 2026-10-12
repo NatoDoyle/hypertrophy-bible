@@ -1,7 +1,7 @@
-import { isoWeekKeyLocal, weekHasPassed, weekDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKeyLocal, weekHasPassed, weekDayKey, commitmentForDay, isoWeekMondayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile, celebrationCopy } from "./adherence.mjs";
-import { comebackStage } from "./nudge.mjs";
+import { comebackStage, quietToday } from "./nudge.mjs";
 
 // Web Push reminders (#4 adherence) — the device-native sibling of the email
 // comeback nudges. The daily/commitment reminder is EMPTY-payload by design:
@@ -151,12 +151,16 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 }
 
 // A commitment reminder fires when TODAY is a day the user THEMSELVES said
-// they'd train this week (`user.profile.commitment`, set via /api/commitment)
-// and they haven't trained yet today — proactive and keyed to the user's own
-// stated plan, unlike shouldPush's reactive "N days since last session" check
-// (which also can't fire the day right after training, exactly when a same-day
-// commitment reminder should). A commitment from a PRIOR iso week is stale and
-// never fires — the user meant "this week", not forever.
+// they'd train (`user.profile.commitment`, set via /api/commitment) and they
+// haven't trained yet today — proactive and keyed to the user's own stated plan,
+// unlike shouldPush's reactive "N days since last session" check (which also
+// can't fire the day right after training, exactly when a same-day commitment
+// reminder should). Since W271 a prior week's days CARRY FORWARD (the owner's
+// choice), so staleness can no longer bound it: a reminder needs a recent ANCHOR
+// every user has — the last session, else the later of when the plan was made and
+// when this device subscribed — and goes quiet PUSH_MAX_LAPSE_DAYS after it.
+// Without that, a never-trained user who saved Mon/Wed/Fri on day one would be
+// pushed three times a week forever (lastSessionAt alone is null for them).
 //
 // isoWeekKey/weekDayKey read UTC calendar fields off whatever they're handed —
 // correct for a bare local_date string, but `now` here is a raw UTC instant.
@@ -168,17 +172,17 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 // applied to this file's other tz-aware functions, but not this sibling call).
 // Missing tz falls back to raw UTC, same "don't starve delivery over missing
 // data" choice isUserPushHour makes for its own legacy slot.
-export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin, restDays = [] }) {
-  if (paused || remindersOff || !commitment?.days?.length) return false;
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin, restDays = [], subscribedAt = null }) {
+  if (paused || remindersOff) return false;
   const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
   const localNow = +new Date(now) + offsetMs;
-  // Chronological, not merely different: an equality test also dropped the reminder
-  // when the stored key read as the FUTURE relative to the freshly-computed one, which
-  // is what a tz change (first capture, DST, travel) looks like between stamp and read.
-  // For a Goal-4 reminder the user explicitly asked for, ambiguity resolves toward
-  // delivering it, not toward silence.
-  if (weekHasPassed(commitment.week, localNow, 0)) return false;
-  if (!commitment.days.includes(weekDayKey(localNow))) return false;
+  const todayKey = new Date(localNow).toISOString().slice(0, 10);
+  // This week's plan, or last week's carried forward (ordinal inside, lesson 40).
+  const plan = commitmentForDay(commitment, todayKey);
+  if (!plan || !plan.days.includes(weekDayKey(localNow))) return false;
+  const stampMs = Date.parse(plan.set_on ?? isoWeekMondayKey(plan.week) ?? "");
+  const anchorMs = lastSessionAt ? +new Date(lastSessionAt) : Math.max(Number.isFinite(stampMs) ? stampMs : -Infinity, subscribedAt ? +new Date(subscribedAt) : -Infinity);
+  if (!Number.isFinite(anchorMs) || Math.floor((+new Date(now) - anchorMs) / 86400000) > PUSH_MAX_LAPSE_DAYS) return false;
   // A day the user explicitly marked as rest is answered, not lapsed — nudging
   // "you planned to train today" at someone who deliberately chose recovery
   // teaches them the rest-day button is fake. Same local-day frame as the
@@ -470,9 +474,15 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // events above), since streakFreezeState needs a full session-history read
       // that would be wasteful to run 24x/day for every subscriber. Fires once per
       // DISTINCT protectable week (`freeze_pushed_week`, via stampIfChanged).
-      if (!paused && !remindersOff) {
+      // A day the user said is NOT for training (rest day, or off their weekly plan):
+      // every "train" reminder below stands down on it, without stamping anything,
+      // and goes out the next eligible day instead (W271, one predicate).
+      const qt = quietToday(user, now);
+      if (!paused && !remindersOff && !qt.quiet) {
         const sessions = await store.listSessions(userId);
-        const freeze = streakFreezeState(sessions, now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
+        // The user's own week (W271): the UTC instant offered a different week here
+        // than /api/adherence and the freeze route, near every local week boundary.
+        const freeze = streakFreezeState(sessions, qt.today ?? now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
         if (freeze.balance > 0 && freeze.protectable_week && freeze.protectable_week !== (user.profile?.freeze_pushed_week ?? null)) {
           const week = freeze.protectable_week;
           const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Protect your streak before it's gone", body: "You missed a week, but a streak freeze can still save it — protect it before it's gone.", tag: "hb-freeze" });
@@ -494,7 +504,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // the email channel already runs this play on its own sweep.
       let comebackSent = false;
       if (!paused && !remindersOff) {
-        const hit = comebackStage({ lastSessionAt, nudge: user.profile?.comeback_push ?? null, paused, remindersOff, now });
+        const hit = comebackStage({ lastSessionAt, nudge: user.profile?.comeback_push ?? null, paused, remindersOff, now, skipToday: qt.quiet });
         if (hit) {
           const copy = hit.stage === 2
             ? { subject: "The door's open when you are", body: "A couple of weeks off is nothing in a training life. Your weights are already eased for re-entry — one session is all a comeback is." }
@@ -521,8 +531,12 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         // OR the user's own weekly commitment. subscribedAt is PER-SUBSCRIPTION
         // (a brand-new device shouldn't be nagged on day one), so this stays in
         // the per-subscription loop.
-        const hit = shouldPush({ lastSessionAt, subscribedAt: sub.created_at ? new Date(sub.created_at).toISOString() : null, paused, remindersOff, now })
-          || shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min, restDays: user.rest_days ?? [] });
+        // A user with a weekly plan is reminded on THEIR days (and only within the cap);
+        // the lapse-reactive push is for users without one — and never on a rest day.
+        const subscribedAt = sub.created_at ? new Date(sub.created_at).toISOString() : null;
+        const hit = qt.plan
+          ? shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min, restDays: user.rest_days ?? [], subscribedAt })
+          : (!qt.restToday && shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, now }));
         if (!hit) continue;
         // Never POST to a non-push-service host, even if an old row slipped one in.
         if (!isAllowedPushEndpoint(sub.endpoint)) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }

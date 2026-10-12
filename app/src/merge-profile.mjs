@@ -66,9 +66,12 @@ export function mergeUserProfile(fromU, toU) {
     const merged = [...toHistory, ...fromHistory].sort((a, b) => (a.week < b.week ? 1 : a.week > b.week ? -1 : 0));
     toU.profile = { ...(toU.profile ?? {}), challenge_history: merged.slice(0, CHALLENGE_HISTORY_CAP) };
   }
-  // Commitment: adopt `from`'s only when `to` hasn't set one — never overwrite the
-  // survivor's own stated intention.
-  if (fromU.profile?.commitment && !toU.profile?.commitment) {
+  // Commitment: the MOST RECENTLY stated intention wins. A commitment now carries
+  // forward indefinitely (W271), so a survivor's dormant months-old plan is live, and
+  // keeping it would overrule the days the user set an hour ago on the merging phone.
+  // Ordinal on the zero-padded ISO week (lesson 40); a tie — or a `from` without one —
+  // keeps the survivor's own. A cleared plan ({days: []}) competes like any other.
+  if (fromU.profile?.commitment && (!toU.profile?.commitment || (fromU.profile.commitment.week ?? "") > (toU.profile.commitment.week ?? ""))) {
     toU.profile = { ...(toU.profile ?? {}), commitment: fromU.profile.commitment };
   }
   // Streak-freeze PUSH watermark (`freeze_pushed_week`, added Wave 145/146 — after
