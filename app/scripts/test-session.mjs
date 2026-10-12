@@ -6,7 +6,9 @@
 // player's exact control flow over the pure helpers and assert every exercise gets
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
+  restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
+  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -509,6 +511,180 @@ check("units round-trip: a deliberate lb entry never trips the lb/kg typo guard"
   const bankedKg = Math.round((130 / 2.2046226) * 100) / 100;
   assert.equal(isImplausibleSet(bankedKg, 8, { lastKg: 60 }), false);
 });
+
+// --- #replace-slot (W272): "Can't do this one?" swaps the lift at slot i for a row the
+// server built for the replacement. The old swap spread {...cur}: the old lift's
+// last_kg, pr_watch, eased and suggestion note rode onto the new one — a wrong "Last
+// time", the typo guard judged against the wrong lift, a fake PR toast, a deload tag.
+{
+  const mk = (exs, logged = []) => ({ ex: exs, logged, i: 1, set: 0, weights: { 0: 60, 1: 40, 2: 20 }, reps: { 1: 12 }, eff: { 1: "ok" }, wUnits: { 1: "kg" } });
+  const cur = { exercise: "pushdown", name: "Pushdown", sets: 3, rep_range: "10-15", rir: "1-2", last_kg: 40, last_reps: [12, 11],
+    pr_watch: { e1rm_kg: 55, load_kg: 45 }, eased: true, suggestion_note: "eased after a layoff", suggested_kg: 36, rest_s: 120 };
+  const row = { exercise: "cable-pushdown", name: "Cable pushdown", sets: 4, rep_range: "12-20", rir: "0-1", last_kg: null, last_reps: null,
+    pr_watch: { e1rm_kg: null, load_kg: null }, suggested_kg: null, rest_s: 90, superset_with: "curl", superset_with_name: "Curl",
+    unilateral: false, movement_pattern: "isolation-elbow-extension", primary_muscles: ["triceps"] };
+  const exs = () => [ex("bench", 3), { ...cur }, ex("curl", 3)];
+
+  check("#replace-slot the prescription stays the slot's; every other field is the new lift's own; the pairing is always dropped", () => {
+    const r = replaceSlot(mk(exs()), 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, true);
+    const out = r.sess.ex[1];
+    for (const k of PRESCRIPTION_KEYS) assert.deepStrictEqual(out[k], cur[k], `prescription ${k}`);
+    for (const k of Object.keys(row)) if (!PRESCRIPTION_KEYS.includes(k) && !/^superset_with/.test(k)) assert.deepStrictEqual(out[k], row[k], `row field ${k}`);
+    for (const k of Object.keys(cur)) if (!PRESCRIPTION_KEYS.includes(k) && !(k in row)) assert.ok(!(k in out), `the old lift's ${k} leaked onto the new one`);
+    assert.ok(!("superset_with" in out) && !("superset_with_name" in out), "a pairing never comes back into an unlinked live session");
+  });
+  check("#replace-slot resets ONLY that slot's typed inputs; the log, the other slots and the input are untouched", () => {
+    const s = mk(exs());
+    const before = JSON.stringify(s);
+    const r = replaceSlot(s, 1, row, { expect: "pushdown" });
+    assert.equal(JSON.stringify(s), before, "input not mutated");
+    assert.ok(!(1 in r.sess.weights) && !(1 in r.sess.reps) && !(1 in r.sess.eff) && !(1 in r.sess.wUnits));
+    assert.equal(r.sess.weights[0], 60); assert.equal(r.sess.weights[2], 20);
+    assert.deepStrictEqual(r.sess.logged, s.logged);
+    assert.equal(r.sess.set, 0);
+    assert.deepStrictEqual(r.sess.ex[0], s.ex[0]); assert.deepStrictEqual(r.sess.ex[2], s.ex[2]);
+  });
+  check("#replace-slot refuses a slot that no longer holds the lift that was tapped (a slow response must never hit the next exercise)", () => {
+    const s = mk(exs());
+    const r = replaceSlot(s, 2, row, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "moved"); assert.strictEqual(r.sess, s);
+    assert.equal(replaceSlot(s, 1, row, {}).ok, false, "no expectation, no replace");
+  });
+  check("#replace-slot refuses once the lift has a banked work set — logged work is never orphaned", () => {
+    const s = mk(exs(), [{ exercise: "pushdown", set_type: "work", weight_kg: 40, reps: 12 }]);
+    const r = replaceSlot(s, 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "started");
+    assert.equal(replaceSlot(mk(exs(), [{ exercise: "pushdown", set_type: "warmup", weight_kg: 20, reps: 10 }]), 1, row, { expect: "pushdown" }).ok, true, "a warm-up isn't work");
+  });
+  check("#replace-slot refuses a lift another slot already holds — progress is per exercise id, so a duplicate silently skips one", () => {
+    const r = replaceSlot(mk(exs()), 1, { ...row, exercise: "curl" }, { expect: "pushdown" });
+    assert.equal(r.ok, false); assert.equal(r.reason, "duplicate");
+    // …and the harm it prevents, replayed: two slots of one id → the second is never trained.
+    const { logged } = playSession([ex("db-bench", 3), ex("db-bench", 3)]);
+    assert.equal(loggedWorkSets(logged, "db-bench"), 3, "with a duplicate, only ONE slot's sets are ever trained");
+  });
+  check("#replace-slot Undo is the same call in reverse — the saved row comes back exactly; refused once the substitute has work banked", () => {
+    const s0 = mk(exs());
+    const s1 = replaceSlot(s0, 1, row, { expect: "pushdown" }).sess;
+    const s2 = replaceSlot(s1, 1, s0.ex[1], { expect: "cable-pushdown" });
+    assert.equal(s2.ok, true);
+    assert.deepStrictEqual(s2.sess.ex, s0.ex);
+    assert.equal(s2.sess.set, 0);
+    const s1b = { ...s1, logged: [{ exercise: "cable-pushdown", set_type: "work", weight_kg: 30, reps: 15 }] };
+    assert.equal(replaceSlot(s1b, 1, s0.ex[1], { expect: "cable-pushdown" }).ok, false);
+  });
+  check("#replace-slot an older row without a field (e.g. no rest_s from before a deploy) inherits nothing from the old lift", () => {
+    const { rest_s, ...oldShape } = row;
+    const out = replaceSlot(mk(exs()), 1, oldShape, { expect: "pushdown" }).sess.ex[1];
+    assert.ok(!("rest_s" in out), "the old lift's rest length must not ride along");
+  });
+}
+
+// --- #rest-state (W273): the rest is an absolute END TIME in the crash-safe session, so a
+// reload, a locked phone or an app switch resumes it; both renderers derive it here.
+check("#rest-state restLength: the lift's own rest plus the remembered offset, clamped to 30 s–10 min — never NaN", () => {
+  assert.equal(restLength({ rest_s: 180 }, 30), 210);
+  assert.equal(restLength({ rest_s: 90 }, -90), 30, "floor");
+  assert.equal(restLength({ rest_s: 180 }, 900), 600, "ceiling");
+  assert.equal(restLength({ exercise: "x" }), 120, "a row from before W273 (no rest_s, a resumed workout) rests the old 120 s");
+  assert.equal(restLength({ rest_s: undefined }, 30), 150);
+  assert.equal(restLength({ rest_s: 180 }, NaN), 180, "a junk offset is ignored");
+  assert.ok(Number.isFinite(restLength({ rest_s: "abc" }, "x")));
+});
+check("#rest-state restRemaining: whole seconds to the end, rounded up, never negative", () => {
+  const now = 1_000_000;
+  assert.equal(restRemaining(now + 5000, now), 5);
+  assert.equal(restRemaining(now + 4001, now), 5);
+  assert.equal(restRemaining(now - 1, now), 0);
+  assert.equal(restRemaining(NaN, now), 0);
+});
+check("#rest-state activeRest: a stored rest counts only while plausible AND still following the set it was started after", () => {
+  const now = 1_000_000;
+  const sess = { logged: [{}, {}], rest: newRest({ kind: "set", length: 120, ex: "squat", logged: 2 }, now - 60_000) };
+  assert.ok(activeRest(sess, now));
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: now - 1 } }, now), null, "over");
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: now + 3_600_000 } }, now), null, "an hour ahead is not a rest (a clock jump, a corrupt blob)");
+  assert.equal(activeRest({ ...sess, rest: { ...sess.rest, until: NaN } }, now), null);
+  assert.equal(activeRest({ ...sess, logged: [{}, {}, {}] }, now), null, "a set banked since: the rest belongs to an older set");
+  assert.equal(activeRest({ logged: [] }, now), null);
+});
+check("#rest-state formatRest: m:ss", () => {
+  assert.equal(formatRest(125), "2:05"); assert.equal(formatRest(60), "1:00"); assert.equal(formatRest(9), "0:09"); assert.equal(formatRest(0), "0:00");
+});
+check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), clamped; only a SET rest teaches the lift its offset", () => {
+  const start = 1_000_000;
+  const r = newRest({ kind: "set", length: 120, ex: "squat", logged: 2 }, start);
+  const up = adjustRest(r, 30, { rest_s: 120 });
+  assert.equal(up.rest.length, 150); assert.equal(up.rest.until, start + 150_000); assert.equal(up.remember, 30, "remembered as an OFFSET from the lift's own rest");
+  assert.equal(adjustRest(newRest({ kind: "set", length: 30, ex: "squat", logged: 2 }, start), -30, { rest_s: 120 }).rest.length, 30, "never below 30 s");
+  assert.equal(adjustRest(newRest({ kind: "round", length: 60, ex: null, logged: 4 }, start), 30, { rest_s: 180 }).remember, null, "a superset round's fixed rest never re-tunes a lift");
+  assert.equal(adjustRest(newRest({ kind: "remainder", length: 60, ex: "squat", logged: 4 }, start), 30, { rest_s: 180 }).remember, null,
+    "+30 on a 60 s remainder must not teach a 180 s lift to rest LESS (premortem crash-safety-3d)");
+});
+
+// --- #edit (W274 — owner: "I can't fix a wrong weight/reps mid-workout"): a banked set is
+// corrected IN PLACE — numbers only, never count, order, lift or type — so everything the
+// player derives from the log (progress, the cursor, station rounds) cannot move.
+{
+  const t = (n) => `2026-10-12T10:0${n}:00.000Z`;
+  const L1 = { exercise: "L", set_type: "work", weight_kg: 20, reps: 12, completed_at: t(1) };
+  const P1 = { exercise: "P", set_type: "work", weight_kg: 15, reps: 10, completed_at: t(2) };
+  const L2 = { exercise: "L", set_type: "work", weight_kg: 20, reps: 11, completed_at: t(3) };
+  const P2 = { exercise: "P", set_type: "work", weight_kg: 15, reps: 9, completed_at: t(4) };
+  const LW = { exercise: "L", set_type: "warmup", weight_kg: 10, reps: 10, completed_at: t(5) };
+  const station = [L1, P1, L2, P2, LW];
+  check("#edit-logged only the patched fields change — 10.21 kg stays 10.21 kg on a reps-only fix; nothing is mutated", () => {
+    const logged = [{ exercise: "db-curl", set_type: "work", weight_kg: 10.21, reps: 8, completed_at: t(1) }];
+    const before = JSON.stringify(logged);
+    const out = editLoggedSet(logged, 0, { reps: 10 }, { exercise: "db-curl", completed_at: t(1) });
+    assert.equal(out[0].weight_kg, 10.21); assert.equal(out[0].reps, 10);
+    assert.equal(out.length, 1); assert.equal(out[0].set_type, "work"); assert.equal(out[0].exercise, "db-curl");
+    assert.equal(JSON.stringify(logged), before, "input untouched");
+  });
+  check("#edit-logged refuses (same array back) unless the entry is still the one the editor opened — same lift AND same completed_at", () => {
+    assert.strictEqual(editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "L", completed_at: P2.completed_at }), station);
+    assert.strictEqual(editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "P", completed_at: t(9) }), station);
+    assert.strictEqual(editLoggedSet(station, 9, { weight_kg: 30 }, { exercise: "P", completed_at: P2.completed_at }), station);
+  });
+  check("#edit-logged an empty or junk field (a cleared input, NaN, a negative) is ignored, never written", () => {
+    for (const patch of [{ weight_kg: null }, { weight_kg: NaN }, { reps: -1 }, { reps: 2.5 }, {}]) assert.strictEqual(editLoggedSet(station, 1, patch, { exercise: "P", completed_at: P1.completed_at }), station, JSON.stringify(patch));
+  });
+  check("#edit-station chips carry ABSOLUTE log positions — a round interleaves two lifts, so P's second set is logged[3], not 'P #1'", () => {
+    assert.deepStrictEqual(sessionChips(station, "P").map((c) => c.idx), [1, 3]);
+    assert.deepStrictEqual(sessionChips(station, "L").map((c) => c.idx), [0, 2, 4]);
+    const out = editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "P", completed_at: P2.completed_at });
+    assert.equal(out[3].weight_kg, 30);
+    out.forEach((l, k) => { if (k !== 3) assert.strictEqual(l, station[k], `logged[${k}] untouched`); });
+  });
+  check("#edit-station an edit moves no progress: station rounds, work-set counts and the next unfinished lift are identical", () => {
+    const exs = [ex("L", 3, "P"), ex("P", 3, "L"), ex("Z", 2)];
+    const out = editLoggedSet(station, 2, { weight_kg: 22.5, reps: 12 }, { exercise: "L", completed_at: L2.completed_at });
+    assert.deepStrictEqual(stationProgress(out, exs, 0, 1), stationProgress(station, exs, 0, 1));
+    assert.equal(loggedWorkSets(out, "L"), loggedWorkSets(station, "L"));
+    assert.equal(nextUnfinishedIndex(out, exs, 0), nextUnfinishedIndex(station, exs, 0));
+  });
+  check("#edit-display the editor shows a banked weight EXACTLY and reads it back in the same unit — plate rounding re-saved 22.5 lb as 25 lb", () => {
+    for (const kg of [62.14, 10.21, 46.49]) assert.ok(Math.abs(parseEdit(editDisplay(kg, "lb"), "lb") - kg) <= 0.005, `${kg} kg via lb`);
+    assert.equal(editDisplay(10.21, "lb"), "22.5");
+    assert.equal(editDisplay(62.7, "kg"), "62.7"); assert.equal(parseEdit("62.7", "kg"), 62.7);
+    assert.equal(parseEdit("62,5", "kg"), 62.5, "a comma decimal (EU keyboards) reads as a point");
+    assert.equal(parseEdit("", "kg"), null); assert.equal(parseEdit("abc", "lb"), null); assert.equal(parseEdit("-5", "kg"), null);
+  });
+  check("#edit-confirm an edit's typo confirmation lives in its OWN key space — it can never wave the Done button's guard through", () => {
+    assert.equal(editConfirmKey({ completed_at: t(1) }), `edit:${t(1)}`);
+    assert.deepStrictEqual(unconfirmedFlagged([0], () => "L", () => true, new Set([editConfirmKey(L1)])), [0]);
+  });
+  check("#pr-latch recomputed from the log after an edit: a typo PR corrected away clears it; a deload set never sets it; a real one does", () => {
+    const watch = { e1rm_kg: 30, load_kg: 25 };
+    const typo = [{ exercise: "L", set_type: "work", weight_kg: 200, reps: 8, completed_at: t(1) }];
+    assert.equal(recomputePrLatch(typo, "L", watch), true);
+    assert.equal(recomputePrLatch(editLoggedSet(typo, 0, { weight_kg: 20 }, { exercise: "L", completed_at: t(1) }), "L", watch), false);
+    assert.equal(recomputePrLatch([{ ...typo[0], deload: true }], "L", watch), false);
+    assert.equal(recomputePrLatch([{ ...typo[0], set_type: "warmup" }], "L", watch), false);
+    assert.equal(recomputePrLatch(typo, "L", null), false, "no history to beat");
+  });
+}
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

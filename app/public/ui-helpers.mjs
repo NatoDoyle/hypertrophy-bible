@@ -171,3 +171,18 @@ export function calendarAdvice(exportedIdx, { days = [], resumeDays = null } = {
   if (!d) return null;
   return { ...d, advice: days?.length ? "replace" : resumeDays?.length ? "delete-if-done" : "save-or-delete" };
 }
+
+// "Can't do this one?" (W272): say what the server REALLY did — an exact restore, a
+// rebuild that put the lift back, a rebuild that didn't need it this block, or a
+// hand-built plan where only the exclusion was lifted (lesson 60: copy is a promise).
+export function bringBackCopy({ mode, restored = 0, name = "That lift" } = {}) {
+  if (mode === "exact") return `${name} is back in your plan.`;
+  if (mode === "rebuilt") return restored ? `${name} is back — your plan was rebuilt with it available.` : `${name} is available again — your plan will use it when it fits.`;
+  return `${name} is available again — add it back in the plan editor whenever you like.`;
+}
+// The player's Undo: the live slot goes back only if the substitute has no banked work
+// (replaceSlot's guard); the plan side of a permanent swap is undone either way.
+export function swapUndoCopy({ revertedLive, permanent, from, to }) {
+  if (!permanent) return `${from} is back.`;
+  return revertedLive ? `${from} is back — in today's workout and your plan.` : `${to} stays for today (you've started it) — ${from} is back from your next session.`;
+}

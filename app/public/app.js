@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -976,15 +976,29 @@ async function renderPlan() {
         </div><span class="muted">›</span></button>`;
     }).join("")}
     ${(d.program?.sessions ?? []).length > 1 ? `<button class="btn ghost inline" data-do-today="${esc(s.name)}" style="margin-top:8px">🔁 Do this one today</button>` : ""}</div>`).join("");
+  // "Not available at your gym" (W272): every "No machine for this" answer, with its way
+  // back — the one-way door is never one-way (lesson 27).
+  const unavailableBlock = (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
+    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
+    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${sessionCards}
+    ${unavailableBlock}
     <button class="btn secondary inline" id="edit-plan">Edit plan</button>
     ${personalizationBlock}
     ${whyBlock}
     ${cardioBlock}`;
   wireLearnLinks();
   $("#edit-plan").onclick = renderPlanEdit;
+  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
+    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
+    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
+    await renderPlan();
+    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+  });
   // "Do this one today": the same server-side day swap the Today sheet does —
   // the chosen day and today's trade places for this cycle. Mid-session it's
   // refused client-side (the live session's exercises are already dealt).
@@ -1700,6 +1714,7 @@ function loadSess() {
     if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
     if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
     s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; s.wUnits ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
+    if (s.rest && !activeRest(s, Date.now())) delete s.rest; // over, implausible, or for an older set — dropped, never trusted
     return s;
   } catch { return null; }
 }
@@ -2019,10 +2034,141 @@ function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
 // over whatever screen the user moved to.
 let restTimer = null;
 const stopRestTimer = () => { if (restTimer) { clearInterval(restTimer); restTimer = null; } };
+// REST (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"). Each lift
+// brings its own KB rest (rest_s); ±30 s on the rest screen adjusts THIS rest and, between
+// sets of one lift, is remembered on the device as an offset from that lift's length. The
+// rest is an end time in the crash-safe session (sess.rest), stamped ONCE where a set or
+// round is banked: a reload, a locked phone or any repaint resumes it — never restarts or
+// loses it — and only "I'm ready" or reaching zero clears it.
+const restOffsetFor = (id) => { try { const m = JSON.parse(localStorage.getItem("hb_rest") || "{}"); return Number.isFinite(m?.[id]) ? m[id] : 0; } catch { return 0; } };
+const rememberRestOffset = (id, offset) => {
+  try { const m = JSON.parse(localStorage.getItem("hb_rest") || "{}") || {}; if (offset) m[id] = offset; else delete m[id]; localStorage.setItem("hb_rest", JSON.stringify(m)); } catch {}
+};
+// FIX A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). Every
+// set banked this session is one tap from a correction: "This session" chips on the set
+// screen, "Just logged" on the rest screen and on the next lift's first set (a typo on a
+// lift's LAST set has no rest screen after it). The editor writes THROUGH on every valid
+// keystroke — a repaint, a rest ending, or a crash can never lose a half-made fix — and a
+// field whose text still reads exactly as shown keeps its ORIGINAL value, so an untouched
+// number is never re-parsed from a rounded display. Chips carry ABSOLUTE log positions
+// plus completed_at (session-core), so a superset's interleaved sets are never mixed up.
+let setEditor = null;           // the open editor: { idx, exercise, completed_at, unit }
+const editConfirmed = new Set(); // edit typo-confirmations — their OWN key space (editConfirmKey)
+const nameInSess = (id) => sess?.ex?.find((x) => x.exercise === id)?.name ?? exName(id);
+const setText = (entry, id) => (entry.weight_kg > 0 || !(entry.reps >= 0)
+  ? `${editDisplay(entry.weight_kg, unitFor(id))} ${unitLabelFor(id)} × ${entry.reps}` : `${entry.reps} reps`);
+function setChipsHtml(ids) {
+  const chips = ids.flatMap((id) => sessionChips(sess.logged, id).map((c) => ({ ...c, id })));
+  if (!chips.length) return "";
+  const named = ids.length > 1;
+  return `<div class="muted" style="margin:4px 0 8px;font-size:.9rem">This session: ${chips.map((c) =>
+    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
+}
+function justLoggedHtml(idxs) {
+  const items = idxs.filter((i) => sess.logged[i]);
+  if (!items.length) return "";
+  return `<p class="muted" style="margin:6px 0">Just logged: ${items.map((i) => { const l = sess.logged[i];
+    return `<button class="chip" data-fix="${i}" aria-label="Fix ${esc(nameInSess(l.exercise))}: ${esc(setText(l, l.exercise))}">${esc(nameInSess(l.exercise))} ${esc(setText(l, l.exercise))} ✏️ fix</button>`; }).join(" ")}</p>`;
+}
+function wireSetFixes(rerender) {
+  app.querySelectorAll("[data-fix]").forEach((b) => b.onclick = () => openSetEditor(+b.dataset.fix, $("#fix-host"), rerender));
+}
+function openSetEditor(idx, host, rerender) {
+  const entry0 = sess?.logged?.[idx];
+  if (!entry0 || !host) return;
+  const unit = unitFor(entry0.exercise); // captured ONCE: shown and read back in the same unit
+  setEditor = { idx, exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, unit };
+  const shownW = editDisplay(entry0.weight_kg, unit), shownR = String(entry0.reps ?? "");
+  const field = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem";
+  host.innerHTML = `<div class="card" id="set-editor"><b>Fix ${esc(nameInSess(entry0.exercise))}${entry0.set_type === "warmup" ? " (warm-up)" : ""}</b>
+    <div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0">
+      <input id="fix-w" type="text" inputmode="decimal" value="${esc(shownW)}" aria-label="Weight in ${unit}" style="width:6rem;${field}">
+      <span class="muted">${unit} ×</span>
+      <input id="fix-r" type="text" inputmode="numeric" value="${esc(shownR)}" aria-label="Reps" style="width:4.5rem;${field}">
+      <span class="muted">reps</span></div>
+    <p class="muted" id="fix-note" role="status" style="margin:6px 0 0"></p>
+    <button class="btn secondary inline" id="fix-done" style="margin-top:8px">Done</button></div>`;
+  const apply = () => {
+    const ed = setEditor;
+    if (!ed || !sess) return;
+    const wText = $("#fix-w").value.trim(), rText = $("#fix-r").value.trim();
+    const patch = {};
+    const kg = wText === shownW ? entry0.weight_kg : parseEdit(wText, ed.unit);
+    if (kg != null) patch.weight_kg = kg;
+    const reps = rText === shownR ? entry0.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : null);
+    if (reps != null) patch.reps = reps;
+    // The same typo guard as banking, on the corrected numbers; a suspect value waits
+    // for an explicit "keep it" before it is written.
+    const row = sess.ex.find((x) => x.exercise === ed.exercise);
+    const cand = { ...sess.logged[ed.idx], ...patch };
+    const key = editConfirmKey(entry0);
+    if ((cand.set_type ?? "work") === "work" && !editConfirmed.has(key) && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null })) {
+      $("#fix-note").innerHTML = `That looks like a typo — far above what you usually lift here. <button class="btn ghost inline" id="fix-keep" style="margin:0">Keep it</button>`;
+      $("#fix-keep").onclick = () => { editConfirmed.add(key); apply(); };
+      return;
+    }
+    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
+    if (next === sess.logged) { $("#fix-note").textContent = ""; return; }
+    sess.logged = next;
+    // The PR latch follows the log, silently — an edit never re-toasts.
+    if (row) {
+      sess.prCelebrated = { ...(sess.prCelebrated ?? {}) };
+      if (recomputePrLatch(sess.logged, ed.exercise, row.pr_watch)) sess.prCelebrated[ed.exercise] = true;
+      else delete sess.prCelebrated[ed.exercise];
+    }
+    saveSess();
+    $("#fix-note").textContent = "Saved.";
+  };
+  $("#fix-w").oninput = apply;
+  $("#fix-r").oninput = apply;
+  $("#fix-done").onclick = () => { setEditor = null; rerender(); };
+  $("#fix-w").focus();
+}
+const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); };
+const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } };
+function showRest(rest, nextLine, row, onDone, announce) {
+  app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${formatRest(restRemaining(rest.until, Date.now()))}</div>
+    <div class="row" style="justify-content:center;gap:10px;border:0;padding:0">
+      <button class="btn ghost inline" id="rest-minus" aria-label="Rest 30 seconds less" style="margin:0">−30s</button>
+      <button class="btn ghost inline" id="rest-plus" aria-label="Rest 30 seconds more" style="margin:0">+30s</button></div>
+    <p class="muted">${nextLine}</p>
+    <div id="fix-host">${justLoggedHtml(rest.kind === "round" ? [sess.logged.length - 2, sess.logged.length - 1] : [sess.logged.length - 1])}</div>
+    ${restReadiness()}
+    <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
+  wireRestCues(); wireLearnLinks(); wireSetFixes(onDone);
+  // Announce ONCE (the per-second #t is not aria-live, or it would spam a screen
+  // reader every tick) and move focus to the only action.
+  say(announce);
+  $("#skip").focus();
+  const tick = () => {
+    const left = restRemaining(sess?.rest?.until, Date.now());
+    if ($("#t")) $("#t").textContent = formatRest(left);
+    if (left > 0) return;
+    stopRestTimer(); endRest();
+    try { navigator.vibrate?.([180, 90, 180]); } catch {}
+    say("Rest over — you're up.");
+    // Mid-fix: never repaint over a half-typed correction — the rest just says it's over.
+    if (setEditor) { if ($("#skip")) $("#skip").textContent = "Rest over — I'm ready"; return; }
+    onDone();
+  };
+  // ONE handle (stopRestTimer clears it), and the display is always derived from the
+  // stored end time — a throttled interval on a locked phone shows the truth on wake.
+  restTimer = setInterval(tick, 1000);
+  $("#skip").onclick = () => { stopRestTimer(); endRest(); setEditor = null; onDone(); };
+  const nudge = (delta) => {
+    if (!sess?.rest) return;
+    const { rest: next, remember } = adjustRest(sess.rest, delta, row);
+    sess.rest = next; saveSess();
+    if (remember != null && row?.exercise) rememberRestOffset(row.exercise, remember);
+    tick();
+  };
+  $("#rest-minus").onclick = () => nudge(-REST_STEP_S);
+  $("#rest-plus").onclick = () => nudge(REST_STEP_S);
+}
 
-function renderPlayer(resting = 0) {
+function renderPlayer() {
   stopRestTimer();
-  if (resting > 0) quitPending = false; // resting = a set was just done; reset the guard
+  setEditor = null;
   // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
   // slips through may crash the recovery path for a user's unposted sets.
   if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
@@ -2037,7 +2183,7 @@ function renderPlayer(resting = 0) {
   if (pIdx >= 0) {
     const L = Math.min(sess.i, pIdx), P = Math.max(sess.i, pIdx);
     if (!stationProgress(sess.logged, sess.ex, L, P).done)
-      return renderSupersetStation(L, P, resting);
+      return renderSupersetStation(L, P);
   }
   // Belt-and-braces: the cursor must never rest on an already-finished exercise.
   // Healthy flow advances via nextExerciseIndex, but a resumed old-build session (or
@@ -2059,31 +2205,24 @@ function renderPlayer(resting = 0) {
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
 
-  if (resting > 0) {
-    app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
-      <p class="muted">Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}</p>
-      ${restReadiness()}
-      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-    wireRestCues(); wireLearnLinks();
-    // Announce rest ONCE at the start (the per-second #t is not aria-live, or it
-    // would spam a screen reader every tick) and move focus to the only action,
-    // so a keyboard/SR user knows a timer is running and where they are.
-    say(`Resting about ${resting} seconds — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
-    $("#skip").focus();
-    let left = resting;
-    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next set."); renderPlayer(0); } }, 1000);
-    $("#skip").onclick = () => { stopRestTimer(); renderPlayer(0); };
+  const rest = activeRest(sess, Date.now());
+  if (rest) {
+    quitPending = false;
+    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}`, e, () => renderPlayer(0),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
     return;
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
+    ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
     ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
     <div class="setdots">${setDots}</div>
+    <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
     ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
@@ -2099,7 +2238,7 @@ function renderPlayer(resting = 0) {
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
-    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="swap">🔄 Swap this exercise</button>` : ""}
+    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="cantdo">🙅 Can't do this one?</button>` : ""}
     ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
@@ -2108,7 +2247,9 @@ function renderPlayer(resting = 0) {
   // focus on the exercise heading (tabindex=-1) so they resume at the top of the
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
-  if ($("#swap")) $("#swap").onclick = () => renderSwap();
+  if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
+  wireSetFixes(() => renderPlayer(0));
+  if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
   // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
   // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
@@ -2192,7 +2333,10 @@ function renderPlayer(resting = 0) {
     const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload); // overrides the say() above if it's a PR — the bigger news
     checkAndCelebrateLucky(e, loggedSet, wasPR);
     if (sess.complete) return finish();
-    renderPlayer(sess.set === 0 ? 0 : 120); // rest timer between sets, not between exercises
+    // A rest between sets of the SAME lift (none between exercises): its own KB length
+    // plus the user's remembered nudge, stamped once, here, in the crash-safe session.
+    if (sess.set > 0) startRest("set", restLength(sess.ex[sess.i], restOffsetFor(sess.ex[sess.i].exercise)), sess.ex[sess.i].exercise);
+    renderPlayer(0);
   };
 }
 
@@ -2203,26 +2347,20 @@ function renderPlayer(resting = 0) {
 // corrupt. L/P are the pair's indices in sess.ex (L < P). Only entered while both
 // members still owe paired rounds; any set-count remainder of the longer move is
 // finished afterwards by the normal single-exercise path.
-function renderSupersetStation(L, P, resting = 0) {
+function renderSupersetStation(L, P) {
   stopRestTimer();
+  setEditor = null;
   if (!sess || !sess.ex[L] || !sess.ex[P]) { clearSess(); return render(); }
   normalizeSessUnits();
   const A = sess.ex[L], B = sess.ex[P];
   const { paired, round, done } = stationProgress(sess.logged, sess.ex, L, P); // round is 0-indexed
   if (done) return renderPlayer(0); // defensive: paired work done → hand back
 
-  if (resting > 0) {
+  const rest = activeRest(sess, Date.now());
+  if (rest) {
     quitPending = false;
-    app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${resting}</div>
-      <p class="muted">Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}</p>
-      ${restReadiness()}
-      <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-    wireRestCues(); wireLearnLinks();
-    say(`Resting about ${resting} seconds — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
-    $("#skip").focus();
-    let left = resting;
-    restTimer = setInterval(() => { left--; if ($("#t")) $("#t").textContent = left; if (left <= 0) { stopRestTimer(); say("Rest over — next round."); renderSupersetStation(L, P, 0); } }, 1000);
-    $("#skip").onclick = () => { stopRestTimer(); renderSupersetStation(L, P, 0); };
+    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}`, null, () => renderSupersetStation(L, P),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
     return;
   }
 
@@ -2252,6 +2390,7 @@ function renderSupersetStation(L, P, resting = 0) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
+    <div id="fix-host">${setChipsHtml([A.exercise, B.exercise])}</div>
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
@@ -2274,6 +2413,7 @@ function renderSupersetStation(L, P, resting = 0) {
   wireValInputs((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   wireUnitToggles((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderSupersetStation(L, P, 0)));
+  wireSetFixes(() => renderSupersetStation(L, P));
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -2299,7 +2439,7 @@ function renderSupersetStation(L, P, resting = 0) {
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
     for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload));
-    if (!stationProgress(sess.logged, sess.ex, L, P).done) { saveSess(); return renderSupersetStation(L, P, 60); }
+    if (!stationProgress(sess.logged, sess.ex, L, P).done) { startRest("round", 60, null); return renderSupersetStation(L, P); } // alternating already rests each muscle: a short shared rest
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of
     // the longer paired move (it's the earliest unfinished, so it's picked and the
@@ -2313,7 +2453,8 @@ function renderSupersetStation(L, P, resting = 0) {
     saveSess();
     // A rest only when the next move is this pair's own remainder (it follows the
     // last round); moving on to a fresh exercise starts clean, like any handoff.
-    renderPlayer(nx === L || nx === P ? 60 : 0);
+    if (nx === L || nx === P) startRest("remainder", 60, sess.ex[nx].exercise);
+    renderPlayer(0);
   };
   $("#unlink").onclick = () => {
     // The busy-machine escape hatch: a superset needs TWO stations free at once —
@@ -2384,68 +2525,128 @@ function renderExerciseSheet(ex, d, back) {
 // player), so the swap is clean — we replace this slot's exercise, keep its sets/
 // reps/RIR target, and reset the weight (a fresh lift you pick a weight for). It's
 // a TEMPORARY, session-only change — the saved plan is untouched.
-async function renderSwap() {
-  const cur = sess.ex[sess.i];
-  app.innerHTML = `<h1>Swap exercise</h1><p class="muted">Loading alternatives…</p>`;
-  let all = [];
-  try { all = await api(`/api/exercises`); } catch {}
-  const inSession = new Set(sess.ex.map((x) => x.exercise));
-  // Same primary muscle(s), the user's own equipment (the endpoint is already
-  // equipment + injury filtered), not the current lift, not already in the session.
-  const curMuscles = new Set(cur.primary_muscles ?? []);
-  const alts = all.filter((x) => x.id !== cur.exercise && !inSession.has(x.id)
-    && (x.primary_muscles ?? []).some((m) => curMuscles.has(m)));
-  if (!alts.length) {
-    app.innerHTML = `<h1>Swap exercise</h1>
-      <div class="card"><p>No alternative for the same muscle with your equipment right now.</p>
-      <p class="muted">Keep going with ${esc(cur.name)}${sess.i < sess.ex.length - 1 ? " — or push it to the end of the workout with “⤵️ Do this later” and move on" : ""}.</p></div>
-      <button class="btn" id="back">Back to ${esc(cur.name)}</button>`;
-    $("#back").onclick = () => renderPlayer(0);
-    return;
+// "CAN'T DO THIS ONE?" (W272 — owner: "I can't do this exercise"). What helps depends
+// on WHY, so the set-0 door asks — one tap each, nothing to configure:
+//   🚫 No machine for this → swapped everywhere, from now on (the server picks the
+//                            replacement; Undo here, "Bring back" on the Plan tab)
+//   ⏳ It's busy right now → swapped for today only (or ⤵️ do it later)
+//   😖 It hurts           → which joint; aggravating movements leave the plan
+//   🔍 Pick one myself    → the ranked alternatives, today only
+// Every replacement goes through replaceSlot (session-core): the slot keeps its sets,
+// reps and effort; everything else is the new lift's OWN (the old swap's {...cur}
+// spread carried the old lift's last weight and PR baseline onto the new one); and it
+// refuses rather than replace a lift with banked work, a slot the cursor has left, or
+// with a lift already in the workout.
+let swapUndo = null; // the live Undo for the last swap: { to, toName, from, fromName, saved, permanent }
+function swapUndoCard(e) {
+  if (!swapUndo || e.exercise !== swapUndo.to || sess.set !== 0 || loggedWorkSets(sess.logged, swapUndo.to) > 0) return "";
+  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(swapUndo.permanent ? `Swapped for ${swapUndo.toName} — from now on.` : `Swapped for ${swapUndo.toName} — just for today.`)}</p>
+    <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
+}
+// Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
+function applyReplacement(expect, row, undo) {
+  const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect });
+  if (!r.ok) return r.reason;
+  sess = r.sess; saveSess();
+  swapUndo = undo;
+  say(undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`);
+  renderPlayer(0);
+  return null;
+}
+async function undoSwap() {
+  const u = swapUndo;
+  if (!u) return;
+  if (u.permanent) {
+    let r;
+    try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: u.from, scope: "undo" }) }); }
+    catch { alertBar(`📴 Couldn't reach the server — bring ${u.fromName} back from the Plan tab when you're connected.`); return; }
+    if (r.error && r.error !== "not-excluded") { alertBar(`Couldn't undo that — use “Bring back” on the Plan tab.`); return; }
   }
-  const rows = alts.slice(0, 20).map((x) => `<button class="choice" data-swap="${esc(x.id)}" data-name="${esc(x.name)}">${esc(x.name)} <span class="muted">${esc(friendlyMuscles(x.primary_muscles))}</span></button>`).join("");
-  app.innerHTML = `<h1>Swap ${esc(cur.name)}</h1>
-    <p class="muted">Pick a replacement that trains the same muscle. Just for today — your saved plan doesn't change.</p>
-    ${rows}
-    <div class="card"><b>😖 Did this hurt?</b>
-      <p class="muted">Swapping only fixes today. If a joint is complaining, tell me which one and I'll keep aggravating movements out of your plan from now on.</p>
-      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}</div>
-    <button class="btn ghost" id="back">Keep ${esc(cur.name)}</button>`;
-  $("#back").onclick = () => renderPlayer(0);
-  // The reactive injury path app-design-spec.md:174 described and nothing implemented:
-  // the swap button was generic, session-only, and never wrote anything down, so the
-  // app could watch you avoid the same lift every week and never learn from it.
-  app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
-    const region = b.dataset.hurt;
-    const res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) });
-    if (res.error) { say("Couldn't save that — swapping for today instead."); return; }
-    say(`Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.`);
-    renderSwap(); // the alternatives list is injury-filtered server-side, so re-fetch it
-  });
-  app.querySelectorAll("[data-swap]").forEach((b) => b.onclick = () => {
-    const id = b.dataset.swap, name = b.dataset.name;
-    const chosen = alts.find((x) => x.id === id);
-    // Replace the slot in place: keep the prescription (sets/rep_range/rir), swap the
-    // exercise + its display fields, and treat it as a fresh lift (no suggested_kg,
-    // so the player prompts for a starting weight). Reset this slot's cached inputs.
-    sess.ex[sess.i] = {
-      ...cur, exercise: id, name,
-      primary_muscles: chosen?.primary_muscles ?? [],
-      equipment: chosen?.equipment ?? null,
-      // Carry the new lift's own coaching cues (the endpoint now returns them) — a
-      // unilateral or stretch-focused replacement keeps its "each side" / "🎯
-      // stretch-focused" guidance instead of inheriting a blank. movement_pattern
-      // travels too, or the swapped-in lift would show the OLD lift's inline demo.
-      suggested_kg: null, cue: null,
-      unilateral: !!chosen?.unilateral, alternating: !!chosen?.alternating, lengthened_bias: !!chosen?.lengthened_bias,
-      movement_pattern: chosen?.movement_pattern ?? null,
-      superset_with: undefined, superset_with_name: undefined,
-    };
-    delete sess.weights[sess.i]; delete sess.reps[sess.i]; delete sess.eff[sess.i]; delete sess.wUnits[sess.i];
-    saveSess();
-    say(`Swapped to ${name}.`);
-    renderPlayer(0);
-  });
+  // The saved row is the old lift's OWN server-built row, so reverting with it can't
+  // leak anything; the same guards apply (a banked set of the substitute stays).
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to });
+  if (back.ok) { sess = back.sess; saveSess(); }
+  swapUndo = null;
+  renderPlayer(0);
+  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName }));
+}
+async function renderCantDo() {
+  const cur = sess.ex[sess.i];
+  const canLater = sess.i < sess.ex.length - 1;
+  const live = () => sess.ex.map((x) => x.exercise);
+  const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null, ...body }) });
+  const tail = `${canLater ? `<button class="btn ghost" id="cd-later">⤵️ Do it later in this workout</button>` : ""}
+    <button class="btn ghost" id="cd-back">Keep ${esc(cur.name)}</button>`;
+  const wireTail = () => {
+    $("#cd-back").onclick = () => renderPlayer(0);
+    if ($("#cd-later")) $("#cd-later").onclick = deferCurrentExercise;
+  };
+  const note = (msg) => { app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
+  const offline = () => note(`📴 You're offline — I can't fetch a replacement right now. Keep going with ${cur.name}${canLater ? ", or do it later and come back to it" : ""}.`);
+  const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
+    : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
+      : "The workout moved on — nothing was swapped.";
+  const pickList = async (lead = "") => {
+    app.innerHTML = `<h1>Pick a replacement</h1><p class="muted">Finding the best alternatives…</p>`;
+    let d;
+    try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}`); }
+    catch { return offline(); }
+    const alts = d?.alternatives ?? [];
+    if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
+    app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
+      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. Just for today; your plan doesn't change.</p>
+      ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+      ${tail}`;
+    wireTail();
+    app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = async () => {
+      const a = alts.find((x) => x.id === b.dataset.pick);
+      let r; try { r = await post({ scope: "today", live: live(), pick: a.id }); } catch { return offline(); }
+      if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
+      const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
+        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+      if (why) note(refused(why, a.name));
+    });
+  };
+
+  app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
+    <p class="muted">Tell me why and I'll sort it — your sets and reps stay the same.</p>
+    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
+    <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
+    <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
+    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
+    ${tail}`;
+  wireTail();
+  $("#cd-machine").onclick = async () => {
+    let r; try { r = await post({ scope: "always" }); } catch { return offline(); }
+    if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
+      { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true });
+    // The plan changed either way; only today's live slot can refuse (e.g. the new
+    // lift is already in this workout) — then today needs its own pick.
+    if (why) pickList(`From your next session ${cur.name} is swapped for ${r.replaced_by_name}. ${refused(why, r.replaced_by_name)} For today:`);
+  };
+  $("#cd-busy").onclick = async () => {
+    let r; try { r = await post({ scope: "today", live: live() }); } catch { return offline(); }
+    if (r.error) return note(r.message ?? `Nothing to swap ${cur.name} for right now.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.replaced_by, name: r.replaced_by_name },
+      { to: r.replaced_by, toName: r.replaced_by_name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+    if (why) note(refused(why, r.replaced_by_name));
+  };
+  $("#cd-pick").onclick = () => pickList();
+  // The reactive injury door (app-design-spec.md:174): tell me which joint and the
+  // plan keeps aggravating movements out from now on; today gets its own pick.
+  $("#cd-hurt").onclick = () => {
+    app.innerHTML = `<h1>Where does it hurt?</h1>
+      <p class="muted">I'll keep movements that aggravate it out of your plan from now on — then pick a replacement for today.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}
+      <button class="btn ghost" id="cd-back">Back</button>`;
+    $("#cd-back").onclick = () => renderCantDo();
+    app.querySelectorAll("[data-hurt]").forEach((b) => b.onclick = async () => {
+      const region = b.dataset.hurt;
+      let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return offline(); }
+      pickList(res.error ? "Couldn't save that — pick a replacement for today instead." : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan. For today:`);
+    });
+  };
 }
 
 // "Do this later" (mid-workout reorder): the machine's busy, so push the current
@@ -2509,7 +2710,7 @@ async function finish() {
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
+  renderRecap(res.ok ? { ...res.data, session_id } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true });
 }
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
@@ -2542,8 +2743,14 @@ function renderRecap(recap) {
         <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a></div>`
     : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
+  // A number banked wrong is fixable after the workout too (W274): straight into this
+  // workout's editor — or, while it's still queued offline, a promise of where.
+  const fixDoor = recap.session_id ? `<button class="btn ghost" id="fixnum">✏️ Fix a number</button>`
+    : recap.queued ? `<p class="muted" style="text-align:center">Logged a number wrong? Once this workout syncs, fix any set from Progress → Workout history.</p>` : "";
   app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${wins}${nudge}${donate}
+    ${fixDoor}
     <button class="btn" id="ok">Done</button>`;
+  if ($("#fixnum")) $("#fixnum").onclick = () => { historyEdit = recap.session_id; tab = "history"; render(); };
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
 }
@@ -2920,7 +3127,7 @@ async function renderHistory() {
     if (!sess) { historyEdit = null; return renderHistory(); }
     const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
       <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
-      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeightFor(set.weight_kg, set.exercise)}" aria-label="weight for set ${i + 1}"
+      <input data-w="${i}" type="text" inputmode="decimal" value="${esc(editDisplay(set.weight_kg, unitFor(set.exercise)))}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       <span class="muted">${unitLabelFor(set.exercise)} ×</span>
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
@@ -2938,11 +3145,17 @@ async function renderHistory() {
       // Send the sets back WHOLE, preserving every field the server gave us
       // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
       // is bounded exactly like the original log, but anything we drop here is lost.
+      // Only a field whose text CHANGED is re-read (W274): this screen used to re-parse
+      // every set from a plate-rounded display, so fixing one set's reps rewrote every
+      // weight in the workout (22.5 lb came back as 25 lb). The display is exact now, and
+      // an untouched field keeps its stored value byte for byte.
       const sets = (sess.sets ?? []).map((set, i) => {
         const { name, ...rest } = set; // `name` is a display-only field this screen added
-        const wv = parseFloat(app.querySelector(`[data-w="${i}"]`)?.value);
-        const rv = parseInt(app.querySelector(`[data-reps="${i}"]`)?.value, 10);
-        return { ...rest, weight_kg: Number.isFinite(wv) ? toKgFor(wv, rest.exercise) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
+        const wText = (app.querySelector(`[data-w="${i}"]`)?.value ?? "").trim();
+        const rText = (app.querySelector(`[data-reps="${i}"]`)?.value ?? "").trim();
+        const kg = wText === editDisplay(rest.weight_kg, unitFor(rest.exercise)) ? rest.weight_kg : parseEdit(wText, unitFor(rest.exercise));
+        const reps = rText === String(rest.reps) ? rest.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : rest.reps);
+        return { ...rest, weight_kg: kg ?? rest.weight_kg, reps };
       });
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
@@ -3596,7 +3809,7 @@ function clearAccountLocalState() {
   const keys = [];
   try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
   for (const key of keys) {
-    if (key?.startsWith("hb_") && key !== "hb_rir") {
+    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest") { // hb_rest: per-lift rest nudges, a device preference too
       try { localStorage.removeItem(key); } catch {}
     }
   }

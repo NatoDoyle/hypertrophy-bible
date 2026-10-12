@@ -3,13 +3,13 @@
 // POST /api/session silently dropped the `deload` flag while every unit test —
 // which fed sessions straight into coach.mjs — stayed green. What the client
 // sends must be tested through the same door the client uses.
-import { rmSync } from "node:fs";
+import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
@@ -2346,6 +2346,9 @@ try {
     // Per-exercise kg/lb overrides may only enter through their own validating
     // route — a wholesale door would accept an unbounded, unvalidated map.
     exercise_units: Object.fromEntries(Array.from({ length: 999 }, (_, i) => [`forged-${i}`, "imperial"])),
+    // "No machine for this" exclusions (W272) are written only by /api/exercise/cant-do,
+    // which validates the id and keeps the plan consistent with them.
+    unavailable_exercises: Array.from({ length: 500 }, (_, i) => ({ id: `forged-${i}` })),
   };
   // The fixture must COVER the set — otherwise this test silently shrinks the day
   // someone adds a field (the "green gate proves only what it measures" trap).
@@ -2841,6 +2844,109 @@ try {
   const altLib = await (await app.request("/api/exercises", { headers: { "X-HB-User": altU } })).json();
   ok("#alternating /api/exercises rows carry it too (a mid-session swap builds its replacement from these)",
     altLib.find((e) => e.id === "walking-lunge")?.alternating === true && altLib.find((e) => e.id === "bulgarian-split-squat")?.alternating === false);
+  // --- #rest (W273): every row the player reads carries the lift's own KB rest length —
+  // a field dropped by a whitelist silently turns the feature off (the reason this file exists).
+  const kbEx = (id) => JSON.parse(readFileSync(new URL(`../../data/exercises/${id}.json`, import.meta.url)));
+  ok("#rest /api/today's rows carry the lift's own rest (rest_s)",
+    ["walking-lunge", "bulgarian-split-squat"].every((id) => Number.isFinite(altEx[id]?.rest_s) && altEx[id].rest_s === restSeconds(kbEx(id))));
+  ok("#rest …and so do /api/exercises rows (a fallback swap row builds from them)",
+    altLib.find((e) => e.id === "walking-lunge")?.rest_s === restSeconds(kbEx("walking-lunge")));
+
+  // --- #cant-do (W272): "Can't do this one?" through the real routes. "No machine for
+  // this" swaps the lift everywhere and keeps it out of every future plan; "It's busy"
+  // and "Pick one myself" swap it for today only; Undo / "Bring back" reverses it.
+  {
+    const FULL = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const prof = { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL };
+    const cdU = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+    const holds = (program, id) => program.sessions.some((s) => s.exercises.some((e) => e.exercise === id));
+    // A day-order swap stamp proves the permanent swap leaves plan_meta alone (it
+    // would otherwise silently re-order the user's week).
+    await store.updateUser(cdU, (u) => { u.plan_meta = { ...u.plan_meta, cycle_swap: { program: u.program.id, cycle: 0, map: [1, 0, 2, 3] } }; return u; });
+    const pre = await store.getUser(cdU);
+    const preProgram = JSON.stringify(pre.program), preRationale = JSON.stringify(pre.plan_rationale), preMeta = JSON.stringify(pre.plan_meta);
+    const lifts = [...new Set(pre.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))];
+    const sessionOf = (program, id) => program.sessions.find((s) => s.exercises.some((e) => e.exercise === id))?.name;
+
+    const forged = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: lifts[0], scope: "always", pick: "barbell-back-squat" });
+    ok("#cant-do a permanent swap refuses a client-chosen pick — a forged id never enters the plan",
+      forged.status === 400 && JSON.stringify((await store.getUser(cdU)).program) === preProgram);
+    let X = null, always = null, refusedClean = true;
+    for (const id of lifts) {
+      const r = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: id, scope: "always", session: sessionOf(pre.program, id) });
+      if (r.status === 200) { X = id; always = r.data; break; }
+      if (r.status !== 409 || JSON.stringify((await store.getUser(cdU)).program) !== preProgram) refusedClean = false;
+    }
+    const post = await store.getUser(cdU);
+    ok("#cant-do 'No machine for this' swaps X out of EVERY session for the server's own pick",
+      !!X && !!always?.replaced_by && !holds(post.program, X) && holds(post.program, always.replaced_by) && always.replaced_by !== X);
+    ok("#cant-do …a refusal (no fitting replacement) is a 409 that writes nothing", refusedClean);
+    ok("#cant-do …records the exclusion (server-owned), keeps the plan generated and plan_meta untouched (the day-order swap survives)",
+      post.profile.unavailable_exercises?.some((r) => r.id === X && r.replaced_by === always?.replaced_by)
+      && !post.program.custom && JSON.stringify(post.plan_meta) === preMeta);
+    const replay = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always" });
+    ok("#cant-do a replay (double tap, retried request) is idempotent — same answer, one record",
+      replay.status === 200 && replay.data?.replaced_by === always?.replaced_by
+      && (await store.getUser(cdU)).profile.unavailable_exercises.filter((r) => r.id === X).length === 1);
+    const lib = await (await app.request("/api/exercises", { headers: { "X-HB-User": cdU } })).json();
+    ok("#cant-do the editor's pickers stop offering it", !lib.some((e) => e.id === X) && lib.some((e) => e.id === always.replaced_by));
+    const explained = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cdU } })).json();
+    ok("#cant-do the Plan tab lists it, by name, to bring back",
+      explained.unavailable?.some((u) => u.id === X && u.name && u.replaced_by === always.replaced_by && u.replaced_by_name));
+    ok("#cant-do …and never ships the server's undo snapshot to the client",
+      !JSON.stringify(explained).includes("program_sig") && !JSON.stringify(explained.profile ?? {}).includes("before"));
+
+    const undo = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
+    const back = await store.getUser(cdU);
+    ok("#cant-do Undo straight away is the EXACT inverse: program and rationale byte-identical, exclusion lifted",
+      undo.status === 200 && undo.data.mode === "exact" && JSON.stringify(back.program) === preProgram
+      && JSON.stringify(back.plan_rationale) === preRationale && !(back.profile.unavailable_exercises ?? []).some((r) => r.id === X));
+    const undoAgain = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
+    ok("#cant-do …and undoing something not excluded is a clean 404", undoAgain.status === 404);
+
+    // After a REBUILD the snapshot is stale: "bring back" must rebuild with X available
+    // — here, the very plan the user had (a sex-only Settings save changes nothing the
+    // engine reads) — never splice X back into a regenerated plan (premortem engine-1).
+    await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always", session: sessionOf(pre.program, X) });
+    await json("POST", "/api/plan/regenerate", { user_id: cdU, profile: { ...prof, sex: "female" } });
+    const rebuilt = await store.getUser(cdU);
+    ok("#cant-do a Settings rebuild keeps X out (the exclusion lives on the profile)", !holds(rebuilt.program, X));
+    const bringBack = await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
+    const brought = await store.getUser(cdU);
+    ok("#cant-do 'Bring back' after a rebuild rebuilds WITH X — exactly the plan the engine builds with it available",
+      bringBack.status === 200 && bringBack.data.mode === "rebuilt" && holds(brought.program, X) && JSON.stringify(brought.program) === preProgram);
+    await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "always", session: sessionOf(brought.program, X) });
+    await json("POST", "/api/plan/regenerate", { user_id: cdU, profile: { ...prof, sex: "female", days_per_week: 5 } });
+    ok("#cant-do a TRAINING change (a fresh block) keeps X out too", !holds((await store.getUser(cdU)).program, X));
+    await json("POST", "/api/exercise/cant-do", { user_id: cdU, exercise: X, scope: "undo" });
+
+    // TODAY ONLY: nothing written; the row is built by the same producer as /api/today
+    // (buildToday on the patched plan), so the substitute arrives with ITS OWN history.
+    const tdU = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+    const td = (await (await app.request("/api/today", { headers: { "X-HB-User": tdU } })).json()).session;
+    const T = td.exercises[0];
+    const live = td.exercises.map((e) => e.exercise);
+    const tdBefore = JSON.stringify((await store.getUser(tdU)).program);
+    const alts = await (await app.request(`/api/exercise/${T.exercise}/alternatives?session=${encodeURIComponent(td.name)}&live=${live.join(",")}`, { headers: { "X-HB-User": tdU } })).json();
+    ok("#cant-do the alternatives list is ranked, named, and never offers a lift already in today's session",
+      alts.alternatives?.length > 0 && alts.alternatives.every((a) => a.name && !live.includes(a.id) && a.fits));
+    const Y = alts.alternatives[0].id;
+    // Give Y a history the user really has: a session from an EARLIER plan (its
+    // program_ref isn't this plan's, so today's rotation and template don't move —
+    // seeded in the store, since /api/session stamps the live plan's ref).
+    await store.addSession(tdU, { session_id: "cd-y", program_ref: "an-earlier-plan", date: new Date(Date.now() - 2 * 86400000).toISOString(),
+      sets: [{ exercise: Y, set_type: "work", weight_kg: 42.5, reps: 10 }, { exercise: Y, set_type: "work", weight_kg: 42.5, reps: 10 }] });
+    ok("#cant-do (fixture) the earlier-plan session leaves today's template where it was",
+      (await (await app.request("/api/today", { headers: { "X-HB-User": tdU } })).json()).session?.name === td.name);
+    const busy = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: T.exercise, scope: "today", session: td.name, live, pick: Y });
+    ok("#cant-do 'It's busy' / a pick swaps for today only — the stored plan is untouched", busy.status === 200 && JSON.stringify((await store.getUser(tdU)).program) === tdBefore);
+    ok("#cant-do …the row is the substitute's own (its last weight, not the old lift's) with today's prescription",
+      busy.data?.row?.exercise === Y && busy.data.row.last_kg === 42.5 && busy.data.row.sets === T.sets && busy.data.row.rep_range === T.rep_range && busy.data.row.rir === T.rir);
+    const badPick = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: T.exercise, scope: "today", session: td.name, live, pick: live[1] });
+    ok("#cant-do a pick that isn't a fitting alternative (here, a lift already in the session) is refused", badPick.status === 400);
+    const autoPick = await json("POST", "/api/exercise/cant-do", { user_id: tdU, exercise: T.exercise, scope: "today", session: td.name, live });
+    ok("#cant-do 'It's busy' without a pick takes the best fitting replacement", autoPick.status === 200 && autoPick.data.replaced_by === Y);
+  }
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

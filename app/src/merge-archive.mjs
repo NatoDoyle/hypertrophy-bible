@@ -40,7 +40,10 @@ export const LIVE_PROFILE_FIELDS = new Set([
 // disclaimer_ack: it travels with a restore, but only its own validating route
 // (/api/profile/exercise-units) may write it — the wholesale doors would accept
 // an unbounded, unvalidated map.
-export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units"]);
+// `unavailable_exercises` ("No machine for this", W272) likewise travels with a restore
+// — it belongs to the program it edited — but only /api/exercise/cant-do may write it:
+// that route validates the id and keeps the stored plan consistent with the list.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units", "unavailable_exercises"]);
 
 // Every wholesale client->profile door passes through here. Returns a private
 // copy: callers then validate the remaining fields, so mutating the caller's

@@ -44,6 +44,38 @@ export function nextUnfinishedIndex(logged, ex, from) {
   return -1;
 }
 
+// "Can't do this one?" (W272): replace the lift at slot i with `row` — the Today row
+// the server built for the replacement (or a minimal one when it couldn't). The old
+// swap spread {...cur}, so the old lift's last_kg, pr_watch, eased and suggestion note
+// rode onto the new one: a wrong "Last time", the typo guard judged against the wrong
+// lift, fake PR toasts, a deload tag. Now the slot keeps only its PRESCRIPTION — what
+// the plan asked of this slot today, deload scaling included — and every other field
+// is the row's own (a field the row lacks is simply absent, never inherited). The
+// pairing is ALWAYS dropped: pairing is a live-session decision, and tomorrow's Today
+// restores the plan's own.
+// Refuses — { ok: false, reason, sess } with `sess` untouched — unless the slot still
+// holds the lift that was tapped (`expect`: a slow response must never replace
+// whatever the cursor has moved on to), that lift has no banked WORK set (logged work
+// is never orphaned), and no OTHER slot holds the new lift (progress is counted per
+// exercise id, so a duplicate silently skips one of them). Undo is the same call in
+// reverse, with the saved old row. Pure: resets only slot i's typed inputs.
+export const PRESCRIPTION_KEYS = ["sets", "rep_range", "rir"];
+export function replaceSlot(sess, i, row, { expect } = {}) {
+  const cur = sess?.ex?.[i];
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  if (!cur || !row?.exercise) return refuse("no-slot");
+  if (expect == null || cur.exercise !== expect) return refuse("moved");
+  if (loggedWorkSets(sess.logged, expect) > 0) return refuse("started");
+  if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
+  const { superset_with, superset_with_name, ...slot } = row;
+  for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
+  const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
+    weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
+  if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
+  return { ok: true, sess: out };
+}
+
 // Remove exactly the offline-queue item that was just delivered, BY IDENTITY.
 // Position-based removal (queue.slice(1)) drops the WRONG item when two tabs flush
 // concurrently on reconnect — a second tab can shift the head between this tab's
@@ -273,4 +305,96 @@ export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUni
 export function formatWeekLabel(weekKey) {
   const m = /^(\d{4})-W(\d{2})$/.exec(weekKey || "");
   return m ? `Week ${Number(m[2])}, ${m[1]}` : String(weekKey ?? "");
+}
+
+// REST (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"). Each
+// lift arrives with its own KB rest length (rest_s); the user can nudge it ±30 s in
+// the player, and the nudge is remembered per lift as an OFFSET from that length. The
+// rest itself is an absolute END TIME in the crash-safe session (sess.rest), so a
+// reload, a locked phone or an app switch resumes it instead of losing it; both
+// renderers derive what to show from these helpers.
+export const REST_DEFAULT_S = 120, REST_MIN_S = 30, REST_MAX_S = 600, REST_STEP_S = 30;
+const clampRest = (s) => Math.min(REST_MAX_S, Math.max(REST_MIN_S, Math.round(s)));
+// A row from before W273 (no rest_s — a workout resumed across the deploy) rests the
+// old 120 s, and a junk offset is ignored: the timer can never read NaN.
+export function restLength(row, offset = 0) {
+  const base = Number.isFinite(row?.rest_s) ? row.rest_s : REST_DEFAULT_S;
+  return clampRest(base + (Number.isFinite(offset) ? offset : 0));
+}
+export function newRest({ kind, length, ex = null, logged }, now) {
+  return { kind, ex, length, logged, start: now, until: now + length * 1000 };
+}
+export const restRemaining = (until, now) => (Number.isFinite(until) ? Math.max(0, Math.ceil((until - now) / 1000)) : 0);
+// A stored rest counts only while plausible (a finite end, not past, not further ahead
+// than the longest rest — a clock jump or a corrupt blob is dropped, never trusted)
+// and while it still follows the set it was started after (a set banked since means
+// it belongs to an older set).
+export function activeRest(sess, now) {
+  const r = sess?.rest;
+  if (!r || !Number.isFinite(r.until) || !Number.isFinite(r.start)) return null;
+  if (r.until <= now || r.until - now > REST_MAX_S * 1000 + 1000) return null;
+  if (r.logged !== (sess.logged?.length ?? -1)) return null;
+  return r;
+}
+export const formatRest = (sec) => { const s = Math.max(0, Math.round(sec)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+// ±30 s moves the END from when the rest began, clamped to 30 s–10 min. Only a rest
+// between sets of ONE lift teaches that lift a new length (as an offset from its own
+// rest): a superset round's or a remainder's fixed 60 s says nothing about it — +30 on
+// a 60 s remainder would otherwise teach a 3-minute lift to rest less.
+export function adjustRest(rest, delta, row) {
+  const length = clampRest(rest.length + delta);
+  return { rest: { ...rest, length, until: rest.start + length * 1000 }, remember: rest.kind === "set" ? length - restLength(row, 0) : null };
+}
+
+// FIXING A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). A
+// set is corrected IN PLACE — numbers only, never the count, order, lift or set type —
+// so everything the player derives from the log (progress, the cursor, station rounds)
+// provably cannot move. Live delete/undo is refused on purpose: removing a set breaks
+// the forward-only cursor and unbalances a superset's rounds.
+//
+// The chips for one lift carry each banked set's ABSOLUTE position in sess.logged: a
+// superset round interleaves two lifts (and warm-ups interleave too), so a position
+// counted within one lift's sets would edit the OTHER lift's set.
+export function sessionChips(logged, exId) {
+  return (logged ?? []).flatMap((l, idx) => (l.exercise === exId
+    ? [{ idx, weight_kg: l.weight_kg, reps: l.reps, set_type: l.set_type ?? "work", completed_at: l.completed_at ?? null }] : []));
+}
+// Only the fields present in `patch` (weight_kg, reps) change, and only to sane values —
+// a cleared input or junk is ignored, never written. Refuses (the SAME array back)
+// unless the entry at idx is still the one the editor opened: same lift AND same
+// completed_at. Pure.
+export function editLoggedSet(logged, idx, patch, { exercise, completed_at } = {}) {
+  const cur = logged?.[idx];
+  if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return logged;
+  const changes = {};
+  const w = patch?.weight_kg, r = patch?.reps;
+  if (typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1000) changes.weight_kg = w;
+  if (Number.isInteger(r) && r >= 0 && r <= 100) changes.reps = r;
+  if (!Object.keys(changes).length) return logged;
+  return logged.map((l, k) => (k === idx ? { ...l, ...changes } : l));
+}
+// The editor shows a banked weight EXACTLY (kg to 0.01, lb to 0.1) and reads it back in
+// the SAME unit it was shown in. The plate-rounded display (lb to 5) re-saved 22.5 lb as
+// 25 lb on a reps-only fix — an 11% heavier anchor for every later suggestion.
+export function editDisplay(kg, unit) {
+  if (typeof kg !== "number" || !Number.isFinite(kg)) return "";
+  return String(unit === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : Math.round(kg * 100) / 100);
+}
+export function parseEdit(text, unit) {
+  const v = Number.parseFloat(String(text ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(v) || v < 0) return null;
+  return Math.round((unit === "lb" ? v / LB_PER_KG : v) * 100) / 100;
+}
+// An edit's typo confirmation lives in its OWN key space (the Done button's guard keys
+// on exercise ids), so confirming a corrected number can never wave the NEXT set's
+// typo check through.
+export const editConfirmKey = (entry) => `edit:${entry?.completed_at ?? ""}`;
+// After an edit the lift's "PR already celebrated" latch must match what the log now
+// says: true if ANY banked work set beats its prior bests (deload sets never count — the
+// server's rule), false once a typo PR is corrected away. Recomputed silently: an edit
+// never re-toasts.
+export function recomputePrLatch(logged, exId, prWatch) {
+  if (!prWatch) return false;
+  return (logged ?? []).some((l) => l.exercise === exId && (l.set_type ?? "work") === "work"
+    && !!checkSetPR(exId, l.weight_kg, l.reps, "work", prWatch, l.deload === true));
 }

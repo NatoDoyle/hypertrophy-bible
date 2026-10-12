@@ -1,11 +1,26 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive } from "../../tools/plan-core.mjs";
+import { generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+
+const KB = { exercises, muscles, contraindications, guidelines };
 
 export function generateUserPlan(profile, opts = {}) {
-  return generatePlan(profile, { exercises, muscles, contraindications, guidelines }, opts);
+  return generatePlan(profile, KB, opts);
 }
+
+// "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
+// swap — bound to the bundled KB and the user's OWN profile, plan, rationale, custom
+// lifts and block (specialization ordering depends on where they are in it).
+export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always" } = {}) {
+  return bestSubstitutes(exId, { profile: user.profile, kb: KB, program: user.program, rationale: user.plan_rationale ?? null,
+    sessionName, stalled, live, scope, customExercises: user.custom_exercises || [] });
+}
+export function userApplySubstitution(user, exId, { sessionName = null, stalled = [] } = {}) {
+  return applySubstitution(user.program, user.plan_rationale ?? null, exId, { profile: user.profile, kb: KB, stalled, sessionName,
+    customExercises: user.custom_exercises || [], blockIndex: user.plan_meta?.block_index ?? 0 });
+}
+export { sweepDanglingSupersets, contentSig };
 
 // Is this profile running an all-in specialization block? Bound here because the
 // answer needs the KB's muscle→area groups, and because there must be exactly ONE

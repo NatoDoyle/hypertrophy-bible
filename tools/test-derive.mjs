@@ -47,6 +47,8 @@ import {
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
 import { commitmentForDay, plannedDayState, effectiveCommitment } from "./derive-core.mjs";
+import { restSeconds } from "./derive-core.mjs";
+import { readFileSync as readKbFile } from "node:fs";
 
 let passed = 0;
 function check(name, fn) {
@@ -1409,6 +1411,29 @@ check("#carry Monday has nothing earlier to miss; Sunday's next planned day is n
   assert.equal(mon.planned_today, true); assert.equal(mon.missed, null); assert.deepEqual(mon.next, { day: "mon", date: "2026-10-19" });
   const sun = plannedDayState({ week: "2026-W41", days: ["mon"] }, "2026-10-18", { sessionDays: [], restDays: [] });
   assert.equal(sun.planned_today, false); assert.deepEqual(sun.next, { day: "mon", date: "2026-10-19" });
+});
+
+// --- #rest (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"): the
+// KB rest-periods table (Grade B), applied per lift from its own data. Literals on REAL
+// KB entries, so a data edit that moves a lift between tiers shows up here.
+check("#rest heavy multi-joint (a barbell compound, or any high-CNS one) rests 3 min — the table's top end, the trial's winning arm", () => {
+  const kbEx = (id) => JSON.parse(readKbFile(new URL(`../data/exercises/${id}.json`, import.meta.url)));
+  assert.equal(restSeconds(kbEx("barbell-back-squat")), 180);
+  assert.equal(restSeconds(kbEx("barbell-bench-press")), 180, "a moderate-CNS barbell press is still heavy multi-joint (squat, deadlift, press, row)");
+  assert.equal(restSeconds(kbEx("conventional-deadlift")), 180);
+});
+check("#rest other compounds and the systemic 'isolations' (hip thrust, Nordics) rest 2 min; low-fatigue isolation 90 s", () => {
+  const kbEx = (id) => JSON.parse(readKbFile(new URL(`../data/exercises/${id}.json`, import.meta.url)));
+  assert.equal(restSeconds(kbEx("chest-supported-row")), 120);
+  assert.equal(restSeconds(kbEx("leg-press")), 120);
+  assert.equal(restSeconds(kbEx("hip-thrust")), 120);
+  assert.equal(restSeconds(kbEx("nordic-hamstring-curl")), 120);
+  assert.equal(restSeconds(kbEx("cable-lateral-raise")), 90);
+  assert.equal(restSeconds(kbEx("barbell-curl")), 90, "a barbell ISOLATION is still isolation");
+});
+check("#rest a lift with no data (a custom lift, an unknown id) keeps the 120 s the app always used", () => {
+  assert.equal(restSeconds(null), 120);
+  assert.equal(restSeconds({ id: "my-cable-thing" }), 120);
 });
 
 console.log(`\n${passed} test(s) passed.`);
