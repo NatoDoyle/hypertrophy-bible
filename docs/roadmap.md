@@ -6,7 +6,38 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-09-06** (Waves 262-264: all three owner
+Grounded assessment date: **2026-10-12** (Waves 266-275: all eight owner
+considerations closed, the first iteration run under ultracode. **Player:**
+- "Can't do this one?" asks why: no machine → the engine's own pick, everywhere,
+  from now on; busy / pick one → today only; it hurts → the injury door. It runs
+  through the generator's own filters, and a golden digest of 390 plans pinned the
+  refactor byte-identical.
+- Rest follows the KB rest-periods table per lift, can be nudged ±30 s, and survives
+  a reload or a locked phone.
+- A banked set is fixable mid-workout, and the History editor no longer rewrites
+  untouched weights.
+- Double-tap zoom is gone, and the side cues match how sets are banked.
+
+**Schedule:** the weekly training days carry forward; Today knows a non-training
+day, a missed day and a rest day; every reminder respects them, in the user's own
+timezone. **Account:** sign-in emails say what they do, and a 6-digit code works
+inside the Home-Screen app (an emailed link can't reach it on iPhone). **Logging:**
+yesterday's weight or calories can be logged. Every burst was adversarially reviewed
+(43 agent-verified findings, 3 refuted), and a pre-mortem reshaped the riskiest
+waves before they were written.
+
+**Named next pulls:**
+- Session rotation onto committed weekdays (C16) — W271 made the weekdays real, so
+  this is now buildable.
+- The desktop multi-column layer.
+- Nerd Mode surfaces (C8).
+
+Recorded deferrals: rom_notes surfacing (28/171), richer per-exercise prose pages,
+and this iteration's minors: a muscle with no placeable exercise still gets the
+"extra training day" lever, and a superset partner swapped for a lift that can't pair
+leaves its bonus unpaired, slightly over the session budget.)
+The prior grounding:
+(Waves 262-264: all three owner
 considerations closed. Wave 262 — the session player's weight/reps became real
 type-able inputs between the − / + buttons, and the unit label became a
 per-exercise kg↔lb toggle for the mixed-unit gym (profile.exercise_units via its

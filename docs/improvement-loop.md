@@ -1042,7 +1042,58 @@ These are real failures from previous iterations. Each is now a standing check.
    lesson 29's blast-radius rule aimed at test data; (b) every suppression/no-op
    assertion needs a sibling pin that the mechanism RAN (a boundary-fired flag, a
    stamp, a side effect absence cannot produce) — `x ?? 0 === 0` is lesson 54's
-   vacuity in its most durable disguise.
+   vacuity in its most durable disguise; (c) the same vacuity arrives from the OTHER
+   side when a NEW guard lands UPSTREAM of an old one (Wave 271c): a one-week carry
+   limit for legacy weekly plans made the push-cap tests pass because the legacy
+   plan was gone, not because the cap fired — green for the wrong reason until a
+   review re-tampered the cap. Adding a guard in front of a tested one is a cue to
+   re-run lesson 54's tamper on the old one.
+68. **An emailed link opens in a storage partition the app can't see.** The owner's
+   "sign up to save" email both said the wrong thing ("Restore your progress") and could
+   never have worked for them: on iPhone a Home-Screen app keeps storage separate from
+   Safari, and every emailed link opens in Safari — signing in there never reaches the
+   app the onboarding told them to install. Worse, the link and any code were one
+   single-use credential, so the Safari page auto-spending it would have killed the only
+   door the app could use. Wave 270 made the credential typable in the app (a 6-digit
+   code, the same single-use row as the link) and stopped verify.html auto-spending it on
+   an iOS browser tab. → **Standing rule:** any identity handoff that leaves the app
+   (email, SMS, QR) must have a path that completes INSIDE the app, and a page reached
+   from outside must never auto-spend a credential the app may still need. Test the
+   handoff with two browser contexts (the tab and the installed app), never one.
+69. **An object spread carries identity-bound fields onto whatever replaces it.** The
+   mid-workout swap built the replacement as `{...cur, exercise: id}`: the old lift's
+   `last_kg`, `pr_watch`, `eased` and suggestion note rode onto the new lift — a wrong
+   "Last time", the typo guard judged against the wrong lift, fake PR toasts, a deload
+   tag on a fresh lift. It looked right because every DISPLAY field was overwritten; the
+   leak lived in the fields nobody overwrote. W272b's replaceSlot builds the slot from the
+   NEW row and copies only an explicit allow-list (the prescription) from the old one. →
+   **Standing rules:** replacing an entity is a construction from the new entity, never a
+   spread of the old one; and its test is ENUMERABLE — every key of the new row arrives,
+   no key of the old one survives outside the allow-list — so a field added next year
+   is covered without anyone remembering it.
+70. **A check-then-act limit admits a burst.** The sign-in code door counted earlier
+   failures and wrote its own only after comparing, so 500 parallel guesses all read "0
+   so far" and the real code at the end of the burst signed an attacker in (reproduced by
+   the Wave 270 review). → **Standing rule:** a cap that guards a comparison RESERVES
+   first — insert the try, count including yourself, refuse (deleting your own marker)
+   over the cap — so try p always sees a count ≥ p however the tries interleave; and
+   charge uniformly, or "429 after 10 tries" becomes the account oracle the generic
+   answer was hiding.
+71. **Never round-trip data through its display.** The History editor re-parsed every
+   set from a plate-rounded display, so fixing one set's reps saved 22.5 lb as 25 lb on
+   every set of the workout (10.21 → 11.34 kg — the next suggestion 11% heavier). The
+   same class in the push cap: a date-only `set_on` (a LOCAL calendar day) parsed as UTC
+   midnight beside real instants cost a west-of-UTC user a reminder day. → **Standing
+   rules:** an editor writes only the fields the user changed and displays the stored
+   value exactly, parsed back in the unit it was shown in; a date-only string is a day,
+   never an instant — convert it in the user's frame or compare it as a day.
+72. **The production platform can rewrite a URL you key rules on.** The service worker's
+   "never cache the sign-in page" bypass matched `/verify.html`; production's asset
+   handling 307s `/verify.html?token=…` to `/verify?token=…`, so token-bearing pages could
+   still land in Cache Storage. Found only by measuring prod after the deploy. →
+   **Standing rule:** any rule keyed on a URL (cache bypass, route guard, CSP) is tested
+   against the spelling PRODUCTION serves — and proven through the real handler, not a
+   source grep (the first test for this was a grep that stayed green with the guard broken).
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1091,6 +1142,46 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7h. **Telemetry (Waves 266–275, 2026-10-11/12 — the first ULTRACODE iteration).** All
+   eight owner considerations closed in five PRs (#318 W266–268, #319 W269–270, #320
+   W271a–d, #321 W272–274, #322 W275a + this LEARN), each premise measured first (all
+   eight real, most with adjacent defects; three owner decisions asked live). **Agent
+   spend broke this section's own rules on purpose:** the owner switched ultracode on
+   for the session ("token cost is not a constraint"), so every burst got a multi-lens
+   finder workflow with a refute-by-default VERIFIER per finding — against rule 1
+   (inline verification) and rule 4 (≤4 finders, one workflow per iteration). Five
+   workflows, 68 agents, **≈6.4M subagent tokens**:
+   - the Burst-2 sign-in review (19 agents, 1.47M; 13 confirmed / 2 refuted — incl. the
+     code door's check-then-act race that let a 500-guess burst sign an attacker in,
+     reproduced and fixed reserve-before-compare, {429:501});
+   - a PRE-MORTEM of Bursts 3–4 before writing them (4 agents, 0.63M; 23 hazards — it
+     reshaped W271 and redesigned all of Burst 4, and the reviews later confirmed several
+     it predicted, e.g. stale per-muscle volumes after a swap);
+   - the Burst-3 review (11 agents, 1.07M — SIX stalled at the 600 s watchdog; 3
+     confirmed, 4 more recovered from stalled verifiers' journals and verified inline);
+   - its narrower re-run (14 agents, 1.11M, zero stalls — scratch scripts forced to
+     `process.exit(0)`, a ~30-call budget, one area per finder; 9 confirmed / 1 refuted);
+   - the Burst-4 player review (20 agents, 2.12M; 15 confirmed / 0 refuted — run across a
+     usage-limit pause, with retries).
+   **Yield vs the rules' prediction:** agent verifiers refuted 3 of 43 candidates (7%) —
+   rule 1's bet that inline verification is the cheaper truth for code-groundable claims
+   held; the FINDERS earned the spend, not the verifiers. The pre-mortem was the
+   best-value workflow of the iteration: a hazard found before the code exists costs a
+   design sentence, after it a fix + test + review. Every new guard was observed red
+   first and lesson-54-tampered (≈70 tampers, each turning exactly its check red; a
+   handful in a real browser). Two tampers first SURVIVED — the Burst-4 review's
+   warnings restore and an earlier cap test (lesson 67c) — and their tests were
+   strengthened until they bit. The real browser also caught a gap in a review fix
+   itself (a tab switch didn't invalidate a "Can't do" sheet). The Daytona gate was
+   skipped (no DAYTONA_API_KEY here) — said, not implied. **Process events:** on the
+   owner's "merge and deploy what's ready", Burst 4 shipped while its review was still
+   running — deployed from a detached `main` worktree so the review's `main..HEAD` view
+   stayed intact — and the review's 15 findings became W275a. New lessons 68–72 (+ 67c):
+   an emailed link opens in a storage partition the app can't see; an object spread
+   carries identity-bound fields; a check-then-act limit admits a burst; never
+   round-trip data through its display; the production platform can rewrite a URL you
+   key rules on.
+
 7i. **Telemetry (Waves 262–264, 2026-09-06).** All three owner considerations closed;
    the third's premise overturned by exploration. **Wave 262** (typed weight/reps
    entry + the per-exercise kg/lb override): planning 2 Explore agents (~271k) +
