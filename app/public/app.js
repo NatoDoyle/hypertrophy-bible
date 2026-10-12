@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1274,14 +1274,23 @@ function renderResume() {
 const DAY_LABELS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
 const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
 // The phone-calendar event (.ics) is the one reminder the app can't change: when the
-// plan's days drifted from the days last exported, say which days it still holds.
-function calendarDriftNote(days) {
+// days really in force (or coming back) drifted from the days last exported, say
+// which days it still holds — and never advise deleting the days that return.
+const dayList = (keys) => keys.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
+function calendarDriftNote(days, resumeDays = null) {
   let exported = null;
   try { exported = JSON.parse(localStorage.getItem("hb_cal_days") || "null"); } catch {}
-  const d = calendarDrift(exported, days);
-  return d ? `<p class="muted" id="cal-drift" style="margin:6px 0 0">📆 Your phone calendar still reminds you on ${esc(d.stale.join(", "))} — ${days.length ? "add the new days below, then delete the old event" : "delete that event if those days are done"}.</p>` : "";
+  const a = calendarAdvice(exported, { days, resumeDays });
+  if (!a) return "";
+  const what = a.advice === "replace" ? "add your new days with the calendar button above, then delete the old event"
+    : a.advice === "save-or-delete" ? "pick those days above to keep training on them, or delete that event if they're done"
+      : "delete that event if those days are done";
+  return `<p class="muted" id="cal-drift" style="margin:6px 0 0">📆 Your phone calendar still reminds you on ${esc(a.stale.join(", "))} — ${what}.</p>`;
 }
 function commitmentCard(commitment, prefill = [], resumeDays = null) {
+  // A "No fixed days this week" clear in force: the usual days come back next week by
+  // themselves — said over the empty week, and over a day picked for this week alone.
+  const backNote = (lead) => resumeDays?.length ? `${lead} — ${esc(dayList(resumeDays))} come back next week by themselves.` : "";
   if (commitment && commitment.days?.length) {
     const list = commitment.days.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", ");
     // The calendar export lives HERE now (it sat on the Coach tab behind ~10
@@ -1290,8 +1299,11 @@ function commitmentCard(commitment, prefill = [], resumeDays = null) {
     // Carried forward (W271): last week's days are already THIS week's plan — said so,
     // with the Edit one tap away for a week that's different.
     return `<div class="card"><div class="row" style="border:0"><div style="flex:1"><b>🗓️ This week's training days: ${esc(list)}</b>
-        <p class="muted" style="margin:2px 0 0">${commitment.carried ? "Same days as last week — change them any time your week looks different." : "You said you'd train these days — a promise to yourself."}</p></div>
-      <button class="btn ghost inline" id="edit-commitment" data-days="${esc(commitment.days.join(","))}" style="margin:0">Edit</button></div>
+        <p class="muted" style="margin:2px 0 0">${resumeDays?.length ? backNote("Just this week")
+          : commitment.resumed ? "Your usual days are back — change them any time your week looks different."
+          : commitment.carried ? "Same days as last week — change them any time your week looks different."
+          : "You said you'd train these days — a promise to yourself."}</p></div>
+      <button class="btn ghost inline" id="edit-commitment" data-days="${esc(commitment.days.join(","))}" data-resume="${esc((resumeDays ?? []).join(","))}" style="margin:0">Edit</button></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
         <input id="sched-time" type="time" value="${esc(localStorage.getItem("hb_cal_time") || "18:00")}" aria-label="Training time"
           style="background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px;font-size:1rem">
@@ -1314,7 +1326,7 @@ function commitmentCard(commitment, prefill = [], resumeDays = null) {
   // browser walkthrough, which is the only place the two halves meet.
   const canRemind = localStorage.getItem("hb_push") === "1";
   const resumeNote = resumeDays?.length
-    ? `<p class="muted" style="margin:4px 0 0">No fixed days this week — ${esc(resumeDays.map((d) => DAY_LABELS.find(([k]) => k === d)?.[1] ?? d).join(", "))} come back next week by themselves.</p>`
+    ? `<p class="muted" style="margin:4px 0 0">${backNote(prefill.length ? "Just this week" : "No fixed days this week")}</p>`
     : "";
   return `<div class="card" id="commitment-card"><b>🗓️ Which days will you train this week?</b>${resumeNote}
     <p class="muted" style="margin:4px 0 8px">${canRemind
@@ -1323,7 +1335,7 @@ function commitmentCard(commitment, prefill = [], resumeDays = null) {
     <div style="display:flex;gap:6px;flex-wrap:wrap">${DAY_LABELS.map(([k, label]) => `<button class="tapchip" data-day="${k}" aria-pressed="${prefill.includes(k)}">${label}</button>`).join("")}</div>
     <button class="btn secondary inline" id="save-commitment" style="margin-top:10px">Save my days</button>
     ${prefill.length ? `<button class="btn ghost inline" id="clear-commitment" style="margin-top:10px">No fixed days this week</button>` : ""}
-    <p class="muted" style="margin:6px 0 0;font-size:.85rem">Your days carry over to next week by themselves — change them whenever your week changes.</p>${prefill.length ? "" : calendarDriftNote([])}</div>`;
+    ${resumeDays?.length ? "" : `<p class="muted" style="margin:6px 0 0;font-size:.85rem">Your days carry over to next week by themselves — change them whenever your week changes.</p>`}${prefill.length ? "" : calendarDriftNote([], resumeDays)}</div>`;
 }
 function wireCommitmentCard() {
   const chips = [...app.querySelectorAll("[data-day]")];
@@ -1353,7 +1365,8 @@ function wireCommitmentCard() {
     // when the answer is known) — carried on the button, since this handler has
     // no other line to the current commitment.
     const days = ($("#edit-commitment").dataset.days || "").split(",").filter(Boolean);
-    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null, days);
+    const resume = ($("#edit-commitment").dataset.resume || "").split(",").filter(Boolean);
+    $("#edit-commitment").closest(".card").outerHTML = commitmentCard(null, days, resume);
     wireCommitmentCard();
   };
 }

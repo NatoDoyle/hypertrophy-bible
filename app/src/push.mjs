@@ -183,7 +183,9 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   // The anchor is the LATEST sign of intent: the last session, the day the plan was
   // made, or (never trained) the subscription. A lapsed user who sets days today is
   // re-engaging — anchoring on the stale session alone silenced exactly those days.
-  const stampMs = Date.parse(plan.set_on ?? isoWeekMondayKey(plan.week) ?? "");
+  // set_on is a LOCAL calendar day, so its start as an instant is local midnight —
+  // Date.parse alone reads UTC midnight and started a west-of-UTC user's cap early.
+  const stampMs = Date.parse(plan.set_on ?? isoWeekMondayKey(plan.week) ?? "") - offsetMs;
   const finite = (ms) => (Number.isFinite(ms) ? ms : -Infinity);
   const anchorMs = Math.max(finite(lastSessionAt ? +new Date(lastSessionAt) : NaN), finite(stampMs), lastSessionAt ? -Infinity : finite(subscribedAt ? +new Date(subscribedAt) : NaN));
   if (!Number.isFinite(anchorMs) || Math.floor((+new Date(now) - anchorMs) / 86400000) > PUSH_MAX_LAPSE_DAYS) return false;

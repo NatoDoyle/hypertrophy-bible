@@ -753,7 +753,7 @@ export function createApp(store, config = {}) {
   // round-trip is byte-identical: the stored fields plus whether it's carried.
   const commitmentView = (stored, todayKey) => {
     const eff = commitmentForDay(stored, todayKey);
-    return eff ? { week: eff.week, days: eff.days, set_on: eff.set_on, carried: eff.carried } : null;
+    return eff ? { week: eff.week, days: eff.days, set_on: eff.set_on, carried: eff.carried, resumed: eff.resumed } : null;
   };
 
   // Skip today's workout: the cycle ADVANCES past it (the next session in the
@@ -890,10 +890,10 @@ export function createApp(store, config = {}) {
     // week's CARRIED forward (W271 — the owner chose a weekly picker that carries
     // itself forward each Monday). Ordinal inside commitmentForDay (lesson 40).
     const commitment = commitmentView(user.profile?.commitment, localDayKey(nowISO, tz));
-    // "No fixed days this week": which days come back next week (the card says so).
+    // "No fixed days this week" in force: which days come back next week (the card
+    // says so — over an empty week, or over a day picked for this week alone).
     const storedC = user.profile?.commitment;
-    const commitmentResumeDays = !commitment && Array.isArray(storedC?.days) && !storedC.days.length
-      && (storedC.week ?? "") >= isoWeekKeyLocal(Date.now(), tz) && storedC.resume_days?.length ? storedC.resume_days : null;
+    const commitmentResumeDays = (storedC?.week ?? "") >= isoWeekKeyLocal(Date.parse(nowISO), tz) && storedC?.resume_days?.length ? storedC.resume_days : null;
     // Surface the cheer tally on the main Coach view (not just buried in the share
     // box) so the social validation actually lands where the user looks. Only an
     // extra read for users who've opted into sharing; null/0 otherwise.
@@ -939,9 +939,14 @@ export function createApp(store, config = {}) {
       const tzNow = headerTz ?? u.profile?.tz_offset_min;
       const today = localDayKey(Date.now(), tzNow);
       // "No fixed days this week" is week-scoped, exactly as it says: keep the days
-      // in force today to RESUME once this week has passed (commitmentForDay).
-      const resume = days.length ? null : (commitmentForDay(u.profile?.commitment, today)?.days ?? u.profile?.commitment?.resume_days ?? null);
-      u.profile = { ...(u.profile ?? {}), commitment: { week: isoWeekKeyLocal(Date.now(), tzNow), days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
+      // in force today to RESUME once this week has passed (commitmentForDay). While
+      // such a clear is in force, a day picked is for THIS week alone and a second
+      // clear keeps the same usual days — the cleared card promised they come back.
+      const week = isoWeekKeyLocal(Date.now(), tzNow);
+      const stored = u.profile?.commitment;
+      const pending = (stored?.week ?? "") >= week && Array.isArray(stored?.resume_days) && stored.resume_days.length ? stored.resume_days : null;
+      const resume = pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
+      u.profile = { ...(u.profile ?? {}), commitment: { week, days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);

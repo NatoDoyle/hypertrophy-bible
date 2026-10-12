@@ -157,3 +157,17 @@ export function calendarDrift(exportedIdx, commitDays) {
   const same = exported.length === now.size && exported.every((i) => now.has(i));
   return same ? null : { stale: [...new Set(exported)].sort((a, b) => a - b).map((i) => SHORT_DAY[i]) };
 }
+
+// What the commitment card should say about the phone-calendar event, judged against
+// the days REALLY in force: this week's plan, else the usual days a "No fixed days
+// this week" clear will bring back, else none. Never advises deleting an event that
+// holds the days the same card says are coming back (W271 review).
+//   replace         — a plan is in force and the event holds other days
+//   delete-if-done  — cleared this week; the days coming back differ from the event
+//   save-or-delete  — no plan at all; the event still reminds on old days
+export function calendarAdvice(exportedIdx, { days = [], resumeDays = null } = {}) {
+  const against = days?.length ? days : resumeDays?.length ? resumeDays : [];
+  const d = calendarDrift(exportedIdx, against);
+  if (!d) return null;
+  return { ...d, advice: days?.length ? "replace" : resumeDays?.length ? "delete-if-done" : "save-or-delete" };
+}

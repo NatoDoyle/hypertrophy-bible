@@ -1046,6 +1046,22 @@ try {
     && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
   ok("#commitment …and /api/adherence says which days come back, so the card can promise exactly that",
     JSON.stringify(clearedAdh.commitment_resume_days) === JSON.stringify(["mon", "fri"]));
+  // Review C8: picking a day from the cleared card is for THIS week; the promised days
+  // still come back — and a second clear keeps the SAME usual days, not the one-off pick.
+  const satPick = await json("POST", "/api/commitment", { user_id: cUser, days: ["sat"] });
+  const satAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a day picked in a cleared week is this week's plan, and the usual days are still promised for next week",
+    satPick.status === 200 && JSON.stringify(satAdh.commitment?.days) === JSON.stringify(["sat"])
+    && JSON.stringify(satAdh.commitment_resume_days) === JSON.stringify(["mon", "fri"])
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  await json("POST", "/api/commitment", { user_id: cUser, days: [] });
+  ok("#commitment …and clearing again keeps the usual days, not the one-off pick",
+    JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: [], resume_days: ["tue"], set_on: "2020-01-01" }; return u; });
+  const resumedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment days back after a cleared week are marked resumed (the card must not say 'same as last week')",
+    resumedAdh.commitment?.resumed === true && resumedAdh.commitment?.carried === true && JSON.stringify(resumedAdh.commitment?.days) === JSON.stringify(["tue"]));
+  await store.updateUser(cUser, (u) => { delete u.profile.commitment; return u; }); // later checks read cUser as plan-less
 
   // --- #weekly-plan (W271): Today knows which days are planned. Fixed PAST dates via
   // ?d= so nothing moves with the clock (lesson 64): 2026-10-05 is a Monday (W41).

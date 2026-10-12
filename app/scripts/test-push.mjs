@@ -870,6 +870,23 @@ try {
     ok("#carry never-trained: a 5-week-old plan on a 40-day-old subscription is silent — never pushed forever",
       shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 35 * 86400000), days: [TODAY_KEY] }, lastSessionAt: null, subscribedAt: daysAgo(40), now: NOW }) === false);
 
+    // Review C4: plans made SINCE W271 carry indefinitely, so the cap — not the legacy
+    // one-week rule — is what silences a never-trained user. Prove the cap itself.
+    ok("#carry never-trained, a W271 plan (set_on) 30 days old on a 30-day-old subscription is silent — the cap holds",
+      shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 30 * 86400000), days: [TODAY_KEY], set_on: daysAgo(30) }, lastSessionAt: null, subscribedAt: daysAgo(30), now: NOW }) === false);
+    ok("#carry …while a subscription made 5 days ago re-arms it (the subscription is the newest intent)",
+      shouldPushForCommitment({ commitment: { week: isoWeekKey(NOW - 30 * 86400000), days: [TODAY_KEY], set_on: daysAgo(30) }, lastSessionAt: null, subscribedAt: daysAgo(5), now: NOW }) === true);
+    // Review C1: set_on is a LOCAL calendar day. Read as UTC midnight it starts a
+    // west-of-UTC user's cap up to 14 h early, and their 21st day's reminder is lost.
+    {
+      const every = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+      const at17Local = (d, tz) => Date.parse("2026-10-12T17:00:00Z") - tz * 60000 + d * 86400000;
+      const fires = (d, tz) => shouldPushForCommitment({ commitment: { week: "2026-W42", days: every, set_on: "2026-10-12" }, lastSessionAt: null, subscribedAt: "2026-09-01T00:00:00Z", now: at17Local(d, tz), tzOffsetMin: tz });
+      ok("#carry the cap counts the user's own days: day +21 still fires at UTC-10, UTC and UTC+13",
+        [-600, 0, 780].every((tz) => fires(PUSH_MAX_LAPSE_DAYS, tz) === true));
+      ok("#carry …and day +22 is quiet in every frame", [-600, 0, 780].every((tz) => fires(PUSH_MAX_LAPSE_DAYS + 1, tz) === false));
+    }
+
     const schPath = join(tmpdir(), `hb-push-sched-test-${process.pid}.json`);
     const schStore = createFileStore(schPath);
     try {
@@ -886,6 +903,10 @@ try {
       await schStore.saveUser("cb-rest", { profile: { tz_offset_min: 0 }, rest_days: ["2026-07-14"] });
       await schStore.addSession("cb-rest", { session_id: "cb-rest-1", date: "2026-07-09T10:00:00Z", local_date: "2026-07-09", sets: [] }); // 5 days → comeback stage 1
       await sub("cb-rest", { p256dh: ua.p256dh, auth: ua.auth });
+      // Review C5: a day OFF the weekly plan is as quiet as a rest day (Tue; plan = Wed).
+      await schStore.saveUser("cb-offplan", { profile: { tz_offset_min: 0, commitment: { week: isoWeekKey(T), days: ["wed"], set_on: "2026-07-13" } } });
+      await schStore.addSession("cb-offplan", { session_id: "cb-offplan-1", date: "2026-07-09T10:00:00Z", local_date: "2026-07-09", sets: [] });
+      await sub("cb-offplan", { p256dh: ua.p256dh, auth: ua.auth });
       const hits = [];
       await runPushSweep(schStore, vapid, T, async (url) => { hits.push(url); return { ok: true, status: 201 }; });
       const hit = (id) => hits.some((u) => u.endsWith(`/${id}`));
@@ -894,9 +915,12 @@ try {
       ok("#carry sweep: control — no plan, no rest day, a 3-day lapse still pushes", hit("plain"));
       ok("#carry sweep: the comeback push stands down on a rest day — no send AND no stamp",
         !hit("cb-rest") && (await schStore.getUser("cb-rest")).profile?.comeback_push == null);
+      ok("#carry sweep: the comeback push stands down on a day off the weekly plan — no send AND no stamp",
+        !hit("cb-offplan") && (await schStore.getUser("cb-offplan")).profile?.comeback_push == null);
       const hits2 = [];
       await runPushSweep(schStore, vapid, T + 86400000, async (url) => { hits2.push(url); return { ok: true, status: 201 }; });
       ok("#carry sweep: …and fires the next (non-rest) day instead", hits2.some((u) => u.endsWith("/cb-rest")) && (await schStore.getUser("cb-rest")).profile?.comeback_push?.stage === 1);
+      ok("#carry sweep: …and on the planned Wednesday instead", hits2.some((u) => u.endsWith("/cb-offplan")) && (await schStore.getUser("cb-offplan")).profile?.comeback_push?.stage === 1);
     } finally { try { rmSync(schPath); } catch {} }
   }
 

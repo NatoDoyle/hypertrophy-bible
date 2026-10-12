@@ -38,6 +38,7 @@ function harness(net) {
     listeners.fetch({ request: { url: ORIGIN + path, method: "GET" }, respondWith: (p) => { responded = p; }, waitUntil: (p) => { waits.push(p); } });
     await responded;
     await Promise.all(waits);
+    return { handled: responded !== undefined };
   };
   return { stored, fire };
 }
@@ -70,6 +71,18 @@ await check("a non-module asset (styles.css) still refreshes on its own", async 
   const h = harness({ "/styles.css": "NEW/styles.css" }); seedOld(h);
   await h.fire("/styles.css");
   assert.equal(h.stored.get("/styles.css"), "NEW/styles.css");
+});
+
+await check("the sign-in page is never handled or cached, under EITHER spelling (prod 307s /verify.html?token= to /verify?token=)", async () => {
+  // Review C6: this was a source grep, green whatever the guard's logic. Fire real
+  // fetch events through the handler: the browser must go straight to the network.
+  const h = harness({ "/verify": "PAGE", "/verify.html": "PAGE" });
+  for (const p of ["/verify?token=abc", "/verify.html?token=abc"]) {
+    const { handled } = await h.fire(p);
+    assert.equal(handled, false, `${p} must not be answered by the service worker`);
+  }
+  assert.equal(h.stored.size, 0, "nothing token-bearing lands in Cache Storage");
+  assert.equal((await h.fire("/styles.css")).handled, true, "control: an ordinary asset IS handled (else this proves nothing)");
 });
 
 console.log(`\n${pass} service-worker test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

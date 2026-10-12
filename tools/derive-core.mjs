@@ -410,17 +410,20 @@ export function commitmentForDay(stored, todayKey) {
   // Ordinal, never equality (lesson 40): a stamp that reads as a FUTURE week (a tz
   // change between stamp and read) is current, never stale.
   const carried = !!week && week < curWeek;
-  let days = valid(stored.days);
   // "No fixed days this week" clears THIS week only: the usual days (resume_days) come
-  // back once that week has passed, carried like any other plan.
-  if (!days.length && carried) days = valid(stored.resume_days);
+  // back once that week has passed — and a day picked DURING the cleared week was for
+  // that week alone, so they win over it too. `resumed` lets the card say "your usual
+  // days are back" rather than "same days as last week" (last week had none).
+  const resumeDays = valid(stored.resume_days);
+  const resumed = carried && resumeDays.length > 0;
+  const days = resumed ? resumeDays : valid(stored.days);
   if (!days.length) return null;
   // A PRE-W271 answer (no set_on) was given to "which days will you train THIS week?":
   // it carries into the next week — the owner's "each Monday it carries last week's
   // choice forward" — and no further. Reviving a months-old one would gate today's hub
   // and quiet comeback nudges on a schedule nobody chose (lesson 37).
   if (!set_on && (!week || (carried && week < isoWeekKey(shiftDayKey(todayKey, -7))))) return null;
-  return { days, week, set_on, carried };
+  return { days, week, set_on, carried, resumed };
 }
 
 export function effectiveCommitment(profile, nowMs, tzOffsetMin) {

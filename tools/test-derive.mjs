@@ -1347,7 +1347,7 @@ check("progression rows carry a week-keyed series matching their endpoints", () 
 // forward each Monday. Fixed dates (lesson 64: never a fixture that moves with the
 // clock). 2026-10-12 is a Monday (ISO 2026-W42); 2026-10-13 a Tuesday.
 check("#carry this week's commitment is current; last week's carries forward; a future stamp is current (ordinal, lesson 40)", () => {
-  assert.deepEqual(commitmentForDay({ week: "2026-W42", days: ["mon", "thu"] }, "2026-10-13"), { days: ["mon", "thu"], week: "2026-W42", set_on: null, carried: false });
+  assert.deepEqual(commitmentForDay({ week: "2026-W42", days: ["mon", "thu"] }, "2026-10-13"), { days: ["mon", "thu"], week: "2026-W42", set_on: null, carried: false, resumed: false });
   assert.equal(commitmentForDay({ week: "2026-W41", days: ["mon", "thu"] }, "2026-10-13").carried, true);
   assert.equal(commitmentForDay({ week: "2025-W02", days: ["fri"], set_on: "2025-01-08" }, "2026-10-13").carried, true, "a plan made since W271 (set_on) carries indefinitely");
   assert.equal(commitmentForDay({ week: "2026-W43", days: ["mon"] }, "2026-10-13").carried, false, "a tz-skewed future stamp reads as current, never as stale");
@@ -1361,8 +1361,15 @@ check("#carry a PRE-W271 answer (no set_on — it was asked as 'this week' only)
 check("#carry 'No fixed days this week' clears THIS week only — the usual days come back next Monday", () => {
   const cleared = { week: "2026-W42", days: [], resume_days: ["mon", "fri"], set_on: "2026-10-13" };
   assert.equal(commitmentForDay(cleared, "2026-10-14"), null, "this week: no plan");
-  assert.deepEqual(commitmentForDay(cleared, "2026-10-19"), { days: ["mon", "fri"], week: "2026-W42", set_on: "2026-10-13", carried: true }, "next week: the usual days, carried");
+  assert.deepEqual(commitmentForDay(cleared, "2026-10-19"), { days: ["mon", "fri"], week: "2026-W42", set_on: "2026-10-13", carried: true, resumed: true }, "next week: the usual days, RESUMED (last week had none — never 'same as last week')");
   assert.equal(commitmentForDay({ week: "2026-W42", days: [], set_on: "2026-10-13" }, "2026-10-19"), null, "a clear with nothing to resume stays clear");
+});
+check("#carry a day picked DURING a cleared week is for that week — the usual days still come back next Monday", () => {
+  // Review C8: the cleared card promises "Mon, Wed come back next week by themselves";
+  // picking Friday from that same card must not quietly replace them for good.
+  const stored = { week: "2026-W42", days: ["fri"], resume_days: ["mon", "wed"], set_on: "2026-10-14" };
+  assert.deepEqual(commitmentForDay(stored, "2026-10-15"), { days: ["fri"], week: "2026-W42", set_on: "2026-10-14", carried: false, resumed: false }, "this week: Friday");
+  assert.deepEqual(commitmentForDay(stored, "2026-10-19"), { days: ["mon", "wed"], week: "2026-W42", set_on: "2026-10-14", carried: true, resumed: true }, "next week: the usual days");
 });
 check("#carry a cleared or never-set commitment is no commitment; unknown day keys are dropped", () => {
   assert.equal(commitmentForDay({ week: "2026-W42", days: [] }, "2026-10-13"), null);

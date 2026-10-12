@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -96,6 +96,17 @@ check("calendarDrift: names the calendar's stale days when the plan changed, not
   assert.equal(calendarDrift(null, ["mon"]), null, "never exported");
   assert.equal(calendarDrift([], ["mon"]), null);
   assert.deepEqual(calendarDrift([1], []), { stale: ["Tue"] }, "days cleared but the calendar still reminds");
+});
+
+// Review C2/C9: the card must never tell someone to delete the calendar event that
+// holds the days the SAME card says are coming back.
+check("calendarAdvice: compares the export with the days really in force (or coming back), and says what to do", () => {
+  assert.equal(calendarAdvice([0, 2], { days: [], resumeDays: ["mon", "wed"] }), null, "cleared this week, the same days come back: keep the event");
+  assert.deepEqual(calendarAdvice([0, 2], { days: [], resumeDays: ["fri"] }), { stale: ["Mon", "Wed"], advice: "delete-if-done" });
+  assert.deepEqual(calendarAdvice([0, 2], { days: [], resumeDays: null }), { stale: ["Mon", "Wed"], advice: "save-or-delete" }, "no plan at all (e.g. an expired pre-W271 answer)");
+  assert.deepEqual(calendarAdvice([0, 2], { days: ["mon", "thu"] }), { stale: ["Mon", "Wed"], advice: "replace" });
+  assert.equal(calendarAdvice([0, 3], { days: ["thu", "mon"] }), null);
+  assert.equal(calendarAdvice(null, { days: [] }), null, "never exported");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -198,14 +209,7 @@ check("sw.js precaches every module app.js and verify.html import", () => {
   assert.deepEqual(missing, [], `imported but not precached: ${missing.join(", ")}`);
 });
 
-check("sw.js never caches the sign-in page under EITHER spelling (prod serves /verify.html as /verify via a 307)", () => {
-  // Measured after the Burst-2 deploy: Cloudflare's asset handling redirects
-  // /verify.html?token=… to /verify?token=…, so a bypass for only "/verify.html"
-  // let the service worker cache token-bearing sign-in pages.
-  const sw = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
-  assert.match(sw, /url\.pathname === "\/verify\.html"/);
-  assert.match(sw, /url\.pathname === "\/verify"(?!\.)/);
-});
+// (The /verify cache bypass is proven through the real fetch handler in test-sw.mjs.)
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

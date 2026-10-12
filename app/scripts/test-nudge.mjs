@@ -5,7 +5,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { comebackStage, runComebackSweep, NUDGE_STAGE_1_DAYS, NUDGE_STAGE_2_DAYS } from "../src/nudge.mjs";
+import { comebackStage, runComebackSweep, quietToday, NUDGE_STAGE_1_DAYS, NUDGE_STAGE_2_DAYS } from "../src/nudge.mjs";
+import { isoWeekKey, weekDayKey } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
@@ -143,6 +144,22 @@ try {
     !restSent.some((m) => m.email === "rest@t.com") && (await store.getUser("rest-email")).nudge == null);
   await runComebackSweep(store, async (m) => { restSent.push(m); return { ok: true }; }, NOW + 86400000);
   ok("W271 …and goes out the next day instead", restSent.some((m) => m.email === "rest@t.com"));
+
+  // Review C5: the OTHER half of quietToday — a day off the weekly plan (the owner: "If I
+  // put in what days I plan to work out, why is it asking me to log a workout?").
+  const offPlan = { week: isoWeekKey(NOW), days: [weekDayKey(NOW + 86400000)], set_on: daysAgo(0) }; // tomorrow only
+  ok("W271 quietToday: a day off the weekly plan is quiet; the planned day is not",
+    quietToday({ profile: { tz_offset_min: 0, commitment: offPlan } }, NOW).quiet === true
+    && quietToday({ profile: { tz_offset_min: 0, commitment: offPlan } }, NOW + 86400000).quiet === false);
+  await store.saveUser("off-plan-email", { profile: { tz_offset_min: 0, commitment: offPlan } });
+  await store.addSession("off-plan-email", { session_id: "op1", date: daysAgo(5), sets: [] });
+  await store.saveAccount("offplan@t.com", "off-plan-email", new Date(NOW).toISOString());
+  const offSent = [];
+  await runComebackSweep(store, async (m) => { offSent.push(m); return { ok: true }; }, NOW);
+  ok("W271 the comeback email stands down on a day off the plan, and claims nothing",
+    !offSent.some((m) => m.email === "offplan@t.com") && (await store.getUser("off-plan-email")).nudge == null);
+  await runComebackSweep(store, async (m) => { offSent.push(m); return { ok: true }; }, NOW + 86400000);
+  ok("W271 …and goes out on the planned day instead", offSent.some((m) => m.email === "offplan@t.com"));
 
   console.log(`\n${pass} nudge test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {

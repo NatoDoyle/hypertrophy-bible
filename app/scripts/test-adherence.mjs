@@ -394,6 +394,17 @@ ok("scheduled: a planned day the user marked as rest never reads 'Today's a trai
 const missedMon = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "fri"], set_on: "2026-10-05" } } },
   lastWeekOnly, "2026-10-14T12:00:00Z").status;
 ok("scheduled: a missed planned day — the header agrees with the hub's catch-up line", /Missed Monday/.test(missedMon.message));
+// Review C7: Friday still keeps the week — so a missed Monday is NOT loss-aversion yet.
+ok("scheduled: a missed day with a later planned day still ahead is calm (Goal 4), and names it",
+  missedMon.state === "scheduled" && /Friday/.test(missedMon.message) && !/keeps the chain alive/.test(missedMon.message));
+const missedMonTodayPlanned = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("scheduled: missed Monday, today planned and Friday ahead — calm, says today's a training day",
+  missedMonTodayPlanned.state === "scheduled" && /Missed Monday/.test(missedMonTodayPlanned.message) && /Today's a training day/.test(missedMonTodayPlanned.message) && /Friday/.test(missedMonTodayPlanned.message));
+const missedMonLastToday = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "wed"], set_on: "2026-10-05" } } },
+  lastWeekOnly, "2026-10-14T12:00:00Z").status;
+ok("at-risk: missed Monday and today is the LAST planned day — now the chain copy is true",
+  missedMonLastToday.state === "at-risk" && /Missed Monday\? A session today keeps the chain alive/.test(missedMonLastToday.message));
 const todayToo = adherenceReport(planUser(["wed", "fri"]), lastWeekOnly, wedNoon).status;
 ok("scheduled: a planned TODAY with a later day still ahead says so honestly", todayToo.state === "scheduled" && /Today's a training day/.test(todayToo.message) && /Friday/.test(todayToo.message));
 

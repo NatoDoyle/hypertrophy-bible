@@ -257,7 +257,15 @@ export function adherenceStatus(sessions, now, paused, { weekNow = now, plan = n
     const nextName = plan.next ? DAY_NAME[plan.next.day] : null;
     const nextThisWeek = plan.next && nextIdx > todayIdx;
     if (restToday) return { state: "scheduled", message: nextName ? `Rest day today — next training day: ${nextName}.` : "Rest day today." };
-    if (plan.missed) return { state: "at-risk", message: `Missed ${DAY_NAME[plan.missed.day]}? A session today keeps the chain alive.` };
+    if (plan.missed) {
+      const missed = DAY_NAME[plan.missed.day];
+      // A planned day still ahead THIS week keeps the week (Goal 4): name it, and save
+      // the loss-aversion line for when today really is the last chance.
+      if (nextThisWeek) return { state: "scheduled", message: plan.planned_today
+        ? `Missed ${missed}? Today's a training day — and ${nextName} is still ahead.`
+        : `Missed ${missed}? Catch up today — or ${nextName} keeps the week on track.` };
+      return { state: "at-risk", message: `Missed ${missed}? A session today keeps the chain alive.` };
+    }
     if (!plan.planned_today) return { state: "scheduled", message: nextName ? `Next training day: ${nextName}${nextThisWeek ? " — the week's still yours" : ""}.` : "No training day planned." };
     if (nextThisWeek) return { state: "scheduled", message: `Today's a training day — and ${nextName} is still ahead this week.` };
     return atRisk;
