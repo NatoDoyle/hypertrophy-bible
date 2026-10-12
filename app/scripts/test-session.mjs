@@ -7,7 +7,8 @@
 // trained the right number of times, in a sane order, across a mid-session resume.
 import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
-  restLength, restRemaining, activeRest, formatRest, adjustRest, newRest } from "../public/session-core.mjs";
+  restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
+  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -621,6 +622,69 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
   assert.equal(adjustRest(newRest({ kind: "remainder", length: 60, ex: "squat", logged: 4 }, start), 30, { rest_s: 180 }).remember, null,
     "+30 on a 60 s remainder must not teach a 180 s lift to rest LESS (premortem crash-safety-3d)");
 });
+
+// --- #edit (W274 — owner: "I can't fix a wrong weight/reps mid-workout"): a banked set is
+// corrected IN PLACE — numbers only, never count, order, lift or type — so everything the
+// player derives from the log (progress, the cursor, station rounds) cannot move.
+{
+  const t = (n) => `2026-10-12T10:0${n}:00.000Z`;
+  const L1 = { exercise: "L", set_type: "work", weight_kg: 20, reps: 12, completed_at: t(1) };
+  const P1 = { exercise: "P", set_type: "work", weight_kg: 15, reps: 10, completed_at: t(2) };
+  const L2 = { exercise: "L", set_type: "work", weight_kg: 20, reps: 11, completed_at: t(3) };
+  const P2 = { exercise: "P", set_type: "work", weight_kg: 15, reps: 9, completed_at: t(4) };
+  const LW = { exercise: "L", set_type: "warmup", weight_kg: 10, reps: 10, completed_at: t(5) };
+  const station = [L1, P1, L2, P2, LW];
+  check("#edit-logged only the patched fields change — 10.21 kg stays 10.21 kg on a reps-only fix; nothing is mutated", () => {
+    const logged = [{ exercise: "db-curl", set_type: "work", weight_kg: 10.21, reps: 8, completed_at: t(1) }];
+    const before = JSON.stringify(logged);
+    const out = editLoggedSet(logged, 0, { reps: 10 }, { exercise: "db-curl", completed_at: t(1) });
+    assert.equal(out[0].weight_kg, 10.21); assert.equal(out[0].reps, 10);
+    assert.equal(out.length, 1); assert.equal(out[0].set_type, "work"); assert.equal(out[0].exercise, "db-curl");
+    assert.equal(JSON.stringify(logged), before, "input untouched");
+  });
+  check("#edit-logged refuses (same array back) unless the entry is still the one the editor opened — same lift AND same completed_at", () => {
+    assert.strictEqual(editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "L", completed_at: P2.completed_at }), station);
+    assert.strictEqual(editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "P", completed_at: t(9) }), station);
+    assert.strictEqual(editLoggedSet(station, 9, { weight_kg: 30 }, { exercise: "P", completed_at: P2.completed_at }), station);
+  });
+  check("#edit-logged an empty or junk field (a cleared input, NaN, a negative) is ignored, never written", () => {
+    for (const patch of [{ weight_kg: null }, { weight_kg: NaN }, { reps: -1 }, { reps: 2.5 }, {}]) assert.strictEqual(editLoggedSet(station, 1, patch, { exercise: "P", completed_at: P1.completed_at }), station, JSON.stringify(patch));
+  });
+  check("#edit-station chips carry ABSOLUTE log positions — a round interleaves two lifts, so P's second set is logged[3], not 'P #1'", () => {
+    assert.deepStrictEqual(sessionChips(station, "P").map((c) => c.idx), [1, 3]);
+    assert.deepStrictEqual(sessionChips(station, "L").map((c) => c.idx), [0, 2, 4]);
+    const out = editLoggedSet(station, 3, { weight_kg: 30 }, { exercise: "P", completed_at: P2.completed_at });
+    assert.equal(out[3].weight_kg, 30);
+    out.forEach((l, k) => { if (k !== 3) assert.strictEqual(l, station[k], `logged[${k}] untouched`); });
+  });
+  check("#edit-station an edit moves no progress: station rounds, work-set counts and the next unfinished lift are identical", () => {
+    const exs = [ex("L", 3, "P"), ex("P", 3, "L"), ex("Z", 2)];
+    const out = editLoggedSet(station, 2, { weight_kg: 22.5, reps: 12 }, { exercise: "L", completed_at: L2.completed_at });
+    assert.deepStrictEqual(stationProgress(out, exs, 0, 1), stationProgress(station, exs, 0, 1));
+    assert.equal(loggedWorkSets(out, "L"), loggedWorkSets(station, "L"));
+    assert.equal(nextUnfinishedIndex(out, exs, 0), nextUnfinishedIndex(station, exs, 0));
+  });
+  check("#edit-display the editor shows a banked weight EXACTLY and reads it back in the same unit — plate rounding re-saved 22.5 lb as 25 lb", () => {
+    for (const kg of [62.14, 10.21, 46.49]) assert.ok(Math.abs(parseEdit(editDisplay(kg, "lb"), "lb") - kg) <= 0.005, `${kg} kg via lb`);
+    assert.equal(editDisplay(10.21, "lb"), "22.5");
+    assert.equal(editDisplay(62.7, "kg"), "62.7"); assert.equal(parseEdit("62.7", "kg"), 62.7);
+    assert.equal(parseEdit("62,5", "kg"), 62.5, "a comma decimal (EU keyboards) reads as a point");
+    assert.equal(parseEdit("", "kg"), null); assert.equal(parseEdit("abc", "lb"), null); assert.equal(parseEdit("-5", "kg"), null);
+  });
+  check("#edit-confirm an edit's typo confirmation lives in its OWN key space — it can never wave the Done button's guard through", () => {
+    assert.equal(editConfirmKey({ completed_at: t(1) }), `edit:${t(1)}`);
+    assert.deepStrictEqual(unconfirmedFlagged([0], () => "L", () => true, new Set([editConfirmKey(L1)])), [0]);
+  });
+  check("#pr-latch recomputed from the log after an edit: a typo PR corrected away clears it; a deload set never sets it; a real one does", () => {
+    const watch = { e1rm_kg: 30, load_kg: 25 };
+    const typo = [{ exercise: "L", set_type: "work", weight_kg: 200, reps: 8, completed_at: t(1) }];
+    assert.equal(recomputePrLatch(typo, "L", watch), true);
+    assert.equal(recomputePrLatch(editLoggedSet(typo, 0, { weight_kg: 20 }, { exercise: "L", completed_at: t(1) }), "L", watch), false);
+    assert.equal(recomputePrLatch([{ ...typo[0], deload: true }], "L", watch), false);
+    assert.equal(recomputePrLatch([{ ...typo[0], set_type: "warmup" }], "L", watch), false);
+    assert.equal(recomputePrLatch(typo, "L", null), false, "no history to beat");
+  });
+}
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

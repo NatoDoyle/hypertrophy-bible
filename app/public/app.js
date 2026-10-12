@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy } from "/ui-helpers.mjs";
@@ -2044,6 +2044,86 @@ const restOffsetFor = (id) => { try { const m = JSON.parse(localStorage.getItem(
 const rememberRestOffset = (id, offset) => {
   try { const m = JSON.parse(localStorage.getItem("hb_rest") || "{}") || {}; if (offset) m[id] = offset; else delete m[id]; localStorage.setItem("hb_rest", JSON.stringify(m)); } catch {}
 };
+// FIX A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). Every
+// set banked this session is one tap from a correction: "This session" chips on the set
+// screen, "Just logged" on the rest screen and on the next lift's first set (a typo on a
+// lift's LAST set has no rest screen after it). The editor writes THROUGH on every valid
+// keystroke — a repaint, a rest ending, or a crash can never lose a half-made fix — and a
+// field whose text still reads exactly as shown keeps its ORIGINAL value, so an untouched
+// number is never re-parsed from a rounded display. Chips carry ABSOLUTE log positions
+// plus completed_at (session-core), so a superset's interleaved sets are never mixed up.
+let setEditor = null;           // the open editor: { idx, exercise, completed_at, unit }
+const editConfirmed = new Set(); // edit typo-confirmations — their OWN key space (editConfirmKey)
+const nameInSess = (id) => sess?.ex?.find((x) => x.exercise === id)?.name ?? exName(id);
+const setText = (entry, id) => (entry.weight_kg > 0 || !(entry.reps >= 0)
+  ? `${editDisplay(entry.weight_kg, unitFor(id))} ${unitLabelFor(id)} × ${entry.reps}` : `${entry.reps} reps`);
+function setChipsHtml(ids) {
+  const chips = ids.flatMap((id) => sessionChips(sess.logged, id).map((c) => ({ ...c, id })));
+  if (!chips.length) return "";
+  const named = ids.length > 1;
+  return `<div class="muted" style="margin:4px 0 8px;font-size:.9rem">This session: ${chips.map((c) =>
+    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
+}
+function justLoggedHtml(idxs) {
+  const items = idxs.filter((i) => sess.logged[i]);
+  if (!items.length) return "";
+  return `<p class="muted" style="margin:6px 0">Just logged: ${items.map((i) => { const l = sess.logged[i];
+    return `<button class="chip" data-fix="${i}" aria-label="Fix ${esc(nameInSess(l.exercise))}: ${esc(setText(l, l.exercise))}">${esc(nameInSess(l.exercise))} ${esc(setText(l, l.exercise))} ✏️ fix</button>`; }).join(" ")}</p>`;
+}
+function wireSetFixes(rerender) {
+  app.querySelectorAll("[data-fix]").forEach((b) => b.onclick = () => openSetEditor(+b.dataset.fix, $("#fix-host"), rerender));
+}
+function openSetEditor(idx, host, rerender) {
+  const entry0 = sess?.logged?.[idx];
+  if (!entry0 || !host) return;
+  const unit = unitFor(entry0.exercise); // captured ONCE: shown and read back in the same unit
+  setEditor = { idx, exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, unit };
+  const shownW = editDisplay(entry0.weight_kg, unit), shownR = String(entry0.reps ?? "");
+  const field = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem";
+  host.innerHTML = `<div class="card" id="set-editor"><b>Fix ${esc(nameInSess(entry0.exercise))}${entry0.set_type === "warmup" ? " (warm-up)" : ""}</b>
+    <div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0">
+      <input id="fix-w" type="text" inputmode="decimal" value="${esc(shownW)}" aria-label="Weight in ${unit}" style="width:6rem;${field}">
+      <span class="muted">${unit} ×</span>
+      <input id="fix-r" type="text" inputmode="numeric" value="${esc(shownR)}" aria-label="Reps" style="width:4.5rem;${field}">
+      <span class="muted">reps</span></div>
+    <p class="muted" id="fix-note" role="status" style="margin:6px 0 0"></p>
+    <button class="btn secondary inline" id="fix-done" style="margin-top:8px">Done</button></div>`;
+  const apply = () => {
+    const ed = setEditor;
+    if (!ed || !sess) return;
+    const wText = $("#fix-w").value.trim(), rText = $("#fix-r").value.trim();
+    const patch = {};
+    const kg = wText === shownW ? entry0.weight_kg : parseEdit(wText, ed.unit);
+    if (kg != null) patch.weight_kg = kg;
+    const reps = rText === shownR ? entry0.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : null);
+    if (reps != null) patch.reps = reps;
+    // The same typo guard as banking, on the corrected numbers; a suspect value waits
+    // for an explicit "keep it" before it is written.
+    const row = sess.ex.find((x) => x.exercise === ed.exercise);
+    const cand = { ...sess.logged[ed.idx], ...patch };
+    const key = editConfirmKey(entry0);
+    if ((cand.set_type ?? "work") === "work" && !editConfirmed.has(key) && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null })) {
+      $("#fix-note").innerHTML = `That looks like a typo — far above what you usually lift here. <button class="btn ghost inline" id="fix-keep" style="margin:0">Keep it</button>`;
+      $("#fix-keep").onclick = () => { editConfirmed.add(key); apply(); };
+      return;
+    }
+    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
+    if (next === sess.logged) { $("#fix-note").textContent = ""; return; }
+    sess.logged = next;
+    // The PR latch follows the log, silently — an edit never re-toasts.
+    if (row) {
+      sess.prCelebrated = { ...(sess.prCelebrated ?? {}) };
+      if (recomputePrLatch(sess.logged, ed.exercise, row.pr_watch)) sess.prCelebrated[ed.exercise] = true;
+      else delete sess.prCelebrated[ed.exercise];
+    }
+    saveSess();
+    $("#fix-note").textContent = "Saved.";
+  };
+  $("#fix-w").oninput = apply;
+  $("#fix-r").oninput = apply;
+  $("#fix-done").onclick = () => { setEditor = null; rerender(); };
+  $("#fix-w").focus();
+}
 const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); };
 const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } };
 function showRest(rest, nextLine, row, onDone, announce) {
@@ -2052,9 +2132,10 @@ function showRest(rest, nextLine, row, onDone, announce) {
       <button class="btn ghost inline" id="rest-minus" aria-label="Rest 30 seconds less" style="margin:0">−30s</button>
       <button class="btn ghost inline" id="rest-plus" aria-label="Rest 30 seconds more" style="margin:0">+30s</button></div>
     <p class="muted">${nextLine}</p>
+    <div id="fix-host">${justLoggedHtml(rest.kind === "round" ? [sess.logged.length - 2, sess.logged.length - 1] : [sess.logged.length - 1])}</div>
     ${restReadiness()}
     <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-  wireRestCues(); wireLearnLinks();
+  wireRestCues(); wireLearnLinks(); wireSetFixes(onDone);
   // Announce ONCE (the per-second #t is not aria-live, or it would spam a screen
   // reader every tick) and move focus to the only action.
   say(announce);
@@ -2066,12 +2147,14 @@ function showRest(rest, nextLine, row, onDone, announce) {
     stopRestTimer(); endRest();
     try { navigator.vibrate?.([180, 90, 180]); } catch {}
     say("Rest over — you're up.");
+    // Mid-fix: never repaint over a half-typed correction — the rest just says it's over.
+    if (setEditor) { if ($("#skip")) $("#skip").textContent = "Rest over — I'm ready"; return; }
     onDone();
   };
   // ONE handle (stopRestTimer clears it), and the display is always derived from the
   // stored end time — a throttled interval on a locked phone shows the truth on wake.
   restTimer = setInterval(tick, 1000);
-  $("#skip").onclick = () => { stopRestTimer(); endRest(); onDone(); };
+  $("#skip").onclick = () => { stopRestTimer(); endRest(); setEditor = null; onDone(); };
   const nudge = (delta) => {
     if (!sess?.rest) return;
     const { rest: next, remember } = adjustRest(sess.rest, delta, row);
@@ -2085,6 +2168,7 @@ function showRest(rest, nextLine, row, onDone, announce) {
 
 function renderPlayer() {
   stopRestTimer();
+  setEditor = null;
   // A guarded belt-and-braces: loadSess repairs bad cursors, but nothing that
   // slips through may crash the recovery path for a user's unposted sets.
   if (!sess || !Array.isArray(sess.ex) || !sess.ex[sess.i]) { clearSess(); return render(); }
@@ -2138,6 +2222,7 @@ function renderPlayer() {
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
     ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
     <div class="setdots">${setDots}</div>
+    <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
     ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
@@ -2163,6 +2248,7 @@ function renderPlayer() {
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
+  wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
   // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
@@ -2263,6 +2349,7 @@ function renderPlayer() {
 // finished afterwards by the normal single-exercise path.
 function renderSupersetStation(L, P) {
   stopRestTimer();
+  setEditor = null;
   if (!sess || !sess.ex[L] || !sess.ex[P]) { clearSess(); return render(); }
   normalizeSessUnits();
   const A = sess.ex[L], B = sess.ex[P];
@@ -2303,6 +2390,7 @@ function renderSupersetStation(L, P) {
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${memberBlock(L)}${memberBlock(P)}
+    <div id="fix-host">${setChipsHtml([A.exercise, B.exercise])}</div>
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
@@ -2325,6 +2413,7 @@ function renderSupersetStation(L, P) {
   wireValInputs((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   wireUnitToggles((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderSupersetStation(L, P, 0)));
+  wireSetFixes(() => renderSupersetStation(L, P));
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
     let d = null; try { d = await api(`/api/exercise/${m.exercise}`); } catch {}
@@ -2621,7 +2710,7 @@ async function finish() {
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? res.data : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."] });
+  renderRecap(res.ok ? { ...res.data, session_id } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true });
 }
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
@@ -2654,8 +2743,14 @@ function renderRecap(recap) {
         <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a></div>`
     : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
+  // A number banked wrong is fixable after the workout too (W274): straight into this
+  // workout's editor — or, while it's still queued offline, a promise of where.
+  const fixDoor = recap.session_id ? `<button class="btn ghost" id="fixnum">✏️ Fix a number</button>`
+    : recap.queued ? `<p class="muted" style="text-align:center">Logged a number wrong? Once this workout syncs, fix any set from Progress → Workout history.</p>` : "";
   app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${wins}${nudge}${donate}
+    ${fixDoor}
     <button class="btn" id="ok">Done</button>`;
+  if ($("#fixnum")) $("#fixnum").onclick = () => { historyEdit = recap.session_id; tab = "history"; render(); };
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
 }
@@ -3032,7 +3127,7 @@ async function renderHistory() {
     if (!sess) { historyEdit = null; return renderHistory(); }
     const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
       <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
-      <input data-w="${i}" type="number" step="0.25" inputmode="decimal" value="${dispWeightFor(set.weight_kg, set.exercise)}" aria-label="weight for set ${i + 1}"
+      <input data-w="${i}" type="text" inputmode="decimal" value="${esc(editDisplay(set.weight_kg, unitFor(set.exercise)))}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       <span class="muted">${unitLabelFor(set.exercise)} ×</span>
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
@@ -3050,11 +3145,17 @@ async function renderHistory() {
       // Send the sets back WHOLE, preserving every field the server gave us
       // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
       // is bounded exactly like the original log, but anything we drop here is lost.
+      // Only a field whose text CHANGED is re-read (W274): this screen used to re-parse
+      // every set from a plate-rounded display, so fixing one set's reps rewrote every
+      // weight in the workout (22.5 lb came back as 25 lb). The display is exact now, and
+      // an untouched field keeps its stored value byte for byte.
       const sets = (sess.sets ?? []).map((set, i) => {
         const { name, ...rest } = set; // `name` is a display-only field this screen added
-        const wv = parseFloat(app.querySelector(`[data-w="${i}"]`)?.value);
-        const rv = parseInt(app.querySelector(`[data-reps="${i}"]`)?.value, 10);
-        return { ...rest, weight_kg: Number.isFinite(wv) ? toKgFor(wv, rest.exercise) : rest.weight_kg, reps: Number.isFinite(rv) ? rv : rest.reps };
+        const wText = (app.querySelector(`[data-w="${i}"]`)?.value ?? "").trim();
+        const rText = (app.querySelector(`[data-reps="${i}"]`)?.value ?? "").trim();
+        const kg = wText === editDisplay(rest.weight_kg, unitFor(rest.exercise)) ? rest.weight_kg : parseEdit(wText, unitFor(rest.exercise));
+        const reps = rText === String(rest.reps) ? rest.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : rest.reps);
+        return { ...rest, weight_kg: kg ?? rest.weight_kg, reps };
       });
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }

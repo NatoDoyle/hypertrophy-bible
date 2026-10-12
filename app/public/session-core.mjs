@@ -345,3 +345,56 @@ export function adjustRest(rest, delta, row) {
   const length = clampRest(rest.length + delta);
   return { rest: { ...rest, length, until: rest.start + length * 1000 }, remember: rest.kind === "set" ? length - restLength(row, 0) : null };
 }
+
+// FIXING A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). A
+// set is corrected IN PLACE — numbers only, never the count, order, lift or set type —
+// so everything the player derives from the log (progress, the cursor, station rounds)
+// provably cannot move. Live delete/undo is refused on purpose: removing a set breaks
+// the forward-only cursor and unbalances a superset's rounds.
+//
+// The chips for one lift carry each banked set's ABSOLUTE position in sess.logged: a
+// superset round interleaves two lifts (and warm-ups interleave too), so a position
+// counted within one lift's sets would edit the OTHER lift's set.
+export function sessionChips(logged, exId) {
+  return (logged ?? []).flatMap((l, idx) => (l.exercise === exId
+    ? [{ idx, weight_kg: l.weight_kg, reps: l.reps, set_type: l.set_type ?? "work", completed_at: l.completed_at ?? null }] : []));
+}
+// Only the fields present in `patch` (weight_kg, reps) change, and only to sane values —
+// a cleared input or junk is ignored, never written. Refuses (the SAME array back)
+// unless the entry at idx is still the one the editor opened: same lift AND same
+// completed_at. Pure.
+export function editLoggedSet(logged, idx, patch, { exercise, completed_at } = {}) {
+  const cur = logged?.[idx];
+  if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return logged;
+  const changes = {};
+  const w = patch?.weight_kg, r = patch?.reps;
+  if (typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1000) changes.weight_kg = w;
+  if (Number.isInteger(r) && r >= 0 && r <= 100) changes.reps = r;
+  if (!Object.keys(changes).length) return logged;
+  return logged.map((l, k) => (k === idx ? { ...l, ...changes } : l));
+}
+// The editor shows a banked weight EXACTLY (kg to 0.01, lb to 0.1) and reads it back in
+// the SAME unit it was shown in. The plate-rounded display (lb to 5) re-saved 22.5 lb as
+// 25 lb on a reps-only fix — an 11% heavier anchor for every later suggestion.
+export function editDisplay(kg, unit) {
+  if (typeof kg !== "number" || !Number.isFinite(kg)) return "";
+  return String(unit === "lb" ? Math.round(kg * LB_PER_KG * 10) / 10 : Math.round(kg * 100) / 100);
+}
+export function parseEdit(text, unit) {
+  const v = Number.parseFloat(String(text ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(v) || v < 0) return null;
+  return Math.round((unit === "lb" ? v / LB_PER_KG : v) * 100) / 100;
+}
+// An edit's typo confirmation lives in its OWN key space (the Done button's guard keys
+// on exercise ids), so confirming a corrected number can never wave the NEXT set's
+// typo check through.
+export const editConfirmKey = (entry) => `edit:${entry?.completed_at ?? ""}`;
+// After an edit the lift's "PR already celebrated" latch must match what the log now
+// says: true if ANY banked work set beats its prior bests (deload sets never count — the
+// server's rule), false once a typo PR is corrected away. Recomputed silently: an edit
+// never re-toasts.
+export function recomputePrLatch(logged, exId, prWatch) {
+  if (!prWatch) return false;
+  return (logged ?? []).some((l) => l.exercise === exId && (l.set_type ?? "work") === "work"
+    && !!checkSetPR(exId, l.weight_kg, l.reps, "work", prWatch, l.deload === true));
+}

@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v188";
+const VERSION = "hb-shell-v189";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/ui-helpers.mjs", "/account-adopt.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 // The app's ES modules update ATOMICALLY. app.js statically imports named exports from
