@@ -1047,7 +1047,13 @@ These are real failures from previous iterations. Each is now a standing check.
    limit for legacy weekly plans made the push-cap tests pass because the legacy
    plan was gone, not because the cap fired — green for the wrong reason until a
    review re-tampered the cap. Adding a guard in front of a tested one is a cue to
-   re-run lesson 54's tamper on the old one.
+   re-run lesson 54's tamper on the old one; (d) an INCIDENTAL mechanism can produce
+   the asserted result (Wave 276): the D1 sign-in-code tie-break test (two codes in the
+   same millisecond → the later insert wins) stayed green with its `rowid DESC` clause
+   deleted, because the composite index happened to scan in insertion order. The test
+   now drops the index first, so the clause is the only thing producing the order, and
+   only then did deleting the clause turn it red. A tamper that survives means the test
+   PINS rather than guards: find the crutch, remove it inside the test, re-tamper.
 68. **An emailed link opens in a storage partition the app can't see.** The owner's
    "sign up to save" email both said the wrong thing ("Restore your progress") and could
    never have worked for them: on iPhone a Home-Screen app keeps storage separate from
@@ -1094,6 +1100,15 @@ These are real failures from previous iterations. Each is now a standing check.
    **Standing rule:** any rule keyed on a URL (cache bypass, route guard, CSP) is tested
    against the spelling PRODUCTION serves — and proven through the real handler, not a
    source grep (the first test for this was a grep that stayed green with the guard broken).
+73. **An idempotent replay must say everything the first answer said.** "No machine for
+   this" is idempotent: a replayed tap (the first response lost to a flaky connection)
+   writes nothing twice. But the replay answered with LESS: the superset bonus that left
+   the plan with the swap vanished from the second answer, so the only answer the phone
+   ever received never mentioned it (Wave 276 review). The first answer is exactly the
+   one most likely to be lost; that is why the client retried. → **Standing rule:** a
+   write that is idempotent on replay stores what its first answer reported beside the
+   write, and the replay answers from that record, filtered to what is still true (a
+   bonus that has since come back is not re-announced).
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1181,6 +1196,16 @@ and every confirmed finding was re-verified inline by the main loop before fixin
    carries identity-bound fields; a check-then-act limit admits a burst; never
    round-trip data through its display; the production platform can rewrite a URL you
    key rules on.
+   **Addendum — Wave 276 (#323, 2026-10-15, v191).** The three minors this entry deferred
+   were fixed test-first: the D1 tie-break test now guards instead of pins (lesson 67d); a
+   muscle nothing placeable can train gets an honest warning instead of the day/time
+   levers; a superset bonus whose partner is swapped for a lift that can't pair re-pairs
+   by the generator's own 4c rule or leaves the session. The golden digest was re-pinned
+   twice, each time only after diffing old-vs-new engine output over all 390 plans (80
+   bodyweight side-delt warnings; then one specialization-held neck). One workflow: a
+   2-finder diff review (~32k output tokens). It produced 5 candidates, all 5 verified
+   INLINE and fixed (W276c), 0 refuted: this entry's finders-earn-it / verify-inline split,
+   applied. New: lesson 73 and 67(d).
 
 7i. **Telemetry (Waves 262–264, 2026-09-06).** All three owner considerations closed;
    the third's premise overturned by exploration. **Wave 262** (typed weight/reps

@@ -32,10 +32,11 @@ waves before they were written.
 - The desktop multi-column layer.
 - Nerd Mode surfaces (C8).
 
-Recorded deferrals: rom_notes surfacing (28/171), richer per-exercise prose pages,
-and this iteration's minors: a muscle with no placeable exercise still gets the
-"extra training day" lever, and a superset partner swapped for a lift that can't pair
-leaves its bonus unpaired, slightly over the session budget.)
+Recorded deferrals: rom_notes surfacing (28/171) and richer per-exercise prose pages.
+This iteration's three minors closed in Wave 276 (#323, v191): the D1 tie-break test
+guards instead of pins; a muscle nothing placeable can train is told so honestly
+instead of being offered an extra day; a superset bonus whose partner is swapped
+re-pairs or leaves, with the answer, its replay and Undo all naming it.)
 The prior grounding:
 (Waves 262-264: all three owner
 considerations closed. Wave 262 — the session player's weight/reps became real
