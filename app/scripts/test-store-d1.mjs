@@ -680,6 +680,22 @@ try {
     (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie" && (await file.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-tie");
   same("latestLinkCode: nothing inside the window → identical in both", await file.latestLinkCode("codes@t.com", 2001), await d1.latestLinkCode("codes@t.com", 2001));
   ok("latestLinkCode: …and that's null", (await d1.latestLinkCode("codes@t.com", 2001)) === null);
+  // …and that tie-break is GUARDED, not merely pinned: with the (rl_key, created_at)
+  // index SQLite already scans ties in rowid order, so the explicit `rowid DESC` can't be
+  // told apart there. Under any other plan (the index missing on an older database, the
+  // planner preferring the primary key) ties come back in scan order and the EARLIER
+  // code would win — the one the newer email replaced. Measured: without the clause and
+  // without the index, the old code is returned.
+  {
+    const tieShim = createD1Shim();
+    tieShim.exec(readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "..", "schema.sql"), "utf8"));
+    const tieD1 = createD1Store(tieShim);
+    await tieD1.saveLinkCode({ token_hash: "tg-old", rl_key: "tie@t.com", code_hash: "h1", created_at: 5000 }); // initializes the binding (and its index)
+    tieShim.exec("DROP INDEX IF EXISTS idx_magic_link_codes_rl");
+    await tieD1.saveLinkCode({ token_hash: "tg-new", rl_key: "tie@t.com", code_hash: "h2", created_at: 5000 }); // same ms, inserted later
+    ok("latestLinkCode: the same-ms tie still goes to the LATER insert with no index to lean on (the clause itself is what decides)",
+      (await tieD1.latestLinkCode("tie@t.com", 0))?.token_hash === "tg-new");
+  }
   for (const st of [file, d1]) await st.deleteLinkCode("lc-tie");
   same("deleteLinkCode: retiring the newest code hands 'newest' back to the previous one, identically", await file.latestLinkCode("codes@t.com", 0), await d1.latestLinkCode("codes@t.com", 0));
   ok("deleteLinkCode: …which is lc-new", (await d1.latestLinkCode("codes@t.com", 0))?.token_hash === "lc-new");

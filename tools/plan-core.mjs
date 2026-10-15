@@ -1328,7 +1328,11 @@ export function generatePlan(profile, kb, opts = {}) {
     // "covered by compounds" — never a warning about volume it was never meant
     // to receive directly.
     if (r.secondary_served) { r.projected_status = proj > 0 ? "secondary-served" : "not-reached"; continue; }
-    if (r.target_sets <= 0) continue; // NOTE: the field is target_sets — `r.target` was undefined here, which silently killed the under-target warning below for every profile
+    if (r.target_sets <= 0) continue;
+    // Can anything the plan could place train this muscle directly? When nothing can, no
+    // day, minute or priority trim can add direct work — every branch below says so
+    // instead of offering a lever that can't help (Wave 276 + its review).
+    const hasExercise = compoundPool[m].length || isoPool[m].length; // NOTE: the field is target_sets — `r.target` was undefined here, which silently killed the under-target warning below for every profile
     // A maintenance muscle (specialization block) is INTENTIONALLY low — its status
     // is "maintenance" and it earns no growth warnings; warning that a muscle we're
     // deliberately only holding is "below MEV" would contradict the block's whole point.
@@ -1342,8 +1346,10 @@ export function generatePlan(profile, kb, opts = {}) {
       if (proj === 0) {
         // Funded on paper, served nothing in placement (pool/variety caps) — the
         // same feasibility truth as the maintenance branch below: say it, warn it.
-        r.reasons = [`the week couldn't fit its eased dose — it gets nothing this block; ${levers}`];
-        warnings.push({ code: "held-not-reached", muscle: m, message: `${m} was eased back for your specialization block, but with your priorities' share placed first the week couldn't fit it at all — ${levers}, or trim a priority muscle.` });
+        r.reasons = hasExercise ? [`the week couldn't fit its eased dose — it gets nothing this block; ${levers}`] : [`no exercise trains it directly with your equipment — it gets nothing this block`];
+        warnings.push({ code: "held-not-reached", muscle: m, message: hasExercise
+          ? `${m} was eased back for your specialization block, but with your priorities' share placed first the week couldn't fit it at all — ${levers}, or trim a priority muscle.`
+          : `${m} was eased back for your specialization block, but no exercise trains it directly with your equipment — add one (custom exercise) or broaden your equipment.` });
       } else if (mev != null && proj > mev + 1.5) {
         // Same honesty rule as the maintenance overshoot below: secondary credit
         // (hinges and squats placed for their neighbours) can carry an eased muscle
@@ -1367,8 +1373,10 @@ export function generatePlan(profile, kb, opts = {}) {
         // reason must not claim "holds what you've built" over a dose of nothing,
         // and the plan screen gets a warning — held muscles skip the generic
         // proj===0 warning below by design, so this branch carries its own.
-        r.reasons = [`the week couldn't fit even its ~${r.target_sets}-set maintenance dose — it gets nothing this block; ${levers}`];
-        warnings.push({ code: "held-not-reached", muscle: m, message: `${m} is meant to hold at ~${r.target_sets} maintenance sets during your specialization block, but with your priorities' share placed first the week couldn't fit any — ${levers}, or trim a priority muscle.` });
+        r.reasons = hasExercise ? [`the week couldn't fit even its ~${r.target_sets}-set maintenance dose — it gets nothing this block; ${levers}`] : [`no exercise trains it directly with your equipment — it gets nothing this block`];
+        warnings.push({ code: "held-not-reached", muscle: m, message: hasExercise
+          ? `${m} is meant to hold at ~${r.target_sets} maintenance sets during your specialization block, but with your priorities' share placed first the week couldn't fit any — ${levers}, or trim a priority muscle.`
+          : `${m} is meant to hold at ~${r.target_sets} maintenance sets during your specialization block, but no exercise trains it directly with your equipment — add one (custom exercise) or broaden your equipment.` });
       } else if (mev != null && proj >= mev) {
         // Honesty: a maintenance muscle that is ALSO a synergist of the priority lifts
         // picks up unavoidable secondary volume and can sit above pure maintenance (you
@@ -1390,15 +1398,20 @@ export function generatePlan(profile, kb, opts = {}) {
         warnings.push({ code: "below-mev-indirect", muscle: m, message: `${m} only gets ~${proj} indirect sets/wk (below MEV ${mev}) — add a direct ${m} exercise if you want it to grow.` });
       continue;
     }
-    const hasExercise = compoundPool[m].length || isoPool[m].length;
     // A pool emptied by the user's OWN "No machine for this" answers needs THAT lever
     // named — whatever indirect credit other lifts give it: "broaden your equipment" or
     // "an extra training day" would send them to a setting that can't help.
     const emptiedByExclusion = !hasExercise && reachableBeforeExclusion
       && exercises.some((e) => excluded.has(e.id) && (e.primary_muscles ?? []).includes(m) && reachableBeforeExclusion.has(e.id));
-    if (emptiedByExclusion && proj < (muscleById.get(m)?.landmarks?.mev?.min ?? Infinity)) warnings.push({ code: "no-coverage", muscle: m,
-      message: `No exercise trains ${m} with your equipment and the lifts you've marked unavailable${proj > 0 ? ` (other lifts give it only ~${proj} sets/wk)` : ""} — bring one back on the Plan tab, or add a custom exercise.` });
-    else if (proj === 0 && !hasExercise) warnings.push({ code: "no-coverage", muscle: m, message: `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` });
+    // NOTHING the plan could place trains this muscle directly (side delts with bodyweight
+    // only; a pool emptied by exclusions): no extra day, longer session or priority can
+    // add direct work, so every lever below would send the user to a setting that can't
+    // help (Wave 276 — it was told "an extra training day would let the plan give it
+    // more"). Say what's true — what other lifts give it, and the levers that CAN help.
+    // Over the recoverable ceiling is still a fact, and is still reported below.
+    if (!hasExercise && r.projected_status !== "over-MRV") {
+      if (noCoverageShort(proj, r, muscleById.get(m)?.landmarks)) warnings.push(noCoverageWarning(m, proj, { excluded: emptiedByExclusion }));
+    }
     else if (proj === 0) warnings.push({ code: "not-reached", muscle: m, message: `Direct ${m} work didn't fit this week — ${levers}.` });
     else if (r.projected_status === "over-MRV") warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${proj} sets/wk is above MRV for ${m}.` });
     else if (proj < (muscleById.get(m)?.landmarks?.mev?.min ?? 0)) warnings.push({ code: "below-mev", muscle: m, message: `${m} gets ~${proj} sets/wk — below the ~${muscleById.get(m).landmarks.mev.min} it needs to grow. ${levers[0].toUpperCase()}${levers.slice(1)}.` });
@@ -1602,6 +1615,7 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   const priority = new Set(profile?.priority_muscles ?? []);
   const specialization = specializationActive(profile ?? {}, kb.muscles ?? [], blockIndex);
   const replaced = [];
+  const dropped = []; // rescue bonuses that left because their pairing couldn't be kept
   let preferred = null;
   for (const s of holding) {
     while (s.exercises.some((e) => e.exercise === exId)) {
@@ -1625,22 +1639,36 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
       const pick = (preferred && pairing.find((c) => c.id === preferred)) || pairing[0] || (preferred && fitting.find((c) => c.id === preferred)) || fitting[0];
       if (!pick) return { error: "no-candidate", session: s.name };
       preferred ??= pick.id;
+      // Is X's partner the 4c rescue BONUS? (Read before anything below rewrites the rationale.)
+      const partnerIsBonus = !!partner && /^superset — fits extra volume/.test(rat?.exercise_choices?.find((c) => c.session === s.name && c.exercise === partner.exercise)?.why?.[0] ?? "");
       const next = { exercise: pick.id, sets: slot.sets, rep_range: slot.rep_range, ...(slot.rir != null ? { rir: slot.rir } : {}) };
       if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
       else if (partner) delete partner.superset_with;
       s.exercises[idx] = next;
+      // X was the PARTNER of a rescue bonus, and nothing that can pair replaced it. The
+      // bonus's time was paid only by a pairing (Wave 276), so it re-pairs with another
+      // non-competing isolation in this session — the generator's own 4c rescue rule — or,
+      // with none, it leaves rather than run as an unbudgeted extra lift.
+      let rePairedWith = null;
+      if (partner && !pick.keeps_pair && partnerIsBonus) {
+        const bonusMuscles = musclesOf(lookup.get(partner.exercise));
+        const mate = s.exercises.find((e) => e !== partner && !e.superset_with && lookup.get(e.exercise)?.mechanic === "isolation"
+          && ![...musclesOf(lookup.get(e.exercise))].some((mm) => bonusMuscles.has(mm)));
+        if (mate) { partner.superset_with = mate.exercise; mate.superset_with = partner.exercise; rePairedWith = mate.exercise; }
+        else { s.exercises.splice(s.exercises.indexOf(partner), 1); dropped.push({ session: s.name, exercise: partner.exercise }); }
+      }
       if (rat?.exercise_choices) {
         const Y = lookup.get(pick.id);
         for (const c of rat.exercise_choices) {
           if (c.session !== s.name) continue;
           if (c.exercise === exId) Object.assign(c, { exercise: pick.id, why: [`swapped in — ${X?.name ?? exId} isn't available at your gym`], difficulty: Y?.difficulty, citations: Y?.citations ?? [] });
           else if (partner && c.exercise === partner.exercise && Array.isArray(c.why)) {
-            c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pick.keeps_pair ? ["paired with " + pick.id] : []) : [w]));
-            // A surviving bonus whose pairing is gone no longer "fits extra volume into
-            // your session" by pairing — say what it is now.
-            if (!pick.keeps_pair && /^superset — fits extra volume/.test(c.why[0] ?? "")) c.why = [`extra volume — was paired with ${X?.name ?? exId}, now on its own`];
+            const pairedNow = pick.keeps_pair ? pick.id : rePairedWith;
+            c.why = c.why.flatMap((w) => (w === "paired with " + exId ? (pairedNow ? ["paired with " + pairedNow] : []) : [w]));
           }
         }
+        // A bonus that left takes its explanation with it.
+        if (dropped.some((d) => d.session === s.name)) rat.exercise_choices = rat.exercise_choices.filter((c) => !(c.session === s.name && dropped.some((d) => d.session === s.name && d.exercise === c.exercise)));
       }
       replaced.push({ session: s.name, from: exId, to: pick.id });
     }
@@ -1648,7 +1676,19 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   }
   sweepDanglingSupersets(prog.sessions);
   if (rat?.volume_by_muscle) reprojectVolumes(prog, rat, kb, lookup);
-  return { program: prog, rationale: rat, replaced, replaced_by: preferred };
+  return { program: prog, rationale: rat, replaced, replaced_by: preferred, dropped };
+}
+
+// A muscle nothing placeable trains directly is warned only while it's short (below MEV,
+// or under 60% of its target) — and the warning QUOTES what other lifts give it, so it is
+// built in ONE place for the generator and for a swap's re-projection (W276 review).
+const noCoverageShort = (proj, r, landmarks) => proj < (landmarks?.mev?.min ?? Infinity) || proj < (r?.target_sets ?? 0) * 0.6;
+function noCoverageWarning(m, proj, { excluded = false } = {}) {
+  return { code: "no-coverage", muscle: m, message: excluded
+    ? `No exercise trains ${m} with your equipment and the lifts you've marked unavailable${proj > 0 ? ` (other lifts give it only ~${proj} sets/wk)` : ""} — bring one back on the Plan tab, or add a custom exercise.`
+    : proj > 0
+      ? `No exercise trains ${m} directly with your equipment — other lifts give it only ~${proj} sets/wk. Add one (custom exercise) or broaden your equipment.`
+      : `No exercise trains ${m} with your equipment — add one (custom exercise) or broaden your equipment.` };
 }
 
 // After a swap, the rationale's weekly volumes must describe the plan AS SWAPPED (lesson
@@ -1677,6 +1717,13 @@ function reprojectVolumes(program, rationale, kb, lookup) {
   }
   if (!moved.size) return;
   rationale.warnings = (rationale.warnings ?? []).filter((x) => !(x.muscle && moved.has(x.muscle) && VOLUME_WARNING_CODES.has(x.code)));
+  // A no-coverage warning QUOTES the muscle's indirect sets: restate it with the new number
+  // (same variant, same place in the list), or drop it once the muscle isn't short.
+  rationale.warnings = rationale.warnings.flatMap((x) => {
+    if (x.code !== "no-coverage" || !moved.has(x.muscle)) return [x];
+    const r = rationale.volume_by_muscle[x.muscle];
+    return noCoverageShort(r.projected_sets, r, muscleIndex.get(x.muscle)) ? [noCoverageWarning(x.muscle, r.projected_sets, { excluded: /marked unavailable/.test(x.message) })] : [];
+  });
   for (const m of moved) {
     const r = rationale.volume_by_muscle[m];
     if (r.projected_status === "over-MRV") rationale.warnings.push({ code: "over-mrv", muscle: m, message: `Projected ${r.projected_sets} sets/wk is above MRV for ${m}.` });

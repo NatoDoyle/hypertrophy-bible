@@ -587,7 +587,10 @@ export function createApp(store, config = {}) {
       // replacement is only named while the plan still holds it (a rebuild may have
       // dropped it too).
       if (existing && !planHolds(u.program, X)) {
-        outcome = { already: true, replaced_by: existing.replaced_by && planHolds(u.program, existing.replaced_by) ? existing.replaced_by : null };
+        // …and the bonus that left with it is named again while it is still gone from
+        // that session (the first answer may never have reached the phone).
+        const stillGone = (existing.dropped ?? []).filter((d) => !u.program.sessions.find((x) => x.name === d.session)?.exercises.some((e) => e.exercise === d.exercise));
+        outcome = { already: true, replaced_by: existing.replaced_by && planHolds(u.program, existing.replaced_by) ? existing.replaced_by : null, dropped: stillGone };
         return u;
       }
       // "No machine" on a lift the stored plan doesn't hold (a today-only substitute): the
@@ -622,11 +625,12 @@ export function createApp(store, config = {}) {
       };
       u.program = r.program;
       u.plan_rationale = r.rationale;
-      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: r.replaced_by, at: nowISO }].slice(-MAX_EXCLUSIONS);
+      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X),
+        { id: X, replaced_by: r.replaced_by, ...(r.dropped?.length ? { dropped: r.dropped } : {}), at: nowISO }].slice(-MAX_EXCLUSIONS);
       u.profile = { ...u.profile, unavailable_exercises: list };
       const keep = new Set(list.map((x) => x.id));
       u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}), [X]: snap }).filter(([id]) => keep.has(id)));
-      outcome = { replaced_by: r.replaced_by, sessions: [...touched] };
+      outcome = { replaced_by: r.replaced_by, sessions: [...touched], dropped: r.dropped ?? [] };
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
@@ -646,6 +650,9 @@ export function createApp(store, config = {}) {
     }
     return c.json({ ok: true, scope, exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
       today: todayId ? { id: todayId, name: nameOf(todayId) } : null,
+      // A rescue superset bonus that had to leave with its partner (Wave 276) — the plan
+      // changed beyond the lift tapped, so the answer says which lift and where.
+      dropped: (outcome.dropped ?? []).map((d) => ({ id: d.exercise, name: nameOf(d.exercise), session: d.session })),
       ...(outcome.already ? { already: true } : {}), ...(outcome.plan_unchanged ? { plan_unchanged: true } : {}), row });
   });
 
