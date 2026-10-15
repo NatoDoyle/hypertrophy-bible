@@ -2641,10 +2641,11 @@ async function renderCantDo() {
     // in TODAY (r.today) are separate answers from the server.
     const planLine = (r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan from now on` : `${cur.name} won't come back in your plan`)
       // A superset bonus that only fit paired with it leaves too — say so (Wave 276).
-      + ((r.dropped ?? []).length ? ` (and ${r.dropped.map((d) => `${d.name} leaves ${d.session}`).join(", ")} — it only fit there as a superset)` : "");
+      // …from next time: TODAY's workout keeps whatever it already holds (W276 review).
+      + ((r.dropped ?? []).length ? ` (and ${r.dropped.map((d) => `${d.name} leaves ${d.session} from next time`).join(", ")} — it only fit there as a superset)` : "");
     if (!stillHere()) {
       // The PLAN changed even though the user moved on — say so where they are now.
-      if (!r.error) alertBar(`${planLine} — bring it back on the Plan tab if you didn't mean that.`);
+      if (!r.error) alertBar(`${planLine} — bring ${cur.name} back on the Plan tab if you didn't mean that.`);
       return;
     }
     if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);

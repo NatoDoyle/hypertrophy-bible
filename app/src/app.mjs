@@ -587,7 +587,10 @@ export function createApp(store, config = {}) {
       // replacement is only named while the plan still holds it (a rebuild may have
       // dropped it too).
       if (existing && !planHolds(u.program, X)) {
-        outcome = { already: true, replaced_by: existing.replaced_by && planHolds(u.program, existing.replaced_by) ? existing.replaced_by : null };
+        // …and the bonus that left with it is named again while it is still gone from
+        // that session (the first answer may never have reached the phone).
+        const stillGone = (existing.dropped ?? []).filter((d) => !u.program.sessions.find((x) => x.name === d.session)?.exercises.some((e) => e.exercise === d.exercise));
+        outcome = { already: true, replaced_by: existing.replaced_by && planHolds(u.program, existing.replaced_by) ? existing.replaced_by : null, dropped: stillGone };
         return u;
       }
       // "No machine" on a lift the stored plan doesn't hold (a today-only substitute): the
@@ -622,7 +625,8 @@ export function createApp(store, config = {}) {
       };
       u.program = r.program;
       u.plan_rationale = r.rationale;
-      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: r.replaced_by, at: nowISO }].slice(-MAX_EXCLUSIONS);
+      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X),
+        { id: X, replaced_by: r.replaced_by, ...(r.dropped?.length ? { dropped: r.dropped } : {}), at: nowISO }].slice(-MAX_EXCLUSIONS);
       u.profile = { ...u.profile, unavailable_exercises: list };
       const keep = new Set(list.map((x) => x.id));
       u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}), [X]: snap }).filter(([id]) => keep.has(id)));

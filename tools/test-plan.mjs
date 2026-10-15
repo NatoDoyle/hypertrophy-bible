@@ -1237,9 +1237,12 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // side-delts warning on the 80 bodyweight-only plans — "below-mev" ("an extra training
   // day would let the plan give it more") became the honest "no-coverage" (no bodyweight
   // lift trains side delts directly). Programs, meta and every other rationale field were
-  // diffed byte-identical against the previous engine before re-pinning.
+  // diffed byte-identical against the previous engine before re-pinning. Re-pinned a
+  // second time in the same wave, after its review: specialization-HELD muscles take the
+  // same honesty — the one change was o-beg-3's neck (maintenance, nothing in
+  // dumbbells+bodyweight trains it) losing its "an extra training day" lever.
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
-    grid.length === 390 && digestOf(grid) === "d5e6e67c574d1408195f74da7497e5052b3c4bc0295329b329582dacac584457");
+    grid.length === 390 && digestOf(grid) === "fced8af01d87ec75f5b41449cf9d085d95cbd0e1c730348e859b3febe120c262");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
@@ -1380,7 +1383,14 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
                 const item = after.exercises.find((x) => x.exercise === c.exercise);
                 if (!item?.superset_with) bad.push(`${tag}: ${s.name}'s bonus ${c.exercise} runs unpaired`);
               }
-              if (r.rationale.exercise_choices.some((c) => (c.why ?? []).some((w) => /now on its own/.test(w)))) bad.push(`${tag}: a bonus was left 'on its own'`);
+              // Every "paired with Z" the rationale states is a real, mutual pairing in the plan.
+              for (const c of r.rationale.exercise_choices) for (const w of c.why ?? []) {
+                const z = /^paired with (.+)$/.exec(w)?.[1];
+                if (!z) continue;
+                const sess2 = r.program.sessions.find((x) => x.name === c.session);
+                const it = sess2?.exercises.find((x) => x.exercise === c.exercise), mate = sess2?.exercises.find((x) => x.exercise === z);
+                if (it?.superset_with !== z || mate?.superset_with !== c.exercise) bad.push(`${tag}: ${c.session} says ${c.exercise} is paired with ${z}, the plan disagrees`);
+              }
               // A rescue BONUS (its time is paid only by the pairing) never stays as a lone extra lift.
               const bonusWhy = (plan.rationale.exercise_choices.find((c) => c.session === s.name && c.exercise === X)?.why ?? [])[0] ?? "";
               if (/^superset — fits extra volume/.test(bonusWhy) && !partnerStill?.superset_with && after.exercises.some((x) => !plan.program.sessions.find((y) => y.name === s.name).exercises.some((y) => y.exercise === x.exercise) && !x.superset_with))
@@ -1405,6 +1415,9 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
       if (!b) bonusDropped++;
     }
   }
+  // Generated plans essentially never reach the RE-PAIR branch (a rescue's partner is
+  // usually the session's only free non-competing isolation), so the hand-built "Mix"
+  // session below is that branch's coverage; this sweep proves the drop path is real.
   ok(`#always a partner swap whose replacement can't pair takes the bonus out when nothing else can pair it (${bonusDropped} left, ${rePaired} re-paired in generated plans)`, bonusDropped > 0 && bad.length === 0);
   // The re-pair path, on a session built to need it: leg extension (quads) carries the
   // rescue bonus (a cable curl); a triceps extension sits unpaired beside them; every
@@ -1456,13 +1469,35 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     sdW.length === 1 && sdW[0].code === "no-coverage" && /directly/.test(sdW[0].message) && /sets\/wk/.test(sdW[0].message) && !/training day|session time|session length|priority/i.test(sdW[0].message));
   const ncBad = [];
   for (const [en, eq] of Object.entries({ bw: ["bodyweight"], dbonly: ["dumbbell"], band: ["band", "bodyweight"], kbell: ["kettlebell", "bodyweight"] }))
-    for (const st of ["beginner", "intermediate", "advanced"]) for (const d of [2, 4, 6]) {
-      const prof = { user_id: `nc-${en}-${st}-${d}`, training_status: st, primary_goal: "hypertrophy", days_per_week: d, session_length_min: 60, available_equipment: eq };
+    for (const st of ["beginner", "intermediate", "advanced"]) for (const d of [2, 4, 6]) for (const pri of [null, ["chest"], ["chest", "lats"]]) {
+      // W276 review: specialization HOLDS non-priority muscles — their maintenance/eased
+      // branches must keep the same honesty (a block can't add an exercise either).
+      const prof = { user_id: `nc-${en}-${st}-${d}-${pri?.join("+") ?? "none"}`, training_status: st, primary_goal: "hypertrophy", days_per_week: d, session_length_min: 60, available_equipment: eq,
+        ...(pri ? { priority_muscles: pri, specialization: true } : {}) };
       const pool = candidatePool(prof, kb);
       for (const w of generatePlan(prof, kb).rationale.warnings)
         if (w.muscle && !pool.some((e) => (e.primary_muscles ?? []).includes(w.muscle)) && /training day|session time|longer session|priority muscle/i.test(w.message)) ncBad.push(`${prof.user_id}/${w.muscle}/${w.code}`);
     }
   ok(`#no-direct no muscle without a placeable exercise is ever sent to a day/time/priority lever${ncBad.length ? " — " + ncBad.slice(0, 3).join(", ") : ""}`, ncBad.length === 0);
+  // W276 review: the honest no-coverage copy QUOTES what other lifts give the muscle — so
+  // after a permanent swap moves that number, the quote must move with it.
+  {
+    const staleQuotes = [];
+    for (const [en, eq] of Object.entries({ bw: ["bodyweight"], machine: ["machine"], band: ["band", "bodyweight"] }))
+      for (const st of ["beginner", "intermediate", "advanced"]) for (const d of [2, 4]) {
+        const prof = { user_id: `nq-${en}-${st}-${d}`, training_status: st, primary_goal: "hypertrophy", days_per_week: d, session_length_min: 60, available_equipment: eq };
+        const plan = generatePlan(prof, kb);
+        for (const X of placed(plan)) {
+          const r = applySubstitution(plan.program, plan.rationale, X, { profile: prof, kb });
+          if (r.error) continue;
+          for (const w of r.rationale.warnings) {
+            const q = w.code === "no-coverage" && /~([\d.]+) sets\/wk/.exec(w.message);
+            if (q && Number(q[1]) !== (r.rationale.volume_by_muscle[w.muscle]?.projected_sets ?? 0)) staleQuotes.push(`${prof.user_id}/${X}: ${w.muscle} quotes ~${q[1]}, projected ${r.rationale.volume_by_muscle[w.muscle]?.projected_sets}`);
+          }
+        }
+      }
+    ok(`#no-direct after a permanent swap the no-coverage copy quotes the plan AS SWAPPED${staleQuotes.length ? " — " + staleQuotes.slice(0, 2).join("; ") : ""}`, staleQuotes.length === 0);
+  }
   ok("#always all-or-nothing: a refusal names why and returns no program", (() => {
     const r = applySubstitution(basePlan.program, basePlan.rationale, "not-a-lift-in-this-plan", { profile: base, kb });
     return r.error === "not-in-plan" && !r.program;

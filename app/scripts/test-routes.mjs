@@ -2955,6 +2955,11 @@ try {
       const upperB = (await store.getUser(bnU)).program.sessions.find((x) => x.name === "Upper B");
       ok("#cant-do a partner swap that can't keep the superset takes the bonus out — and the answer names it",
         r.status === 200 && r.data.dropped?.some((d) => d.id === "prone-reverse-fly" && d.name) && !upperB.exercises.some((e) => e.exercise === "prone-reverse-fly"));
+      // W276 review: the first answer can be lost to a flaky connection; the REPLAY must
+      // still say which lift left, or the plan changes beyond the tap with no word of it.
+      const replay = await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "always", session: "Upper B" });
+      ok("#cant-do a replayed 'No machine' still names the bonus that left (the first answer may never have arrived)",
+        replay.status === 200 && replay.data.already === true && replay.data.dropped?.some((d) => d.id === "prone-reverse-fly" && d.name && d.session === "Upper B"));
       await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "undo" });
       const bn1 = await store.getUser(bnU);
       ok("#cant-do …and Undo restores the bonus and its pairing exactly", JSON.stringify(bn1.program) === JSON.stringify(bn0.program) && JSON.stringify(bn1.plan_rationale) === JSON.stringify(bn0.plan_rationale));
