@@ -1095,6 +1095,39 @@ try {
   ok("#weekly-plan a 6-day gap shows the reassurance with no plan, and stands down once a plan explains it",
     !!gnBefore?.gap_note && gnAfter?.gap_note === null);
 
+  // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this
+  // week's facts and the rotation's next sessions, from the SAME pointer that served
+  // `session` (lesson 1). Fixed past dates via ?d= (lesson 64): 2026-10-05 is Monday W41.
+  const wkUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(wkUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" }; return u; });
+  const wkToday = async (d) => (await (await app.request(`/api/today?d=${d}`, { headers: { "X-HB-User": wkUser } })).json());
+  const wk0 = await wkToday("2026-10-07");
+  ok("#week-plan /api/today carries the week (Mon..Sun around the client's day) and the next sessions, slot 0 = today's",
+    wk0.daily?.week_plan?.days?.map((x) => x.date).join() === "2026-10-05,2026-10-06,2026-10-07,2026-10-08,2026-10-09,2026-10-10,2026-10-11"
+    && wk0.daily.week_plan.days.filter((x) => x.committed).map((x) => x.day).join() === "mon,wed,fri"
+    && wk0.daily.week_plan.upcoming.length === 8 && wk0.daily.week_plan.upcoming[0] === wk0.session.name);
+  const wkMonName = wk0.session.name;
+  await json("POST", "/api/session", { user_id: wkUser, session_id: "wk-mon", date: "2026-10-05T17:00:00Z", local_date: "2026-10-05", session_name: wkMonName, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const wk1 = await wkToday("2026-10-07");
+  ok("#week-plan a logged day shows what was DONE (the row's name), and the projection moves on with the pointer",
+    JSON.stringify(wk1.daily.week_plan.days[0].trained) === JSON.stringify([wkMonName])
+    && wk1.daily.week_plan.upcoming[0] === wk1.session.name && wk1.session.name === wk0.daily.week_plan.upcoming[1]);
+  const wkOther = wk1.daily.week_plan.upcoming.find((n) => n !== wk1.session.name);
+  await json("POST", "/api/today/swap", { user_id: wkUser, day: wkOther });
+  const wk2 = await wkToday("2026-10-07");
+  ok("#week-plan …after a day swap the projection leads with the swapped-in day, still Today's session",
+    wk2.session.name === wkOther && wk2.daily.week_plan.upcoming[0] === wk2.session.name);
+  await json("POST", "/api/today/skip", { user_id: wkUser });
+  const wk3 = await wkToday("2026-10-07");
+  ok("#week-plan …and after a skip", wk3.session.name !== wk2.session.name && wk3.daily.week_plan.upcoming[0] === wk3.session.name);
+  await json("POST", "/api/session/void", { user_id: wkUser, session_id: "wk-mon" });
+  const wk4 = await wkToday("2026-10-07");
+  ok("#week-plan a voided workout leaves its day — past days come from the rows, never the pointer",
+    wk4.daily.week_plan.days[0].trained.length === 0 && wk4.daily.week_plan.upcoming[0] === wk4.session.name);
+  ok("#week-plan paused (rail #1) or no commitment → no week strip at all", sickWed?.week_plan === null && noPlanToday?.week_plan === null);
+  const wkExplain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": wkUser } })).json();
+  ok("#week-plan the Plan tab's 'Up next' is the same pointer", wkExplain.program?.sessions?.[wkExplain.up_next]?.name === wk4.session.name);
+
   // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
   // "does this user actually have an account". The client used to trust a
   // localStorage flag the OLD send path planted on SEND — so a user who requested a

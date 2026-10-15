@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -122,6 +122,35 @@ check("todayCard headline and buildToday name agree under skips + swaps (lesson 
   assert.equal(todayCard(u, []).headline, buildToday(u, []).name);
   const st = rotationState(rotProg, [], u.plan_meta);
   assert.equal(rotProg.sessions[st.idx].name, buildToday(u, []).name); // and the exported helper is that same pointer
+});
+
+// C16 (W277): the week strip lays the rotation onto the committed days, so the NEXT k
+// sessions must come from the very pointer buildToday serves (lesson 1): slot j is what
+// Today serves after j more sessions, with a day swap honoured only inside its own cycle.
+const rotSwaps = [undefined, { program: "gen-mine", cycle: 0, map: [2, 1, 0] }, { program: "gen-mine", cycle: 1, map: [1, 0, 2] },
+  { program: "gen-mine", cycle: 0, map: [0, 2, 1] }, { program: "gen-other", cycle: 0, map: [2, 1, 0] },
+  { program: "gen-mine", cycle: 0, map: [2, 2, 0] }, { program: "gen-mine", cycle: 0, map: [1, 0] }];
+check("#week upcomingSessions slot j IS what Today serves after j more sessions — over skips, live/stale/foreign/malformed swaps", () => {
+  let cases = 0;
+  for (const cycle_swap of rotSwaps) for (let skips = 0; skips <= 3; skips++) for (let logged = 0; logged <= 4; logged++) {
+    const meta = { ...(cycle_swap ? { cycle_swap } : {}), ...(skips ? { rotation_skips: skips } : {}) };
+    const sessions = Array.from({ length: logged }, (_, i) => rotMine(i));
+    const up = upcomingSessions(rotProg, sessions, meta, 4);
+    assert.equal(up.length, 4);
+    assert.equal(up[0], rotationState(rotProg, sessions, meta).idx, "slot 0 is the pointer itself");
+    for (let j = 0; j < 4; j++) {
+      const later = [...sessions, ...Array.from({ length: j }, (_, i) => rotMine(logged + i))];
+      assert.equal(up[j], rotToday(meta, later).index, `swap ${JSON.stringify(cycle_swap)} skips ${skips} logged ${logged}: slot ${j}`);
+      cases++;
+    }
+  }
+  assert.ok(cases >= 500, `ran ${cases}`);
+});
+check("#week a day swap stops at its cycle's edge in the projection too (B·A·B, not B·C·B)", () => {
+  const names = upcomingSessions(rotProg, [rotMine(0), rotMine(1)], { cycle_swap: { program: "gen-mine", cycle: 0, map: [0, 2, 1] } }, 3).map((i) => rotProg.sessions[i].name);
+  assert.deepEqual(names, ["B", "A", "B"]);
+  assert.deepEqual(upcomingSessions({ id: "x", sessions: [] }, [], {}, 3), [], "no sessions → nothing to project");
+  assert.deepEqual(upcomingSessions(rotProg, [], {}, 0), []);
 });
 
 check("gap_note: fires for a real miss scaled to days_per_week, never beside the comeback, never for a first-timer", () => {

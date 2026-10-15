@@ -46,7 +46,7 @@ import {
   loadExerciseIndex,
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
-import { commitmentForDay, plannedDayState, effectiveCommitment } from "./derive-core.mjs";
+import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts } from "./derive-core.mjs";
 import { restSeconds } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
@@ -1411,6 +1411,47 @@ check("#carry Monday has nothing earlier to miss; Sunday's next planned day is n
   assert.equal(mon.planned_today, true); assert.equal(mon.missed, null); assert.deepEqual(mon.next, { day: "mon", date: "2026-10-19" });
   const sun = plannedDayState({ week: "2026-W41", days: ["mon"] }, "2026-10-18", { sessionDays: [], restDays: [] });
   assert.equal(sun.planned_today, false); assert.deepEqual(sun.next, { day: "mon", date: "2026-10-19" });
+});
+
+// --- #week (C16, W277): the week strip's FACTS — which days of this ISO week are
+// committed, which of those the commitment binds (plannedDayState's own rule), what was
+// actually trained on each (names from the logged rows, never the pointer), rest marks.
+// Fixed dates only (lesson 64): W42 runs Mon 2026-10-12 .. Sun 2026-10-18.
+check("#week weekFacts: null with no plan, a cleared week, or a legacy stamp past its one-week carry", () => {
+  assert.equal(weekFacts(null, "2026-10-14"), null);
+  assert.equal(weekFacts({ week: "2026-W42", days: [], set_on: "2026-10-12" }, "2026-10-14"), null);
+  assert.equal(weekFacts({ week: "2026-W40", days: ["mon"] }, "2026-10-14"), null, "a pre-W271 answer revives for one week, no further");
+});
+check("#week weekFacts lays out Mon..Sun around today — on a Monday, a Wednesday and a Sunday alike", () => {
+  const stored = { week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" };
+  for (const today of ["2026-10-12", "2026-10-14", "2026-10-18"]) {
+    const f = weekFacts(stored, today);
+    assert.deepEqual(f.days.map((d) => d.date), ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"], today);
+    assert.deepEqual(f.days.map((d) => d.day), ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
+    assert.deepEqual(f.days.filter((d) => d.committed).map((d) => d.day), ["mon", "wed", "fri"]);
+  }
+});
+check("#week a CARRIED plan binds the whole week; one made Thursday makes no claim on the days before it", () => {
+  const carried = weekFacts({ week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" }, "2026-10-16");
+  assert.deepEqual(carried.days.filter((d) => d.bound).map((d) => d.day), ["mon", "wed", "fri"]);
+  const madeThursday = weekFacts({ week: "2026-W42", days: ["mon", "wed", "fri"], set_on: "2026-10-15" }, "2026-10-16");
+  assert.deepEqual(madeThursday.days.filter((d) => d.committed).map((d) => d.day), ["mon", "wed", "fri"]);
+  assert.deepEqual(madeThursday.days.filter((d) => d.bound).map((d) => d.day), ["fri"], "Mon/Wed predate the promise — never shown as open");
+  // …and the strip's bound rule IS plannedDayState's: the latest bound, unanswered past day is its `missed`.
+  const st = plannedDayState({ week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" }, "2026-10-16", { sessionDays: ["2026-10-12"], restDays: [] });
+  assert.deepEqual(st.missed, { day: "wed", date: "2026-10-14" });
+});
+check("#week what was trained comes from the logged rows (names, extra days too) — rest marks ride along", () => {
+  const f = weekFacts({ week: "2026-W42", days: ["mon", "wed", "fri"], set_on: "2026-10-12" }, "2026-10-15", {
+    trained: [{ date: "2026-10-12", name: "Push A" }, { date: "2026-10-13", name: "Pull A" }, { date: "2026-10-13", name: null }, { date: "2026-10-05", name: "Legs A" }],
+    restDays: ["2026-10-14", "2026-10-01"],
+  });
+  assert.deepEqual(f.days[0].trained, ["Push A"]);
+  assert.deepEqual(f.days[1].trained, ["Pull A", null], "an extra (uncommitted) day keeps what was done — an unnamed legacy row too");
+  assert.equal(f.days[1].committed, false);
+  assert.equal(f.days[2].rest, true);
+  assert.ok(f.days.every((d) => d.date >= "2026-10-12"), "last week's rows never leak in");
+  assert.equal(f.days.filter((d) => d.rest).length, 1);
 });
 
 // --- #rest (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"): the

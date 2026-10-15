@@ -2,8 +2,8 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -274,7 +274,7 @@ export function createApp(store, config = {}) {
   // The coach explaining the plan: split reasoning, per-muscle volume vs the KB
   // landmarks, why each exercise, evidence grades, and any honest warnings.
   app.get("/api/plan/explain", async (c) => {
-    const { user, error } = await requireUser(c);
+    const { id, user, error } = await requireUser(c);
     if (error) return error;
     // `cardio` must survive this whitelist — a dropped field silently disables its
     // whole surface (the deload-flag lesson, and the reason test-routes.mjs exists).
@@ -293,7 +293,9 @@ export function createApp(store, config = {}) {
       const by = r.replaced_by && planHolds(user.program, r.replaced_by) ? r.replaced_by : null;
       return { id: r.id, name: exerciseNameFor(user, r.id), replaced_by: by, replaced_by_name: by ? exerciseNameFor(user, by) : null, at: r.at ?? null };
     });
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable });
+    // "Up next" (C16, W277): the rotation pointer itself — the session Today serves.
+    const up_next = user.program?.sessions?.length ? rotationState(user.program, await store.listSessions(id), user.plan_meta).idx : null;
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
@@ -971,6 +973,15 @@ export function createApp(store, config = {}) {
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
     const session = buildTodayFor(user, await todayContext(id, clientDay, [sessions, checkins, bodyweights]), nowISO);
+    // The week strip (C16, W277): this week's facts plus the rotation's next sessions,
+    // read from the SAME post-rollover user and session list that just served `session`
+    // (lesson 1). The client lays them onto the days ahead with the hub's own decision
+    // about today. Null when paused (rail #1: no schedule talk) or with no plan.
+    const facts = !user.paused && user.program?.sessions?.length ? weekFacts(user.profile?.commitment, clientDay, {
+      trained: sessions.map((x) => ({ date: sessionDayKey(x), name: x.session_name ?? null })).filter((t) => t.date),
+      restDays: user.rest_days ?? [],
+    }) : null;
+    daily.week_plan = facts ? { days: facts.days, upcoming: upcomingSessions(user.program, sessions, user.plan_meta, 8).map((i) => user.program.sessions[i].name) } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
