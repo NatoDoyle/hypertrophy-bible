@@ -145,9 +145,16 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   untrained, so a swapped-out lift can return later.
 - **You**: mid-session swap (this session only) and the injury door (permanent regeneration)
   always exist. A hand-edited (custom) plan is never rotated, tuned, or swapped at all.
-- Session order is a pure rotation (sessions completed modulo plan length) — it does not track
-  weekday commitments; "legs always lands on Monday" is not a current property (recorded as a
-  roadmap candidate, not a bug).
+- Session order is a rotation (sessions completed modulo plan length, plus your skips and
+  day swaps). Since Wave 277 the app **projects** it onto your committed weekdays and shows
+  where it lands: Today's week strip ("Mon ✓ Push A · Today · Pull A · Fri · Legs A"), the
+  done line ("Next: Friday — Legs A") and "Up next" on the Plan tab all read the one rotation
+  pointer. A miss never drops a session: the week slides along and the strip says so ("Legs A
+  starts next week — nothing gets dropped"). "Legs always lands on Monday" therefore holds
+  exactly when you commit as many days as your plan has sessions and train each of them —
+  the only case where it can hold without dropping a session. Weekday pinning was measured
+  and rejected: a chronically missed weekday took the muscles trained only in that day's
+  session to 0% of their weekly volume, where the rotation keeps every muscle at (n−1)/n.
 
 ## 7. Where you see each mechanism
 
