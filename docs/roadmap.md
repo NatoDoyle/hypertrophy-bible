@@ -6,7 +6,53 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-10-12** (Waves 266-275: all eight owner
+Grounded assessment date: **2026-10-16** (Wave 277: C16, the first named pull, shipped.
+The rotation stays the training truth (a missed day never drops a session), and Today
+now SHOWS where it lands on the committed weekdays. All three surfaces read the one
+rotation pointer:
+- the commitment card is this week's strip ("Mon ✓ Push A · Today · Pull A · Fri · Legs A");
+- a finished workout says "Next: Friday — Legs A";
+- the Plan tab marks "Up next".
+
+Weekday pinning was rejected by arithmetic: a muscle trained only on a chronically missed
+weekday would get 0% of its weekly volume, where the rotation keeps every muscle at
+(n−1)/n. The design pre-mortem also caught a live offline defect, now fixed: a workout
+queued offline read as NOT done on the next Today (3/3 in a real browser). The burst's own
+review (7 defects, 0 refuted) made every next-week line block-aware. A trained last block
+week reopens at Day A, so nothing names next week's session across it.
+
+**Named next pulls:**
+- **The plan's day count vs the days actually committed: an OWNER decision.** The week
+  strip now shows a mismatch honestly (a 4-session plan on 3 days: "Lower B starts next
+  week"; more days than sessions repeat them), but nothing reconciles the two.
+  - *Measured inline (W277).* Effective sets = primary 1 + secondary 0.5; the metric is
+    muscle-weeks below MEV. An n-day plan run on n−1 days vs a plan rebuilt for n−1 days,
+    intermediate full gym: 63% vs 50% (4→3), 50% vs 38% (5→4), 40% vs 31% (6→5).
+    Rebuilding helped in 15 of 16 configurations; one beginner configuration reversed
+    (64% vs 69%).
+  - *Read the deltas, not the levels.* Even a plan trained in full sits at 25–75%,
+    because plans hold some muscles at maintenance by design.
+  - *Options:*
+    1. A one-tap "Rebuild for N days" offer once a different count has stood a week (it
+       starts a fresh block).
+    2. Adopt the new count automatically at the next block boundary.
+    3. Onboarding asks WHICH days (chips) instead of how many, so the count and the
+       commitment are one answer.
+    4. Leave it shown, not fixed.
+- The desktop multi-column layer.
+- Nerd Mode surfaces (C8).
+
+Recorded candidates (verified, not built):
+- Voiding a workout from an EARLIER block rewinds today's rotation by one: the pointer
+  subtracts a stored count, so editing pre-rebase history moves the current cycle. The
+  strip now follows the pointer honestly; the root fix is to adjust rotation_base inside
+  such a void.
+- The commitment push could name the day's session (0 push subscribers at the last
+  reading: low reach).
+
+Recorded deferrals: rom_notes surfacing (28/171) and richer per-exercise prose pages.)
+The prior grounding:
+(Waves 266-275: all eight owner
 considerations closed, the first iteration run under ultracode. **Player:**
 - "Can't do this one?" asks why: no machine → the engine's own pick, everywhere,
   from now on; busy / pick one → today only; it hurts → the injury door. It runs
@@ -32,10 +78,11 @@ waves before they were written.
 - The desktop multi-column layer.
 - Nerd Mode surfaces (C8).
 
-Recorded deferrals: rom_notes surfacing (28/171), richer per-exercise prose pages,
-and this iteration's minors: a muscle with no placeable exercise still gets the
-"extra training day" lever, and a superset partner swapped for a lift that can't pair
-leaves its bonus unpaired, slightly over the session budget.)
+Recorded deferrals: rom_notes surfacing (28/171) and richer per-exercise prose pages.
+This iteration's three minors closed in Wave 276 (#323, v191): the D1 tie-break test
+guards instead of pins; a muscle nothing placeable can train is told so honestly
+instead of being offered an extra day; a superset bonus whose partner is swapped
+re-pairs or leaves, with the answer, its replay and Undo all naming it.)
 The prior grounding:
 (Waves 262-264: all three owner
 considerations closed. Wave 262 — the session player's weight/reps became real

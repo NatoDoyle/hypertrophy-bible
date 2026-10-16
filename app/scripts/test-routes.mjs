@@ -1095,6 +1095,71 @@ try {
   ok("#weekly-plan a 6-day gap shows the reassurance with no plan, and stands down once a plan explains it",
     !!gnBefore?.gap_note && gnAfter?.gap_note === null);
 
+  // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this
+  // week's facts and the rotation's next sessions, from the SAME pointer that served
+  // `session` (lesson 1). Fixed past dates via ?d= (lesson 64): 2026-10-05 is Monday W41.
+  const wkUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+  await store.updateUser(wkUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "wed", "fri"], set_on: "2026-10-05" }; return u; });
+  const wkToday = async (d) => (await (await app.request(`/api/today?d=${d}`, { headers: { "X-HB-User": wkUser } })).json());
+  const wk0 = await wkToday("2026-10-07");
+  ok("#week-plan /api/today carries the week (Mon..Sun around the client's day) and the next sessions, slot 0 = today's",
+    wk0.daily?.week_plan?.days?.map((x) => x.date).join() === "2026-10-05,2026-10-06,2026-10-07,2026-10-08,2026-10-09,2026-10-10,2026-10-11"
+    && wk0.daily.week_plan.days.filter((x) => x.committed).map((x) => x.day).join() === "mon,wed,fri"
+    && wk0.daily.week_plan.upcoming.length === 8 && wk0.daily.week_plan.upcoming[0] === wk0.session.name);
+  const wkMonName = wk0.session.name;
+  // A Monday-evening workout west of UTC: its instant is already Tuesday in UTC. The strip
+  // must bucket it by the LOCAL day the user lived (lesson 22) — a UTC slice would put it
+  // on Tuesday's chip beside a Monday the hub calls trained.
+  await json("POST", "/api/session", { user_id: wkUser, session_id: "wk-mon", date: "2026-10-06T03:00:00Z", local_date: "2026-10-05", session_name: wkMonName, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const wk1 = await wkToday("2026-10-07");
+  ok("#week-plan a logged day shows what was DONE (the row's name) on its LOCAL day, and the projection moves on with the pointer",
+    JSON.stringify(wk1.daily.week_plan.days[0].trained) === JSON.stringify([wkMonName]) && wk1.daily.week_plan.days[1].trained.length === 0
+    && wk1.daily.week_plan.upcoming[0] === wk1.session.name && wk1.session.name === wk0.daily.week_plan.upcoming[1]);
+  const wkOther = wk1.daily.week_plan.upcoming.find((n) => n !== wk1.session.name);
+  await json("POST", "/api/today/swap", { user_id: wkUser, day: wkOther });
+  const wk2 = await wkToday("2026-10-07");
+  ok("#week-plan …after a day swap the projection leads with the swapped-in day, still Today's session",
+    wk2.session.name === wkOther && wk2.daily.week_plan.upcoming[0] === wk2.session.name);
+  await json("POST", "/api/today/skip", { user_id: wkUser });
+  const wk3 = await wkToday("2026-10-07");
+  ok("#week-plan …and after a skip", wk3.session.name !== wk2.session.name && wk3.daily.week_plan.upcoming[0] === wk3.session.name);
+  // "Up next" probed while a workout, a swap AND a skip all move the pointer (W277 review:
+  // probed only after the void, an Up next that ignored the logged list stayed green).
+  const wkExplain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": wkUser } })).json();
+  ok("#week-plan the Plan tab's 'Up next' is the same pointer", wkExplain.program?.sessions?.[wkExplain.up_next]?.name === wk3.session.name);
+  await json("POST", "/api/session/void", { user_id: wkUser, session_id: "wk-mon" });
+  const wk4 = await wkToday("2026-10-07");
+  ok("#week-plan a voided workout leaves its day — past days come from the rows, never the pointer",
+    wk4.daily.week_plan.days[0].trained.length === 0 && wk4.daily.week_plan.upcoming[0] === wk4.session.name);
+  ok("#week-plan paused (rail #1) or no commitment → no week strip at all", sickWed?.week_plan === null && noPlanToday?.week_plan === null);
+  const wkExplain4 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": wkUser } })).json();
+  ok("#week-plan …and still after the void", wkExplain4.program?.sessions?.[wkExplain4.up_next]?.name === wk4.session.name);
+  // A training block's LAST week (W277 review): once it's trained, next week's first
+  // request rolls the block over and the rotation reopens at Day A — so the client must
+  // never name next week's session. The server states it from the ROLLOVER's own clock
+  // (trained weeks since block_start), not from the card's block field, which a taper
+  // hides. Sessions exactly w weeks back (same weekday, distinct ISO weeks; lesson 64).
+  const lbwUser = async (pastWeeks, patch = {}) => {
+    const id = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+    for (let w = 1; w <= pastWeeks; w++) await json("POST", "/api/session", { user_id: id, session_id: `lbw-${pastWeeks}-${w}`, date: dAgo(7 * w), local_date: dAgo(7 * w).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+    await store.updateUser(id, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(37) }; Object.assign(u.profile, patch); return u; });
+    return { id, ...(await (await app.request("/api/today", { headers: { "X-HB-User": id } })).json()) };
+  };
+  const lbw6 = await lbwUser(5), lbw5 = await lbwUser(4);
+  ok("#week-plan daily.last_block_week: true in block week 6 of 6, false in week 5 (same plan)",
+    lbw6.session?.block?.week === 6 && lbw6.daily?.last_block_week === true && lbw5.session?.block?.week === 5 && lbw5.daily?.last_block_week === false);
+  const lbwTaper = await lbwUser(5, { goal_event_date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10) });
+  ok("#week-plan …and still true under a TAPER, which hides the card's block (the rollover doesn't care)",
+    lbwTaper.session?.taper && lbwTaper.session.block == null && lbwTaper.daily?.last_block_week === true);
+  // …and the rollover only happens once that last week is TRAINED: block_rolls_over is the
+  // fact the next-week lines need ("Next: Monday — X" would name a session Day A replaces).
+  ok("#week-plan block_rolls_over: false while the last week is untrained", lbw6.daily?.block_rolls_over === false && lbw5.daily?.block_rolls_over === false);
+  for (const u of [lbw6, lbw5]) await json("POST", "/api/session", { user_id: u.id, session_id: `lbw-now-${u.id}`, date: dAgo(0), local_date: dAgo(0).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const lbw6b = await (await app.request("/api/today", { headers: { "X-HB-User": lbw6.id } })).json();
+  const lbw5b = await (await app.request("/api/today", { headers: { "X-HB-User": lbw5.id } })).json();
+  ok("#week-plan …true once it's trained (next week opens a new block at Day A); a trained week 5 doesn't roll over",
+    lbw6b.daily?.block_rolls_over === true && lbw6b.session?.block?.week === 6 && lbw5b.daily?.block_rolls_over === false);
+
   // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
   // "does this user actually have an account". The client used to trust a
   // localStorage flag the OLD send path planted on SEND — so a user who requested a

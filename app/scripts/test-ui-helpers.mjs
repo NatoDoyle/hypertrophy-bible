@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -86,6 +86,86 @@ check("hubWorkoutState: done and rest win; a first-ever workout and a comeback a
   assert.equal(st({ daily: { planned_today: null } }), "start", "no plan at all: exactly as before");
   // W271 review: a PAUSED (sick/injured) user is promised no pressure — never "Missed Monday? Catch up today".
   assert.notEqual(st({ daily: { missed_planned_day: { day: "mon", date: "2026-10-12" } }, status: { state: "paused" } }), "missed");
+});
+
+// --- The week strip (C16, W277): the rotation's next sessions laid onto the days still
+// ahead, with the HUB's decision about today (so the two can never disagree), past days
+// from what was logged, and never the word "missed". W41: Mon 2026-10-05 .. Sun 10-11.
+const wkDays = (patch = {}) => ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((day, i) => ({
+  date: `2026-10-${String(5 + i).padStart(2, "0")}`, day, committed: ["mon", "wed", "fri"].includes(day), bound: ["mon", "wed", "fri"].includes(day), trained: [], rest: false, ...(patch[day] ?? {}) }));
+const PPL = ["Push A", "Pull A", "Legs A", "Push A", "Pull A", "Legs A", "Push A", "Pull A"];
+const strip = (wp, opts) => { const s = weekStrip(wp, opts); return s && { line: s.entries.map(weekChipLabel).join(" | "), next_week: s.next_week }; };
+check("weekStrip: an on-plan week reads Mon ✓ · Today · Fri, and names nothing for next week (it starts where it always does)", () => {
+  const wp = { days: wkDays({ mon: { trained: ["Push A"] } }), upcoming: PPL.slice(1) };
+  assert.deepEqual(strip(wp, { todayKey: "2026-10-07", hubState: "start" }), { line: "Mon ✓ Push A | Today · Pull A | Fri · Legs A", next_week: null });
+});
+check("weekStrip: a missed Monday slides everything along — a plain dash, the catch-up today, and the session the week runs out before", () => {
+  const wp = { days: wkDays(), upcoming: PPL };
+  const s = strip(wp, { todayKey: "2026-10-07", hubState: "missed" });
+  assert.deepEqual(s, { line: "Mon – | Today · Push A | Fri · Pull A", next_week: "Legs A" });
+  assert.ok(!/missed|✗|failed/i.test(s.line + s.next_week), "never shame (guardrail)");
+});
+check("weekStrip: in a block's LAST week the strip names nothing for next week — a fresh block opens at Day A, so 'X starts next week' would be a broken promise", () => {
+  const wp = { days: wkDays(), upcoming: PPL };
+  assert.deepEqual(strip(wp, { todayKey: "2026-10-07", hubState: "missed", blockEnds: true }), { line: "Mon – | Today · Push A | Fri · Pull A", next_week: null });
+});
+check("weekStrip: today follows the HUB — an unplanned day takes no slot, a catch-up (missed) or first-ever workout does", () => {
+  const wp = { days: wkDays(), upcoming: PPL };
+  assert.equal(strip(wp, { todayKey: "2026-10-06", hubState: "unplanned" }).line, "Mon – | Wed · Push A | Fri · Pull A", "Tuesday off-plan: next is Wednesday (Push A) — the hub's own line");
+  assert.equal(strip(wp, { todayKey: "2026-10-06", hubState: "missed" }).line, "Mon – | Today · Push A | Wed · Pull A | Fri · Legs A", "Tuesday catch-up: the week is whole again");
+  assert.equal(strip(wp, { todayKey: "2026-10-06", hubState: "start" }).line, "Mon – | Today · Push A | Wed · Pull A | Fri · Legs A", "a first-ever workout or a comeback is the hero on any day");
+});
+check("weekStrip: done today shows what was done, and the rest of the week starts from the NEXT session", () => {
+  const wp = { days: wkDays({ mon: { trained: ["Push A"] }, wed: { trained: ["Pull A"] } }), upcoming: PPL.slice(2) };
+  assert.deepEqual(strip(wp, { todayKey: "2026-10-07", hubState: "done" }), { line: "Mon ✓ Push A | Wed ✓ Pull A | Fri · Legs A", next_week: null });
+});
+check("weekStrip: a committed day marked REST today takes no slot — the hub says rest, so the week starts from the next day", () => {
+  const wp = { days: wkDays({ wed: { rest: true } }), upcoming: PPL };
+  assert.equal(strip(wp, { todayKey: "2026-10-07", hubState: "rest" }).line, "Mon – | Wed 🌿 rest | Fri · Push A");
+});
+check("weekStrip: two workouts on one day show both, and neither is named again for next week", () => {
+  const wp = { days: wkDays({ mon: { trained: ["Push A", "Pull A"] } }), upcoming: ["Legs A", "Push A", "Pull A", "Legs A"] };
+  assert.deepEqual(strip(wp, { todayKey: "2026-10-07", hubState: "start" }), { line: "Mon ✓ Push A + Pull A | Today · Legs A | Fri · Push A", next_week: null });
+});
+check("weekStrip: rest marks, unbound days (a plan made mid-week), extra days and unnamed rows", () => {
+  const wp = { days: wkDays({ mon: { bound: false }, tue: { trained: [null] }, wed: { rest: true } }), upcoming: PPL.slice(1) };
+  assert.equal(strip(wp, { todayKey: "2026-10-08", hubState: "unplanned" }).line, "Tue ✓ | Wed 🌿 rest | Fri · Pull A",
+    "Mon predates the promise (no claim); Tuesday's extra workout shows; Wednesday rested");
+});
+check("weekStrip: fewer days than the plan has sessions — the next one is named for next week; more days repeat in order", () => {
+  const four = ["Upper A", "Lower A", "Upper B", "Lower B", "Upper A", "Lower A", "Upper B", "Lower B"];
+  assert.deepEqual(strip({ days: wkDays(), upcoming: four }, { todayKey: "2026-10-05", hubState: "start" }),
+    { line: "Today · Upper A | Wed · Lower A | Fri · Upper B", next_week: "Lower B" });
+  const two = { days: wkDays(), upcoming: ["Full A", "Full B", "Full A", "Full B", "Full A", "Full B", "Full A", "Full B"] };
+  assert.deepEqual(strip(two, { todayKey: "2026-10-05", hubState: "start" }), { line: "Today · Full A | Wed · Full B | Fri · Full A", next_week: null });
+  assert.equal(weekStrip(null, { todayKey: "2026-10-05" }), null);
+  assert.equal(weekStrip({ days: [], upcoming: [] }, { todayKey: "2026-10-05" }), null);
+});
+// A training block's last week, once trained, rolls over next week to Day A (W277 review):
+// every line that names NEXT week's session must stop naming it — one predicate, three lines.
+check("crossesBlockEnd: only when the block rolls over AND the next workout is past this Sunday (or unknown)", () => {
+  const at = (nextDate, rolls = true) => crossesBlockEnd({ rollsOver: rolls, nextDate, todayKey: "2026-10-09" }); // a Friday
+  assert.equal(at("2026-10-11"), false, "Sunday is still this week — no rollover before it");
+  assert.equal(at("2026-10-12"), true, "Monday is the new block");
+  assert.equal(at(null), true, "no plan: whenever it is, it's not this week's pointer");
+  assert.equal(at("2026-10-12", false), false);
+  assert.equal(crossesBlockEnd({ rollsOver: true, nextDate: "2026-10-12", todayKey: "2026-10-11" }), true, "on the Sunday itself");
+});
+check("nextSessionLine / offPlanLabel / offPlanPreview: across a block rollover they name the day, never next week's session", () => {
+  const mon = { day: "mon", date: "2026-10-12" };
+  assert.equal(nextSessionLine({ nextDay: mon, todayKey: "2026-10-09", name: "Lower B", crossesBlock: true }), "Next: Monday — a new training block starts.");
+  assert.equal(nextSessionLine({ nextDay: null, todayKey: "2026-10-09", name: "Lower B", crossesBlock: true }), "A new training block starts next week.");
+  assert.equal(offPlanLabel({ nextDay: mon, name: "Lower B", crossesBlock: false }), "Not a training day — next: Monday (Lower B)");
+  assert.equal(offPlanLabel({ nextDay: mon, name: "Lower B", crossesBlock: true }), "Not a training day — next: Monday, when a new training block starts");
+  assert.equal(offPlanLabel({ nextDay: null, name: "Lower B", crossesBlock: false }), "Not a training day — next: your next training day (Lower B)");
+  assert.equal(offPlanPreview({ nextDay: mon, name: "Lower B", crossesBlock: false }), "Preview Monday's workout — Lower B");
+  assert.equal(offPlanPreview({ nextDay: mon, name: "Lower B", crossesBlock: true }), "Preview Lower B — what “Train anyway” starts today");
+});
+check("nextSessionLine: the next workout by day — tomorrow, a weekday, or (no plan) just next up", () => {
+  assert.equal(nextSessionLine({ nextDay: { day: "thu", date: "2026-10-08" }, todayKey: "2026-10-07", name: "Legs A" }), "Next: tomorrow — Legs A.");
+  assert.equal(nextSessionLine({ nextDay: { day: "fri", date: "2026-10-09" }, todayKey: "2026-10-07", name: "Legs A" }), "Next: Friday — Legs A.");
+  assert.equal(nextSessionLine({ nextDay: null, todayKey: "2026-10-07", name: "Legs A" }), "Next up: Legs A.");
+  assert.equal(nextSessionLine({ nextDay: null, todayKey: "2026-10-07", name: "" }), "");
 });
 
 // --- The phone-calendar file is the one reminder the app can't change (W271 review):

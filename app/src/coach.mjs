@@ -178,14 +178,38 @@ export const isPermutation = (map, n) =>
 // expiry, not a leak.
 export function rotationState(program, sessions, planMeta) {
   const n = program.sessions.length;
-  const own = sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
-  const rotCount = Math.max(0, own - (planMeta?.rotation_base ?? 0));
-  const effCount = rotCount + Math.max(0, planMeta?.rotation_skips ?? 0);
+  const effCount = rotationCount(ownSessionCount(program, sessions), planMeta);
+  return { n, effCount, ...rotationAt(program, planMeta, effCount) };
+}
+
+// THE pointer's count, in one place: own-program sessions past the rebase (clamped at
+// zero — a void of an older workout can drop the count below `rotation_base`), plus the
+// user's skips. The projection feeds it `own + j` rather than adding j after the clamp,
+// so a clamped pointer's repeat shows in the week strip exactly as Today will serve it.
+const ownSessionCount = (program, sessions) => sessions.filter((s) => !s.program_ref || s.program_ref === program.id).length;
+const rotationCount = (own, planMeta) => Math.max(0, own - (planMeta?.rotation_base ?? 0)) + Math.max(0, planMeta?.rotation_skips ?? 0);
+
+// ONE slot of the rotation: the cycle `effCount` falls in, and that cycle's day swap
+// only if the map was made for THAT cycle. Shared by the pointer (slot 0) and the week
+// strip's projection (slots ahead), so a projected day can never name a different
+// session than the one Today will serve (lesson 1).
+function rotationAt(program, planMeta, effCount) {
+  const n = program.sessions.length;
   const cycle = Math.floor(effCount / n);
   const rawIdx = effCount % n;
   const sw = planMeta?.cycle_swap;
   const map = sw && sw.program === program.id && sw.cycle === cycle && isPermutation(sw.map, n) ? sw.map : null;
-  return { n, effCount, cycle, rawIdx, idx: map ? map[rawIdx] : rawIdx };
+  return { cycle, rawIdx, idx: map ? map[rawIdx] : rawIdx };
+}
+
+// The next k sessions the rotation will serve, in order (C16, W277): slot 0 is the
+// pointer itself, slot j is what Today serves after j more sessions (or skips). The
+// rotation stays the training truth — a missed day never drops a session — and the
+// week strip only SHOWS where it lands on the committed days.
+export function upcomingSessions(program, sessions, planMeta, k) {
+  if (!program?.sessions?.length) return [];
+  const own = ownSessionCount(program, sessions);
+  return Array.from({ length: Math.max(0, k) }, (_, j) => rotationAt(program, planMeta, rotationCount(own + j, planMeta)).idx);
 }
 
 // The reassurance threshold for the missed-a-day note: a gap long enough to be a

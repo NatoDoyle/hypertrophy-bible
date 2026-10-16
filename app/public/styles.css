@@ -184,6 +184,9 @@ details.why h3{font-size:1rem;margin:1.1em 0 .3em}
 .learn blockquote{border-left:3px solid var(--line);margin:.8em 0;padding:.2em 0 .2em 12px;color:var(--dim)}
 .learn code{background:var(--card2);border-radius:6px;padding:1px 5px;font-size:.9em}
 /* Stretch-focused (lengthened-bias) tag — the selection science, made visible */
+.weekstrip{display:flex;flex-wrap:wrap;margin:4px 0 2px}
+.chip.wk-today{border-color:var(--accent);color:var(--accent);font-weight:600}
+.chip.wk-done,.chip.wk-open,.chip.wk-rest{opacity:.7}
 .chip.stretch{background:#12251a;border-color:var(--accent);color:var(--accent);font-size:.72rem;padding:2px 8px;vertical-align:middle}
 
 /* Cross-references inside a Learn page: reads as a link, jumps in-app */

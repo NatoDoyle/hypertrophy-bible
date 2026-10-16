@@ -450,7 +450,7 @@ export function plannedDayState(stored, todayKey, { sessionDays = [], restDays =
     if (eff.days.includes(weekDayKey(d))) next = { day: weekDayKey(d), date: d };
   }
   const monday = shiftDayKey(todayKey, -todayIdx);
-  const boundFrom = eff.carried ? monday : (eff.set_on && eff.set_on > monday ? eff.set_on : monday);
+  const boundFrom = commitmentBoundFrom(eff, monday);
   let missed = null;
   for (let i = 1; i <= todayIdx; i++) {
     const d = shiftDayKey(todayKey, -i);
@@ -461,6 +461,32 @@ export function plannedDayState(stored, todayKey, { sessionDays = [], restDays =
     break;
   }
   return { days: eff.days, carried: eff.carried, planned_today, next, missed };
+}
+
+// The first day of this week a commitment binds: a carried one the whole week; one made
+// THIS week from the day it was made (`set_on`; a legacy stamp without one, from Monday).
+// One definition for the hub's "missed" and the week strip's open days.
+const commitmentBoundFrom = (eff, monday) => (eff.carried ? monday : (eff.set_on && eff.set_on > monday ? eff.set_on : monday));
+
+// The week strip's FACTS (C16, W277): the ISO week around `todayKey`, Mon..Sun, each day
+// with whether it's a committed training day, whether the commitment BINDS it (a plan
+// made Thursday makes no claim on Monday), what was actually trained there (names from
+// the logged rows, never re-derived from the rotation pointer, which a void or a
+// retro-log would shift), and rest marks. Null when no commitment is in force. The
+// client lays the rotation's upcoming sessions onto the days still ahead, with the
+// hub's own decision about today (ui-helpers weekStrip).
+export function weekFacts(stored, todayKey, { trained = [], restDays = [] } = {}) {
+  const eff = commitmentForDay(stored, todayKey);
+  if (!eff) return null;
+  const monday = shiftDayKey(todayKey, -WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey)));
+  const boundFrom = commitmentBoundFrom(eff, monday);
+  return {
+    days: WEEK_DAY_KEYS.map((day, i) => {
+      const date = shiftDayKey(monday, i);
+      const committed = eff.days.includes(day);
+      return { date, day, committed, bound: committed && date >= boundFrom, trained: trained.filter((t) => t.date === date).map((t) => t.name ?? null), rest: restDays.includes(date) };
+    }),
+  };
 }
 
 // Is a set a "hard working set" that counts toward hypertrophy volume?

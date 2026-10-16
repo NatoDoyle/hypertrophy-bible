@@ -150,6 +150,76 @@ export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) 
 // so the user can replace that event. Null when nothing was exported or they match.
 const SHORT_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_INDEX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+export const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+
+// The week strip (C16, W277): the rotation's next sessions (`week_plan.upcoming`, from
+// the server's one pointer) laid onto the days still ahead this week. Today follows the
+// HUB's own decision (`hubState`, hubWorkoutState's answer: "start" or "missed" means
+// today trains), so the strip and the hub can never disagree about today. Past days show what was LOGGED; a bound,
+// committed day with nothing logged is a plain dash, never "missed" (guardrail: never
+// shame). The rotation stays the truth — a miss slides the week along, nothing dropped —
+// and `next_week` names the session the week runs out before, only when this week shows
+// it nowhere (a miss or a plan longer than the week pushed it on) — and never in a
+// training block's last week (`blockEnds`), where a fresh block opens next week at Day A
+// and "X starts next week — nothing gets dropped" would be a promise the rollover breaks.
+export function weekStrip(weekPlan, { todayKey, hubState = null, blockEnds = false } = {}) {
+  if (!weekPlan?.days?.length) return null;
+  const todayTrains = hubState === "start" || hubState === "missed";
+  const up = Array.isArray(weekPlan.upcoming) ? weekPlan.upcoming : [];
+  let k = 0;
+  const entries = [];
+  for (const d of weekPlan.days) {
+    const trained = Array.isArray(d.trained) ? d.trained : [];
+    const at = { day: d.day, date: d.date };
+    if (trained.length) entries.push({ ...at, kind: "done", name: trained.filter(Boolean).join(" + ") || null });
+    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest ? "rest" : "open", name: null }); }
+    else if (d.date === todayKey) {
+      if (todayTrains) entries.push({ ...at, kind: "today", name: up[k++] ?? null });
+      else if (d.committed && d.rest) entries.push({ ...at, kind: "rest", name: null });
+    } else if (d.committed) entries.push(d.rest ? { ...at, kind: "rest", name: null } : { ...at, kind: "planned", name: up[k++] ?? null });
+  }
+  const shown = new Set(entries.flatMap((e) => (e.kind === "done" ? (weekPlan.days.find((x) => x.date === e.date)?.trained ?? []) : [e.name])).filter(Boolean));
+  const next = up[k] ?? null;
+  return { entries, next_week: next && !shown.has(next) && !blockEnds ? next : null };
+}
+export function weekChipLabel(e) {
+  const d = SHORT_DAY[DAY_INDEX[e?.day]] ?? "";
+  if (e?.kind === "done") return `${d} ✓${e.name ? ` ${e.name}` : ""}`;
+  if (e?.kind === "today") return `Today · ${e.name ?? "your workout"}`;
+  if (e?.kind === "planned") return `${d} · ${e.name ?? "workout"}`;
+  if (e?.kind === "rest") return `${d} 🌿 rest`;
+  return `${d} –`;
+}
+// Does the next workout fall after a training block rolls over? (W277 review) Once a
+// block's last week is trained, next week's first visit reopens the rotation at Day A
+// (`rollsOver` = the server's daily.block_rolls_over, from the rollover's own clock) —
+// so a line naming NEXT week's session would name one the new block replaces. ONE
+// predicate for every such line: the done line, the off-day label, the preview.
+export function crossesBlockEnd({ rollsOver = false, nextDate = null, todayKey } = {}) {
+  if (!rollsOver) return false;
+  return !nextDate || nextDate > shiftDay(mondayOf(todayKey), 6);
+}
+const dayWord = (nextDay, todayKey) => (nextDay.date === shiftDay(todayKey, 1) ? "tomorrow" : DAY_LONG[nextDay.day] ?? nextDay.day);
+// "What's next, and when" once today's workout is in (C16): the next committed day by name
+// (or "tomorrow"), else — no weekly plan — just the next session. Across a block rollover,
+// the day without a session name (a new block opens it).
+export function nextSessionLine({ nextDay = null, todayKey, name, crossesBlock = false } = {}) {
+  if (!name) return "";
+  if (crossesBlock) return nextDay?.date ? `Next: ${dayWord(nextDay, todayKey)} — a new training block starts.` : "A new training block starts next week.";
+  if (!nextDay?.date) return `Next up: ${name}.`;
+  return `Next: ${dayWord(nextDay, todayKey)} — ${name}.`;
+}
+// The hub row on a day off the plan, and the folded preview beneath it (W271 copy, now
+// block-aware): "next: Monday (Lower B)" would be a broken promise when a new block opens
+// Monday — what the preview shows is what "Train anyway" starts TODAY.
+export function offPlanLabel({ nextDay = null, name, crossesBlock = false } = {}) {
+  const when = DAY_LONG[nextDay?.day] ?? "your next training day";
+  return crossesBlock ? `Not a training day — next: ${when}, when a new training block starts` : `Not a training day — next: ${when} (${name})`;
+}
+export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
+  const when = DAY_LONG[nextDay?.day] ?? "your next training day";
+  return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;
+}
 export function calendarDrift(exportedIdx, commitDays) {
   const exported = (Array.isArray(exportedIdx) ? exportedIdx : []).filter((i) => Number.isInteger(i) && i >= 0 && i < 7);
   if (!exported.length) return null;
