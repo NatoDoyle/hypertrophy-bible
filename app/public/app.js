@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, DAY_LONG } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, DAY_LONG } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -445,18 +445,36 @@ function flushQueue() {
   if (!flushRun) flushRun = flushQueueOnce().finally(() => { flushRun = null; });
   return flushRun;
 }
+// An entry that can't be read can never be delivered: it is PARKED (kept, never silently
+// destroyed) so one corrupt entry can't wedge every workout queued behind it — nor, now
+// that Today waits for the queue, Today itself (W277 review).
+function parkUndeliverable(item) {
+  try { localStorage.setItem("hb_queue_dead", JSON.stringify([...JSON.parse(localStorage.getItem("hb_queue_dead") || "[]"), item].slice(-20))); } catch {}
+}
 async function flushQueueOnce() {
   while (true) {
     const q = getQueue();
     if (!q.length) break;
     const item = q[0];
+    if (!item || typeof item !== "object") { // a primitive can't carry an id: park every such entry at once
+      q.filter((x) => !x || typeof x !== "object").forEach(parkUndeliverable);
+      try { setQueue(getQueue().filter((x) => x && typeof x === "object")); } catch { break; }
+      continue;
+    }
     // Legacy items (queued before items carried an id) get one assigned in place,
     // so the identity-based removal below is always safe.
     if (!item.id) { item.id = genQueueId(); q[0] = item; try { setQueue(q); } catch {} }
+    let parsed = null;
+    try { parsed = JSON.parse(item.body); } catch {}
+    if (!parsed || typeof parsed !== "object") {
+      parkUndeliverable(item);
+      try { setQueue(dropDelivered(getQueue(), item.id)); } catch { break; }
+      continue;
+    }
     // The queue is device-local, so the current user always owns it. Rebinding
     // heals items whose account switched (a restore) after they were queued —
     // they land on the account instead of a stale/deleted user_id.
-    const body = JSON.stringify({ ...JSON.parse(item.body), user_id: uid });
+    const body = JSON.stringify({ ...parsed, user_id: uid });
     let ok = false;
     try { ok = (await fetch(item.path, { method: "POST", headers: { "content-type": "application/json" }, body })).ok; }
     catch { break; } // offline again — keep everything for next time
@@ -1390,24 +1408,34 @@ function wireCommitmentCard() {
     wireCommitmentCard();
   };
 }
+// Bumped by every navigation and every Today render, so a LATE answer from an older
+// render (a slow network, or the bounded wait for the offline queue below) never paints
+// Today over the tab the user has since switched to (W277 review).
+let todayGen = 0;
 async function renderToday() {
   if (sess) return renderResume();
+  const gen = ++todayGen;
+  const stale = () => gen !== todayGen || tab !== "today" || !!sess;
   discardPending = false;
   app.innerHTML = `<p class="muted">Loading…</p>`;
   // A workout logged offline must be ON the server before Today asks what's done: boot
   // starts the flush and renders at once, and a read that beat the write served the same
   // workout again as still to do (C16 pre-mortem — the week strip would have shown it
   // too). Bounded, so a slow network still shows Today as before.
-  if (getQueue().length) await Promise.race([flushQueue(), new Promise((r) => setTimeout(r, 3000))]);
+  // A flush that throws must not take Today with it: the wait just ends.
+  if (getQueue().length) await Promise.race([flushQueue().catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
+  if (stale()) return;
   let data, adh;
   try { [data, adh] = await Promise.all([api(`/api/today?d=${localDay()}`), api(`/api/adherence`)]); }
   catch {
+    if (stale()) return;
     app.innerHTML = `<h1>Today</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Connect once to load today's plan — anything you've already logged will sync automatically.</p>
       <button class="btn" id="retry-today">Try again</button></div>`;
     $("#retry-today").onclick = () => renderToday();
     return;
   }
+  if (stale()) return;
   syncAccountEmail(adh);
   // Per-exercise unit overrides: seed a NEW device from the account copy, but only
   // when this device holds none — local is the source of truth for a device that
@@ -1504,13 +1532,15 @@ async function renderToday() {
   // hero; a missed planned day asks to catch up; an unplanned day steps it back.
   const hubState = hubWorkoutState({ daily: dy, session: s, status: adh.status });
   const unplanned = hubState === "unplanned";
-  const nextDayName = DAY_LONG[dy.next_planned_day?.day] ?? "your next training day";
   // The week strip (C16): the rotation's next sessions on this week's days, with today
   // following the hub's own decision — so the strip and the workout row always agree.
-  const week = weekStrip(dy.week_plan, { todayKey: dy.day ?? localDay(), todayTrains: hubState === "start" || hubState === "missed",
-    blockEnds: !!s.block && s.block.week === s.block.of });
+  const todayKey = dy.day ?? localDay();
+  const week = weekStrip(dy.week_plan, { todayKey, hubState, blockEnds: dy.last_block_week === true });
+  // Every line that names NEXT week's session stops naming it once the block rolls over
+  // (a trained last week reopens the rotation at Day A) — one predicate, three lines.
+  const crossesBlock = crossesBlockEnd({ rollsOver: dy.block_rolls_over === true, nextDate: dy.next_planned_day?.date ?? null, todayKey });
   // Once today's workout is in, `s` is already the NEXT session — say when it is.
-  const nextLine = workoutDone ? nextSessionLine({ nextDay: dy.next_planned_day, todayKey: dy.day ?? localDay(), name: s.name }) : "";
+  const nextLine = workoutDone ? nextSessionLine({ nextDay: dy.next_planned_day, todayKey, name: s.name, crossesBlock }) : "";
   // The change-the-plan door belongs HERE, beside the workout it changes: the
   // first version lived at the bottom of the exercise list, 2.5 phone-screens
   // down, and was reported as simply not findable. Both entry points share the
@@ -1521,7 +1551,7 @@ async function renderToday() {
     { key: "workout", icon: "🏋️", label: "Today's workout",
       sub: workoutDone ? `Logged — nice.${nextLine ? ` ${esc(nextLine)}` : ""}` : hubState === "missed" ? `Missed ${DAY_LONG[dy.missed_planned_day.day]}? Catch up today — ${esc(s.name)}` : esc(s.name),
       done: workoutDone, dismissed: restDay || unplanned,
-      dismissedLabel: unplanned ? `Not a training day — next: ${nextDayName} (${esc(s.name)})` : "Rest day — recovery is training too",
+      dismissedLabel: unplanned ? esc(offPlanLabel({ nextDay: dy.next_planned_day, name: s.name, crossesBlock })) : "Rest day — recovery is training too",
       cta: unplanned ? "Train anyway" : "Start", action: workoutDone ? null : changeLink },
     { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
@@ -1566,7 +1596,7 @@ async function renderToday() {
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
-      ? `<details class="card"><summary><b>Preview ${esc(nextDayName)}'s workout — ${esc(s.name)}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
+      ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
       : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}`;
@@ -4551,6 +4581,7 @@ async function renderLearnPage(slug) {
 // ---------- Router ----------
 function render() {
   cantDoGen++; // a tab switch leaves any open "Can't do" sheet: its late answer must not repaint here
+  todayGen++;  // …and a Today render still waiting on the network must not paint over the new tab
   stopRestTimer(); // leaving the player must always cancel the pending repaint
   settingsMode = false; settingsSolo = null; // navigating away abandons an in-progress settings edit cleanly
   if (tab !== "history") { historyEdit = null; historyDateFix = null; } // ...and an in-progress workout correction/date repair

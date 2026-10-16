@@ -130,21 +130,24 @@ check("todayCard headline and buildToday name agree under skips + swaps (lesson 
 const rotSwaps = [undefined, { program: "gen-mine", cycle: 0, map: [2, 1, 0] }, { program: "gen-mine", cycle: 1, map: [1, 0, 2] },
   { program: "gen-mine", cycle: 0, map: [0, 2, 1] }, { program: "gen-other", cycle: 0, map: [2, 1, 0] },
   { program: "gen-mine", cycle: 0, map: [2, 2, 0] }, { program: "gen-mine", cycle: 0, map: [1, 0] }];
-check("#week upcomingSessions slot j IS what Today serves after j more sessions — over skips, live/stale/foreign/malformed swaps", () => {
+check("#week upcomingSessions slot j IS what Today serves after j more sessions — over skips, live/stale/foreign/malformed swaps, and a rebase ABOVE the logged count", () => {
   let cases = 0;
-  for (const cycle_swap of rotSwaps) for (let skips = 0; skips <= 3; skips++) for (let logged = 0; logged <= 4; logged++) {
-    const meta = { ...(cycle_swap ? { cycle_swap } : {}), ...(skips ? { rotation_skips: skips } : {}) };
+  // rotation_base above the own count happens for real: a block rollover rebases to the
+  // own count, then voiding an older workout drops the count below it (W277 review) — the
+  // pointer clamps at Day A until the count catches up, and the projection must too.
+  for (const cycle_swap of rotSwaps) for (let skips = 0; skips <= 3; skips++) for (let logged = 0; logged <= 4; logged++) for (const base of [0, 2, 5]) {
+    const meta = { ...(cycle_swap ? { cycle_swap } : {}), ...(skips ? { rotation_skips: skips } : {}), ...(base ? { rotation_base: base } : {}) };
     const sessions = Array.from({ length: logged }, (_, i) => rotMine(i));
     const up = upcomingSessions(rotProg, sessions, meta, 4);
     assert.equal(up.length, 4);
     assert.equal(up[0], rotationState(rotProg, sessions, meta).idx, "slot 0 is the pointer itself");
     for (let j = 0; j < 4; j++) {
       const later = [...sessions, ...Array.from({ length: j }, (_, i) => rotMine(logged + i))];
-      assert.equal(up[j], rotToday(meta, later).index, `swap ${JSON.stringify(cycle_swap)} skips ${skips} logged ${logged}: slot ${j}`);
+      assert.equal(up[j], rotToday(meta, later).index, `swap ${JSON.stringify(cycle_swap)} skips ${skips} logged ${logged} base ${base}: slot ${j}`);
       cases++;
     }
   }
-  assert.ok(cases >= 500, `ran ${cases}`);
+  assert.ok(cases >= 1500, `ran ${cases}`);
 });
 check("#week a day swap stops at its cycle's edge in the projection too (B·A·B, not B·C·B)", () => {
   const names = upcomingSessions(rotProg, [rotMine(0), rotMine(1)], { cycle_swap: { program: "gen-mine", cycle: 0, map: [0, 2, 1] } }, 3).map((i) => rotProg.sessions[i].name);

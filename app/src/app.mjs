@@ -982,6 +982,19 @@ export function createApp(store, config = {}) {
       restDays: user.rest_days ?? [],
     }) : null;
     daily.week_plan = facts ? { days: facts.days, upcoming: upcomingSessions(user.program, sessions, user.plan_meta, 8).map((i) => user.program.sessions[i].name) } : null;
+    // A training block's LAST week (W277 review): once it's trained, next week's first
+    // request rolls the block over and the rotation reopens at Day A, so nothing may name
+    // next week's session. Stated from the rollover's OWN predicate and clock (above),
+    // never from session.block, which a taper hides while the rollover still runs.
+    // `block_rolls_over` is the rollover's own test asked a week early: does next week's
+    // trained-week count (which includes THIS week) cross into a new block? True only
+    // once the last week is trained — the fact the next-week lines need.
+    const lbStart = user.plan_meta?.block_start;
+    const lbEligible = !!lbStart && user.profile?.training_status !== "beginner" && !user.program?.custom;
+    const twNow = lbEligible ? trainedWeeksInBlock(sessions, lbStart, nowISO, tz) : 0;
+    const twNext = lbEligible ? trainedWeeksInBlock(sessions, lbStart, new Date(Date.parse(nowISO) + 7 * 86400000).toISOString(), tz) : 0;
+    daily.last_block_week = lbEligible && twNow % BLOCK_WEEKS === BLOCK_WEEKS - 1;
+    daily.block_rolls_over = lbEligible && Math.floor(twNext / BLOCK_WEEKS) !== Math.floor(twNow / BLOCK_WEEKS);
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
