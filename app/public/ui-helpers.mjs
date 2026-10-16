@@ -159,8 +159,10 @@ export const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: 
 // committed day with nothing logged is a plain dash, never "missed" (guardrail: never
 // shame). The rotation stays the truth — a miss slides the week along, nothing dropped —
 // and `next_week` names the session the week runs out before, only when this week shows
-// it nowhere (a miss or a plan longer than the week pushed it on).
-export function weekStrip(weekPlan, { todayKey, todayTrains = false } = {}) {
+// it nowhere (a miss or a plan longer than the week pushed it on) — and never in a
+// training block's last week (`blockEnds`), where a fresh block opens next week at Day A
+// and "X starts next week — nothing gets dropped" would be a promise the rollover breaks.
+export function weekStrip(weekPlan, { todayKey, todayTrains = false, blockEnds = false } = {}) {
   if (!weekPlan?.days?.length) return null;
   const up = Array.isArray(weekPlan.upcoming) ? weekPlan.upcoming : [];
   let k = 0;
@@ -177,7 +179,7 @@ export function weekStrip(weekPlan, { todayKey, todayTrains = false } = {}) {
   }
   const shown = new Set(entries.flatMap((e) => (e.kind === "done" ? (weekPlan.days.find((x) => x.date === e.date)?.trained ?? []) : [e.name])).filter(Boolean));
   const next = up[k] ?? null;
-  return { entries, next_week: next && !shown.has(next) ? next : null };
+  return { entries, next_week: next && !shown.has(next) && !blockEnds ? next : null };
 }
 export function weekChipLabel(e) {
   const d = SHORT_DAY[DAY_INDEX[e?.day]] ?? "";

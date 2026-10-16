@@ -105,6 +105,10 @@ check("weekStrip: a missed Monday slides everything along — a plain dash, the 
   assert.deepEqual(s, { line: "Mon – | Today · Push A | Fri · Pull A", next_week: "Legs A" });
   assert.ok(!/missed|✗|failed/i.test(s.line + s.next_week), "never shame (guardrail)");
 });
+check("weekStrip: in a block's LAST week the strip names nothing for next week — a fresh block opens at Day A, so 'X starts next week' would be a broken promise", () => {
+  const wp = { days: wkDays(), upcoming: PPL };
+  assert.deepEqual(strip(wp, { todayKey: "2026-10-07", todayTrains: true, blockEnds: true }), { line: "Mon – | Today · Push A | Fri · Pull A", next_week: null });
+});
 check("weekStrip: today follows the HUB — an unplanned day takes no slot, a catch-up (missed) or first-ever workout does", () => {
   const wp = { days: wkDays(), upcoming: PPL };
   assert.equal(strip(wp, { todayKey: "2026-10-06", todayTrains: false }).line, "Mon – | Wed · Push A | Fri · Pull A", "Tuesday off-plan: next is Wednesday (Push A) — the hub's own line");

@@ -1507,7 +1507,8 @@ async function renderToday() {
   const nextDayName = DAY_LONG[dy.next_planned_day?.day] ?? "your next training day";
   // The week strip (C16): the rotation's next sessions on this week's days, with today
   // following the hub's own decision — so the strip and the workout row always agree.
-  const week = weekStrip(dy.week_plan, { todayKey: dy.day ?? localDay(), todayTrains: hubState === "start" || hubState === "missed" });
+  const week = weekStrip(dy.week_plan, { todayKey: dy.day ?? localDay(), todayTrains: hubState === "start" || hubState === "missed",
+    blockEnds: !!s.block && s.block.week === s.block.of });
   // Once today's workout is in, `s` is already the NEXT session — say when it is.
   const nextLine = workoutDone ? nextSessionLine({ nextDay: dy.next_planned_day, todayKey: dy.day ?? localDay(), name: s.name }) : "";
   // The change-the-plan door belongs HERE, beside the workout it changes: the
