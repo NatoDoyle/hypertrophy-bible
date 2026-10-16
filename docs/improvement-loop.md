@@ -1109,6 +1109,55 @@ These are real failures from previous iterations. Each is now a standing check.
    write that is idempotent on replay stores what its first answer reported beside the
    write, and the replay answers from that record, filtered to what is still true (a
    bonus that has since come back is not re-announced).
+74. **A "design question" parked for the owner is often a measurement nobody ran.** C16
+   (map the session rotation onto the committed weekdays) rode the roadmap as "a design
+   question" through six groundings. One design panel settled it by arithmetic. Pinning
+   weekday → session drops whatever the user habitually misses: a muscle trained only on a
+   chronically missed weekday gets 0% of its weekly volume, where the rotation keeps every
+   muscle at (n−1)/n. So the app SHOWS the rotation on the weekdays instead of pinning it.
+   → **Standing rule:** before parking a design question, measure each option against the
+   goal's own metric, and ask the owner only what the measurement can't settle (here,
+   whether the plan's day count should follow the days actually committed: a product call
+   the week strip now makes visible).
+75. **A fire-and-forget write followed by a read of the same data is a race, and
+   awaiting it later turns its rejection fatal.** Boot started the offline-queue flush and
+   rendered Today at once. A workout queued offline behind two other writes was read as
+   NOT done and offered again: 3/3 in a real browser, found by the W277 pre-mortem from
+   reading alone. Today now waits, bounded, on a SHARED in-flight flush. The review then
+   found the new wait's own trap: a promise nobody awaited could reject harmlessly, but
+   once awaited, one corrupt queue entry left Today on "Loading…" for good. → **Standing
+   rules:**
+   - a read that depends on a pending write joins it (a shared promise, not a boolean
+     re-entrancy guard), with a bound;
+   - when a fire-and-forget promise gains an awaiter, guard the await, and make the
+     writer park what it can't process rather than wedge the work queued behind it;
+   - a render that awaits checks it is still the current view before painting (a
+     generation token).
+76. **A projection of a stateful pointer sees only as far as the next write to the
+   pointer, and slot j is the formula fed j more inputs, never the output plus j.** The
+   week strip projected the rotation correctly within the week. But "X starts next week"
+   and "Next: Monday — X" crossed the block rollover, which reopens the rotation at Day A.
+   And the projection added j AFTER the pointer's clamp at zero (a rebase above the logged
+   count, after a void), so it named sessions Today would never serve. → **Standing rule:**
+   - list every writer of the pointer's inputs (rollover, graduation, regenerate, void),
+     and stop the projection, or say what happens instead, at the first one it can't see
+     past;
+   - compute ahead by running the pointer's own formula on the future inputs (a clamp,
+     min or max inside it breaks additivity);
+   - state such boundary facts on the server, from the writer's own predicate (a taper
+     hid the card the client had inferred the block from).
+77. **An agent's number is a claim until it is re-measured, and parallel agents must not
+   share a scratch path.** The W277 design panel reported that rebuilding the plan at the
+   committed day count cuts muscle-weeks below MEV "27% → 14%". Re-measured inline before
+   it went into the roadmap:
+   - the direction held in 15 of 16 configurations;
+   - the figures did not reproduce (intermediate full gym: 63% → 50%; one beginner
+     configuration reversed);
+   - the agent's script could not be re-run, because a sibling agent had written its own
+     prototype to the same scratch file.
+   → **Standing rules:** re-measure any agent-reported number before quoting it as
+   decision input (lesson 55: provenance), and give every workflow agent its own scratch
+   directory (os.tmpdir() plus its lens key).
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1157,6 +1206,29 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7g. **Telemetry (Wave 277, 2026-10-15/16 — C16, the roadmap's first named pull).** Two
+   workflows, 8 agents, ≈890k subagent tokens:
+   - a 4-lens DESIGN PANEL before any code (training science, adherence, zero-load UX,
+     engineering pre-mortem; ≈444k);
+   - a 4-lens FINDERS-ONLY diff review after (≈446k).
+
+   The panel converged 4/4 on projection over pinning. Its pre-mortem found a live
+   defect by reading alone (the offline flush race, then reproduced 3/3 in a real
+   browser). One of its figures did not survive inline re-measurement (lesson 77). The
+   review returned 9 findings covering 7 distinct defects. All were verified INLINE and
+   fixed (W277e), 0 refuted, with no verifier agents: the second iteration running that
+   split.
+
+   ≈30 lesson-54 tampers each turned their check red. Two that a finder showed surviving
+   were strengthened until they bit. Browser tampers proved the queue race (3/3), the
+   corrupt-queue brick (the finder's exact scenario) and the stale paint. One single
+   stale-check tamper survived, because a later check catches the same paint: deliberate
+   redundancy, proven by removing all of them.
+
+   Harness note: macOS's periodic /tmp cleaner deleted the shared walkthrough helper
+   between sessions; it was recreated from the transcript. The Daytona gate was skipped
+   (no DAYTONA_API_KEY): said, not implied. New lessons 74–77.
+
 7h. **Telemetry (Waves 266–275, 2026-10-11/12 — the first ULTRACODE iteration).** All
    eight owner considerations closed in five PRs (#318 W266–268, #319 W269–270, #320
    W271a–d, #321 W272–274, #322 W275a + this LEARN), each premise measured first (all
