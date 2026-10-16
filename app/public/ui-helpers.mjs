@@ -150,6 +150,50 @@ export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) 
 // so the user can replace that event. Null when nothing was exported or they match.
 const SHORT_DAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_INDEX = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+export const DAY_LONG = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+
+// The week strip (C16, W277): the rotation's next sessions (`week_plan.upcoming`, from
+// the server's one pointer) laid onto the days still ahead this week. Today follows the
+// HUB's own decision (`todayTrains` = hubWorkoutState "start" or "missed"), so the strip
+// and the hub can never disagree about today. Past days show what was LOGGED; a bound,
+// committed day with nothing logged is a plain dash, never "missed" (guardrail: never
+// shame). The rotation stays the truth — a miss slides the week along, nothing dropped —
+// and `next_week` names the session the week runs out before, only when this week shows
+// it nowhere (a miss or a plan longer than the week pushed it on).
+export function weekStrip(weekPlan, { todayKey, todayTrains = false } = {}) {
+  if (!weekPlan?.days?.length) return null;
+  const up = Array.isArray(weekPlan.upcoming) ? weekPlan.upcoming : [];
+  let k = 0;
+  const entries = [];
+  for (const d of weekPlan.days) {
+    const trained = Array.isArray(d.trained) ? d.trained : [];
+    const at = { day: d.day, date: d.date };
+    if (trained.length) entries.push({ ...at, kind: "done", name: trained.filter(Boolean).join(" + ") || null });
+    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest ? "rest" : "open", name: null }); }
+    else if (d.date === todayKey) {
+      if (todayTrains || (d.committed && !d.rest)) entries.push({ ...at, kind: "today", name: up[k++] ?? null });
+      else if (d.committed) entries.push({ ...at, kind: "rest", name: null });
+    } else if (d.committed) entries.push(d.rest ? { ...at, kind: "rest", name: null } : { ...at, kind: "planned", name: up[k++] ?? null });
+  }
+  const shown = new Set(entries.flatMap((e) => (e.kind === "done" ? (weekPlan.days.find((x) => x.date === e.date)?.trained ?? []) : [e.name])).filter(Boolean));
+  const next = up[k] ?? null;
+  return { entries, next_week: next && !shown.has(next) ? next : null };
+}
+export function weekChipLabel(e) {
+  const d = SHORT_DAY[DAY_INDEX[e?.day]] ?? "";
+  if (e?.kind === "done") return `${d} ✓${e.name ? ` ${e.name}` : ""}`;
+  if (e?.kind === "today") return `Today · ${e.name ?? "your workout"}`;
+  if (e?.kind === "planned") return `${d} · ${e.name ?? "workout"}`;
+  if (e?.kind === "rest") return `${d} 🌿 rest`;
+  return `${d} –`;
+}
+// "What's next, and when" once today's workout is in (C16): the next committed day by name
+// (or "tomorrow"), else — no weekly plan — just the next session.
+export function nextSessionLine({ nextDay = null, todayKey, name } = {}) {
+  if (!name) return "";
+  if (!nextDay?.date) return `Next up: ${name}.`;
+  return `Next: ${nextDay.date === shiftDay(todayKey, 1) ? "tomorrow" : DAY_LONG[nextDay.day] ?? nextDay.day} — ${name}.`;
+}
 export function calendarDrift(exportedIdx, commitDays) {
   const exported = (Array.isArray(exportedIdx) ? exportedIdx : []).filter((i) => Number.isInteger(i) && i >= 0 && i < 7);
   if (!exported.length) return null;
