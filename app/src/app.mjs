@@ -2,10 +2,10 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, stalledExerciseIds, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
@@ -849,18 +849,8 @@ export function createApp(store, config = {}) {
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
     // sacred and never auto-regenerated; beginners don't run blocks.
-    // The adaptive tune's recovery/energy gate must read only the JUST-COMPLETED block,
-    // not the user's whole history. recoverySignal and bodyweightTrend average whatever
-    // they're handed, so feeding the full log turned "block-average readiness" into a
-    // LIFETIME average: an athlete wrecked THIS block but with months of good prior
-    // check-ins never tripped the gate, and a long-past cut kept reading as a current
-    // deficit for months (suppressing volume the recent block had earned). Window to the
-    // block length (6 weeks); a sparse window falls back to permissive — the safe
-    // direction, since the gate only ever RESTRAINS adding, never forces it.
-    const blockWindowStart = new Date(Date.now() - 42 * 86400000).toISOString().slice(0, 10);
-    const inBlockWindow = (d) => (d || "").slice(0, 10) >= blockWindowStart;
-    const recentCheckins = checkins.filter((ck) => inBlockWindow(ck.date));
-    const recentBodyweights = bodyweights.filter((b) => inBlockWindow(b.date));
+    // The adaptive tune's recovery/energy gate reads only the JUST-COMPLETED block (the
+    // 42-day window lives in coach.mjs blockTuneDecision now, beside the rest of the decision).
     const blockStart = user.plan_meta?.block_start;
     if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
       // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
@@ -875,47 +865,13 @@ export function createApp(store, config = {}) {
           // untouched — otherwise the rotation silently clobbers a just-saved custom
           // plan. (Every other mutator here re-checks its precondition inside the CAS.)
           if (u.program?.custom || blockIndex === (u.plan_meta?.block_index ?? 0)) return u;
-          // ADAPTIVE (#2): fold the just-completed block's response into the running
-          // per-muscle volume adjustment, so the new block's targets are tuned to how
-          // THIS person actually responded — stalled muscles get more, ceiling-bound
-          // ones get eased, all bounded to MEV↔MRV. Accumulates across blocks.
-          // DURING a SPECIALIZATION block, non-priority muscles are DELIBERATELY
-          // maintenance-dosed (low), so their lifts "stall" by design — folding that
-          // in would spuriously bump their target, which then lands once specialization
-          // ends. So freeze the tune during a spec block (carry the prior forward).
-          const prevAdjust = u.plan_meta?.volume_adjust ?? {};
-          // Recovery-/energy-aware context (Increment A): the tune won't ADD volume to
-          // a stalled muscle while the athlete is persistently under-recovered or in an
-          // energy deficit — that stall needs recovery/fuel, not more sets.
-          // The index of the block whose data we're reading — the one that JUST
-          // COMPLETED — not the one being entered. The question is "were those stalls
-          // held-at-maintenance by design when they were logged?", so it must be
-          // answered against the block that produced them. Using the new index would
-          // un-freeze the tune exactly at the boundary where a specialization block
-          // ends, folding in a whole block of by-design stalls in one go.
-          const completedBlockIndex = u.plan_meta?.block_index ?? 0;
-          // `planVolume` (consideration #1): the sets this plan delivers per muscle, so a stall
-          // on well under them holds instead of earning +2 on paper. A hand-built plan's stored
-          // rationale may not describe it → null (permissive).
-          const { adjust: volumeAdjust, held: heldThisBlock, notCompleting = [] } = isSpecializing(u.profile, completedBlockIndex)
-            ? { adjust: prevAdjust, held: [] }
-            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal, planVolume: u.program?.custom ? null : u.plan_rationale?.volume_by_muscle });
-          // What CHANGED this block — so the new-block coach note announces the actual
-          // adjustment, not the whole accumulated total re-announced every block. `held`
-          // carries the adds the recovery/fuel gate suppressed, so the note can say WHY
-          // a stalled muscle's sets didn't move instead of saying nothing (Wave 258).
-          const tunedThisBlock = {
-            bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
-            eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
-            held: heldThisBlock,
-          };
-          // THE EXERCISE-CHANGE LEVER (the KB's 4th plateau lever, previously absent):
-          // lifts this person has genuinely plateaued on are demoted below every
-          // alternative for their muscle, so the new block offers a different angle
-          // rather than the same stalled movement. Recency-filtered, or a swapped-out
-          // lift would stay flagged forever and never come back (see stalledExerciseIds).
-          // …sparing the lifts of muscles that weren't getting their planned sets (consideration #1).
-          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, notCompleting);
+          // ADAPTIVE (#2) + THE EXERCISE-CHANGE LEVER: the just-completed block's response
+          // folded into the running per-muscle volume adjustment (bounded MEV↔MRV, frozen
+          // during a specialization block, gated on recovery, fuel, regression, effort and —
+          // consideration #1 — completion), and the genuinely plateaued lifts demoted for a
+          // different angle. Decided by coach.mjs blockTuneDecision on the FRESH copy, the
+          // same function the post-workout read-out forecasts with (Burst 2).
+          const { volumeAdjust, tuned: tunedThisBlock, stalledExercises } = blockTuneDecision(u, sessions, { checkins, bodyweights }, nowISO);
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
           // one accessible lift re-picks the same one. The coach note says "I've
@@ -948,26 +904,12 @@ export function createApp(store, config = {}) {
     // Read from progressReport rather than re-deriving: one definition of the signal,
     // not two that can drift (the maintenance/hold filtering matters here too — a
     // muscle a specialization block deliberately holds low must never trigger this).
-    const rdBlockStart = user.plan_meta?.block_start;
-    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO, tz);
-    const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
-    if (rdBlock && rdBlockStart && !user.program?.custom) {
-      const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
-      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
-      // The stamp lives in the user's LOCAL week frame — the same frame the block
-      // clock and buildToday's read use; raw isoWeekKey put a UTC-8 user's Sunday
-      // deload in a week they weren't in (lesson 22, storage+consumption together).
-      const rdWeek = isoWeekKeyLocal(nowISO, tz);
-      // Re-arm context (C15): sessionWeekKey is already local (it prefers
-      // local_date), and ISO week keys are zero-padded, so string order IS
-      // chronological order (lesson 40 — the ordinal form, not equality).
-      const rdTrainedKeys = new Set(sessions.map(sessionWeekKey).filter(Boolean));
-      const rdStamp = user.plan_meta?.reactive_deload;
-      const rdOpts = {
-        stampedWeekTrained: rdStamp ? rdTrainedKeys.has(rdStamp.week) : true,
-        stampedWeekOver: rdStamp ? rdStamp.week < rdWeek : false,
-      };
-      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex, rdOpts)) {
+    // The decision is coach.mjs reactiveDeloadStampDue (Burst 2: the post-workout read-out
+    // forecasts with the same function); the compare-and-swap below stays here.
+    const rdDue = reactiveDeloadStampDue(user, sessions, bodyweights, checkins, nowISO, tz);
+    if (rdDue) {
+      const { block: rdBlockIndex, week: rdWeek, trainedKeys: rdTrainedKeys } = rdDue;
+      {
         const stamped = await store.updateUser(id, (u) => {
           // Precondition re-checked inside the CAS against the FRESH read — a
           // concurrent request may have stamped this block already, and stamping

@@ -7,6 +7,7 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
+import { isSpecializing } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -462,9 +463,11 @@ const unlinkOrphanSupersets = (list) => {
 // intermediate's by-design week-1 BLOCK_SET_SCALE of 0.70x.
 const FIRST_SESSION_EXERCISES = 4;
 
-export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
-  const { byId, name } = resolveEx(customEx);
-  const program = user.program;
+// WHERE TRAINING STANDS on `now` — the mesocycle week (with a stamped reactive deload folded
+// in) and any event taper. ONE derivation shared by buildToday (what to do today) and the
+// post-workout read-out (what it means — Burst 2), so the two can never describe different
+// weeks (lesson 1). Fresh objects every call: buildToday rewrites the notes for a comeback.
+export function trainingContext(user, sessions, now = null) {
   // beginner: gates plain-effort language on the set screen (Goal 3) — a true
   // novice sees "leave a couple in the tank", not the "RIR" acronym; someone with
   // real training history keeps the term. Also gates the body-scaled starting-
@@ -495,6 +498,57 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // it's inside the taper window — see taperPhase's comment for why this
   // OVERRIDES the mesocycle wave below rather than compounding with it.)
   const taper = taperPhase(now, user.profile?.goal_event_date, user.profile?.training_status, user.profile?.tz_offset_min);
+  return { beginner, block, taper };
+}
+
+// What the app SERVES for one lift of the plan in a training context: the RIR band shown
+// (it IS the prescription autoregulation measures against), the set count after the wave or
+// taper, and the weight with its reason. The single door for "what will this lift be" —
+// buildToday serves it, and the read-out's "next time" quotes it, so the promise test can pin
+// the two equal (Burst 2, lesson 60).
+export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null) {
+  const { block, taper } = ctx;
+  const rirBand = taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
+    : block?.phase === "deload" ? "3-4"
+    : block ? waveRir(ex.rir ?? "1-3", block.week)
+    : ex.rir ?? "1-3";
+  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper);
+  // Apply the mesocycle wave: sets scale with the block week — but never below 2
+  // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
+  // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
+  // plan engine's own no-1-set rule holds through the wave; week-1 users were
+  // seeing five 1-set entries). Deload recovery still lands via the halved big
+  // lifts, the ~10% load ease below, and RIR 3-4. A taper uses its OWN scale
+  // instead (see taperPhase) — it overrides the wave rather than compounding.
+  const sets = taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
+    : block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale))
+    : ex.sets;
+  // Deload load must ease from last week's ACTUAL weight, not the progressed
+  // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
+  // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
+  // week (e.g. (40+5)*0.9 = 40.5 > 40). Anchor on `last_kg` and take the MIN with
+  // whatever suggestWeight already returned, so a deload can never be heavier than
+  // the prior real week and never undoes a lighter ease (a layoff comeback at
+  // 0.88× stays at 0.88×, not bumped back up to 0.9×). Never during a taper — a
+  // taper's whole point is holding the load while sets come down.
+  const suggested_kg = !taper && block?.phase === "deload" && sug.suggested_kg != null
+    ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
+    : sug.suggested_kg;
+  // The reason travels to the set screen (Burst 1 review), so it must describe the weight
+  // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
+  // would contradict the pre-filled number.
+  const suggestion_note = suggested_kg != null && sug.suggested_kg != null && suggested_kg < sug.suggested_kg
+    ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
+    : sug.note;
+  return { rirBand, sets, sug, suggested_kg, suggestion_note };
+}
+
+export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
+  const { byId, name } = resolveEx(customEx);
+  const program = user.program;
+  const ctx = trainingContext(user, sessions, now);
+  const { beginner, taper } = ctx;
+  let { block } = ctx;
   // Rotate by sessions of THIS program only, so merged sessions from a different
   // program (e.g. an earlier device) don't phase-shift the cycle.
   // rotation_base rebases the cycle at the last regenerate: the deterministic
@@ -669,43 +723,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   }
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
-    // The rir band shown to the user IS the prescription the autoregulation
-    // measures compliance against — compute it first and pass it through.
-    const rirBand = taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
-      : block?.phase === "deload" ? "3-4"
-      : block ? waveRir(ex.rir ?? "1-3", block.week)
-      : ex.rir ?? "1-3";
-    const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper);
-    // Apply the mesocycle wave: sets scale with the block week — but never below 2
-    // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
-    // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
-    // plan engine's own no-1-set rule holds through the wave; week-1 users were
-    // seeing five 1-set entries). Deload recovery still lands via the halved big
-    // lifts, the ~10% load ease below, and RIR 3-4. A taper uses its OWN scale
-    // instead (see taperPhase) — it overrides the wave rather than compounding.
-    const sets = taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
-      : block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale))
-      : ex.sets;
-    // Deload load must ease from last week's ACTUAL weight, not the progressed
-    // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
-    // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
-    // week (e.g. (40+5)*0.9 = 40.5 > 40). Anchor on `last_kg` and take the MIN with
-    // whatever suggestWeight already returned, so a deload can never be heavier than
-    // the prior real week and never undoes a lighter ease (a layoff comeback at
-    // 0.88× stays at 0.88×, not bumped back up to 0.9×). Never during a taper — a
-    // taper's whole point is holding the load while sets come down.
-    let suggested_kg = !taper && block?.phase === "deload" && sug.suggested_kg != null
-      ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
-      : sug.suggested_kg;
+    // The band, the wave-scaled sets and the weight with its reason — through the one door
+    // the read-out's "next time" also uses (servedLift).
+    const served = servedLift(ex, sessions, { block, taper }, byId, now);
+    const { rirBand, sets, sug } = served;
+    let { suggested_kg, suggestion_note } = served;
     // No history for this lift: a non-beginner gets a body-scaled starting guess
     // to confirm/adjust instead of an empty bar (roadmap #4's last slice); a true
     // beginner keeps the null (the client's safe empty-bar default + ramp-up card).
-    // The reason travels to the set screen (Burst 1 review), so it must describe the weight
-    // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
-    // would contradict the pre-filled number.
-    let suggestion_note = suggested_kg != null && sug.suggested_kg != null && suggested_kg < sug.suggested_kg
-      ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
-      : sug.note;
     if (suggested_kg == null && !beginner && bodyweightKg) {
       const estimate = estimateStartingWeight(e, bodyweightKg, ex.exercise, byId);
       if (estimate != null) {
@@ -923,6 +948,36 @@ export function reactiveDeloadDue(responses, block, plan_meta, blockIndex, opts 
   return (responses ?? []).some((r) => r.signal === "change");
 }
 
+// The reactive-deload STAMP /api/today writes, decided here (Burst 2) so the post-workout
+// read-out can say what the next /api/today WILL do — one definition, two readers. The
+// route keeps its compare-and-swap re-check on the fresh stored copy; this is the decision.
+// Returns { block, week, trainedKeys } when a stamp is due, else null.
+export function reactiveDeloadStampDue(user, sessions, bodyweights, checkins, nowISO, tz) {
+  const blockStart = user.plan_meta?.block_start;
+  const trainedWeeks = trainedWeeksInBlock(sessions, blockStart ?? user.created_at, nowISO, tz);
+  const block = blockPhase(trainedWeeks, user.profile?.training_status);
+  if (!block || !blockStart || user.program?.custom) return null;
+  const blockIndex = Math.floor(trainedWeeks / BLOCK_WEEKS);
+  // Read from progressReport rather than re-deriving: one definition of the signal,
+  // not two that can drift (the maintenance/hold filtering matters here too — a
+  // muscle a specialization block deliberately holds low must never trigger this).
+  const report = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
+  // The stamp lives in the user's LOCAL week frame — the same frame the block
+  // clock and buildToday's read use; raw isoWeekKey put a UTC-8 user's Sunday
+  // deload in a week they weren't in (lesson 22, storage+consumption together).
+  const week = isoWeekKeyLocal(nowISO, tz);
+  // Re-arm context (C15): sessionWeekKey is already local (it prefers
+  // local_date), and ISO week keys are zero-padded, so string order IS
+  // chronological order (lesson 40 — the ordinal form, not equality).
+  const trainedKeys = new Set(sessions.map(sessionWeekKey).filter(Boolean));
+  const stamp = user.plan_meta?.reactive_deload;
+  const opts = {
+    stampedWeekTrained: stamp ? trainedKeys.has(stamp.week) : true,
+    stampedWeekOver: stamp ? stamp.week < week : false,
+  };
+  return reactiveDeloadDue(report.adaptive, block, user.plan_meta, blockIndex, opts) ? { block: blockIndex, week, trainedKeys } : null;
+}
+
 // The too-easy Set effortSignal's per-muscle read reduces to: only muscles with
 // POSITIVE logged evidence of surplus effort (≥10 recent sets averaging ≥1 rep
 // above their tier target). Shared by the tune and the Progress card so the two
@@ -992,6 +1047,43 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // a lift trained half as often as planned hasn't plateaued, and swapping it would only
   // reset its progression (the rollover filters with it).
   return { adjust, held, notCompleting: [...notCompletingMuscleIds].sort() };
+}
+
+// WHAT THE BLOCK BOUNDARY DECIDES — the volume tune and the stalled-lift swaps — if it came
+// at `nowISO` (Burst 2). The /api/today rollover applies it; the read-out describes it ("if
+// your block ended today…"), so the forecast and the action can never differ (lesson 1).
+// The recovery/energy gate reads only the JUST-COMPLETED block, not the user's whole history:
+// recoverySignal and bodyweightTrend average whatever they're handed, so the full log turned
+// "block-average readiness" into a LIFETIME average (an athlete wrecked THIS block but with
+// months of good prior check-ins never tripped the gate, and a long-past cut kept reading as a
+// current deficit). Window to the block length (6 weeks); a sparse window falls back to
+// permissive — the safe direction, since the gate only ever RESTRAINS adding. DURING a
+// specialization block, non-priority muscles are deliberately maintenance-dosed, so their lifts
+// "stall" by design — the tune is frozen (the prior carried forward), judged against the block
+// that JUST COMPLETED (block_index as stored), never the one being entered.
+export function blockTuneDecision(user, sessions, { checkins = [], bodyweights = [] } = {}, nowISO) {
+  const windowStart = new Date(+new Date(nowISO) - 42 * 86400000).toISOString().slice(0, 10);
+  const inWindow = (d) => (d || "").slice(0, 10) >= windowStart;
+  const prevAdjust = user.plan_meta?.volume_adjust ?? {};
+  // `planVolume` (consideration #1): the sets this plan delivers per muscle, so a stall on
+  // well under them holds instead of earning +2 on paper. A hand-built plan's stored
+  // rationale may not describe it → null (permissive).
+  const { adjust, held, notCompleting = [] } = isSpecializing(user.profile, user.plan_meta?.block_index ?? 0)
+    ? { adjust: prevAdjust, held: [] }
+    : computeVolumeAdjust(prevAdjust, sessions, user.custom_exercises || [], { checkins: checkins.filter((c) => inWindow(c.date)), bodyweights: bodyweights.filter((b) => inWindow(b.date)), goal: user.profile?.primary_goal, planVolume: user.program?.custom ? null : user.plan_rationale?.volume_by_muscle });
+  // What CHANGED this block — so the new-block coach note announces the actual adjustment,
+  // not the whole accumulated total re-announced every block. `held` carries the adds a gate
+  // suppressed, so the note can say WHY a stalled muscle's sets didn't move (Wave 258).
+  const tuned = {
+    bumped: Object.keys(adjust).filter((m) => (adjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
+    eased: Object.keys(adjust).filter((m) => (adjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
+    held,
+  };
+  // THE EXERCISE-CHANGE LEVER: lifts this person has genuinely plateaued on are demoted below
+  // every alternative for their muscle — recency-filtered (stalledExerciseIds), and sparing
+  // the lifts of muscles that weren't getting their planned sets (consideration #1).
+  const stalledExercises = stalledExerciseIds(sessions, user.custom_exercises || [], nowISO, notCompleting);
+  return { volumeAdjust: adjust, tuned, stalledExercises };
 }
 
 // `tz` is the user's UTC offset in minutes east — REQUIRED for the week arithmetic
