@@ -11,7 +11,8 @@ stated, with the reasoning.
    every set at the anchor load hits the top of its rep range, then add 2.5 kg (1 kg for
    dumbbell/cable isolations). If you log effort (RIR), leaving a full rep more than the plan asked
    for moves the weight up a step without waiting for the rep ceiling; hitting failure holds it.
-   Nothing else moves a weight: no percentages, no calendar.
+   If even your first set falls clearly short of the range, the next session lightens the load to
+   one that lands in it (W279). Nothing else moves a weight: no percentages, no calendar.
 2. **How do periodization and deloads work?** A 6-week mesocycle counted in weeks you actually
    trained: sets ramp 70% → 80% → 90% → 100% → 100% of the plan's targets, effort creeps up, and
    week 6 halves the multi-set lifts, eases loads ~10%, and sits at RIR 3–4. There are four
@@ -38,9 +39,15 @@ Decision order per exercise, first match wins:
 | 0 | never trained it | none — you pick (non-beginners get a body-scaled starting estimate) |
 | 1 | that lift untrained ≥ **12 days** | last weight × **0.88**, progression suppressed (comeback ease) |
 | 2 | logged RIR ≥ band-top + 1 | +1 increment (+2 increments at band-top + 2) |
-| 3 | logged RIR ≤ 0 without hitting top of range | hold — build reps first |
-| 4 | every set at the anchor weight hit the top of the range | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) |
-| 5 | otherwise | hold — add a rep or two |
+| 3 | **set 1 under the range** near failure (RIR unlogged or ≤ 1): **≥ 2 reps short**, or 1 short twice running at the same or a heavier weight | **eased** to the load that lands set 1 at the range's bottom (Epley e1RM of set 1, at the band's near edge), floored to the lift's increment: at least one increment down, at most ~20%. A *first* one-rep miss holds, with a warning (W279) |
+| 4 | logged RIR ≤ 0 without hitting top of range | hold — build reps first |
+| 5 | every set at the anchor weight hit the top of the range | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) |
+| 6 | otherwise | hold — add a rep or two |
+
+Rule 3 is the KB's own double-progression rule ("pick a weight you can do for at least the bottom
+of the range", Grade D), applied when a set proves the weight wrong. It is judged on set 1 because a
+later set's fatigue drop-off is normal, not evidence; it never fires during an event taper (loads
+hold) and is never tagged as a comeback, so the eased weight anchors the next progression normally.
 
 Details that matter: the anchor is set 1's weight, and reps/RIR are judged **only over sets at
 that weight or heavier** (a lighter back-off set is a different load, not evidence — Wave 258).
