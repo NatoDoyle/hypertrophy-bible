@@ -995,6 +995,14 @@ export function createApp(store, config = {}) {
     const twNext = lbEligible ? trainedWeeksInBlock(sessions, lbStart, new Date(Date.parse(nowISO) + 7 * 86400000).toISOString(), tz) : 0;
     daily.last_block_week = lbEligible && twNow % BLOCK_WEEKS === BLOCK_WEEKS - 1;
     daily.block_rolls_over = lbEligible && Math.floor(twNext / BLOCK_WEEKS) !== Math.floor(twNow / BLOCK_WEEKS);
+    // The plan's size vs the days actually committed (W278, the owner's pick): once a
+    // DIFFERENT count has stood a week (the commitment is carried), Today offers a one-tap
+    // rebuild through the Settings door. Never automatic: a "just this week" pick must
+    // not restart a block. Only for counts a plan can be built for (2-6), never over a
+    // hand-edited plan (a rebuild would discard the edits), never while paused (rail #1).
+    const planDays = user.program?.sessions?.length ?? 0, keptDays = plan?.days?.length ?? 0;
+    daily.plan_fit = plan?.carried && !user.paused && !user.program?.custom && planDays && keptDays >= 2 && keptDays <= 6 && keptDays !== planDays
+      ? { plan_days: planDays, committed_days: keptDays } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).

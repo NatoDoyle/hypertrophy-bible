@@ -1160,6 +1160,34 @@ try {
   ok("#week-plan …true once it's trained (next week opens a new block at Day A); a trained week 5 doesn't roll over",
     lbw6b.daily?.block_rolls_over === true && lbw6b.session?.block?.week === 6 && lbw5b.daily?.block_rolls_over === false);
 
+  // --- #plan-fit (W278, the owner's pick of option 1): when a DIFFERENT day count than
+  // the plan's has stood a week (the commitment is carried), Today offers a one-tap
+  // rebuild — never automatic, so a "just this week" pick never restarts a block.
+  // Fixed dates via ?d= (lesson 64): 2026-10-14 is a Wednesday in W42.
+  const fitUser = async ({ days, week = "2026-W41", dpw = 4, patch = null }) => {
+    const id = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: dpw, available_equipment: ["bodyweight"] } })).data.user_id;
+    await store.updateUser(id, (u) => { u.profile.commitment = { week, days, set_on: week === "2026-W41" ? "2026-10-06" : "2026-10-12" }; if (patch) patch(u); return u; });
+    return id;
+  };
+  const fitOf = async (id) => (await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": id } })).json()).daily?.plan_fit;
+  const fit3 = await fitUser({ days: ["mon", "wed", "fri"] });
+  ok("#plan-fit a 4-workout plan with 3 days standing a week → the offer names both counts", JSON.stringify(await fitOf(fit3)) === JSON.stringify({ plan_days: 4, committed_days: 3 }));
+  ok("#plan-fit …more days than workouts too", JSON.stringify(await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri"] }))) === JSON.stringify({ plan_days: 4, committed_days: 5 }));
+  ok("#plan-fit no offer for a pick made THIS week (it hasn't stood yet)", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], week: "2026-W42" }))) === null);
+  ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
+  ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",
+    (await fitOf(await fitUser({ days: ["mon"] }))) === null && (await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }))) === null);
+  ok("#plan-fit no offer for a hand-edited plan (a rebuild would discard the edits) or a paused user (rail #1)",
+    (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.program = { ...u.program, custom: true }; } }))) === null
+    && (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.paused = { from: "2026-10-10", reason: "sick" }; } }))) === null);
+  // The rebuild is the Settings door itself (one copy of the rules): a training change.
+  const fitRe = await json("POST", "/api/plan/regenerate", { user_id: fit3, profile: { days_per_week: 3 } });
+  const fitAfter = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": fit3 } })).json();
+  const fitU = await store.getUser(fit3);
+  ok("#plan-fit tapping Rebuild: a 3-workout plan, a fresh block from Day A, and the offer is gone",
+    fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
+    && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+
   // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
   // "does this user actually have an account". The client used to trust a
   // localStorage flag the OLD send path planted on SEND — so a user who requested a

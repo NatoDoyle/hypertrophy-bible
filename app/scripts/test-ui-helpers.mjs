@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -166,6 +166,23 @@ check("nextSessionLine: the next workout by day — tomorrow, a weekday, or (no 
   assert.equal(nextSessionLine({ nextDay: { day: "fri", date: "2026-10-09" }, todayKey: "2026-10-07", name: "Legs A" }), "Next: Friday — Legs A.");
   assert.equal(nextSessionLine({ nextDay: null, todayKey: "2026-10-07", name: "Legs A" }), "Next up: Legs A.");
   assert.equal(nextSessionLine({ nextDay: null, todayKey: "2026-10-07", name: "" }), "");
+});
+
+// --- W278 (the owner's option 1): the plan's size vs the days actually committed. The copy
+// says what the mismatch costs, what a rebuild changes, and that it starts a fresh block.
+check("planFitCopy: fewer days than workouts — they roll into next week, your muscles get less; the rebuild fits the week", () => {
+  assert.deepEqual(planFitCopy({ plan_days: 4, committed_days: 3 }), {
+    title: "Fit your plan to your 3 days?",
+    body: "You've been picking 3 days a week, but your plan has 4 workouts — so workouts keep rolling into the next week, and your muscles get less than the plan was built for. Rebuilt for 3 days, every workout fits your week. It starts a fresh training block.",
+    rebuild: "Rebuild for 3 days", keep: "Keep my 4-day plan", key: "4:3", days: 3,
+  });
+});
+check("planFitCopy: more days than workouts — they repeat, your muscles get more; no offer without a mismatch", () => {
+  const c = planFitCopy({ plan_days: 3, committed_days: 5 });
+  assert.equal(c.body, "You've been picking 5 days a week, but your plan has 3 workouts — so workouts repeat within the week, and your muscles get more than the plan was built for. Rebuilt for 5 days, each day gets its own workout. It starts a fresh training block.");
+  assert.equal(c.rebuild, "Rebuild for 5 days"); assert.equal(c.keep, "Keep my 3-day plan"); assert.equal(c.key, "3:5");
+  assert.equal(planFitCopy(null), null);
+  assert.equal(planFitCopy({ plan_days: 4, committed_days: 4 }), null);
 });
 
 // --- The phone-calendar file is the one reminder the app can't change (W271 review):

@@ -216,6 +216,23 @@ export function offPlanLabel({ nextDay = null, name, crossesBlock = false } = {}
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Not a training day — next: ${when}, when a new training block starts` : `Not a training day — next: ${when} (${name})`;
 }
+// The plan's size vs the days actually committed (W278, the owner's pick of option 1): the
+// server offers it (daily.plan_fit) once a different count has stood a week; this says
+// what the mismatch costs, what a rebuild changes, and that it starts a fresh block — the
+// cost of tapping it. `key` identifies the pair, so "Keep" hides THIS offer only.
+export function planFitCopy(fit) {
+  const n = fit?.plan_days, c = fit?.committed_days;
+  if (!n || !c || n === c) return null;
+  const cost = c < n
+    ? "so workouts keep rolling into the next week, and your muscles get less than the plan was built for"
+    : "so workouts repeat within the week, and your muscles get more than the plan was built for";
+  const gain = c < n ? "every workout fits your week" : "each day gets its own workout";
+  return {
+    title: `Fit your plan to your ${c} days?`,
+    body: `You've been picking ${c} days a week, but your plan has ${n} workouts — ${cost}. Rebuilt for ${c} days, ${gain}. It starts a fresh training block.`,
+    rebuild: `Rebuild for ${c} days`, keep: `Keep my ${n}-day plan`, key: `${n}:${c}`, days: c,
+  };
+}
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;

@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, DAY_LONG } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, DAY_LONG } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1588,11 +1588,20 @@ async function renderToday() {
   // It shows on day 1 now; the copy above no longer promises a channel they may
   // not have, which is what made hiding it feel necessary.
   const commitment = commitmentCard(adh.commitment, [], adh.commitment_resume_days, week);
+  // The plan's size vs the days actually trained (W278, the owner's pick): offered by the
+  // server once a different count has stood a week; one tap rebuilds through the Settings
+  // door, and "Keep" hides THIS pair on this device for good (never nags).
+  const fit = planFitCopy(dy.plan_fit);
+  const fitKept = (() => { try { return !!fit && localStorage.getItem("hb_fit_kept") === fit.key; } catch { return false; } })();
+  const fitCard = fit && !fitKept ? `<div class="card" id="plan-fit"><b>🗓️ ${esc(fit.title)}</b>
+      <p class="muted" style="margin:4px 0 8px">${esc(fit.body)}</p>
+      <button class="btn secondary inline" id="fit-rebuild" style="margin:0 6px 0 0">${esc(fit.rebuild)}</button>
+      <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
 
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -1602,6 +1611,19 @@ async function renderToday() {
     ${cardioCard}`;
   wirePendingCodeCard();
   wireCommitmentCard();
+  if ($("#fit-rebuild")) $("#fit-rebuild").onclick = async () => {
+    $("#fit-rebuild").disabled = true; // one rebuild per tap — a second would be a second fresh block
+    let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { days_per_week: fit.days } }) }); } catch { r = null; }
+    if (!r?.program) { if ($("#fit-rebuild")) $("#fit-rebuild").disabled = false; alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
+    try { localStorage.setItem("hb_program", r.program.name); } catch {}
+    pendingNotice = `🗓️ Rebuilt for ${fit.days} days a week — a fresh training block starts with your next workout.`;
+    renderToday();
+  };
+  if ($("#fit-keep")) $("#fit-keep").onclick = () => {
+    try { localStorage.setItem("hb_fit_kept", fit.key); } catch {}
+    $("#plan-fit")?.remove();
+    say(`${fit.keep.replace(/^Keep my /, "Kept your ")}.`);
+  };
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
     const k = b.dataset.step;
