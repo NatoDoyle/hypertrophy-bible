@@ -3031,6 +3031,13 @@ async function renderProgress() {
   // target → the fix is effort, not sets. Sits between the ceiling read (deload
   // still wins) and the add-volume read (never add sets to a sandbagged stall).
   const pushHarder = (p.adaptive || []).filter((a) => a.signal === "effort");
+  // Consideration #1: the stall is the missing sessions, not the program — those muscles are
+  // getting well under the sets the plan already has for them. Said plainly and kindly (Goal 4),
+  // with the lever; it outranks effort and volume reads (neither can help work that isn't done).
+  const notDoing = (p.adaptive || []).filter((a) => a.signal === "complete");
+  const plainName = (a) => a.muscle_name.replace(/\s*\([^)]*\)/, "");
+  const doneShare = notDoing.length === 1 ? `about ${notDoing[0].realized} of the ~${notDoing[0].planned} sets a week your plan has for your ${plainName(notDoing[0]).toLowerCase()}`
+    : notDoing.length ? `about ${Math.round((100 * notDoing.reduce((s, a) => s + a.realized, 0)) / notDoing.reduce((s, a) => s + a.planned, 0))}% of the weekly sets your plan has for your ${notDoing.map((a) => plainName(a).toLowerCase()).join(", ")}` : "";
   // A `gated` add is one the tune will NOT act on — promising "I'm adding sets"
   // there was false (Wave 258). Regression-gated rows are owned by the regression
   // card above ("I've stopped adding volume to those muscles"), so they render
@@ -3052,6 +3059,8 @@ async function renderProgress() {
         <p class="muted">${esc(p.stalls.map((s) => s.name).join(", "))} — flat for ~${p.stalls[0].weeks_flat} weeks. That's normal, and fixable — and you don't have to do anything about it.</p>
         ${atCeiling.length
           ? `<p class="muted">Your ${esc(atCeiling.map((a) => a.muscle_name).join(", "))} ${atCeiling.length === 1 ? "is" : "are"} already at the top of what you can recover from, so more sets is the one thing that won't help. I'm easing the volume back and bringing a deload forward, then changing the stalled lift for a different angle next block.</p>`
+          : notDoing.length
+            ? `<p class="muted">You've been getting through ${esc(doneShare)} — so this isn't a plateau, it's sessions that haven't happened yet. More sets on paper won't help, so I'm holding ${notDoing.length === 1 ? "it" : "them"} steady and keeping your lifts; getting through more of the planned sets is what moves them. If your weeks can't fit them, set fewer training days in Settings and I'll rebuild the plan around what you can do.</p>`
           : pushHarder.length
             ? `<p class="muted">Your own effort logs show plenty left in the tank on your ${esc(pushHarder.map((a) => a.muscle_name).join(", "))} sets. Before adding volume, take the last set of each lift closer to failure — about 1–2 reps in reserve. Effort is the cheapest fix there is, so I'm holding your sets steady until it's in.</p>`
             : canAddMore.length

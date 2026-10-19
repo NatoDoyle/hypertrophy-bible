@@ -685,6 +685,29 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
 // at. Extracted from computeVolumeAdjust so the Progress card's advice and the
 // block-boundary tune read the SAME number — sampled differently, the card promised
 // "I'm adding sets next block" from a reference week the tune's peak then EASED.
+// CONSIDERATION #1 — "how does the program adapt when someone is inconsistent and doesn't
+// finish all the workouts?" The block clock already waits (it counts trained weeks) and the
+// rotation never drops a session. What it lacked: a muscle that stalls because it gets HALF
+// its planned work read as a plateau and earned +2 sets — on paper — every block (measured:
+// a 4-day plan done 2 days a week, lifts flat → +2 sets on all 10 muscles). This is the test
+// for that: each muscle's MEAN weekly sets over the last `n` PRESENT weeks (the mean, not the
+// peak — one full week must not vouch for a block of half-weeks) against the plan's projected
+// weekly sets × `meanScale` (the block wave's average, so a perfect complier reads ~1.0).
+// Below COMPLETION_RATIO → { realized, planned }. Pure; no plan numbers → {} (permissive).
+export const COMPLETION_RATIO = 0.7;
+export function completionShortfall(weekly, planVolume, { n = 6, meanScale = 1, ratio = COMPLETION_RATIO } = {}) {
+  const out = {};
+  const weeks = Object.keys(weekly ?? {}).sort().slice(-n);
+  if (!planVolume || !weeks.length) return out;
+  for (const [m, v] of Object.entries(planVolume)) {
+    const planned = v?.projected_sets;
+    if (!(planned > 0)) continue;
+    const realized = Math.round((weeks.reduce((a, wk) => a + (weekly[wk]?.[m] ?? 0), 0) / weeks.length) * 10) / 10;
+    if (realized < ratio * planned * meanScale) out[m] = { realized, planned };
+  }
+  return out;
+}
+
 export function peakWeeklyVolume(weekly, n = 6) {
   const peak = {};
   for (const wk of Object.keys(weekly).sort().slice(-n))
@@ -697,7 +720,10 @@ export function peakWeeklyVolume(weekly, n = 6) {
 // C) marks muscles whose LOGGED effort sits clearly above the KB target — a stall
 // there gets "push closer to failure" BEFORE "add sets" (the KB's own lever order:
 // volume → effort → deload → variation, judged per lever). Returns one entry per muscle.
-export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new Set(), tooEasyMuscleIds = new Set()) {
+// `completion` (consideration #1) maps a muscle the user isn't getting its PLANNED sets for
+// (completionShortfall) to { realized, planned }: its "add" — below MEV, or stalled with
+// room — becomes "complete". The plan already has the sets; doing them comes before more.
+export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new Set(), tooEasyMuscleIds = new Set(), completion = {}) {
   const out = [];
   for (const [m, sets] of Object.entries(weekVolume)) {
     const lm = muscleIndex.get(m);
@@ -724,10 +750,15 @@ export function volumeResponse(weekVolume, muscleIndex, stalledMuscleIds = new S
       signal = "hold";
       advice = `~${sets} sets/wk, progressing in a productive range — hold here.`;
     }
-    out.push({ muscle: m, sets, signal, advice });
+    const c = completion?.[m];
+    if (signal === "add" && c) {
+      signal = "complete";
+      advice = `you're doing about ${c.realized} of the ~${c.planned} sets a week your plan has for it — finishing those comes before adding more.`;
+    }
+    out.push({ muscle: m, sets, signal, advice, ...(signal === "complete" ? { realized: c.realized, planned: c.planned } : {}) });
   }
   // Surface the actionable ones first (reduce/change/effort/add before hold).
-  const rank = { reduce: 0, change: 1, effort: 2, add: 3, hold: 4 };
+  const rank = { reduce: 0, change: 1, effort: 2, add: 3, complete: 3, hold: 4 };
   return out.sort((a, b) => (rank[a.signal] - rank[b.signal]) || (b.sets - a.sets));
 }
 
@@ -764,10 +795,14 @@ export function deriveVolumeAdjust(prevAdjust, weekVolume, muscleIndex, stalledM
   // card says "push closer to failure". Per-muscle, positive-evidence-only (an
   // empty set here leaves every path byte-identical).
   const tooEasy = context.tooEasyMuscleIds ?? new Set();
+  // Consideration #1: a muscle whose typical week falls well short of the sets the plan
+  // already gives it (completionShortfall) is under-TRAINED, not plateaued — more sets on
+  // paper fix nothing. Hold; per-muscle; an empty set leaves every path byte-identical.
+  const notCompleting = context.notCompletingMuscleIds ?? new Set();
   for (const [m, sets] of Object.entries(weekVolume || {})) {
     const lm = muscleIndex.get(m);
     if (!lm || lm.mev?.min == null || lm.mav?.max == null || lm.mrv?.max == null) continue;
-    const mayAdd = canAdd && !regressing.has(m) && !tooEasy.has(m);
+    const mayAdd = canAdd && !regressing.has(m) && !tooEasy.has(m) && !notCompleting.has(m);
     let step = 0;
     if (sets > lm.mrv.max) step = -2;                                              // over the ceiling → ease
     else if (stalledMuscleIds.has(m)) step = sets < lm.mav.max ? (mayAdd ? 2 : 0) : -2; // stalled: add if room AND recovered AND not declining AND not too-easy, else hold/ease

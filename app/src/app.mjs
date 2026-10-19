@@ -894,9 +894,12 @@ export function createApp(store, config = {}) {
           // un-freeze the tune exactly at the boundary where a specialization block
           // ends, folding in a whole block of by-design stalls in one go.
           const completedBlockIndex = u.plan_meta?.block_index ?? 0;
-          const { adjust: volumeAdjust, held: heldThisBlock } = isSpecializing(u.profile, completedBlockIndex)
+          // `planVolume` (consideration #1): the sets this plan delivers per muscle, so a stall
+          // on well under them holds instead of earning +2 on paper. A hand-built plan's stored
+          // rationale may not describe it → null (permissive).
+          const { adjust: volumeAdjust, held: heldThisBlock, notCompleting = [] } = isSpecializing(u.profile, completedBlockIndex)
             ? { adjust: prevAdjust, held: [] }
-            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
+            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal, planVolume: u.program?.custom ? null : u.plan_rationale?.volume_by_muscle });
           // What CHANGED this block — so the new-block coach note announces the actual
           // adjustment, not the whole accumulated total re-announced every block. `held`
           // carries the adds the recovery/fuel gate suppressed, so the note can say WHY
@@ -911,7 +914,8 @@ export function createApp(store, config = {}) {
           // alternative for their muscle, so the new block offers a different angle
           // rather than the same stalled movement. Recency-filtered, or a swapped-out
           // lift would stay flagged forever and never come back (see stalledExerciseIds).
-          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO);
+          // …sparing the lifts of muscles that weren't getting their planned sets (consideration #1).
+          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, notCompleting);
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
           // one accessible lift re-picks the same one. The coach note says "I've

@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
 const parseRange = (s) => {
@@ -305,6 +305,17 @@ export const gentleGapDays = (dpw) => Math.max(4, Math.ceil(7 / Math.max(1, dpw 
 // ---------------------------------------------------------------------------
 export const BLOCK_WEEKS = 6;
 const BLOCK_SET_SCALE = [0.7, 0.8, 0.9, 1.0, 1.0, 0.5]; // w1..w5 build->peak, w6 deload
+// The wave's average, so "the sets the plan delivers" reads ~1.0 for someone who does every
+// one (consideration #1's completion test — completionFor below).
+const BLOCK_MEAN_SCALE = BLOCK_SET_SCALE.reduce((a, b) => a + b, 0) / BLOCK_SET_SCALE.length;
+// Consideration #1's ONE sample, read identically by the block-boundary tune and the Progress
+// card: the muscles getting well under the sets the plan already delivers. A hand-built plan's
+// stored rationale may not describe it, so it is never judged (permissive, as before).
+function completionFor(weekly, user) {
+  if (user?.program?.custom) return {};
+  const beginner = (user?.profile?.training_status ?? "beginner") === "beginner";
+  return completionShortfall(weekly, user?.plan_rationale?.volume_by_muscle, { meanScale: beginner ? 1 : BLOCK_MEAN_SCALE });
+}
 // `trainedWeeks` = completed TRAINED weeks since block_start (derive-core's
 // trainedWeeksInBlock), not calendar weeks. See that function for why: a wall-clock
 // mesocycle handed a phantom "Week 6 — deload" to someone who trained twice in six
@@ -546,9 +557,17 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // nothing — and the user was left wondering why a flagged plateau changed
     // nothing. One plain sentence, only when it happened.
     const held = changed.held ?? [];
-    const heldNote = held.length
-      ? ` Your ${held.map((h) => mName(h.muscle)).join(", ")} ${held.length === 1 ? "has" : "have"} stalled with room to grow, but ${held[0].reason === "deficit" ? "you're eating in a deficit" : "your check-ins say recovery's been short"} — I've held ${held.length === 1 ? "its" : "their"} sets until that turns around. Fuel and sleep beat any programming change there.`
+    const gateHeld = held.filter((h) => h.reason === "deficit" || h.reason === "recovery");
+    const gateNote = gateHeld.length
+      ? ` Your ${gateHeld.map((h) => mName(h.muscle)).join(", ")} ${gateHeld.length === 1 ? "has" : "have"} stalled with room to grow, but ${gateHeld[0].reason === "deficit" ? "you're eating in a deficit" : "your check-ins say recovery's been short"} — I've held ${gateHeld.length === 1 ? "its" : "their"} sets until that turns around. Fuel and sleep beat any programming change there.`
       : "";
+    // Consideration #1: a stall on well under the planned sets. Said kindly, with the lever.
+    const doneHeld = held.filter((h) => h.reason === "completion");
+    const share = doneHeld.length > 1 ? Math.round((100 * doneHeld.reduce((a, h) => a + h.realized, 0)) / doneHeld.reduce((a, h) => a + h.planned, 0)) : null;
+    const doneNote = doneHeld.length
+      ? ` Your ${doneHeld.map((h) => mName(h.muscle)).join(", ")} ${doneHeld.length === 1 ? "has" : "have"} stalled, but most weeks ${doneHeld.length === 1 ? `it's getting about ${doneHeld[0].realized} of its ~${doneHeld[0].planned} planned sets` : `they're getting about ${share}% of their planned sets`} — so I've held ${doneHeld.length === 1 ? "its" : "their"} volume rather than add more on paper. Getting through more of the planned sets is what will move ${doneHeld.length === 1 ? "it" : "them"}; if your weeks can't fit them, set fewer training days and I'll rebuild the plan around what you can do.`
+      : "";
+    const heldNote = gateNote + doneNote;
     // If a lift got CHANGED because it plateaued (not just rotated for variety),
     // name it — an exercise vanishing from your plan without explanation reads as
     // the app losing track, and this one is a deliberate coaching decision.
@@ -856,10 +875,16 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
 // its final flat weeks forever and stays flagged for good. Without this, one
 // plateau would exile a lift from the plan permanently.
 const STALE_STALL_DAYS = 21;
-export function stalledExerciseIds(sessions, customEx = [], now = null) {
+// `spareMuscles` (consideration #1): a lift whose every primary muscle is getting well under
+// its planned sets (computeVolumeAdjust's `notCompleting`) is flat because it's trained half
+// as often, not because the movement stopped working — swapping it would only reset its
+// progression. Those lifts are never offered for the swap.
+export function stalledExerciseIds(sessions, customEx = [], now = null, spareMuscles = []) {
   const { index } = resolveEx(customEx);
   const window = adaptiveStallWindow(progressionCadence(sessions, index));
-  const flagged = stallDetect(sessions, index, { minWeeks: window }).map((x) => x.exercise);
+  const spare = new Set(spareMuscles);
+  const flagged = stallDetect(sessions, index, { minWeeks: window }).map((x) => x.exercise)
+    .filter((exId) => { const p = index.get(exId)?.primary ?? []; return !(spare.size && p.length && p.every((m) => spare.has(m))); });
   if (!now) return flagged;
   const nowMs = +new Date(now);
   return flagged.filter((exId) => {
@@ -923,7 +948,7 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // adding volume there worsens it — so suppress the "add" response (easing still
   // fires). Energy balance is read from the bodyweight trend; readiness from the daily
   // check-ins. Both default to permissive when the data isn't there.
-  const { checkins = [], bodyweights = [], goal = null } = context;
+  const { checkins = [], bodyweights = [], goal = null, planVolume = null } = context;
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const energyBalance = classifyEnergyBalance(bodyweightTrend(bwSeries), goal);
   const recovery = recoverySignal(checkins, energyBalance);
@@ -939,7 +964,12 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // plan prescribed, and strength deliberately reserves more on accessories — omit it
   // and a compliant strength lifter's sets are withheld for "sandbagging" they never did.
   const tooEasyMuscleIds = tooEasySet(effortSignal(sessions, byId, { goal }));
-  const adjust = deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds });
+  // Completion gate (consideration #1): a stall on well under the sets the plan delivers is
+  // under-training, not a plateau. `planVolume` is the plan's volume_by_muscle (the caller
+  // passes null for a hand-built plan); absent → {} and the tune is byte-identical.
+  const completion = completionShortfall(weekly, planVolume, { meanScale: BLOCK_MEAN_SCALE });
+  const notCompletingMuscleIds = new Set(Object.keys(completion));
+  const adjust = deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds, notCompletingMuscleIds });
   // WHO was held and WHY (Wave 258): the whole-athlete gate (deficit/under-recovery)
   // suppresses an add SILENTLY — a gated add produces no delta, and no delta produced
   // no new-block sentence — so report the suppression beside the map, derived from
@@ -947,17 +977,21 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // that can drift). Regression and effort holds are deliberately not listed here:
   // each already has its own standing card explaining itself.
   const gate = recovery.inDeficit ? "deficit" : recovery.underRecovered ? "recovery" : null;
-  const held = gate
-    ? [...stalledMuscleIds].filter((m) => {
-        const lm = muscleIndex.get(m);
-        if (!lm || lm.mav?.max == null || lm.mrv?.max == null) return false;
-        const sets = peak[m] ?? 0;
-        // Mirrors deriveVolumeAdjust's add branch exactly: these are the muscles
-        // that WOULD have taken +2 but for the recovery/fuel gate.
-        return sets <= lm.mrv.max && sets < lm.mav.max && !regressingMuscleIds.has(m) && !tooEasyMuscleIds.has(m);
-      }).sort().map((m) => ({ muscle: m, reason: gate }))
-    : [];
-  return { adjust, held };
+  const held = [...stalledMuscleIds].filter((m) => {
+    const lm = muscleIndex.get(m);
+    if (!lm || lm.mav?.max == null || lm.mrv?.max == null) return false;
+    const sets = peak[m] ?? 0;
+    // Mirrors deriveVolumeAdjust's add branch exactly: these are the muscles
+    // that WOULD have taken +2 but for a gate.
+    return sets <= lm.mrv.max && sets < lm.mav.max && !regressingMuscleIds.has(m) && !tooEasyMuscleIds.has(m);
+  }).sort()
+    // The missing work is named first: it explains the stall before recovery or fuel can.
+    .map((m) => (notCompletingMuscleIds.has(m) ? { muscle: m, reason: "completion", ...completion[m] } : gate ? { muscle: m, reason: gate } : null))
+    .filter(Boolean);
+  // `notCompleting` also spares those muscles' stalled LIFTS from the block's exercise swap:
+  // a lift trained half as often as planned hasn't plateaued, and swapping it would only
+  // reset its progression (the rollover filters with it).
+  return { adjust, held, notCompleting: [...notCompletingMuscleIds].sort() };
 }
 
 // `tz` is the user's UTC offset in minutes east — REQUIRED for the week arithmetic
@@ -1086,7 +1120,7 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // and eased the same muscle −2 (measured live). One sample, one story.
   const regressingMuscleIdSet = new Set(regressions.flatMap((r) => index.get(r.exercise)?.primary ?? []));
   const addGate = recovery.inDeficit ? "deficit" : recovery.underRecovered ? "recovery" : null;
-  const adaptive = latest ? volumeResponse(peakWeeklyVolume(weekly), muscleIndex, stalledMuscleIds, tooEasyMuscleIds)
+  const adaptive = latest ? volumeResponse(peakWeeklyVolume(weekly), muscleIndex, stalledMuscleIds, tooEasyMuscleIds, completionFor(weekly, user))
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
     .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)

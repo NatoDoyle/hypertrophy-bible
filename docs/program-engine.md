@@ -22,9 +22,10 @@ stated, with the reasoning.
    own trigger.
 3. **What must be true before volume changes?** At each block boundary the engine re-reads your
    log per muscle: stalled with room below your ceiling → +2 weekly sets, but only if you're
-   recovered, not in an energy deficit, not regressing, and not sandbagging (logged effort
-   clearly easier than prescribed); over your recoverable ceiling, or stalled at it → −2. Every
-   change accumulates and is clamped to the muscle's own MEV↔MRV span.
+   actually getting through the sets the plan already has for it, recovered, not in an energy
+   deficit, not regressing, and not sandbagging (logged effort clearly easier than prescribed);
+   over your recoverable ceiling, or stalled at it → −2. Every change accumulates and is clamped
+   to the muscle's own MEV↔MRV span. (Training inconsistently? See §4a.)
 4. **Does experience change this? When do exercises rotate?** Experience changes nearly
    everything (targets, splits, session caps, and whether waves/deloads/tapers exist at all —
    beginners get none of them until graduation). Accessories rotate every block; compounds never
@@ -113,8 +114,8 @@ Progress card reads the same peak, so the advice and the action can't disagree):
 
 ```
 over MRV.max                    → −2 sets
-stalled and below MAV.max       → +2 sets, IF recovered AND not in a deficit
-                                   AND not regressing AND not sandbagging — else hold, and SAY WHY
+stalled and below MAV.max       → +2 sets, IF getting its planned sets AND recovered AND not in
+                                   a deficit AND not regressing AND not sandbagging — else hold, and SAY WHY
 stalled at/above MAV.max        → −2 sets
 progressing in range            → no change
 ```
@@ -130,6 +131,33 @@ progressing in range            → no change
 - Changes accumulate across blocks, clamped to each muscle's **MEV↔MRV** span, and freeze during
   a specialization block (a held muscle's by-design "stall" must not earn volume that lands when
   the block ends).
+- "Getting its planned sets": see §4a.
+
+## 4a. When you're inconsistent (owner consideration #1)
+
+*"The program follows a 6-week block, but how does it adapt when someone misses workouts or
+doesn't finish them?"* Measured against the code, not assumed:
+
+- **The block waits for you.** Its clock counts weeks you trained (§2), so a missed week is a
+  pause, never a skipped week of the wave. Partial weeks still count as trained weeks.
+- **Nothing is dropped.** The session rotation moves with you: miss Tuesday and Tuesday's session
+  is simply next (§6). Every muscle keeps its share of the plan however your weeks fall.
+- **Unfinished sets hold that lift's weight increase** until a full session shows it (W280, §1
+  rule 5), and a set you skip is recorded as skipped, not as a failure.
+- **The gap was here (fixed in Burst 2):** the tune reads each muscle's *peak* week, so one full
+  week vouched for a block of half-weeks, and flat lifts on half the work read as a plateau. A
+  4-day plan done 2 days a week with flat lifts earned **+2 sets on all 10 muscles** and had **9
+  stalled lifts swapped out** (measured through the real block rollover). More sets on paper, and
+  a fresh exercise that resets progression, for someone who wasn't getting to the sets already
+  planned.
+- **Now a completion test runs first** (`completionShortfall`): each muscle's *mean* weekly sets
+  over the last 6 trained weeks against the sets the plan delivers (`projected_sets`) × the block
+  wave's average scale (so someone doing every set reads ~100%). Below **70%** the muscle is
+  "not completing". Its stall **holds** instead of +2, its lifts are **kept** (not swapped), and
+  the new-block note and Progress card say so in plain words, with the lever: get through more
+  of the planned sets, or set fewer training days and the plan is rebuilt around them. Three of
+  four sessions every week reads ~75% and still earns its +2. A hand-built plan is never judged:
+  its stored numbers may not describe it.
 
 ## 5. Experience gating and graduation
 

@@ -776,6 +776,43 @@ check("computeVolumeAdjust reports WHO was held and WHY — a suppressed add mus
   assert.deepEqual(computeVolumeAdjust({ chest: 2 }, sessions, [], { bodyweights: bwDown, goal: "hypertrophy" }).held, [{ muscle: "chest", reason: "deficit" }]);
 });
 
+// --- Consideration #1: "how does the program adapt when someone is inconsistent?" A stall on
+// about half the planned sets is under-training, not a plateau: the tune holds (and says
+// why), the Progress card says the same thing, and a custom plan (whose rationale may not
+// describe it) stays permissive.
+const cWk = (n, sets) => ({ date: new Date(Date.now() - n * 86400000).toISOString(), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
+const halfDone = [cWk(35, 6), cWk(28, 6), cWk(21, 6), cWk(14, 6), cWk(7, 6)];
+const fullDone = [cWk(35, 12), cWk(28, 12), cWk(21, 12), cWk(14, 12), cWk(7, 12)];
+const planVol = { chest: { projected_sets: 12 } };
+check("#completion the tune HOLDS a stall on about half the planned sets, and reports why; a completing stall still adds", () => {
+  assert.equal(computeVolumeAdjust({}, halfDone).adjust.chest, 2, "precondition: without the plan's numbers it adds");
+  const r = computeVolumeAdjust({}, halfDone, [], { planVolume: planVol });
+  assert.equal(r.adjust.chest, undefined);
+  assert.deepEqual(r.held, [{ muscle: "chest", reason: "completion", realized: 6, planned: 12 }]);
+  assert.deepEqual(r.notCompleting, ["chest"]);
+  assert.equal(computeVolumeAdjust({}, fullDone, [], { planVolume: planVol }).adjust.chest, 2, "12 of 12: a real plateau still earns +2");
+  const lowCheckins = Array.from({ length: 5 }, (_, i) => ({ date: `2026-06-0${i + 1}`, sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 }));
+  assert.equal(computeVolumeAdjust({}, halfDone, [], { planVolume: planVol, checkins: lowCheckins }).held[0].reason, "completion", "the missing work is named before recovery");
+});
+check("#completion the Progress card agrees with the tune: 'finish the planned sets', never 'add sets' (one sample, C6)", () => {
+  const user = { profile: { primary_goal: "hypertrophy", training_status: "intermediate" }, program: { id: "p", sessions: [] }, plan_rationale: { volume_by_muscle: planVol } };
+  const now = new Date().toISOString();
+  const a = progressReport(user, halfDone, [], [], now).adaptive.find((x) => x.muscle === "chest");
+  assert.equal(a?.signal, "complete", JSON.stringify(a));
+  assert.match(a.advice, /about 6 of the ~12 sets a week/);
+  const custom = { ...user, program: { ...user.program, custom: true } };
+  assert.notEqual(progressReport(custom, halfDone, [], [], now).adaptive.find((x) => x.muscle === "chest")?.signal, "complete", "a hand-built plan: permissive");
+});
+check("#completion the new-block note says why a stalled muscle's sets didn't move — kindly, with the lever", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 4 }, program: prog,
+    plan_meta: { block_start: "2026-01-01T00:00:00Z", rotated_at: "2026-06-01T00:00:00Z", tuned_this_block: { bumped: [], eased: [], held: [{ muscle: "chest", reason: "completion", realized: 6, planned: 12 }] } } };
+  const note = buildToday(u, [], null, [], "2026-06-02T09:00:00Z").coach_note;
+  assert.match(note, /Chest/i);
+  assert.match(note, /about 6 of its ~12 planned sets/);
+  assert.match(note, /held/);
+  assert.doesNotMatch(note, /deficit|recovery's been short/);
+});
 check("progressReport's adaptive signal reads the PEAK sample the tune acts on — the card can't promise the opposite of the action (C6)", () => {
   const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
   const wk = (n, sets) => ({ date: day(n), sets: Array.from({ length: sets }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 })) });
