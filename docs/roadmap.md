@@ -6,7 +6,41 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-10-16** (Wave 277: C16, the first named pull, shipped.
+Grounded assessment date: **2026-10-19** (Wave 278: W277's owner decision, built. W277's
+week strip made a mismatch visible: a plan built for N workouts, trained on M committed
+days. The owner chose the one-tap offer. Once a different day count has stood a week
+(seven days from the pick, not just "carried"), Today asks "Fit your plan to your 3
+days?":
+- the card says what the mismatch costs, what a rebuild changes, and that it starts a
+  fresh training block;
+- "Rebuild for 3 days" goes through the Settings door itself;
+- "Keep my 4-day plan" hides that pair for good.
+
+Its own review found that the offer, and the Settings days change before it, re-armed a
+FINISHED specialization block. Fixed in the engine: a `spent` flag that only new
+priorities clear (lesson 78; golden digest unchanged).
+
+**Named next pulls:**
+- The desktop multi-column layer.
+- Nerd Mode surfaces (C8).
+
+Recorded candidates (verified, not built). The rotation pointer counts sessions without
+knowing which plan or block they belong to:
+- voiding a workout from an EARLIER block rewinds today's rotation by one (W277);
+- a workout left open on another device and finished after a rebuild counts toward the
+  new rotation, skipping the new Day A (W278; shared with the Settings door).
+
+The root fix for both: count the rotation by plan generation (a rebuild stamp), not by a
+stored session count.
+
+Also recorded:
+- Graduation starts block 0, which re-arms a spent specialization block. Arguably right
+  (a new training phase); recorded so it's a decision, not an accident.
+- The commitment push could name the day's session (0 push subscribers: low reach).
+
+Recorded deferrals: rom_notes surfacing (28/171) and richer per-exercise prose pages.)
+The prior grounding:
+(Wave 277: C16, the first named pull, shipped.
 The rotation stays the training truth (a missed day never drops a session), and Today
 now SHOWS where it lands on the committed weekdays. All three surfaces read the one
 rotation pointer:

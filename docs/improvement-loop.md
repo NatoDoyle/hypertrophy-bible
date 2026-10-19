@@ -1053,7 +1053,12 @@ These are real failures from previous iterations. Each is now a standing check.
    deleted, because the composite index happened to scan in insertion order. The test
    now drops the index first, so the clause is the only thing producing the order, and
    only then did deleting the clause turn it red. A tamper that survives means the test
-   PINS rather than guards: find the crutch, remove it inside the test, re-tamper.
+   PINS rather than guards: find the crutch, remove it inside the test, re-tamper; (e) a
+   DERIVED field written by hand is re-derived by the system under test before the test
+   acts (W278): a fixture set `block_index: 1` with no trained weeks behind it, and the
+   first /api/today "corrected" it back to 0 through the rollover, so the test ran
+   against a state the app can't be in. Seed state through the mechanism that produces
+   it (six trained weeks), and assert the precondition AFTER the first request.
 68. **An emailed link opens in a storage partition the app can't see.** The owner's
    "sign up to save" email both said the wrong thing ("Restore your progress") and could
    never have worked for them: on iPhone a Home-Screen app keeps storage separate from
@@ -1132,7 +1137,11 @@ These are real failures from previous iterations. Each is now a standing check.
    - when a fire-and-forget promise gains an awaiter, guard the await, and make the
      writer park what it can't process rather than wedge the work queued behind it;
    - a render that awaits checks it is still the current view before painting (a
-     generation token).
+     generation token);
+   - a LATE caller must not re-enter the renderer unconditionally (W278). renderToday
+     paints "Loading…" before its own stale check, and its first line would swap a running
+     player for the resume card. Late handlers call refreshToday(), which renders only
+     while Today is on screen and no session is running.
 76. **A projection of a stateful pointer sees only as far as the next write to the
    pointer, and slot j is the formula fed j more inputs, never the output plus j.** The
    week strip projected the rotation correctly within the week. But "X starts next week"
@@ -1158,6 +1167,17 @@ These are real failures from previous iterations. Each is now a standing check.
    → **Standing rules:** re-measure any agent-reported number before quoting it as
    decision input (lesson 55: provenance), and give every workflow agent its own scratch
    directory (os.tmpdir() plus its lens key).
+78. **A counter that carries two meanings resets both whenever either should.**
+   `plan_meta.block_index` meant both "where the mesocycle is" (reset by ANY training
+   change) and "how many specialization blocks this priority set has run" (meant to reset
+   only when the priorities change). The Wave 192 comment chose it on purpose: "No new
+   state: block_index already resets whenever a TRAINING_FIELD changes, which includes
+   priority_muscles." It reasoned about the reset it wanted and inherited every other one.
+   A Settings days change, then W278's one-tap "Rebuild for 3 days", re-armed a finished
+   six-week block (the W278 review). → **Standing rule:** when a new door resets a shared
+   counter, list what each meaning of it should survive. A meaning that should survive
+   the new door gets its own state, here `spec_spent`, stamped on rebuild and cleared
+   only by new priorities.
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1206,6 +1226,27 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7f. **Telemetry (Wave 278, 2026-10-19 — the owner's decision, built).** The owner chose
+   option 1 of the four W277 left open (a one-tap "Rebuild for N days" offer) and asked
+   whether I agreed. I did, and said why: it fixes the mismatch for every user and for
+   later drift, where my earlier pick (onboarding chips) only prevents it at signup.
+   - **Built test-first.** The server states the offer (`daily.plan_fit`); the rebuild is
+     the Settings door itself.
+   - **One workflow.** A 2-finder diff review (≈207k tokens), each finder with its OWN
+     scratch directory (lesson 77, applied: no collision). It returned 7 findings, all
+     verified INLINE: 6 fixed (W278b), 1 recorded (a workout finished on another device
+     after a rebuild counts toward the new rotation), 0 refuted.
+   - **The sharpest find** re-armed a finished specialization block through the new
+     button: lesson 78. Its fix touched the engine with the golden digest byte-identical.
+     A measurement showed the flag also reaches the permanent swap (151 of 366 swaps
+     reordered without it).
+   - **Tampers.** ≈14 lesson-54 tampers, each red. One browser tamper first CRASHED the
+     walkthrough instead of failing it (the late repaint left no heading to read). The
+     check now reads page text, so the defect reports as ✗ "Loading…".
+   - **My own fixture was wrong once** (lesson 67e): a hand-set block_index that the
+     rollover "corrected" back to 0.
+   - **Not run.** The Daytona gate was skipped (no DAYTONA_API_KEY).
+
 7g. **Telemetry (Wave 277, 2026-10-15/16 — C16, the roadmap's first named pull).** Two
    workflows, 8 agents, ≈890k subagent tokens:
    - a 4-lens DESIGN PANEL before any code (training science, adherence, zero-load UX,
