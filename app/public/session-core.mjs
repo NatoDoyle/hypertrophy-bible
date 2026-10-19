@@ -59,7 +59,9 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // is never orphaned), and no OTHER slot holds the new lift (progress is counted per
 // exercise id, so a duplicate silently skips one of them). Undo is the same call in
 // reverse, with the saved old row. Pure: resets only slot i's typed inputs.
-export const PRESCRIPTION_KEYS = ["sets", "rep_range", "rir"];
+// planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
+// target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
+export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
 export function replaceSlot(sess, i, row, { expect } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
@@ -69,10 +71,63 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
   const { superset_with, superset_with_name, ...slot } = row;
   for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
+  // planned count (a swap is only ever offered before any set of the old lift was banked).
+  if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
+  delete out.lastSkip; // a swap rewrites the slot's count: an older skip's undo no longer describes it
   if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
+  return { ok: true, sess: out };
+}
+
+// "Skip this set" / "Skip this round" (W281, owner: "need ability to skip a set mid
+// workout"). A skip SHRINKS today's target for the lift(s): `sets`, the field every "where
+// am I" helper already reads, so progress stays derived from banked work sets and nothing
+// in the crash-safe derivation changes shape. `planned_sets` keeps the original, so the
+// finished workout's targets show the shortfall and the next weight increase waits (W280).
+// It advances exactly as banking does, deciding "complete" by scanning from the START (a
+// lift behind the cursor may still owe sets). One level of undo lives IN the saved session
+// (`lastSkip`), valid only while nothing was banked and the order is unchanged since — so a
+// reload can still undo, and a banked set, a defer or a swap retires it without any handler
+// having to remember to. Station rounds shrink BOTH members (rounds stay balanced) and undo
+// restores both, never one alone. Pure: returns a new session.
+const orderKey = (sess) => sess.ex.map((x) => x.exercise).join("|");
+function shrinkAndAdvance(sess, idxs, stillOn, from) {
+  const ex = sess.ex.map((x, k) => (idxs.includes(k) ? { ...x, sets: x.sets - 1 } : x));
+  const out = { ...sess, ex, lastSkip: { ids: idxs.map((k) => sess.ex[k].exercise), loggedLen: sess.logged.length, order: orderKey(sess), prevI: sess.i, prevSet: sess.set } };
+  delete out.rest; // straight into the next set: a skip earns no rest
+  if (stillOn(ex)) return { ok: true, sess: { ...out, set: loggedWorkSets(sess.logged, ex[sess.i].exercise) }, completes: false };
+  // A single lift moves on like the bank handler (forward, then from the start); a finished
+  // station like the station's bank handler — from the start, so the longer member's
+  // remainder is picked next and finished alone.
+  let nx = nextUnfinishedIndex(sess.logged, ex, from);
+  if (nx < 0 && from >= 0) nx = nextUnfinishedIndex(sess.logged, ex, -1);
+  if (nx < 0) return { ok: true, sess: { ...out, complete: true }, completes: true };
+  return { ok: true, sess: { ...out, i: nx, set: loggedWorkSets(sess.logged, ex[nx].exercise) }, completes: false };
+}
+export function skipSet(sess) {
+  const cur = sess?.ex?.[sess.i];
+  if (!cur || loggedWorkSets(sess.logged, cur.exercise) >= cur.sets) return { ok: false, sess, completes: false };
+  return shrinkAndAdvance(sess, [sess.i], (ex) => loggedWorkSets(sess.logged, cur.exercise) < ex[sess.i].sets, sess.i);
+}
+export function skipRound(sess, L, P) {
+  const a = sess?.ex?.[L], b = sess?.ex?.[P];
+  if (!a || !b || stationProgress(sess.logged, sess.ex, L, P).done) return { ok: false, sess, completes: false };
+  return shrinkAndAdvance(sess, [L, P], (ex) => !stationProgress(sess.logged, ex, L, P).done, -1);
+}
+// Would this skip end the workout? The player asks for a second tap first ("Skip and finish?").
+export const skipWouldFinish = (sess, station = null) => (station ? skipRound(sess, station[0], station[1]) : skipSet(sess)).completes === true;
+export function undoSkip(sess) {
+  const u = sess?.lastSkip;
+  if (!u || sess.complete || u.loggedLen !== sess.logged.length || u.order !== orderKey(sess)) return { ok: false, sess };
+  // Never past the plan (a swap and its undo in between can have restored the count already),
+  // and the cursor is DERIVED from banked sets, never the stored one (Burst 1 review).
+  if (sess.ex.some((x) => u.ids.includes(x.exercise) && Number.isInteger(x.planned_sets) && x.sets >= x.planned_sets)) return { ok: false, sess };
+  const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
+  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise) };
+  delete out.lastSkip;
   return { ok: true, sess: out };
 }
 
@@ -184,6 +239,82 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
   return (h >>> 0) % LUCKY_SET_ONE_IN === 0;
 }
 // DUPLICATES tools/derive-core.mjs's isHardSet (same cross-file constraint as above).
+// The load that should land `targetReps` at `targetRir` reps in reserve, from a set of
+// `reps` at `weightKg` with `rir` in reserve — a BYTE-IDENTICAL copy of derive-core's
+// loadForReps (the server's W279 ease uses that one; test-session pins the two together).
+export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
+  return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
+}
+// "A more appropriate weight" for the NEXT set (W279b, owner consideration #3): after a work
+// set that clearly misses the prescription — under the range near failure (RIR unlogged or
+// ≤ 1; a set stopped early wasn't too heavy), or two+ reps over the top / far easier than the
+// band — the load that should land the next one in range, from the set just banked. Lighter
+// targets the range's bottom, heavier its top (the smallest move back into the range), both
+// at the band's near edge; floored to the lift's increment, at least one increment, at most
+// ±20%. Advice only: the player offers it, the user decides. Planned-easy (deload/eased),
+// warm-up and bodyweight sets never hint.
+export function nextSetHint(set, row) {
+  if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
+  const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
+  if (!range) return null;
+  const min = +range[1], max = +range[2];
+  const band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
+  const near = band ? +band[1] : 1, top = band ? +band[2] : 2;
+  const inc = row?.inc_kg > 0 ? row.inc_kg : 2.5;
+  const w = set.weight_kg, rir = typeof set.rir === "number" ? set.rir : null;
+  const under = set.reps < min && (rir == null || rir <= 1);
+  const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
+  if (!under && !over) return null;
+  const floored = Math.floor(loadForReps(w, set.reps, rir ?? 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const kg = under
+    ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
+    : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
+  const rounded = Math.round(kg * 4) / 4;
+  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null } : null;
+}
+
+// What the plan asked of each lift TODAY (W280), sent with the finished workout so the
+// engine and the read-out can tell a skipped or unfinished set from a full session: the
+// ORIGINAL set count (planned_sets survives a skip's shrink of `sets`), the range, the RIR
+// band and the suggested load; a planned-easy lift (a deload week or a comeback-eased row)
+// is flagged so it is never graded like a normal one. Pure.
+export function buildTargets(sess) {
+  return (sess?.ex ?? []).filter((x) => x?.exercise).map((x) => ({
+    exercise: x.exercise,
+    sets: x.planned_sets ?? x.sets,
+    rep_range: x.rep_range ?? null,
+    rir: x.rir ?? null,
+    suggested_kg: x.suggested_kg ?? null,
+    ...(sess.deload || x.eased ? { deload: true } : {}),
+  }));
+}
+
+// The hint's weight in the lift's DISPLAY unit, always a real move (Burst 1 review): a 1 kg
+// step that the 5-lb plate rounding collapses back onto the weight just used becomes the next
+// plate (`step`) in the hint's direction — never "Try 20 lb" from 20 lb. Null when the move
+// would reach zero.
+export function hintInUnit(hint, toDisp, step) {
+  if (!hint) return null;
+  const from = toDisp(hint.from_kg), to = toDisp(hint.kg);
+  if (to !== from) return to > 0 ? to : null;
+  const nudged = from + (hint.kind === "lighter" ? -step : step);
+  return nudged > 0 ? nudged : null;
+}
+
+// The PRE-FILLED weight for a lift, in its display unit (Burst 1 review). Plate rounding
+// (5 lb) swallowed any engine move under ~2.5 lb, so a 1 kg step — isolation dumbbells and
+// cables — pre-filled the very weight just lifted: those lifts could never progress for a
+// pounds user, and an ease never eased. A weight the engine MOVES (a bump, an ease, a
+// comeback, a deload) now moves at least one plate in that direction; a hold holds. In
+// kilograms (0.25 kg display) no engine step is ever swallowed, so this is the plain
+// rounding there. Null when there is no suggestion (the caller's first-time default).
+export function prefillInUnit(row, toDisp, step) {
+  const kg = row?.suggested_kg, last = row?.last_kg;
+  if (kg == null) return null;
+  if (!(last > 0) || kg === last) return toDisp(kg);
+  return hintInUnit({ kind: kg > last ? "heavier" : "lighter", kg, from_kg: last }, toDisp, step) ?? toDisp(kg);
+}
+
 export function isHardSet(set, { hardSetRpe = 7 } = {}) {
   const type = set.set_type ?? "work";
   if (type === "warmup") return false;

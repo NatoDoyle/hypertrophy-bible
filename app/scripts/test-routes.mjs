@@ -9,15 +9,16 @@ import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
 import { requestMagicLink } from "../src/auth.mjs";
-import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds, loadForReps } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 import { planFitCopy, planFitRequest } from "../public/ui-helpers.mjs";
+import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets } from "../public/session-core.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
-const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
+const ok = (name, cond, detail) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name + (detail ? `\n      ${String(detail).slice(0, 300)}` : ""))); };
 const path = join(tmpdir(), `hb-routes-test-${process.pid}.json`);
 
 try {
@@ -1095,6 +1096,109 @@ try {
   const gnAfter = (await (await app.request("/api/today", { headers: { "X-HB-User": gnUser } })).json()).session;
   ok("#weekly-plan a 6-day gap shows the reassurance with no plan, and stands down once a plan explains it",
     !!gnBefore?.gap_note && gnAfter?.gap_note === null);
+
+  // --- #below-range (W279, the owner's call): a first set two+ reps under the range
+  // eases the NEXT suggestion — through the door the phone uses. The rotation is pointed
+  // back at the same day (skips = n−1) so today's session holds the same lift again.
+  {
+    const brU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const brT0 = await (await app.request("/api/today", { headers: { "X-HB-User": brU } })).json();
+    const brX = brT0.session.exercises.find((e) => !/bodyweight/.test(e.equipment ?? "") && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const brMin = +brX.rep_range.split("-")[0];
+    await json("POST", "/api/session", { user_id: brU, session_id: "br-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: brT0.session.name,
+      sets: [{ exercise: brX.exercise, set_type: "work", weight_kg: 50, reps: brMin - 3 }, { exercise: brX.exercise, set_type: "work", weight_kg: 50, reps: brMin - 4 }] });
+    await store.updateUser(brU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const brT1 = await (await app.request("/api/today", { headers: { "X-HB-User": brU } })).json();
+    const brRow = brT1.session.exercises.find((e) => e.exercise === brX.exercise);
+    // W279b: the player's "more appropriate weight" moves in the lift's REAL steps — the
+    // server's loadIncrement, carried on the row (a barbell lift 2.5 kg, a dumbbell isolation 1 kg).
+    ok("#next-set /api/today rows carry the lift's load step (inc_kg) through the route",
+      brT1.session.exercises.length > 0 && brT1.session.exercises.every((e) => e.inc_kg === 2.5 || e.inc_kg === 1));
+    // The exact eased load, from the band THIS row was served with (the wave moves it with the
+    // weekday, so the expectation is computed from the row, never assumed — Burst 1 review).
+    const brNear = +((/^(\d+)-/.exec(brRow?.rir ?? "") ?? [, 1])[1]);
+    const brInc = brRow?.inc_kg ?? 2.5;
+    const brExpect = Math.min(50 - brInc, Math.max(Math.ceil(40 / brInc - 1e-9) * brInc, Math.floor(loadForReps(50, brMin - 3, 0, brMin, brNear) / brInc + 1e-9) * brInc));
+    ok("#below-range /api/today eases a lift whose first set came in 3 under the range — to the exact load for its band — and says why",
+      brT1.session.name === brT0.session.name && brRow?.suggested_kg === brExpect
+      && new RegExp(`first set at 50 kg came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, expect: brExpect, rir: brRow?.rir, note: brRow?.suggestion_note }));
+  }
+
+  // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
+  // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
+  {
+    const tgU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const tgT0 = await (await app.request("/api/today", { headers: { "X-HB-User": tgU } })).json();
+    const tgX = tgT0.session.exercises.find((e) => e.equipment !== "bodyweight" && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const top = +tgX.rep_range.split("-")[1];
+    const work = (n) => Array.from({ length: n }, () => ({ exercise: tgX.exercise, set_type: "work", weight_kg: 50, reps: top }));
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: tgT0.session.name, sets: work(2), targets: [
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x" },
+      { exercise: tgX.exercise, sets: 5 },                                    // a duplicate: dropped
+      { exercise: "../evil", sets: 3 },                                       // not an id: dropped
+      { exercise: "leg-press", sets: 999 },                                   // out of bounds: dropped
+      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes" }, // kept, junk nulled
+    ] });
+    const tgStored = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
+    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled)", JSON.stringify(tgStored?.targets) === JSON.stringify([
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50 },
+      { exercise: "lat-pulldown", sets: 3, rep_range: null, rir: null, suggested_kg: null },
+    ]), JSON.stringify(tgStored?.targets));
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-many", date: dAgo(9), local_date: dAgo(9).slice(0, 10), sets: work(1),
+      targets: Array.from({ length: 30 }, (_, k) => ({ exercise: `ex-${k}`, sets: 3 })) });
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-none", date: dAgo(10), local_date: dAgo(10).slice(0, 10), sets: work(1) });
+    const tgAll = await store.listSessions(tgU);
+    ok("#targets at most 24 ride a workout; a workout without them stores none",
+      tgAll.find((s) => s.session_id === "tg-many")?.targets?.length === 24 && !("targets" in (tgAll.find((s) => s.session_id === "tg-none") ?? {})));
+    // The hold, through the door the phone uses (rotation pointed back at the same day: three
+    // own sessions logged above, so skip to the next multiple of the plan's length).
+    await store.updateUser(tgU, (u) => { const n = u.program.sessions.length; u.plan_meta = { ...u.plan_meta, rotation_skips: (n - (tgAll.length % n)) % n }; return u; });
+    const tgT1 = await (await app.request("/api/today", { headers: { "X-HB-User": tgU } })).json();
+    const tgRow = tgT1.session.exercises.find((e) => e.exercise === tgX.exercise);
+    ok("#targets 2 of 3 planned sets at the top: /api/today holds the weight and says what earns the bump",
+      tgRow?.suggested_kg === 50 && /You did 2 of 3 sets last time/.test(tgRow.suggestion_note ?? ""), JSON.stringify({ kg: tgRow?.suggested_kg, note: tgRow?.suggestion_note }));
+    await json("POST", "/api/session/update", { user_id: tgU, session_id: "tg-1", sets: work(3) });
+    const tgEdited = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
+    ok("#targets a History edit of the sets never touches the targets", tgEdited?.sets?.length === 3 && tgEdited?.targets?.length === 2);
+  }
+
+  // --- Burst 1 review: the workout built EXACTLY as the client builds it — /api/today's rows,
+  // startSession's planned_sets stamp, a real skipSet, finish()'s buildTargets — so a refactor
+  // of that wiring can't silently switch the "hold until every set is done" rule off.
+  {
+    const clU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const clT0 = (await (await app.request("/api/today", { headers: { "X-HB-User": clU } })).json()).session;
+    let sess = { name: clT0.name, ex: orderSupersetAdjacent(clT0.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
+    const k = sess.ex.findIndex((x) => x.equipment !== "bodyweight" && !x.superset_with && x.sets >= 2);
+    const X = sess.ex[k], top = +X.rep_range.split("-")[1];
+    sess = { ...sess, i: k, set: 0 };
+    sess.logged.push({ exercise: X.exercise, set_type: "work", weight_kg: 50, reps: top });   // one set at the top…
+    sess = { ...sess, set: loggedWorkSets(sess.logged, X.exercise) };
+    for (let n = 1; n < X.sets; n++) sess = skipSet(sess).sess;                             // …the rest skipped
+    await json("POST", "/api/session", { user_id: clU, session_id: "cl-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: sess.name, sets: sess.logged, targets: buildTargets(sess) });
+    await store.updateUser(clU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const clRow = (await (await app.request("/api/today", { headers: { "X-HB-User": clU } })).json()).session.exercises.find((e) => e.exercise === X.exercise);
+    ok("#client-wiring a skip, sent the way the client sends it, holds that lift's next increase (and says why)",
+      clRow?.suggested_kg === 50 && new RegExp(`You did 1 of ${X.sets} sets last time`).test(clRow.suggestion_note ?? ""), JSON.stringify({ kg: clRow?.suggested_kg, note: clRow?.suggestion_note }));
+    // …and taking the player's OWN "go heavier" hint is never punished next time.
+    const hvU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const hvT0 = (await (await app.request("/api/today", { headers: { "X-HB-User": hvU } })).json()).session;
+    const H = hvT0.exercises.find((e) => e.equipment !== "bodyweight" && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const [hMin, hMax] = H.rep_range.split("-").map(Number);
+    const set1 = { exercise: H.exercise, set_type: "work", weight_kg: 50, reps: hMax + 3 };
+    const hint = nextSetHint(set1, H);
+    await json("POST", "/api/session", { user_id: hvU, session_id: "hv-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: hvT0.name,
+      sets: [set1, { exercise: H.exercise, set_type: "work", weight_kg: hint.kg, reps: hMin + 1 }, { exercise: H.exercise, set_type: "work", weight_kg: hint.kg, reps: hMin + 1 }] });
+    await store.updateUser(hvU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const hvRow = (await (await app.request("/api/today", { headers: { "X-HB-User": hvU } })).json()).session.exercises.find((e) => e.exercise === H.exercise);
+    ok("#anchor took the heavier hint (50 → hinted weight, in range): next time HOLDS the hinted weight and builds reps on it",
+      hint?.kind === "heavier" && hvRow?.suggested_kg === hint.kg && /Keep the weight and try to add a rep or two/.test(hvRow.suggestion_note ?? ""), JSON.stringify({ hint, kg: hvRow?.suggested_kg, note: hvRow?.suggestion_note }));
+    // …and "Last time" can show every set as it was done: the per-set weights ride the row
+    // (the whitelist class — last_reps was once dropped here the same way).
+    ok("#anchor /api/today carries last_sets (each set's weight and reps) so a mixed-weight session isn't misreported",
+      JSON.stringify(hvRow?.last_sets) === JSON.stringify([[50, hMax + 3], [hint.kg, hMin + 1], [hint.kg, hMin + 1]]) && JSON.stringify(hvRow?.last_reps) === JSON.stringify([hMin + 1, hMin + 1]),
+      JSON.stringify({ last_sets: hvRow?.last_sets, last_reps: hvRow?.last_reps }));
+  }
 
   // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this
   // week's facts and the rotation's next sessions, from the SAME pointer that served

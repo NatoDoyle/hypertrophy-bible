@@ -8,11 +8,12 @@
 import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
-  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "../public/session-core.mjs";
+  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
-import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords, isLuckySet as isLuckySetServer, luckySetsInSession } from "../../tools/derive-core.mjs";
+import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords, isLuckySet as isLuckySetServer, luckySetsInSession, loadForReps as loadForRepsServer } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -538,6 +539,12 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     unilateral: false, movement_pattern: "isolation-elbow-extension", primary_muscles: ["triceps"] };
   const exs = () => [ex("bench", 3), { ...cur }, ex("curl", 3)];
 
+  check("#targets a swapped-in lift keeps the SLOT's original planned count (W280) — the target the workout reports", () => {
+    const r = replaceSlot(mk([ex("bench", 3), { ...cur, planned_sets: 3 }, ex("curl", 3)]), 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, true);
+    assert.equal(r.sess.ex[1].planned_sets, 3, "planned_sets is part of the slot's prescription");
+    assert.ok(PRESCRIPTION_KEYS.includes("planned_sets"));
+  });
   check("#replace-slot the prescription stays the slot's; every other field is the new lift's own; the pairing is always dropped", () => {
     const r = replaceSlot(mk(exs()), 1, row, { expect: "pushdown" });
     assert.equal(r.ok, true);
@@ -724,6 +731,195 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
     assert.equal(recomputePrLatch(typo, "L", null), false, "no history to beat");
   });
 }
+
+// --- #next-set (W279b, owner consideration #3: "if a recommended weight, reps and RPE isn't
+// achieved for a set, suggest a more appropriate weight that will hit the prescription").
+// The server's W279 formula — set 1's Epley e1RM carried to the target — duplicated here for
+// the player and pinned to the server's copy, the checkSetPR precedent.
+const w = (weight_kg, reps, extra = {}) => ({ exercise: "x", set_type: "work", weight_kg, reps, ...extra });
+const row812 = { rep_range: "8-12", rir: "1-3", inc_kg: 2.5 };
+check("#next-set loadForReps is the server's formula, exactly (parity over a grid)", () => {
+  for (const kg of [20, 57.5, 100, 142.5]) for (const reps of [1, 5, 8, 12, 15, 20]) for (const rir of [0, 1, 3]) for (const t of [6, 8, 12]) for (const tr of [0, 1, 2])
+    assert.strictEqual(loadForReps(kg, reps, rir, t, tr), loadForRepsServer(kg, reps, rir, t, tr));
+});
+check("#next-set a set UNDER the range near failure → a lighter next set that lands in it (100×6 on 8-12 → 90)", () => {
+  assert.deepStrictEqual(nextSetHint(w(100, 6), row812), { kind: "lighter", kg: 90, from_kg: 100, reps: 6, min: 8, max: 12, rir: null, band: "1-3" });
+  assert.strictEqual(nextSetHint(w(100, 6, { rir: 1 }), row812).kg, 92.5, "1 in reserve means a stronger e1RM (100·(1+7/30)=123.3 → 94.9) → a smaller ease");
+});
+check("#next-set a set well OVER the range, or far easier than the band → a heavier next set", () => {
+  assert.deepStrictEqual(nextSetHint(w(40, 15), row812), { kind: "heavier", kg: 42.5, from_kg: 40, reps: 15, min: 8, max: 12, rir: null, band: "1-3" });
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 5 }), row812).kind, "heavier", "RIR 5 against a 1-3 band");
+  assert.strictEqual(nextSetHint(w(40, 13), row812), null, "one rep over the top: on target enough (the next session adds load)");
+});
+check("#next-set no hint when on target, stopped early, a warm-up, planned-easy, or at bodyweight", () => {
+  assert.strictEqual(nextSetHint(w(100, 9), row812), null);
+  assert.strictEqual(nextSetHint(w(100, 6, { rir: 3 }), row812), null, "stopped with 3 in the tank: not too heavy");
+  assert.strictEqual(nextSetHint({ ...w(40, 4), set_type: "warmup" }, row812), null);
+  assert.strictEqual(nextSetHint(w(100, 6, { deload: true }), row812), null, "deload sets are planned easy");
+  assert.strictEqual(nextSetHint(w(0, 4), row812), null);
+  assert.strictEqual(nextSetHint(null, row812), null);
+});
+check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±20%", () => {
+  assert.strictEqual(nextSetHint(w(10, 8), { rep_range: "12-20", rir: "1-3", inc_kg: 1 }).kg, 8);
+  assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
+});
+
+// --- #targets (W280): what the plan asked of each lift TODAY rides with the workout, so the
+// engine (and the read-out) can tell a skipped or unfinished set from a full session — the
+// ORIGINAL set count (planned_sets survives a skip's shrink), and planned-easy lifts flagged.
+check("#targets buildTargets: the original set count, range, band and suggestion per lift; planned-easy flagged", () => {
+  const sess = { deload: false, ex: [
+    { exercise: "a", sets: 2, planned_sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 60, name: "A", cue: "x" },
+    { exercise: "b", sets: 3, rep_range: "10-15", rir: "0-2", suggested_kg: null, eased: true },
+    { exercise: "c", sets: 3, rep_range: "6-10" },
+  ] };
+  assert.deepStrictEqual(buildTargets(sess), [
+    { exercise: "a", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 60 },
+    { exercise: "b", sets: 3, rep_range: "10-15", rir: "0-2", suggested_kg: null, deload: true },
+    { exercise: "c", sets: 3, rep_range: "6-10", rir: null, suggested_kg: null },
+  ]);
+  assert.strictEqual(buildTargets({ ...sess, deload: true }).every((t) => t.deload === true), true, "a deload week: every lift planned easy");
+  assert.deepStrictEqual(buildTargets(null), []);
+});
+
+// --- #skip (W281, owner: "need ability to skip a set mid-workout"). A skip SHRINKS today's
+// target (`sets`, the field every "where am I" helper reads), so progress stays derived from
+// banked sets; `planned_sets` keeps the original for the workout's targets (W280).
+const row = (exercise, sets, extra = {}) => ({ exercise, sets, planned_sets: sets, rep_range: "8-12", rir: "1-3", ...extra });
+const banked = (exercise, n) => Array.from({ length: n }, () => ({ exercise, set_type: "work", weight_kg: 50, reps: 10 }));
+const S = (ex, logged, i, extra = {}) => ({ ex, logged, i, set: loggedWorkSets(logged, ex[i].exercise), weights: {}, reps: {}, eff: {}, wUnits: {}, ...extra });
+const json = (x) => JSON.parse(JSON.stringify(x)); // a save + reload (crash-mirror round trip)
+check("#skip mid-lift: one fewer set today, the cursor stays, the original count is kept, and the rest timer clears", () => {
+  const r = skipSet(S([row("a", 3), row("b", 3)], banked("a", 1), 0, { rest: { until: 9e15 } }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.ex[0].planned_sets, r.sess.i, r.sess.set, "rest" in r.sess, r.completes], [2, 3, 0, 1, false, false]);
+});
+check("#skip the last set a lift still owes: it's done for today — on to the next lift that still owes sets", () => {
+  const r = skipSet(S([row("a", 3), row("b", 3)], banked("a", 2), 0));
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.i, r.sess.set, !!r.sess.complete], [2, 1, 0, false]);
+});
+check("#skip the final set of the whole workout completes it — and the player is told first (skipWouldFinish)", () => {
+  const s = S([row("a", 2), row("b", 2)], [...banked("a", 2), ...banked("b", 1)], 1);
+  assert.strictEqual(skipWouldFinish(s), true);
+  const r = skipSet(s);
+  assert.deepStrictEqual([r.completes, r.sess.complete, r.sess.i], [true, true, 1], "the cursor never goes past the end");
+  assert.strictEqual(skipWouldFinish(S([row("a", 3), row("b", 2)], banked("a", 1), 0)), false);
+});
+check("#skip advancing scans from the START — a lift deferred earlier in the order is never jumped", () => {
+  // "a" was deferred to... no: a lift BEFORE the cursor still owes sets (an old-build order).
+  const r = skipSet(S([row("a", 2), row("b", 1)], banked("a", 1), 1));
+  assert.deepStrictEqual([r.sess.i, r.sess.set, !!r.sess.complete], [0, 1, false]);
+});
+check("#skip undo: right after, and after a crash/reload, restores the count and the cursor; refused once anything else happened", () => {
+  const s0 = S([row("a", 3), row("b", 3)], banked("a", 2), 0);
+  const skipped = skipSet(s0).sess;                        // a done → cursor on b
+  for (const s of [skipped, json(skipped)]) {
+    const u = undoSkip(s);
+    assert.strictEqual(u.ok, true);
+    assert.deepStrictEqual([u.sess.ex[0].sets, u.sess.i, u.sess.set, "lastSkip" in u.sess], [3, 0, 2, false]);
+  }
+  assert.strictEqual(undoSkip({ ...skipped, logged: [...skipped.logged, ...banked("b", 1)] }).ok, false, "a set banked since: the moment has passed");
+  assert.strictEqual(undoSkip({ ...skipped, ex: [skipped.ex[1], skipped.ex[0]] }).ok, false, "the order changed (a defer or a swap): refused");
+  assert.strictEqual(undoSkip(S([row("a", 3)], [], 0)).ok, false, "nothing to undo");
+});
+check("#skip a station round: both members lose this round (rounds stay balanced); a 3/2 pair's remainder finishes alone", () => {
+  const two = [row("a", 3, { superset_with: "b" }), row("b", 2, { superset_with: "a" }), row("c", 3)];
+  const r = skipRound(S(two, [...banked("a", 1), ...banked("b", 1)], 0), 0, 1);
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.ex[1].sets], [2, 1]);
+  assert.strictEqual(stationProgress(r.sess.logged, r.sess.ex, 0, 1).done, true, "paired rounds now min(2,1)=1, one done");
+  assert.deepStrictEqual([r.sess.i, r.sess.set], [0, 1], "on to the earliest unfinished: a's remaining set, alone");
+  const u = undoSkip(r.sess);
+  assert.deepStrictEqual([u.ok, u.sess.ex[0].sets, u.sess.ex[1].sets], [true, 3, 2], "undo restores BOTH members, never one alone");
+});
+check("#skip a swap after a skip gives the new lift the slot's PLANNED count (the skip was for the old lift)", () => {
+  const s = skipSet(S([row("a", 3), row("b", 3)], [], 0)).sess; // skipped at set 0: a has 2 today, 3 planned
+  const r = replaceSlot(s, 0, { exercise: "z", name: "Z", sets: 4, rep_range: "10-15" }, { expect: "a" });
+  assert.deepStrictEqual([r.ok, r.sess.ex[0].sets, r.sess.ex[0].planned_sets], [true, 3, 3]);
+});
+check("#skip property: random skips between banks — never a set banked past today's target, every lift ends exactly at it, and it always terminates", () => {
+  let seed = 7; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let run = 0; run < 300; run++) {
+    let s = S([row("a", 3), row("b", 2), row("c", 4)], [], 0);
+    for (let steps = 0; steps < 40 && !s.complete; steps++) {
+      if (rnd() < 0.35) { const r = skipSet(s); s = r.sess; continue; }
+      const e = s.ex[s.i];
+      s = { ...s, logged: [...s.logged, ...banked(e.exercise, 1)] };
+      if (loggedWorkSets(s.logged, e.exercise) >= e.sets) { const nx = nextUnfinishedIndex(s.logged, s.ex, -1); s = nx < 0 ? { ...s, complete: true } : { ...s, i: nx, set: loggedWorkSets(s.logged, s.ex[nx].exercise) }; }
+      else s = { ...s, set: loggedWorkSets(s.logged, e.exercise) };
+      s = json(s); // every step survives a crash
+    }
+    assert.strictEqual(!!s.complete, true, `run ${run} terminated`);
+    for (const x of s.ex) assert.strictEqual(loggedWorkSets(s.logged, x.exercise), x.sets, `run ${run}: ${x.exercise} ends exactly at today's target`);
+  }
+});
+
+// --- Burst 1 review fixes ---------------------------------------------------------------
+check("#skip-review undo never takes a lift past its PLANNED count (skip → swap → undo swap → undo skip was 4 of 3)", () => {
+  const skipped = skipSet(S([row("a", 3), row("b", 3)], [], 0)).sess;               // a: 2 today, 3 planned
+  const swapped = replaceSlot(skipped, 0, { exercise: "x", name: "X", sets: 3 }, { expect: "a" });
+  assert.strictEqual("lastSkip" in swapped.sess, false, "a swap rewrites the slot's count, so it retires the undo");
+  const back = replaceSlot(swapped.sess, 0, { ...skipped.ex[0], planned_sets: 3 }, { expect: "x" }); // the swap's Undo
+  assert.strictEqual(back.sess.ex[0].sets, 3);
+  assert.strictEqual(undoSkip({ ...back.sess, lastSkip: skipped.lastSkip }).ok, false, "even a stale undo can't grow a lift past its plan");
+});
+check("#skip-review undo DERIVES the cursor from banked sets (an Unlink in between can't leave set 0 on a lift with 2 banked)", () => {
+  const two = [row("a", 4, { superset_with: "b" }), row("b", 4, { superset_with: "a" })];
+  const sk = skipRound({ ...S(two, [...banked("a", 2), ...banked("b", 2)], 0), set: 0 }, 0, 1).sess; // the station never moves sess.set
+  const u = undoSkip({ ...sk, set: 2 });
+  assert.deepStrictEqual([u.ok, u.sess.i, u.sess.set], [true, 0, 2], "set = a's banked count, not the stored 0");
+});
+check("#skip-review a completed session never offers undo", () => {
+  const s = skipSet(S([row("a", 3), row("b", 3)], banked("a", 1), 0)).sess;
+  assert.strictEqual(undoSkip({ ...s, complete: true }).ok, false);
+});
+check("#next-set-review the band is READ: a '2-3' band eases further, and RIR 4 against a 2-3 band is not 'far easier'", () => {
+  const r23 = { rep_range: "8-12", rir: "2-3", inc_kg: 2.5 };
+  assert.strictEqual(nextSetHint(w(60, 6), r23).kg, 52.5);
+  assert.strictEqual(nextSetHint(w(60, 6), row812).kg, 55);
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 4 }), r23), null, "top 3: RIR 4 is only 1 above");
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 5 }), r23).kind, "heavier", "RIR 5 is 2 above");
+});
+check("#next-set-review the clamps: at least one step down; at most +20% up; a set stopped early UNDER the range never hints heavier", () => {
+  assert.strictEqual(nextSetHint(w(60, 5, { rir: 1 }), { rep_range: "6-10", rir: "0-1", inc_kg: 2.5 }).kg, 57.5, "raw = 60 exactly → still one step down");
+  assert.strictEqual(nextSetHint(w(40, 30), row812).kg, 47.5, "uncapped it would be 55");
+  assert.strictEqual(nextSetHint(w(60, 5, { rir: 5 }), row812), null, "under the range AND stopped early: no hint either way");
+});
+check("#next-set-review in pounds the hint always MOVES: a 1 kg step that rounds to the same plate becomes the next 5 lb plate", () => {
+  const lb = (kg) => Math.round((kg * 2.2046226) / 5) * 5; // the player's plate-rounded display
+  assert.strictEqual(hintInUnit({ kind: "lighter", kg: 8, from_kg: 9.07 }, lb, 5), 15, "20 lb → 8 kg rounds back to 20 lb: show 15");
+  assert.strictEqual(hintInUnit({ kind: "heavier", kg: 10, from_kg: 9.07 }, lb, 5), 25);
+  assert.strictEqual(hintInUnit({ kind: "lighter", kg: 52.5, from_kg: 60 }, (k) => k, 2.5), 52.5, "kg: as computed");
+  assert.strictEqual(hintInUnit({ kind: "lighter", kg: 1, from_kg: 2 }, lb, 5), null, "never a 0 or negative suggestion");
+  assert.strictEqual(hintInUnit(null, lb, 5), null);
+});
+
+// The PRE-FILLED weight in pounds (Burst 1 review): plate rounding (5 lb) swallowed any engine
+// move under ~2.5 lb, so a 1 kg step (isolation dumbbells/cables) pre-filled the very weight
+// just lifted — those lifts could never progress for a pounds user, and an ease never eased.
+const lbDisp = (kg) => Math.round((kg * 2.2046226) / 5) * 5;
+const kgDisp = (kg) => Math.round(kg * 4) / 4;
+check("#prefill in pounds a weight the engine MOVES always moves at least one plate; a hold holds", () => {
+  const lb20 = 9.07; // what 20 lb is stored as
+  assert.strictEqual(prefillInUnit({ suggested_kg: lb20 + 1, last_kg: lb20 }, lbDisp, 5), 25, "+1 kg from 20 lb: 22.2 lb rounds back to 20 — the next plate");
+  assert.strictEqual(prefillInUnit({ suggested_kg: 8, last_kg: lb20 }, lbDisp, 5), 15, "an ease to 8 kg: 17.6 lb rounds back to 20");
+  assert.strictEqual(prefillInUnit({ suggested_kg: lb20, last_kg: lb20 }, lbDisp, 5), 20, "a hold stays put");
+  assert.strictEqual(prefillInUnit({ suggested_kg: 102.5, last_kg: 100 }, lbDisp, 5), 225, "a barbell +2.5 kg already shows: as computed");
+  assert.strictEqual(prefillInUnit({ suggested_kg: 30, last_kg: null }, lbDisp, 5), 65, "no history to compare: as computed");
+  assert.strictEqual(prefillInUnit({ suggested_kg: null, last_kg: 10 }, lbDisp, 5), null, "no suggestion: the caller's own default");
+  assert.strictEqual(prefillInUnit({ suggested_kg: 1, last_kg: 2 }, lbDisp, 5), 0, "never below zero: falls back to the rounded value");
+});
+check("#prefill in kilograms it is EXACTLY the plain rounding, for every move the engine makes (property)", () => {
+  for (let last = 1; last <= 200; last += 0.25) for (const d of [-0.2 * last, -2.5, -1, 0, 1, 2.5, 5]) {
+    const sug = Math.round((last + d) * 4) / 4;
+    if (sug <= 0) continue;
+    assert.strictEqual(prefillInUnit({ suggested_kg: sug, last_kg: last }, kgDisp, 2.5), kgDisp(sug), `${last} → ${sug}`);
+  }
+});
+check("#next-set-review the hint carries the set's effort and the band, so the copy can say WHY", () => {
+  const h = nextSetHint(w(40, 10, { rir: 5 }), row812);
+  assert.deepStrictEqual([h.kind, h.reps, h.rir, h.band], ["heavier", 10, 5, "1-3"]);
+});
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

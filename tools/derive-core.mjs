@@ -1273,6 +1273,14 @@ export function proximityFromRepDropoff(session) {
   return out;
 }
 
+// The load that should land `targetReps` at `targetRir` reps in reserve, from a set of
+// `reps` at `weightKg` with `rir` in reserve: its Epley e1RM carried to the target (W279/
+// W279b). Pure arithmetic; the caller floors to the lift's increment and clamps. The
+// player (session-core) carries a byte-identical copy, pinned by test-session's parity test.
+export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
+  return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
+}
+
 // Readiness relative to the user's OWN baseline (z-scores), not absolute values —
 // the correct way to use HRV/sleep. 0-100, higher = more recovered. Null if no data.
 export function readinessIndex(checkins) {

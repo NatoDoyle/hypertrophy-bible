@@ -278,3 +278,38 @@ export function swapUndoCopy({ revertedLive, permanent, from, to }) {
   if (!permanent) return `${from} is back.`;
   return revertedLive ? `${from} is back — in today's workout and your plan.` : `${to} stays for today (you've started it) — ${from} is back from your next session.`;
 }
+
+// The engine's reason for a suggested weight, in the LIFT's display unit (Burst 1 review).
+// The server writes it in kg, and every figure in it is the suggested weight, the last weight
+// or the step between them — so in pounds each one becomes exactly what the screen shows:
+// a weight as the stepper shows it (`preDisp` is the pre-filled value), a step ("add N kg")
+// as the plates actually moved. A reason that would still contradict the screen — an "add"
+// while the stepper shows last time's weight — is dropped (null), never shown.
+export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, preDisp) {
+  if (!note || unit !== "lb") return note ?? null;
+  const lastDisp = last_kg > 0 ? toDisp(last_kg) : null;
+  let contradicts = false;
+  const out = note.replace(/(add )?(\d+(?:\.\d+)?) kg\b/g, (_, add, n) => {
+    if (add) {
+      const step = lastDisp == null ? null : preDisp - lastDisp;
+      if (!(step > 0)) contradicts = true;
+      return `add ${step} lb`;
+    }
+    const kg = +n;
+    return `${kg === suggested_kg ? preDisp : kg === last_kg ? lastDisp : toDisp(kg)} lb`;
+  });
+  return contradicts ? null : out;
+}
+
+// The next-set hint's words (W279b; Burst 1 review): what the set just banked actually did —
+// reps under the range, reps over it, or reps IN it with far more left in the tank than the
+// plan's band (that hint fires on effort, so "over the range" would be false there). The
+// player bolds `lead` and `tryW`; weights arrive already formatted in the lift's unit.
+export function hintCopy(hint, { setNo, fromW, toW }) {
+  const range = `${hint.min}–${hint.max}`;
+  const lead = `Set ${setNo}: ${hint.reps} reps at ${fromW}`;
+  if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it." };
+  if (hint.reps > hint.max) return { lead, why: `over the ${range} range`, tryW: toW, tail: "for this one to land in it." };
+  const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
+  return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };
+}

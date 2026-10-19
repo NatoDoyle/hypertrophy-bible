@@ -3,7 +3,9 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy } from "../public/ui-helpers.mjs";
+import { suggestWeight } from "../src/coach.mjs";
+import { prefillInUnit } from "../public/session-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -330,6 +332,79 @@ check("sw.js precaches every module app.js and verify.html import", () => {
 });
 
 // (The /verify cache bypass is proven through the real fetch handler in test-sw.mjs.)
+
+// --- Burst 1 review: the engine's reason for a weight, shown under it, in the LIFT's unit.
+// Every figure the engine writes is the suggested weight, the last weight, or the step
+// between them, so each converts to exactly what the screen shows.
+const lbD = (kg) => Math.round((kg * 2.2046226) / 5) * 5;
+check("#why-unit in kilograms the engine's reason is shown exactly as written", () => {
+  const n = "Last time you hit the top of the range — add 2.5 kg.";
+  assert.equal(noteInUnit(n, { suggested_kg: 102.5, last_kg: 100 }, "kg", (k) => k, 102.5), n);
+});
+check("#why-unit in pounds every figure is the lift's own: a weight as the stepper shows it, a step as the plates moved", () => {
+  assert.equal(noteInUnit("Last time you hit the top of the range — add 1 kg.", { suggested_kg: 10.07, last_kg: 9.07 }, "lb", lbD, 25),
+    "Last time you hit the top of the range — add 5 lb.");
+  assert.equal(noteInUnit("Your first set at 9.07 kg came in at 5 — under the 8–12 range — so I've lightened this to 8 kg — your first set should land in the range.", { suggested_kg: 8, last_kg: 9.07 }, "lb", lbD, 15),
+    "Your first set at 20 lb came in at 5 — under the 8–12 range — so I've lightened this to 15 lb — your first set should land in the range.");
+  assert.equal(noteInUnit("It's been 14 days — I eased this to 88 kg so you ramp back in safely. Add load as it feels easy.", { suggested_kg: 88, last_kg: 100 }, "lb", lbD, 195),
+    "It's been 14 days — I eased this to 195 lb so you ramp back in safely. Add load as it feels easy.");
+  assert.equal(noteInUnit("Keep the weight and try to add a rep or two.", { suggested_kg: 60, last_kg: 60 }, "lb", lbD, 130), "Keep the weight and try to add a rep or two.");
+});
+check("#why-unit a reason that would contradict the screen is dropped, never shown ('add' while the stepper shows last time's weight)", () => {
+  assert.equal(noteInUnit("Last time you hit the top of the range — add 1 kg.", { suggested_kg: 10.07, last_kg: 9.07 }, "lb", lbD, 20), null);
+});
+check("#why-unit property: every reason the REAL engine writes reaches a pounds user in pounds, never kg — and never dropped", () => {
+  const at = (n) => new Date(Date.UTC(2026, 5, 20 - n, 18)).toISOString();
+  const day = (id, n, sets) => ({ date: at(n), program_ref: "p", sets: sets.map(([kg, reps, rir]) => ({ exercise: id, set_type: "work", weight_kg: kg, reps, ...(rir != null ? { rir } : {}) })) });
+  assert.match(suggestWeight([day("cable-lateral-raise", 1, [[9.07, 15]])], "cable-lateral-raise", "10-15", undefined, at(0), "1-3").note, /add 1 kg/, "precondition: a 1 kg-increment lift");
+  let seen = 0;
+  for (const id of ["cable-lateral-raise", "barbell-bench-press"]) for (const kg of [9.07, 20.41, 58.97, 99.79]) for (const [min, max] of [[6, 10], [8, 12], [10, 15]]) {
+    const histories = [[[kg, max], [kg, max]], [[kg, min + 1, 5]], [[kg, min - 3]], [[kg, min - 1]], [[kg, min + 1]], [[kg, min + 1, 0]]];
+    for (const [k, sets] of histories.entries()) for (const gap of [1, 20]) {
+      const r = suggestWeight([day(id, gap, sets)], id, `${min}-${max}`, undefined, at(0), "1-3");
+      if (r.suggested_kg == null) continue;
+      const row = { suggested_kg: r.suggested_kg, last_kg: r.last_kg };
+      const out = noteInUnit(r.note, row, "lb", lbD, prefillInUnit(row, lbD, 5));
+      assert.ok(out != null && !/\bkg\b/.test(out), `${id} ${kg} kg ${min}-${max} #${k} gap ${gap}: ${r.note} → ${out}`);
+      seen++;
+    }
+  }
+  assert.ok(seen >= 250, `scenarios exercised: ${seen}`);
+});
+// The next-set hint says what actually happened: reps under, reps over — or reps IN the range
+// with far more left in the tank than planned (that hint fires on effort; "over the range"
+// was a false statement there).
+check("#hint-copy each kind of hint says what actually happened", () => {
+  const j = (c) => `${c.lead} — ${c.why}. Try ${c.tryW} ${c.tail}`;
+  assert.equal(j(hintCopy({ kind: "lighter", reps: 6, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 1, fromW: "60 kg", toW: "55 kg" })),
+    "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it.");
+  assert.equal(j(hintCopy({ kind: "heavier", reps: 15, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 2, fromW: "40 kg", toW: "42.5 kg" })),
+    "Set 2: 15 reps at 40 kg — over the 8–12 range. Try 42.5 kg for this one to land in it.");
+  assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),
+    "Set 1: 10 reps at 40 kg — in the range, but with about 5 left in the tank (the plan says 1–3). Try 45 kg for this one.");
+});
+
+// --- Burst 1 review: the player's wiring of the W280/W281 engine pieces. The pure pieces are
+// proven in test-session and the server side through the route (#client-wiring); these pin the
+// few lines in app.js that connect them, so a refactor can't drop one silently.
+const fnBody = (src, head) => { const at = src.indexOf(head); assert.ok(at >= 0, `missing: ${head}`); return src.slice(at, at + 1500); };
+check("player: a workout stamps each lift's PLANNED count at start, and finish sends the plan it ran (targets)", () => {
+  assert.match(appJs, /orderSupersetAdjacent\(templateSession\.exercises\)\.map\(\(x\) => \(\{ \.\.\.x, planned_sets: x\.sets \}\)\)/);
+  assert.match(appJs, /const payload = \{[^}]*\btargets: buildTargets\(sess\)/);
+});
+check("player: the reason for the pre-filled weight is on screen (single lift and superset station)", () => {
+  assert.match(appJs, /\$\{sess\.set === 0 && !firstEver \? whyLine\(e\) : ""\}/);
+  assert.match(appJs, /\$\{round === 0 \? whyLine\(m\) : ""\}/);
+});
+check("player: every stepper starts on the plate-aware suggestion (single lift AND station), and the hint speaks through hintCopy", () => {
+  assert.doesNotMatch(appJs, /sess\.weights\[[^\]]+\] = dispWeightFor\(startWeightDefault\(/, "a pre-fill site still rounds the raw suggestion");
+  assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
+  assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
+});
+check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
+  assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);
+  assert.match(fnBody(appJs, '$("#unlink").onclick = () => {'), /delete sess\.lastSkip/);
+});
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
