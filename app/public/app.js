@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG } from "/ui-helpers.mjs";
@@ -1804,6 +1804,33 @@ let historyEdit = null;     // session_id currently open for correction on the h
 let historyDateFix = null;  // session_id whose quarantined calendar date is being repaired
 let historyWeeksShown = 4;  // history is week-grouped and capped; "Show earlier weeks" raises this
 let quitPending = false;    // two-tap guard on ending a workout early
+let skipPending = false;    // two-tap guard on a skip that would END the workout (W281)
+// The one-line strip that offers to undo the last skip, while undoSkip says it still can
+// (nothing banked since, the order unchanged) — derived from the saved session, so a reload
+// keeps offering it.
+function skipUndoStrip() {
+  if (!sess?.lastSkip || !undoSkip(sess).ok) return "";
+  const names = sess.lastSkip.ids.map((id) => sess.ex.find((x) => x.exercise === id)?.name ?? id);
+  return `<div class="cue" id="skip-undo" role="status">⏭ Skipped ${names.length > 1 ? `a round of <b>${esc(names[0])}</b> + <b>${esc(names[1])}</b>` : `a set of <b>${esc(names[0])}</b>`} — it's off today's count.
+    <button class="btn ghost inline" id="undo-skip" style="margin:0 0 0 4px">Undo</button></div>`;
+}
+// Apply a skip (W281): the pure session-core result becomes the session, saved before
+// anything else; a skip that completes the workout saves it (the player asked first).
+function applySkip(r, redraw) {
+  skipPending = false; quitPending = false; confirmSet.clear();
+  if (!r.ok) return redraw();
+  sess = r.sess; saveSess();
+  if (sess.complete) { say("Skipped — that was the last one. Saving your workout."); return finish(); }
+  say("Skipped. That set is off today's count.");
+  redraw();
+}
+function wireSkipUndo(redraw) {
+  if ($("#undo-skip")) $("#undo-skip").onclick = () => {
+    const u = undoSkip(sess);
+    if (u.ok) { sess = u.sess; saveSess(); say("Skip undone."); }
+    redraw();
+  };
+}
 // Two-tap guard on banking a set whose numbers look like a typo (isImplausibleSet).
 // Keyed by the EXERCISE ID being confirmed, not its array index: the superset
 // station shows two lifts at once (so one member's confirmation must not wave the
@@ -2299,7 +2326,7 @@ function renderPlayer() {
       ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
-    <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
+    <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2311,6 +2338,7 @@ function renderPlayer() {
     ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
+    ${skipUndoStrip()}
     <div class="card">
       ${hintHtml}
       ${weightStepper(w, e.equipment === "bodyweight", null, e.exercise)}
@@ -2323,6 +2351,7 @@ function renderPlayer() {
     </div>
     <button class="btn ghost" id="how">How do I do this?</button>
     ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="cantdo">🙅 Can't do this one?</button>` : ""}
+    <button class="btn ghost" id="skipset">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this set"}</button>
     ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
@@ -2383,12 +2412,18 @@ function renderPlayer() {
   };
   // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
   // display unit (the same per-index stamp a typed weight gets); nothing is banked.
+  wireSkipUndo(() => renderPlayer(0));
+  $("#skipset").onclick = () => {
+    if (skipWouldFinish(sess) && !skipPending) { skipPending = true; quitPending = false; return renderPlayer(0); }
+    applySkip(skipSet(sess), () => renderPlayer(0));
+  };
   if ($("#use-hint")) $("#use-hint").onclick = () => {
     sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
     saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"
+    skipPending = false;
     // One stray stepper tap must not poison the log: a set that dwarfs this lift's
     // own history asks once first. Confirmed sets fall straight through.
     if (needsSetConfirm(sess.i)) { confirmSet.add(e.exercise); return renderPlayer(0); }
@@ -2479,10 +2514,12 @@ function renderSupersetStation(L, P) {
   app.innerHTML = `<div class="exhead"><h1>🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span></div>
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
+    ${skipUndoStrip()}
     ${memberBlock(L)}${memberBlock(P)}
     <div id="fix-host">${setChipsHtml([A.exercise, B.exercise])}</div>
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
+    <button class="btn ghost" id="skipround">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this round"}</button>
     <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
 
   // In-place stepper updates (same rationale as the single-exercise player): keep
@@ -2510,8 +2547,17 @@ function renderSupersetStation(L, P) {
     // renderPlayer(0) re-routes back into this station, as it always has.
     renderExerciseSheet(m, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   });
+  wireSkipUndo(() => renderPlayer(0));
+  // "Skip this round" (W281): BOTH members lose this round, so rounds stay balanced; a skip
+  // that would end the workout asks first. renderPlayer routes back into the station while
+  // it still owes rounds, or on to whatever is next.
+  $("#skipround").onclick = () => {
+    if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
+    applySkip(skipRound(sess, L, P), () => renderPlayer(0));
+  };
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
+    skipPending = false;
     // Same typo guard as the single-lift player, per MEMBER: a round banks two sets
     // at once, so confirming one must not wave the other through. Every flagged
     // member is confirmed TOGETHER — confirming them one at a time made a round with
@@ -4637,6 +4683,7 @@ function render() {
   settingsMode = false; settingsSolo = null; // navigating away abandons an in-progress settings edit cleanly
   if (tab !== "history") { historyEdit = null; historyDateFix = null; } // ...and an in-progress workout correction/date repair
   quitPending = false;
+  skipPending = false;    // …nor an armed "skip and finish"
   discardPending = false; // an armed Discard must not survive a trip to another tab
   if (!uid) return renderOnboarding();
   nav.hidden = false;

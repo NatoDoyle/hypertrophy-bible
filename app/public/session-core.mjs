@@ -71,10 +71,59 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
   const { superset_with, superset_with_name, ...slot } = row;
   for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
+  // planned count (a swap is only ever offered before any set of the old lift was banked).
+  if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
   if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
+  return { ok: true, sess: out };
+}
+
+// "Skip this set" / "Skip this round" (W281, owner: "need ability to skip a set mid
+// workout"). A skip SHRINKS today's target for the lift(s): `sets`, the field every "where
+// am I" helper already reads, so progress stays derived from banked work sets and nothing
+// in the crash-safe derivation changes shape. `planned_sets` keeps the original, so the
+// finished workout's targets show the shortfall and the next weight increase waits (W280).
+// It advances exactly as banking does, deciding "complete" by scanning from the START (a
+// lift behind the cursor may still owe sets). One level of undo lives IN the saved session
+// (`lastSkip`), valid only while nothing was banked and the order is unchanged since — so a
+// reload can still undo, and a banked set, a defer or a swap retires it without any handler
+// having to remember to. Station rounds shrink BOTH members (rounds stay balanced) and undo
+// restores both, never one alone. Pure: returns a new session.
+const orderKey = (sess) => sess.ex.map((x) => x.exercise).join("|");
+function shrinkAndAdvance(sess, idxs, stillOn, from) {
+  const ex = sess.ex.map((x, k) => (idxs.includes(k) ? { ...x, sets: x.sets - 1 } : x));
+  const out = { ...sess, ex, lastSkip: { ids: idxs.map((k) => sess.ex[k].exercise), loggedLen: sess.logged.length, order: orderKey(sess), prevI: sess.i, prevSet: sess.set } };
+  delete out.rest; // straight into the next set: a skip earns no rest
+  if (stillOn(ex)) return { ok: true, sess: { ...out, set: loggedWorkSets(sess.logged, ex[sess.i].exercise) }, completes: false };
+  // A single lift moves on like the bank handler (forward, then from the start); a finished
+  // station like the station's bank handler — from the start, so the longer member's
+  // remainder is picked next and finished alone.
+  let nx = nextUnfinishedIndex(sess.logged, ex, from);
+  if (nx < 0 && from >= 0) nx = nextUnfinishedIndex(sess.logged, ex, -1);
+  if (nx < 0) return { ok: true, sess: { ...out, complete: true }, completes: true };
+  return { ok: true, sess: { ...out, i: nx, set: loggedWorkSets(sess.logged, ex[nx].exercise) }, completes: false };
+}
+export function skipSet(sess) {
+  const cur = sess?.ex?.[sess.i];
+  if (!cur || loggedWorkSets(sess.logged, cur.exercise) >= cur.sets) return { ok: false, sess, completes: false };
+  return shrinkAndAdvance(sess, [sess.i], (ex) => loggedWorkSets(sess.logged, cur.exercise) < ex[sess.i].sets, sess.i);
+}
+export function skipRound(sess, L, P) {
+  const a = sess?.ex?.[L], b = sess?.ex?.[P];
+  if (!a || !b || stationProgress(sess.logged, sess.ex, L, P).done) return { ok: false, sess, completes: false };
+  return shrinkAndAdvance(sess, [L, P], (ex) => !stationProgress(sess.logged, ex, L, P).done, -1);
+}
+// Would this skip end the workout? The player asks for a second tap first ("Skip and finish?").
+export const skipWouldFinish = (sess, station = null) => (station ? skipRound(sess, station[0], station[1]) : skipSet(sess)).completes === true;
+export function undoSkip(sess) {
+  const u = sess?.lastSkip;
+  if (!u || sess.complete || u.loggedLen !== sess.logged.length || u.order !== orderKey(sess)) return { ok: false, sess };
+  const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
+  const out = { ...sess, ex, i: u.prevI, set: u.prevSet };
+  delete out.lastSkip;
   return { ok: true, sess: out };
 }
 

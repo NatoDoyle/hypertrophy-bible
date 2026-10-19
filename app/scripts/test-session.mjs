@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -780,6 +780,78 @@ check("#targets buildTargets: the original set count, range, band and suggestion
   ]);
   assert.strictEqual(buildTargets({ ...sess, deload: true }).every((t) => t.deload === true), true, "a deload week: every lift planned easy");
   assert.deepStrictEqual(buildTargets(null), []);
+});
+
+// --- #skip (W281, owner: "need ability to skip a set mid-workout"). A skip SHRINKS today's
+// target (`sets`, the field every "where am I" helper reads), so progress stays derived from
+// banked sets; `planned_sets` keeps the original for the workout's targets (W280).
+const row = (exercise, sets, extra = {}) => ({ exercise, sets, planned_sets: sets, rep_range: "8-12", rir: "1-3", ...extra });
+const banked = (exercise, n) => Array.from({ length: n }, () => ({ exercise, set_type: "work", weight_kg: 50, reps: 10 }));
+const S = (ex, logged, i, extra = {}) => ({ ex, logged, i, set: loggedWorkSets(logged, ex[i].exercise), weights: {}, reps: {}, eff: {}, wUnits: {}, ...extra });
+const json = (x) => JSON.parse(JSON.stringify(x)); // a save + reload (crash-mirror round trip)
+check("#skip mid-lift: one fewer set today, the cursor stays, the original count is kept, and the rest timer clears", () => {
+  const r = skipSet(S([row("a", 3), row("b", 3)], banked("a", 1), 0, { rest: { until: 9e15 } }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.ex[0].planned_sets, r.sess.i, r.sess.set, "rest" in r.sess, r.completes], [2, 3, 0, 1, false, false]);
+});
+check("#skip the last set a lift still owes: it's done for today — on to the next lift that still owes sets", () => {
+  const r = skipSet(S([row("a", 3), row("b", 3)], banked("a", 2), 0));
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.i, r.sess.set, !!r.sess.complete], [2, 1, 0, false]);
+});
+check("#skip the final set of the whole workout completes it — and the player is told first (skipWouldFinish)", () => {
+  const s = S([row("a", 2), row("b", 2)], [...banked("a", 2), ...banked("b", 1)], 1);
+  assert.strictEqual(skipWouldFinish(s), true);
+  const r = skipSet(s);
+  assert.deepStrictEqual([r.completes, r.sess.complete, r.sess.i], [true, true, 1], "the cursor never goes past the end");
+  assert.strictEqual(skipWouldFinish(S([row("a", 3), row("b", 2)], banked("a", 1), 0)), false);
+});
+check("#skip advancing scans from the START — a lift deferred earlier in the order is never jumped", () => {
+  // "a" was deferred to... no: a lift BEFORE the cursor still owes sets (an old-build order).
+  const r = skipSet(S([row("a", 2), row("b", 1)], banked("a", 1), 1));
+  assert.deepStrictEqual([r.sess.i, r.sess.set, !!r.sess.complete], [0, 1, false]);
+});
+check("#skip undo: right after, and after a crash/reload, restores the count and the cursor; refused once anything else happened", () => {
+  const s0 = S([row("a", 3), row("b", 3)], banked("a", 2), 0);
+  const skipped = skipSet(s0).sess;                        // a done → cursor on b
+  for (const s of [skipped, json(skipped)]) {
+    const u = undoSkip(s);
+    assert.strictEqual(u.ok, true);
+    assert.deepStrictEqual([u.sess.ex[0].sets, u.sess.i, u.sess.set, "lastSkip" in u.sess], [3, 0, 2, false]);
+  }
+  assert.strictEqual(undoSkip({ ...skipped, logged: [...skipped.logged, ...banked("b", 1)] }).ok, false, "a set banked since: the moment has passed");
+  assert.strictEqual(undoSkip({ ...skipped, ex: [skipped.ex[1], skipped.ex[0]] }).ok, false, "the order changed (a defer or a swap): refused");
+  assert.strictEqual(undoSkip(S([row("a", 3)], [], 0)).ok, false, "nothing to undo");
+});
+check("#skip a station round: both members lose this round (rounds stay balanced); a 3/2 pair's remainder finishes alone", () => {
+  const two = [row("a", 3, { superset_with: "b" }), row("b", 2, { superset_with: "a" }), row("c", 3)];
+  const r = skipRound(S(two, [...banked("a", 1), ...banked("b", 1)], 0), 0, 1);
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual([r.sess.ex[0].sets, r.sess.ex[1].sets], [2, 1]);
+  assert.strictEqual(stationProgress(r.sess.logged, r.sess.ex, 0, 1).done, true, "paired rounds now min(2,1)=1, one done");
+  assert.deepStrictEqual([r.sess.i, r.sess.set], [0, 1], "on to the earliest unfinished: a's remaining set, alone");
+  const u = undoSkip(r.sess);
+  assert.deepStrictEqual([u.ok, u.sess.ex[0].sets, u.sess.ex[1].sets], [true, 3, 2], "undo restores BOTH members, never one alone");
+});
+check("#skip a swap after a skip gives the new lift the slot's PLANNED count (the skip was for the old lift)", () => {
+  const s = skipSet(S([row("a", 3), row("b", 3)], [], 0)).sess; // skipped at set 0: a has 2 today, 3 planned
+  const r = replaceSlot(s, 0, { exercise: "z", name: "Z", sets: 4, rep_range: "10-15" }, { expect: "a" });
+  assert.deepStrictEqual([r.ok, r.sess.ex[0].sets, r.sess.ex[0].planned_sets], [true, 3, 3]);
+});
+check("#skip property: random skips between banks — never a set banked past today's target, every lift ends exactly at it, and it always terminates", () => {
+  let seed = 7; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let run = 0; run < 300; run++) {
+    let s = S([row("a", 3), row("b", 2), row("c", 4)], [], 0);
+    for (let steps = 0; steps < 40 && !s.complete; steps++) {
+      if (rnd() < 0.35) { const r = skipSet(s); s = r.sess; continue; }
+      const e = s.ex[s.i];
+      s = { ...s, logged: [...s.logged, ...banked(e.exercise, 1)] };
+      if (loggedWorkSets(s.logged, e.exercise) >= e.sets) { const nx = nextUnfinishedIndex(s.logged, s.ex, -1); s = nx < 0 ? { ...s, complete: true } : { ...s, i: nx, set: loggedWorkSets(s.logged, s.ex[nx].exercise) }; }
+      else s = { ...s, set: loggedWorkSets(s.logged, e.exercise) };
+      s = json(s); // every step survives a crash
+    }
+    assert.strictEqual(!!s.complete, true, `run ${run} terminated`);
+    for (const x of s.ex) assert.strictEqual(loggedWorkSets(s.logged, x.exercise), x.sets, `run ${run}: ${x.exercise} ends exactly at today's target`);
+  }
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
