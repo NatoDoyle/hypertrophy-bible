@@ -233,6 +233,11 @@ export function planFitCopy(fit) {
     rebuild: `Rebuild for ${c} days`, keep: `Keep my ${n}-day plan`, key: `${n}:${c}`, days: c,
   };
 }
+// The card's two decisions, here so they're tested rather than wired by hand (W278 review):
+// the request "Rebuild" sends — a profile patch the Settings door merges, carrying the
+// COMMITTED count — and whether the card shows at all ("Keep" hides that one pair).
+export const planFitRequest = (fit) => (fit?.days ? { profile: { days_per_week: fit.days } } : null);
+export const planFitVisible = (fit, keptKey) => !!fit && keptKey !== fit.key;
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;

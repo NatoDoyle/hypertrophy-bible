@@ -595,9 +595,14 @@ export function deriveSpecialization(profile, muscles = []) {
 // "how do I run another specialization block?" answers itself with "change which muscles
 // you're prioritising", the same act the KB describes as rotating priority across the
 // year, and a consistent lifter needs no new question and no new setting.
+// ...except that EVERY training change resets block_index, so a schedule change (fewer
+// days in Settings, W278's "Rebuild for N days") re-armed a block that had already run
+// (W278 review). `spent` carries "this priority set's block is done" across such a
+// rebuild (plan_meta.spec_spent, stamped by the app's rebuildPlan); only a change of
+// WHAT is prioritised clears it.
 export const SPEC_MAX_BLOCKS = 1;
-export function specializationActive(profile, muscles = [], blockIndex = 0) {
-  return deriveSpecialization(profile, muscles) && (blockIndex ?? 0) < SPEC_MAX_BLOCKS;
+export function specializationActive(profile, muscles = [], blockIndex = 0, spent = false) {
+  return deriveSpecialization(profile, muscles) && !spent && (blockIndex ?? 0) < SPEC_MAX_BLOCKS;
 }
 
 export function generatePlan(profile, kb, opts = {}) {
@@ -613,7 +618,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // and the plan rebalances, as the KB prescribes. Both are banked in the rationale
   // below so the plan card can explain the transition instead of silently reverting.
   const wantsSpecialization = deriveSpecialization(profile, muscles);
-  const specialization = specializationActive(profile, muscles, blockIndex); // priorities to the ceiling, the rest to maintenance
+  const specialization = specializationActive(profile, muscles, blockIndex, opts.specSpent === true); // priorities to the ceiling, the rest to maintenance
   // Lifts this person has genuinely plateaued on — demoted below every alternative
   // for their muscle so the next block offers a different angle (the KB's
   // change-exercise lever). Empty by default, so a plan generated without it is
@@ -1604,7 +1609,7 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
 // comparator (a user-ordered custom session keeps its order); and the rationale says
 // what really happened. Pure — returns { program, rationale, replaced, replaced_by } or
 // { error }, never mutating its inputs.
-export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0 } = {}) {
+export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0, specSpent = false } = {}) {
   const prog = JSON.parse(JSON.stringify(program));
   const rat = rationale ? JSON.parse(JSON.stringify(rationale)) : null;
   const holding = prog.sessions.filter((s) => s.exercises.some((e) => e.exercise === exId));
@@ -1613,7 +1618,7 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
   const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
   const X = lookup.get(exId);
   const priority = new Set(profile?.priority_muscles ?? []);
-  const specialization = specializationActive(profile ?? {}, kb.muscles ?? [], blockIndex);
+  const specialization = specializationActive(profile ?? {}, kb.muscles ?? [], blockIndex, specSpent);
   const replaced = [];
   const dropped = []; // rescue bonuses that left because their pairing couldn't be kept
   let preferred = null;

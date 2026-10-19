@@ -13,6 +13,7 @@ import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds } fro
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
+import { planFitCopy, planFitRequest } from "../public/ui-helpers.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
@@ -1174,19 +1175,63 @@ try {
   ok("#plan-fit a 4-workout plan with 3 days standing a week → the offer names both counts", JSON.stringify(await fitOf(fit3)) === JSON.stringify({ plan_days: 4, committed_days: 3 }));
   ok("#plan-fit …more days than workouts too", JSON.stringify(await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri"] }))) === JSON.stringify({ plan_days: 4, committed_days: 5 }));
   ok("#plan-fit no offer for a pick made THIS week (it hasn't stood yet)", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], week: "2026-W42" }))) === null);
+  // "Stood a week" is LITERAL (W278 review): a Sunday pick is "carried" the next morning,
+  // but "you've been picking 2 days a week" would be one partial week's word for it.
+  const sundayPick = await fitUser({ days: ["tue", "sun"], patch: (u) => { u.profile.commitment.set_on = "2026-10-11"; } });
+  const fitOn = async (id, d) => (await (await app.request(`/api/today?d=${d}`, { headers: { "X-HB-User": id } })).json()).daily?.plan_fit;
+  ok("#plan-fit a Sunday pick gets no offer the next morning, and does once it has stood seven days",
+    (await fitOn(sundayPick, "2026-10-12")) === null && JSON.stringify(await fitOn(sundayPick, "2026-10-18")) === JSON.stringify({ plan_days: 4, committed_days: 2 }));
+  const legacy = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { delete u.profile.commitment.set_on; } });
+  ok("#plan-fit a legacy stamp (no set_on) counts from its week's Monday", JSON.stringify(await fitOn(legacy, "2026-10-14")) === JSON.stringify({ plan_days: 4, committed_days: 3 })
+    && (await fitOn(legacy, "2026-10-09")) === null);
   ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
   ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",
     (await fitOf(await fitUser({ days: ["mon"] }))) === null && (await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }))) === null);
   ok("#plan-fit no offer for a hand-edited plan (a rebuild would discard the edits) or a paused user (rail #1)",
     (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.program = { ...u.program, custom: true }; } }))) === null
     && (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.paused = { from: "2026-10-10", reason: "sick" }; } }))) === null);
-  // The rebuild is the Settings door itself (one copy of the rules): a training change.
-  const fitRe = await json("POST", "/api/plan/regenerate", { user_id: fit3, profile: { days_per_week: 3 } });
+  // The rebuild is the Settings door itself (one copy of the rules), sent EXACTLY as the
+  // client builds it from a live answer (W278 review: a hand-written body proved nothing
+  // about app.js), from MID-BLOCK — two workouts into a block that started 10 days ago —
+  // so "a fresh block from Day A" is a RESET (rotation rebased, block restarted), not an
+  // untouched new user that was already at Day A.
+  await store.updateUser(fit3, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(10) }; return u; });
+  for (const [i, sid] of ["fit-a", "fit-b"].entries()) await json("POST", "/api/session", { user_id: fit3, session_id: sid, date: dAgo(3 - i), local_date: dAgo(3 - i).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  const fitLive = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": fit3 } })).json();
+  const fitPre = await store.getUser(fit3);
+  const fitRe = await json("POST", "/api/plan/regenerate", { user_id: fit3, ...planFitRequest(planFitCopy(fitLive.daily.plan_fit)) });
   const fitAfter = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": fit3 } })).json();
   const fitU = await store.getUser(fit3);
-  ok("#plan-fit tapping Rebuild: a 3-workout plan, a fresh block from Day A, and the offer is gone",
-    fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
+  ok("#plan-fit tapping Rebuild (the client's own request): a 3-workout plan, a fresh block from Day A, and the offer is gone",
+    fitLive.session.name !== fitPre.program.sessions[0].name
+    && fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
+    && Date.parse(fitU.plan_meta.block_start) > Date.parse(fitPre.plan_meta.block_start) + 9 * 86400000
     && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+  // …and a specialization block that already RAN stays run (W278 review: block_index resets
+  // on any training change, so the offer re-armed it). Only new priorities start another.
+  const specFit = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.priority_muscles = ["side-delts"]; } });
+  await json("POST", "/api/plan/regenerate", { user_id: specFit, profile: { priority_muscles: ["side-delts"] } });
+  const specActive0 = (await store.getUser(specFit)).plan_rationale.goal_prescription.specialization;
+  // The block runs its course for REAL: six trained weeks since it began, so the rollover
+  // itself moves block_index to 1 (a hand-set index would be "corrected" by that rollover).
+  for (let w = 1; w <= 6; w++) await json("POST", "/api/session", { user_id: specFit, session_id: `spec-w${w}`, date: dAgo(7 * w), local_date: dAgo(7 * w).slice(0, 10), sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+  await store.updateUser(specFit, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(45) }; return u; });
+  const specLive = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": specFit } })).json();
+  const specRan = await store.getUser(specFit);
+  await json("POST", "/api/plan/regenerate", { user_id: specFit, ...planFitRequest(planFitCopy(specLive.daily.plan_fit)) });
+  const specAfter = await store.getUser(specFit);
+  ok("#plan-fit a rebuild for the schedule leaves a FINISHED specialization block finished (the control: it was running at block 0)",
+    specActive0.active === true && specRan.plan_meta.block_index === 1 && specRan.plan_rationale.goal_prescription.specialization.active === false
+    && specAfter.program.sessions.length === 3 && specAfter.plan_meta.block_index === 0
+    && specAfter.plan_rationale.goal_prescription.specialization.wants === true && specAfter.plan_rationale.goal_prescription.specialization.active === false
+    && specAfter.plan_meta.spec_spent === true);
+  await json("POST", "/api/plan/regenerate", { user_id: specFit, profile: { days_per_week: 4 } }); // a second schedule change: still spent
+  const specAgain = await store.getUser(specFit);
+  await json("POST", "/api/plan/regenerate", { user_id: specFit, profile: { priority_muscles: ["chest"] } });
+  const specNew = await store.getUser(specFit);
+  ok("#plan-fit …through a second schedule change too; NEW priorities start a new block",
+    specAgain.plan_rationale.goal_prescription.specialization.active === false
+    && specNew.plan_rationale.goal_prescription.specialization.active === true && !specNew.plan_meta.spec_spent);
 
   // --- Account truth (Wave 234): /api/adherence carries the server's own answer to
   // "does this user actually have an account". The client used to trust a

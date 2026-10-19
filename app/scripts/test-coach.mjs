@@ -1,7 +1,9 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
-import { generateUserPlan } from "../src/planner.mjs";
+import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
+import { applySubstitution } from "../../tools/plan-core.mjs";
+import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
@@ -154,6 +156,28 @@ check("#week a day swap stops at its cycle's edge in the projection too (B·A·B
   assert.deepEqual(names, ["B", "A", "B"]);
   assert.deepEqual(upcomingSessions({ id: "x", sessions: [] }, [], {}, 3), [], "no sessions → nothing to project");
   assert.deepEqual(upcomingSessions(rotProg, [], {}, 0), []);
+});
+
+// W278 review: a SPENT specialization block (plan_meta.spec_spent, kept through a schedule
+// rebuild) must reach the permanent "No machine" swap too — it re-orders the session, and
+// would otherwise order it as if the block were still running (151 of 366 swaps measured).
+check("#spec-spent the permanent swap honours a spent specialization block — the binder passes the flag the plan was built with", () => {
+  const profile = { user_id: "spent-swap", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] };
+  const gen = generateUserPlan(profile, { blockIndex: 0, specSpent: true });
+  const user = { profile, program: gen.program, plan_rationale: gen.rationale, plan_meta: { block_index: 0, spec_spent: true } };
+  const kb = { exercises: kbExercises, muscles: kbMuscles, contraindications: kbContra, guidelines: kbGuidelines };
+  let checked = 0, matters = 0;
+  for (const s of gen.program.sessions) for (const e of s.exercises) {
+    const viaBinder = userApplySubstitution(user, e.exercise, { sessionName: s.name });
+    if (viaBinder.error) continue;
+    checked++;
+    const spent = applySubstitution(gen.program, gen.rationale, e.exercise, { profile, kb, blockIndex: 0, specSpent: true, sessionName: s.name });
+    const running = applySubstitution(gen.program, gen.rationale, e.exercise, { profile, kb, blockIndex: 0, specSpent: false, sessionName: s.name });
+    assert.deepEqual(viaBinder.program, spent.program, `${s.name}/${e.exercise}`);
+    if (JSON.stringify(running.program) !== JSON.stringify(spent.program)) matters++;
+  }
+  assert.ok(checked > 3 && matters > 0, `the flag must change some swap here (checked ${checked}, matters ${matters})`);
 });
 
 check("gap_note: fires for a real miss scaled to days_per_week, never beside the comeback, never for a first-timer", () => {

@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible } from "../public/ui-helpers.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -183,6 +183,16 @@ check("planFitCopy: more days than workouts — they repeat, your muscles get mo
   assert.equal(c.rebuild, "Rebuild for 5 days"); assert.equal(c.keep, "Keep my 3-day plan"); assert.equal(c.key, "3:5");
   assert.equal(planFitCopy(null), null);
   assert.equal(planFitCopy({ plan_days: 4, committed_days: 4 }), null);
+});
+
+check("planFitRequest / planFitVisible: the exact request the card sends, and the Keep gate (one pair, this device)", () => {
+  const fit = planFitCopy({ plan_days: 4, committed_days: 3 });
+  assert.deepEqual(planFitRequest(fit), { profile: { days_per_week: 3 } }, "the COMMITTED count, inside the profile patch the Settings door merges");
+  assert.equal(planFitRequest(null), null);
+  assert.equal(planFitVisible(fit, null), true);
+  assert.equal(planFitVisible(fit, "4:3"), false, "kept: hidden");
+  assert.equal(planFitVisible(fit, "4:2"), true, "a different pair is a new situation");
+  assert.equal(planFitVisible(null, null), false);
 });
 
 // --- The phone-calendar file is the one reminder the app can't change (W271 review):

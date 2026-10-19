@@ -809,6 +809,17 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
   const lineAfter = explainPersonalization(specProf, after.rationale, after.program).find((l) => l.input === "priority_muscles");
   ok("...and the plan card SAYS the block ran its course rather than quietly reverting",
     /run its course/.test(lineAfter.effect) && /back off maintenance/.test(lineAfter.effect));
+  // W278 review: block_index resets on ANY training change, so a schedule change (Settings
+  // days, the plan-fit "Rebuild for N days") re-armed a block that had already run. The
+  // spent state rides its own flag: only a change of WHAT is prioritised starts another.
+  ok("specializationActive: a SPENT block stays over at block 0 (a rebuild for a new schedule)",
+    specializationActive(specProf, muscles, 0, true) === false && specializationActive(specProf, muscles, 0, false) === true);
+  const spent = generatePlan(specProf, kb, { blockIndex: 0, specSpent: true });
+  const heldSpent = Object.values(spent.rationale.volume_by_muscle).filter((v) => v.maintenance || v.eased).length;
+  ok("...and the plan rebalances as an expired block does (block 0 WITHOUT the flag still specializes — the control), and says so",
+    spent.rationale.goal_prescription.specialization.wants === true && spent.rationale.goal_prescription.specialization.active === false
+    && heldSpent === 0 && heldDuring > 0
+    && /run its course/.test(explainPersonalization(specProf, spent.rationale, spent.program).find((l) => l.input === "priority_muscles").effect));
   const lineDuring = explainPersonalization(specProf, during.rationale, during.program).find((l) => l.input === "priority_muscles");
   ok("...while a block still running says what it is costing, as before",
     /maintenance dose/.test(lineDuring.effect) && !/run its course/.test(lineDuring.effect));
