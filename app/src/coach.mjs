@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 
 const parseRange = (s) => {
@@ -165,7 +165,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     if (min - s1.reps >= 2 || prevUnder) {
       const inc = loadIncrement(exId, byId);
       const near = band ? +band[1] : 1;
-      const raw = (lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30)) / (1 + (min + near) / 30);
+      const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
       const floored = Math.floor(raw / inc + 1e-9) * inc;
       const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
       const eased = Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4;
@@ -671,6 +671,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
+      inc_kg: loadIncrement(ex.exercise, byId),  // → the player's next-set hint moves in this lift's real steps (W279b)
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,

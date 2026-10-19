@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG } from "/ui-helpers.mjs";
@@ -2285,6 +2285,15 @@ function renderPlayer() {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
+  // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
+  // the last WORK set of this lift banked this session — nothing stored, so a resume shows
+  // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
+  const prevWork = sess.set > 0 && !sess.deload && !e.eased
+    ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
+  const hint = nextSetHint(prevWork, e);
+  const hintW = hint ? dispWeightFor(hint.kg, e.exercise) : null;
+  const hintHtml = hint ? `<div class="cue" id="set-hint" role="status">${hint.kind === "lighter" ? "🎯" : "⬆️"} <b>Set ${sess.set}: ${hint.reps} reps at ${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}</b> — ${hint.kind === "lighter" ? "under" : "over"} the ${hint.min}–${hint.max} range. Try <b>${hintW} ${unitLabelFor(e.exercise)}</b> for this one to land in it.
+      ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
@@ -2300,6 +2309,7 @@ function renderPlayer() {
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
     <div class="card">
+      ${hintHtml}
       ${weightStepper(w, e.equipment === "bodyweight", null, e.exercise)}
       ${lastTimeLine(e)}
       ${repsStepper(reps, null)}
@@ -2367,6 +2377,12 @@ function renderPlayer() {
     quitPending = false;
     if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
     finish();
+  };
+  // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
+  // display unit (the same per-index stamp a typed weight gets); nothing is banked.
+  if ($("#use-hint")) $("#use-hint").onclick = () => {
+    sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
+    saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
     quitPending = false; // a logged set is an unambiguous "I'm continuing"

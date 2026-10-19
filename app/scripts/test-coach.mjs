@@ -248,6 +248,11 @@ check("#below-range never eases a set stopped early (RIR ≥ 2), under a taper, 
   const back = suggestWeight([brDay(1, brSet(60, 5))], "barbell-bench-press", "8-12", undefined, "2026-06-20T18:00:00Z", "1-3");
   assert.match(back.note, /It's been 19 days/, "the comeback ease still comes first");
 });
+check("#next-set buildToday rows carry the lift's real load step — 2.5 kg for a barbell compound, 1 kg for a dumbbell isolation", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "12-20", rir: "1-3" }] }] };
+  const rows = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, []).exercises;
+  assert.deepEqual(rows.map((r) => r.inc_kg), [2.5, 1]);
+});
 check("#below-range anything in the range is byte-identical to before", () => {
   const r = suggestWeight([brDay(1, brSet(60, 9), brSet(60, 8))], "barbell-bench-press", "8-12", undefined, null, "1-3");
   assert.deepEqual(r, { suggested_kg: 60, note: "Keep the weight and try to add a rep or two.", last_kg: 60, last_reps: [9, 8] });

@@ -184,6 +184,40 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
   return (h >>> 0) % LUCKY_SET_ONE_IN === 0;
 }
 // DUPLICATES tools/derive-core.mjs's isHardSet (same cross-file constraint as above).
+// The load that should land `targetReps` at `targetRir` reps in reserve, from a set of
+// `reps` at `weightKg` with `rir` in reserve — a BYTE-IDENTICAL copy of derive-core's
+// loadForReps (the server's W279 ease uses that one; test-session pins the two together).
+export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
+  return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
+}
+// "A more appropriate weight" for the NEXT set (W279b, owner consideration #3): after a work
+// set that clearly misses the prescription — under the range near failure (RIR unlogged or
+// ≤ 1; a set stopped early wasn't too heavy), or two+ reps over the top / far easier than the
+// band — the load that should land the next one in range, from the set just banked. Lighter
+// targets the range's bottom, heavier its top (the smallest move back into the range), both
+// at the band's near edge; floored to the lift's increment, at least one increment, at most
+// ±20%. Advice only: the player offers it, the user decides. Planned-easy (deload/eased),
+// warm-up and bodyweight sets never hint.
+export function nextSetHint(set, row) {
+  if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
+  const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
+  if (!range) return null;
+  const min = +range[1], max = +range[2];
+  const band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
+  const near = band ? +band[1] : 1, top = band ? +band[2] : 2;
+  const inc = row?.inc_kg > 0 ? row.inc_kg : 2.5;
+  const w = set.weight_kg, rir = typeof set.rir === "number" ? set.rir : null;
+  const under = set.reps < min && (rir == null || rir <= 1);
+  const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
+  if (!under && !over) return null;
+  const floored = Math.floor(loadForReps(w, set.reps, rir ?? 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const kg = under
+    ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
+    : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
+  const rounded = Math.round(kg * 4) / 4;
+  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max } : null;
+}
+
 export function isHardSet(set, { hardSetRpe = 7 } = {}) {
   const type = set.set_type ?? "work";
   if (type === "warmup") return false;

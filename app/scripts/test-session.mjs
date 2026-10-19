@@ -8,11 +8,12 @@
 import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
-  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "../public/session-core.mjs";
+  sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
+  loadForReps, nextSetHint } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
-import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords, isLuckySet as isLuckySetServer, luckySetsInSession } from "../../tools/derive-core.mjs";
+import { priorPersonalBests, checkSetPR as checkSetPRServer, detectPersonalRecords, isLuckySet as isLuckySetServer, luckySetsInSession, loadForReps as loadForRepsServer } from "../../tools/derive-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -724,6 +725,38 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
     assert.equal(recomputePrLatch(typo, "L", null), false, "no history to beat");
   });
 }
+
+// --- #next-set (W279b, owner consideration #3: "if a recommended weight, reps and RPE isn't
+// achieved for a set, suggest a more appropriate weight that will hit the prescription").
+// The server's W279 formula — set 1's Epley e1RM carried to the target — duplicated here for
+// the player and pinned to the server's copy, the checkSetPR precedent.
+const w = (weight_kg, reps, extra = {}) => ({ exercise: "x", set_type: "work", weight_kg, reps, ...extra });
+const row812 = { rep_range: "8-12", rir: "1-3", inc_kg: 2.5 };
+check("#next-set loadForReps is the server's formula, exactly (parity over a grid)", () => {
+  for (const kg of [20, 57.5, 100, 142.5]) for (const reps of [1, 5, 8, 12, 15, 20]) for (const rir of [0, 1, 3]) for (const t of [6, 8, 12]) for (const tr of [0, 1, 2])
+    assert.strictEqual(loadForReps(kg, reps, rir, t, tr), loadForRepsServer(kg, reps, rir, t, tr));
+});
+check("#next-set a set UNDER the range near failure → a lighter next set that lands in it (100×6 on 8-12 → 90)", () => {
+  assert.deepStrictEqual(nextSetHint(w(100, 6), row812), { kind: "lighter", kg: 90, from_kg: 100, reps: 6, min: 8, max: 12 });
+  assert.strictEqual(nextSetHint(w(100, 6, { rir: 1 }), row812).kg, 92.5, "1 in reserve means a stronger e1RM (100·(1+7/30)=123.3 → 94.9) → a smaller ease");
+});
+check("#next-set a set well OVER the range, or far easier than the band → a heavier next set", () => {
+  assert.deepStrictEqual(nextSetHint(w(40, 15), row812), { kind: "heavier", kg: 42.5, from_kg: 40, reps: 15, min: 8, max: 12 });
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 5 }), row812).kind, "heavier", "RIR 5 against a 1-3 band");
+  assert.strictEqual(nextSetHint(w(40, 13), row812), null, "one rep over the top: on target enough (the next session adds load)");
+});
+check("#next-set no hint when on target, stopped early, a warm-up, planned-easy, or at bodyweight", () => {
+  assert.strictEqual(nextSetHint(w(100, 9), row812), null);
+  assert.strictEqual(nextSetHint(w(100, 6, { rir: 3 }), row812), null, "stopped with 3 in the tank: not too heavy");
+  assert.strictEqual(nextSetHint({ ...w(40, 4), set_type: "warmup" }, row812), null);
+  assert.strictEqual(nextSetHint(w(100, 6, { deload: true }), row812), null, "deload sets are planned easy");
+  assert.strictEqual(nextSetHint(w(0, 4), row812), null);
+  assert.strictEqual(nextSetHint(null, row812), null);
+});
+check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±20%", () => {
+  assert.strictEqual(nextSetHint(w(10, 8), { rep_range: "12-20", rir: "1-3", inc_kg: 1 }).kg, 8);
+  assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
+});
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

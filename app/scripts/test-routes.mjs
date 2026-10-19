@@ -1109,6 +1109,10 @@ try {
     await store.updateUser(brU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
     const brT1 = await (await app.request("/api/today", { headers: { "X-HB-User": brU } })).json();
     const brRow = brT1.session.exercises.find((e) => e.exercise === brX.exercise);
+    // W279b: the player's "more appropriate weight" moves in the lift's REAL steps — the
+    // server's loadIncrement, carried on the row (a barbell lift 2.5 kg, a dumbbell isolation 1 kg).
+    ok("#next-set /api/today rows carry the lift's load step (inc_kg) through the route",
+      brT1.session.exercises.length > 0 && brT1.session.exercises.every((e) => e.inc_kg === 2.5 || e.inc_kg === 1));
     ok("#below-range /api/today eases a lift whose first set came in 3 under the range — and says why",
       brT1.session.name === brT0.session.name && brRow?.suggested_kg < 50 && brRow.suggested_kg >= 40
       && new RegExp(`first set came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, note: brRow?.suggestion_note }));
