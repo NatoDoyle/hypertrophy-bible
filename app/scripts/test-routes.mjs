@@ -1096,6 +1096,24 @@ try {
   ok("#weekly-plan a 6-day gap shows the reassurance with no plan, and stands down once a plan explains it",
     !!gnBefore?.gap_note && gnAfter?.gap_note === null);
 
+  // --- #below-range (W279, the owner's call): a first set two+ reps under the range
+  // eases the NEXT suggestion — through the door the phone uses. The rotation is pointed
+  // back at the same day (skips = n−1) so today's session holds the same lift again.
+  {
+    const brU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const brT0 = await (await app.request("/api/today", { headers: { "X-HB-User": brU } })).json();
+    const brX = brT0.session.exercises.find((e) => !/bodyweight/.test(e.equipment ?? "") && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const brMin = +brX.rep_range.split("-")[0];
+    await json("POST", "/api/session", { user_id: brU, session_id: "br-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: brT0.session.name,
+      sets: [{ exercise: brX.exercise, set_type: "work", weight_kg: 50, reps: brMin - 3 }, { exercise: brX.exercise, set_type: "work", weight_kg: 50, reps: brMin - 4 }] });
+    await store.updateUser(brU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const brT1 = await (await app.request("/api/today", { headers: { "X-HB-User": brU } })).json();
+    const brRow = brT1.session.exercises.find((e) => e.exercise === brX.exercise);
+    ok("#below-range /api/today eases a lift whose first set came in 3 under the range — and says why",
+      brT1.session.name === brT0.session.name && brRow?.suggested_kg < 50 && brRow.suggested_kg >= 40
+      && new RegExp(`first set came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, note: brRow?.suggestion_note }));
+  }
+
   // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this
   // week's facts and the rotation's next sessions, from the SAME pointer that served
   // `session` (lesson 1). Fixed past dates via ?d= (lesson 64): 2026-10-05 is Monday W41.

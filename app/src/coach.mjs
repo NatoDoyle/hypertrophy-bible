@@ -38,13 +38,19 @@ const workingSetsFor = (sessions, exId) =>
 // The most recent session that contained this exercise, with its date (for
 // progression + layoff detection). Returns { sets, date } or null.
 function lastSetsForExercise(sessions, exId) {
-  for (let i = sessions.length - 1; i >= 0; i--) {
+  return recentWorkSets(sessions, exId, 1)[0] ?? null;
+}
+// The last `k` sessions holding non-deload WORK sets for this lift, newest first — the
+// anchor and, for W279's two-strike rule, the one before it.
+function recentWorkSets(sessions, exId, k) {
+  const out = [];
+  for (let i = sessions.length - 1; i >= 0 && out.length < k; i--) {
     // Deload sets are planned-easy — anchoring double progression to them would
     // leave every next block permanently one increment behind. Skip them.
     const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work" && !s.deload);
-    if (sets.length) return { sets, date: sessions[i].date ?? null };
+    if (sets.length) out.push({ sets, date: sessions[i].date ?? null });
   }
-  return null;
+  return out;
 }
 
 // The most recent date this exercise was trained AT ALL — deload/comeback
@@ -105,7 +111,7 @@ export function estimateStartingWeight(e, bodyweightKg, exId, byId = exerciseByI
 // the taper copy honest about it), and the failure/hold paths are unchanged.
 export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false) {
   const last = lastSetsForExercise(sessions, exId);
-  const { max } = parseRange(repRange);
+  const { min, max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
   const lastWeight = last.sets[0].weight_kg;
   // Judge reps/RIR only over sets AT the anchor weight (or heavier). The anchor is
@@ -133,15 +139,42 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // a week-1 lifter told "3-4 RIR" who complies at 3.5 is following the eased
   // wave, not sandbagging — bumping their load would undo the easy week.
   const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
+  const band = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? "");
+  const avgRir = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
   if (rirs.length) {
-    const bandTop = (() => { const m = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); return m ? +m[2] : 2; })();
-    const avgRir = rirs.reduce((a, b) => a + b, 0) / rirs.length;
+    const bandTop = band ? +band[2] : 2;
     if (!holdLoad && avgRir >= bandTop + 1) {
       const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
-    if (avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   }
+  // BELOW THE RANGE (W279, the owner's call): the KB's own double-progression rule is "pick
+  // a weight you can do for at least the bottom of the range" (how-to-read-a-workout.md,
+  // Grade D). Judged on set 1 — the freshest, so a later set's fatigue drop-off is not
+  // evidence — and only when it was near failure (RIR unlogged or ≤ 1: a set stopped early
+  // wasn't too heavy). Two reps short eases now; one short holds once, then eases if it
+  // repeats at the same or a heavier weight. The new load is the Epley e1RM of set 1 carried
+  // to the bottom of the range at the band's near edge, floored to the lift's increment,
+  // at least one increment down and at most ~20% (one set is not a re-test). Never during a
+  // taper (its loads hold); never tagged as a comeback, so the eased load anchors normally.
+  const s1 = last.sets[0];
+  const s1Rir = typeof s1.rir === "number" ? s1.rir : null;
+  if (!holdLoad && lastWeight > 0 && s1.reps < min && (s1Rir == null || s1Rir <= 1)) {
+    const prev = recentWorkSets(sessions, exId, 2)[1];
+    const prevUnder = !!prev && (prev.sets[0].weight_kg ?? 0) >= lastWeight && prev.sets[0].reps < min;
+    if (min - s1.reps >= 2 || prevUnder) {
+      const inc = loadIncrement(exId, byId);
+      const near = band ? +band[1] : 1;
+      const raw = (lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30)) / (1 + (min + near) / 30);
+      const floored = Math.floor(raw / inc + 1e-9) * inc;
+      const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
+      const eased = Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4;
+      if (eased > 0) return { suggested_kg: eased, note: `Your first set came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg so every set lands in it.`, ...base };
+    } else {
+      return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
+    }
+  }
+  if (rirs.length && avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   if (allHitTop) {
     if (holdLoad) return { suggested_kg: lastWeight, note: "Taper — hold this weight. You'd normally add load here; save that push for after the event.", ...base };
     return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };

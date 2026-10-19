@@ -214,6 +214,45 @@ check("suggestWeight: double progression adds load only when top of range is hit
   assert.equal(suggestWeight([], "barbell-bench-press", "6-10").suggested_kg, null); // first time
 });
 
+// --- W279 (owner: "ease the weight" when even the FIRST set falls below the range). The
+// KB's own double-progression rule: "pick a weight you can do for at least the bottom of
+// the range" (how-to-read-a-workout.md, Grade D). Margin: ≥ 2 reps short, or 1 short
+// twice running; only when set 1 was near failure (RIR unlogged or ≤ 1); never during a
+// taper; the comeback ease still comes first; never tagged as a comeback (it must anchor).
+const brSet = (w, reps, extra = {}) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: w, reps, ...extra });
+const brDay = (d, ...sets) => ({ date: `2026-06-${String(d).padStart(2, "0")}T18:00:00Z`, sets });
+check("#below-range set 1 two+ reps under the range eases to the load that lands in it (60×5 on 8-12 → 52.5)", () => {
+  const r = suggestWeight([brDay(1, brSet(60, 5), brSet(60, 4))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(r.suggested_kg, 52.5);
+  assert.match(r.note, /first set came in at 5 — under the 8–12 range — so I've lightened this to 52\.5 kg/);
+  assert.equal(r.layoff_days, undefined, "never tagged as a comeback: the eased load must anchor next time");
+  // a far miss is capped at about −20% (100×1 → 80, not 77.5): one set is not a re-test
+  assert.equal(suggestWeight([brDay(1, brSet(100, 1))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 80);
+  // a dumbbell isolation eases in its own 1 kg steps (10×8 on 12-20 → 8)
+  const lat = (w, reps) => ({ exercise: "dumbbell-lateral-raise", set_type: "work", weight_kg: w, reps });
+  assert.equal(suggestWeight([brDay(1, lat(10, 8))], "dumbbell-lateral-raise", "12-20", undefined, null, "1-3").suggested_kg, 8);
+});
+check("#below-range one rep short holds the first time — and eases when it happens twice running", () => {
+  const once = suggestWeight([brDay(1, brSet(60, 7))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(once.suggested_kg, 60);
+  assert.match(once.note, /just under the range.*if it happens again, I'll lighten it/i);
+  const twice = suggestWeight([brDay(1, brSet(60, 7)), brDay(3, brSet(60, 7))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(twice.suggested_kg, 55, "74 e1RM → 56.9 → 55 (a full increment down)");
+  // a miss at a LIGHTER weight last time is no evidence at today's heavier anchor
+  assert.equal(suggestWeight([brDay(1, brSet(57.5, 7)), brDay(3, brSet(60, 7))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 60);
+});
+check("#below-range never eases a set stopped early (RIR ≥ 2), under a taper, at bodyweight, or ahead of a comeback", () => {
+  assert.equal(suggestWeight([brDay(1, brSet(60, 5, { rir: 3 }))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 60, "stopped with 3 in the tank: not too heavy");
+  assert.equal(suggestWeight([brDay(1, brSet(60, 5))], "barbell-bench-press", "8-12", undefined, null, "1-3", true).suggested_kg, 60, "taper: the load holds");
+  assert.equal(suggestWeight([brDay(1, brSet(0, 5))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 0, "bodyweight: nothing to ease");
+  const back = suggestWeight([brDay(1, brSet(60, 5))], "barbell-bench-press", "8-12", undefined, "2026-06-20T18:00:00Z", "1-3");
+  assert.match(back.note, /It's been 19 days/, "the comeback ease still comes first");
+});
+check("#below-range anything in the range is byte-identical to before", () => {
+  const r = suggestWeight([brDay(1, brSet(60, 9), brSet(60, 8))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.deepEqual(r, { suggested_kg: 60, note: "Keep the weight and try to add a rep or two.", last_kg: 60, last_reps: [9, 8] });
+});
+
 check("estimateStartingWeight: a body-scaled guess, rounded down to the load increment, erring light", () => {
   const bench = exerciseById.get("barbell-bench-press"); // horizontal-push, barbell, compound
   assert.equal(estimateStartingWeight(bench, 80, "barbell-bench-press"), 35); // 80*0.45*1=36 -> floor to 2.5kg increment
