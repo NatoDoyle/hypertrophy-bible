@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -919,6 +919,39 @@ check("#prefill in kilograms it is EXACTLY the plain rounding, for every move th
 check("#next-set-review the hint carries the set's effort and the band, so the copy can say WHY", () => {
   const h = nextSetHint(w(40, 10, { rir: 5 }), row812);
   assert.deepStrictEqual([h.kind, h.reps, h.rir, h.band], ["heavier", 10, 5, "1-3"]);
+});
+
+// --- W282: WHAT HAPPENED, from the workout itself (the plan it carried + the sets banked) —
+// so the read-out works offline and for any workout in History.
+const tg = (exercise, sets, rep_range = "8-12", rir = "1-3", extra = {}) => ({ exercise, sets, rep_range, rir, suggested_kg: 50, ...extra });
+const ws = (exercise, weight_kg, reps, extra = {}) => ({ exercise, set_type: "work", weight_kg, reps, ...extra });
+check("#local-readout per lift: sets done vs planned, reps vs the range, effort vs the band", () => {
+  const r = localReadout(
+    [tg("a", 3), tg("b", 3), tg("c", 2)],
+    [ws("a", 50, 12), ws("a", 50, 12), ws("a", 50, 12), { exercise: "a", set_type: "warmup", weight_kg: 20, reps: 10 },
+     ws("b", 60, 9), ws("b", 60, 6),
+     ws("c", 20, 12, { rir: 5 }), ws("c", 20, 12, { rir: 5 })]);
+  const by = Object.fromEntries(r.lifts.map((l) => [l.exercise, l]));
+  assert.deepStrictEqual([r.planned, r.done], [8, 7], "warm-ups never count");
+  assert.deepStrictEqual([by.a.done, by.a.planned, by.a.top, by.a.under], [3, 3, true, 0]);
+  assert.deepStrictEqual([by.b.done, by.b.planned, by.b.top, by.b.under], [2, 3, false, 1]);
+  assert.deepStrictEqual([by.c.easy, by.c.rir, by.c.band], [true, 5, "1-3"], "RIR 5 against a 1-3 band: far easier than planned");
+  assert.strictEqual(by.a.easy, false, "no logged effort → no effort verdict");
+});
+check("#local-readout a planned-easy lift (deload / eased) is never graded; a lift the plan didn't have still shows", () => {
+  const r = localReadout([tg("a", 2, "8-12", "3-4", { deload: true })], [ws("a", 40, 5, { deload: true }), ws("a", 40, 5, { deload: true }), ws("x", 30, 10)]);
+  const a = r.lifts.find((l) => l.exercise === "a"), x = r.lifts.find((l) => l.exercise === "x");
+  assert.deepStrictEqual([a.easyDay, a.under, a.top], [true, 0, false]);
+  assert.deepStrictEqual([x.planned, x.done, x.min], [null, 1, null]);
+});
+check("#local-readout a planned lift with no sets at all is listed (0 of N) — ending early is visible, never silent", () => {
+  const r = localReadout([tg("a", 3), tg("b", 3)], [ws("a", 50, 10)]);
+  assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned]), [["a", 1, 3], ["b", 0, 3]]);
+  assert.deepStrictEqual([r.planned, r.done], [6, 1]);
+});
+check("#local-readout an OLD workout without targets still reads (no plan, no grades)", () => {
+  const r = localReadout(undefined, [ws("a", 50, 10), ws("a", 50, 9)]);
+  assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned, l.top, l.under]), [["a", 2, null, false, 0]]);
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

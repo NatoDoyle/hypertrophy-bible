@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -36,14 +36,8 @@ function syncAccountEmail(a) {
 // state scope — the shape that produced the "fix one call site" lesson).
 const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; };
 
-// Plain-English muscle names — a beginner expects "shoulders", not "side-delts".
-const MUSCLE_LABEL = {
-  "front-delts": "front of shoulders", "side-delts": "shoulders (side)", "rear-delts": "rear shoulders",
-  "lats": "back (lats)", "upper-back": "upper back", "spinal-erectors": "lower back",
-  "quadriceps": "thighs (quads)", "hamstrings": "hamstrings", "glutes": "glutes", "calves": "calves",
-  "biceps": "biceps", "triceps": "triceps", "forearms": "forearms", "chest": "chest", "abs": "abs", "neck": "neck",
-};
-const friendlyMuscle = (m) => MUSCLE_LABEL[m] || String(m).replace(/-/g, " ");
+// Plain-English muscle names (MUSCLE_LABEL / friendlyMuscle) live in ui-helpers.mjs so the
+// server's copy of the map can be pinned equal to them (W282).
 const friendlyMuscles = (list) => (list || []).map(friendlyMuscle).join(", ");
 
 // Units: everything is STORED and computed in kg (server + engine). This is a
@@ -487,9 +481,21 @@ async function flushQueueOnce() {
     // filter-by-id can only ever remove the one we delivered; server writes are
     // idempotent (session_id / date dedup), so a double delivery is harmless.
     try { setQueue(dropDelivered(getQueue(), item.id)); } catch { break; }
+    // A workout saved offline has landed: its coaching read-out can now be fetched (W282) —
+    // Today offers it once (readoutReadyCard).
+    if (item.path === "/api/session") markReadoutReady(parsed.session_id);
   }
 }
 window.addEventListener("online", flushQueue);
+// The offline read-out (W282): finish() parks what happened (plan + sets + names) when a
+// workout had to queue; the flush marks it ready once the server has it.
+const RKEY = "hb_readout_pending";
+const getPendingReadout = () => { try { return JSON.parse(localStorage.getItem(RKEY) || "null"); } catch { return null; } };
+const clearPendingReadout = () => { try { localStorage.removeItem(RKEY); } catch {} };
+function markReadoutReady(sessionId) {
+  const p = getPendingReadout();
+  if (p && p.session_id === sessionId && !p.ready) { try { localStorage.setItem(RKEY, JSON.stringify({ ...p, ready: true })); } catch {} }
+}
 async function postOrQueue(path, bodyObj) {
   const body = JSON.stringify(bodyObj);
   try {
@@ -1603,10 +1609,16 @@ async function renderToday() {
       <button class="btn secondary inline" id="fit-rebuild" style="margin:0 6px 0 0">${esc(fit.rebuild)}</button>
       <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
 
+  // A workout saved offline has synced: its read-out is ready (W282, the offline door).
+  const pendingRo = getPendingReadout();
+  const readoutReadyCard = pendingRo?.ready ? `<div class="card" id="ro-ready"><b>📋 Your last workout's read-out is ready</b>
+      <p class="muted" style="margin:4px 0 8px">What ${esc(pendingRo.name || "it")} means for your next sessions and this block.</p>
+      <button class="btn secondary inline" id="ro-open" style="margin:0 6px 0 0">See the read-out</button>
+      <button class="btn ghost inline" id="ro-dismiss" style="margin:0">Not now</button></div>` : "";
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -1616,6 +1628,16 @@ async function renderToday() {
     ${cardioCard}`;
   wirePendingCodeCard();
   wireCommitmentCard();
+  if ($("#ro-dismiss")) $("#ro-dismiss").onclick = () => { clearPendingReadout(); $("#ro-ready")?.remove(); };
+  if ($("#ro-open")) $("#ro-open").onclick = async () => {
+    const p = getPendingReadout();
+    const r = p ? await fetchReadout(p.session_id) : null;
+    if (stale()) return;
+    if (!r) { alertBar("📴 Couldn't load the read-out — try again in a moment."); return; }
+    clearPendingReadout();
+    if (!r.readout) { $("#ro-ready")?.remove(); return; } // a newer workout has moved things on
+    renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: r.readout, names: p.names, beginner: p.beginner }), back: () => { tab = "today"; render(); } });
+  };
   if ($("#fit-rebuild")) $("#fit-rebuild").onclick = async () => {
     // One rebuild per tap (a second would be a second fresh block), and no "Keep" racing it
     // to a contradictory pair of confirmations (W278 review).
@@ -2917,13 +2939,68 @@ async function finish() {
     $("#retrysave").onclick = finish;
     return;
   }
+  // What happened (W282 read-out) — from the workout itself, so it shows offline too. Captured
+  // before the in-progress copy is dropped: the lift names live only on it.
+  const local = localReadout(payload.targets, payload.sets);
+  const names = Object.fromEntries(sess.ex.map((x) => [x.exercise, x.name]));
+  const beginner = !!sess.beginner;
+  if (res.queued) { try { localStorage.setItem(RKEY, JSON.stringify({ session_id, name: sess.name, targets: payload.targets, sets: payload.sets, names, beginner })); } catch {} }
   // Accepted or safely queued — now it's safe to drop the in-progress copy.
   clearSess();
   // Today's training is done, so the check-in can no longer tune anything —
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? { ...res.data, session_id } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true });
+  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
+}
+// THE READ-OUT (W282, owner: "what was the objective, did we hit the targets, what went well,
+// what didn't, and how this affects the following workouts, this block and the next"). What
+// HAPPENED comes from the workout itself (localReadout + readoutLists — offline-capable); what
+// it MEANS comes from the server (objective, next time per lift, this block, the next). Each
+// "next time" weight is shown exactly as the set screen will pre-fill it next session
+// (prefillInUnit + noteInUnit — the same functions), so the promise holds on screen too.
+function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = false }) {
+  if (!local && !ro) return "";
+  const nameOf = (id) => names[id] ?? ro?.next?.find((n) => n.exercise === id)?.name ?? exName(id);
+  const isBeginner = ro?.beginner ?? beginner;
+  const lists = local ? readoutLists(local, { nameOf, beginner: isBeginner }) : { headline: "Workout saved.", went_well: [], watch: [] };
+  const nextOf = (n) => {
+    const toDisp = (kg) => dispWeightFor(kg, n.exercise);
+    const row = { suggested_kg: n.kg, last_kg: n.last_kg };
+    const disp = prefillInUnit(row, toDisp, wIncFor(n.exercise)) ?? toDisp(n.kg);
+    const moved = n.last_kg > 0 && disp !== toDisp(n.last_kg);
+    const note = noteInUnit(n.note, row, unitFor(n.exercise), toDisp, disp);
+    return { moved, disp, html: `<b>${esc(n.name)}</b> — ${disp} ${unitLabelFor(n.exercise)}${note ? `. ${esc(note)}` : ""}` };
+  };
+  const nexts = (ro?.next ?? []).map((n) => ({ ...nextOf(n), exercise: n.exercise }));
+  const nextShown = [...nexts.filter((x) => x.moved), ...nexts.filter((x) => !x.moved)].slice(0, isBeginner ? 2 : 3);
+  const section = (title, items, raw = false) => items?.length
+    ? `<h3>${title}</h3><ul>${items.map((i) => `<li>${raw ? i : esc(i)}</li>`).join("")}</ul>` : "";
+  const nextByEx = Object.fromEntries(nexts.map((x) => [x.exercise, x]));
+  const breakdown = !isBeginner && local?.lifts?.length ? `<details class="why" style="margin:10px 0 0;padding:10px 14px"><summary style="font-size:.95rem">Every lift</summary><ul style="margin-top:6px">${local.lifts.map((l) => {
+    const u = unitLabelFor(l.exercise);
+    const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
+    const nx = nextByEx[l.exercise];
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+  }).join("")}</ul></details>` : "";
+  return `<div class="card readout" id="readout"><b>${esc(lists.headline)}</b>
+    ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}
+    ${section("✅ Went well", lists.went_well)}
+    ${section("👀 Worth a look", lists.watch)}
+    ${section("➡️ Next time", nextShown.map((x) => x.html), true)}
+    ${section("📅 This block", ro?.block)}
+    ${section("🔭 If your block ended today", ro?.next_block)}
+    ${ro?.bodyweight ? `<p class="muted" style="margin:10px 0 0">⚖️ ${esc(ro.bodyweight)}</p>` : ""}
+    ${!ro && queued ? `<p class="muted" style="margin:10px 0 0">📴 Next time and your block read-out arrive once this syncs — I'll put them on Today.</p>` : ""}
+    ${breakdown}</div>`;
+}
+// The read-out on its own screen: the offline door (Today) and History (W282).
+function renderReadoutView({ title, card, back, backLabel = "Done" }) {
+  app.innerHTML = `<h1>${esc(title)}</h1>${card}<button class="btn" id="ro-back">${esc(backLabel)}</button>`;
+  $("#ro-back").onclick = back;
+}
+async function fetchReadout(sessionId) {
+  try { return await api("/api/session/recap", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId }) }); } catch { return null; }
 }
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
@@ -2942,7 +3019,9 @@ function renderRecap(recap) {
         <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>${recap.pr_xp ? ` <span style="color:var(--accent);font-weight:700">+${recap.pr_xp} XP</span>` : ""}
         ${prWins.map((w) => `<p class="muted" style="margin:6px 0">${winHtml(w)}</p>`).join("")}</div>`
     : "";
-  const wins = otherWins.map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
+  const readout = readoutCardHtml({ local: recap.local, ro: recap.readout, names: recap.names, beginner: recap.beginner, queued: recap.queued });
+  // The generic "✅ Session logged…" fallback says nothing the read-out doesn't.
+  const wins = otherWins.filter((w) => !(readout && /^✅ Session logged/.test(w))).map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
   const nudge = !localStorage.getItem("hb_email")
     ? `<div class="card"><b>Keep this progress safe</b>
         <p class="muted">Create your free account with just an email — no password, ever. It protects today's workout if you lose this phone, and syncs to any device.</p>
@@ -2960,7 +3039,7 @@ function renderRecap(recap) {
   // workout's editor — or, while it's still queued offline, a promise of where.
   const fixDoor = recap.session_id ? `<button class="btn ghost" id="fixnum">✏️ Fix a number</button>`
     : recap.queued ? `<p class="muted" style="text-align:center">Logged a number wrong? Once this workout syncs, fix any set from Progress → Workout history.</p>` : "";
-  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${wins}${nudge}${donate}
+  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${readout}${wins}${nudge}${donate}
     ${fixDoor}
     <button class="btn" id="ok">Done</button>`;
   if ($("#fixnum")) $("#fixnum").onclick = () => { historyEdit = recap.session_id; tab = "history"; render(); };
@@ -3035,9 +3114,8 @@ async function renderProgress() {
   // getting well under the sets the plan already has for them. Said plainly and kindly (Goal 4),
   // with the lever; it outranks effort and volume reads (neither can help work that isn't done).
   const notDoing = (p.adaptive || []).filter((a) => a.signal === "complete");
-  const plainName = (a) => a.muscle_name.replace(/\s*\([^)]*\)/, "");
-  const doneShare = notDoing.length === 1 ? `about ${notDoing[0].realized} of the ~${notDoing[0].planned} sets a week your plan has for your ${plainName(notDoing[0]).toLowerCase()}`
-    : notDoing.length ? `about ${Math.round((100 * notDoing.reduce((s, a) => s + a.realized, 0)) / notDoing.reduce((s, a) => s + a.planned, 0))}% of the weekly sets your plan has for your ${notDoing.map((a) => plainName(a).toLowerCase()).join(", ")}` : "";
+  const doneShare = notDoing.length === 1 ? `about ${notDoing[0].realized} of the ~${notDoing[0].planned} sets a week your plan has for your ${friendlyMuscle(notDoing[0].muscle)}`
+    : notDoing.length ? `about ${Math.round((100 * notDoing.reduce((s, a) => s + a.realized, 0)) / notDoing.reduce((s, a) => s + a.planned, 0))}% of the weekly sets your plan has for your ${friendlyList(notDoing.map((a) => friendlyMuscle(a.muscle)))}` : "";
   // A `gated` add is one the tune will NOT act on — promising "I'm adding sets"
   // there was false (Wave 258). Regression-gated rows are owned by the regression
   // card above ("I've stopped adding volume to those muscles"), so they render
@@ -3413,10 +3491,20 @@ async function renderHistory() {
       ${anyMarks ? `<p class="muted" style="font-size:.85rem">@N = reps left in the tank · ᵂ warm-up · ᴰ deload — neither counts toward your trends.</p>` : ""}
       ${voided
         ? `<button class="btn ghost inline" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
-        : `<button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+        : `<button class="btn ghost inline" id="hd-readout">📋 Read-out</button>
+           <button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
            <button class="btn ghost inline" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
       <button class="btn ghost" id="hd-back">‹ Back to history</button>`;
     $("#hd-back").onclick = () => { historyDetail = null; renderHistory(); };
+    // What happened is read from the workout itself; what it means only for the LATEST workout
+    // (the server's door answers { past: true } for an older one — its context has moved on).
+    if ($("#hd-readout")) $("#hd-readout").onclick = async () => {
+      const r = await fetchReadout(sess.session_id);
+      const names = Object.fromEntries((sess.sets ?? []).map((x) => [x.exercise, x.name || x.exercise]));
+      const card = readoutCardHtml({ local: localReadout(sess.targets, sess.sets), ro: r?.readout ?? null, names })
+        + (r?.past ? `<p class="muted">What it meant for your next sessions is shown for your latest workout — this one's context has moved on.</p>` : !r ? `<p class="muted">📴 Offline — showing what happened; what it means loads when you reconnect.</p>` : "");
+      renderReadoutView({ title: sess.session_name || "Workout", card, back: () => renderHistory(), backLabel: "‹ Back to this workout" });
+    };
     app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDetail = null; historyEdit = b.dataset.edit; renderHistory(); });
     wireHistoryVoidButtons();
     return;

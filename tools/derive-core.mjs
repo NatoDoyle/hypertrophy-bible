@@ -693,12 +693,16 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
 // for that: each muscle's MEAN weekly sets over the last `n` PRESENT weeks (the mean, not the
 // peak — one full week must not vouch for a block of half-weeks) against the plan's projected
 // weekly sets × `meanScale` (the block wave's average, so a perfect complier reads ~1.0).
-// Below COMPLETION_RATIO → { realized, planned }. Pure; no plan numbers → {} (permissive).
+// Below COMPLETION_RATIO → { realized, planned }. "Most weeks" needs most weeks: fewer than
+// `minWeeks` FINISHED weeks is no verdict, and the week in progress (`excludeWeek`, the
+// caller's local ISO week) is never judged — a partial week reads as under-completion by
+// definition (the W282 walkthrough caught a first session told "most weeks you get 19%").
+// Pure; no plan numbers or too little evidence → {} (permissive).
 export const COMPLETION_RATIO = 0.7;
-export function completionShortfall(weekly, planVolume, { n = 6, meanScale = 1, ratio = COMPLETION_RATIO } = {}) {
+export function completionShortfall(weekly, planVolume, { n = 6, meanScale = 1, ratio = COMPLETION_RATIO, minWeeks = 3, excludeWeek = null } = {}) {
   const out = {};
-  const weeks = Object.keys(weekly ?? {}).sort().slice(-n);
-  if (!planVolume || !weeks.length) return out;
+  const weeks = Object.keys(weekly ?? {}).filter((wk) => wk !== excludeWeek).sort().slice(-n);
+  if (!planVolume || weeks.length < minWeeks) return out;
   for (const [m, v] of Object.entries(planVolume)) {
     const planned = v?.projected_sets;
     if (!(planned > 0)) continue;

@@ -4,7 +4,7 @@ import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -1587,6 +1587,31 @@ check("#readout a beginner: one plain aim, the weights for next time — no bloc
   assert.match(ro.objective, /one session at a time/);
   assert.deepEqual([ro.beginner, ro.block, ro.next_block, ro.bodyweight], [true, [], [], null]);
   assert.equal(ro.next.length, 2);
+});
+check("#readout 'most weeks' needs most weeks: a first week never claims it — three finished thin weeks do (in plain words)", () => {
+  const withPlan = (u) => ({ ...u, plan_rationale: { volume_by_muscle: { chest: { projected_sets: 12 }, lats: { projected_sets: 12 } } } });
+  const first = roSess(roNow, "t", three(60, 9), three(50, 10));
+  const ro1 = sessionReadout(withPlan(roUser("intermediate", 3)), [first], first, { now: roNow });
+  assert.ok(!ro1.block.some((l) => /Most weeks/.test(l)), JSON.stringify(ro1.block));
+  const thin = (d, id) => roSess(roDay(d), id, [[60, 9]], [[50, 10]]);
+  const today = roSess(roNow, "t2", [[60, 9]], [[50, 10]]);
+  const ro2 = sessionReadout(withPlan(roUser("intermediate", 24)), [thin(21, "a"), thin(14, "b"), thin(7, "c"), today], today, { now: roNow });
+  assert.ok(ro2.block.some((l) => /^Most weeks your chest and back \(lats\) get about 8% of the sets/.test(l)), JSON.stringify(ro2.block));
+});
+// The week in progress is never judged (W282 walkthrough): three finished weeks at 8 of the
+// plan's 12 chest sets is completing (the line sits at 0.7 × 12 × the wave's 0.82 ≈ 6.9);
+// counting this week's single set so far would drag the mean to 6.25 and flip it. Each
+// reader passes the current week — the read-out, the Progress card, the boundary decision.
+check("#completion the week in progress never counts against you — read-out, Progress card and boundary alike", () => {
+  const plan = { volume_by_muscle: { chest: { projected_sets: 12 } } };
+  const benchWeek = (d, id, n) => ({ session_id: id, date: roDay(d), local_date: roDay(d).slice(0, 10), program_ref: "p", session_name: "A",
+    sets: Array.from({ length: n }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 })) });
+  const today = benchWeek(0, "t", 1);
+  const all = [benchWeek(28, "a", 8), benchWeek(21, "b", 8), benchWeek(14, "c", 8), benchWeek(7, "d", 8), today];
+  const u = { ...roUser("intermediate", 31), plan_rationale: plan };
+  assert.ok(!sessionReadout(u, all, today, { now: roNow }).block.some((l) => /Most weeks/.test(l)), "read-out");
+  assert.notEqual(progressReport(u, all, [], [], roNow).adaptive.find((a) => a.muscle === "chest")?.signal, "complete", "Progress card");
+  assert.ok(!blockTuneDecision(u, all, {}, roNow).tuned.held.some((h) => h.reason === "completion"), "boundary decision");
 });
 check("#readout a falling bodyweight says what it means — and only when the tune's own deficit gate would", () => {
   const today = roSess(roNow, "t", three(60, 9), three(50, 10));

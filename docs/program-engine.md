@@ -158,6 +158,9 @@ doesn't finish them?"* Measured against the code, not assumed:
   of the planned sets, or set fewer training days and the plan is rebuilt around them. Three of
   four sessions every week reads ~75% and still earns its +2. A hand-built plan is never judged:
   its stored numbers may not describe it.
+- **"Most weeks" needs most weeks.** No verdict on fewer than 3 finished trained weeks, and the
+  week in progress is never judged (it's partial by definition). Without that, a first workout
+  was told "most weeks you get 19% of your sets" (caught by the W282 walkthrough).
 
 ## 5. Experience gating and graduation
 
@@ -204,8 +207,14 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
 ## 7. Where you see each mechanism
 
 Every lever above has a surface: the per-exercise suggestion note (progression, comeback, taper
-holds), the block card (week/phase + deload notes), the plateau card (deload-brought-forward /
-push-harder / adding-sets / **held-for-recovery** since Wave 258), the reduce card (over-ceiling),
+holds — shown under the weight on a lift's first set since Burst 1), the block card (week/phase +
+deload notes), the plateau card (deload-brought-forward / push-harder / adding-sets /
+**held-for-recovery** since Wave 258 / **not-a-plateau** for missing work since W282a), the
+**post-workout read-out** (W282: what happened, from the workout itself, works offline; what it
+means, from the server: today's aim, each lift's next weight — exactly what the next session
+serves, pinned by a promise test — this block, and from week 4 what the boundary would decide if
+it came today; a queued workout's read-out reaches Today once it syncs, and History offers it for
+the latest workout), the reduce card (over-ceiling),
 the regression card, the new-block coach note (rotation, tune deltas **and holds**, real swaps),
 the plan screen's per-muscle reasons ("adaptive: +2 sets from your logged response"), and the
 graduation note. Computed-but-unsurfaced signals are tracked deliberately: `readinessIndex`,

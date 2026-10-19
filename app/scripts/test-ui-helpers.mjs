@@ -3,8 +3,8 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy } from "../public/ui-helpers.mjs";
-import { suggestWeight } from "../src/coach.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList } from "../public/ui-helpers.mjs";
+import { suggestWeight, MUSCLE_PLAIN } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
 
 let pass = 0, fail = 0;
@@ -384,10 +384,51 @@ check("#hint-copy each kind of hint says what actually happened", () => {
     "Set 1: 10 reps at 40 kg — in the range, but with about 5 left in the tank (the plan says 1–3). Try 45 kg for this one.");
 });
 
+// One plain-English muscle vocabulary for every screen (W282): the server's read-out and
+// new-block lines name muscles the way the Progress tab does ("back (lats)", never "Latissimus
+// Dorsi"), from a copy of the client's map pinned equal here; and lists stay short.
+check("muscle names: the server's copy of the plain-English map IS the client's (parity), and lists stay short", () => {
+  assert.deepEqual(MUSCLE_PLAIN, MUSCLE_LABEL);
+  assert.equal(friendlyMuscle("front-delts"), "front of shoulders");
+  assert.equal(friendlyMuscle("some-new-muscle"), "some new muscle");
+  assert.equal(friendlyList(["a"]), "a");
+  assert.equal(friendlyList(["a", "b"]), "a and b");
+  assert.equal(friendlyList(["a", "b", "c"]), "a, b and c");
+  assert.equal(friendlyList(["a", "b", "c", "d", "e"]), "a, b, c and 2 more");
+});
+// --- W282: the read-out's words for WHAT HAPPENED — a headline that never shames (Goal 4), what
+// went well, and what's worth a look. Beginners get the headline only (the weights for next
+// time come from the server lines).
+const L = (exercise, o) => ({ exercise, planned: 3, done: 3, min: 8, max: 12, reps: [], kg: [], top: false, under: 0, easy: false, failure: false, easyDay: false, rir: null, band: "1-3", ...o });
+const nm = (id) => ({ a: "Bench Press", b: "Row", c: "Curl" })[id] ?? id;
+check("#readout-copy every set done, every lift in range — and the ones at the top are named as wins", () => {
+  const r = readoutLists({ planned: 9, done: 9, lifts: [L("a", { top: true }), L("b"), L("c")] }, { nameOf: nm });
+  assert.equal(r.headline, "Every set done, every lift in its range — 1 at the top, ready to go up.");
+  assert.deepEqual(r.went_well, ["Bench Press: top of the range on every set.", "All 9 planned sets done."]);
+  assert.deepEqual(r.watch, []);
+});
+check("#readout-copy sets left undone: the headline counts what WAS done; the list names it neutrally", () => {
+  const r = readoutLists({ planned: 9, done: 7, lifts: [L("a", { done: 1 }), L("b"), L("c", { done: 3 })] }, { nameOf: nm });
+  assert.equal(r.headline, "7 of 9 planned sets done — every one of them counts.");
+  assert.deepEqual(r.watch, ["Bench Press: 1 of 3 sets."]);
+  assert.doesNotMatch(JSON.stringify(r), /fail|missed|only/i, "never framed as failure");
+});
+check("#readout-copy under the range, and effort off the band, are worth a look — said plainly, at most three", () => {
+  const r = readoutLists({ planned: 9, done: 9, lifts: [L("a", { under: 2 }), L("b", { easy: true, rir: 5 }), L("c", { failure: true, rir: 0 }), L("d", { under: 1 })] }, { nameOf: nm });
+  assert.equal(r.headline, "Every set done — 2 lifts came in under their range, and next time is set up for that.");
+  assert.deepEqual(r.watch, ["Bench Press: 2 of 3 sets under the 8–12 range.", "Row: about 5 reps left in the tank — the plan asked for 1–3.", "Curl: taken to failure — the plan wanted 1–3 in reserve."]);
+});
+check("#readout-copy an easy (deload) day is a win in itself; a beginner sees only the headline", () => {
+  assert.equal(readoutLists({ planned: 4, done: 4, lifts: [L("a", { easyDay: true }), L("b", { easyDay: true })] }, { nameOf: nm }).headline, "Easy day done — recovery is part of the plan.");
+  const b = readoutLists({ planned: 9, done: 9, lifts: [L("a", { under: 2 })] }, { nameOf: nm, beginner: true });
+  assert.deepEqual([b.went_well, b.watch], [[], []]);
+  assert.match(b.headline, /Every set done/);
+});
+
 // --- Burst 1 review: the player's wiring of the W280/W281 engine pieces. The pure pieces are
 // proven in test-session and the server side through the route (#client-wiring); these pin the
 // few lines in app.js that connect them, so a refactor can't drop one silently.
-const fnBody = (src, head) => { const at = src.indexOf(head); assert.ok(at >= 0, `missing: ${head}`); return src.slice(at, at + 1500); };
+const fnBody = (src, head, len = 1500) => { const at = src.indexOf(head); assert.ok(at >= 0, `missing: ${head}`); return src.slice(at, at + len); };
 check("player: a workout stamps each lift's PLANNED count at start, and finish sends the plan it ran (targets)", () => {
   assert.match(appJs, /orderSupersetAdjacent\(templateSession\.exercises\)\.map\(\(x\) => \(\{ \.\.\.x, planned_sets: x\.sets \}\)\)/);
   assert.match(appJs, /const payload = \{[^}]*\btargets: buildTargets\(sess\)/);
@@ -400,6 +441,16 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
   assert.doesNotMatch(appJs, /sess\.weights\[[^\]]+\] = dispWeightFor\(startWeightDefault\(/, "a pre-fill site still rounds the raw suggestion");
   assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
   assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
+});
+check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {
+  const fin = fnBody(appJs, "async function finish() {", 5000);
+  const drop = fin.indexOf("// Accepted or safely queued — now it's safe to drop the in-progress copy.\n  clearSess();");
+  assert.ok(drop > 0 && fin.indexOf("localReadout(payload.targets, payload.sets)") > 0 && fin.indexOf("localReadout(payload.targets, payload.sets)") < drop, "captured before the session is dropped (the names live only on it)");
+  assert.match(fin, /if \(res\.queued\) \{ try \{ localStorage\.setItem\(RKEY/);
+  assert.match(fnBody(appJs, "function renderRecap(recap) {", 5000), /readoutCardHtml\(\{ local: recap\.local, ro: recap\.readout/);
+  assert.match(fnBody(appJs, "async function flushQueueOnce() {", 5000), /if \(item\.path === "\/api\/session"\) markReadoutReady\(parsed\.session_id\)/);
+  assert.match(appJs, /\$\{dailyHub\}\$\{readoutReadyCard\}/);
+  assert.match(appJs, /id="hd-readout"/);
 });
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
   assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);

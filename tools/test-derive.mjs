@@ -467,6 +467,18 @@ check("completionShortfall: the TYPICAL trained week vs what the plan delivers; 
   assert.deepEqual(completionShortfall({}, plan), {}, "no data → nothing to judge");
   assert.deepEqual(completionShortfall(half, null), {}, "no plan numbers → permissive (byte-identical tune)");
 });
+check("completionShortfall needs evidence: under 3 FINISHED weeks there's no verdict, and the week in progress is never judged", () => {
+  const plan = { chest: { projected_sets: 10 } };
+  const two = { "2026-W01": { chest: 2 }, "2026-W02": { chest: 2 } };
+  assert.deepEqual(completionShortfall(two, plan), {}, "two weeks can't say 'most weeks'");
+  const three = { ...two, "2026-W03": { chest: 2 } };
+  assert.deepEqual(completionShortfall(three, plan), { chest: { realized: 2, planned: 10 } });
+  assert.deepEqual(completionShortfall(three, plan, { excludeWeek: "2026-W03" }), {}, "two finished weeks plus this one is still too little");
+  // a week in progress (one session so far) would drag a complier under the line
+  const eights = { "2026-W01": { chest: 8 }, "2026-W02": { chest: 8 }, "2026-W03": { chest: 8 }, "2026-W04": { chest: 1 } };
+  assert.deepEqual(Object.keys(completionShortfall(eights, plan)), ["chest"], "precondition: counted, the partial week flags a complier");
+  assert.deepEqual(completionShortfall(eights, plan, { excludeWeek: "2026-W04" }), {});
+});
 check("deriveVolumeAdjust completion gate: a stalled muscle that isn't getting its planned sets HOLDS — easing still fires", () => {
   const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
   const nc = new Set(["chest"]);
