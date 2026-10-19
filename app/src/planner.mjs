@@ -18,7 +18,7 @@ export function userSubstitutes(user, exId, { sessionName = null, stalled = [], 
 }
 export function userApplySubstitution(user, exId, { sessionName = null, stalled = [] } = {}) {
   return applySubstitution(user.program, user.plan_rationale ?? null, exId, { profile: user.profile, kb: KB, stalled, sessionName,
-    customExercises: user.custom_exercises || [], blockIndex: user.plan_meta?.block_index ?? 0 });
+    customExercises: user.custom_exercises || [], blockIndex: user.plan_meta?.block_index ?? 0, specSpent: !!user.plan_meta?.spec_spent });
 }
 export { sweepDanglingSupersets, contentSig };
 

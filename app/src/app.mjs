@@ -3,9 +3,10 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
@@ -340,8 +341,10 @@ export function createApp(store, config = {}) {
       const before = u.profile;
       const next = profilePatch ? { ...u.profile, ...profilePatch, user_id: id } : u.profile;
       const trainingChanged = TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
+      // Only a change of WHAT is prioritised may start another specialization block.
+      const prioritiesChanged = ["priority_muscles", "specialization"].some((k) => canon(before?.[k]) !== canon(next[k]));
       u.profile = next;
-      out = rebuildPlan(u, { trainingChanged, priorSessions, nowISO });
+      out = rebuildPlan(u, { trainingChanged, prioritiesChanged, priorSessions, nowISO });
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
@@ -353,8 +356,13 @@ export function createApp(store, config = {}) {
   // accessory rotation and mesocycle position; a training change starts a fresh block
   // 0 (week-1 ramp, rebased rotation). Shared by the Settings save and "Bring back"
   // after a rebuild (W272) — one copy of the rules, or the two drift (lesson 1).
-  function rebuildPlan(u, { trainingChanged, priorSessions, nowISO }) {
+  function rebuildPlan(u, { trainingChanged, prioritiesChanged = false, priorSessions, nowISO }) {
       const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
+      // A specialization block that already RAN stays run through a rebuild (W278 review):
+      // block_index resets on ANY training change, so a schedule change (Settings days, the
+      // plan-fit "Rebuild for N days") re-armed it for another six weeks. Only new
+      // priorities start another block (plan-core's specializationActive `spent`).
+      const specSpent = !prioritiesChanged && (!!u.plan_meta?.spec_spent || (u.plan_meta?.block_index ?? 0) >= SPEC_MAX_BLOCKS);
       // Preserve the adaptive per-muscle tune across a settings edit — a change in
       // days/equipment doesn't invalidate "this person's chest responds to more
       // volume". (Specialization muscles ignore it; their target is overridden.)
@@ -364,7 +372,7 @@ export function createApp(store, config = {}) {
       // recorded remainder: the units door got its own path; this route never got
       // the fix). Recency-filtered, so a long-idle stall never re-triggers.
       const stalledExercises = stalledExerciseIds(priorSessions, u.custom_exercises || [], nowISO);
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises, ...(specSpent ? { specSpent: true } : {}) });
       // A cosmetic save is not amnesia: every mid-block stamp survives it. A REAL
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
@@ -386,6 +394,7 @@ export function createApp(store, config = {}) {
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
+        ...(specSpent ? { spec_spent: true } : {}),
         // Rebase rotation with buildToday's OWN-program predicate (merged foreign
         // sessions once froze Today on Day A), only on a real training change.
         rotation_base: trainingChanged
@@ -995,6 +1004,15 @@ export function createApp(store, config = {}) {
     const twNext = lbEligible ? trainedWeeksInBlock(sessions, lbStart, new Date(Date.parse(nowISO) + 7 * 86400000).toISOString(), tz) : 0;
     daily.last_block_week = lbEligible && twNow % BLOCK_WEEKS === BLOCK_WEEKS - 1;
     daily.block_rolls_over = lbEligible && Math.floor(twNext / BLOCK_WEEKS) !== Math.floor(twNow / BLOCK_WEEKS);
+    // The plan's size vs the days actually committed (W278, the owner's pick): once a
+    // DIFFERENT count has stood a week (carried AND seven days since it was made — a Sunday
+    // pick is "carried" by Monday, review fix), Today offers a one-tap
+    // rebuild through the Settings door. Never automatic: a "just this week" pick must
+    // not restart a block. Only for counts a plan can be built for (2-6), never over a
+    // hand-edited plan (a rebuild would discard the edits), never while paused (rail #1).
+    const planDays = user.program?.sessions?.length ?? 0, keptDays = plan?.days?.length ?? 0;
+    daily.plan_fit = plan?.carried && commitmentStood(user.profile?.commitment, clientDay) && !user.paused && !user.program?.custom && planDays && keptDays >= 2 && keptDays <= 6 && keptDays !== planDays
+      ? { plan_days: planDays, committed_days: keptDays } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).

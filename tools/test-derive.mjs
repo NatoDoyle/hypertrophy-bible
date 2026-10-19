@@ -46,7 +46,7 @@ import {
   loadExerciseIndex,
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
-import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts } from "./derive-core.mjs";
+import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood } from "./derive-core.mjs";
 import { restSeconds } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
@@ -1452,6 +1452,20 @@ check("#week what was trained comes from the logged rows (names, extra days too)
   assert.equal(f.days[2].rest, true);
   assert.ok(f.days.every((d) => d.date >= "2026-10-12"), "last week's rows never leak in");
   assert.equal(f.days.filter((d) => d.rest).length, 1);
+});
+
+// W278 review: "you've been picking N days a week" needs the pick to have STOOD — carried
+// alone is true the morning after a Sunday pick. Counted from set_on; a legacy stamp
+// without one from its week's Monday. Fixed dates (lesson 64).
+check("#week commitmentStood: seven days from the day it was made — not 'carried' (a Sunday pick is carried by Monday)", () => {
+  const sunday = { week: "2026-W41", days: ["tue", "sun"], set_on: "2026-10-11" };
+  assert.equal(commitmentStood(sunday, "2026-10-12"), false, "the next morning: carried, but one partial week");
+  assert.equal(commitmentStood(sunday, "2026-10-17"), false, "six days");
+  assert.equal(commitmentStood(sunday, "2026-10-18"), true, "seven days");
+  assert.equal(commitmentStood({ week: "2026-W41", days: ["mon"] }, "2026-10-12"), true, "legacy: from W41's Monday (2026-10-05)");
+  assert.equal(commitmentStood({ week: "2026-W41", days: ["mon"] }, "2026-10-11"), false, "legacy, six days in");
+  assert.equal(commitmentStood(null, "2026-10-12"), false);
+  assert.equal(commitmentStood({ week: "2026-W42", days: [], set_on: "2026-10-12" }, "2026-10-30"), false, "a cleared plan has nothing to stand");
 });
 
 // --- #rest (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"): the

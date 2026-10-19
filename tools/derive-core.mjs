@@ -426,6 +426,17 @@ export function commitmentForDay(stored, todayKey) {
   return { days, week, set_on, carried, resumed };
 }
 
+// Has the commitment in force on `todayKey` STOOD at least `days` days? (W278 review: the
+// plan-fit offer says "you've been picking N days a week", and "carried" alone is true the
+// morning after a Sunday pick.) Counted from `set_on`, the day it was made; a legacy stamp
+// without one, from its week's Monday. Date-only, like everything that reads a commitment.
+export function commitmentStood(stored, todayKey, days = 7) {
+  const eff = commitmentForDay(stored, todayKey);
+  if (!eff) return false;
+  const since = eff.set_on ?? (eff.week ? isoWeekMondayKey(eff.week) : null);
+  return !!since && since <= shiftDayKey(todayKey, -days);
+}
+
 export function effectiveCommitment(profile, nowMs, tzOffsetMin) {
   const key = localDayKey(nowMs, tzOffsetMin);
   return key ? commitmentForDay(profile?.commitment, key) : null;

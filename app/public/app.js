@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, DAY_LONG } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1381,13 +1381,13 @@ function wireCommitmentCard() {
   if ($("#save-commitment")) $("#save-commitment").onclick = async () => {
     const days = chips.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.day);
     if (!days.length) { say("Pick at least one day — or tap “No fixed days this week”."); return; }
-    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("Training days saved."); renderToday(); }
+    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days }) }); say("Training days saved."); refreshToday(); }
     catch { alertBar("📴 Couldn't save — try again when connected."); }
   };
   // Clearing is a real choice (lesson 27: a door with a way back) — the plan stops
   // carrying forward and Today goes back to "any day is a training day".
   if ($("#clear-commitment")) $("#clear-commitment").onclick = async () => {
-    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days: [] }) }); say("No fixed days — any day can be a training day."); renderToday(); }
+    try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days: [] }) }); say("No fixed days — any day can be a training day."); refreshToday(); }
     catch { alertBar("📴 Couldn't save — try again when connected."); }
   };
   if ($("#addcal")) $("#addcal").onclick = () => {
@@ -1412,6 +1412,11 @@ function wireCommitmentCard() {
 // render (a slow network, or the bounded wait for the offline queue below) never paints
 // Today over the tab the user has since switched to (W277 review).
 let todayGen = 0;
+// A LATE answer (a save that resolved after the user moved on) repaints Today only while
+// Today is what they're looking at — never over another tab, never over a live workout
+// (W278 review: renderToday paints "Loading…" before its own stale check, and its first
+// line would swap a running player for the resume card).
+function refreshToday() { if (tab === "today" && !sess) renderToday(); }
 async function renderToday() {
   if (sess) return renderResume();
   const gen = ++todayGen;
@@ -1588,11 +1593,20 @@ async function renderToday() {
   // It shows on day 1 now; the copy above no longer promises a channel they may
   // not have, which is what made hiding it feel necessary.
   const commitment = commitmentCard(adh.commitment, [], adh.commitment_resume_days, week);
+  // The plan's size vs the days actually trained (W278, the owner's pick): offered by the
+  // server once a different count has stood a week; one tap rebuilds through the Settings
+  // door, and "Keep" hides THIS pair on this device for good (never nags).
+  const fit = planFitCopy(dy.plan_fit);
+  const fitKey = (() => { try { return localStorage.getItem("hb_fit_kept"); } catch { return null; } })();
+  const fitCard = planFitVisible(fit, fitKey) ? `<div class="card" id="plan-fit"><b>🗓️ ${esc(fit.title)}</b>
+      <p class="muted" style="margin:4px 0 8px">${esc(fit.body)}</p>
+      <button class="btn secondary inline" id="fit-rebuild" style="margin:0 6px 0 0">${esc(fit.rebuild)}</button>
+      <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
 
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -1602,6 +1616,22 @@ async function renderToday() {
     ${cardioCard}`;
   wirePendingCodeCard();
   wireCommitmentCard();
+  if ($("#fit-rebuild")) $("#fit-rebuild").onclick = async () => {
+    // One rebuild per tap (a second would be a second fresh block), and no "Keep" racing it
+    // to a contradictory pair of confirmations (W278 review).
+    const lock = (on) => ["#fit-rebuild", "#fit-keep"].forEach((sel) => { if ($(sel)) $(sel).disabled = on; });
+    lock(true);
+    let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...planFitRequest(fit) }) }); } catch { r = null; }
+    if (!r?.program) { lock(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
+    try { localStorage.setItem("hb_program", r.program.name); } catch {}
+    pendingNotice = `🗓️ Rebuilt for ${fit.days} days a week — a fresh training block starts with your next workout.`;
+    refreshToday(); // the notice waits for the next Today if the user has moved on
+  };
+  if ($("#fit-keep")) $("#fit-keep").onclick = () => {
+    try { localStorage.setItem("hb_fit_kept", fit.key); } catch {}
+    $("#plan-fit")?.remove();
+    say(`${fit.keep.replace(/^Keep my /, "Kept your ")}.`);
+  };
   // daily-flow actions
   app.querySelectorAll("[data-step]").forEach((b) => b.onclick = () => {
     const k = b.dataset.step;
@@ -1614,7 +1644,7 @@ async function renderToday() {
   if ($("#hub-log")) $("#hub-log").onclick = async () => {
     const kcal = parseFloat($("#hub-kcal").value);
     if (!Number.isFinite(kcal) || kcal <= 0) { $("#hub-kcal").focus(); return; }
-    try { await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: localDay() }) }); say("Calories logged. Day complete."); renderToday(); }
+    try { await api("/api/nutrition/log", { method: "POST", body: JSON.stringify({ user_id: uid, kcal, date: localDay() }) }); say("Calories logged. Day complete."); refreshToday(); }
     catch { alertBar("📴 Couldn't log — try again when connected."); }
   };
   wireLearnLinks();
