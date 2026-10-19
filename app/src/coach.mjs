@@ -40,6 +40,19 @@ const workingSetsFor = (sessions, exId) =>
 function lastSetsForExercise(sessions, exId) {
   return recentWorkSets(sessions, exId, 1)[0] ?? null;
 }
+// The anchor of one session's sets for a lift: the heaviest weight with a set at or above
+// `min` (proved in the range), else set 1's weight; `judged` = the sets AT that weight,
+// `first` = the freshest of them. See suggestWeight.
+function anchorOf(sets, min) {
+  const proved = sets.filter((s) => s.reps >= min).map((s) => s.weight_kg ?? 0);
+  const weight = proved.length ? Math.max(...proved) : (sets[0].weight_kg ?? 0);
+  const judged = sets.filter((s) => (s.weight_kg ?? 0) === weight);
+  return { weight, judged, first: judged[0] };
+}
+// The bottom of the range a past session was DONE in — its stored target (W280) when it
+// has one, else today's range (older sessions).
+const ownMin = (entry, repRange) => parseRange(entry.target?.rep_range ?? repRange).min;
+
 // The last `k` sessions holding non-deload WORK sets for this lift, newest first — the
 // anchor and, for W279's two-strike rule, the one before it.
 function recentWorkSets(sessions, exId, k) {
@@ -113,16 +126,18 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const last = lastSetsForExercise(sessions, exId);
   const { min, max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
-  const lastWeight = last.sets[0].weight_kg;
-  // Judge reps/RIR only over sets AT the anchor weight (or heavier). The anchor is
-  // set 1, but a lighter back-off set is a different load: counting it both denied
-  // an earned bump (top set hit the ceiling, back-off didn't) and could fabricate
-  // one (easy back-off RIR averaging over a maxed top set) — C14. Straight sets
-  // are byte-identical. (That set 1 anchors at all — vs the day's heaviest — is a
-  // separate recorded design question, not changed here.)
-  const judged = last.sets.filter((s) => (s.weight_kg ?? 0) >= lastWeight);
+  // THE ANCHOR is the heaviest weight PROVED in the range — a set that reached the bottom of
+  // the range that session was done in (its stored target; else today's) — and set 1's
+  // weight when nothing reached it (Burst 1 review). Set-1 anchoring punished following
+  // the player's own "go heavier" hint (W279b): 60×14 then the hinted 62.5×10,10 suggested
+  // 60 next time. A heavier set that FAILED the range (a one-off heavy single) never anchors,
+  // and a lighter back-off is still a different load, never evidence (C14). Reps/RIR are
+  // judged only over the sets AT the anchor weight. Straight sets are byte-identical.
+  const anchor = anchorOf(last.sets, ownMin(last, repRange));
+  const lastWeight = anchor.weight;
+  const judged = anchor.judged;
   const allHitTop = judged.every((s) => s.reps >= max);
-  const base = { last_kg: lastWeight, last_reps: last.sets.map((s) => s.reps) };
+  const base = { last_kg: lastWeight, last_reps: judged.map((s) => s.reps), last_sets: last.sets.map((s) => [s.weight_kg ?? 0, s.reps]) };
   // Layoff deload: if it's been a while, ease the load and suppress the progression
   // bump — overrides everything below so a comeback never loads heavier than before.
   // Measured from the last time the exercise was trained AT ALL (comeback/deload
@@ -157,11 +172,17 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // to the bottom of the range at the band's near edge, floored to the lift's increment,
   // at least one increment down and at most ~20% (one set is not a re-test). Never during a
   // taper (its loads hold); never tagged as a comeback, so the eased load anchors normally.
-  const s1 = last.sets[0];
+  // Fires only when NO set at the anchor reached today's range (a set that did means the
+  // weight works — the rest is fatigue or a slip, not evidence), judged on the freshest of
+  // them. Today's range, so a heavy-day load is converted for a lighter-day range too; the
+  // two-strike lookback judges the previous session against the range IT was done in, so a
+  // set that met its own range is never a strike (Burst 1 review).
+  const s1 = anchor.first;
   const s1Rir = typeof s1.rir === "number" ? s1.rir : null;
-  if (!holdLoad && lastWeight > 0 && s1.reps < min && (s1Rir == null || s1Rir <= 1)) {
+  if (!holdLoad && lastWeight > 0 && judged.every((s) => s.reps < min) && (s1Rir == null || s1Rir <= 1)) {
     const prev = recentWorkSets(sessions, exId, 2)[1];
-    const prevUnder = !!prev && (prev.sets[0].weight_kg ?? 0) >= lastWeight && prev.sets[0].reps < min;
+    const prevA = prev ? anchorOf(prev.sets, ownMin(prev, repRange)) : null;
+    const prevUnder = !!prevA && prevA.weight >= lastWeight && prevA.first.reps < ownMin(prev, repRange);
     if (min - s1.reps >= 2 || prevUnder) {
       const inc = loadIncrement(exId, byId);
       const near = band ? +band[1] : 1;
@@ -169,7 +190,10 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
       const floored = Math.floor(raw / inc + 1e-9) * inc;
       const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
       const eased = Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4;
-      if (eased > 0) return { suggested_kg: eased, note: `Your first set came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg so every set lands in it.`, ...base };
+      // The model aims the FIRST set at the range's bottom, so that is all the copy promises —
+      // and when the ~20% cap binds, not even that.
+      const tail = floored < lowest ? " (as far as I'll drop it in one go)." : " — your first set should land in the range.";
+      if (eased > 0) return { suggested_kg: eased, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg${tail}`, ...base };
     } else {
       return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
     }
@@ -657,7 +681,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // No history for this lift: a non-beginner gets a body-scaled starting guess
     // to confirm/adjust instead of an empty bar (roadmap #4's last slice); a true
     // beginner keeps the null (the client's safe empty-bar default + ramp-up card).
-    let suggestion_note = sug.note;
+    // The reason travels to the set screen (Burst 1 review), so it must describe the weight
+    // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
+    // would contradict the pre-filled number.
+    let suggestion_note = suggested_kg != null && sug.suggested_kg != null && suggested_kg < sug.suggested_kg
+      ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
+      : sug.note;
     if (suggested_kg == null && !beginner && bodyweightKg) {
       const estimate = estimateStartingWeight(e, bodyweightKg, ex.exercise, byId);
       if (estimate != null) {
@@ -699,6 +728,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // "Last time: 40 kg × 8, 7" (owner #3) — last_kg rode for the typo guard
       // while last_reps was silently dropped here (the route-whitelist class).
       last_reps: sug.last_reps ?? null,
+      // The reps above are the sets AT last_kg (the anchor). When the weight changed between
+      // sets — the next-set hint, a ramp — every set as done: [[kg, reps], …] (Burst 1 review).
+      last_sets: sug.last_sets ?? null,
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory

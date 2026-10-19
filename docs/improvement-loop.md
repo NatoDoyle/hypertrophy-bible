@@ -1178,6 +1178,33 @@ These are real failures from previous iterations. Each is now a standing check.
    counter, list what each meaning of it should survive. A meaning that should survive
    the new door gets its own state, here `spec_spent`, stamped on rebuild and cleared
    only by new priorities.
+79. **Advice the app gives must survive the engine that reads its result.** W279b's
+   mid-workout hint said "try 62.5 kg" after 60×14. The user took it, logged 62.5×10,10,
+   and the progression engine (which anchored on set 1) suggested 60 next time: the app
+   punished its own advice. Each piece was tested on its own; nothing ran the hint's
+   outcome back through suggestWeight. → **Standing rule:** when a feature changes what
+   the user will log, add a closed-loop test. Follow the advice, log the result, and
+   assert the next suggestion through `/api/today`. Here that is `#anchor took the
+   heavier hint`, and the anchor became the heaviest weight proved in the range.
+80. **An output that was never shown has never been reviewed. Showing it is new copy.**
+   `suggestion_note` had been computed for every lift since the first waves and rendered
+   nowhere. Putting it on the set screen surfaced three latent problems:
+   - kg-only figures beside a pounds stepper;
+   - an "add 2.5 kg" beside a deload week's lighter weight;
+   - a pounds bug underneath: plate rounding swallowed every 1 kg step, so isolation
+     lifts never progressed for a pounds user.
+
+   → **Standing rule:** before surfacing a stored or computed value for the first time,
+   audit it like fresh copy (lesson 60). Check every unit, every adjacent number it must
+   agree with, and every branch that writes it. Here that meant a property test that runs
+   every note the real engine writes through the pounds converter.
+81. **Display rounding must preserve the direction of a move.** Rounding is monotonic, but
+   a step smaller than half the display grain rounds to *no* move. "Add 1 kg" from 20 lb
+   showed 20 lb, and an ease to 8 kg showed the same 20 lb. The next-set hint and the
+   pre-fill both hit it. → **Standing rule:** when a value the engine *changed* is shown
+   in coarser units, compare it with the unchanged value in the same units. If they're
+   equal, show the next grain in the intended direction (`hintInUnit` / `prefillInUnit`),
+   or don't claim a change.
 
 ## Token discipline (the loop must be affordable to keep running)
 

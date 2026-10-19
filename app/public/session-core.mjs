@@ -77,6 +77,7 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
+  delete out.lastSkip; // a swap rewrites the slot's count: an older skip's undo no longer describes it
   if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
   return { ok: true, sess: out };
 }
@@ -121,8 +122,11 @@ export const skipWouldFinish = (sess, station = null) => (station ? skipRound(se
 export function undoSkip(sess) {
   const u = sess?.lastSkip;
   if (!u || sess.complete || u.loggedLen !== sess.logged.length || u.order !== orderKey(sess)) return { ok: false, sess };
+  // Never past the plan (a swap and its undo in between can have restored the count already),
+  // and the cursor is DERIVED from banked sets, never the stored one (Burst 1 review).
+  if (sess.ex.some((x) => u.ids.includes(x.exercise) && Number.isInteger(x.planned_sets) && x.sets >= x.planned_sets)) return { ok: false, sess };
   const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
-  const out = { ...sess, ex, i: u.prevI, set: u.prevSet };
+  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise) };
   delete out.lastSkip;
   return { ok: true, sess: out };
 }
@@ -266,7 +270,7 @@ export function nextSetHint(set, row) {
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max } : null;
+  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null } : null;
 }
 
 // What the plan asked of each lift TODAY (W280), sent with the finished workout so the
@@ -283,6 +287,32 @@ export function buildTargets(sess) {
     suggested_kg: x.suggested_kg ?? null,
     ...(sess.deload || x.eased ? { deload: true } : {}),
   }));
+}
+
+// The hint's weight in the lift's DISPLAY unit, always a real move (Burst 1 review): a 1 kg
+// step that the 5-lb plate rounding collapses back onto the weight just used becomes the next
+// plate (`step`) in the hint's direction — never "Try 20 lb" from 20 lb. Null when the move
+// would reach zero.
+export function hintInUnit(hint, toDisp, step) {
+  if (!hint) return null;
+  const from = toDisp(hint.from_kg), to = toDisp(hint.kg);
+  if (to !== from) return to > 0 ? to : null;
+  const nudged = from + (hint.kind === "lighter" ? -step : step);
+  return nudged > 0 ? nudged : null;
+}
+
+// The PRE-FILLED weight for a lift, in its display unit (Burst 1 review). Plate rounding
+// (5 lb) swallowed any engine move under ~2.5 lb, so a 1 kg step — isolation dumbbells and
+// cables — pre-filled the very weight just lifted: those lifts could never progress for a
+// pounds user, and an ease never eased. A weight the engine MOVES (a bump, an ease, a
+// comeback, a deload) now moves at least one plate in that direction; a hold holds. In
+// kilograms (0.25 kg display) no engine step is ever swallowed, so this is the plain
+// rounding there. Null when there is no suggestion (the caller's first-time default).
+export function prefillInUnit(row, toDisp, step) {
+  const kg = row?.suggested_kg, last = row?.last_kg;
+  if (kg == null) return null;
+  if (!(last > 0) || kg === last) return toDisp(kg);
+  return hintInUnit({ kind: kg > last ? "heavier" : "lighter", kg, from_kg: last }, toDisp, step) ?? toDisp(kg);
 }
 
 export function isHardSet(set, { hardSetRpe = 7 } = {}) {

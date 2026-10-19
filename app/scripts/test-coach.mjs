@@ -224,7 +224,7 @@ const brDay = (d, ...sets) => ({ date: `2026-06-${String(d).padStart(2, "0")}T18
 check("#below-range set 1 two+ reps under the range eases to the load that lands in it (60×5 on 8-12 → 52.5)", () => {
   const r = suggestWeight([brDay(1, brSet(60, 5), brSet(60, 4))], "barbell-bench-press", "8-12", undefined, null, "1-3");
   assert.equal(r.suggested_kg, 52.5);
-  assert.match(r.note, /first set came in at 5 — under the 8–12 range — so I've lightened this to 52\.5 kg/);
+  assert.match(r.note, /first set at 60 kg came in at 5 — under the 8–12 range — so I've lightened this to 52\.5 kg/);
   assert.equal(r.layoff_days, undefined, "never tagged as a comeback: the eased load must anchor next time");
   // a far miss is capped at about −20% (100×1 → 80, not 77.5): one set is not a re-test
   assert.equal(suggestWeight([brDay(1, brSet(100, 1))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 80);
@@ -262,7 +262,7 @@ check("#skipped-hold 2 of 3 planned sets at the top of the range: the weight hol
 });
 check("#skipped-hold no targets (an older session) is byte-identical; logged effort that says 'too light' still bumps", () => {
   assert.deepEqual(suggestWeight([withTargets(null, brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3"),
-    { suggested_kg: 102.5, note: "Last time you hit the top of the range — add 2.5 kg.", last_kg: 100, last_reps: [10, 10] });
+    { suggested_kg: 102.5, note: "Last time you hit the top of the range — add 2.5 kg.", last_kg: 100, last_reps: [10, 10], last_sets: [[100, 10], [100, 10]] });
   assert.ok(suggestWeight([withTargets(tgt3, brSet(100, 8, { rir: 5 }), brSet(100, 8, { rir: 5 }))], "barbell-bench-press", "6-10", undefined, null, "1-3").suggested_kg > 100,
     "RIR 5 against a 1-3 band is direct evidence the load is light — a skipped set doesn't cancel it");
   assert.equal(suggestWeight([withTargets([{ ...tgt3[0], sets: 2 }], brSet(100, 10), brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3").suggested_kg, 102.5,
@@ -274,9 +274,73 @@ check("#next-set buildToday rows carry the lift's real load step — 2.5 kg for 
   const rows = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, []).exercises;
   assert.deepEqual(rows.map((r) => r.inc_kg), [2.5, 1]);
 });
+// --- Burst 1 review: the ANCHOR is the heaviest weight proved in the range (a set at or
+// above its bottom), else set 1. Set-1 anchoring punished following W279b's own "go heavier"
+// hint (60×14 → hinted 62.5×10,10 suggested 60 next time) and a warm-up-style ramp.
+const rSet = (w, reps, extra = {}) => brSet(w, reps, extra);
+check("#anchor taking the heavier hint is never punished: the next suggestion starts from the hinted weight", () => {
+  const sug = (...sets) => suggestWeight([brDay(1, ...sets)], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(sug(rSet(60, 14), rSet(62.5, 10), rSet(62.5, 10)).suggested_kg, 62.5, "62.5 × 10, 10: keep 62.5, add reps");
+  assert.equal(sug(rSet(60, 14), rSet(62.5, 12), rSet(62.5, 12)).suggested_kg, 65, "62.5 at the top of the range: add load FROM 62.5");
+  assert.equal(sug(rSet(60, 14), rSet(62.5, 10)).suggested_kg, 62.5, "a 2-set lift too");
+  assert.equal(sug(rSet(40, 12), rSet(50, 12), rSet(60, 10)).suggested_kg, 60, "a ramp anchors on the weight it climbed to");
+});
+check("#anchor a heavier set that FAILED the range never becomes the anchor (a one-off heavy single is ignored)", () => {
+  const r = suggestWeight([brDay(1, rSet(60, 10), rSet(60, 10), rSet(60, 10), rSet(80, 3))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(r.suggested_kg, 60);
+  assert.deepEqual(r.last_sets, [[60, 10], [60, 10], [60, 10], [80, 3]], "the player can still show every set honestly");
+});
+check("#below-range a set AT the anchor that reached the range means the weight works — no ease (60×6, 60×9, 60×9)", () => {
+  assert.equal(suggestWeight([brDay(1, rSet(60, 6), rSet(60, 9), rSet(60, 9))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 60);
+});
+check("#anchor taking the LIGHTER hint holds at the weight that worked (100×6 then 90×9, 90×8 → 90)", () => {
+  const r = suggestWeight([brDay(1, rSet(100, 6), rSet(90, 9), rSet(90, 8))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.equal(r.suggested_kg, 90);
+  assert.equal(r.last_kg, 90);
+});
+check("#below-range the RIR band moves the load (a '2-3' band eases further than '1-3'; the band's near edge is read)", () => {
+  assert.equal(suggestWeight([brDay(1, rSet(60, 6))], "barbell-bench-press", "8-12", undefined, null, "2-3").suggested_kg, 52.5, "60·1.2/(1+10/30) = 54 → 52.5");
+  assert.equal(suggestWeight([brDay(1, rSet(60, 6))], "barbell-bench-press", "8-12", undefined, null, "1-3").suggested_kg, 55, "60·1.2/1.3 = 55.4 → 55");
+});
+check("#below-range at least one increment down: a near-zero ease still moves (and never claims a change it didn't make)", () => {
+  // 60×5 @ RIR 1 on 6-10, band "0-1", twice: raw = 60·1.2/1.2 = 60 exactly → clamped to 57.5
+  const r = suggestWeight([brDay(1, rSet(60, 5, { rir: 1 })), brDay(3, rSet(60, 5, { rir: 1 }))], "barbell-bench-press", "6-10", undefined, null, "0-1");
+  assert.equal(r.suggested_kg, 57.5);
+  assert.ok(!/to 60 kg/.test(r.note), r.note);
+});
+check("#below-range judged against the range each session was DONE in (its stored target), not today's", () => {
+  // 100×5 on a 4-6 heavy day (in range), then 100×9 on today's 10-15: one miss, not two
+  const heavy = { ...brDay(1, rSet(100, 5)), targets: [{ exercise: "barbell-bench-press", sets: 1, rep_range: "4-6", rir: "1-3", suggested_kg: 100 }] };
+  const r = suggestWeight([heavy, brDay(3, rSet(100, 9))], "barbell-bench-press", "10-15", undefined, null, "1-3");
+  assert.equal(r.suggested_kg, 100, "the 4-6 day was in ITS range — no second strike");
+  assert.match(r.note, /just under the range/i);
+  // …while TODAY's range still converts the load: 100×5 from a 4-6 day is far too heavy for 10-15
+  const own = { ...brDay(1, rSet(100, 5)), targets: [{ exercise: "barbell-bench-press", sets: 1, rep_range: "4-6", rir: "1-3", suggested_kg: 100 }] };
+  assert.ok(suggestWeight([own], "barbell-bench-press", "10-15", undefined, null, "1-3").suggested_kg < 90, "a heavy-day load is converted for a light-day range");
+});
+check("#below-range the ease's copy promises only what the model computes: the FIRST set lands in the range", () => {
+  const r = suggestWeight([brDay(1, rSet(60, 5))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.match(r.note, /your first set should land in the range/);
+  assert.doesNotMatch(r.note, /every set/);
+  const capped = suggestWeight([brDay(1, rSet(100, 1))], "barbell-bench-press", "8-12", undefined, null, "1-3");
+  assert.match(capped.note, /as far as I'll drop it in one go/, "when the 20% cap binds, the first set may still miss — say so");
+});
+// The suggestion's reason now reaches the set screen (Burst 1 review), so it must describe
+// the weight actually pre-filled: in a deload week buildToday serves min(suggestion, last×0.9),
+// and "add 2.5 kg" beside a weight 10% lighter would contradict the screen.
+check("#note a deload week's lighter weight comes with a deload reason, never the progression's 'add 2.5 kg'", () => {
+  const now = "2026-06-10T18:00:00Z";
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog,
+    plan_meta: { block_start: "2026-05-01T00:00:00Z", reactive_deload: { block: 0, week: isoWeekKeyLocal(now, null) } } };
+  const row = buildToday(u, [{ date: "2026-06-08T18:00:00Z", program_ref: "p", sets: [brSet(100, 10), brSet(100, 10), brSet(100, 10)] }], null, [], now).exercises[0];
+  assert.equal(row.suggested_kg, 90, "precondition: the deload eases 10% (min(102.5, 90))");
+  assert.doesNotMatch(row.suggestion_note, /add 2\.5 kg/);
+  assert.match(row.suggestion_note, /Deload week/);
+});
 check("#below-range anything in the range is byte-identical to before", () => {
   const r = suggestWeight([brDay(1, brSet(60, 9), brSet(60, 8))], "barbell-bench-press", "8-12", undefined, null, "1-3");
-  assert.deepEqual(r, { suggested_kg: 60, note: "Keep the weight and try to add a rep or two.", last_kg: 60, last_reps: [9, 8] });
+  assert.deepEqual(r, { suggested_kg: 60, note: "Keep the weight and try to add a rep or two.", last_kg: 60, last_reps: [9, 8], last_sets: [[60, 9], [60, 8]] });
 });
 
 check("estimateStartingWeight: a body-scaled guess, rounded down to the load increment, erring light", () => {
