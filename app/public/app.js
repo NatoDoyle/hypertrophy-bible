@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG } from "/ui-helpers.mjs";
@@ -1791,6 +1791,7 @@ function loadSess() {
     if (s.i >= s.ex.length) { s.i = s.ex.length - 1; s.complete = true; }
     if (!Number.isInteger(s.set) || s.set < 0) s.set = 0;
     s.weights ??= {}; s.reps ??= {}; s.eff ??= {}; s.wUnits ??= {}; // (old blobs' auto-seeded `rir` map is deliberately ignored)
+    for (const x of s.ex) if (x && x.planned_sets == null) x.planned_sets = x.sets; // a blob from before W280: today's count IS the plan
     if (s.rest && !activeRest(s, Date.now())) delete s.rest; // over, implausible, or for an older set — dropped, never trusted
     return s;
   } catch { return null; }
@@ -1840,7 +1841,9 @@ const effTap = (b, repaintFn) => {
 };
 function startSession(templateSession) {
   sess = {
-    name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises), i: 0, set: 0,
+    // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
+    // reports as its target, however a skip later shrinks today's `sets`.
+    name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0,
     beginner: templateSession.beginner === true, // plain-effort language on the set screen — no "RIR" jargon for a true novice
     deload: templateSession.block?.phase === "deload" || templateSession.comeback === true, // planned-easy: block deload OR the layoff-comeback ease (0.88×) — both must stay out of e1RM/stall trends
     // eff (NOT the old `rir` map): a deliberately fresh key, so crash-mirror blobs
@@ -2824,7 +2827,9 @@ async function finish() {
   const session_id = sess.session_id || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   // Date the workout by when it was DONE, not when the save finally lands — a
   // Tuesday session rescued on Thursday belongs to Tuesday's week.
-  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged };
+  // targets (W280): what the plan asked of each lift today — so a skipped or unfinished set
+  // holds that lift's next weight increase, and the read-out can say what was and wasn't done.
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess) };
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one

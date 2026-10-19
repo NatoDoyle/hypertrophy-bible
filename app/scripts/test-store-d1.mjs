@@ -99,6 +99,13 @@ try {
   await file.addSession("s1", sessA); await d1.addSession("s1", sessA); // replayed duplicate
   ok("addSession: file store is idempotent on session_id", (await file.listSessions("s1")).length === 3);
   ok("addSession: D1 store is idempotent on session_id", (await d1.listSessions("s1")).length === 3);
+  // W280: the plan the user saw rides on the session row — both stores keep it, unchanged
+  // (D1 keeps the whole session JSON, so no column and no migration).
+  const sessT = { session_id: "st", date: "2026-07-11", sets: [{ exercise: "x", set_type: "work", weight_kg: 50, reps: 10 }],
+    targets: [{ exercise: "x", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 50 }, { exercise: "y", sets: 2, rep_range: null, rir: null, suggested_kg: null, deload: true }] };
+  await file.addSession("s1", sessT); await d1.addSession("s1", sessT);
+  same("W280 targets: identical round trip in both stores", (await file.listSessions("s1")).find((s) => s.session_id === "st")?.targets, (await d1.listSessions("s1")).find((s) => s.session_id === "st")?.targets);
+  ok("W280 targets: D1 keeps them exactly as written", JSON.stringify((await d1.listSessions("s1")).find((s) => s.session_id === "st")?.targets) === JSON.stringify(sessT.targets));
 
   // --- bodyweights: same-day replace, not duplicate ---
   await file.saveUser("bw1", {}); await d1.saveUser("bw1", {});

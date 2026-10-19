@@ -59,7 +59,9 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // is never orphaned), and no OTHER slot holds the new lift (progress is counted per
 // exercise id, so a duplicate silently skips one of them). Undo is the same call in
 // reverse, with the saved old row. Pure: resets only slot i's typed inputs.
-export const PRESCRIPTION_KEYS = ["sets", "rep_range", "rir"];
+// planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
+// target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
+export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
 export function replaceSlot(sess, i, row, { expect } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
@@ -216,6 +218,22 @@ export function nextSetHint(set, row) {
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
   return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max } : null;
+}
+
+// What the plan asked of each lift TODAY (W280), sent with the finished workout so the
+// engine and the read-out can tell a skipped or unfinished set from a full session: the
+// ORIGINAL set count (planned_sets survives a skip's shrink of `sets`), the range, the RIR
+// band and the suggested load; a planned-easy lift (a deload week or a comeback-eased row)
+// is flagged so it is never graded like a normal one. Pure.
+export function buildTargets(sess) {
+  return (sess?.ex ?? []).filter((x) => x?.exercise).map((x) => ({
+    exercise: x.exercise,
+    sets: x.planned_sets ?? x.sets,
+    rep_range: x.rep_range ?? null,
+    rir: x.rir ?? null,
+    suggested_kg: x.suggested_kg ?? null,
+    ...(sess.deload || x.eased ? { deload: true } : {}),
+  }));
 }
 
 export function isHardSet(set, { hardSetRpe = 7 } = {}) {

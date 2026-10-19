@@ -41,7 +41,7 @@ Decision order per exercise, first match wins:
 | 2 | logged RIR ≥ band-top + 1 | +1 increment (+2 increments at band-top + 2) |
 | 3 | **set 1 under the range** near failure (RIR unlogged or ≤ 1): **≥ 2 reps short**, or 1 short twice running at the same or a heavier weight | **eased** to the load that lands set 1 at the range's bottom (Epley e1RM of set 1, at the band's near edge), floored to the lift's increment: at least one increment down, at most ~20%. A *first* one-rep miss holds, with a warning (W279) |
 | 4 | logged RIR ≤ 0 without hitting top of range | hold — build reps first |
-| 5 | every set at the anchor weight hit the top of the range | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) |
+| 5 | every set at the anchor weight hit the top of the range | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) — but only when every **prescribed** set was done: a skipped set or a workout ended early holds the weight until a full session shows it (the workout carries its plan as `targets`, W280) |
 | 6 | otherwise | hold — add a rep or two |
 
 Rule 3 is the KB's own double-progression rule ("pick a weight you can do for at least the bottom

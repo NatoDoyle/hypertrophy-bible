@@ -248,6 +248,27 @@ check("#below-range never eases a set stopped early (RIR ≥ 2), under a taper, 
   const back = suggestWeight([brDay(1, brSet(60, 5))], "barbell-bench-press", "8-12", undefined, "2026-06-20T18:00:00Z", "1-3");
   assert.match(back.note, /It's been 19 days/, "the comeback ease still comes first");
 });
+// --- W280 (owner: "hold until every set is done"): double progression adds load once EVERY
+// prescribed set reaches the top of the range (how-to-read-a-workout.md: "on all your sets").
+// When the anchor session's stored target shows fewer sets done than planned — a skipped
+// set, or a workout ended early — that wasn't shown, so the top-of-range bump waits.
+const tgt3 = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3", suggested_kg: 100 }];
+const withTargets = (targets, ...sets) => ({ date: "2026-06-01T18:00:00Z", sets, ...(targets ? { targets } : {}) });
+check("#skipped-hold 2 of 3 planned sets at the top of the range: the weight holds, and says what earns the bump", () => {
+  const r = suggestWeight([withTargets(tgt3, brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3");
+  assert.equal(r.suggested_kg, 100);
+  assert.match(r.note, /You did 2 of 3 sets last time — get all 3 to the top of the range, then I'll add weight\./);
+  assert.equal(suggestWeight([withTargets(tgt3, brSet(100, 10), brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3").suggested_kg, 102.5, "all 3 → the bump");
+});
+check("#skipped-hold no targets (an older session) is byte-identical; logged effort that says 'too light' still bumps", () => {
+  assert.deepEqual(suggestWeight([withTargets(null, brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3"),
+    { suggested_kg: 102.5, note: "Last time you hit the top of the range — add 2.5 kg.", last_kg: 100, last_reps: [10, 10] });
+  assert.ok(suggestWeight([withTargets(tgt3, brSet(100, 8, { rir: 5 }), brSet(100, 8, { rir: 5 }))], "barbell-bench-press", "6-10", undefined, null, "1-3").suggested_kg > 100,
+    "RIR 5 against a 1-3 band is direct evidence the load is light — a skipped set doesn't cancel it");
+  assert.equal(suggestWeight([withTargets([{ ...tgt3[0], sets: 2 }], brSet(100, 10), brSet(100, 10), brSet(100, 10))], "barbell-bench-press", "6-10", undefined, null, "1-3").suggested_kg, 102.5,
+    "an extra set beyond the plan is no shortfall");
+});
+
 check("#next-set buildToday rows carry the lift's real load step — 2.5 kg for a barbell compound, 1 kg for a dumbbell isolation", () => {
   const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "12-20", rir: "1-3" }] }] };
   const rows = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, []).exercises;

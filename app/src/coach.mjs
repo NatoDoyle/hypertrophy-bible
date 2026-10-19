@@ -48,7 +48,7 @@ function recentWorkSets(sessions, exId, k) {
     // Deload sets are planned-easy — anchoring double progression to them would
     // leave every next block permanently one increment behind. Skip them.
     const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work" && !s.deload);
-    if (sets.length) out.push({ sets, date: sessions[i].date ?? null });
+    if (sets.length) out.push({ sets, date: sessions[i].date ?? null, target: (sessions[i].targets ?? []).find((t) => t.exercise === exId) ?? null });
   }
   return out;
 }
@@ -177,6 +177,13 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   if (rirs.length && avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   if (allHitTop) {
     if (holdLoad) return { suggested_kg: lastWeight, note: "Taper — hold this weight. You'd normally add load here; save that push for after the event.", ...base };
+    // Every PRESCRIBED set at the top earns the bump (W280, the owner's call: "hold until
+    // every set is done") — a skipped set or a workout ended early didn't show it. Read from
+    // the anchor session's stored target; a session without one (older builds) is unchanged.
+    const planned = last.target && !last.target.deload ? last.target.sets : null;
+    if (Number.isInteger(planned) && last.sets.length < planned) {
+      return { suggested_kg: lastWeight, note: `You did ${last.sets.length} of ${planned} sets last time — get all ${planned} to the top of the range, then I'll add weight.`, ...base };
+    }
     return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
   return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };

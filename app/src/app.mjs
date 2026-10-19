@@ -161,6 +161,35 @@ const normalizeSet = (s) => ({
   completed_at: s.completed_at ?? new Date().toISOString(),
 });
 
+// What the plan asked of each lift that day (W280), as the client recorded it. Whitelisted
+// and bounded like a set because it steers progression (the hit-top bump waits while the
+// anchor session did fewer sets than planned): a forged target can only hurt its sender —
+// the user_id is the credential — but the bounds keep junk from pinning a hold forever.
+// At most 24, one per lift; an entry without a real id and a 1-12 set count is dropped;
+// optional fields that fail their shape become null. Null when nothing survives.
+const MAX_TARGETS = 24;
+const normalizeTargets = (list) => {
+  if (!Array.isArray(list)) return null;
+  const seen = new Set(), out = [];
+  for (const t of list) {
+    if (out.length >= MAX_TARGETS) break;
+    const exercise = typeof t?.exercise === "string" && /^[\w-]{1,100}$/.test(t.exercise) ? t.exercise : null;
+    const sets = Number.isInteger(t?.sets) && t.sets >= 1 && t.sets <= 12 ? t.sets : null;
+    if (!exercise || sets == null || seen.has(exercise)) continue;
+    seen.add(exercise);
+    const rr = typeof t.rep_range === "string" ? /^(\d{1,2})-(\d{1,2})$/.exec(t.rep_range) : null;
+    const kg = t.suggested_kg == null ? null : Number(t.suggested_kg);
+    out.push({
+      exercise, sets,
+      rep_range: rr && +rr[1] <= +rr[2] ? t.rep_range : null,
+      rir: typeof t.rir === "string" && /^\d-\d$/.test(t.rir) ? t.rir : null,
+      suggested_kg: Number.isFinite(kg) && kg >= 0 && kg <= MAX_SET_WEIGHT_KG ? Math.round(kg * 100) / 100 : null,
+      ...(t.deload === true ? { deload: true } : {}),
+    });
+  }
+  return out.length ? out : null;
+};
+
 // A challenge (#10 social) still occupies its owner's one-at-a-time slot only
 // if it's non-terminal AND its target week hasn't passed yet — a stale
 // pending/active record whose week already ended is NOT open, even before
@@ -1723,6 +1752,8 @@ export function createApp(store, config = {}) {
       session_name: body.session_name ?? null,
       sets: (body.sets ?? []).map(normalizeSet),
     };
+    const targets = normalizeTargets(body.targets);
+    if (targets) session.targets = targets;
     // The store repeats the tombstone fence in its atomic write. A merge can land
     // after the read above; reporting a recap for a row that was safely refused
     // would be an optimistic lie, so surface the lost identity instead.

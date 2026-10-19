@@ -17,7 +17,7 @@ import { planFitCopy, planFitRequest } from "../public/ui-helpers.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
-const ok = (name, cond) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name)); };
+const ok = (name, cond, detail) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name + (detail ? `\n      ${String(detail).slice(0, 300)}` : ""))); };
 const path = join(tmpdir(), `hb-routes-test-${process.pid}.json`);
 
 try {
@@ -1116,6 +1116,44 @@ try {
     ok("#below-range /api/today eases a lift whose first set came in 3 under the range — and says why",
       brT1.session.name === brT0.session.name && brRow?.suggested_kg < 50 && brRow.suggested_kg >= 40
       && new RegExp(`first set came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, note: brRow?.suggestion_note }));
+  }
+
+  // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
+  // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
+  {
+    const tgU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const tgT0 = await (await app.request("/api/today", { headers: { "X-HB-User": tgU } })).json();
+    const tgX = tgT0.session.exercises.find((e) => e.equipment !== "bodyweight" && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const top = +tgX.rep_range.split("-")[1];
+    const work = (n) => Array.from({ length: n }, () => ({ exercise: tgX.exercise, set_type: "work", weight_kg: 50, reps: top }));
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: tgT0.session.name, sets: work(2), targets: [
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x" },
+      { exercise: tgX.exercise, sets: 5 },                                    // a duplicate: dropped
+      { exercise: "../evil", sets: 3 },                                       // not an id: dropped
+      { exercise: "leg-press", sets: 999 },                                   // out of bounds: dropped
+      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes" }, // kept, junk nulled
+    ] });
+    const tgStored = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
+    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled)", JSON.stringify(tgStored?.targets) === JSON.stringify([
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50 },
+      { exercise: "lat-pulldown", sets: 3, rep_range: null, rir: null, suggested_kg: null },
+    ]), JSON.stringify(tgStored?.targets));
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-many", date: dAgo(9), local_date: dAgo(9).slice(0, 10), sets: work(1),
+      targets: Array.from({ length: 30 }, (_, k) => ({ exercise: `ex-${k}`, sets: 3 })) });
+    await json("POST", "/api/session", { user_id: tgU, session_id: "tg-none", date: dAgo(10), local_date: dAgo(10).slice(0, 10), sets: work(1) });
+    const tgAll = await store.listSessions(tgU);
+    ok("#targets at most 24 ride a workout; a workout without them stores none",
+      tgAll.find((s) => s.session_id === "tg-many")?.targets?.length === 24 && !("targets" in (tgAll.find((s) => s.session_id === "tg-none") ?? {})));
+    // The hold, through the door the phone uses (rotation pointed back at the same day: three
+    // own sessions logged above, so skip to the next multiple of the plan's length).
+    await store.updateUser(tgU, (u) => { const n = u.program.sessions.length; u.plan_meta = { ...u.plan_meta, rotation_skips: (n - (tgAll.length % n)) % n }; return u; });
+    const tgT1 = await (await app.request("/api/today", { headers: { "X-HB-User": tgU } })).json();
+    const tgRow = tgT1.session.exercises.find((e) => e.exercise === tgX.exercise);
+    ok("#targets 2 of 3 planned sets at the top: /api/today holds the weight and says what earns the bump",
+      tgRow?.suggested_kg === 50 && /You did 2 of 3 sets last time/.test(tgRow.suggestion_note ?? ""), JSON.stringify({ kg: tgRow?.suggested_kg, note: tgRow?.suggestion_note }));
+    await json("POST", "/api/session/update", { user_id: tgU, session_id: "tg-1", sets: work(3) });
+    const tgEdited = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
+    ok("#targets a History edit of the sets never touches the targets", tgEdited?.sets?.length === 3 && tgEdited?.targets?.length === 2);
   }
 
   // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this

@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -539,6 +539,12 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     unilateral: false, movement_pattern: "isolation-elbow-extension", primary_muscles: ["triceps"] };
   const exs = () => [ex("bench", 3), { ...cur }, ex("curl", 3)];
 
+  check("#targets a swapped-in lift keeps the SLOT's original planned count (W280) — the target the workout reports", () => {
+    const r = replaceSlot(mk([ex("bench", 3), { ...cur, planned_sets: 3 }, ex("curl", 3)]), 1, row, { expect: "pushdown" });
+    assert.equal(r.ok, true);
+    assert.equal(r.sess.ex[1].planned_sets, 3, "planned_sets is part of the slot's prescription");
+    assert.ok(PRESCRIPTION_KEYS.includes("planned_sets"));
+  });
   check("#replace-slot the prescription stays the slot's; every other field is the new lift's own; the pairing is always dropped", () => {
     const r = replaceSlot(mk(exs()), 1, row, { expect: "pushdown" });
     assert.equal(r.ok, true);
@@ -756,6 +762,24 @@ check("#next-set no hint when on target, stopped early, a warm-up, planned-easy,
 check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±20%", () => {
   assert.strictEqual(nextSetHint(w(10, 8), { rep_range: "12-20", rir: "1-3", inc_kg: 1 }).kg, 8);
   assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
+});
+
+// --- #targets (W280): what the plan asked of each lift TODAY rides with the workout, so the
+// engine (and the read-out) can tell a skipped or unfinished set from a full session — the
+// ORIGINAL set count (planned_sets survives a skip's shrink), and planned-easy lifts flagged.
+check("#targets buildTargets: the original set count, range, band and suggestion per lift; planned-easy flagged", () => {
+  const sess = { deload: false, ex: [
+    { exercise: "a", sets: 2, planned_sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 60, name: "A", cue: "x" },
+    { exercise: "b", sets: 3, rep_range: "10-15", rir: "0-2", suggested_kg: null, eased: true },
+    { exercise: "c", sets: 3, rep_range: "6-10" },
+  ] };
+  assert.deepStrictEqual(buildTargets(sess), [
+    { exercise: "a", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 60 },
+    { exercise: "b", sets: 3, rep_range: "10-15", rir: "0-2", suggested_kg: null, deload: true },
+    { exercise: "c", sets: 3, rep_range: "6-10", rir: null, suggested_kg: null },
+  ]);
+  assert.strictEqual(buildTargets({ ...sess, deload: true }).every((t) => t.deload === true), true, "a deload week: every lift planned easy");
+  assert.deepStrictEqual(buildTargets(null), []);
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
