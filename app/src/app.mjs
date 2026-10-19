@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, stalledExerciseIds, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, stalledExerciseIds, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -1672,6 +1672,14 @@ export function createApp(store, config = {}) {
   });
 
   // Log a completed session -> derived recap (the reward).
+  // One computation for both read-out doors. null when `session` isn't the latest workout.
+  const isLatestSession = (all, s) => !all.some((x) => x.session_id !== s.session_id && +new Date(x.date) > +new Date(s.date));
+  async function readoutFor(userId, user, all, session) {
+    if (!isLatestSession(all, session)) return null;
+    const [checkins, bodyweights] = await Promise.all([store.listCheckins(userId), store.listBodyweights(userId)]);
+    return sessionReadout(user, all, session, { now: new Date().toISOString(), tz: user.profile?.tz_offset_min ?? null, checkins, bodyweights, customEx: user.custom_exercises || [] });
+  }
+
   app.post("/api/session", async (c) => {
     const body = await c.req.json().catch(() => ({})); // empty/non-JSON body -> clean 404 below, not a 500
     const id = body.user_id;
@@ -1727,7 +1735,29 @@ export function createApp(store, config = {}) {
         });
       }
     } catch { /* the echo is optional; the logged session is not */ }
-    return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
+    // The coaching read-out (W282): what this workout MEANS — next time per lift (a promise the
+    // next /api/today keeps), this block, the next. Only for the user's LATEST workout: a
+    // backfilled older one would be read against a context that has moved on. Best-effort
+    // like the echo above — a read-out must never fail the save the user is waiting on.
+    let readout = null;
+    try { readout = await readoutFor(id, user, all, session); } catch { /* optional */ }
+    return c.json({ ...sessionRecap(user, all, session, user.custom_exercises || []), readout });
+  });
+
+  // The read-out's OFFLINE door (W282): a workout saved while offline syncs later, and its
+  // read-out is fetched here once it does (and from History for the latest workout). Answers
+  // only for the LATEST workout — an older one gets { past: true }, never a read-out computed
+  // against a context that has moved on.
+  app.post("/api/session/recap", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
+    const user = await store.getUser(b.user_id);
+    if (!user?.program) return c.json({ error: "unknown user" }, 404);
+    const all = await store.listSessions(b.user_id);
+    const session = all.find((s) => s.session_id === b.session_id);
+    if (!session) return c.json({ error: "unknown session" }, 404);
+    const readout = await readoutFor(b.user_id, user, all, session);
+    return c.json(readout ? { session_id: session.session_id, readout } : { session_id: session.session_id, past: true });
   });
 
   // ANY rewrite of history while a celebration is pending must RE-EARN it from

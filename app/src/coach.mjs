@@ -5,9 +5,9 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
-import { isSpecializing } from "./planner.mjs";
+import { isSpecializing, generateUserPlan } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -879,6 +879,121 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
   // pr_xp/lucky_xp: the bonus XP earned this session, so the recap can show the reward
   // at the moment it lands (the same constants the gamification engine banks into the level).
   return { day_number: allSessions.length, wins, pr_xp: prs.length * PR_XP, lucky_xp: luckyHits.length * LUCKY_SET_XP };
+}
+
+// ---------------------------------------------------------------------------
+// THE POST-WORKOUT READ-OUT (Burst 2, W282 — owner: "a post-workout recap … what was the
+// objective, did we hit the targets, what went well, what didn't … how this affects the
+// following workouts, the training block, the next training block"). The client derives WHAT
+// HAPPENED from the workout itself (session-core localReadout: it works offline); this is
+// WHAT IT MEANS, and every number in it is quoted from the engine, never re-derived (lesson 1):
+//   objective  — the day's aim, from the trainingContext buildToday used that day;
+//   next       — per lift, the weight the next /api/today WILL serve (servedLift on the context
+//                /api/today will build — a reactive deload this workout tips folded in first):
+//                a promise the route test pins (lesson 60);
+//   block      — at most two plain lines on this block;
+//   next_block — from week 4, what the boundary would decide if it came today
+//                (blockTuneDecision — the very function the rollover runs);
+//   bodyweight — a falling trend, said exactly when the tune's own deficit gate holds.
+// Beginners get the aim and the weights only (Goal 3). `sessions` is the derivable list
+// INCLUDING `session`; ctx = { now, tz, checkins, bodyweights, customEx }.
+const plainMuscle = (m) => (muscleById.get(m)?.name ?? m).replace(/\s*\([^)]*\)/, "").toLowerCase();
+const listJoin = (xs) => (xs.length <= 2 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+function objectiveLine(ctx, gapDays) {
+  if (gapDays >= COMEBACK_GAP_DAYS) return `Ease back in after ${gapDays} days off — lighter weights to ramp you back up safely.`;
+  if (ctx.taper) return `Stay strong while doing less — ${ctx.taper.daysUntil} day${ctx.taper.daysUntil === 1 ? "" : "s"} to your event.`;
+  const b = ctx.block;
+  if (!b) return "Add a rep or a little weight where you can — that's how you get stronger, one session at a time.";
+  if (b.phase === "deload") return "Recover — fewer sets and lighter weights, well shy of failure. This is when the block's work turns into growth.";
+  if (b.phase === "peak") return `Week ${b.week} of ${b.of} — peak volume: hard sets, about 1–2 reps in the tank.`;
+  return b.week === 1 ? `Week 1 of ${b.of} — building: start comfortably; volume and effort ramp from here.` : `Week ${b.week} of ${b.of} — building volume and effort toward your peak.`;
+}
+export function sessionReadout(user, sessions, session, ctx = {}) {
+  const { now = session?.date ?? null, tz = user.profile?.tz_offset_min ?? null, checkins = [], bodyweights = [], customEx = user.custom_exercises || [] } = ctx;
+  const { byId, index, name } = resolveEx(customEx);
+  const program = user.program;
+  const before = sessions.filter((s) => s.session_id !== session.session_id);
+  const todayCtx = trainingContext(user, before, session.date ?? now);
+  const beginner = todayCtx.beginner;
+  const liftIds = [...new Set((session.sets ?? []).filter((s) => (s.set_type ?? "work") === "work").map((s) => s.exercise))];
+  const lastBeforeMs = Math.max(0, ...before.filter((s) => s.date).map((s) => +new Date(s.date)));
+  const gapDays = lastBeforeMs && session.date ? Math.round((+new Date(session.date) - lastBeforeMs) / 86400000) : 0;
+  const objective = objectiveLine(todayCtx, gapDays);
+
+  // What the next /api/today will do first: a graduation or a pending block rollover starts a
+  // different plan (no per-lift promise can be made about it); a reactive deload this workout
+  // tips is stamped, so it is folded into the context the promise is computed on.
+  const graduating = !program?.custom && !!graduatedStatus(sessions, user.profile?.training_status);
+  const blockStart = user.plan_meta?.block_start;
+  const rolling = !graduating && !beginner && !program?.custom && !!blockStart
+    && Math.floor(trainedWeeksInBlock(sessions, blockStart, now, tz) / BLOCK_WEEKS) !== (user.plan_meta?.block_index ?? 0);
+  const rd = !graduating && !rolling ? reactiveDeloadStampDue(user, sessions, bodyweights, checkins, now, tz) : null;
+  const nextUser = rd ? { ...user, plan_meta: { ...user.plan_meta, reactive_deload: { block: rd.block, week: rd.week } } } : user;
+  const nextCtx = trainingContext(nextUser, sessions, now);
+  const order = !graduating && !rolling && program?.sessions?.length ? upcomingSessions(program, sessions, nextUser.plan_meta, program.sessions.length) : [];
+  const next = [];
+  for (const id of liftIds) {
+    let hit = null;
+    for (const idx of order) { const ex = program.sessions[idx].exercises.find((e) => e.exercise === id); if (ex) { hit = { ex, idx }; break; } }
+    if (!hit) continue; // a session-only substitute: not in the plan, so no promise to make
+    const served = servedLift(hit.ex, sessions, nextCtx, byId, now);
+    if (served.suggested_kg == null) continue;
+    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name });
+  }
+
+  const block = [];
+  const next_block = [];
+  let bodyweight = null;
+  if (!beginner) {
+    if (graduating) block.push("You've trained long enough to step up — your next session starts a fresh plan built for where you are now.");
+    else if (rolling) block.push("Your next session starts a new block — your accessories rotate and your main lifts carry over.");
+    else if (rd && !nextCtx.taper) block.push("Your hardest lifts have gone flat at the top of what you can recover from, so I'm bringing your deload forward — the rest of this week is lighter. That's where this block's work turns into growth.");
+    else if (todayCtx.block?.phase === "deload" && !todayCtx.taper) block.push("A deload session doesn't move your progression — your weights pick up again after this week.");
+    if (todayCtx.block && !todayCtx.taper && !rd && !rolling && todayCtx.block.phase !== "deload" && todayCtx.block.week === BLOCK_WEEKS - 1) {
+      block.push("Next training week is your deload — fewer sets and lighter weights, to bank this block's work.");
+    }
+    const regress = regressionDetect(sessions, index).filter((r) => liftIds.includes(r.exercise));
+    if (regress.length) block.push(`Your ${listJoin(regress.map((r) => name(r.exercise)))} ${regress.length === 1 ? "is" : "are"} down about ${regress[0].drop_pct}% from ${regress.length === 1 ? "its" : "their"} recent best — usually sleep or food, not training. I won't add volume there until it turns around.`);
+    // Consideration #1, said where it matters: the muscles today's lifts train that are getting
+    // well under their planned sets (the same sample as the tune and the Progress card).
+    const completion = completionFor(perMuscleWeeklyVolume(sessions, index), user);
+    const short = [...new Set(liftIds.flatMap((id) => index.get(id)?.primary ?? []))].filter((m) => completion[m]);
+    if (short.length) {
+      const share = short.length === 1 ? `about ${completion[short[0]].realized} of the ~${completion[short[0]].planned} sets a week your plan has for it`
+        : `about ${Math.round((100 * short.reduce((a, m) => a + completion[m].realized, 0)) / short.reduce((a, m) => a + completion[m].planned, 0))}% of the sets your plan has for them`;
+      block.push(`Most weeks your ${listJoin(short.map(plainMuscle))} ${short.length === 1 ? "gets" : "get"} ${share} — getting through more of them is what will move these lifts.`);
+    }
+    const stalled = stalledExerciseIds(sessions, customEx, now, Object.keys(completion)).filter((id) => liftIds.includes(id) && !regress.some((r) => r.exercise === id));
+    if (stalled.length) block.push(`Your ${listJoin(stalled.map(name))} ${stalled.length === 1 ? "has" : "have"} been flat for a few weeks. If ${stalled.length === 1 ? "it stays" : "they stay"} flat, the next block gives ${stalled.length === 1 ? "it" : "them"} a fresh angle.`);
+    block.splice(2);
+
+    // From week 4: what the boundary would decide if it came today — the rollover's own function.
+    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4 && !isSpecializing(user.profile, user.plan_meta?.block_index ?? 0)) {
+      const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
+      const muscles = (ms) => listJoin(ms.map(plainMuscle));
+      if (d.tuned.bumped.length) next_block.push(`More sets for your ${muscles(d.tuned.bumped)} — stalled with room to grow.`);
+      if (d.tuned.eased.length) next_block.push(`Fewer sets for your ${muscles(d.tuned.eased)} — at the top of what you can recover from.`);
+      const heldBy = (r) => d.tuned.held.filter((h) => h.reason === r).map((h) => h.muscle);
+      if (heldBy("completion").length) next_block.push(`Your ${muscles(heldBy("completion"))} hold — get through more of the planned sets first.`);
+      if (heldBy("deficit").length) next_block.push(`Your ${muscles(heldBy("deficit"))} hold — you're in a deficit, so fuel comes first.`);
+      if (heldBy("recovery").length) next_block.push(`Your ${muscles(heldBy("recovery"))} hold — recovery's been short, so sleep comes first.`);
+      if (d.stalledExercises.length) {
+        const nextPlan = generateUserPlan(user.profile, { blockIndex: (user.plan_meta?.block_index ?? 0) + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+        const out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+        if (out.length) next_block.push(`${listJoin(out.map(name))} ${out.length === 1 ? "gets" : "get"} a fresh angle — flat for weeks.`);
+      }
+      if (!next_block.length) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
+      next_block.splice(3);
+    }
+
+    // The tune's deficit gate, read exactly as it reads it (the 42-day window, no fallback).
+    const windowStart = now ? new Date(+new Date(now) - 42 * 86400000).toISOString().slice(0, 10) : "";
+    const energy = classifyEnergyBalance(bodyweightTrend(bodyweights.filter((b) => (b.date || "").slice(0, 10) >= windowStart).map((b) => ({ date: b.date, bodyweight_kg: b.kg }))), user.profile?.primary_goal);
+    if (energy.direction === "deficit") bodyweight = user.profile?.primary_goal === "fat-loss"
+      ? "You're in the deficit you're aiming for — holding your strength is the win, and I won't add volume while it lasts."
+      : "Your bodyweight is trending down — some strength dips are normal in a deficit, and I won't add volume while it lasts.";
+  }
+  return { beginner, objective, next, block, next_block, bodyweight };
 }
 
 // The Progress tab payload: everything derived, nothing asked.
