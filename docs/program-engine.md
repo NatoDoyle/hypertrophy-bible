@@ -22,9 +22,10 @@ stated, with the reasoning.
    own trigger.
 3. **What must be true before volume changes?** At each block boundary the engine re-reads your
    log per muscle: stalled with room below your ceiling → +2 weekly sets, but only if you're
-   recovered, not in an energy deficit, not regressing, and not sandbagging (logged effort
-   clearly easier than prescribed); over your recoverable ceiling, or stalled at it → −2. Every
-   change accumulates and is clamped to the muscle's own MEV↔MRV span.
+   actually getting through the sets the plan already has for it, recovered, not in an energy
+   deficit, not regressing, and not sandbagging (logged effort clearly easier than prescribed);
+   over your recoverable ceiling, or stalled at it → −2. Every change accumulates and is clamped
+   to the muscle's own MEV↔MRV span. (Training inconsistently? See §4a.)
 4. **Does experience change this? When do exercises rotate?** Experience changes nearly
    everything (targets, splits, session caps, and whether waves/deloads/tapers exist at all —
    beginners get none of them until graduation). Accessories rotate every block; compounds never
@@ -113,8 +114,8 @@ Progress card reads the same peak, so the advice and the action can't disagree):
 
 ```
 over MRV.max                    → −2 sets
-stalled and below MAV.max       → +2 sets, IF recovered AND not in a deficit
-                                   AND not regressing AND not sandbagging — else hold, and SAY WHY
+stalled and below MAV.max       → +2 sets, IF getting its planned sets AND recovered AND not in
+                                   a deficit AND not regressing AND not sandbagging — else hold, and SAY WHY
 stalled at/above MAV.max        → −2 sets
 progressing in range            → no change
 ```
@@ -130,6 +131,43 @@ progressing in range            → no change
 - Changes accumulate across blocks, clamped to each muscle's **MEV↔MRV** span, and freeze during
   a specialization block (a held muscle's by-design "stall" must not earn volume that lands when
   the block ends).
+- "Getting its planned sets": see §4a.
+
+## 4a. When you're inconsistent (owner consideration #1)
+
+*"The program follows a 6-week block, but how does it adapt when someone misses workouts or
+doesn't finish them?"* Measured against the code, not assumed:
+
+- **The block waits for you.** Its clock counts weeks you trained (§2), so a missed week is a
+  pause, never a skipped week of the wave. Partial weeks still count as trained weeks.
+- **Nothing is dropped.** The session rotation moves with you: miss Tuesday and Tuesday's session
+  is simply next (§6). Every muscle keeps its share of the plan however your weeks fall.
+- **Unfinished sets hold that lift's weight increase** until a full session shows it (W280, §1
+  rule 5), and a set you skip is recorded as skipped, not as a failure.
+- **The gap was here (fixed in Burst 2):** the tune reads each muscle's *peak* week, so one full
+  week vouched for a block of half-weeks, and flat lifts on half the work read as a plateau. A
+  4-day plan done 2 days a week with flat lifts earned **+2 sets on all 10 muscles** and had **9
+  stalled lifts swapped out** (measured through the real block rollover). More sets on paper, and
+  a fresh exercise that resets progression, for someone who wasn't getting to the sets already
+  planned.
+- **Now a completion test runs first** (`completionShortfall`): each muscle's *mean* weekly sets
+  over the last 6 trained weeks against the sets the plan delivers (`projected_sets`) × the block
+  wave's average scale (so someone doing every set reads ~100%). Below **70%** the muscle is
+  "not completing". Its stall **holds** instead of +2, its lifts are **kept** (not swapped), and
+  the new-block note and Progress card say so in plain words, with the lever: get through more
+  of the planned sets, or set fewer training days and the plan is rebuilt around them. Three of
+  four sessions every week reads ~75% and still earns its +2. A hand-built plan is never judged:
+  its stored numbers may not describe it.
+- **"Most weeks" needs most weeks.** No verdict on fewer than 3 finished trained weeks, and the
+  week in progress is never judged (it's partial by definition). Without that, a first workout
+  was told "most weeks you get 19% of your sets" (caught by the W282 walkthrough).
+- **Only the current plan's weeks count.** The sample starts at the week the block started, and
+  every real training change resets it. Otherwise a lifter who did every set of a 3-day plan and
+  rebuilt to 5 days was told they skip most of their sets (W282 review).
+- **The boundary's verdict is the block's.** The muscles it spares are stored with the block
+  (`plan_meta.spared_muscles`). Every rebuild in that block (a Settings save, a permanent swap,
+  the substitute ranking) spares the same lifts through one door (`swapStalls`). A units-only save
+  right after a boundary used to swap out every lift the boundary had just kept (W282 review).
 
 ## 5. Experience gating and graduation
 
@@ -176,8 +214,17 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
 ## 7. Where you see each mechanism
 
 Every lever above has a surface: the per-exercise suggestion note (progression, comeback, taper
-holds), the block card (week/phase + deload notes), the plateau card (deload-brought-forward /
-push-harder / adding-sets / **held-for-recovery** since Wave 258), the reduce card (over-ceiling),
+holds — shown under the weight on a lift's first set since Burst 1), the block card (week/phase +
+deload notes), the plateau card (deload-brought-forward / push-harder / adding-sets /
+**held-for-recovery** since Wave 258 / **not-a-plateau** for missing work since W282a), the
+**post-workout read-out** (W282: what happened, from the workout itself, works offline; what it
+means, from its own door after the save lands. That covers today's aim and each lift's next
+weight. The weight is computed for the week that lift's next session falls in: committed days
+left, or days per week minus days already trained. It's exactly what that session serves, pinned
+by a promise test that checks next-week weights a week later. No weight is promised into a new
+block. Then this block, and from week 4 what the boundary would decide if it came today. Block
+lines show only while the workout is still this week. A queued workout's read-out reaches Today
+once it syncs, and History offers it for the latest workout), the reduce card (over-ceiling),
 the regression card, the new-block coach note (rotation, tune deltas **and holds**, real swaps),
 the plan screen's per-muscle reasons ("adaptive: +2 sets from your logged response"), and the
 graduation note. Computed-but-unsurfaced signals are tracked deliberately: `readinessIndex`,

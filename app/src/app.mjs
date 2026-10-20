@@ -2,10 +2,10 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, progressReport, dailyReadiness, computeVolumeAdjust, stalledExerciseIds, reactiveDeloadDue, blockPhase, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, sessionWeekKey, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, swapStalls, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, isSpecializing, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
@@ -399,15 +399,17 @@ export function createApp(store, config = {}) {
       // A plateaued lift is plateaued regardless of a settings edit — regenerating
       // WITHOUT the stalled set un-demoted every swapped lift mid-block (lesson 59's
       // recorded remainder: the units door got its own path; this route never got
-      // the fix). Recency-filtered, so a long-idle stall never re-triggers.
-      const stalledExercises = stalledExerciseIds(priorSessions, u.custom_exercises || [], nowISO);
+      // the fix). Recency-filtered, so a long-idle stall never re-triggers — and through the
+      // boundary's own door, so a lift the completion gate spared stays (W282 review: a units
+      // save right after a boundary swapped out every lift the boundary had just kept).
+      const stalledExercises = swapStalls(u, priorSessions, nowISO);
       const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises, ...(specSpent ? { specSpent: true } : {}) });
       // A cosmetic save is not amnesia: every mid-block stamp survives it. A REAL
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles"]
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -599,7 +601,7 @@ export function createApp(store, config = {}) {
     const clientDay = dq && /^\d{4}-\d{2}-\d{2}$/.test(dq) ? dq : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10));
     const ctx = await todayContext(b.user_id, clientDay);
     // A lift the user has plateaued on is demoted exactly as every rebuild demotes it.
-    const stalled = stalledExerciseIds(ctx.sessions, user.custom_exercises || [], nowISO);
+    const stalled = swapStalls(user, ctx.sessions, nowISO);
 
     // Today's best replacement for X in the live session (today-only swaps, and the live
     // half of a permanent swap whose plan side changed nothing for today).
@@ -705,7 +707,7 @@ export function createApp(store, config = {}) {
     const X = c.req.param("id");
     const live = (c.req.query("live") ?? "").split(",").filter(Boolean).slice(0, 30);
     const exclude = (c.req.query("exclude") ?? "").split(",").filter(Boolean).slice(0, 30); // swapped away earlier today
-    const stalled = stalledExerciseIds(await store.listSessions(id), user.custom_exercises || [], new Date().toISOString());
+    const stalled = swapStalls(user, await store.listSessions(id), new Date().toISOString());
     const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today", exclude })
       .filter((s) => s.fits).slice(0, 12);
     return c.json({ alternatives: list.map((s) => {
@@ -849,18 +851,8 @@ export function createApp(store, config = {}) {
     // double-progression baselines survive; isolations get a fresh deterministic
     // shuffle (blockIndex feeds the tie-break jitter). Custom-edited plans are
     // sacred and never auto-regenerated; beginners don't run blocks.
-    // The adaptive tune's recovery/energy gate must read only the JUST-COMPLETED block,
-    // not the user's whole history. recoverySignal and bodyweightTrend average whatever
-    // they're handed, so feeding the full log turned "block-average readiness" into a
-    // LIFETIME average: an athlete wrecked THIS block but with months of good prior
-    // check-ins never tripped the gate, and a long-past cut kept reading as a current
-    // deficit for months (suppressing volume the recent block had earned). Window to the
-    // block length (6 weeks); a sparse window falls back to permissive — the safe
-    // direction, since the gate only ever RESTRAINS adding, never forces it.
-    const blockWindowStart = new Date(Date.now() - 42 * 86400000).toISOString().slice(0, 10);
-    const inBlockWindow = (d) => (d || "").slice(0, 10) >= blockWindowStart;
-    const recentCheckins = checkins.filter((ck) => inBlockWindow(ck.date));
-    const recentBodyweights = bodyweights.filter((b) => inBlockWindow(b.date));
+    // The adaptive tune's recovery/energy gate reads only the JUST-COMPLETED block (the
+    // 42-day window lives in coach.mjs blockTuneDecision now, beside the rest of the decision).
     const blockStart = user.plan_meta?.block_start;
     if (blockStart && user.profile?.training_status !== "beginner" && !user.program?.custom) {
       // TRAINED weeks, not calendar weeks (Wave 167) — the same clock blockPhase
@@ -875,43 +867,13 @@ export function createApp(store, config = {}) {
           // untouched — otherwise the rotation silently clobbers a just-saved custom
           // plan. (Every other mutator here re-checks its precondition inside the CAS.)
           if (u.program?.custom || blockIndex === (u.plan_meta?.block_index ?? 0)) return u;
-          // ADAPTIVE (#2): fold the just-completed block's response into the running
-          // per-muscle volume adjustment, so the new block's targets are tuned to how
-          // THIS person actually responded — stalled muscles get more, ceiling-bound
-          // ones get eased, all bounded to MEV↔MRV. Accumulates across blocks.
-          // DURING a SPECIALIZATION block, non-priority muscles are DELIBERATELY
-          // maintenance-dosed (low), so their lifts "stall" by design — folding that
-          // in would spuriously bump their target, which then lands once specialization
-          // ends. So freeze the tune during a spec block (carry the prior forward).
-          const prevAdjust = u.plan_meta?.volume_adjust ?? {};
-          // Recovery-/energy-aware context (Increment A): the tune won't ADD volume to
-          // a stalled muscle while the athlete is persistently under-recovered or in an
-          // energy deficit — that stall needs recovery/fuel, not more sets.
-          // The index of the block whose data we're reading — the one that JUST
-          // COMPLETED — not the one being entered. The question is "were those stalls
-          // held-at-maintenance by design when they were logged?", so it must be
-          // answered against the block that produced them. Using the new index would
-          // un-freeze the tune exactly at the boundary where a specialization block
-          // ends, folding in a whole block of by-design stalls in one go.
-          const completedBlockIndex = u.plan_meta?.block_index ?? 0;
-          const { adjust: volumeAdjust, held: heldThisBlock } = isSpecializing(u.profile, completedBlockIndex)
-            ? { adjust: prevAdjust, held: [] }
-            : computeVolumeAdjust(prevAdjust, sessions, u.custom_exercises || [], { checkins: recentCheckins, bodyweights: recentBodyweights, goal: u.profile?.primary_goal });
-          // What CHANGED this block — so the new-block coach note announces the actual
-          // adjustment, not the whole accumulated total re-announced every block. `held`
-          // carries the adds the recovery/fuel gate suppressed, so the note can say WHY
-          // a stalled muscle's sets didn't move instead of saying nothing (Wave 258).
-          const tunedThisBlock = {
-            bumped: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) > (prevAdjust[m] ?? 0)),
-            eased: Object.keys(volumeAdjust).filter((m) => (volumeAdjust[m] ?? 0) < (prevAdjust[m] ?? 0)),
-            held: heldThisBlock,
-          };
-          // THE EXERCISE-CHANGE LEVER (the KB's 4th plateau lever, previously absent):
-          // lifts this person has genuinely plateaued on are demoted below every
-          // alternative for their muscle, so the new block offers a different angle
-          // rather than the same stalled movement. Recency-filtered, or a swapped-out
-          // lift would stay flagged forever and never come back (see stalledExerciseIds).
-          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO);
+          // ADAPTIVE (#2) + THE EXERCISE-CHANGE LEVER: the just-completed block's response
+          // folded into the running per-muscle volume adjustment (bounded MEV↔MRV, frozen
+          // during a specialization block, gated on recovery, fuel, regression, effort and —
+          // consideration #1 — completion), and the genuinely plateaued lifts demoted for a
+          // different angle. Decided by coach.mjs blockTuneDecision on the FRESH copy, the
+          // same function the post-workout read-out forecasts with (Burst 2).
+          const { volumeAdjust, tuned: tunedThisBlock, stalledExercises, spared } = blockTuneDecision(u, sessions, { checkins, bodyweights }, nowISO);
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
           // one accessible lift re-picks the same one. The coach note says "I've
@@ -928,6 +890,9 @@ export function createApp(store, config = {}) {
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
             volume_adjust: volumeAdjust, // the running adaptive tune, carried forward
             tuned_this_block: tunedThisBlock, // what changed THIS block, for the coach note
+            // The muscles this boundary spared from swaps (not getting their planned sets): the
+            // block's verdict, reused by every rebuild in it (coach swapStalls, W282 review).
+            spared_muscles: { block: blockIndex, muscles: spared },
           };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
@@ -944,26 +909,12 @@ export function createApp(store, config = {}) {
     // Read from progressReport rather than re-deriving: one definition of the signal,
     // not two that can drift (the maintenance/hold filtering matters here too — a
     // muscle a specialization block deliberately holds low must never trigger this).
-    const rdBlockStart = user.plan_meta?.block_start;
-    const rdTrainedWeeks = trainedWeeksInBlock(sessions, rdBlockStart ?? user.created_at, nowISO, tz);
-    const rdBlock = blockPhase(rdTrainedWeeks, user.profile?.training_status);
-    if (rdBlock && rdBlockStart && !user.program?.custom) {
-      const rdBlockIndex = Math.floor(rdTrainedWeeks / BLOCK_WEEKS);
-      const rdReport = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
-      // The stamp lives in the user's LOCAL week frame — the same frame the block
-      // clock and buildToday's read use; raw isoWeekKey put a UTC-8 user's Sunday
-      // deload in a week they weren't in (lesson 22, storage+consumption together).
-      const rdWeek = isoWeekKeyLocal(nowISO, tz);
-      // Re-arm context (C15): sessionWeekKey is already local (it prefers
-      // local_date), and ISO week keys are zero-padded, so string order IS
-      // chronological order (lesson 40 — the ordinal form, not equality).
-      const rdTrainedKeys = new Set(sessions.map(sessionWeekKey).filter(Boolean));
-      const rdStamp = user.plan_meta?.reactive_deload;
-      const rdOpts = {
-        stampedWeekTrained: rdStamp ? rdTrainedKeys.has(rdStamp.week) : true,
-        stampedWeekOver: rdStamp ? rdStamp.week < rdWeek : false,
-      };
-      if (reactiveDeloadDue(rdReport.adaptive, rdBlock, user.plan_meta, rdBlockIndex, rdOpts)) {
+    // The decision is coach.mjs reactiveDeloadStampDue (Burst 2: the post-workout read-out
+    // forecasts with the same function); the compare-and-swap below stays here.
+    const rdDue = reactiveDeloadStampDue(user, sessions, bodyweights, checkins, nowISO, tz);
+    if (rdDue) {
+      const { block: rdBlockIndex, week: rdWeek, trainedKeys: rdTrainedKeys } = rdDue;
+      {
         const stamped = await store.updateUser(id, (u) => {
           // Precondition re-checked inside the CAS against the FRESH read — a
           // concurrent request may have stamped this block already, and stamping
@@ -1726,6 +1677,14 @@ export function createApp(store, config = {}) {
   });
 
   // Log a completed session -> derived recap (the reward).
+  // One computation for both read-out doors. null when `session` isn't the latest workout.
+  const isLatestSession = (all, s) => !all.some((x) => x.session_id !== s.session_id && +new Date(x.date) > +new Date(s.date));
+  async function readoutFor(userId, user, all, session) {
+    if (!isLatestSession(all, session)) return null;
+    const [checkins, bodyweights] = await Promise.all([store.listCheckins(userId), store.listBodyweights(userId)]);
+    return sessionReadout(user, all, session, { now: new Date().toISOString(), tz: user.profile?.tz_offset_min ?? null, checkins, bodyweights, customEx: user.custom_exercises || [] });
+  }
+
   app.post("/api/session", async (c) => {
     const body = await c.req.json().catch(() => ({})); // empty/non-JSON body -> clean 404 below, not a 500
     const id = body.user_id;
@@ -1781,7 +1740,26 @@ export function createApp(store, config = {}) {
         });
       }
     } catch { /* the echo is optional; the logged session is not */ }
+    // The coaching read-out (W282) is NOT computed here: it costs as much again as the save, a
+    // CPU-limit kill can't be caught, and a replayed offline save would pay it again for a body
+    // nobody reads. The client asks /api/session/recap once the save has landed (W282 review).
     return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
+  });
+
+  // The read-out's door (W282): the recap asks here right after a save lands; a workout saved
+  // offline asks once it syncs; History asks for the latest workout. Answers only for the
+  // LATEST workout — an older one gets { past: true }, never a read-out computed against a
+  // context that has moved on.
+  app.post("/api/session/recap", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door
+    const user = await store.getUser(b.user_id);
+    if (!user?.program) return c.json({ error: "unknown user" }, 404);
+    const all = await store.listSessions(b.user_id);
+    const session = all.find((s) => s.session_id === b.session_id);
+    if (!session) return c.json({ error: "unknown session" }, 404);
+    const readout = await readoutFor(b.user_id, user, all, session);
+    return c.json(readout ? { session_id: session.session_id, readout } : { session_id: session.session_id, past: true });
   });
 
   // ANY rewrite of history while a celebration is pending must RE-EARN it from

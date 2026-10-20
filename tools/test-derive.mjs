@@ -21,6 +21,8 @@ import {
   volumeVsLandmarks,
   volumeResponse,
   deriveVolumeAdjust,
+  completionShortfall,
+  COMPLETION_RATIO,
   recoverySignal,
   interferenceSignal,
   LOWER_BODY_MUSCLES,
@@ -437,6 +439,74 @@ check("deriveVolumeAdjust accumulates ±2 from stalls, bounded to MEV↔MRV, ign
   assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 26 }, mIndex, new Set()).chest, undefined);
 });
 
+// Consideration #1 ("how does the program adapt when someone is inconsistent?"): a muscle
+// whose TYPICAL trained week falls well short of what the plan delivers isn't plateaued —
+// it's under-trained. Mean over the present weeks (the peak would let one full week vouch
+// for a block of half-weeks), against the plan's projected weekly sets × the block wave's
+// mean scale (a perfect complier reads ~1.0).
+check("completionShortfall: the TYPICAL trained week vs what the plan delivers; one full week can't vouch for a block of half-weeks", () => {
+  const plan = { chest: { projected_sets: 10 }, back: { projected_sets: 10 }, calves: { projected_sets: 0 } };
+  const wk = (chest, back) => ({ chest, back });
+  // 2 of 4 sessions most weeks, one full week: peak 10 (100%) but mean 6 of 10
+  const half = { "2026-W01": wk(5, 10), "2026-W02": wk(5, 10), "2026-W03": wk(10, 10), "2026-W04": wk(5, 10), "2026-W05": wk(5, 10) };
+  assert.deepEqual(completionShortfall(half, plan), { chest: { realized: 6, planned: 10 } });
+  // the block wave is accounted for: a perfect complier's wave-scaled weeks read complete
+  const wave = [0.7, 0.8, 0.9, 1, 1, 0.5].map((s) => s * 10);
+  const full = Object.fromEntries(wave.map((s, i) => [`2026-W0${i + 1}`, wk(s, s)]));
+  assert.deepEqual(completionShortfall(full, plan, { meanScale: 0.8166 }), {}, "a complier is never flagged");
+  assert.deepEqual(Object.keys(completionShortfall(full, plan)), [], "…and 81% of an unscaled plan is still over the line");
+  // 3 sessions of every 4, every week: 75% of the WAVE-scaled plan — completing. Judged against
+  // the unscaled plan it would read 61% and be held: the scale is what keeps it fair.
+  const three = Object.fromEntries(wave.map((s, i) => [`2026-W0${i + 1}`, wk(s * 0.75, s * 0.75)]));
+  assert.deepEqual(completionShortfall(three, plan, { meanScale: 0.8166 }), {});
+  assert.deepEqual(Object.keys(completionShortfall(three, plan)).sort(), ["back", "chest"]);
+  assert.equal(COMPLETION_RATIO, 0.7);
+  // only the last n PRESENT weeks; a muscle the plan doesn't train is never judged
+  const old = { "2025-W40": wk(0, 0), ...half };
+  assert.deepEqual(completionShortfall(old, plan, { n: 5 }), { chest: { realized: 6, planned: 10 } });
+  assert.deepEqual(completionShortfall({}, plan), {}, "no data → nothing to judge");
+  assert.deepEqual(completionShortfall(half, null), {}, "no plan numbers → permissive (byte-identical tune)");
+});
+check("completionShortfall needs evidence: under 3 FINISHED weeks there's no verdict, and the week in progress is never judged", () => {
+  const plan = { chest: { projected_sets: 10 } };
+  const two = { "2026-W01": { chest: 2 }, "2026-W02": { chest: 2 } };
+  assert.deepEqual(completionShortfall(two, plan), {}, "two weeks can't say 'most weeks'");
+  const three = { ...two, "2026-W03": { chest: 2 } };
+  assert.deepEqual(completionShortfall(three, plan), { chest: { realized: 2, planned: 10 } });
+  assert.deepEqual(completionShortfall(three, plan, { excludeWeek: "2026-W03" }), {}, "two finished weeks plus this one is still too little");
+  // a week in progress (one session so far) would drag a complier under the line
+  const eights = { "2026-W01": { chest: 8 }, "2026-W02": { chest: 8 }, "2026-W03": { chest: 8 }, "2026-W04": { chest: 1 } };
+  assert.deepEqual(Object.keys(completionShortfall(eights, plan)), ["chest"], "precondition: counted, the partial week flags a complier");
+  assert.deepEqual(completionShortfall(eights, plan, { excludeWeek: "2026-W04" }), {});
+});
+check("completionShortfall reads only the CURRENT plan's weeks (sinceWeek): weeks under an older plan never count against a new one", () => {
+  const plan = { chest: { projected_sets: 12 } };
+  const old = Object.fromEntries([1, 2, 3, 4, 5, 6].map((i) => [`2026-W0${i}`, { chest: 6 }])); // every set of a smaller plan's 6
+  assert.deepEqual(Object.keys(completionShortfall(old, plan)), ["chest"], "precondition: judged against the new plan, a complete old block reads as half");
+  assert.deepEqual(completionShortfall(old, plan, { sinceWeek: "2026-W07" }), {}, "a rebuild starts the count again");
+  const after = { ...old, "2026-W07": { chest: 5 }, "2026-W08": { chest: 5 }, "2026-W09": { chest: 5 } };
+  assert.deepEqual(completionShortfall(after, plan, { sinceWeek: "2026-W07" }), { chest: { realized: 5, planned: 12 } }, "three weeks on the new plan are judged against it");
+});
+check("deriveVolumeAdjust completion gate: a stalled muscle that isn't getting its planned sets HOLDS — easing still fires", () => {
+  const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
+  const nc = new Set(["chest"]);
+  assert.equal(deriveVolumeAdjust({}, { chest: 12 }, mIndex, new Set(["chest"]), { notCompletingMuscleIds: nc }).chest, undefined, "no +2");
+  assert.equal(deriveVolumeAdjust({ chest: 2 }, { chest: 12 }, mIndex, new Set(["chest"]), { notCompletingMuscleIds: nc }).chest, 2, "the prior tune stands");
+  assert.equal(deriveVolumeAdjust({}, { chest: 26 }, mIndex, new Set(), { notCompletingMuscleIds: nc }).chest, -2, "over the ceiling still eases");
+  assert.equal(deriveVolumeAdjust({}, { chest: 12 }, mIndex, new Set(["chest"]), { notCompletingMuscleIds: new Set() }).chest, 2, "an empty set is byte-identical");
+});
+check("volumeResponse completion: 'add' becomes 'complete' — finish the planned sets before any more are added", () => {
+  const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }], ["back", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
+  const completion = { chest: { realized: 6, planned: 12 } };
+  const below = volumeResponse({ chest: 6 }, mIndex, new Set(), new Set(), completion).find((x) => x.muscle === "chest");
+  assert.equal(below.signal, "complete");
+  assert.match(below.advice, /about 6 of the ~12 sets a week your plan has for it/);
+  assert.deepEqual([below.realized, below.planned], [6, 12], "the numbers ride along, so a card can say them in its own words");
+  const stalled = volumeResponse({ chest: 12 }, mIndex, new Set(["chest"]), new Set(), completion).find((x) => x.muscle === "chest");
+  assert.equal(stalled.signal, "complete");
+  assert.equal(volumeResponse({ chest: 26 }, mIndex, new Set(), new Set(), completion)[0].signal, "reduce", "over-MRV honesty is untouched");
+  assert.equal(volumeResponse({ back: 6 }, mIndex, new Set(), new Set(), completion)[0].signal, "add", "a completing muscle is untouched");
+});
 check("deriveVolumeAdjust recovery gate (Increment A): under-recovery/deficit suppress ADDING, never easing", () => {
   const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
   const stalledRoom = new Set(["chest"]);

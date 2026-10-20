@@ -313,3 +313,57 @@ export function hintCopy(hint, { setNo, fromW, toW }) {
   const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
   return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };
 }
+
+// The read-out's words for WHAT HAPPENED (W282), from session-core localReadout. A headline
+// that counts what WAS done and never shames (Goal 4); what went well; what's worth a look —
+// each at most three, said plainly. A beginner gets the headline only (Goal 3): the weights
+// for next time come with their reasons from the server lines.
+export function readoutLists(local, { nameOf = (id) => id, beginner = false } = {}) {
+  // A workout saved before plans travelled with it (or by an older client) has nothing to be
+  // graded against: it counts what was done and claims nothing else (W282 review).
+  if (local.hasPlan === false) return { headline: `${local.done} set${local.done === 1 ? "" : "s"} logged — every one of them counts.`, went_well: [], watch: [] };
+  const graded = local.lifts.filter((l) => !l.easyDay && l.done > 0 && l.min != null);
+  const skipped = Math.max(0, local.planned - local.done);
+  const underN = graded.filter((l) => l.under > 0).length;
+  const tops = graded.filter((l) => l.top);
+  const band = (b) => String(b ?? "").replace("-", "–");
+  const headline = !local.done ? "Workout saved."
+    : !graded.length ? "Easy day done — recovery is part of the plan."
+    : skipped > 0 ? `${local.done} of ${local.planned} planned sets done — every one of them counts.`
+    : underN ? `Every set done — ${underN === 1 ? "1 lift" : `${underN} lifts`} came in under ${underN === 1 ? "its" : "their"} range, and next time is set up for that.`
+    : tops.length === graded.length ? "Every set done, and every lift at the top of its range — time to go up."
+    : tops.length ? `Every set done, every lift in its range — ${tops.length} at the top, ready to go up.`
+    : "Every set done, every lift in its range — a session that moves you forward.";
+  if (beginner) return { headline, went_well: [], watch: [] };
+  const went_well = [
+    ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range on every set.`),
+    ...(skipped === 0 && local.planned > 0 && graded.length >= 2 ? [`All ${local.planned} planned sets done.`] : []),
+    ...(graded.some((l) => l.rir != null) && !graded.some((l) => l.easy || l.failure) ? ["Effort right where the plan wanted it."] : []),
+  ].slice(0, 3);
+  const watch = local.lifts.filter((l) => !l.easyDay).flatMap((l) => {
+    const n = nameOf(l.exercise);
+    return [
+      ...(l.planned != null && l.done < l.planned ? [`${n}: ${l.done} of ${l.planned} sets.`] : []),
+      ...(l.under ? [`${n}: ${l.under} of ${l.done} sets under the ${l.min}–${l.max} range.`] : []),
+      ...(l.easy ? [`${n}: about ${l.rir} reps left in the tank — the plan asked for ${band(l.band)}.`] : []),
+      ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`] : []),
+    ];
+  }).slice(0, 3);
+  return { headline, went_well, watch };
+}
+
+// Plain-English muscle names — a beginner expects "shoulders", not "side-delts". The server's
+// sentences use a copy (coach.mjs MUSCLE_PLAIN), pinned equal by test-ui-helpers (W282).
+export const MUSCLE_LABEL = {
+  "front-delts": "front of shoulders", "side-delts": "shoulders (side)", "rear-delts": "rear shoulders",
+  "lats": "back (lats)", "upper-back": "upper back", "spinal-erectors": "lower back",
+  "quadriceps": "thighs (quads)", "hamstrings": "hamstrings", "glutes": "glutes", "calves": "calves",
+  "biceps": "biceps", "triceps": "triceps", "forearms": "forearms", "chest": "chest", "abs": "abs", "neck": "neck",
+};
+export const friendlyMuscle = (m) => MUSCLE_LABEL[m] || String(m).replace(/-/g, " ");
+// "a", "a and b", "a, b and c", "a, b, c and 2 more" — a sentence never carries a roll call.
+export function friendlyList(xs, max = 3) {
+  const shown = xs.slice(0, max), more = xs.length - shown.length;
+  if (more > 0) return `${shown.join(", ")} and ${more} more`;
+  return shown.length <= 2 ? shown.join(" and ") : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+}

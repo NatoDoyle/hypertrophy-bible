@@ -358,12 +358,20 @@ try {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
   const dayAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  // A lifter DOING the plan's work for the muscle a fixture stalls (consideration #1): the
+  // tune answers a stall with more sets only when the planned ones are being done, so each
+  // rollover fixture logs the plan's own projected weekly sets for that muscle. One set a
+  // week is the under-training the completion gate exists to catch — those fixtures went
+  // vacuous (#spec-tune, #C3) or red (#2, #C5, #A, #69) the moment the gate landed.
+  const plannedWeekSets = async (uid, muscle) => Math.max(1, Math.ceil((await store.getUser(uid)).plan_rationale?.volume_by_muscle?.[muscle]?.projected_sets ?? 1));
+  const flatSets = (exercise, weight_kg, n) => Array.from({ length: n }, () => ({ exercise, set_type: "work", weight_kg, reps: 8 }));
   // 7 weekly FLAT bench sessions (identical e1RM → stalled), recent so no layoff.
   // Seven, not five: the mesocycle clock counts TRAINED weeks (Wave 167), so the
   // boundary needs six trained weeks behind it — backdating block_start alone no
   // longer advances a block the user never trained.
+  const atN = await plannedWeekSets(atUser, "chest");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: atUser, session_id: `at-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+    sets: flatSets("barbell-bench-press", 100, atN) });
   const chestBefore = (await store.getUser(atUser)).plan_rationale?.volume_by_muscle?.chest?.target_sets;
   // backdate block_start so a mesocycle boundary has passed → /api/today rotates + auto-tunes
   await store.updateUser(atUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
@@ -385,8 +393,9 @@ try {
   const poolOne = (await json("POST", "/api/onboard", { profile: {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["machine"] } })).data.user_id;
+  const poN = await plannedWeekSets(poolOne, "chest");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: poolOne, session_id: `po-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "machine-chest-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+    sets: flatSets("machine-chest-press", 60, poN) });
   await store.updateUser(poolOne, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": poolOne } });
   const po = await store.getUser(poolOne);
@@ -423,8 +432,9 @@ try {
   const msUser = (await json("POST", "/api/onboard", { profile: {
     units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+  const msN = await plannedWeekSets(msUser, "lats");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: msUser, session_id: `ms-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "lat-pulldown", set_type: "work", weight_kg: 70, reps: 8 }] });
+    sets: flatSets("lat-pulldown", 70, msN) });
   await store.updateUser(msUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": msUser } });
   const msPre = await store.getUser(msUser);
@@ -484,8 +494,9 @@ try {
   ok("#spec-tune the fixture really is running a DERIVED specialization block (no stored field)",
     (await store.getUser(specTune)).profile.specialization === undefined
     && Object.values((await store.getUser(specTune)).plan_rationale.volume_by_muscle).some((v) => v.maintenance));
+  const stN = await plannedWeekSets(specTune, "lats");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: specTune, session_id: `st-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "lat-pulldown", set_type: "work", weight_kg: 70, reps: 8 }] });
+    sets: flatSets("lat-pulldown", 70, stN) });
   await store.updateUser(specTune, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": specTune } });
   const stAfter = await store.getUser(specTune);
@@ -524,8 +535,9 @@ try {
   // stayed at five when the clock changed, so the boundary never fired and the
   // suppression assertion below passed VACUOUSLY (`?? 0` is 0 when the tune never
   // ran) — exposed the moment Wave 258 asserted on tuned_this_block.held.
+  const rgN = await plannedWeekSets(rgUser, "chest");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: rgUser, session_id: `rg-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+    sets: flatSets("barbell-bench-press", 100, rgN) });
   // Low daily check-ins inside the 42-day window → under-recovered
   for (let d = 0; d < 5; d++) await json("POST", "/api/checkin", { user_id: rgUser, date: dayAgo(30 - d * 6).slice(0, 10), sleep_quality: 2, energy: 2, stress: 4, mood: 2, motivation: 2 });
   await store.updateUser(rgUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
@@ -552,8 +564,9 @@ try {
     days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
   // Seven trained weeks (Wave 167: the block clock counts TRAINED weeks, so six
   // must sit behind the boundary for it to advance at all).
+  const woN = await plannedWeekSets(woUser, "chest");
   for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: woUser, session_id: `wo-${w}`, date: dayAgo(49 - w * 7),
-    sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8 }] });
+    sets: flatSets("barbell-bench-press", 100, woN) });
   for (let d = 0; d < 8; d++) await json("POST", "/api/checkin", { user_id: woUser, date: dayAgo(150 - d * 7).slice(0, 10), sleep_quality: 1, energy: 1, stress: 5, mood: 1, motivation: 1 });
   await store.updateUser(woUser, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
   await app.request("/api/today", { headers: { "X-HB-User": woUser } });
@@ -1198,6 +1211,157 @@ try {
     ok("#anchor /api/today carries last_sets (each set's weight and reps) so a mixed-weight session isn't misreported",
       JSON.stringify(hvRow?.last_sets) === JSON.stringify([[50, hMax + 3], [hint.kg, hMin + 1], [hint.kg, hMin + 1]]) && JSON.stringify(hvRow?.last_reps) === JSON.stringify([hMin + 1, hMin + 1]),
       JSON.stringify({ last_sets: hvRow?.last_sets, last_reps: hvRow?.last_reps }));
+  }
+
+  // --- #readout (W282): the post-workout read-out. Its "next time" weight for every lift is a
+  // PROMISE (lesson 60): the next /api/today must serve exactly that — in a normal week, a
+  // deload week, a taper, after a skipped set, and when this very workout tips a reactive
+  // deload that the next /api/today will stamp. Bodies are built the way the client builds
+  // them (today's rows, planned sets, deload tags in a deload week).
+  {
+    const gym = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const onboard = async (extra = {}) => (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, ...extra } })).data.user_id;
+    const todayOf = async (uid) => (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session;
+    const servedFor = async (uid, exId) => {
+      for (let k = 0; k < 8; k++) { const row = (await todayOf(uid)).exercises.find((e) => e.exercise === exId); if (row) return row.suggested_kg; await json("POST", "/api/today/skip", { user_id: uid }); }
+      return undefined;
+    };
+    const setsFor = (t, { kg = 40, reps = (e) => +e.rep_range.split("-")[1], tag = {}, only = null } = {}) =>
+      t.exercises.flatMap((e) => Array.from({ length: only?.(e) ?? e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: kg, reps: reps(e), ...tag })));
+    const targetsFor = (t) => t.exercises.map((e) => ({ exercise: e.exercise, sets: e.sets, rep_range: e.rep_range, rir: e.rir, suggested_kg: e.suggested_kg ?? null, ...(t.block?.phase === "deload" ? { deload: true } : {}) }));
+    // The save stays lean; the read-out is asked of its own door once the save has landed —
+    // exactly as the client does (W282 review).
+    const readoutOf = async (uid, sid) => (await json("POST", "/api/session/recap", { user_id: uid, session_id: sid })).data?.readout ?? null;
+    const logToday = async (uid, t, opts = {}, id = "ro-" + Math.random().toString(36).slice(2)) => {
+      const now = new Date().toISOString();
+      const saved = (await json("POST", "/api/session", { user_id: uid, session_id: id, date: now, local_date: now.slice(0, 10), session_name: t.name, sets: setsFor(t, opts), targets: targetsFor(t) })).data;
+      return { ...saved, saved, readout: await readoutOf(uid, id) };
+    };
+    // "A week later": every dated fact moved 7 days back — the sessions, the block clock, the
+    // account's age, a stamped deload week and an event date — so /api/today at real now sees
+    // exactly what it would see a week from now.
+    const weekLater = async (uid) => {
+      const back = (iso) => (iso ? new Date(Date.parse(iso) - 7 * 86400000).toISOString() : iso);
+      const backDay = (ymd) => (ymd ? new Date(Date.parse(`${ymd}T12:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10) : ymd);
+      for (const s of await store.listSessions(uid, { includeVoided: true, includeQuarantined: true })) await store.updateSession(uid, s.session_id, (x) => ({ ...x, date: back(x.date), ...(x.local_date ? { local_date: backDay(x.local_date) } : {}) }));
+      const thisWk = isoWeekKeyLocal(Date.now(), null), lastWk = isoWeekKeyLocal(Date.now() - 7 * 86400000, null);
+      await store.updateUser(uid, (u) => {
+        u.created_at = back(u.created_at);
+        u.plan_meta = { ...u.plan_meta, block_start: back(u.plan_meta?.block_start), ...(u.plan_meta?.rotated_at ? { rotated_at: back(u.plan_meta.rotated_at) } : {}),
+          ...(u.plan_meta?.reactive_deload?.week === thisWk ? { reactive_deload: { ...u.plan_meta.reactive_deload, week: lastWk } } : {}) };
+        if (u.profile?.goal_event_date) u.profile = { ...u.profile, goal_event_date: backDay(u.profile.goal_event_date) };
+        return u;
+      });
+    };
+    // Every promise kept, at the time it is for: this-week weights against /api/today now,
+    // next-week weights against /api/today a week later. The first visit is the client's own
+    // "Done → Today" (it is what stamps a deload the workout tipped, in the week it named).
+    const keeps = async (label, uid, ro, { allowEmpty = false } = {}) => {
+      const bad = [];
+      await todayOf(uid);
+      const now = (ro?.next ?? []).filter((n) => n.when !== "next-week"), later = (ro?.next ?? []).filter((n) => n.when === "next-week");
+      for (const n of now) { const s = await servedFor(uid, n.exercise); if (s !== n.kg) bad.push({ ex: n.exercise, when: n.when, readout: n.kg, served: s }); }
+      if (later.length) { await weekLater(uid); for (const n of later) { const s = await servedFor(uid, n.exercise); if (s !== n.kg) bad.push({ ex: n.exercise, when: n.when, readout: n.kg, served: s }); } }
+      ok(`#readout-promise ${label}: every 'next time' weight is what /api/today serves when that session comes`, (allowEmpty || (ro?.next?.length ?? 0) > 0) && bad.length === 0,
+        JSON.stringify({ n: ro?.next?.length, thisWeek: now.length, nextWeek: later.length, bad }));
+    };
+    const history = async (uid, t, weeksAgo, opts = {}) => { for (const d of weeksAgo) await json("POST", "/api/session", { user_id: uid, session_id: `h-${d}-${Math.random().toString(36).slice(2)}`, date: dAgo(d), local_date: dAgo(d).slice(0, 10), session_name: t.name, sets: setsFor(t, opts) }); };
+
+    // A — a normal week: every set at the top of the range
+    const uA = await onboard();
+    const rA = await logToday(uA, await todayOf(uA));
+    ok("#readout the save stays lean — no read-out on the save path — and the read-out's own door has it",
+      !!rA?.saved && !("readout" in rA.saved) && Array.isArray(rA.saved.wins) && typeof rA.readout?.objective === "string", JSON.stringify({ saved: Object.keys(rA?.saved ?? {}), ro: !!rA?.readout }));
+    await keeps("normal week", uA, rA?.readout);
+    // B — a deload week (5 trained weeks behind the block start), sets tagged as the client tags them
+    // History follows the rotation (as a real user's does), so today's lifts carry real
+    // pre-deload sets — deload-tagged sets alone never anchor a promise.
+    const uB = await onboard();
+    for (const d of [35, 28, 21, 14, 7]) await history(uB, await todayOf(uB), [d], { reps: (e) => +e.rep_range.split("-")[0] + 1 });
+    await store.updateUser(uB, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(38), block_index: 0 }; return u; });
+    const tB = await todayOf(uB);
+    const rB = await logToday(uB, tB, { tag: tB.block?.phase === "deload" ? { deload: true } : {} });
+    ok("#readout (fixture) a deload week", tB.block?.phase === "deload" && /^Recover/.test(rB?.readout?.objective ?? ""), JSON.stringify({ block: tB.block, obj: rB?.readout?.objective }));
+    // The deload is the block's last week: a lift whose next session falls next week meets a NEW
+    // block's plan — no weight is promised for it, and the read-out says why.
+    ok("#readout a deload week promises nothing into the new block, and says so",
+      (rB?.readout?.next ?? []).every((n) => n.when === "this-week") && /new block starts next week/i.test((rB?.readout?.block ?? []).join(" ")), JSON.stringify({ next: rB?.readout?.next, block: rB?.readout?.block }));
+    await keeps("deload week", uB, rB?.readout, { allowEmpty: true });
+    // C — a taper: the event is 10 days out
+    const uC = await onboard({ goal_event_date: dAgo(-10).slice(0, 10) });
+    const rC = await logToday(uC, await todayOf(uC));
+    ok("#readout (fixture) a taper", /to your event/.test(rC?.readout?.objective ?? ""), rC?.readout?.objective);
+    await keeps("taper", uC, rC?.readout);
+    // D — after a skipped set: one lift did 1 of its sets (the plan travels as targets)
+    const uD = await onboard(); const tD = await todayOf(uD);
+    const skipId = tD.exercises.find((e) => e.sets >= 2 && e.equipment !== "bodyweight")?.exercise;
+    const rD = await logToday(uD, tD, { only: (e) => (e.exercise === skipId ? 1 : e.sets) });
+    ok("#readout after a skipped set: that lift's next time says why it holds", /You did 1 of \d+ sets last time/.test(rD?.readout?.next?.find((n) => n.exercise === skipId)?.note ?? ""), JSON.stringify(rD?.readout?.next?.find((n) => n.exercise === skipId)));
+    await keeps("after a skipped set", uD, rD?.readout);
+    // E — this workout tips a reactive deload (a chest lift flat at its ceiling, block week 4)
+    const uE = await onboard();
+    let tE = await todayOf(uE), chestRow = null;
+    for (let k = 0; k < 4 && !(chestRow = tE.exercises.find((e) => (e.primary_muscles ?? []).includes("chest") && e.equipment !== "bodyweight")); k++) { await json("POST", "/api/today/skip", { user_id: uE }); tE = await todayOf(uE); }
+    const big = (iso) => Array.from({ length: 18 }, () => ({ exercise: chestRow.exercise, set_type: "work", weight_kg: 100, reps: 8 }));
+    for (const d of [35, 28, 21, 14, 7]) await json("POST", "/api/session", { user_id: uE, session_id: `rdE-${d}`, date: dAgo(d), local_date: dAgo(d).slice(0, 10), session_name: tE.name, sets: big() });
+    await store.updateUser(uE, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(22), block_index: 0, rotation_skips: (u.plan_meta?.rotation_skips ?? 0) }; return u; });
+    const nowE = new Date().toISOString();
+    await json("POST", "/api/session", { user_id: uE, session_id: "rdE-today", date: nowE, local_date: nowE.slice(0, 10), session_name: tE.name, sets: big() });
+    const rE = { readout: await readoutOf(uE, "rdE-today") };
+    ok("#readout (fixture) this workout tips a reactive deload, and the read-out says so", /bringing your deload forward/.test((rE?.readout?.block ?? []).join(" ")), JSON.stringify(rE?.readout?.block));
+    await keeps("reactive deload due", uE, rE?.readout);
+
+    // The offline door: POST /api/session/recap answers for the LATEST workout with the same
+    // read-out; an older one gets { past: true } (its context has moved on); junk is refused.
+    const uF = await onboard(); const tF = await todayOf(uF);
+    const first = await logToday(uF, tF, {}, "rf-1");
+    const door = await json("POST", "/api/session/recap", { user_id: uF, session_id: "rf-1" });
+    ok("#readout the door answers again for the latest workout, with the same read-out (it's a read, not a one-shot)",
+      door.status === 200 && JSON.stringify(door.data?.readout?.next?.map((n) => n.kg)) === JSON.stringify(first?.readout?.next?.map((n) => n.kg)), JSON.stringify({ s: door.status, a: door.data?.readout?.next?.map((n) => n.kg), b: first?.readout?.next?.map((n) => n.kg) }));
+    await logToday(uF, await todayOf(uF), {}, "rf-2");
+    const older = await json("POST", "/api/session/recap", { user_id: uF, session_id: "rf-1" });
+    ok("#readout an older workout's door answers { past: true } — never a read-out from a context that's moved on", older.status === 200 && older.data?.past === true && !older.data?.readout, JSON.stringify(older.data));
+    ok("#readout the door refuses an unknown workout (404) and a missing user (404)",
+      (await json("POST", "/api/session/recap", { user_id: uF, session_id: "nope" })).status === 404 && (await json("POST", "/api/session/recap", { session_id: "rf-2" })).status === 404);
+  }
+
+  // --- #completion (consideration #1): "how does the program adapt when someone is inconsistent?"
+  // The measured case, through the real block rollover: a 4-day plan done 2 days a week for a
+  // whole block with flat lifts used to earn +2 sets on every stalled muscle and swap the
+  // stalled lifts. Now those muscles hold (with the reason stored for the new-block note) and
+  // their lifts stay. Control: the identical history at 4 days a week still adds and swaps.
+  {
+    const runBlock = async (perWeek) => {
+      const u = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      const prog = (await store.getUser(u)).program;
+      await store.updateUser(u, (x) => { x.plan_meta = { ...x.plan_meta, block_start: dAgo(7 * 7 + 1), block_index: 0 }; return x; });
+      let k = 0;
+      for (let w = 7; w >= 1; w--) for (let d = 0; d < perWeek; d++) {
+        const ps = prog.sessions[k++ % prog.sessions.length];
+        const when = dAgo(7 * w - d * 2);
+        const sets = ps.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: +e.rep_range.split("-")[0] + 1 })));
+        await json("POST", "/api/session", { user_id: u, session_id: `cpl-${perWeek}-${w}-${d}`, date: when, local_date: when.slice(0, 10), session_name: ps.name, sets });
+      }
+      await app.request("/api/today", { headers: { "X-HB-User": u } });
+      return { ...(await store.getUser(u)).plan_meta, uid: u };
+    };
+    const half = await runBlock(2), full = await runBlock(4);
+    const heldDone = (half.tuned_this_block?.held ?? []).filter((h) => h.reason === "completion");
+    ok("#completion (control) the same flat block done 4 days a week still adds sets and swaps stalled lifts",
+      (full.tuned_this_block?.bumped ?? []).length > 0 && (full.swapped_this_block ?? []).length > 0, JSON.stringify({ bumped: full.tuned_this_block?.bumped, swapped: full.swapped_this_block }));
+    ok("#completion done 2 days of 4: the stalled muscles HOLD — no +2 on paper — and the reason is stored for the new-block note",
+      half.block_index === 1 && (half.tuned_this_block?.bumped ?? []).length === 0 && heldDone.length > 0 && heldDone.every((h) => h.realized < h.planned)
+      && heldDone.every((h) => !((half.volume_adjust ?? {})[h.muscle] > 0)), JSON.stringify({ tuned: half.tuned_this_block, adj: half.volume_adjust }));
+    ok("#completion …and their lifts aren't swapped out — a lift trained half as often hasn't plateaued", (half.swapped_this_block ?? []).length === 0, JSON.stringify(half.swapped_this_block));
+    // …and a Settings save right after the boundary keeps them too: every rebuild swaps through
+    // the boundary's own door (W282 review — a units-only save swapped out 14 kept lifts).
+    const liftsOf = async (uid) => (await store.getUser(uid)).program.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)).sort().join(",");
+    const keptLifts = await liftsOf(half.uid);
+    const cosmetic = await json("POST", "/api/plan/regenerate", { user_id: half.uid, profile: { units: "imperial" } });
+    ok("#completion a units-only Settings save after the boundary swaps out none of the lifts the gate kept", cosmetic.status === 200 && (await liftsOf(half.uid)) === keptLifts, `${cosmetic.status}`);
+    const stamp = (await store.getUser(half.uid)).plan_meta?.spared_muscles;
+    await json("POST", "/api/plan/regenerate", { user_id: half.uid, profile: { units: "metric" } });
+    ok("#completion …the block's verdict survives the save, so a second one keeps them too", stamp?.block === 1 && stamp.muscles.length > 0 && (await liftsOf(half.uid)) === keptLifts, JSON.stringify(stamp));
   }
 
   // --- #week-plan (C16, W277): the week strip's ingredients ride /api/today — this

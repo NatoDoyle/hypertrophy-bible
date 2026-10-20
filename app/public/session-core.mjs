@@ -301,6 +301,40 @@ export function hintInUnit(hint, toDisp, step) {
   return nudged > 0 ? nudged : null;
 }
 
+// WHAT HAPPENED in a workout (W282 read-out) — from the workout itself: the plan it carried
+// (`targets`, W280) and the sets banked. So it works OFFLINE (the recap of a queued workout)
+// and for any workout in History; the server adds what it MEANS. Per lift: sets done vs
+// planned, reps vs the range, effort vs the band (only when logged on at least half the
+// sets; "far easier" is the next-set hint's own test, band top + 2). A planned-easy lift
+// (deload week, comeback ease) is never graded. A workout from before targets existed still
+// reads — no plan, no grades. Pure.
+export function localReadout(targets, logged) {
+  const work = (logged ?? []).filter((s) => s && (s.set_type ?? "work") === "work");
+  const tgs = (targets ?? []).filter((t) => t?.exercise);
+  const ids = [...new Set([...tgs.map((t) => t.exercise), ...work.map((s) => s.exercise)])];
+  const lifts = ids.map((id) => {
+    const t = tgs.find((x) => x.exercise === id) ?? null;
+    const sets = work.filter((s) => s.exercise === id);
+    const range = /(\d+)\s*-\s*(\d+)/.exec(t?.rep_range ?? "");
+    const min = range ? +range[1] : null, max = range ? +range[2] : null;
+    const band = /(\d+)\s*-\s*(\d+)/.exec(t?.rir ?? "");
+    const easyDay = !!t?.deload || sets.some((s) => s.deload);
+    const rirs = sets.map((s) => s.rir).filter((r) => typeof r === "number");
+    const rated = !easyDay && !!band && sets.length > 0 && rirs.length >= Math.ceil(sets.length / 2);
+    const avg = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
+    return {
+      exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
+      reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
+      top: !easyDay && max != null && sets.length > 0 && sets.every((s) => s.reps >= max),
+      under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
+      easy: rated && avg >= +band[2] + 2,
+      failure: rated && +band[1] >= 1 && avg < 0.5,
+      easyDay, rir: avg == null ? null : Math.round(avg * 10) / 10, band: t?.rir ?? null,
+    };
+  }).filter((l) => l.done > 0 || (l.planned ?? 0) > 0);
+  return { lifts, planned: lifts.reduce((a, l) => a + (l.planned ?? l.done), 0), done: lifts.reduce((a, l) => a + l.done, 0), hasPlan: tgs.length > 0 };
+}
+
 // The PRE-FILLED weight for a lift, in its display unit (Burst 1 review). Plate rounding
 // (5 lb) swallowed any engine move under ~2.5 lb, so a 1 kg step — isolation dumbbells and
 // cables — pre-filled the very weight just lifted: those lifts could never progress for a
