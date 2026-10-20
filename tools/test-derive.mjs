@@ -479,6 +479,14 @@ check("completionShortfall needs evidence: under 3 FINISHED weeks there's no ver
   assert.deepEqual(Object.keys(completionShortfall(eights, plan)), ["chest"], "precondition: counted, the partial week flags a complier");
   assert.deepEqual(completionShortfall(eights, plan, { excludeWeek: "2026-W04" }), {});
 });
+check("completionShortfall reads only the CURRENT plan's weeks (sinceWeek): weeks under an older plan never count against a new one", () => {
+  const plan = { chest: { projected_sets: 12 } };
+  const old = Object.fromEntries([1, 2, 3, 4, 5, 6].map((i) => [`2026-W0${i}`, { chest: 6 }])); // every set of a smaller plan's 6
+  assert.deepEqual(Object.keys(completionShortfall(old, plan)), ["chest"], "precondition: judged against the new plan, a complete old block reads as half");
+  assert.deepEqual(completionShortfall(old, plan, { sinceWeek: "2026-W07" }), {}, "a rebuild starts the count again");
+  const after = { ...old, "2026-W07": { chest: 5 }, "2026-W08": { chest: 5 }, "2026-W09": { chest: 5 } };
+  assert.deepEqual(completionShortfall(after, plan, { sinceWeek: "2026-W07" }), { chest: { realized: 5, planned: 12 } }, "three weeks on the new plan are judged against it");
+});
 check("deriveVolumeAdjust completion gate: a stalled muscle that isn't getting its planned sets HOLDS — easing still fires", () => {
   const mIndex = new Map([["chest", { mev: { min: 10 }, mav: { max: 20 }, mrv: { max: 24 } }]]);
   const nc = new Set(["chest"]);

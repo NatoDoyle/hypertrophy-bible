@@ -381,7 +381,7 @@ export const weekDayKey = (dateStr) => WEEK_DAY_KEYS[(new Date(dateStr).getUTCDa
 // them. Pure and DATE-ONLY: callers localize once, passing the user's own calendar
 // day ("YYYY-MM-DD"); nothing here ever shifts an instant (that double-shifts a
 // caller already holding a local date).
-const shiftDayKey = (ymd, n) => {
+export const shiftDayKey = (ymd, n) => {
   const [y, m, d] = ymd.split("-").map(Number);
   const t = new Date(Date.UTC(y, m - 1, d, 12));
   t.setUTCDate(t.getUTCDate() + n);
@@ -697,11 +697,13 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
 // `minWeeks` FINISHED weeks is no verdict, and the week in progress (`excludeWeek`, the
 // caller's local ISO week) is never judged — a partial week reads as under-completion by
 // definition (the W282 walkthrough caught a first session told "most weeks you get 19%").
-// Pure; no plan numbers or too little evidence → {} (permissive).
+// Only the CURRENT plan's weeks are judged (`sinceWeek`, the week its block started — every
+// real training change resets it): a complete block under a smaller plan must never read as
+// half of a bigger one (W282 review). Pure; no plan numbers or too little evidence → {}.
 export const COMPLETION_RATIO = 0.7;
-export function completionShortfall(weekly, planVolume, { n = 6, meanScale = 1, ratio = COMPLETION_RATIO, minWeeks = 3, excludeWeek = null } = {}) {
+export function completionShortfall(weekly, planVolume, { n = 6, meanScale = 1, ratio = COMPLETION_RATIO, minWeeks = 3, excludeWeek = null, sinceWeek = null } = {}) {
   const out = {};
-  const weeks = Object.keys(weekly ?? {}).filter((wk) => wk !== excludeWeek).sort().slice(-n);
+  const weeks = Object.keys(weekly ?? {}).filter((wk) => wk !== excludeWeek && (!sinceWeek || wk >= sinceWeek)).sort().slice(-n);
   if (!planVolume || weeks.length < minWeeks) return out;
   for (const [m, v] of Object.entries(planVolume)) {
     const planned = v?.projected_sets;

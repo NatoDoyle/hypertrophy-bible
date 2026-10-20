@@ -319,7 +319,10 @@ export function hintCopy(hint, { setNo, fromW, toW }) {
 // each at most three, said plainly. A beginner gets the headline only (Goal 3): the weights
 // for next time come with their reasons from the server lines.
 export function readoutLists(local, { nameOf = (id) => id, beginner = false } = {}) {
-  const graded = local.lifts.filter((l) => !l.easyDay && l.done > 0);
+  // A workout saved before plans travelled with it (or by an older client) has nothing to be
+  // graded against: it counts what was done and claims nothing else (W282 review).
+  if (local.hasPlan === false) return { headline: `${local.done} set${local.done === 1 ? "" : "s"} logged — every one of them counts.`, went_well: [], watch: [] };
+  const graded = local.lifts.filter((l) => !l.easyDay && l.done > 0 && l.min != null);
   const skipped = Math.max(0, local.planned - local.done);
   const underN = graded.filter((l) => l.under > 0).length;
   const tops = graded.filter((l) => l.top);

@@ -4,7 +4,7 @@ import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -1537,6 +1537,10 @@ const roUser = (status, blockStartDaysAgo, extra = {}) => ({ profile: { training
 const roSess = (iso, id, bench, pull, tag = {}) => ({ session_id: id, date: iso, local_date: iso.slice(0, 10), program_ref: "p", session_name: "A",
   sets: [...bench.map(([kg, r]) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: kg, reps: r, ...tag })), ...pull.map(([kg, r]) => ({ exercise: "lat-pulldown", set_type: "work", weight_kg: kg, reps: r, ...tag }))] });
 const three = (kg, r) => [[kg, r], [kg, r], [kg, r]];
+const roBench = (d, id, n, kg = 60) => ({ session_id: id, date: roDay(d), local_date: roDay(d).slice(0, 10), program_ref: "p", session_name: "A",
+  sets: Array.from({ length: n }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: kg, reps: 8 })) });
+const roFri = "2026-06-12T18:00:00Z"; // the Friday of roNow's week
+const fromFri = (n) => new Date(Date.parse(roFri) - n * 86400000).toISOString();
 // k prior weekly sessions (k weeks back … 1 week back), then today's
 const roHistory = (k, today) => [...Array.from({ length: k }, (_, i) => roSess(roDay((k - i) * 7), `w${i}`, three(60, 8), three(50, 10))), today];
 const quotesServed = (u, all, ro) => { const served = buildToday(u, all, null, [], roNow).exercises; return ro.next.every((n) => n.kg === served.find((e) => e.exercise === n.exercise)?.suggested_kg); };
@@ -1596,7 +1600,7 @@ check("#readout 'most weeks' needs most weeks: a first week never claims it — 
   const thin = (d, id) => roSess(roDay(d), id, [[60, 9]], [[50, 10]]);
   const today = roSess(roNow, "t2", [[60, 9]], [[50, 10]]);
   const ro2 = sessionReadout(withPlan(roUser("intermediate", 24)), [thin(21, "a"), thin(14, "b"), thin(7, "c"), today], today, { now: roNow });
-  assert.ok(ro2.block.some((l) => /^Most weeks your chest and back \(lats\) get about 8% of the sets/.test(l)), JSON.stringify(ro2.block));
+  assert.ok(ro2.block.some((l) => /^Your chest and back \(lats\) have been flat — and most weeks they get about 8% of the sets/.test(l)), JSON.stringify(ro2.block));
 });
 // The week in progress is never judged (W282 walkthrough): three finished weeks at 8 of the
 // plan's 12 chest sets is completing (the line sits at 0.7 × 12 × the wave's 0.82 ≈ 6.9);
@@ -1620,6 +1624,112 @@ check("#readout a falling bodyweight says what it means — and only when the tu
   assert.match(ro.bodyweight ?? "", /trending down/);
   const flat = down.map((b) => ({ ...b, kg: 85 }));
   assert.equal(sessionReadout(roUser("intermediate", 10), roHistory(1, today), today, { now: roNow, bodyweights: flat }).bodyweight, null);
+});
+
+// --- Burst 2 review (W282d) -----------------------------------------------------------------
+check("#completion a rebuild starts the count again: weeks under the old plan never count against the new one", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `o${i}`, 6)); // every set of a smaller plan, flat
+  const today = roBench(0, "t", 6);
+  const plan = { volume_by_muscle: { chest: { projected_sets: 12 } } };
+  const rebuilt = { ...roUser("intermediate", 2), plan_rationale: plan }; // a training change reset the block this week
+  assert.notEqual(progressReport(rebuilt, [...all, today], [], [], roNow).adaptive.find((a) => a.muscle === "chest")?.signal, "complete");
+  assert.ok(!sessionReadout(rebuilt, [...all, today], today, { now: roNow }).block.some((l) => /most weeks/i.test(l)));
+  const sameBlock = { ...roUser("intermediate", 45), plan_rationale: plan }; // control: the same weeks under THIS plan
+  assert.equal(progressReport(sameBlock, [...all, today], [], [], roNow).adaptive.find((a) => a.muscle === "chest")?.signal, "complete");
+});
+check("#completion a muscle the plan serves through compound credit, or caps on purpose, never shows 'complete' on Progress", () => {
+  const short = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `s${i}`, 3));
+  for (const flag of ["secondary_served", "eased"]) {
+    const u = { ...roUser("intermediate", 45), plan_rationale: { volume_by_muscle: { chest: { projected_sets: 12, [flag]: true } } } };
+    assert.notEqual(progressReport(u, short, [], [], roNow).adaptive.find((a) => a.muscle === "chest")?.signal, "complete", flag);
+  }
+});
+check("#completion ONE door for the lifts any rebuild swaps: what the boundary spares, every rebuild spares", () => {
+  const plan = { volume_by_muscle: { chest: { projected_sets: 12 } } };
+  const u = { ...roUser("intermediate", 45), plan_rationale: plan };
+  const quarter = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `q${i}`, 3)); // 3 of 12 sets a week, flat
+  assert.deepEqual(stalledExerciseIds(quarter, [], roNow), ["barbell-bench-press"], "precondition: flat");
+  assert.deepEqual(swapStalls(u, quarter, roNow), [], "trained a quarter as often as planned: spared");
+  assert.deepEqual(blockTuneDecision(u, quarter, {}, roNow).stalledExercises, [], "…and the boundary agrees");
+  const full = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `f${i}`, 12));
+  assert.deepEqual(swapStalls(u, full, roNow), ["barbell-bench-press"], "a real plateau is still swapped");
+  // The boundary's verdict IS the block's: a rebuild later in the block reuses the muscles it
+  // spared (the new block's plan would judge the same weeks differently — the W282 review saw an
+  // abs accessory flip on a units-only save); the boundary itself always decides afresh.
+  const stamped = (block) => ({ ...u, plan_meta: { ...u.plan_meta, block_index: 1, spared_muscles: { block, muscles: ["chest"] } } });
+  assert.deepEqual(swapStalls(stamped(1), full, roNow), [], "this block's stored verdict spares chest");
+  assert.deepEqual(swapStalls(stamped(0), full, roNow), ["barbell-bench-press"], "an older block's verdict is ignored");
+  assert.deepEqual(swapStalls(stamped(1), full, roNow, { fresh: true }), ["barbell-bench-press"], "the boundary decides afresh");
+  assert.deepEqual(blockTuneDecision(u, quarter, {}, roNow).spared, ["chest"], "…and hands the rollover what it spared, to store");
+  assert.deepEqual(blockTuneDecision(stamped(1), full, {}, roNow).stalledExercises, ["barbell-bench-press"], "at the next boundary, last block's verdict never overrides what this block shows");
+});
+check("#readout-week a Friday's 'next time' is NEXT week's weight — in week 5 that's the deload, exactly what Monday serves", () => {
+  const wk = (d, id) => roSess(fromFri(d), id, three(60, 10), three(50, 10));
+  const all = [...[32, 25, 18, 11].map((d, i) => wk(d, `p${i}`)), wk(4, "mon"), wk(2, "wed"), roSess(roFri, "fri", three(60, 10), three(50, 10))];
+  const fri = all[all.length - 1];
+  const u = { ...roUser("intermediate", 0), plan_meta: { block_start: fromFri(35) } }; // 4 finished weeks → week 5
+  const ro = sessionReadout(u, all, fri, { now: roFri });
+  const monday = buildToday(u, all, null, [], "2026-06-15T09:00:00Z").exercises;
+  assert.ok(monday[0].suggested_kg < 62.5, "precondition: next Monday is the deload");
+  assert.deepEqual(ro.next.map((n) => [n.exercise, n.kg, n.when]), monday.map((e) => [e.exercise, e.suggested_kg, "next-week"]));
+});
+check("#readout-week a deload Friday: the next sessions are a NEW block — no per-lift promise, and the block line says why", () => {
+  const all = [...[39, 32, 25, 18, 11].map((d, i) => roSess(fromFri(d), `p${i}`, three(60, 8), three(50, 10))),
+    ...[4, 2, 0].map((d, i) => roSess(fromFri(d), `d${i}`, three(54, 8), three(45, 10), { deload: true }))];
+  const u = { ...roUser("intermediate", 0), plan_meta: { block_start: fromFri(42), block_index: 0 } }; // 5 finished weeks → week 6
+  const ro = sessionReadout(u, all, all[all.length - 1], { now: roFri });
+  assert.deepEqual(ro.next, []);
+  assert.ok(ro.block.some((l) => /new block starts next week/i.test(l)), JSON.stringify(ro.block));
+});
+check("#readout-week with Friday still committed, Wednesday's 'next time' is THIS week's weight", () => {
+  const all = [...[30, 23, 16, 9].map((d, i) => roSess(fromFri(d), `p${i}`, three(60, 10), three(50, 10))), roSess(fromFri(4), "mon", three(60, 10), three(50, 10)), roSess(roNow, "wed", three(60, 10), three(50, 10))];
+  const u = { ...roUser("intermediate", 0, { commitment: { week: "2026-W24", days: ["mon", "wed", "fri"], set_on: "2026-06-01" } }), plan_meta: { block_start: fromFri(35) } };
+  const ro = sessionReadout(u, all, all[all.length - 1], { now: roNow });
+  assert.deepEqual(ro.next.map((n) => [n.kg, n.when]), [[62.5, "this-week"], [50, "this-week"]]);
+  assert.ok(quotesServed(u, all, ro));
+  // Only Mon + Wed committed: nothing left this week, so next time is next week's deload —
+  // where 3 days a week with no plan would still guess one more session this week.
+  const u2 = { ...u, profile: { ...u.profile, commitment: { week: "2026-W24", days: ["mon", "wed"], set_on: "2026-06-01" } } };
+  assert.deepEqual(sessionReadout(u2, all, all[all.length - 1], { now: roNow }).next.map((n) => [n.kg, n.when]), [[54, "next-week"], [45, "next-week"]]);
+});
+check("#readout a flat lift on a hand-built plan: no 'next block' promise (it never rolls over) — the lever is named instead", () => {
+  const flat = [28, 21, 14, 7].map((d, i) => roSess(roDay(d), `c${i}`, three(60, 8), three(50, 10)));
+  const today = roSess(roNow, "t", three(60, 8), three(50, 10));
+  const u = { ...roUser("intermediate", 31), program: { ...roProg, custom: true } };
+  const line = sessionReadout(u, [...flat, today], today, { now: roNow }).block.find((l) => /flat/.test(l)) ?? "";
+  assert.match(line, /plan you built/);
+  assert.doesNotMatch(line, /next block/);
+});
+check("#readout a flat lift the next block would pick again gets no 'fresh angle' promise", () => {
+  const mcp = (d, id) => ({ session_id: id, date: roDay(d), local_date: roDay(d).slice(0, 10), program_ref: "p", session_name: "A", sets: Array.from({ length: 3 }, () => ({ exercise: "machine-chest-press", set_type: "work", weight_kg: 60, reps: 8 })) });
+  const all = [mcp(28, "a"), mcp(21, "b"), mcp(14, "c"), mcp(7, "d"), mcp(0, "t")];
+  const ro = sessionReadout(roUser("intermediate", 31, { available_equipment: ["machine"] }), all, all[4], { now: roNow });
+  const line = ro.block.find((l) => /Machine Chest Press/i.test(l)) ?? "";
+  assert.ok(line, `precondition: the flat lift is named — ${JSON.stringify(ro.block)}`);
+  assert.doesNotMatch(line, /fresh angle/);
+});
+check("#readout the missing-sets line speaks only where lifts are flat — a lifter whose lifts are moving never hears it", () => {
+  const plan = { volume_by_muscle: { chest: { projected_sets: 12 }, lats: { projected_sets: 12 } } };
+  const moving = [21, 14, 7].map((d, i) => roSess(roDay(d), `m${i}`, [[50 + i * 5, 9]], [[40 + i * 5, 10]]));
+  const today = roSess(roNow, "t", [[65, 9]], [[55, 10]]);
+  const ro = sessionReadout({ ...roUser("intermediate", 24), plan_rationale: plan }, [...moving, today], today, { now: roNow });
+  assert.ok(!ro.block.some((l) => /most weeks|been flat/i.test(l)), JSON.stringify(ro.block));
+});
+check("#readout a workout that earns a step up never ALSO says 'next week is your deload' (the fresh plan restarts the block)", () => {
+  const hist = [];
+  for (let w = 131; w >= 1; w--) for (const off of [0, 2]) hist.push(roSess(roDay(w * 7 - off), `g${w}-${off}`, three(60, 8), three(50, 10)));
+  const today = roSess(roNow, "t", three(60, 8), three(50, 10));
+  const ro = sessionReadout(roUser("intermediate", 31), [...hist, today], today, { now: roNow });
+  assert.match(ro.block[0] ?? "", /step up/);
+  assert.ok(!ro.block.some((l) => /Next training week is your deload/.test(l)), JSON.stringify(ro.block));
+});
+check("#readout a workout from an earlier week: 'next time' still holds, but this-block forecasts aren't re-told from a week that has passed", () => {
+  const last = roSess(roDay(7), "last", three(60, 10), three(50, 10));
+  const all = [...[35, 28, 21, 14].map((d, i) => roSess(roDay(d), `e${i}`, three(60, 8), three(50, 10))), last];
+  const u = roUser("intermediate", 38);
+  const ro = sessionReadout(u, all, last, { now: roNow });
+  assert.deepEqual([ro.block, ro.next_block], [[], []]);
+  assert.ok(ro.next.length > 0 && quotesServed(u, all, ro), "next time is computed for now");
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

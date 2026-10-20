@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan } from "./planner.mjs";
 
@@ -312,11 +312,13 @@ const BLOCK_MEAN_SCALE = BLOCK_SET_SCALE.reduce((a, b) => a + b, 0) / BLOCK_SET_
 // Consideration #1's ONE sample, read identically by the block-boundary tune and the Progress
 // card: the muscles getting well under the sets the plan already delivers. A hand-built plan's
 // stored rationale may not describe it, so it is never judged (permissive, as before).
-// `currentWeek` (the user's local ISO week) is the week in progress — never judged.
-function completionFor(weekly, user, currentWeek = null) {
+// The week in progress (`now`'s local ISO week) is never judged, and only the current plan's
+// weeks count (from its block's start — a training change resets it).
+const weekOf = (iso, tz) => (iso ? isoWeekKeyLocal(iso, tz) : null);
+function completionFor(weekly, user, now = null, tz = user?.profile?.tz_offset_min ?? null) {
   if (user?.program?.custom) return {};
   const beginner = (user?.profile?.training_status ?? "beginner") === "beginner";
-  return completionShortfall(weekly, user?.plan_rationale?.volume_by_muscle, { meanScale: beginner ? 1 : BLOCK_MEAN_SCALE, excludeWeek: currentWeek });
+  return completionShortfall(weekly, user?.plan_rationale?.volume_by_muscle, { meanScale: beginner ? 1 : BLOCK_MEAN_SCALE, excludeWeek: weekOf(now, tz), sinceWeek: weekOf(user?.plan_meta?.block_start, tz) });
 }
 // Plain-English muscle names for every sentence the server writes (W282) — the Progress tab's
 // own words ("back (lats)", "front of shoulders"), never the anatomy ("Latissimus Dorsi"). A
@@ -923,6 +925,24 @@ function objectiveLine(ctx, gapDays) {
   if (b.phase === "peak") return `Week ${b.week} of ${b.of} — peak volume: hard sets, about 1–2 reps in the tank.`;
   return b.week === 1 ? `Week 1 of ${b.of} — building: start comfortably; volume and effort ramp from here.` : `Week ${b.week} of ${b.of} — building volume and effort toward your peak.`;
 }
+// The training slots this local week still holds after `todayKey` (W282 review): the
+// committed days left (rest-marked days excepted), or — with no commitment — days_per_week
+// minus the days already trained this week, never more than the days the week has left.
+function slotsLeftThisWeek(user, sessions, todayKey) {
+  if (!todayKey) return 0;
+  const wd = WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey));
+  const eff = commitmentForDay(user.profile?.commitment, todayKey);
+  if (eff) return eff.days.filter((d) => { const k = WEEK_DAY_KEYS.indexOf(d); return k > wd && !(user.rest_days ?? []).includes(shiftDayKey(todayKey, k - wd)); }).length;
+  const monday = shiftDayKey(todayKey, -wd);
+  const trained = new Set(sessions.map(sessionDayKey).filter((d) => d && d >= monday && d <= todayKey)).size;
+  return Math.max(0, Math.min(6 - wd, (user.profile?.days_per_week ?? 3) - trained));
+}
+// Noon (local) on the Monday after `todayKey`, as an instant — "next week" for the block clock.
+function nextMondayInstant(todayKey, tz) {
+  const key = shiftDayKey(todayKey, 7 - WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey)));
+  return new Date(Date.parse(`${key}T12:00:00Z`) - (Number.isFinite(tz) ? tz : 0) * 60000).toISOString();
+}
+
 export function sessionReadout(user, sessions, session, ctx = {}) {
   const { now = session?.date ?? null, tz = user.profile?.tz_offset_min ?? null, checkins = [], bodyweights = [], customEx = user.custom_exercises || [] } = ctx;
   const { byId, index, name } = resolveEx(customEx);
@@ -940,51 +960,98 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
   // tips is stamped, so it is folded into the context the promise is computed on.
   const graduating = !program?.custom && !!graduatedStatus(sessions, user.profile?.training_status);
   const blockStart = user.plan_meta?.block_start;
+  const blockIndex = user.plan_meta?.block_index ?? 0;
   const rolling = !graduating && !beginner && !program?.custom && !!blockStart
-    && Math.floor(trainedWeeksInBlock(sessions, blockStart, now, tz) / BLOCK_WEEKS) !== (user.plan_meta?.block_index ?? 0);
+    && Math.floor(trainedWeeksInBlock(sessions, blockStart, now, tz) / BLOCK_WEEKS) !== blockIndex;
   const rd = !graduating && !rolling ? reactiveDeloadStampDue(user, sessions, bodyweights, checkins, now, tz) : null;
   const nextUser = rd ? { ...user, plan_meta: { ...user.plan_meta, reactive_deload: { block: rd.block, week: rd.week } } } : user;
   const nextCtx = trainingContext(nextUser, sessions, now);
+  // WHICH WEEK each lift's next appearance lands in (W282 review): the rotation's slot j is this
+  // week only while this week still has a slot for it. A slot past it is promised in NEXT week's
+  // context — the block clock counts this week by then, so week 5's "next time" is the deload's
+  // weight — and never across a block boundary: a new plan sets those weights.
+  const todayKey = now ? localDayKey(now, tz) : null;
+  const slotsLeft = slotsLeftThisWeek(user, sessions, todayKey);
+  const nextWeekNow = todayKey ? nextMondayInstant(todayKey, tz) : now;
+  const rollingNextWeek = !graduating && !rolling && !beginner && !program?.custom && !!blockStart
+    && Math.floor(trainedWeeksInBlock(sessions, blockStart, nextWeekNow, tz) / BLOCK_WEEKS) !== blockIndex;
+  const nextWeekCtx = trainingContext(user, sessions, nextWeekNow);
   const order = !graduating && !rolling && program?.sessions?.length ? upcomingSessions(program, sessions, nextUser.plan_meta, program.sessions.length) : [];
   const next = [];
   for (const id of liftIds) {
     let hit = null;
-    for (const idx of order) { const ex = program.sessions[idx].exercises.find((e) => e.exercise === id); if (ex) { hit = { ex, idx }; break; } }
+    order.forEach((idx, j) => { if (!hit) { const ex = program.sessions[idx].exercises.find((e) => e.exercise === id); if (ex) hit = { ex, idx, j }; } });
     if (!hit) continue; // a session-only substitute: not in the plan, so no promise to make
-    const served = servedLift(hit.ex, sessions, nextCtx, byId, now);
+    const thisWeek = hit.j < slotsLeft;
+    if (!thisWeek && rollingNextWeek) continue; // the new block's plan sets that weight
+    const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow);
     if (served.suggested_kg == null) continue;
-    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name });
+    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week" });
   }
 
   const block = [];
   const next_block = [];
   let bodyweight = null;
-  if (!beginner) {
-    if (graduating) block.push("You've trained long enough to step up — your next session starts a fresh plan built for where you are now.");
-    else if (rolling) block.push("Your next session starts a new block — your accessories rotate and your main lifts carry over.");
+  // A step up is a win, said plainly to everyone (beginners graduate too).
+  if (graduating) block.push("You've trained long enough to step up — your next session starts a fresh plan built for where you are now.");
+  // This-block and next-block lines speak about the week this workout is in, so only while it
+  // still IS this week: a History read-out a week later must not re-tell a forecast the
+  // boundary may already have acted on (W282 review).
+  const sameWeek = !!now && sessionWeekKey(session) === isoWeekKeyLocal(now, tz);
+  if (!beginner && sameWeek) {
+    if (rolling) block.push("Your next session starts a new block — your accessories rotate and your main lifts carry over.");
     else if (rd && !nextCtx.taper) block.push("Your hardest lifts have gone flat at the top of what you can recover from, so I'm bringing your deload forward — the rest of this week is lighter. That's where this block's work turns into growth.");
     else if (todayCtx.block?.phase === "deload" && !todayCtx.taper) block.push("A deload session doesn't move your progression — your weights pick up again after this week.");
-    if (todayCtx.block && !todayCtx.taper && !rd && !rolling && todayCtx.block.phase !== "deload" && todayCtx.block.week === BLOCK_WEEKS - 1) {
+    if (rollingNextWeek) block.push("A new block starts next week — your accessories rotate and your main lifts carry over; their next weights come with the new plan.");
+    if (!graduating && todayCtx.block && !todayCtx.taper && !rd && !rolling && todayCtx.block.phase !== "deload" && todayCtx.block.week === BLOCK_WEEKS - 1) {
       block.push("Next training week is your deload — fewer sets and lighter weights, to bank this block's work.");
     }
     const regress = regressionDetect(sessions, index).filter((r) => liftIds.includes(r.exercise));
     if (regress.length) block.push(`Your ${listJoin(regress.map((r) => name(r.exercise)))} ${regress.length === 1 ? "is" : "are"} down about ${regress[0].drop_pct}% from ${regress.length === 1 ? "its" : "their"} recent best — usually sleep or food, not training. I won't add volume there until it turns around.`);
-    // Consideration #1, said where it matters: the muscles today's lifts train that are getting
-    // well under their planned sets (the same sample as the tune and the Progress card).
-    const completion = completionFor(perMuscleWeeklyVolume(sessions, index), user, now ? isoWeekKeyLocal(now, tz) : null);
-    const short = [...new Set(liftIds.flatMap((id) => index.get(id)?.primary ?? []))].filter((m) => completion[m]);
+    // Consideration #1, said where it applies — the same population the tune and the Progress
+    // card act on: muscles whose lifts are FLAT and that get well under their planned sets.
+    const flat = stalledExerciseIds(sessions, customEx, now);
+    const flatMuscles = new Set(flat.flatMap((id) => index.get(id)?.primary ?? []));
+    const completion = completionFor(perMuscleWeeklyVolume(sessions, index), user, now, tz);
+    const short = [...new Set(liftIds.flatMap((id) => index.get(id)?.primary ?? []))].filter((m) => completion[m] && flatMuscles.has(m));
     if (short.length) {
-      const share = short.length === 1 ? `about ${completion[short[0]].realized} of the ~${completion[short[0]].planned} sets a week your plan has for it`
+      const one = short.length === 1;
+      const share = one ? `about ${completion[short[0]].realized} of the ~${completion[short[0]].planned} sets a week your plan has for it`
         : `about ${Math.round((100 * short.reduce((a, m) => a + completion[m].realized, 0)) / short.reduce((a, m) => a + completion[m].planned, 0))}% of the sets your plan has for them`;
-      block.push(`Most weeks your ${listJoin(short.map(plainMuscle))} ${short.length === 1 ? "gets" : "get"} ${share} — getting through more of them is what will move these lifts.`);
+      block.push(`Your ${listJoin(short.map(plainMuscle))} ${one ? "has" : "have"} been flat — and most weeks ${one ? "it gets" : "they get"} ${share}. Getting through more of those sets is what will move ${one ? "it" : "them"}.`);
     }
-    const stalled = stalledExerciseIds(sessions, customEx, now, Object.keys(completion)).filter((id) => liftIds.includes(id) && !regress.some((r) => r.exercise === id));
-    if (stalled.length) block.push(`Your ${listJoin(stalled.map(name))} ${stalled.length === 1 ? "has" : "have"} been flat for a few weeks. If ${stalled.length === 1 ? "it stays" : "they stay"} flat, the next block gives ${stalled.length === 1 ? "it" : "them"} a fresh angle.`);
-    block.splice(2);
+    // What the boundary would decide — computed once, only when something needs it.
+    let decision = null;
+    const decide = () => {
+      if (decision) return decision;
+      const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
+      let out = [];
+      if (d.stalledExercises.length) {
+        const nextPlan = generateUserPlan(user.profile, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+        out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
+      }
+      return (decision = { ...d, out });
+    };
+    const spared = new Set(Object.keys(completion));
+    const stalled = flat.filter((id) => liftIds.includes(id) && !regress.some((r) => r.exercise === id) && !(index.get(id)?.primary ?? []).every((m) => spared.has(m)));
+    if (stalled.length) {
+      const has = (xs) => (xs.length === 1 ? "has" : "have");
+      if (program?.custom) {
+        block.push(`Your ${listJoin(stalled.map(name))} ${has(stalled)} been flat for a few weeks — on a plan you built, swapping ${stalled.length === 1 ? "it" : "them"} for a different angle is the lever.`);
+      } else {
+        // Only a lift the next block's plan actually DROPS gets the "fresh angle" promise; a
+        // lift it picks again (your only option with this equipment) is told what does work.
+        const out = new Set(decide().out);
+        const fresh = stalled.filter((id) => out.has(id)), kept = stalled.filter((id) => !out.has(id));
+        if (fresh.length) block.push(`Your ${listJoin(fresh.map(name))} ${has(fresh)} been flat for a few weeks. If ${fresh.length === 1 ? "it stays" : "they stay"} flat, the next block gives ${fresh.length === 1 ? "it" : "them"} a fresh angle.`);
+        if (kept.length) block.push(`Your ${listJoin(kept.map(name))} ${has(kept)} been flat for a few weeks — taking the last set of each closer to failure, with steady sleep and food, is what moves a plateau.`);
+      }
+    }
+    block.splice(graduating ? 3 : 2);
 
     // From week 4: what the boundary would decide if it came today — the rollover's own function.
-    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4 && !isSpecializing(user.profile, user.plan_meta?.block_index ?? 0)) {
-      const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
+    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4 && !isSpecializing(user.profile, blockIndex)) {
+      const d = decide();
       const muscles = (ms) => listJoin(ms.map(plainMuscle));
       if (d.tuned.bumped.length) next_block.push(`More sets for your ${muscles(d.tuned.bumped)} — stalled with room to grow.`);
       if (d.tuned.eased.length) next_block.push(`Fewer sets for your ${muscles(d.tuned.eased)} — at the top of what you can recover from.`);
@@ -992,15 +1059,12 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       if (heldBy("completion").length) next_block.push(`Your ${muscles(heldBy("completion"))} hold — get through more of the planned sets first.`);
       if (heldBy("deficit").length) next_block.push(`Your ${muscles(heldBy("deficit"))} hold — you're in a deficit, so fuel comes first.`);
       if (heldBy("recovery").length) next_block.push(`Your ${muscles(heldBy("recovery"))} hold — recovery's been short, so sleep comes first.`);
-      if (d.stalledExercises.length) {
-        const nextPlan = generateUserPlan(user.profile, { blockIndex: (user.plan_meta?.block_index ?? 0) + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
-        const out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
-        if (out.length) next_block.push(`${listJoin(out.map(name))} ${out.length === 1 ? "gets" : "get"} a fresh angle — flat for weeks.`);
-      }
+      if (d.out.length) next_block.push(`${listJoin(d.out.map(name))} ${d.out.length === 1 ? "gets" : "get"} a fresh angle — flat for weeks.`);
       if (!next_block.length) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
       next_block.splice(3);
     }
-
+  }
+  if (!beginner) {
     // The tune's deficit gate, read exactly as it reads it (the 42-day window, no fallback).
     const windowStart = now ? new Date(+new Date(now) - 42 * 86400000).toISOString().slice(0, 10) : "";
     const energy = classifyEnergyBalance(bodyweightTrend(bodyweights.filter((b) => (b.date || "").slice(0, 10) >= windowStart).map((b) => ({ date: b.date, bodyweight_kg: b.kg }))), user.profile?.primary_goal);
@@ -1133,7 +1197,7 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // adding volume there worsens it — so suppress the "add" response (easing still
   // fires). Energy balance is read from the bodyweight trend; readiness from the daily
   // check-ins. Both default to permissive when the data isn't there.
-  const { checkins = [], bodyweights = [], goal = null, planVolume = null, currentWeek = null } = context;
+  const { checkins = [], bodyweights = [], goal = null, planVolume = null, currentWeek = null, sinceWeek = null } = context;
   const bwSeries = bodyweights.map((b) => ({ date: b.date, bodyweight_kg: b.kg }));
   const energyBalance = classifyEnergyBalance(bodyweightTrend(bwSeries), goal);
   const recovery = recoverySignal(checkins, energyBalance);
@@ -1152,7 +1216,7 @@ export function computeVolumeAdjust(prevAdjust, sessions, customEx = [], context
   // Completion gate (consideration #1): a stall on well under the sets the plan delivers is
   // under-training, not a plateau. `planVolume` is the plan's volume_by_muscle (the caller
   // passes null for a hand-built plan); absent → {} and the tune is byte-identical.
-  const completion = completionShortfall(weekly, planVolume, { meanScale: BLOCK_MEAN_SCALE, excludeWeek: currentWeek });
+  const completion = completionShortfall(weekly, planVolume, { meanScale: BLOCK_MEAN_SCALE, excludeWeek: currentWeek, sinceWeek });
   const notCompletingMuscleIds = new Set(Object.keys(completion));
   const adjust = deriveVolumeAdjust(prevAdjust || {}, peak, muscleIndex, stalledMuscleIds, { ...recovery, regressingMuscleIds, tooEasyMuscleIds, notCompletingMuscleIds });
   // WHO was held and WHY (Wave 258): the whole-athlete gate (deficit/under-recovery)
@@ -1200,7 +1264,7 @@ export function blockTuneDecision(user, sessions, { checkins = [], bodyweights =
   // rationale may not describe it → null (permissive).
   const { adjust, held, notCompleting = [] } = isSpecializing(user.profile, user.plan_meta?.block_index ?? 0)
     ? { adjust: prevAdjust, held: [] }
-    : computeVolumeAdjust(prevAdjust, sessions, user.custom_exercises || [], { checkins: checkins.filter((c) => inWindow(c.date)), bodyweights: bodyweights.filter((b) => inWindow(b.date)), goal: user.profile?.primary_goal, planVolume: user.program?.custom ? null : user.plan_rationale?.volume_by_muscle, currentWeek: isoWeekKeyLocal(nowISO, user.profile?.tz_offset_min) });
+    : computeVolumeAdjust(prevAdjust, sessions, user.custom_exercises || [], { checkins: checkins.filter((c) => inWindow(c.date)), bodyweights: bodyweights.filter((b) => inWindow(b.date)), goal: user.profile?.primary_goal, planVolume: user.program?.custom ? null : user.plan_rationale?.volume_by_muscle, currentWeek: weekOf(nowISO, user.profile?.tz_offset_min), sinceWeek: weekOf(user.plan_meta?.block_start, user.profile?.tz_offset_min) });
   // What CHANGED this block — so the new-block coach note announces the actual adjustment,
   // not the whole accumulated total re-announced every block. `held` carries the adds a gate
   // suppressed, so the note can say WHY a stalled muscle's sets didn't move (Wave 258).
@@ -1210,10 +1274,30 @@ export function blockTuneDecision(user, sessions, { checkins = [], bodyweights =
     held,
   };
   // THE EXERCISE-CHANGE LEVER: lifts this person has genuinely plateaued on are demoted below
-  // every alternative for their muscle — recency-filtered (stalledExerciseIds), and sparing
-  // the lifts of muscles that weren't getting their planned sets (consideration #1).
-  const stalledExercises = stalledExerciseIds(sessions, user.custom_exercises || [], nowISO, notCompleting);
-  return { volumeAdjust: adjust, tuned, stalledExercises };
+  // every alternative for their muscle — through the one door every rebuild uses (swapStalls),
+  // decided afresh here; `spared` goes back to the rollover to store as the block's verdict.
+  void notCompleting;
+  return { volumeAdjust: adjust, tuned, stalledExercises: swapStalls(user, sessions, nowISO, { fresh: true }), spared: sparedMuscles(user, sessions, nowISO) };
+}
+
+// The muscles whose stalled lifts are spared from a swap: those getting well under the sets the
+// plan delivers (consideration #1 — trained half as often isn't a plateau).
+function sparedMuscles(user, sessions, nowISO) {
+  const { index } = resolveEx(user.custom_exercises || []);
+  return Object.keys(completionFor(perMuscleWeeklyVolume(sessions, index), user, nowISO)).sort();
+}
+// The stalled lifts a rebuild may swap out — ONE door for the block boundary, a Settings
+// rebuild and the substitute ranker (W282 review: a units-only Settings save right after a
+// boundary swapped out every lift the completion gate had just kept). stallDetect's recent
+// flat lifts, minus the spared muscles' lifts. The BOUNDARY's verdict is the block's: within
+// the block every rebuild reuses the muscles it stored (`plan_meta.spared_muscles`) — the new
+// block's plan would judge the same weeks against different numbers; `fresh` is the boundary
+// deciding anew.
+export function swapStalls(user, sessions, nowISO, { fresh = false } = {}) {
+  const stored = user.plan_meta?.spared_muscles;
+  const spare = !fresh && stored && stored.block === (user.plan_meta?.block_index ?? 0) && Array.isArray(stored.muscles)
+    ? stored.muscles : sparedMuscles(user, sessions, nowISO);
+  return stalledExerciseIds(sessions, user.custom_exercises || [], nowISO, spare);
 }
 
 // `tz` is the user's UTC offset in minutes east — REQUIRED for the week arithmetic
@@ -1342,11 +1426,11 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
   // and eased the same muscle −2 (measured live). One sample, one story.
   const regressingMuscleIdSet = new Set(regressions.flatMap((r) => index.get(r.exercise)?.primary ?? []));
   const addGate = recovery.inDeficit ? "deficit" : recovery.underRecovered ? "recovery" : null;
-  const adaptive = latest ? volumeResponse(peakWeeklyVolume(weekly), muscleIndex, stalledMuscleIds, tooEasyMuscleIds, completionFor(weekly, user, now ? isoWeekKeyLocal(now, tz) : null))
+  const adaptive = latest ? volumeResponse(peakWeeklyVolume(weekly), muscleIndex, stalledMuscleIds, tooEasyMuscleIds, completionFor(weekly, user, now, tz))
     .filter((a) => a.signal !== "hold") // surface only the actionable adjustments
     .filter((a) => !maintIds.has(a.muscle)) // never tell a specialization user to "add" to a deliberately-held muscle
-    .filter((a) => !(secServedIds.has(a.muscle) && a.signal === "add")) // ...nor "add sets" to a muscle the plan serves by compound credit (over-MRV honesty still passes)
-    .filter((a) => !(easedIds.has(a.muscle) && a.signal === "add")) // ...nor to a muscle the block deliberately caps at MEV — the cap IS the plan (over-MRV still passes)
+    .filter((a) => !(secServedIds.has(a.muscle) && (a.signal === "add" || a.signal === "complete"))) // ...nor "add sets" (or "before adding more") to a muscle the plan serves by compound credit (over-MRV honesty still passes)
+    .filter((a) => !(easedIds.has(a.muscle) && (a.signal === "add" || a.signal === "complete"))) // ...nor to a muscle the block deliberately caps at MEV — the cap IS the plan (over-MRV still passes)
     .map((a) => {
       // An "add" the tune will NOT act on must say so — the card's promise ("I'm
       // adding sets there next block") was false under the recovery/fuel gate and

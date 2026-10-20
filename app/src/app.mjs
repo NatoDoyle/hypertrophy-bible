@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, stalledExerciseIds, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, swapStalls, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -399,15 +399,17 @@ export function createApp(store, config = {}) {
       // A plateaued lift is plateaued regardless of a settings edit — regenerating
       // WITHOUT the stalled set un-demoted every swapped lift mid-block (lesson 59's
       // recorded remainder: the units door got its own path; this route never got
-      // the fix). Recency-filtered, so a long-idle stall never re-triggers.
-      const stalledExercises = stalledExerciseIds(priorSessions, u.custom_exercises || [], nowISO);
+      // the fix). Recency-filtered, so a long-idle stall never re-triggers — and through the
+      // boundary's own door, so a lift the completion gate spared stays (W282 review: a units
+      // save right after a boundary swapped out every lift the boundary had just kept).
+      const stalledExercises = swapStalls(u, priorSessions, nowISO);
       const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises, ...(specSpent ? { specSpent: true } : {}) });
       // A cosmetic save is not amnesia: every mid-block stamp survives it. A REAL
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles"]
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -599,7 +601,7 @@ export function createApp(store, config = {}) {
     const clientDay = dq && /^\d{4}-\d{2}-\d{2}$/.test(dq) ? dq : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10));
     const ctx = await todayContext(b.user_id, clientDay);
     // A lift the user has plateaued on is demoted exactly as every rebuild demotes it.
-    const stalled = stalledExerciseIds(ctx.sessions, user.custom_exercises || [], nowISO);
+    const stalled = swapStalls(user, ctx.sessions, nowISO);
 
     // Today's best replacement for X in the live session (today-only swaps, and the live
     // half of a permanent swap whose plan side changed nothing for today).
@@ -705,7 +707,7 @@ export function createApp(store, config = {}) {
     const X = c.req.param("id");
     const live = (c.req.query("live") ?? "").split(",").filter(Boolean).slice(0, 30);
     const exclude = (c.req.query("exclude") ?? "").split(",").filter(Boolean).slice(0, 30); // swapped away earlier today
-    const stalled = stalledExerciseIds(await store.listSessions(id), user.custom_exercises || [], new Date().toISOString());
+    const stalled = swapStalls(user, await store.listSessions(id), new Date().toISOString());
     const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today", exclude })
       .filter((s) => s.fits).slice(0, 12);
     return c.json({ alternatives: list.map((s) => {
@@ -871,7 +873,7 @@ export function createApp(store, config = {}) {
           // consideration #1 — completion), and the genuinely plateaued lifts demoted for a
           // different angle. Decided by coach.mjs blockTuneDecision on the FRESH copy, the
           // same function the post-workout read-out forecasts with (Burst 2).
-          const { volumeAdjust, tuned: tunedThisBlock, stalledExercises } = blockTuneDecision(u, sessions, { checkins, bodyweights }, nowISO);
+          const { volumeAdjust, tuned: tunedThisBlock, stalledExercises, spared } = blockTuneDecision(u, sessions, { checkins, bodyweights }, nowISO);
           const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
           // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
           // one accessible lift re-picks the same one. The coach note says "I've
@@ -888,6 +890,9 @@ export function createApp(store, config = {}) {
             rotated_at: nowISO, // buildToday shows "new block" once (until a session is logged under it)
             volume_adjust: volumeAdjust, // the running adaptive tune, carried forward
             tuned_this_block: tunedThisBlock, // what changed THIS block, for the coach note
+            // The muscles this boundary spared from swaps (not getting their planned sets): the
+            // block's verdict, reused by every rebuild in it (coach swapStalls, W282 review).
+            spared_muscles: { block: blockIndex, muscles: spared },
           };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
@@ -1735,19 +1740,16 @@ export function createApp(store, config = {}) {
         });
       }
     } catch { /* the echo is optional; the logged session is not */ }
-    // The coaching read-out (W282): what this workout MEANS — next time per lift (a promise the
-    // next /api/today keeps), this block, the next. Only for the user's LATEST workout: a
-    // backfilled older one would be read against a context that has moved on. Best-effort
-    // like the echo above — a read-out must never fail the save the user is waiting on.
-    let readout = null;
-    try { readout = await readoutFor(id, user, all, session); } catch { /* optional */ }
-    return c.json({ ...sessionRecap(user, all, session, user.custom_exercises || []), readout });
+    // The coaching read-out (W282) is NOT computed here: it costs as much again as the save, a
+    // CPU-limit kill can't be caught, and a replayed offline save would pay it again for a body
+    // nobody reads. The client asks /api/session/recap once the save has landed (W282 review).
+    return c.json(sessionRecap(user, all, session, user.custom_exercises || []));
   });
 
-  // The read-out's OFFLINE door (W282): a workout saved while offline syncs later, and its
-  // read-out is fetched here once it does (and from History for the latest workout). Answers
-  // only for the LATEST workout — an older one gets { past: true }, never a read-out computed
-  // against a context that has moved on.
+  // The read-out's door (W282): the recap asks here right after a save lands; a workout saved
+  // offline asks once it syncs; History asks for the latest workout. Answers only for the
+  // LATEST workout — an older one gets { past: true }, never a read-out computed against a
+  // context that has moved on.
   app.post("/api/session/recap", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1 → guard at the door

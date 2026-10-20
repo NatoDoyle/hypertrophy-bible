@@ -161,6 +161,13 @@ doesn't finish them?"* Measured against the code, not assumed:
 - **"Most weeks" needs most weeks.** No verdict on fewer than 3 finished trained weeks, and the
   week in progress is never judged (it's partial by definition). Without that, a first workout
   was told "most weeks you get 19% of your sets" (caught by the W282 walkthrough).
+- **Only the current plan's weeks count.** The sample starts at the week the block started, and
+  every real training change resets it. Otherwise a lifter who did every set of a 3-day plan and
+  rebuilt to 5 days was told they skip most of their sets (W282 review).
+- **The boundary's verdict is the block's.** The muscles it spares are stored with the block
+  (`plan_meta.spared_muscles`). Every rebuild in that block (a Settings save, a permanent swap,
+  the substitute ranking) spares the same lifts through one door (`swapStalls`). A units-only save
+  right after a boundary used to swap out every lift the boundary had just kept (W282 review).
 
 ## 5. Experience gating and graduation
 
@@ -211,10 +218,13 @@ holds — shown under the weight on a lift's first set since Burst 1), the block
 deload notes), the plateau card (deload-brought-forward / push-harder / adding-sets /
 **held-for-recovery** since Wave 258 / **not-a-plateau** for missing work since W282a), the
 **post-workout read-out** (W282: what happened, from the workout itself, works offline; what it
-means, from the server: today's aim, each lift's next weight — exactly what the next session
-serves, pinned by a promise test — this block, and from week 4 what the boundary would decide if
-it came today; a queued workout's read-out reaches Today once it syncs, and History offers it for
-the latest workout), the reduce card (over-ceiling),
+means, from its own door after the save lands. That covers today's aim and each lift's next
+weight. The weight is computed for the week that lift's next session falls in: committed days
+left, or days per week minus days already trained. It's exactly what that session serves, pinned
+by a promise test that checks next-week weights a week later. No weight is promised into a new
+block. Then this block, and from week 4 what the boundary would decide if it came today. Block
+lines show only while the workout is still this week. A queued workout's read-out reaches Today
+once it syncs, and History offers it for the latest workout), the reduce card (over-ceiling),
 the regression card, the new-block coach note (rotation, tune deltas **and holds**, real swaps),
 the plan screen's per-muscle reasons ("adaptive: +2 sets from your logged response"), and the
 graduation note. Computed-but-unsurfaced signals are tracked deliberately: `readinessIndex`,

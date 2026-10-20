@@ -332,7 +332,7 @@ export function localReadout(targets, logged) {
       easyDay, rir: avg == null ? null : Math.round(avg * 10) / 10, band: t?.rir ?? null,
     };
   }).filter((l) => l.done > 0 || (l.planned ?? 0) > 0);
-  return { lifts, planned: lifts.reduce((a, l) => a + (l.planned ?? l.done), 0), done: lifts.reduce((a, l) => a + l.done, 0) };
+  return { lifts, planned: lifts.reduce((a, l) => a + (l.planned ?? l.done), 0), done: lifts.reduce((a, l) => a + l.done, 0), hasPlan: tgs.length > 0 };
 }
 
 // The PRE-FILLED weight for a lift, in its display unit (Burst 1 review). Plate rounding

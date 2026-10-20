@@ -418,6 +418,13 @@ check("#readout-copy under the range, and effort off the band, are worth a look 
   assert.equal(r.headline, "Every set done — 2 lifts came in under their range, and next time is set up for that.");
   assert.deepEqual(r.watch, ["Bench Press: 2 of 3 sets under the 8–12 range.", "Row: about 5 reps left in the tank — the plan asked for 1–3.", "Curl: taken to failure — the plan wanted 1–3 in reserve."]);
 });
+check("#readout-copy a workout with no saved plan claims nothing about a plan — no 'in its range', no 'planned sets'", () => {
+  const noPlan = { planned: 4, done: 4, hasPlan: false, lifts: [L("a", { planned: null, min: null, max: null, done: 3 }), L("b", { planned: null, min: null, max: null, done: 1 })] };
+  const r = readoutLists(noPlan, { nameOf: nm });
+  assert.equal(r.headline, "4 sets logged — every one of them counts.");
+  assert.deepEqual([r.went_well, r.watch], [[], []]);
+  assert.doesNotMatch(JSON.stringify(r), /range|planned|plan wanted/);
+});
 check("#readout-copy an easy (deload) day is a win in itself; a beginner sees only the headline", () => {
   assert.equal(readoutLists({ planned: 4, done: 4, lifts: [L("a", { easyDay: true }), L("b", { easyDay: true })] }, { nameOf: nm }).headline, "Easy day done — recovery is part of the plan.");
   const b = readoutLists({ planned: 9, done: 9, lifts: [L("a", { under: 2 })] }, { nameOf: nm, beginner: true });
@@ -451,6 +458,17 @@ check("read-out wiring (W282): finish reads what happened BEFORE dropping the se
   assert.match(fnBody(appJs, "async function flushQueueOnce() {", 5000), /if \(item\.path === "\/api\/session"\) markReadoutReady\(parsed\.session_id\)/);
   assert.match(appJs, /\$\{dailyHub\}\$\{readoutReadyCard\}/);
   assert.match(appJs, /id="hd-readout"/);
+});
+check("read-out wiring (W282 review): the save stays lean — the recap shows at once and fills in the read-out from its door", () => {
+  const fin = fnBody(appJs, "async function finish() {", 6000);
+  assert.match(fin, /if \(res\.ok\) \{[^}]*clearPendingReadout\(\)/, "an online save retires an older pending read-out");
+  assert.match(fin, /fillReadout\(session_id/, "the read-out is fetched after the save, not computed in it");
+  assert.match(fnBody(appJs, "async function fillReadout(", 2000), /fetchReadout\(sessionId\)/);
+});
+check("read-out wiring (W282 review): a door that says 'past' or errors is explained, and a workout whose date needs fixing has no Read-out", () => {
+  assert.match(fnBody(appJs, "async function fetchReadout(", 600), /r\?\.error/);
+  assert.match(fnBody(appJs, 'if ($("#ro-open")) $("#ro-open").onclick', 1500), /r\.past/);
+  assert.match(appJs, /voided \|\| sess\.time_quarantine\s*\?/);
 });
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
   assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);

@@ -949,9 +949,11 @@ check("#local-readout a planned lift with no sets at all is listed (0 of N) — 
   assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned]), [["a", 1, 3], ["b", 0, 3]]);
   assert.deepStrictEqual([r.planned, r.done], [6, 1]);
 });
-check("#local-readout an OLD workout without targets still reads (no plan, no grades)", () => {
+check("#local-readout an OLD workout without targets still reads (no plan, no grades) — and says it had none", () => {
   const r = localReadout(undefined, [ws("a", 50, 10), ws("a", 50, 9)]);
   assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned, l.top, l.under]), [["a", 2, null, false, 0]]);
+  assert.strictEqual(r.hasPlan, false);
+  assert.strictEqual(localReadout([tg("a", 2)], [ws("a", 50, 10)]).hasPlan, true);
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

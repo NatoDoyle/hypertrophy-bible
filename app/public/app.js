@@ -1633,10 +1633,12 @@ async function renderToday() {
     const p = getPendingReadout();
     const r = p ? await fetchReadout(p.session_id) : null;
     if (stale()) return;
-    if (!r) { alertBar("📴 Couldn't load the read-out — try again in a moment."); return; }
+    if (!r || r.error) { alertBar("📴 Couldn't load the read-out — try again in a moment."); return; }
     clearPendingReadout();
-    if (!r.readout) { $("#ro-ready")?.remove(); return; } // a newer workout has moved things on
-    renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: r.readout, names: p.names, beginner: p.beginner }), back: () => { tab = "today"; render(); } });
+    const back = () => { tab = "today"; render(); };
+    // A newer workout has moved things on: what happened still stands, said with the reason.
+    if (r.past) { renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: null, names: p.names, beginner: p.beginner }) + `<p class="muted">You've logged a newer workout since this one synced — what it means for your next sessions is on that one's read-out.</p>`, back }); return; }
+    renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: r.readout, names: p.names, beginner: p.beginner }), back });
   };
   if ($("#fit-rebuild")) $("#fit-rebuild").onclick = async () => {
     // One rebuild per tap (a second would be a second fresh block), and no "Keep" racing it
@@ -2951,7 +2953,21 @@ async function finish() {
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
+  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner, loading: true } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
+  // What it MEANS is asked of the read-out's own door once the save has landed — never computed
+  // on the save path (W282 review) — and this newer workout's recap retires any older pending one.
+  if (res.ok) { clearPendingReadout(); fillReadout(session_id, { local, names, beginner }); }
+}
+// Fill the recap's card in place once the read-out arrives (if it's still on screen); a failure
+// leaves "what happened" standing with a truthful note.
+async function fillReadout(sessionId, { local, names, beginner }) {
+  const r = await fetchReadout(sessionId);
+  const card = $("#readout");
+  if (!card || card.dataset.session !== sessionId) return; // the user has moved on
+  if (r?.readout) { card.outerHTML = readoutCardHtml({ local, ro: r.readout, names, beginner, sessionId }); return; }
+  const note = $("#ro-loading");
+  if (note) note.textContent = r?.past ? "A newer workout has been logged since — its read-out is the one that counts now."
+    : "📴 Couldn't load what this means for your next sessions — it's under History → this workout → Read-out.";
 }
 // THE READ-OUT (W282, owner: "what was the objective, did we hit the targets, what went well,
 // what didn't, and how this affects the following workouts, this block and the next"). What
@@ -2959,7 +2975,7 @@ async function finish() {
 // it MEANS comes from the server (objective, next time per lift, this block, the next). Each
 // "next time" weight is shown exactly as the set screen will pre-fill it next session
 // (prefillInUnit + noteInUnit — the same functions), so the promise holds on screen too.
-function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = false }) {
+function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = false, loading = false, sessionId = "" }) {
   if (!local && !ro) return "";
   const nameOf = (id) => names[id] ?? ro?.next?.find((n) => n.exercise === id)?.name ?? exName(id);
   const isBeginner = ro?.beginner ?? beginner;
@@ -2983,7 +2999,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const nx = nextByEx[l.exercise];
     return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
-  return `<div class="card readout" id="readout"><b>${esc(lists.headline)}</b>
+  return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}
     ${section("✅ Went well", lists.went_well)}
     ${section("👀 Worth a look", lists.watch)}
@@ -2992,6 +3008,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     ${section("🔭 If your block ended today", ro?.next_block)}
     ${ro?.bodyweight ? `<p class="muted" style="margin:10px 0 0">⚖️ ${esc(ro.bodyweight)}</p>` : ""}
     ${!ro && queued ? `<p class="muted" style="margin:10px 0 0">📴 Next time and your block read-out arrive once this syncs — I'll put them on Today.</p>` : ""}
+    ${!ro && loading ? `<p class="muted" id="ro-loading" style="margin:10px 0 0">Reading what this means for your next sessions…</p>` : ""}
     ${breakdown}</div>`;
 }
 // The read-out on its own screen: the offline door (Today) and History (W282).
@@ -2999,8 +3016,14 @@ function renderReadoutView({ title, card, back, backLabel = "Done" }) {
   app.innerHTML = `<h1>${esc(title)}</h1>${card}<button class="btn" id="ro-back">${esc(backLabel)}</button>`;
   $("#ro-back").onclick = back;
 }
+// { readout } | { past: true } | { error } | null (offline). api() doesn't throw on a 4xx, so an
+// error reply is named, never mistaken for an answer with nothing in it (W282 review).
 async function fetchReadout(sessionId) {
-  try { return await api("/api/session/recap", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId }) }); } catch { return null; }
+  try {
+    const r = await api("/api/session/recap", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sessionId }) });
+    if (r?.error) return { error: r.error };
+    return r;
+  } catch { return null; }
 }
 function renderRecap(recap) {
   // Weight deltas need finer rounding than plate-rounding (a +1 kg PR is 2.2 lb, not 0).
@@ -3019,7 +3042,7 @@ function renderRecap(recap) {
         <b>New personal record${prWins.length > 1 ? "s" : ""}!</b>${recap.pr_xp ? ` <span style="color:var(--accent);font-weight:700">+${recap.pr_xp} XP</span>` : ""}
         ${prWins.map((w) => `<p class="muted" style="margin:6px 0">${winHtml(w)}</p>`).join("")}</div>`
     : "";
-  const readout = readoutCardHtml({ local: recap.local, ro: recap.readout, names: recap.names, beginner: recap.beginner, queued: recap.queued });
+  const readout = readoutCardHtml({ local: recap.local, ro: recap.readout, names: recap.names, beginner: recap.beginner, queued: recap.queued, loading: recap.loading, sessionId: recap.session_id });
   // The generic "✅ Session logged…" fallback says nothing the read-out doesn't.
   const wins = otherWins.filter((w) => !(readout && /^✅ Session logged/.test(w))).map((w) => `<div class="win">${winHtml(w)}</div>`).join("");
   const nudge = !localStorage.getItem("hb_email")
@@ -3489,10 +3512,10 @@ async function renderHistory() {
       <p class="muted">${esc(formatHistoryDate(sess))} · ${sessionVolume(sess)} working set${sessionVolume(sess) === 1 ? "" : "s"}${voided ? ' · <span class="chip">taken back</span>' : ""}${sess.edited_at && !voided ? ' · <span class="chip">edited</span>' : ""}</p>
       <div class="card">${exRows || `<p class="muted">No sets on this workout.</p>`}</div>
       ${anyMarks ? `<p class="muted" style="font-size:.85rem">@N = reps left in the tank · ᵂ warm-up · ᴰ deload — neither counts toward your trends.</p>` : ""}
+      ${voided || sess.time_quarantine ? "" : `<button class="btn ghost inline" id="hd-readout">📋 Read-out</button>`}
       ${voided
         ? `<button class="btn ghost inline" data-unvoid="${esc(sess.session_id)}">↩︎ Put it back</button>`
-        : `<button class="btn ghost inline" id="hd-readout">📋 Read-out</button>
-           <button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
+        : `<button class="btn ghost inline" data-edit="${esc(sess.session_id)}">✏️ Fix the numbers</button>
            <button class="btn ghost inline" data-void="${esc(sess.session_id)}">🚫 This didn't happen</button>`}
       <button class="btn ghost" id="hd-back">‹ Back to history</button>`;
     $("#hd-back").onclick = () => { historyDetail = null; renderHistory(); };
@@ -3502,7 +3525,9 @@ async function renderHistory() {
       const r = await fetchReadout(sess.session_id);
       const names = Object.fromEntries((sess.sets ?? []).map((x) => [x.exercise, x.name || x.exercise]));
       const card = readoutCardHtml({ local: localReadout(sess.targets, sess.sets), ro: r?.readout ?? null, names })
-        + (r?.past ? `<p class="muted">What it meant for your next sessions is shown for your latest workout — this one's context has moved on.</p>` : !r ? `<p class="muted">📴 Offline — showing what happened; what it means loads when you reconnect.</p>` : "");
+        + (r?.past ? `<p class="muted">What it meant for your next sessions is shown for your latest workout — this one's context has moved on.</p>`
+          : r?.error ? `<p class="muted">Showing what happened — what it means isn't available for this workout.</p>`
+          : !r ? `<p class="muted">📴 Offline — showing what happened; what it means loads when you reconnect.</p>` : "");
       renderReadoutView({ title: sess.session_name || "Workout", card, back: () => renderHistory(), backLabel: "‹ Back to this workout" });
     };
     app.querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => { historyDetail = null; historyEdit = b.dataset.edit; renderHistory(); });
