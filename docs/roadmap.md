@@ -6,8 +6,8 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-10-20** (Bursts 1–3, W279–W284b: four owner requests and two
-considerations, built, each burst reviewed by four finder lenses with every finding verified inline.
+Grounded assessment date: **2026-10-20** (Bursts 1–4, W279–W287b: four owner requests and three
+considerations, built, each burst reviewed by finder lenses with every finding verified inline.
 - **The engine reacts to what happened.** The weight eases when your first set falls clearly short;
   the player suggests a better next-set weight; a skipped set (now one tap, with Undo) holds the
   weight increase until a full session shows it; and the engine anchors on the heaviest weight
@@ -23,9 +23,23 @@ considerations, built, each burst reviewed by four finder lenses with every find
   they need HRV/sleep-hours data the app never collects.
 Lessons 79–88.
 
-**Named next pulls:** device notifications (consideration #2 — measured: one reminder exists, its
-switch sits 2.3 screens down Me, iPhone only in the Home-Screen app, and nothing alerts at rest-end
-on a locked phone; the owner decides the infrastructure); the desktop multi-column layer.)
+- **Burst 4 — notifications you can find (W285–W287b, consideration #2).** The owner chose:
+  - a locked-phone rest alert, from a per-user Durable Object;
+  - reminders at times the user picks, from a 5-minute cron: training days, a morning weigh-in,
+    an evening food log;
+  - turning them on from a one-time invite after a workout and a Today link, with Me's controls
+    moved to its top.
+
+  Its review fixed the iPhone failure modes (lesson 90) and a reload stranding the alarm. It also
+  fixed the email-only freeze email lost to the new cadence (lesson 89) and same-day re-fires
+  (lesson 93). Considerations are now empty. Lessons 89–93.
+
+**Named next pulls:**
+- The desktop multi-column layer.
+- Recorded:
+  - Reminders keyed to the user's IANA timezone, not the stored offset. Until then, a morning
+    reminder can be an hour off on a DST morning until the app is opened.
+  - A real-iPhone check of rest alerts (the owner's device).)
 
 The prior grounding (**2026-10-19**, Wave 278: W277's owner decision, built. W277's
 week strip made a mismatch visible: a plan built for N workouts, trained on M committed
