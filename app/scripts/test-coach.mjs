@@ -1733,6 +1733,10 @@ check("#readout a workout from an earlier week: 'next time' still holds, but thi
 });
 
 // --- W284: Nerd Mode — the numbers behind Progress, from the SAME derivations (no second calc).
+check("#estimate a barbell lift's body-scaled first guess never goes below the empty bar (the Jefferson curl at 80 kg was 7.5)", () => {
+  assert.equal(estimateStartingWeight(exerciseById.get("jefferson-curl"), 80, "jefferson-curl"), 20);
+  assert.ok(estimateStartingWeight(exerciseById.get("barbell-bench-press"), 80, "barbell-bench-press") > 20, "heavier guesses are untouched");
+});
 check("#nerd volume vs landmarks (labelled estimates), the plan's numbers, the tune's sample and its adjustment, per muscle", () => {
   const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `n${i}`, 12));
   const u = { ...roUser("intermediate", 45), plan_rationale: { volume_by_muscle: { chest: { projected_sets: 12, target_sets: 12 } } }, plan_meta: { block_start: roDay(45), block_index: 0, volume_adjust: { chest: 2 } } };

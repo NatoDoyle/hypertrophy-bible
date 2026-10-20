@@ -7,7 +7,7 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
-import { isSpecializing, generateUserPlan } from "./planner.mjs";
+import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -112,7 +112,43 @@ export function estimateStartingWeight(e, bodyweightKg, exId, byId = exerciseByI
   if (ratio == null || eqScale == null) return null;
   const inc = loadIncrement(exId, byId);
   const rounded = Math.floor((bodyweightKg * ratio * eqScale) / inc) * inc;
+  // A barbell can't weigh less than the bar (W283 review: the barbell Jefferson curl's guess was
+  // 7.5 kg at 80 kg bodyweight) — the empty bar is the first guess, as its own steps say.
+  if (e.equipment === "barbell") return Math.max(rounded, EMPTY_BAR_KG);
   return rounded > 0 ? rounded : inc;
+}
+const EMPTY_BAR_KG = 20;
+
+// THE STORED-PLAN SCREEN (W283 review). A plan is generated against the rules of its day; a rule
+// can tighten afterwards (W283 excluded the Jefferson curl for a lower back) or an exercise can
+// change kit (it became a barbell lift). Every lift the user's CURRENT pool rejects — injuries,
+// equipment, lifts marked unavailable (their own custom exercises are always theirs) — is swapped
+// through the permanent-swap door (applySubstitution), on a generated plan and a hand-built one
+// alike: an injury the user reported outranks a hand edit. Null when nothing needs it; a lift
+// with no fitting replacement stays, reported in `kept`.
+export function screenPlan(user, sessions, nowISO) {
+  const program = user.program;
+  if (!program?.sessions?.length) return null;
+  const pool = new Set(userExercises(user.profile, user.custom_exercises || []).map((e) => e.id));
+  const out = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))].filter((id) => !pool.has(id));
+  if (!out.length) return null;
+  const stalled = swapStalls(user, sessions, nowISO);
+  let cur = user;
+  const swaps = [], kept = [];
+  for (const id of out) {
+    const r = userApplySubstitution(cur, id, { stalled });
+    if (r.error) { kept.push(id); continue; }
+    cur = { ...cur, program: r.program, plan_rationale: r.rationale };
+    const region = injuryRegionFor(user.profile, id);
+    swaps.push({ from: id, to: r.replaced_by ?? null, reason: region ? "injury" : "equipment", ...(region ? { region } : {}) });
+  }
+  return { program: cur.program, rationale: cur.plan_rationale, swaps, kept };
+}
+// The screen's one-time word on Today (until a session is logged after it).
+function swapNoteFor(swaps, name) {
+  return swaps.map((w) => `I swapped your ${name(w.from)} for ${w.to ? name(w.to) : "another lift"} — ${w.reason === "injury"
+    ? `it's one of the lifts I keep away from your ${String(w.region).replace(/-/g, " ")}`
+    : "it needs equipment that isn't in your kit"}.`).join(" ");
 }
 
 // Double progression: hit the top of the range on every set last time -> add load;
@@ -710,6 +746,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // there would be invisible to exactly the person coming back from a gap).
   // Bounded below COMEBACK_GAP_DAYS: at >=12 days the comeback branch above owns
   // the card and eases the weights; here nothing changed and the copy says so.
+  // The stored-plan screen's word (W283 review), said until a session is logged after it.
+  const screened = user.plan_meta?.screen_swaps;
+  const swap_note = screened?.swaps?.length && !sessions.some((s) => s.date && s.date > screened.at) ? swapNoteFor(screened.swaps, name) : null;
   const gap_note = !neverTrained && layoffDays >= gentleGapDays(user.profile?.days_per_week) && layoffDays < COMEBACK_GAP_DAYS
     ? `It's been ${layoffDays} days — no problem. Your plan doesn't punish a gap: today's workout simply moved with you, nothing was skipped or lost, and your weights are unchanged.`
     : null;
@@ -824,7 +863,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // own signal, carried explicitly so no consumer re-derives it from the filter.
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note,
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app

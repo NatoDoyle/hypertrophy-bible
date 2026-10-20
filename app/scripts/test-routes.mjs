@@ -1225,7 +1225,41 @@ try {
       return (await (await app.request("/api/exercises", { headers: { "X-HB-User": uid } })).json()).some((e) => e.id === "jefferson-curl");
     };
     ok("W283 a moderate low-back injury: the editor's pickers never offer it", !(await offered("moderate")));
-    ok("W283 …a mild one: they do", await offered("mild"));
+    ok("W283 …nor a mild one (excluded at any severity — W283 review)", !(await offered("mild")));
+    // THE STORED-PLAN SCREEN (W283 review): plans generated before a rule tightened (or before an
+    // exercise changed kit) still hold the lift. /api/today swaps it out — generated or hand-built
+    // alike, since an injury the user reported outranks a hand edit — and says so once.
+    const seeded = async (profileExtra, custom) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, ...profileExtra } })).data.user_id;
+      await store.updateUser(uid, (u) => {
+        const s0 = u.program.sessions[0];
+        s0.exercises = [...s0.exercises.slice(0, -1), { exercise: "jefferson-curl", sets: 3, rep_range: "10-15", rir: "2-3" }];
+        if (custom) u.program = { ...u.program, custom: true };
+        return u;
+      });
+      const today = (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session;
+      const held = (await store.getUser(uid)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === "jefferson-curl"));
+      return { today, held };
+    };
+    const lb = await seeded({ injuries: [{ region: "lower-back", severity: "moderate" }] }, false);
+    ok("W283 a plan stored before the caution is screened: the Jefferson curl is swapped out, and Today says why once",
+      !lb.held && /Jefferson Curl/.test(lb.today.swap_note ?? "") && /lower back/.test(lb.today.swap_note ?? ""), JSON.stringify({ held: lb.held, note: lb.today.swap_note }));
+    const lbCustom = await seeded({ injuries: [{ region: "lower-back", severity: "mild" }] }, true);
+    ok("W283 …a hand-built plan too: a reported injury outranks a hand edit", !lbCustom.held && /lower back/.test(lbCustom.today.swap_note ?? ""), JSON.stringify(lbCustom.today.swap_note));
+    const db = await seeded({ available_equipment: ["dumbbell", "bodyweight"] }, false);
+    ok("W283 …and a dumbbell-only plan that now holds a barbell lift", !db.held && /barbell|equipment|kit/i.test(db.today.swap_note ?? ""), JSON.stringify(db.today.swap_note));
+    // An injury reported on a HAND-BUILT plan swaps the newly contraindicated lifts (the client's
+    // "I'll keep … out of your plan" is now true for both kinds of plan), and says what it did.
+    const hb = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym } })).data.user_id;
+    await store.updateUser(hb, (u) => { const s0 = u.program.sessions[0]; s0.exercises = [...s0.exercises.slice(0, -1), { exercise: "jefferson-curl", sets: 3, rep_range: "10-15", rir: "2-3" }]; u.program = { ...u.program, custom: true }; return u; });
+    const rep = await json("POST", "/api/profile/injury", { user_id: hb, region: "lower-back", severity: "moderate" });
+    ok("W283 an injury report on a hand-built plan swaps out what it now rules out, and the reply names it",
+      rep.status === 200 && (rep.data?.swapped ?? []).some((x) => x.from === "jefferson-curl") && !(await store.getUser(hb)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === "jefferson-curl")), JSON.stringify(rep.data));
+    // A plan saved by hand with a lift the user's injury rules out is saved (it's theirs) but flagged.
+    const sv = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, injuries: [{ region: "lower-back", severity: "moderate" }] } })).data.user_id;
+    const svProg = (await store.getUser(sv)).program;
+    const saved = await json("POST", "/api/plan/save", { user_id: sv, program: { name: svProg.name, sessions: svProg.sessions.map((x, i) => (i === 0 ? { ...x, exercises: [...x.exercises, { exercise: "jefferson-curl", sets: 2, rep_range: "10-15" }] } : x)) } });
+    ok("W283 a hand-saved plan holding a lift your injury rules out is flagged in its critique", saved.status === 200 && (saved.data?.critique?.findings ?? []).some((f) => f.severity === "warn" && /Jefferson Curl/.test(f.msg) && /lower back/.test(f.msg)), JSON.stringify(saved.data?.critique?.findings));
     // The Add-exercise warning promises what a hand-built plan KEEPS: its weights and the 6-week
     // build-and-deload wave (only the block-boundary automation stops). Pinned through the routes.
     const cu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym } })).data.user_id;

@@ -379,6 +379,15 @@ function loadableOnly(rankedCompounds) {
   return loadable.length ? loadable : rankedCompounds;
 }
 
+// The injury region whose rule keeps `ex` out (null when none does) — what contraExcluded
+// decides, named, so a swap can say WHY a lift left ("your lower back").
+export function contraRegion(ex, injuries, contraindications) {
+  if (!injuries?.length || !contraindications) return null;
+  const regions = contraindications.regions ?? contraindications;
+  for (const inj of injuries) if (contraExcluded(ex, [inj], { regions })) return inj.region;
+  return null;
+}
+
 function contraExcluded(ex, injuries, contraindications) {
   if (!injuries?.length || !contraindications) return false;
   const regions = contraindications.regions ?? contraindications;

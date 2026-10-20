@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hypertrophy-bible.dev/schemas/injury-contraindications.json",
+  "title": "Injury contraindications",
+  "description": "Per injury region, the movement patterns and named exercises the plan engine keeps away (exclude_* at any severity; caution_* at moderate/severe). Strict on purpose (W283 review): a misspelled key would otherwise switch a safety rule off without a sound.",
+  "type": "object",
+  "required": ["regions"],
+  "additionalProperties": false,
+  "properties": {
+    "$comment": { "type": "string" },
+    "regions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "patterns": { "type": "array", "uniqueItems": true, "items": { "$ref": "https://hypertrophy-bible.dev/schemas/exercise.json#/properties/movement_pattern" } },
+    "ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exclude_patterns", "caution_patterns", "note", "evidence_grade"],
+      "properties": {
+        "exclude_patterns": { "$ref": "#/$defs/patterns" },
+        "caution_patterns": { "$ref": "#/$defs/patterns" },
+        "exclude_exercises": { "$ref": "#/$defs/ids" },
+        "caution_exercises": { "$ref": "#/$defs/ids" },
+        "exclude_muscles": { "$ref": "#/$defs/ids" },
+        "note": { "type": "string", "minLength": 1 },
+        "evidence_grade": { "enum": ["A", "B", "C", "D"] }
+      }
+    }
+  }
+}

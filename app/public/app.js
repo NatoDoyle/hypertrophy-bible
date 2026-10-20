@@ -1176,7 +1176,7 @@ function drawEdit(critique) {
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Edit &amp; review</h1>
-    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan stops rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping up when you graduate. Your weights and your 6-week build-and-deload wave carry on. Rebuild from Settings any time to hand the wheel back.</p>
+    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan stops rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping up when you graduate. Your weights, your 6-week build-and-deload wave, and swapping out any lift an injury you report rules out all carry on. Rebuild from Settings any time to hand the wheel back.</p>
     ${crit}${sessions}
     <button class="btn" id="savePlan">Save &amp; re-check</button>
     <button class="btn ghost" id="backPlan">Back</button>`;
@@ -1223,7 +1223,7 @@ function renderAddExercise(si) {
     .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("")
     || `<p class="muted" style="padding:8px 0">Nothing matches — try a muscle ("chest") or equipment ("cable").</p>`;
   // A fair warning before a generated plan becomes hand-built (W283): what changes, and what doesn't.
-  const customNote = !editState.custom ? `<p class="muted" style="margin:0 0 8px">Adding a lift makes this plan your own once you save: I'll keep suggesting your weights and running your 6-week build-and-deload wave, but I'll stop rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping the plan up when you graduate. Rebuild from Settings any time to hand the wheel back.</p>` : "";
+  const customNote = !editState.custom ? `<p class="muted" style="margin:0 0 8px">Adding a lift makes this plan your own once you save: I'll keep suggesting your weights, running your 6-week build-and-deload wave and swapping out any lift an injury you report rules out, but I'll stop rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping the plan up when you graduate. Rebuild from Settings any time to hand the wheel back.</p>` : "";
   app.innerHTML = `<h1>Add exercise</h1>${customNote}
     <input id="ex-filter" type="search" placeholder="Search by name, muscle or equipment…" aria-label="Search exercises"
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
@@ -1621,7 +1621,9 @@ async function renderToday() {
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
+  const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -2882,7 +2884,11 @@ async function renderCantDo() {
       lock("Saving…");
       let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return stillHere() ? offline() : undefined; }
       if (!stillHere()) return;
-      pickList(res.error ? "Couldn't save that — pick a replacement for today instead." : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan. For today:`);
+      // True for both kinds of plan now (W283 review): a generated plan is rebuilt, a hand-built one
+      // has the newly ruled-out lifts swapped. A lift with no safe replacement is named, not hidden.
+      const keptNames = (res.kept ?? []).map((k) => k.name);
+      pickList(res.error ? "Couldn't save that — pick a replacement for today instead."
+        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`);
     });
   };
 }
