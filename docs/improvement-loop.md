@@ -1205,6 +1205,33 @@ These are real failures from previous iterations. Each is now a standing check.
    in coarser units, compare it with the unchanged value in the same units. If they're
    equal, show the next grain in the intended direction (`hintInUnit` / `prefillInUnit`),
    or don't claim a change.
+82. **A promise has a WHEN, and its test must stand at that time.** The read-out's "next time"
+   weights passed a promise test that compared them with `/api/today` at the instant they were
+   made. But the next session usually comes days later, often in the next training week. There,
+   week 5's "add 2.5 kg" met week 6's deload, and a deload week's weights met a new block. Three
+   of four review lenses found it independently. → **Standing rule:** when a value promises
+   something about a later moment, compute it in that moment's context. Test it by advancing
+   time (move the fixture's dates back) to when the promise falls due. If you can't know when,
+   promise only what holds either way, or nothing.
+83. **A verdict made against a reference must be stored, not re-derived after the reference
+   moves.** The block boundary judged "not getting its planned sets" against the plan those
+   weeks were trained on. A Settings save minutes later re-judged the same weeks against the
+   *new* block's plan. An abs accessory flipped verdict, and the plan quietly swapped a lift.
+   → **Standing rule:** when a decision's inputs include something the decision itself changes
+   (here the plan), store the decision with its scope (`spared_muscles {block}`). Let later
+   readers reuse it within that scope. Re-derive only at the next decision point.
+84. **An enrichment never rides the critical write.** The read-out shipped inside the
+   `/api/session` response. That doubled the save's CPU on Workers, where a CPU-limit kill
+   can't be caught and a failed save queues offline. Every queued replay would also have paid
+   for a read-out nobody would see. → **Standing rule:** the critical write does what it did
+   before. Optional insight gets its own door, fetched after the write lands, and its failure
+   leaves the write's result standing.
+85. **A rate needs finished periods.** "Most weeks you get 19% of your sets" was said to a first
+   workout. The completion test averaged a week still in progress, which is partial by
+   definition, on no other evidence. → **Standing rule:** a per-period rate excludes the
+   period in progress. It also needs a minimum number of finished periods before it may speak
+   (here 3 weeks), and counts only periods under the current reference (weeks since the block
+   started).
 
 ## Token discipline (the loop must be affordable to keep running)
 
