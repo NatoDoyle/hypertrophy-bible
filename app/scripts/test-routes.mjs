@@ -1213,6 +1213,33 @@ try {
       JSON.stringify({ last_sets: hvRow?.last_sets, last_reps: hvRow?.last_reps }));
   }
 
+  // --- W283: the Jefferson curl, findable and cautioned. The library ships aliases (so the
+  // editor's search finds "Jefferson curls"), and the pickers honour the low-back caution.
+  {
+    const gym = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const lib = await (await app.request("/api/exercises")).json();
+    const jc = lib.find((e) => e.id === "jefferson-curl");
+    ok("W283 /api/exercises ships the barbell Jefferson curl with its aliases", jc?.name === "Barbell Jefferson Curl" && jc.equipment === "barbell" && (jc.aliases ?? []).includes("Jefferson curls"), JSON.stringify(jc));
+    const offered = async (sev) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, injuries: [{ region: "lower-back", severity: sev }] } })).data.user_id;
+      return (await (await app.request("/api/exercises", { headers: { "X-HB-User": uid } })).json()).some((e) => e.id === "jefferson-curl");
+    };
+    ok("W283 a moderate low-back injury: the editor's pickers never offer it", !(await offered("moderate")));
+    ok("W283 …a mild one: they do", await offered("mild"));
+    // The Add-exercise warning promises what a hand-built plan KEEPS: its weights and the 6-week
+    // build-and-deload wave (only the block-boundary automation stops). Pinned through the routes.
+    const cu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym } })).data.user_id;
+    const cprog = (await store.getUser(cu)).program;
+    const edited = cprog.sessions.map((x, i) => (i === 0 ? { ...x, exercises: x.exercises.slice(0, -1) } : x));
+    await json("POST", "/api/plan/save", { user_id: cu, program: { name: cprog.name, sessions: edited } });
+    // History follows the rotation, so the session served next has lifts with history.
+    for (const [k, d] of [35, 28, 21, 14, 7].entries()) { const sx = edited[k % edited.length]; await json("POST", "/api/session", { user_id: cu, session_id: `cw-${d}`, date: dAgo(d), local_date: dAgo(d).slice(0, 10), session_name: sx.name, sets: sx.exercises.map((e) => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: 8 })) }); }
+    await store.updateUser(cu, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(38) }; return u; });
+    const ct = (await (await app.request("/api/today", { headers: { "X-HB-User": cu } })).json()).session;
+    ok("W283 a hand-built plan keeps its weights and the build-and-deload wave (week 6 is still a deload), as the warning says",
+      (await store.getUser(cu)).program.custom === true && ct.block?.phase === "deload" && ct.exercises.some((e) => e.suggested_kg != null), JSON.stringify({ custom: (await store.getUser(cu)).program.custom, block: ct.block?.phase }));
+  }
+
   // --- #readout (W282): the post-workout read-out. Its "next time" weight for every lift is a
   // PROMISE (lesson 60): the next /api/today must serve exactly that — in a normal week, a
   // deload week, a taper, after a skipped set, and when this very workout tips a reactive

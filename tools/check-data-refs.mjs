@@ -5,6 +5,7 @@
 //   - a program's session exercise that resolves to no exercise (by id, slugified name, or alias)
 //   - a program's progression_ref that matches no progression id
 //   - an exercise's primary/secondary muscle that matches no muscle id
+//   - an injury rule's exclude_exercises / caution_exercises id that names no exercise (W283)
 // WARNS on:
 //   - a muscle with zero primary exercises (coverage gap)
 //   - a program exercise matched by name/alias rather than a direct id (portability nudge)
@@ -142,6 +143,20 @@ for (const [setName, eq] of Object.entries(EQUIP_SETS)) {
     const pool = exercises.filter((e) => (e.primary_muscles ?? []).includes(m) && eq.includes(e.equipment));
     if (pool.length && !pool.some((e) => (e.difficulty ?? "intermediate") !== "advanced")) {
       warn.push(`  ⚠ beginner-reachability: every '${setName}' exercise for '${m}' is advanced (${pool.map((e) => e.id).join(", ")}) — add an easier variant`);
+    }
+  }
+}
+
+// Injury rules may name single exercises (W283: the lower-back rule cautions the Jefferson
+// curl). A renamed or deleted exercise would silently stop being cautioned — fail instead.
+const contraPath = join(dataDir, "injury-contraindications.json");
+if (existsSync(contraPath)) {
+  const regions = JSON.parse(readFileSync(contraPath, "utf8")).regions ?? {};
+  for (const [region, rule] of Object.entries(regions)) {
+    for (const key of ["exclude_exercises", "caution_exercises"]) {
+      for (const id of rule[key] ?? []) {
+        if (!exerciseIds.has(id)) { console.error(`  ✗ injury rule '${region}'.${key} names '${id}', which is no exercise`); errors++; }
+      }
     }
   }
 }

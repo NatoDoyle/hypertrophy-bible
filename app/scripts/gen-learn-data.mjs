@@ -250,7 +250,7 @@ const learnExercises = {};
 for (const id of [...EX_IDS].sort()) {
   const e = JSON.parse(readFileSync(join(EXERCISES_DIR, `${id}.json`), "utf8"));
   learnExercises[id] = {
-    id: e.id, name: e.name, cues: e.cues ?? [], common_errors: e.common_errors ?? [],
+    id: e.id, name: e.name, aliases: e.aliases ?? [], cues: e.cues ?? [], common_errors: e.common_errors ?? [],
     equipment: e.equipment ?? null,
     primary_muscles: muscleNames(e.primary_muscles), secondary_muscles: muscleNames(e.secondary_muscles),
     execution_steps: e.execution_steps ?? [], good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],

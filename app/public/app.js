@@ -11,7 +11,8 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
-let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or null
+let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id,from?} or null
+let learnLibrary = false, learnLibraryQuery = ""; // the Exercise library (W283) and its search
 // Session-only: the plan-screen email form has been submitted. Deliberately not
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
@@ -34,7 +35,7 @@ function syncAccountEmail(a) {
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
-const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; };
+const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; learnLibrary = false; learnLibraryQuery = ""; };
 
 // Plain-English muscle names (MUSCLE_LABEL / friendlyMuscle) live in ui-helpers.mjs so the
 // server's copy of the map can be pinned equal to them (W282).
@@ -1159,7 +1160,7 @@ async function renderPlanEdit() {
     return;
   }
   allExercises = exs;
-  editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
+  editState = { name: d.program.name, custom: !!d.program.custom, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
   pendingRm = null;
   // show the current plan's critique straight away
   const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
@@ -1175,7 +1176,7 @@ function drawEdit(critique) {
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Edit &amp; review</h1>
-    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan pauses the automatic accessory rotation between blocks. Rebuild from Settings any time to hand the wheel back.</p>
+    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan stops rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping up when you graduate. Your weights and your 6-week build-and-deload wave carry on. Rebuild from Settings any time to hand the wheel back.</p>
     ${crit}${sessions}
     <button class="btn" id="savePlan">Save &amp; re-check</button>
     <button class="btn ghost" id="backPlan">Back</button>`;
@@ -1221,7 +1222,9 @@ function renderAddExercise(si) {
   const rowsFor = (items) => items
     .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("")
     || `<p class="muted" style="padding:8px 0">Nothing matches — try a muscle ("chest") or equipment ("cable").</p>`;
-  app.innerHTML = `<h1>Add exercise</h1>
+  // A fair warning before a generated plan becomes hand-built (W283): what changes, and what doesn't.
+  const customNote = !editState.custom ? `<p class="muted" style="margin:0 0 8px">Adding a lift makes this plan your own once you save: I'll keep suggesting your weights and running your 6-week build-and-deload wave, but I'll stop rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping the plan up when you graduate. Rebuild from Settings any time to hand the wheel back.</p>` : "";
+  app.innerHTML = `<h1>Add exercise</h1>${customNote}
     <input id="ex-filter" type="search" placeholder="Search by name, muscle or equipment…" aria-label="Search exercises"
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
     <div class="card" style="max-height:56vh;overflow:auto" id="ex-list">${rowsFor(sorted)}</div>
@@ -2380,7 +2383,7 @@ function renderPlayer() {
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
-    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
+    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern, e.exercise) : ""}
     <div class="setdots">${setDots}</div>
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
@@ -2553,7 +2556,7 @@ function renderSupersetStation(L, P) {
       ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
-      ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
+      ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
       ${round === 0 ? whyLine(m) : ""}
@@ -2697,7 +2700,7 @@ function renderExerciseSheet(ex, d, back) {
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
     ${chips ? `<p>${chips}</p>` : ""}
-    ${renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern)}
+    ${renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern, ex.exercise ?? d?.id)}
     ${d?.resistance_profile ? `<p class="muted">📈 <b>Where it's hardest:</b> ${esc(d.resistance_profile)}</p>` : ""}
     ${steps ? `<h2>Step by step</h2>${steps}` : ""}
     ${cues ? `<h2>Coaching cues</h2>${cues}` : (!steps ? `<p class="muted">No cues on file for this one.</p>` : "")}
@@ -4687,10 +4690,12 @@ async function renderLearn() {
   };
   app.innerHTML = `<h1>Learn</h1>
     <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>
+    <button class="choice card" id="learn-library" style="width:100%;margin:0 0 10px"><span style="flex:1"><b>🏋️ Exercise library</b><br><span class="muted">Every lift in the app — how to do it, what it works, how to make it easier or harder.</span></span><span>›</span></button>
     <input id="learn-filter" type="search" placeholder="Search the guides…" aria-label="Search the guides"
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 4px">
     <div id="learn-cats">${catsFor("")}</div>`;
   $("#learn-filter").oninput = () => { $("#learn-cats").innerHTML = catsFor($("#learn-filter").value); wireLearnLinks(); };
+  $("#learn-library").onclick = () => { learnLibrary = true; renderExerciseLibrary(); };
   wireLearnLinks();
   window.scrollTo(0, 0);
 }
@@ -4719,7 +4724,9 @@ async function renderLearnData({ kind, id }) {
   // leaving a blank screen if an old cached bundle meets a new page.
   if (!d) { learnExercise = null; return renderLearnPage(learnSlug); }
   const from = LEARN_PAGES?.[learnSlug];
-  const back = { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
+  const back = learnExercise?.from === "library"
+    ? { label: "‹ Back to the exercise library", onClick: () => { learnExercise = null; renderExerciseLibrary(); } }
+    : { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
   if (kind === "exercise") renderExerciseSheet({ exercise: id, name: d.name, movement_pattern: d.movement_pattern }, d, back);
   else if (kind === "supplement") renderSupplementSheet(d, back);
   else renderMuscleSheet(d, back);
@@ -4727,6 +4734,32 @@ async function renderLearnData({ kind, id }) {
   window.scrollTo(0, 0);
 }
 const openLearnData = (kind, id) => { learnExercise = { kind, id }; renderLearnData({ kind, id }); };
+
+// The Exercise library (W283): every bundled sheet, searchable the way a lifter types
+// (filterExercises — names, aliases, muscles, equipment), offline like the rest of Learn. A
+// sheet opened from here comes back here.
+async function renderExerciseLibrary() {
+  app.innerHTML = `<h1>Exercise library</h1><p class="muted">Loading…</p>`;
+  let LEARN_EXERCISES;
+  try { ({ LEARN_EXERCISES } = await learnData()); }
+  catch { app.innerHTML = `<h1>Exercise library</h1><div class="card"><p>📴 Couldn't load the library.</p><p class="muted">Connect once and it'll be saved on this device for good.</p></div>`; return; }
+  const all = Object.values(LEARN_EXERCISES).sort((a, b) => a.name.localeCompare(b.name));
+  const rows = (q) => filterExercises(all, q).map((e) => `<button class="choice" data-lib="${esc(e.id)}"><span style="flex:1"><b>${esc(e.name)}</b><br><span class="muted">${esc((e.primary_muscles ?? []).join(", "))}${e.equipment ? ` · ${esc(e.equipment)}` : ""}</span></span><span>›</span></button>`).join("")
+    || `<p class="muted" style="padding:8px 0">Nothing matches — try another word ("curl", "squat", "chest").</p>`;
+  app.innerHTML = `<h1>Exercise library</h1>
+    <p class="muted">Every lift in the app — how to do it, what it works, and how to make it easier or harder. Works offline.</p>
+    <input id="lib-filter" type="search" placeholder="Search ${all.length} exercises…" aria-label="Search the exercise library"
+      style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
+    <div class="card" id="lib-list">${rows(learnLibraryQuery)}</div>
+    <button class="btn ghost" id="lib-back">‹ Back to Learn</button>`;
+  const wire = () => app.querySelectorAll("[data-lib]").forEach((b) => b.onclick = () => { learnExercise = { kind: "exercise", id: b.dataset.lib, from: "library" }; renderLearnData(learnExercise); });
+  $("#lib-filter").value = learnLibraryQuery;
+  // Only the LIST re-renders on input, never the input itself (focus survives every keystroke).
+  $("#lib-filter").oninput = () => { learnLibraryQuery = $("#lib-filter").value; $("#lib-list").innerHTML = rows(learnLibraryQuery); wire(); };
+  $("#lib-back").onclick = () => { learnLibrary = false; learnLibraryQuery = ""; renderLearn(); };
+  wire();
+  window.scrollTo(0, 0);
+}
 
 // Evidence tier first, because it is the only thing most readers need: the KB's
 // whole position on supplements is that a handful work and the rest are noise.
@@ -4845,7 +4878,7 @@ function render() {
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "plan") renderPlan();
-  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
+  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : learnLibrary ? renderExerciseLibrary() : renderLearn(); }
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => {

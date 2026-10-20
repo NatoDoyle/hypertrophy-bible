@@ -507,7 +507,8 @@ export function createApp(store, config = {}) {
     // unilateral / alternating / lengthened_bias / movement_pattern travel with the
     // row so a mid-workout swap can carry the side, "stretch-focused", and
     // inline-demo cues onto the new lift instead of silently dropping them.
-    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, rest_s: restSeconds(e), custom: !!e.custom })));
+    // aliases ride along so the editor's search finds "Jefferson curls" (W283).
+    return c.json(all.map((e) => ({ id: e.id, name: e.name, aliases: e.aliases ?? [], primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, rest_s: restSeconds(e), custom: !!e.custom })));
   });
 
   const exerciseNameFor = (user, id) => exerciseById.get(id)?.name ?? (user.custom_exercises || []).find((x) => x.id === id)?.name ?? id;

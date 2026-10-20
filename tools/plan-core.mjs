@@ -389,6 +389,10 @@ function contraExcluded(ex, injuries, contraindications) {
     const strict = inj.severity !== "mild";
     const patterns = strict ? [...(rule.exclude_patterns ?? []), ...(rule.caution_patterns ?? [])] : (rule.exclude_patterns ?? []);
     if (patterns.includes(ex.movement_pattern)) return true;
+    // …and the same two tiers for a NAMED lift a pattern rule can't single out (W283: the
+    // Jefferson curl shares its pattern with every crunch).
+    const ids = strict ? [...(rule.exclude_exercises ?? []), ...(rule.caution_exercises ?? [])] : (rule.exclude_exercises ?? []);
+    if (ids.includes(ex.id)) return true;
     if ((rule.exclude_muscles ?? []).some((m) => (ex.primary_muscles ?? []).includes(m))) return true;
   }
   return false;

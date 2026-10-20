@@ -1515,5 +1515,18 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   })());
 }
 
+// W283: a NAMED exercise can be cautioned for an injury region, beside the pattern rules. The
+// lower-back rule's own note names loaded spinal flexion, yet no pattern rule caught the Jefferson
+// curl (its pattern, isolation-spinal-flexion, is shared with every crunch).
+{
+  const gym = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const pool = (sev) => accessibleExercises({ available_equipment: gym, injuries: [{ region: "lower-back", severity: sev }] }, kb).map((e) => e.id);
+  ok("W283 caution_exercises: a moderate or severe low-back injury keeps the Jefferson curl out of every pool", !pool("moderate").includes("jefferson-curl") && !pool("severe").includes("jefferson-curl"));
+  ok("W283 …a mild one can still pick it (caution is moderate/severe, like the pattern rules)", pool("mild").includes("jefferson-curl"));
+  ok("W283 …and only the named lift: crunches (same pattern) stay available at moderate", pool("moderate").includes("cable-crunch"));
+  const exKb = { ...kb, contraindications: { regions: { knee: { exclude_patterns: [], caution_patterns: [], exclude_exercises: ["jefferson-curl"] } } } };
+  ok("W283 exclude_exercises applies at ANY severity", !accessibleExercises({ available_equipment: gym, injuries: [{ region: "knee", severity: "mild" }] }, exKb).some((e) => e.id === "jefferson-curl"));
+}
+
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -59,6 +59,25 @@ check("filterExercises: name, muscle and equipment substrings; empty query retur
   assert.equal(filterExercises(list, "zzz").length, 0);
 });
 
+check("filterExercises (W283): word by word, plural-tolerant, alias-aware, any order — 'Jefferson curls' finds the Jefferson curl", () => {
+  const list = [
+    { name: "Barbell Jefferson Curl", aliases: ["Jefferson curl", "Jefferson curls"], primary_muscles: ["spinal-erectors"], equipment: "barbell" },
+    { name: "Lat Pulldown", primary_muscles: ["lats"], equipment: "cable" },
+    { name: "Barbell Curl", primary_muscles: ["biceps"], equipment: "barbell" },
+    { name: "Romanian Deadlift", aliases: ["RDL"], primary_muscles: ["hamstrings"], equipment: "barbell" },
+  ];
+  const names = (q) => filterExercises(list, q).map((e) => e.name);
+  assert.deepEqual(names("Jefferson curls"), ["Barbell Jefferson Curl"]);
+  assert.deepEqual(names("curl jefferson"), ["Barbell Jefferson Curl"], "any word order");
+  assert.deepEqual(names("jeff"), ["Barbell Jefferson Curl"], "type-ahead");
+  assert.deepEqual(names("lat pulldowns"), ["Lat Pulldown"]);
+  assert.deepEqual(names("curls"), ["Barbell Jefferson Curl", "Barbell Curl"]);
+  assert.deepEqual(names("rdl"), ["Romanian Deadlift"], "an alias alone finds it");
+  assert.deepEqual(names("barbell curl"), ["Barbell Jefferson Curl", "Barbell Curl"], "every word must match somewhere");
+  assert.deepEqual(names("lats pulldown"), ["Lat Pulldown"], "a muscle word and a name word together");
+  assert.deepEqual(names("jefferson press"), [], "no partial credit");
+});
+
 check("linePath: spreads x across the width, inverts y, pads, and centers a flat series", () => {
   const { pts, min, max } = linePath([80, 82, 81], 100, 50, 5);
   assert.equal(pts.length, 3);
@@ -469,6 +488,16 @@ check("read-out wiring (W282 review): a door that says 'past' or errors is expla
   assert.match(fnBody(appJs, "async function fetchReadout(", 600), /r\?\.error/);
   assert.match(fnBody(appJs, 'if ($("#ro-open")) $("#ro-open").onclick', 1500), /r\.past/);
   assert.match(appJs, /voided \|\| sess\.time_quarantine\s*\?/);
+});
+check("W283 wiring: an offline Exercise library in Learn (its sheets come back to it), every demo told which lift it shows, and a fair warning before a plan becomes hand-built", () => {
+  assert.match(fnBody(appJs, "async function renderLearn() {", 4000), /id="learn-library"/);
+  const lib = fnBody(appJs, "async function renderExerciseLibrary() {", 3000);
+  assert.match(lib, /filterExercises\(/);
+  assert.match(lib, /from: "library"/);
+  assert.match(fnBody(appJs, "async function renderLearnData(", 2500), /from === "library"/);
+  assert.match(appJs, /const resetLearnNav = \(\) => \{[^}]*learnLibrary = false/);
+  for (const call of appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []) assert.match(call, /,/, `a demo without its lift: ${call}`);
+  assert.match(fnBody(appJs, "function renderAddExercise(si) {", 2500), /!editState\.custom \?/);
 });
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
   assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);

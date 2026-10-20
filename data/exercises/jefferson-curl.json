@@ -1,6 +1,11 @@
 {
   "id": "jefferson-curl",
-  "name": "Dumbbell Jefferson Curl",
+  "name": "Barbell Jefferson Curl",
+  "aliases": [
+    "Jefferson curl",
+    "Jefferson curls",
+    "Barbell Jefferson curl"
+  ],
   "primary_muscles": [
     "spinal-erectors"
   ],
@@ -9,7 +14,7 @@
     "hamstrings"
   ],
   "movement_pattern": "isolation-spinal-flexion",
-  "equipment": "dumbbell",
+  "equipment": "barbell",
   "mechanic": "isolation",
   "resistance_profile": "Loads the erectors eccentrically through full segmental spinal flexion; tension is highest at the fully rounded, deeply stretched bottom position.",
   "loading_bias": "lengthened",
@@ -19,35 +24,36 @@
   "cns_cost": "low",
   "difficulty": "intermediate",
   "cues": [
-    "Move slowly, one spinal segment at a time",
-    "Keep the weight light and dragging close to the legs",
-    "Restack the spine from the bottom up"
+    "Keep the bar light — this is a slow control lift, not a strength test",
+    "Roll down one vertebra at a time, chin tucked first",
+    "Restack from the bottom up: hips, low back, mid back, head last"
   ],
   "execution_steps": [
-    "Stand on a bench or box holding a light dumbbell in both hands, feet together and legs nearly straight.",
-    "Tuck the chin and slowly roll down one vertebra at a time, letting the spine flex segmentally.",
-    "Let the dumbbell travel along the front of the legs until you reach a full but comfortable stretch.",
-    "Reverse the motion, restacking the spine from the bottom up until you are standing tall."
+    "Stand on a sturdy box or bench high enough for the bar to travel below your feet, holding an empty or lightly loaded barbell with an overhand, shoulder-width grip; feet together, knees straight but not locked.",
+    "Tuck your chin, then roll down one vertebra at a time — upper back, mid back, low back — letting the bar slide down the front of your legs.",
+    "Go only as deep as you can control: stop at a full but comfortable stretch, and never bounce at the bottom.",
+    "Reverse it slowly, restacking the spine from the bottom up until you are standing tall, with your head coming up last."
   ],
   "good_when": [
     "You want to train the erectors through a full flexion range to build tissue tolerance",
-    "You have healthy spinal ROM and want a slow, controlled mobility-strength movement"
+    "You have healthy spinal range of motion and want a slow, controlled mobility-strength movement"
   ],
   "bad_when": [
     "You have an acute disc injury or pain with loaded spinal flexion",
-    "You cannot control the load slowly — this is a light, deliberate lift, not a heavy one"
+    "You can't move the bar slowly and with control — this is a light, deliberate lift, not a heavy one"
   ],
   "common_errors": [
-    "Using too much load and losing segmental control",
+    "Loading it like a deadlift and losing segmental control",
     "Bouncing at the bottom instead of owning the stretch",
     "Hinging only at the hips rather than flexing the spine"
   ],
   "progressions": [
-    "Add small load increments",
+    "Add small plates (1.25–2.5 kg) once a slow, segmental rep feels easy",
     "Increase range by standing on a taller box"
   ],
   "regressions": [
-    "Reduce range with a partial roll-down",
-    "Unloaded bodyweight roll-down"
+    "A dowel or an unloaded bar",
+    "Reduce range with a partial roll-down to mid-shin",
+    "An unloaded bodyweight roll-down"
   ]
 }

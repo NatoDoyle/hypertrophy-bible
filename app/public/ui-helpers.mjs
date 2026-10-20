@@ -52,15 +52,19 @@ export function seedCalendarDays(commitmentDays, storedDays) {
   return [];
 }
 
-// Case-insensitive substring filter over the fields a lifter actually thinks in:
-// the exercise's name, its primary muscles, its equipment.
+// Search the way a lifter types (W283): EVERY word of the query must match some word of the
+// exercise — its name, any alias, a primary muscle or its equipment — by prefix, ignoring a
+// plural ending, in any order. "Jefferson curls", "curl jefferson", "jeff" and "lat pulldowns"
+// all land; the old whole-query substring found none of the first three.
+const searchWords = (s) => String(s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const searchStem = (w) => (w.length > 3 ? w.replace(/(es|s)$/, "") : w);
 export function filterExercises(list, q) {
-  const needle = String(q ?? "").trim().toLowerCase();
-  if (!needle) return list ?? [];
-  return (list ?? []).filter((e) =>
-    String(e.name ?? "").toLowerCase().includes(needle)
-    || (e.primary_muscles ?? []).join(" ").toLowerCase().includes(needle)
-    || String(e.equipment ?? "").toLowerCase().includes(needle));
+  const qs = searchWords(q).map(searchStem);
+  if (!qs.length) return list ?? [];
+  return (list ?? []).filter((e) => {
+    const hay = [e.name, ...(e.aliases ?? []), ...(e.primary_muscles ?? []), e.equipment].flatMap(searchWords);
+    return qs.every((qw) => hay.some((h) => h.startsWith(qw) || searchStem(h) === qw));
+  });
 }
 
 // Chart geometry for the app's single-series trend lines (dataviz method:
