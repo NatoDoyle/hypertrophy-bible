@@ -20,8 +20,11 @@
 > move to the mechanism instead: targets are ranges re-derived from the user's own logged data,
 > pause is total, the disordered-eating row in §15 still binds copy, and the weight-trend
 > explainer (§9.1) remains the preferred surface.
-> Screens described in §4.2 that remain UNSHIPPED proposals (verified 2026-08-24): Nerd Mode,
-> the Weekly Coach Check-in as a distinct screen, the ~200-item Coach Moments system.
+> Screens described in §4.2 that remain UNSHIPPED proposals (verified 2026-08-24): the Weekly
+> Coach Check-in as a distinct screen, the ~200-item Coach Moments system. Nerd Mode shipped as v1
+> in W284 (2026-10-20): volume vs landmarks, block and next-block maths, strength numbers. The
+> readiness/confidence parts of `buildFeatureReport` remain unshipped — they need data the app
+> doesn't collect.
 **Purpose:** One coherent app design that a total novice can use on day one and that still walks a
 dedicated user to their genetic ceiling — hosted feasibly on a near-zero-cost Cloudflare stack.
 

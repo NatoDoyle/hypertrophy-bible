@@ -6,7 +6,28 @@ against the four goals in `improvement-loop.md`, this project is **early-stage**
 next build from here (Tier 1 first); drop to marginal polish (single-citation currency,
 cosmetic tweaks) ONLY when a genuinely high-value gap appears — never as default filler.
 
-Grounded assessment date: **2026-10-19** (Wave 278: W277's owner decision, built. W277's
+Grounded assessment date: **2026-10-20** (Bursts 1–3, W279–W284b: four owner requests and two
+considerations, built, each burst reviewed by four finder lenses with every finding verified inline.
+- **The engine reacts to what happened.** The weight eases when your first set falls clearly short;
+  the player suggests a better next-set weight; a skipped set (now one tap, with Undo) holds the
+  weight increase until a full session shows it; and the engine anchors on the heaviest weight
+  proved, so following its own "go heavier" hint is never punished.
+- **The post-workout read-out** (W282): what happened, offline; what it means — today's aim, each
+  lift's next weight (exactly what that session serves, in the week it lands), this block, the next.
+- **Inconsistency** (consideration #1): a stall on well under the planned sets holds instead of +2
+  and keeps its lifts.
+- **The barbell Jefferson curl**, findable (word-by-word search, an offline Exercise library) and kept
+  away from a lower back at any severity — including plans built before the rule.
+- **Nerd Mode v1 SHIPPED (C8)**: volume vs landmarks, block and next-block maths (the rollover's own
+  decision, parity-tested), strength numbers. `readinessIndex`/`confidenceTier` stay unsurfaced:
+  they need HRV/sleep-hours data the app never collects.
+Lessons 79–88.
+
+**Named next pulls:** device notifications (consideration #2 — measured: one reminder exists, its
+switch sits 2.3 screens down Me, iPhone only in the Home-Screen app, and nothing alerts at rest-end
+on a locked phone; the owner decides the infrastructure); the desktop multi-column layer.)
+
+The prior grounding (**2026-10-19**, Wave 278: W277's owner decision, built. W277's
 week strip made a mismatch visible: a plan built for N workouts, trained on M committed
 days. The owner chose the one-tap offer. Once a different day count has stood a week
 (seven days from the pick, not just "carried"), Today asks "Fit your plan to your 3
@@ -20,9 +41,9 @@ Its own review found that the offer, and the Settings days change before it, re-
 FINISHED specialization block. Fixed in the engine: a `spent` flag that only new
 priorities clear (lesson 78; golden digest unchanged).
 
-**Named next pulls:**
+**Named next pulls (as of W278):**
 - The desktop multi-column layer.
-- Nerd Mode surfaces (C8).
+- Nerd Mode surfaces (C8) — shipped as v1 in W284 (see the grounding above).
 
 Recorded candidates (verified, not built). The rotation pointer counts sessions without
 knowing which plan or block they belong to:

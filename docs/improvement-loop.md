@@ -1232,6 +1232,23 @@ These are real failures from previous iterations. Each is now a standing check.
    period in progress. It also needs a minimum number of finished periods before it may speak
    (here 3 weeks), and counts only periods under the current reference (weeks since the block
    started).
+86. **A rule that tightens must reach what was already built.** W283 kept the Jefferson curl away
+   from a lower back, but only in plans generated after it shipped. Every stored plan kept serving
+   it, to about half of the cohort the rule existed for. An exercise that changed kit (dumbbell
+   to barbell) did the same to dumbbell-only plans. → **Standing rule:** when a safety rule
+   tightens or an entity changes meaning, screen what's already stored on read, through the same
+   door the rule uses (`screenPlan` → the permanent swap), and say so once. A test that seeds the
+   *old* artifact is the only one that can see this.
+87. **One search function, every caller's shape, the real data.** The editor's rows carry muscle
+   ids and the library's carry display names, so the same query gave different answers ("abs":
+   13 vs 0). The prefix shortcut that made "jeff" work also made "lats" find lateral raises.
+   Fixture lists hid both. → **Standing rule:** test a matcher over every caller's input shape on
+   the real corpus, with expected false friends written down beside the hits.
+88. **A file that gates safety needs a strict schema.** A misspelled key in the injury rules
+   (`caution_exercise`) silently switched the caution off, and every gate passed: validate had no
+   schema for the file, and the checkers read only the exact key names. → **Standing rule:** every
+   data file whose keys decide safety gets a schema with `additionalProperties: false` and enums
+   for its references, tamper-checked with a misspelling.
 
 ## Token discipline (the loop must be affordable to keep running)
 
