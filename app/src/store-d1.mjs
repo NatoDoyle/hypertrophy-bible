@@ -403,6 +403,11 @@ export function createD1Store(db) {
       const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions").all();
       return results;
     },
+    // One user's devices (W286: the rest alarm pushes to the lifter alone). Parity with the file store.
+    async listUserPushSubscriptions(userId) {
+      const { results } = await db.prepare("SELECT endpoint, user_id, p256dh, auth, created_at FROM push_subscriptions WHERE user_id = ?").bind(userId).all();
+      return results;
+    },
     // Delivery evidence is stamped only while the endpoint is still subscribed;
     // an in-flight 2xx must not recreate a retention row after an unsubscribe.
     async markPushDelivered(endpoint, at) {

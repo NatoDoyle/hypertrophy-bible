@@ -85,5 +85,36 @@ await check("the sign-in page is never handled or cached, under EITHER spelling 
   assert.equal((await h.fire("/styles.css")).handled, true, "control: an ordinary asset IS handled (else this proves nothing)");
 });
 
+// W286: a rest alert must ALERT on every rest — and buzz.
+function pushHarness() {
+  const shown = [];
+  const listeners = {};
+  const registration = {
+    showNotification: async (title, opts) => { shown.push({ title, opts, tag: opts.tag, closed: false, close() { this.closed = true; } }); },
+    getNotifications: async () => shown.filter((n) => !n.closed),
+  };
+  const ctx = vm.createContext({
+    self: { addEventListener: (t, f) => { listeners[t] = f; }, skipWaiting() {}, clients: { claim() {} }, registration },
+    caches: { open: async () => ({}), keys: async () => [], delete: async () => true }, location: { origin: ORIGIN }, URL, Promise, console, Date,
+  });
+  vm.runInContext(src, ctx);
+  const push = async (payload) => { const waits = []; listeners.push({ data: payload === undefined ? null : { json: () => payload }, waitUntil: (p) => waits.push(p) }); await Promise.all(waits); return shown.at(-1); };
+  return { push };
+}
+await check("every rest's alert is its OWN notification (Safari has no renotify; a same-tag replace can land silently — W286 review), the last one cleared first, and it buzzes", async () => {
+  const h = pushHarness();
+  const first = await h.push({ title: "Rest's up", body: "Next: Squat — set 3 of 4", tag: "hb-rest" });
+  await new Promise((r) => setTimeout(r, 2));
+  const second = await h.push({ title: "Rest's up", body: "Next: Squat — set 4 of 4", tag: "hb-rest" });
+  assert.equal(second.title, "Rest's up");
+  assert.ok(first.tag.startsWith("hb-rest") && second.tag.startsWith("hb-rest") && first.tag !== second.tag, `${first.tag} / ${second.tag}`);
+  assert.equal(first.closed, true, "the earlier rest alert is cleared, so the tray holds one");
+  assert.ok(Array.isArray(second.opts.vibrate) && second.opts.vibrate.length > 0);
+  const other = await h.push({ title: "The Hypertrophy Bible", body: "x", tag: "hb-nudge" });
+  assert.ok(other.tag === "hb-nudge" && !other.opts.vibrate && !second.closed, "control: the other kinds keep their tag and clear nothing");
+  const empty = await h.push(undefined);
+  assert.equal(empty.opts.tag, "hb-reminder", "control: the empty daily reminder keeps its static copy");
+});
+
 console.log(`\n${pass} service-worker test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

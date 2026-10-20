@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -284,6 +284,81 @@ const wireRestCues = () => {
 const isStandalone = () => window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS 13+ masquerades as Mac
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window;
+// Notifications (W285): on or off per DEVICE (a push subscription; hb_push marks this one), and
+// what they're for per ACCOUNT — each reminder's switch and picked time (/api/reminders/device)
+// — except the rest alert, a device preference like hb_rest (kept across an account switch).
+const pushOn = () => { try { return localStorage.getItem("hb_push") === "1"; } catch { return false; } };
+// This device's own subscription endpoint: a rest alert goes to the device that's resting, not
+// every device on the account (W286 review). Refreshed on every open (a browser can rotate it).
+const pushEndpoint = () => { try { return localStorage.getItem("hb_push_ep"); } catch { return null; } };
+const restAlertOn = () => { try { return localStorage.getItem("hb_rest_alert") !== "0"; } catch { return true; } };
+const notifyPermission = () => (typeof Notification !== "undefined" ? Notification.permission : "default");
+const deviceNotifyOffer = () => notifyOffer({ supported: pushSupported(), ios: isIOS(), standalone: isStandalone(), permission: notifyPermission(), on: pushOn() });
+// The one door that turns notifications on (Me, and the invite after a workout). The permission
+// prompt goes FIRST, before any await: Safari shows it only while the tap's user activation
+// lasts, and a network round trip before it can outlive that.
+async function enablePush() {
+  if (!pushSupported()) return "unsupported";
+  const permission = Notification.requestPermission();
+  const [reg, key] = await Promise.all([navigator.serviceWorker.ready, api("/api/push/key").then((r) => r.key)]);
+  if ((await permission) !== "granted") return "denied";
+  if (!key) return "unavailable";
+  const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/")); // base64url -> applicationServerKey bytes
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: new Uint8Array([...raw].map((c) => c.charCodeAt(0))) });
+  // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate): the reminders land at
+  // the times picked in THIS device's local time.
+  const r = await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min: -new Date().getTimezoneOffset() }) });
+  if (r?.error) throw new Error(r.error);
+  localStorage.setItem("hb_push", "1");
+  localStorage.setItem("hb_push_ep", sub.endpoint);
+  return "on";
+}
+// Notifications, offered ONCE — right after a workout, when a rest alert and a training-day
+// reminder make sense (W287 — owner: "I can't figure out how"). Answered either way, it's gone
+// for good on this device; Me keeps the controls and Today a link.
+const notifyInviteDone = () => { try { return localStorage.getItem("hb_notify_invite") === "1"; } catch { return true; } };
+const markNotifyInvite = () => { try { localStorage.setItem("hb_notify_invite", "1"); } catch {} };
+function notifyInviteHtml() {
+  const offer = deviceNotifyOffer();
+  if (notifyInviteDone() || navigator.onLine === false || (offer !== "enable" && offer !== "home-screen")) return "";
+  if (offer === "home-screen") return `<div class="card" id="notify-invite"><b>🔔 Want a nudge when your rest is up?</b>
+      <p class="muted">On iPhone, rest alerts and reminders come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>, and open the app from there.</p>
+      <button class="btn ghost inline" id="inv-no">Got it</button></div>`;
+  return `<div class="card" id="notify-invite"><b>🔔 Want a tap on the shoulder?</b>
+      <p class="muted">When your rest is up — even with your phone locked — and on your training days, if you haven't trained yet.</p>
+      <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-weigh"> ⚖️ A morning weigh-in reminder too</label>
+      <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-food"> 🍽️ An evening food-log reminder too</label>
+      <button class="btn" id="inv-on">Turn on notifications</button>
+      <button class="btn ghost inline" id="inv-no">Not now</button>
+      <p class="muted" id="inv-msg" role="status"></p></div>`;
+}
+function wireNotifyInvite() {
+  const card = $("#notify-invite");
+  if (!card) return;
+  if ($("#inv-no")) $("#inv-no").onclick = () => { markNotifyInvite(); card.remove(); $("#ok")?.focus(); };
+  if ($("#inv-on")) $("#inv-on").onclick = async () => {
+    const msg = (t) => { $("#inv-msg").textContent = t; };
+    const extras = [["weigh_in", $("#inv-weigh")?.checked], ["calories", $("#inv-food")?.checked]].filter(([, on]) => on).map(([kind]) => kind);
+    try {
+      const res = await enablePush();
+      if (res === "denied") { markNotifyInvite(); msg("No problem — you can allow notifications any time in your settings."); return; }
+      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      markNotifyInvite();
+      for (const kind of extras) await api("/api/reminders/device", { method: "POST", body: JSON.stringify({ user_id: uid, kind, on: true }) }).catch(() => {});
+      card.innerHTML = `<p>🔔 Notifications on. Pick what and when in <button class="btn ghost inline" id="inv-me" style="margin:0">Me → Reminders</button>.</p>`;
+      $("#inv-me").onclick = () => { tab = "me"; render(); };
+      say("Notifications on.");
+      $("#inv-me").focus();
+    } catch { msg("📴 Couldn't set up notifications — try again when you're online."); }
+  };
+}
+async function disablePush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
+  localStorage.removeItem("hb_push");
+  localStorage.removeItem("hb_push_ep");
+}
 
 // Android/desktop Chrome fires beforeinstallprompt (only when installable and not
 // yet installed); we stash the event to trigger the native install on a user tap.
@@ -1631,9 +1706,12 @@ async function renderToday() {
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
       : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
-    ${cardioCard}`;
+    ${cardioCard}
+    ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;
   wirePendingCodeCard();
   wireCommitmentCard();
+  // A way in from the screen opened every day (W287); Me holds the controls, at its top.
+  if ($("#today-reminders")) $("#today-reminders").onclick = () => { tab = "me"; render(); $("#reminders")?.scrollIntoView({ block: "start" }); };
   if ($("#ro-dismiss")) $("#ro-dismiss").onclick = () => { clearPendingReadout(); $("#ro-ready")?.remove(); };
   if ($("#ro-open")) $("#ro-open").onclick = async () => {
     const p = getPendingReadout();
@@ -1826,7 +1904,14 @@ function loadSess() {
     return s;
   } catch { return null; }
 }
-function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } catch {} }
+// A finished or abandoned workout disarms its rest alarm — including one armed before a reload
+// (this page never armed it, so it wouldn't know to disarm it — W286 review).
+function clearSess() {
+  let had = null; try { had = sess ? activeRest(sess, Date.now()) : null; } catch {}
+  sess = null; try { localStorage.removeItem(SESS_KEY); } catch {}
+  try { if (had && restAlertArmed == null) restAlertArmed = had.until; } catch {}
+  syncRestAlert();
+}
 
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
@@ -2195,6 +2280,68 @@ function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
 // over whatever screen the user moved to.
 let restTimer = null;
 const stopRestTimer = () => { if (restTimer) { clearInterval(restTimer); restTimer = null; } };
+// REST'S UP (W286 — owner: rest-timer-end notifications). On screen, the app's own chime ends the
+// rest; locked or in the background, the server's alarm does (src/rest-alarm.mjs). restAlertStep
+// (session-core) decides which from the STORED rest, so a reload or a locked phone can't strand
+// it. Best effort, and never in the player's way: every path is try/caught, nothing awaits.
+let restAlertArmed = null, restAlertLabel = "", restAlertCooldown = 0;
+function syncRestAlert() {
+  try {
+    const now = Date.now();
+    const rest = sess ? activeRest(sess, now) : null;
+    const visible = document.visibilityState === "visible";
+    const step = restAlertStep({ rest, armedUntil: restAlertArmed, now, onScreen: visible && !!restTimer, chimeReliable: chimeReliable(),
+      enabled: restAlertOn() && pushOn() && !!uid && !!pushEndpoint() });
+    if (!step || (step === "arm" && visible && now < restAlertCooldown)) return; // a failed arm retries in 10 s — at once if the screen goes
+    const prev = restAlertArmed, endsAt = step === "arm" ? rest.until : null;
+    restAlertArmed = endsAt;
+    // A failed arm frees the next sync to retry; a failed DISARM puts the old end back and retries
+    // in 10 s — or the alarm rings mid-set (W286 review). Both stop once that end has passed.
+    const failed = () => {
+      if (step === "arm") { if (restAlertArmed === endsAt) { restAlertArmed = null; restAlertCooldown = Date.now() + 10e3; } }
+      else if (restAlertArmed == null) { restAlertArmed = prev; setTimeout(syncRestAlert, 10e3); }
+    };
+    // keepalive: the request outlives the page being hidden or frozen right after it. `at` (this
+    // device's clock) lets the alarm ignore a request that arrives after a newer one.
+    fetch("/api/rest-alert", { method: "POST", keepalive: true, headers: { "content-type": "application/json" },
+      body: JSON.stringify(step === "arm" ? { user_id: uid, op: "arm", ends_at: endsAt, label: restAlertLabel, endpoint: pushEndpoint(), at: now } : { user_id: uid, op: "disarm", at: now }) })
+      .then((r) => { if (!r.ok) failed(); }, failed);
+  } catch {}
+}
+document.addEventListener("visibilitychange", syncRestAlert);
+// The chime: two soft tones. iOS unlocks audio only from a tap — the bank tap that starts each
+// rest does it — and leaves it "interrupted" (not "suspended") after a lock or a call, so any
+// state but running is resumed (W286 review). Web Audio there also obeys the silent switch,
+// unseen — so on an iPhone the chime is a bonus, never trusted to replace the alarm.
+let chimeCtx = null;
+const chimeReliable = () => !isIOS() && chimeCtx?.state === "running" && restAlertOn();
+function unlockChime() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!restAlertOn() || !AC) return;
+    if (chimeCtx?.state === "closed") chimeCtx = null;
+    chimeCtx ??= new AC();
+    if (chimeCtx.state !== "running") chimeCtx.resume().catch(() => {});
+  } catch {}
+}
+// …and after a reload mid-rest (no bank tap since), any tap on the rest screen does it.
+document.addEventListener("pointerdown", () => { if (restTimer) unlockChime(); }, { capture: true, passive: true });
+function playRestChime() {
+  try {
+    if (!restAlertOn() || !chimeCtx) return;
+    if (chimeCtx.state !== "running") chimeCtx.resume().catch(() => {});
+    const t0 = chimeCtx.currentTime + 0.02;
+    for (const [hz, at] of [[880, 0], [1320, 0.16]]) {
+      const osc = chimeCtx.createOscillator(), gain = chimeCtx.createGain();
+      osc.type = "sine"; osc.frequency.value = hz;
+      gain.gain.setValueAtTime(0.0001, t0 + at);
+      gain.gain.exponentialRampToValueAtTime(0.3, t0 + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.32);
+      osc.connect(gain); gain.connect(chimeCtx.destination);
+      osc.start(t0 + at); osc.stop(t0 + at + 0.36);
+    }
+  } catch {}
+}
 // REST (W273 — owner: "rest is 120s, but what if someone wants 60s or 300s?"). Each lift
 // brings its own KB rest (rest_s); ±30 s on the rest screen adjusts THIS rest and, between
 // sets of one lift, is remembered on the device as an offset from that lift's length. The
@@ -2278,9 +2425,10 @@ function openSetEditor(idx, host, rerender) {
   $("#fix-done").onclick = () => { setEditor = null; rerender(); };
   $("#fix-w").focus();
 }
-const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); };
-const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } };
-function showRest(rest, nextLine, row, onDone, announce) {
+const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); unlockChime(); };
+const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } syncRestAlert(); };
+function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
+  restAlertLabel = alertLabel;
   app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${formatRest(restRemaining(rest.until, Date.now()))}</div>
     <div class="row" style="justify-content:center;gap:10px;border:0;padding:0">
       <button class="btn ghost inline" id="rest-minus" aria-label="Rest 30 seconds less" style="margin:0">−30s</button>
@@ -2297,8 +2445,10 @@ function showRest(rest, nextLine, row, onDone, announce) {
   const tick = () => {
     const left = restRemaining(sess?.rest?.until, Date.now());
     if ($("#t")) $("#t").textContent = formatRest(left);
+    syncRestAlert(); // the last seconds on screen hand the alert to the chime below
     if (left > 0) return;
     stopRestTimer(); endRest();
+    playRestChime();
     try { navigator.vibrate?.([180, 90, 180]); } catch {}
     say("Rest over — you're up.");
     // Mid-fix: never repaint over a half-typed correction — the rest just says it's over.
@@ -2308,6 +2458,7 @@ function showRest(rest, nextLine, row, onDone, announce) {
   // ONE handle (stopRestTimer clears it), and the display is always derived from the
   // stored end time — a throttled interval on a locked phone shows the truth on wake.
   restTimer = setInterval(tick, 1000);
+  syncRestAlert();
   $("#skip").onclick = () => { stopRestTimer(); endRest(); setEditor = null; onDone(); };
   const nudge = (delta) => {
     if (!sess?.rest) return;
@@ -2364,7 +2515,8 @@ function renderPlayer() {
   if (rest) {
     quitPending = false;
     showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}`, e, () => renderPlayer(0),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`);
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`,
+      `${e.name} — set ${sess.set + 1} of ${e.sets}`);
     return;
   }
 
@@ -2543,7 +2695,8 @@ function renderSupersetStation(L, P) {
   if (rest) {
     quitPending = false;
     showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}`, null, () => renderSupersetStation(L, P),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`);
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`,
+      `${A.name} + ${B.name} — round ${round + 1} of ${paired}`);
     return;
   }
 
@@ -3073,9 +3226,10 @@ function renderRecap(recap) {
   // workout's editor — or, while it's still queued offline, a promise of where.
   const fixDoor = recap.session_id ? `<button class="btn ghost" id="fixnum">✏️ Fix a number</button>`
     : recap.queued ? `<p class="muted" style="text-align:center">Logged a number wrong? Once this workout syncs, fix any set from Progress → Workout history.</p>` : "";
-  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${readout}${wins}${nudge}${donate}
+  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${readout}${wins}${notifyInviteHtml()}${nudge}${donate}
     ${fixDoor}
     <button class="btn" id="ok">Done</button>`;
+  wireNotifyInvite();
   if ($("#fixnum")) $("#fixnum").onclick = () => { historyEdit = recap.session_id; tab = "history"; render(); };
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
@@ -4189,7 +4343,7 @@ function clearAccountLocalState() {
   const keys = [];
   try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
   for (const key of keys) {
-    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd") { // hb_rest: per-lift rest nudges; hb_nerd: Nerd Mode (W284) — device preferences too
+    if (key?.startsWith("hb_") && !DEVICE_PREFS.has(key)) {
       try { localStorage.removeItem(key); } catch {}
     }
   }
@@ -4232,33 +4386,74 @@ async function switchToRestoredArchive(ownerId, archiveId, button) {
   render();
 }
 
-// Care & device settings (pause, email reminders, push reminders, install) —
-// moved to Me in Wave 246: they are settings, and the Coach tab was carrying
-// them as cards ~10 deep. One builder + one wiring, parameterized on the
-// re-render so the announce-and-restore-focus pattern works wherever they live.
+// Reminders (W285 — moved to the TOP of Me: the switch sat 2.3 screens down). Notifications for
+// this device (a chime and lock-screen alert when rest is up; reminders at the times picked),
+// then the all-reminders switch — the one the email notes and every nudge already obeyed,
+// now saying so.
+const REMINDER_ROWS = [
+  { kind: "workout", icon: "🏋️", label: "Training days" },
+  { kind: "weigh_in", icon: "⚖️", label: "Weigh-in", hint: "If you haven't logged today's weight yet." },
+  { kind: "calories", icon: "🍽️", label: "Food log", hint: "If nothing's logged in Fuel yet today." },
+];
+const remField = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:8px;font-size:1rem";
+function remindersHtml(a) {
+  const offer = deviceNotifyOffer();
+  const on = pushOn();
+  const rest = `<label class="row" style="border:0;padding:6px 0;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rest-alert" ${restAlertOn() ? "checked" : ""} style="margin-top:4px">
+      <span>🔔 <b>Rest's up</b><br><span class="muted" style="font-size:.85rem">${on ? "A chime in the app, and a notification if your phone is locked." : "A chime in the app when your rest is over."}</span></span></label>`;
+  const rem = a.device_reminders ?? {};
+  const rows = REMINDER_ROWS.map((r) => {
+    const set = rem[r.kind] ?? { on: false, time: "" };
+    const hint = r.kind === "workout" ? trainingDaysHint(a.commitment?.days) : r.hint;
+    return `<div class="row" style="border:0;padding:6px 0;gap:10px;align-items:center">
+      <label style="flex:1;display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-rem-on="${r.kind}" ${set.on ? "checked" : ""} style="margin-top:4px">
+        <span>${r.icon} <b>${r.label}</b><br><span class="muted" style="font-size:.85rem">${esc(hint)}</span></span></label>
+      <input type="time" data-rem-time="${r.kind}" value="${esc(set.time)}" step="300" aria-label="${r.label} reminder time" style="${remField}"></div>`;
+  }).join("");
+  const msg = `<p class="muted" id="pushmsg" role="status"></p>`;
+  const device = on
+    ? `<div class="card"><p class="muted">Notifications are on for this device.</p>${rest}${rows}
+        ${a.reminders_off ? `<p class="muted">All reminders are switched off below — turn them back on to get these. Rest alerts still work.</p>` : ""}
+        <button class="btn ghost inline" id="pushbtn">Turn off notifications on this device</button>${msg}</div>`
+    : offer === "enable"
+      ? `<div class="card"><p>Get a nudge when your rest is up — even with your phone locked — and reminders at the times you pick: your training days, a morning weigh-in, an evening food log.</p>
+          <button class="btn" id="pushbtn">Turn on notifications</button>${msg}${rest}</div>`
+      : offer === "blocked"
+        ? `<div class="card"><p class="muted">Notifications are blocked for this app. To get rest alerts and reminders, allow notifications for it in your ${isIOS() ? "iPhone's Settings → Notifications" : "browser's site settings"}, then come back here.</p>${rest}</div>`
+        : offer === "home-screen"
+          ? `<div class="card"><p class="muted">Want a nudge when rest is up, and reminders at the times you pick? On iPhone they come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and turn notifications on here.</p>${rest}</div>`
+          : `<div class="card">${rest}</div>`;
+  const master = a.reminders_off
+    ? `<div class="card"><p class="muted">All reminders are off — no emails, and no reminders on this device. Rest alerts still work during a workout.</p>
+        <button class="btn secondary" id="nudges">Turn reminders back on</button></div>`
+    : localStorage.getItem("hb_email")
+      ? `<div class="card"><p class="muted">If you drift away, I'll also email you — at most two gentle notes per break, never while you're paused.</p>
+        <button class="btn ghost inline" id="nudges">Turn all reminders off</button></div>`
+      : `<div class="card"><p class="muted">Want an email too if you drift away? Create your free account below (just an email — no password, ever) and I'll send at most two gentle notes per break.</p>
+        <button class="btn ghost inline" id="nudges-acct">Take me to the account box</button></div>`;
+  return `<h2 id="reminders">Reminders</h2>${device}${master}`;
+}
+// Pause and install — the rest of Me's care settings (moved from the Coach tab in Wave 246).
 function careCards(a) {
   const paused = a.paused;
   return `<h2>Injury or illness?</h2>
     <div class="card"><p>${paused ? "You're paused — heal up. Your streak is safe and I won't nudge you." : "Pause any time. Nothing's ever at stake — never train through pain or sickness."}</p>
       <button class="btn ${paused ? "" : "secondary"}" id="pause">${paused ? "I'm ready — resume" : "Pause (I'm sick or injured)"}</button></div>
-    <h2>Reminders</h2>
-    ${localStorage.getItem("hb_email")
-      ? `<div class="card"><p class="muted">${a.reminders_off ? "Email reminders are off. Your progress stays safely backed up either way." : "If you drift away, I'll email your account at most two gentle notes per break — never while you're paused."}</p>
-      <button class="btn secondary" id="nudges">${a.reminders_off ? "Turn reminders on" : "Turn reminders off"}</button></div>`
-      : `<div class="card"><p class="muted">Reminders arrive by email. Create your free account above (just an email — no password, ever) and if you drift away I'll send at most two gentle notes per break.</p>
-      <button class="btn secondary inline" id="nudges-acct">Take me to the account box</button></div>`}
-    ${pushSupported()
-      ? `<div class="card"><p class="muted">${localStorage.getItem("hb_push") === "1" ? "Device reminders are on — a quiet nudge when a session's waiting, never while paused." : "Or get a reminder right on this device — no email needed. One gentle nudge when a session's waiting; stops while you're paused and after ~3 weeks."}</p>
-      <button class="btn secondary" id="pushbtn">${localStorage.getItem("hb_push") === "1" ? "Turn device reminders off" : "Enable device reminders"}</button>
-      <p class="muted" id="pushmsg"></p></div>`
-      : isIOS() && !isStandalone()
-        ? `<div class="card"><p class="muted">Want a reminder right on this iPhone? Add the app to your Home Screen first — tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and device reminders unlock.</p></div>`
-        : ""}
     ${deferredInstallPrompt && !isStandalone()
       ? `<div class="card"><p class="muted">Put the app on your home screen — it opens full-screen in one tap, works offline, and makes it far easier to keep the habit.</p>
       <button class="btn secondary" id="installbtn">Install the app</button><p class="muted" id="installmsg"></p></div>`
       : ""}`;
 }
+async function saveReminder(kind, patch, revert) {
+  try {
+    const r = await api("/api/reminders/device", { method: "POST", body: JSON.stringify({ user_id: uid, kind, ...patch }) });
+    if (r?.error) throw new Error(r.error);
+    const label = REMINDER_ROWS.find((x) => x.kind === kind)?.label ?? "Reminder";
+    say(patch.time ? `${label} reminder on, at ${patch.time}.` : `${label} reminder ${patch.on ? "on" : "off"}.`);
+  } catch { revert(); alertBar("📴 Couldn't save that reminder — you're offline. Try again when connected."); }
+}
+// One wiring for both slots, parameterized on the re-render so the announce-and-restore-focus
+// pattern works wherever they live.
 function wireCareCards(a, rerender) {
   const paused = a.paused;
   // Toggles announce + restore focus: the re-render replaces the whole screen,
@@ -4274,7 +4469,7 @@ function wireCareCards(a, rerender) {
   if (nudgeBtn) nudgeBtn.onclick = async () => {
     try {
       await api("/api/reminders", { method: "POST", body: JSON.stringify({ user_id: uid, off: !a.reminders_off }) });
-      say(a.reminders_off ? "Reminders turned on." : "Reminders turned off.");
+      say(a.reminders_off ? "Reminders turned on." : "All reminders turned off.");
       await rerender(); $("#nudges")?.focus();
     } catch { alertBar("📴 Couldn't update reminders — you're offline. Try again when connected."); }
   };
@@ -4289,32 +4484,35 @@ function wireCareCards(a, rerender) {
     if (outcome === "accepted") { say("Installing the app."); rerender(); }
     else $("#installmsg").textContent = "No problem — you can install any time from here.";
   };
+  const restBox = $("#rest-alert");
+  if (restBox) restBox.onchange = () => { try { localStorage.setItem("hb_rest_alert", restBox.checked ? "1" : "0"); } catch {} say(restBox.checked ? "Rest alerts on." : "Rest alerts off."); };
+  app.querySelectorAll("[data-rem-on]").forEach((box) => { box.onchange = () => saveReminder(box.dataset.remOn, { on: box.checked }, () => { box.checked = !box.checked; }); });
+  // Picking a time is asking for the reminder: it switches on too (W286 review: a time set on a
+  // switched-off row was announced, then never fired). Kept on the 5-minute grid the reminders
+  // fire on, and shown as saved.
+  app.querySelectorAll("[data-rem-time]").forEach((field) => {
+    let was = field.value;
+    field.onchange = () => {
+      const typed = field.value.slice(0, 5);
+      if (!/^\d{2}:\d{2}$/.test(typed)) { field.value = was; return; } // a cleared picker keeps the saved time
+      const m = Math.floor((+typed.slice(0, 2) * 60 + +typed.slice(3)) / 5) * 5;
+      const time = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      field.value = time;
+      const box = app.querySelector(`[data-rem-on="${field.dataset.remTime}"]`), wasOn = box?.checked;
+      if (box) box.checked = true;
+      saveReminder(field.dataset.remTime, { time, on: true }, () => { field.value = was; if (box) box.checked = wasOn; }).then(() => { was = field.value; });
+    };
+  });
   const pushBtn = $("#pushbtn");
   if (pushBtn) pushBtn.onclick = async () => {
     const msg = (t) => { $("#pushmsg").textContent = t; };
     try {
-      const reg = await navigator.serviceWorker.ready;
-      if (localStorage.getItem("hb_push") === "1") {
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
-        localStorage.removeItem("hb_push");
-        say("Device reminders turned off."); await rerender(); $("#pushbtn")?.focus(); return;
-      }
-      const { key } = await api("/api/push/key");
-      if (!key) { msg("Device reminders aren't available right now."); return; }
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { msg("No problem — you can enable notifications any time in your browser settings."); return; }
-      // base64url -> Uint8Array for applicationServerKey
-      const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/"));
-      const appKey = new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-      // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate) — lets the
-      // server nudge at ~5pm THIS device's local time instead of 16:00 UTC for everyone.
-      const tz_offset_min = -new Date().getTimezoneOffset();
-      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min }) });
-      localStorage.setItem("hb_push", "1");
-      say("Device reminders on."); await rerender(); $("#pushbtn")?.focus();
-    } catch { msg("📴 Couldn't set up device reminders — try again when you're online."); }
+      if (pushOn()) { await disablePush(); say("Notifications turned off on this device."); await rerender(); $("#pushbtn")?.focus(); return; }
+      const res = await enablePush();
+      if (res === "denied") { msg("No problem — you can allow notifications any time in your settings."); return; }
+      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      say("Notifications on."); await rerender(); $("#pushbtn")?.focus();
+    } catch { msg("📴 Couldn't set up notifications — try again when you're online."); }
   };
 }
 
@@ -4326,16 +4524,18 @@ function wireCareCards(a, rerender) {
 // and only the slot — degrades to the honest note. Me is an /api/adherence
 // consumer, so the seen-once nudge banner renders here too — at the TOP.
 async function fillMeCare() {
-  const slot = $("#care-slot");
-  if (!slot) return;
+  const slot = $("#care-slot"), remSlot = $("#rem-slot");
+  if (!slot || !remSlot) return;
   let a = null; try { a = await api(`/api/adherence`); } catch {}
   if (!slot.isConnected) return; // the user navigated away mid-fetch
   if (!a) {
-    slot.innerHTML = `<h2>Reminders &amp; pause</h2><div class="card"><p class="muted">📴 Pause and reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
+    remSlot.innerHTML = `<h2 id="reminders">Reminders</h2><div class="card"><p class="muted">📴 Reminder settings need a connection — they'll appear here when you're back online.</p></div>`;
+    slot.innerHTML = `<h2>Injury or illness?</h2><div class="card"><p class="muted">📴 Pause needs a connection — it'll appear here when you're back online.</p></div>`;
     return;
   }
   syncAccountEmail(a);
   if (a.nudged && $("#me-nudge")) $("#me-nudge").innerHTML = `<div class="card"><p>👋 A training partner nudged you — they noticed you've got a session waiting.</p></div>`;
+  remSlot.innerHTML = remindersHtml(a);
   slot.innerHTML = careCards(a);
   // Re-renders from care actions refresh ONLY the slot: scroll survives and the
   // announce-and-restore-focus pattern finds its button (a whole-screen redraw
@@ -4375,9 +4575,10 @@ function renderMe() {
       : `<p class="muted">Donations aren't set up yet — just enjoy the app.</p>`}
   </div>`;
   const recovery = mergeArchiveCard(uid);
-  const care = `<div id="care-slot"><h2>Reminders &amp; pause</h2><div class="card"><p class="muted">Loading…</p></div></div>`;
+  const care = `<div id="care-slot"><h2>Injury or illness?</h2><div class="card"><p class="muted">Loading…</p></div></div>`;
   app.innerHTML = `<h1>Me</h1>${pendingCodeCard()}
     <div id="me-nudge"></div>
+    <div id="rem-slot"><h2 id="reminders">Reminders</h2><div class="card"><p class="muted">Loading…</p></div></div>
     <div class="card"><p class="muted">Training settings</p>
       <p>Got stronger? New gym? More (or fewer) days free? Update your answers and I'll rebuild your plan around them.</p>
       <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
@@ -4939,6 +5140,8 @@ nav.querySelectorAll("button").forEach((b) => b.onclick = () => {
   render();
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// Notifications on: keep this device's endpoint current for its rest alerts (W286 review).
+if (pushOn() && "serviceWorker" in navigator) navigator.serviceWorker.ready.then((reg) => reg.pushManager?.getSubscription()).then((s) => { if (s?.endpoint) localStorage.setItem("hb_push_ep", s.endpoint); }).catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link
 render();

@@ -310,6 +310,8 @@ export function createFileStore(path) {
       }
     },
     async listPushSubscriptions() { return Object.values(db.push_subscriptions ?? {}); },
+    // One user's devices (W286: the rest alarm pushes to the lifter alone). Parity with D1.
+    async listUserPushSubscriptions(userId) { return Object.values(db.push_subscriptions ?? {}).filter((s) => s.user_id === userId); },
     // Delivery evidence (BLOCKERS #2b): stamped by the push sweep ONLY when a
     // real push service accepted a send (2xx). Kept in a separate map keyed by
     // endpoint — the D1 store mirrors this as its own self-init table. Evidence

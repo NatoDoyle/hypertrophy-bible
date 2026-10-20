@@ -1249,6 +1249,34 @@ These are real failures from previous iterations. Each is now a standing check.
    schema for the file, and the checkers read only the exact key names. → **Standing rule:** every
    data file whose keys decide safety gets a schema with `additionalProperties: false` and enums
    for its references, tamper-checked with a misspelling.
+89. **A cadence change re-derives every "is it my slot?" — for every population the old cadence
+   served.** The 5-minute cron (W285) kept push reminders to one tick a day. Email-only accounts,
+   though, are swept on hourly ticks only, and their streak-freeze email sat in a 5-minute slot
+   that half-hour zones (India, Newfoundland, Adelaide) and stored non-:00 times never met. They
+   went silent for good, where the old hourly predicate met every offset once. → **Standing
+   rule:** when a scheduler's period changes, list who each tick serves (push, email-only, no
+   timezone). Test each over a full day of ticks across whole-, half- and quarter-hour offsets.
+90. **Hand over only to a signal you can see working.** "Rest's up" (W286) disarmed the server
+   alarm in the last seconds on screen and let the in-app chime take over. On an iPhone that left
+   nothing: the silent switch mutes Web Audio without the app seeing it, and a lock leaves it
+   "interrupted". → **Standing rule:** a fallback must be observably at least as reliable as what
+   it replaces. Where it can't be observed (iOS audio), keep the robust channel and treat the
+   other as a bonus.
+91. **Whatever a page arms on a server, stored state must be able to disarm, and a failed undo
+   retries.** The armed end lived only in memory. After a reload, Discard couldn't disarm the
+   alarm armed before it, and a failed disarm left no trace, so the alarm rang mid-set. →
+   **Standing rule:** derive "was armed" from persisted state (here, the stored rest), and give
+   undo the same retry discipline as do.
+92. **A fake must model the runtime's interface and its concurrency, or the test proves less than
+   its name.** The fake Durable Object namespace handed the object over directly, where the
+   runtime passes a Request. The fake push service answered before the next rest's arm could
+   finish, so a race test passed with its guard removed. → **Standing rule:** fakes take the
+   runtime's shapes (Request in, Response out) and await wherever the runtime lets other events
+   in. Tamper every race guard.
+93. **Once a time is editable, "once a day" needs a marker.** A fixed 17:00 slot fired once a day
+   for free. Once the user picks the time, moving it later fired it again, a DST morning fired it
+   twice, and 23:58 rolled over to the next day. → **Standing rule:** a user-set schedule stamps
+   what fired, per kind and per local day, and keeps its times on the grid it fires on.
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1297,6 +1325,27 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7e. **Telemetry (Waves 279–287b, 2026-10-19/20 — one /plan iteration: four owner requests, two
+   considerations, four bursts).** Four review workflows, finders only (3–4 lenses, each in its own
+   scratch dir), every candidate verified INLINE:
+   - Burst 1 (W279–W281): 3 finders, ≈352k subagent tokens, 11 candidates → W281b.
+   - Burst 2 (W282): 4 finders, ≈528k, 14 candidates (12 distinct), all real → W282d.
+   - Burst 3 (W283–W284): 4 finders, ≈453k, 18 candidates, all real → W283b/W284b.
+   - Burst 4 (W285–W287): 4 finders, ≈541k, 18 candidates (16 distinct). 14 fixed, 1 half fixed
+     and half recorded, 1 recorded → W285b/W286b.
+
+   In total ≈1.87M subagent tokens for 61 candidates. Bursts 2–4 refuted none, so the finders are
+   calibrated and inline verification remains the cheap check (rule 1).
+   - **The real runtime, locally.** `wrangler dev --local` (workerd) ran the Durable Object: an
+     alarm fired 2 ms late, a stale disarm was ignored, and a failed send threw and the platform
+     retried it. Miniflare retries far faster than production (6 tries in about 12 s, against
+     2 s to 64 s backoff). That's noted so nobody "fixes" the 60-second stale cutoff from a local
+     run.
+   - **Tamper slips.** Burst 3 had two, redone. Burst 4 had one: a race test whose fake answered
+     too early (lesson 92).
+   - **Not run.** The Daytona gate was skipped (no DAYTONA_API_KEY). No physical iPhone was used:
+     the iOS behaviours (silent switch, "interrupted" audio, notification tags) follow WebKit's
+     documented behaviour, and the owner's phone is the first real check.
 7f. **Telemetry (Wave 278, 2026-10-19 — the owner's decision, built).** The owner chose
    option 1 of the four W277 left open (a one-tap "Rebuild for N days" offer) and asked
    whether I agreed. I did, and said why: it fixes the mismatch for every user and for

@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v196";
+const VERSION = "hb-shell-v197";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/ui-helpers.mjs", "/account-adopt.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 // The app's ES modules update ATOMICALLY. app.js statically imports named exports from
@@ -84,12 +84,20 @@ self.addEventListener("push", (e) => {
       if (data.tag) tag = data.tag;
     } catch {} // malformed/foreign payload: keep the safe static reminder copy
   }
-  e.waitUntil(self.registration.showNotification(title, {
-    body,
-    icon: "/icon.svg",
-    badge: "/icon.svg",
-    tag, // one notification per tag at a time — a new one replaces the old
-  }));
+  // Rest's up (W286) must ALERT on every rest. A same-tag replacement can land silently (Safari
+  // has no `renotify` — W286 review), so each rest's alert is its OWN notification, the earlier
+  // ones cleared first so the tray holds one — and it buzzes where vibration exists.
+  const rest = tag === "hb-rest";
+  e.waitUntil((async () => {
+    if (rest) { try { for (const n of await self.registration.getNotifications()) if (n.tag?.startsWith("hb-rest")) n.close(); } catch {} }
+    await self.registration.showNotification(title, {
+      body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      tag: rest ? `hb-rest-${Date.now()}` : tag, // one notification per tag at a time — a new one replaces the old
+      ...(rest ? { vibrate: [200, 100, 200] } : {}),
+    });
+  })());
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

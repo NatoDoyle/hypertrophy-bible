@@ -6,8 +6,9 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
-import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours } from "../src/push.mjs";
+import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommitment, runPushSweep, isAllowedPushEndpoint, PUSH_MIN_LAPSE_DAYS, PUSH_MAX_LAPSE_DAYS, isUserPushHour, isSocialPushQuietHours, normalizeReminders, parseReminderTime, isReminderDue, cronTick } from "../src/push.mjs";
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
+import { runScheduled } from "../src/scheduled.mjs";
 import { challengeSlots } from "../src/adherence.mjs";
 import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 
@@ -699,11 +700,16 @@ try {
   ok("sweep pushes the lapsed opted-in user AND the committed-but-not-yet-trained-today user, nobody else",
     hits.length === 2 && hits.includes("https://updates.push.services.mozilla.com/wpush/v2/l") && hits.includes("https://updates.push.services.mozilla.com/wpush/v2/c") && r.sent === 2);
   ok("a subscription whose user is gone is pruned without a send", r.pruned >= 1 && !(await store.listPushSubscriptions()).some((s) => s.user_id === "ghost-user"));
-  // "committed" trains TODAY between sweeps, so the next sweep's 410 must prune
-  // only "lapsed" — proves the commitment reminder stops once its day is trained.
+  // "committed" trains TODAY between sweeps. A second sweep the same day pushes nobody again:
+  // each user's training reminder is once a day (W285 review — reminders_fired), and the
+  // commitment reminder stops once its day is trained (unit-tested above too).
   await store.addSession("committed", { session_id: "c2", date: new Date(NOW).toISOString(), sets: [] });
-  const again = await runPushSweep(store, vapid, new Date(NOW).getTime(), async (url) => { hits.push(url); return { ok: false, status: 410 }; });
-  ok("a 410 on send prunes that subscription", again.pruned === 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://updates.push.services.mozilla.com/wpush/v2/l"));
+  const hitsBefore = hits.length;
+  await runPushSweep(store, vapid, new Date(NOW).getTime(), async (url) => { hits.push(url); return { ok: false, status: 410 }; });
+  ok("a second sweep the same day pushes nobody twice", hits.length === hitsBefore, JSON.stringify(hits.slice(hitsBefore)));
+  // The next day's sweep (lapsed is due again) meets a 410: that subscription is pruned.
+  const again = await runPushSweep(store, vapid, NOW + 86400000, async (url) => { hits.push(url); return { ok: false, status: 410 }; });
+  ok("a 410 on send prunes that subscription", again.pruned >= 1 && !(await store.listPushSubscriptions()).some((s) => s.endpoint === "https://updates.push.services.mozilla.com/wpush/v2/l"));
 
   // #26 scoped unsubscribe: another user's user_id can't delete your subscription
   await store.saveUser("owner", { profile: {} });
@@ -922,6 +928,153 @@ try {
       ok("#carry sweep: …and fires the next (non-rest) day instead", hits2.some((u) => u.endsWith("/cb-rest")) && (await schStore.getUser("cb-rest")).profile?.comeback_push?.stage === 1);
       ok("#carry sweep: …and on the planned Wednesday instead", hits2.some((u) => u.endsWith("/cb-offplan")) && (await schStore.getUser("cb-offplan")).profile?.comeback_push?.stage === 1);
     } finally { try { rmSync(schPath); } catch {} }
+  }
+
+  // --- W285 (consideration #2): reminders at the times the user picks — weigh-in, training
+  // days, food log — on a 5-minute tick. Each fires on exactly ONE tick a day (the first at or
+  // after its time), only while the thing isn't done yet, never while paused or switched off. ---
+  {
+    const at = (iso) => +new Date(iso);
+    ok("#rem defaults: training days on at 17:00 (the reminder as it is today); weigh-in and food log off until asked for",
+      JSON.stringify(normalizeReminders(undefined)) === JSON.stringify({ workout: { on: true, time: "17:00" }, weigh_in: { on: false, time: "07:30" }, calories: { on: false, time: "20:00" } }));
+    const n = normalizeReminders({ weigh_in: { on: true, time: "06:45" }, workout: { on: "yes", time: "25:00" }, junk: { on: true } });
+    ok("#rem stored settings are read through a validator: junk falls back to the default, unknown kinds are dropped",
+      n.weigh_in.on === true && n.weigh_in.time === "06:45" && n.workout.on === true && n.workout.time === "17:00" && !("junk" in n));
+    ok("#rem parseReminderTime takes HH:MM in range and nothing else",
+      parseReminderTime("07:30") === "07:30" && parseReminderTime("23:59") === "23:59" && parseReminderTime("00:00") === "00:00"
+      && [null, undefined, "", "7:30", "24:00", "12:60", "12:5", " 07:30", "07:30:00", 730].every((x) => parseReminderTime(x) === null));
+    ok("#rem due on the tick AT the time (a UTC user, 5-minute ticks)", isReminderDue(0, "07:30", at("2026-07-10T07:30:00Z"), 5) === true);
+    ok("#rem …and on no other tick that day", isReminderDue(0, "07:30", at("2026-07-10T07:25:00Z"), 5) === false && isReminderDue(0, "07:30", at("2026-07-10T07:35:00Z"), 5) === false);
+    ok("#rem an off-grid time fires on the tick it falls in (07:32 → the 07:30 tick), and only that one",
+      isReminderDue(0, "07:32", at("2026-07-10T07:30:00Z"), 5) === true && isReminderDue(0, "07:32", at("2026-07-10T07:35:00Z"), 5) === false);
+    ok("#rem W285 review: a time in the day's last minutes fires that evening — never at 00:00 the next day, checked against the wrong day",
+      isReminderDue(330, "23:58", at("2026-07-10T18:25:00Z"), 5) === true /* 23:55 IST */ && isReminderDue(330, "23:58", at("2026-07-10T18:30:00Z"), 5) === false /* 00:00 IST */);
+    ok("#rem local time: 07:30 at UTC-5 is 12:30 UTC", isReminderDue(-300, "07:30", at("2026-07-10T12:30:00Z"), 5) === true && isReminderDue(-300, "07:30", at("2026-07-10T07:30:00Z"), 5) === false);
+    ok("#rem no stored timezone: a local time can't be placed, so it never fires", isReminderDue(undefined, "07:30", at("2026-07-10T07:30:00Z"), 5) === false);
+    const halfHours = Array.from({ length: 48 }, (_, i) => at("2026-07-10T00:00:00Z") + i * 1800e3);
+    ok("#rem a 60-minute tick at 17:00 is exactly the old one-hour slot (every half hour, three timezones)",
+      [-300, 0, 720].every((tz) => halfHours.every((t) => isReminderDue(tz, "17:00", t, 60) === isUserPushHour(tz, t))));
+    ok("#rem cronTick: the first 5-minute tick of an hour does the hourly work; the 16:00-UTC one also sends the comeback email",
+      JSON.stringify(cronTick(at("2026-07-10T16:00:00Z"), 5)) === JSON.stringify({ hourly: true, comebackEmail: true })
+      && JSON.stringify(cronTick(at("2026-07-10T16:05:00Z"), 5)) === JSON.stringify({ hourly: false, comebackEmail: false })
+      && JSON.stringify(cronTick(at("2026-07-10T17:00:00Z"), 5)) === JSON.stringify({ hourly: true, comebackEmail: false }));
+
+    // The worker's tick itself (src/scheduled.mjs, bound to the real env in worker.mjs): a
+    // 5-minute cron must never re-run hourly work — the comeback email once a day, and the push
+    // sweep TOLD it's a 5-minute tick (left at its 60-minute default, the 17:00 slot would
+    // match all twelve ticks of the hour).
+    const calls = [];
+    const deps = { makeStore: () => ({}), pushSweep: async (...a) => { calls.push(["push", a[2], a[5]]); return {}; }, comebackSweep: async (s, send, t) => { calls.push(["comeback", t]); return {}; } };
+    const env = { VAPID_PRIVATE_JWK: JSON.stringify(privateJwk), VAPID_PUBLIC_KEY: vapid.publicKeyB64u, RESEND_API_KEY: "re_test", MAIL_FROM: "x@y.z" };
+    runScheduled(at("2026-07-10T16:00:00Z"), env, { waitUntil: (p) => p }, deps);
+    runScheduled(at("2026-07-10T16:05:00Z"), env, { waitUntil: (p) => p }, deps);
+    ok("#rem the worker's tick: the comeback email on the 16:00 tick only; the push sweep every tick, told it's a 5-minute tick",
+      JSON.stringify(calls) === JSON.stringify([["comeback", at("2026-07-10T16:00:00Z")], ["push", at("2026-07-10T16:00:00Z"), { tickMinutes: 5 }], ["push", at("2026-07-10T16:05:00Z"), { tickMinutes: 5 }]]), JSON.stringify(calls));
+
+    const rPath = join(tmpdir(), `hb-push-rem-test-${process.pid}.json`);
+    const rStore = createFileStore(rPath);
+    try {
+      const ua = await fakeUaSubscription();
+      const sub = (id) => rStore.savePushSubscription(id, { endpoint: `https://updates.push.services.mozilla.com/wpush/v2/${id}`, keys: { p256dh: ua.p256dh, auth: ua.auth } });
+      // Who got what on one tick: "<user>:<tag>", or ":empty" for the payload-free daily reminder.
+      const run = async (t, store = rStore, social = null) => {
+        const got = [];
+        await runPushSweep(store, vapid, t, async (url, opts) => {
+          const who = url.split("/").pop();
+          const tag = opts.body ? JSON.parse(await decryptPushPayload({ body: opts.body, uaPrivateJwk: ua.privJwk, auth: ua.auth })).tag : "empty";
+          got.push(`${who}:${tag}`);
+          return { ok: true, status: 201 };
+        }, social, { tickMinutes: 5 });
+        return got.sort();
+      };
+      const D = "2026-07-10", T = (hhmm) => at(`${D}T${hhmm}:00Z`);
+      const wiOn = { weigh_in: { on: true, time: "07:30" }, workout: { on: false } };
+      await rStore.saveUser("wi", { profile: { tz_offset_min: 0, reminders: wiOn } });
+      await rStore.saveUser("wi-done", { profile: { tz_offset_min: 0, reminders: wiOn } });
+      await rStore.addBodyweight("wi-done", { date: D, weight_kg: 80 });
+      await rStore.saveUser("wi-default", { profile: { tz_offset_min: 0, reminders: { workout: { on: false } } } });
+      await rStore.saveUser("wi-paused", { profile: { tz_offset_min: 0, reminders: wiOn }, paused: { from: D } });
+      await rStore.saveUser("wi-alloff", { profile: { tz_offset_min: 0, reminders_off: true, reminders: wiOn } });
+      for (const id of ["wi", "wi-done", "wi-default", "wi-paused", "wi-alloff"]) await sub(id);
+      ok("#rem weigh-in: one push at the picked time, only to the user who hasn't weighed in today (not paused, reminders on)",
+        JSON.stringify(await run(T("07:30"))) === JSON.stringify(["wi:hb-weigh-in"]), JSON.stringify(await run(T("07:30"))));
+      ok("#rem …and nothing on the next tick (once a day)", (await run(T("07:35"))).length === 0);
+
+      const fdOn = { calories: { on: true, time: "20:00" }, workout: { on: false } };
+      await rStore.saveUser("fd", { profile: { tz_offset_min: -300, reminders: fdOn } });
+      await rStore.saveUser("fd-done", { profile: { tz_offset_min: -300, reminders: fdOn } });
+      await rStore.addNutritionLog("fd-done", { date: D, kcal: 1800 });
+      for (const id of ["fd", "fd-done"]) await sub(id);
+      ok("#rem food log at 20:00, UTC-5 (01:00 UTC the next day): only the user with nothing logged on THEIR today",
+        JSON.stringify(await run(at("2026-07-11T01:00:00Z"))) === JSON.stringify(["fd:hb-food"]));
+
+      // Training days at a picked time: the daily slot moves with it.
+      const commit = { week: isoWeekKey(T("12:00")), days: [weekDayKey(T("12:00"))] };
+      await rStore.saveUser("wk", { profile: { tz_offset_min: 0, commitment: commit, reminders: { workout: { on: true, time: "18:30" } } } });
+      await rStore.saveUser("wk-off", { profile: { tz_offset_min: 0, commitment: commit, reminders: { workout: { on: false } } } });
+      for (const id of ["wk", "wk-off"]) await sub(id);
+      const of = (who, list) => list.filter((x) => x.startsWith(`${who}:`));
+      ok("#rem training days at 18:30: silent at 17:00…", of("wk", await run(T("17:00"))).length === 0);
+      ok("#rem …one reminder at 18:30…", JSON.stringify(of("wk", await run(T("18:30")))) === JSON.stringify(["wk:empty"]));
+      ok("#rem …and none at 18:35", of("wk", await run(T("18:35"))).length === 0);
+      await rStore.saveUser("wk-def", { profile: { tz_offset_min: 0, commitment: commit } }); // made now: the 17:00 sweeps above didn't spend its day
+      await sub("wk-def");
+      const hour = [];
+      for (let m = 0; m < 60; m += 5) hour.push(...of("wk-def", await run(T(`17:${String(m).padStart(2, "0")}`))));
+      ok("#rem the default 17:00 reminder fires ONCE across the hour's twelve 5-minute ticks", JSON.stringify(hour) === JSON.stringify(["wk-def:empty"]), JSON.stringify(hour));
+      ok("#rem training days switched off: no reminder at the default time either", of("wk-off", await run(T("17:00"))).length === 0);
+
+      // Social events keep their hourly cadence: the 5-minute ticks between don't send them.
+      await rStore.saveUser("so", { profile: { tz_offset_min: 0, partner_nudge: { at: T("09:00") }, reminders: { workout: { on: false } } } });
+      await sub("so");
+      ok("#rem a pending partner nudge waits for the hourly tick (09:05: nothing)…", of("so", await run(T("09:05"))).length === 0);
+      ok("#rem …and goes out on it (10:00)", of("so", await run(T("10:00"))).includes("so:hb-nudge"));
+      let listed = 0;
+      const spy = { ...rStore, listAccountLastSessions: async (...a) => { listed++; return rStore.listAccountLastSessions(...a); } };
+      await run(T("10:05"), spy, async () => true);
+      await run(T("11:00"), spy, async () => true);
+      ok("#rem email-only accounts are swept on hourly ticks only (the account query runs once in two ticks)", listed === 1, String(listed));
+
+      // W285 review: a reminder fires ONCE a day even when its time moves later after it fired.
+      await rStore.saveUser("rt", { profile: { tz_offset_min: 0, reminders: { weigh_in: { on: true, time: "07:00" }, workout: { on: false } } } });
+      await sub("rt");
+      ok("#rem (fixture) the 07:00 weigh-in fires", of("rt", await run(T("07:00"))).length === 1);
+      await rStore.updateUser("rt", (u) => { u.profile.reminders.weigh_in.time = "08:00"; return u; });
+      ok("#rem moved to 08:00 after it fired: no second weigh-in reminder that day", of("rt", await run(T("08:00"))).length === 0);
+      ok("#rem …and the next day it fires at the new time", of("rt", await run(at("2026-07-11T08:00:00Z"))).length === 1);
+      await rStore.saveUser("rt-wk", { profile: { tz_offset_min: 0, commitment: commit } });
+      await sub("rt-wk");
+      ok("#rem (fixture) the 17:00 training-days reminder fires", of("rt-wk", await run(T("17:00"))).length === 1);
+      await rStore.updateUser("rt-wk", (u) => { u.profile.reminders = { workout: { on: true, time: "18:00" } }; return u; });
+      ok("#rem moved to 18:00 after it fired: not a second one that day", of("rt-wk", await run(T("18:00"))).length === 0);
+
+      // W285 review: "done today" is the user's own day east of UTC too (07:30 at UTC+10 is 21:30Z the day before).
+      await rStore.saveUser("east", { profile: { tz_offset_min: 600, reminders: wiOn } });
+      await rStore.addBodyweight("east", { date: "2026-07-10", weight_kg: 80 }); // their YESTERDAY (and the UTC day of the tick)
+      await rStore.saveUser("east-done", { profile: { tz_offset_min: 600, reminders: wiOn } });
+      await rStore.addBodyweight("east-done", { date: "2026-07-11", weight_kg: 80 }); // their today
+      for (const id of ["east", "east-done"]) await sub(id);
+      ok("#rem UTC+10 at 07:30 local: yesterday's weigh-in doesn't count as today's; today's does",
+        JSON.stringify((await run(at("2026-07-10T21:30:00Z"))).filter((x) => x.startsWith("east"))) === JSON.stringify(["east:hb-weigh-in"]));
+    } finally { try { rmSync(rPath); } catch {} }
+  }
+  // W285 review: an EMAIL-ONLY account (no device) is swept for the streak-freeze email on the old fixed
+  // slot — its local 17:00 hour, on an hourly tick — whatever its timezone or stored device settings.
+  {
+    const ePath = join(tmpdir(), `hb-push-emailslot-test-${process.pid}.json`);
+    const eStore = createFileStore(ePath);
+    try {
+      for (const [id, profile] of [["ist", { tz_offset_min: 330 }], ["nfl", { tz_offset_min: -210 }], ["cet-1730", { tz_offset_min: 60, reminders: { workout: { on: true, time: "17:30" } } }], ["cet-off", { tz_offset_min: 60, reminders: { workout: { on: false } } }]]) {
+        await eStore.saveUser(id, { profile });
+        await eStore.saveAccount(`${id}@example.com`, id, NOW);
+        for (const d of [14, 21, 28, 35]) await eStore.addSession(id, { session_id: `${id}-${d}`, date: daysAgo(d), sets: [] });
+      }
+      const mails = [];
+      const sendEmail = async (to, msg) => { mails.push(`${to.split("@")[0]}:${/streak freeze/.test(msg.body) ? "freeze" : "other"}`); return { ok: true }; };
+      for (let m = 0; m < 1440; m += 5) await runPushSweep(eStore, vapid, +new Date("2026-07-10T00:00:00Z") + m * 60e3, async () => ({ ok: true, status: 201 }), sendEmail, { tickMinutes: 5 });
+      ok("#rem W285 review: each email-only account gets ONE streak-freeze email a day — half-hour zones, a stored 17:30, a switched-off device reminder",
+        JSON.stringify(mails.sort()) === JSON.stringify(["cet-1730:freeze", "cet-off:freeze", "ist:freeze", "nfl:freeze"]), JSON.stringify(mails));
+    } finally { try { rmSync(ePath); } catch {} }
   }
 
   console.log(`\n${pass} push test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

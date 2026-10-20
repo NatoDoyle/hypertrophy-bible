@@ -458,6 +458,13 @@ the ones who didn't quit.
 6. **Minimal, self-tapering, non-guilt notifications.** A reminder at the user's chosen session time; a
    single gentle "still on for today?" only if untrained by evening; the warm comeback ping; the Weekly
    Check-in. Quiet hours respected; frequency auto-tapers if ignored. The app earns the right to notify.
+   *As built (W285–W287, 2026-10-20):*
+   - Reminders arrive at the times the user picks. The training-days reminder fires on the days they
+     plan to train, if they haven't trained yet. A morning weigh-in and an evening food-log reminder
+     are off until asked for, and each fires only if that day's entry is missing.
+   - "Rest's up" plays a chime on screen, or sends a notification when the phone is locked.
+   - Notifications are offered once, right after a workout. Today has a link to them, and their
+     controls are the first section of Me.
 7. **Deload/readiness management** quietly prevents the burnout that causes quitting.
 8. **The relationship as switching cost.** The coach remembers you, references your history, and gets
    measurably smarter the longer you stay — your accumulated n-of-1 model can't be exported to a
@@ -583,6 +590,11 @@ The architecture is chosen so the whole thing runs at hobby-tier cost.
   write limits and keep the app well within free/cheap tiers.
 - **Cron Triggers** run the overnight recompute (pull wearable data, recompute readiness/volume/trend,
   pre-write tomorrow's card) and the weekly digest — batched, off the request path.
+  *As built (W285–W286):*
+  - A 5-minute cron sweeps the push reminders at each user's picked local times
+    (`app/src/scheduled.mjs`). Hourly work stays hourly.
+  - A per-user **Durable Object** (`app/src/rest-alarm.mjs`, SQLite-backed, on the Free plan) fires
+    the rest-end alert at the second a rest ends.
 - **R2 / on-device** for private physique photos (default on-device; R2 only if the user opts into
   cross-device sync). Photos never become social.
 - **Population learning is a batched offline job**, never real-time inference — deliberately kept off the

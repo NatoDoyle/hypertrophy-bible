@@ -21,7 +21,7 @@ export const clone = (value) => value == null ? value : JSON.parse(JSON.stringif
 // doors rather than trusting a comment (lesson 33).
 export const LIVE_PROFILE_FIELDS = new Set([
   // Device/push delivery state.
-  "celebration", "freeze_pushed_week", "comeback_push", "commitment",
+  "celebration", "freeze_pushed_week", "comeback_push", "commitment", "reminders_fired",
   // Share-token and social state. A restored copy must deliberately opt in again.
   "following", "followers_count", "followers_pushed", "cheers_pushed", "cheers_seen",
   "partner_nudge", "nudge_pushed_at", "nudge_seen_at",
@@ -43,7 +43,9 @@ export const LIVE_PROFILE_FIELDS = new Set([
 // `unavailable_exercises` ("No machine for this", W272) likewise travels with a restore
 // — it belongs to the program it edited — but only /api/exercise/cant-do may write it:
 // that route validates the id and keeps the stored plan consistent with the list.
-export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units", "unavailable_exercises"]);
+// `reminders` (W285: each device reminder's switch and picked time) likewise travels with a
+// restore, and only /api/reminders/device may write it.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units", "unavailable_exercises", "reminders"]);
 
 // Every wholesale client->profile door passes through here. Returns a private
 // copy: callers then validate the remaining fields, so mutating the caller's
