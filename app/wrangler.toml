@@ -21,13 +21,25 @@ MAIL_FROM = "The Hypertrophy Bible <hello@hypertrophybible.com>"
 # private half is a secret: npx wrangler secret put VAPID_PRIVATE_JWK)
 VAPID_PUBLIC_KEY = "BEZ6ZmrGhbwa6F_luGpHIELORw6Xj58yoB7A7dquHBuiiuC7Xje1XXOugI6s6cz-h1SXdd8QKsD2GLXQqLFzffE"
 
-# Hourly sweep (worker.mjs `scheduled`). PUSH is timezone-aware: each user is
-# nudged at ~17:00 THEIR local time (offset captured at subscribe), so the note is
-# actionable everywhere instead of firing at 3am for UTC+8..+12. The comeback EMAIL
-# sweep is gated in `scheduled` to the 16:00-UTC hour only, so its once-daily
-# cadence is unchanged. At most 2 emails per lapse per user; pause/opt-out respected.
+# The sweep (worker.mjs `scheduled` → src/scheduled.mjs) ticks every 5 minutes (W285) so
+# device reminders land at the times users PICK (weigh-in, training days, food log), each
+# on one tick a day in their own timezone. Everything that used to run hourly still does:
+# the social pushes and email-only accounts ride the first tick of each hour, and the
+# comeback EMAIL sweep the 16:00-UTC one only, so its once-daily cadence is unchanged.
+# At most 2 emails per lapse per user; pause/opt-out respected.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/5 * * * *"]
+
+# Rest's up (W286): one Durable Object per user holds the end of their current rest and
+# pushes "Rest's up" at that instant, even with the phone locked — the cron's minutes are
+# far too coarse for a 90-second rest. SQLite-backed: the kind the Workers Free plan includes.
+[[durable_objects.bindings]]
+name = "REST_ALARM"
+class_name = "RestAlarm"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RestAlarm"]
 
 # Frontend: everything in ./public is served straight from Cloudflare's edge.
 # The Worker (main) only runs for routes the assets don't match — i.e. /api/*.

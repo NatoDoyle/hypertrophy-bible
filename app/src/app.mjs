@@ -8,7 +8,8 @@ import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from 
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
-import { isAllowedPushEndpoint } from "./push.mjs";
+import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, REMINDER_KINDS } from "./push.mjs";
+import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 import { normalizeSessionLocalDate, normalizeSessionTiming, validLocalDate } from "./session-time.mjs";
 import { stripServerOwnedProfile } from "./merge-archive.mjs";
@@ -1184,7 +1185,7 @@ export function createApp(store, config = {}) {
     // "✓ signed in / your progress is saved" forever — Wave 230 stopped new
     // plantings, but a stopped write does not reach flags already stored (lesson
     // 41); this field is what lets the client reconcile them against the truth.
-    return c.json({ ...adherenceReport(user, sessions, nowISO, tz), reminders_off: user.profile?.reminders_off === true, commitment, commitment_resume_days: commitmentResumeDays, share_cheers: shareCheers, nudged,
+    return c.json({ ...adherenceReport(user, sessions, nowISO, tz), reminders_off: user.profile?.reminders_off === true, device_reminders: normalizeReminders(user.profile?.reminders), commitment, commitment_resume_days: commitmentResumeDays, share_cheers: shareCheers, nudged,
       account_email: await store.accountEmail(id) });
   });
 
@@ -1323,6 +1324,44 @@ export function createApp(store, config = {}) {
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
     return c.json({ reminders_off: updated.profile.reminders_off === true });
+  });
+
+  // Rest's up (W286): arm the user's rest alarm for the end of the rest the player just started
+  // (or moved by ±30 s), or disarm it — "I'm ready", the next set banked, the workout over, or
+  // the rest screen on screen for the end (the app's own chime takes over). `restAlarm` is the
+  // worker's Durable Object binder (rest-alarm.mjs); without one (local Node) it's unavailable.
+  app.post("/api/rest-alert", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1
+    if (b.op !== "arm" && b.op !== "disarm") return c.json({ error: "bad-op" }, 400);
+    const parsed = b.op === "arm" ? parseRestAlert(b, Date.now()) : null;
+    if (b.op === "arm" && !parsed) return c.json({ error: "bad-end" }, 400);
+    if (!(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
+    if (!config.restAlarm) return c.json({ armed: false, unavailable: true });
+    try {
+      if (b.op === "disarm") { await config.restAlarm.disarm(b.user_id); return c.json({ armed: false }); }
+      await config.restAlarm.arm(b.user_id, parsed.endsAt, restAlertPayload(parsed.label));
+      return c.json({ armed: true });
+    } catch { return c.json({ error: "alarm-unreachable" }, 502); }
+  });
+
+  // Device reminders at the times the user picks (W285): one kind per call — its switch, its
+  // time, or both. Server-owned (merge-archive's SERVER_OWNED_PROFILE_FIELDS): only this door
+  // writes them, through the validators the push sweep reads them back with.
+  app.post("/api/reminders/device", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1
+    const time = b.time === undefined ? undefined : parseReminderTime(b.time);
+    if (!REMINDER_KINDS.includes(b.kind) || (b.on !== undefined && typeof b.on !== "boolean") || time === null || (b.on === undefined && time === undefined)) {
+      return c.json({ error: "bad-reminder" }, 400);
+    }
+    const updated = await store.updateUser(b.user_id, (u) => {
+      const cur = normalizeReminders(u.profile?.reminders)[b.kind];
+      u.profile = { ...(u.profile ?? {}), reminders: { ...(u.profile?.reminders ?? {}), [b.kind]: { on: b.on ?? cur.on, time: time ?? cur.time } } };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ device_reminders: normalizeReminders(updated.profile.reminders) });
   });
 
   // Safety rail: pause suspends all streak pressure with zero penalty (illness/injury).

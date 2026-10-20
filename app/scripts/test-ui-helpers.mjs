@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
 import { suggestWeight, MUSCLE_PLAIN } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
 
@@ -543,11 +543,30 @@ check("W284 wiring: Nerd Mode is a remembered Progress toggle that asks for the 
   assert.match(appJs, /aria-pressed="\$\{nerdOn\(\)\}"[^>]*>🤓 Nerd mode<\/button>/);
   assert.match(appJs, /renderProgress\(\)\.then\(\(\) => \$\("#nerd-toggle"\)\?\.focus\(\)\)/);
   assert.match(appJs, /s\.basis === "load" \? "top load" : "est\. 1RM"/, "load-tracked lifts aren't called 1RMs");
-  assert.match(appJs, /key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd"/);
+  assert.ok(DEVICE_PREFS.has("hb_nerd") && DEVICE_PREFS.has("hb_rir") && DEVICE_PREFS.has("hb_rest"));
+  assert.match(appJs, /key\?\.startsWith\("hb_"\) && !DEVICE_PREFS\.has\(key\)/, "the account switch clears by that one set");
 });
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
   assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);
   assert.match(fnBody(appJs, '$("#unlink").onclick = () => {'), /delete sess\.lastSkip/);
+});
+
+check("DEVICE_PREFS (W286/W287): the rest alert switch and the one-time invite stay with the DEVICE across an account switch; the account's own state goes", () => {
+  assert.deepEqual([...DEVICE_PREFS].sort(), ["hb_nerd", "hb_notify_invite", "hb_rest", "hb_rest_alert", "hb_rir"]);
+  for (const accountKey of ["hb_user", "hb_push", "hb_email", "hb_program", "hb_units", "hb_session"]) assert.ok(!DEVICE_PREFS.has(accountKey), `${accountKey} belongs to the account`);
+});
+check("notifyOffer (W285): the turn-on door each device can actually use", () => {
+  assert.equal(notifyOffer({ supported: true, permission: "default", on: false }), "enable");
+  assert.equal(notifyOffer({ supported: true, permission: "denied", on: false }), "blocked", "said no in the browser: say where to undo it, don't re-ask");
+  assert.equal(notifyOffer({ supported: true, permission: "granted", on: true }), null, "already on");
+  assert.equal(notifyOffer({ supported: false, ios: true, standalone: false, on: false }), "home-screen", "an iPhone in Safari: Web Push lives in the Home-Screen app");
+  assert.equal(notifyOffer({ supported: false, ios: false, standalone: false, on: false }), null, "a browser without Web Push");
+  assert.equal(notifyOffer({ supported: false, ios: true, standalone: true, on: false }), null, "a Home-Screen app on an iOS too old for Web Push");
+});
+check("trainingDaysHint (W285): the person's own days in week order — or what happens without any", () => {
+  assert.equal(trainingDaysHint(["fri", "mon", "wed"]), "On Mon, Wed and Fri, if you haven't trained yet.");
+  assert.equal(trainingDaysHint(["sun"]), "On Sun, if you haven't trained yet.");
+  for (const none of [[], null, undefined]) assert.match(trainingDaysHint(none), /^Pick your training days on Today.*a nudge after two days off\.$/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

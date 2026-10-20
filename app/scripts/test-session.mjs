@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -954,6 +954,26 @@ check("#local-readout an OLD workout without targets still reads (no plan, no gr
   assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned, l.top, l.under]), [["a", 2, null, false, 0]]);
   assert.strictEqual(r.hasPlan, false);
   assert.strictEqual(localReadout([tg("a", 2)], [ws("a", 50, 10)]).hasPlan, true);
+});
+
+check("restAlertStep (W286): armed while resting; handed to the in-app chime in the last seconds on screen; re-armed if the screen goes", () => {
+  const rest = { until: 100_000 };
+  const step = (o) => restAlertStep({ rest, armedUntil: null, now: 10_000, onScreen: true, enabled: true, ...o });
+  assert.strictEqual(REST_ALERT_HANDOFF_MS, 3000);
+  assert.strictEqual(step({}), "arm", "a rest starts: arm (the phone may lock any moment)");
+  assert.strictEqual(step({ armedUntil: 100_000 }), null, "already armed for this end");
+  assert.strictEqual(step({ rest: { until: 130_000 }, armedUntil: 100_000 }), "arm", "+30 s moved the end: arm again");
+  assert.strictEqual(step({ armedUntil: 100_000, now: 97_500 }), "disarm", "on screen in the last 3 s: the app's chime takes over");
+  assert.strictEqual(step({ now: 97_500 }), null, "…once");
+  assert.strictEqual(step({ now: 97_500, onScreen: false }), "arm", "the screen went away after the hand-over: arm again");
+  assert.strictEqual(step({ armedUntil: 100_000, now: 97_500, onScreen: false }), null, "off screen near the end: the alarm stays");
+  assert.strictEqual(step({ armedUntil: 100_000, now: 100_500 }), null, "over: the alarm or the chime has fired; nothing to undo");
+  assert.strictEqual(step({ rest: null, armedUntil: 100_000, now: 50_000 }), "disarm", "ended early: I'm ready, a set banked, the workout over");
+  assert.strictEqual(step({ rest: null, armedUntil: 100_000, now: 100_500 }), null, "an end that already passed needs no disarm");
+  assert.strictEqual(step({ rest: null }), null);
+  assert.strictEqual(step({ enabled: false }), null, "alerts off (or no notifications): never arm");
+  assert.strictEqual(step({ enabled: false, armedUntil: 100_000 }), "disarm", "switched off mid-rest: disarm");
+  assert.strictEqual(step({ rest: { until: NaN } }), null, "a corrupt rest is never armed");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

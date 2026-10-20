@@ -85,5 +85,30 @@ await check("the sign-in page is never handled or cached, under EITHER spelling 
   assert.equal((await h.fire("/styles.css")).handled, true, "control: an ordinary asset IS handled (else this proves nothing)");
 });
 
+// W286: a rest alert must ALERT — even when it replaces the last one (same tag) — and buzz.
+function pushHarness() {
+  const shown = [];
+  const listeners = {};
+  const ctx = vm.createContext({
+    self: { addEventListener: (t, f) => { listeners[t] = f; }, skipWaiting() {}, clients: { claim() {} }, registration: { showNotification: async (title, opts) => { shown.push({ title, opts }); } } },
+    caches: { open: async () => ({}), keys: async () => [], delete: async () => true }, location: { origin: ORIGIN }, URL, Promise, console,
+  });
+  vm.runInContext(src, ctx);
+  const push = async (payload) => { const waits = []; listeners.push({ data: payload === undefined ? null : { json: () => payload }, waitUntil: (p) => waits.push(p) }); await Promise.all(waits); return shown.at(-1); };
+  return { push };
+}
+await check("a rest alert re-alerts and vibrates; every other notification keeps its quiet replace", async () => {
+  const h = pushHarness();
+  const rest = await h.push({ title: "Rest's up", body: "Next: Squat — set 3 of 4", tag: "hb-rest" });
+  assert.equal(rest.title, "Rest's up");
+  assert.equal(rest.opts.tag, "hb-rest");
+  assert.equal(rest.opts.renotify, true, "a second rest's alert must not land silently on the first one's tag");
+  assert.ok(Array.isArray(rest.opts.vibrate) && rest.opts.vibrate.length > 0);
+  const other = await h.push({ title: "The Hypertrophy Bible", body: "x", tag: "hb-nudge" });
+  assert.ok(!other.opts.renotify && !other.opts.vibrate, "control: the other kinds are unchanged");
+  const empty = await h.push(undefined);
+  assert.equal(empty.opts.tag, "hb-reminder", "control: the empty daily reminder keeps its static copy");
+});
+
 console.log(`\n${pass} service-worker test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

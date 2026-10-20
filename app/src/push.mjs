@@ -1,4 +1,4 @@
-import { isoWeekKeyLocal, weekHasPassed, weekDayKey, commitmentForDay, isoWeekMondayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKeyLocal, weekHasPassed, weekDayKey, commitmentForDay, isoWeekMondayKey, localDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile, celebrationCopy } from "./adherence.mjs";
 import { comebackStage, quietToday } from "./nudge.mjs";
@@ -80,7 +80,9 @@ export async function sendEmptyPush(subscription, vapid, fetchFn = fetch) {
 // or anything a `hb-share`-style token wouldn't already make public. Requires the
 // subscription's stored p256dh/auth (always present for a real browser
 // subscription — see savePushSubscription); the caller checks for them.
-export async function sendPush(subscription, vapid, payload, fetchFn = fetch) {
+// `ttl`/`urgency` default to the reminders' (a day; normal). The rest alert (rest-alarm.mjs)
+// is the exception — urgent, and worthless a minute late.
+export async function sendPush(subscription, vapid, payload, fetchFn = fetch, { ttl = 86400, urgency = "normal" } = {}) {
   try {
     const { body, headers } = await encryptPushPayload({
       p256dh: subscription.p256dh,
@@ -89,7 +91,7 @@ export async function sendPush(subscription, vapid, payload, fetchFn = fetch) {
     });
     const res = await fetchFn(subscription.endpoint, {
       method: "POST",
-      headers: { Authorization: await buildVapidAuth(subscription.endpoint, vapid), TTL: "86400", Urgency: "normal", "Content-Type": "application/octet-stream", ...headers },
+      headers: { Authorization: await buildVapidAuth(subscription.endpoint, vapid), TTL: String(ttl), Urgency: urgency, "Content-Type": "application/octet-stream", ...headers },
       body,
     });
     return { ok: res.ok, gone: res.status === 404 || res.status === 410, status: res.status };
@@ -135,6 +137,56 @@ export function isSocialPushQuietHours(tzOffsetMin, now) {
   if (!Number.isFinite(tzOffsetMin)) return false;
   const localHour = new Date(+new Date(now) + tzOffsetMin * 60000).getUTCHours();
   return localHour >= SOCIAL_PUSH_QUIET_START_HOUR && localHour < SOCIAL_PUSH_QUIET_END_HOUR;
+}
+
+// --- Reminders at the times the user picks (W285, consideration #2). Three kinds, each
+// { on, time: "HH:MM" local }. The training-days reminder is the daily slot that always fired
+// at 17:00 local — its time is now the user's; weigh-in and food log are new, and off until
+// asked for. Stored settings are only ever read through normalizeReminders, so junk can't
+// reach the sweep; the route validates on the way in (parseReminderTime).
+export const REMINDER_KINDS = ["workout", "weigh_in", "calories"];
+export const REMINDER_DEFAULTS = {
+  workout: { on: true, time: "17:00" },
+  weigh_in: { on: false, time: "07:30" },
+  calories: { on: false, time: "20:00" },
+};
+export const REMINDER_COPY = {
+  weigh_in: { title: "Weigh-in", body: "Step on the scale — one reading a day keeps your calorie targets honest.", tag: "hb-weigh-in" },
+  calories: { title: "Log today's food", body: "Nothing in Fuel yet today — a quick entry keeps your targets adapting to you.", tag: "hb-food" },
+};
+export function parseReminderTime(v) {
+  if (typeof v !== "string" || !/^\d{2}:\d{2}$/.test(v)) return null;
+  return +v.slice(0, 2) <= 23 && +v.slice(3) <= 59 ? v : null;
+}
+export function normalizeReminders(stored) {
+  const out = {};
+  for (const kind of REMINDER_KINDS) {
+    const s = stored?.[kind], d = REMINDER_DEFAULTS[kind];
+    out[kind] = { on: typeof s?.on === "boolean" ? s.on : d.on, time: parseReminderTime(s?.time) ?? d.time };
+  }
+  return out;
+}
+// Due on the FIRST tick at or after the local time — never early, at most one tick late — so a
+// reminder fires on exactly one tick a day. A 60-minute tick is the old hourly sweep (17:00 on
+// it IS isUserPushHour); the cron ticks every CRON_TICK_MINUTES. With no stored timezone a
+// local time can't be placed, so it never fires (every subscriber has one: it's captured at
+// subscribe and refreshed by the X-HB-TZ header on every open).
+export const CRON_TICK_MINUTES = 5;
+export function isReminderDue(tzOffsetMin, time, now, tickMinutes) {
+  const t = parseReminderTime(time);
+  if (!t || !Number.isFinite(tzOffsetMin)) return false;
+  const localMinute = Math.floor((+new Date(now) + tzOffsetMin * 60000) / 60000);
+  const minuteOfDay = ((localMinute % 1440) + 1440) % 1440;
+  return (minuteOfDay - (+t.slice(0, 2) * 60 + +t.slice(3)) + 1440) % 1440 < tickMinutes;
+}
+// What one cron tick does. The first tick of each hour runs everything the hourly cron ran
+// (the social events, the email-only accounts); the 16:00-UTC one also runs the comeback
+// email sweep, once a day as before. Read off the tick's SCHEDULED time, so a late start still
+// lands in its own slot.
+export function cronTick(scheduledMs, tickMinutes = CRON_TICK_MINUTES) {
+  const d = new Date(scheduledMs);
+  const hourly = d.getUTCMinutes() < tickMinutes;
+  return { hourly, comebackEmail: hourly && d.getUTCHours() === 16 };
 }
 
 // Pure decision: should this subscriber get today's reminder push?
@@ -208,7 +260,10 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
 // nudge.mjs's twice-per-lapse comeback sweep, run separately — this fallback must
 // never duplicate that, so it only ever fires from the same event blocks that
 // already gate on paused/reminders_off/seen-once markers.
-export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch, sendSocialEmail = null) {
+export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fetch, sendSocialEmail = null, { tickMinutes = 60 } = {}) {
+  // The cron ticks every few minutes for the reminders' picked times; the social events and
+  // the email-only accounts keep their hourly cadence (tickMinutes 60: every call is hourly).
+  const { hourly } = cronTick(now, tickMinutes);
   const subs = await store.listPushSubscriptions();
   const byUser = new Map();
   for (const sub of subs) { const l = byUser.get(sub.user_id) ?? []; l.push(sub); byUser.set(sub.user_id, l); }
@@ -218,7 +273,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
   // invisible to this whole sweep and hears about a challenge/nudge/cheer/streak-
   // freeze event only if they happen to reopen the app.
   const emailByUser = new Map();
-  if (sendSocialEmail) {
+  if (sendSocialEmail && hourly) {
     for (const a of await store.listAccountLastSessions()) {
       emailByUser.set(a.user_id, a.email);
       if (!byUser.has(a.user_id)) byUser.set(a.user_id, []);
@@ -304,173 +359,192 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         } catch { /* retried next sweep; worst case one repeat push for the same value */ }
       };
 
-      // A training-partner nudge (Wave 119) is a discrete social event, not a daily
-      // cadence — push it on the NEXT hourly tick rather than waiting for the user's
-      // one local reminder hour. `nudge_pushed_at` is separate from the in-app
-      // `nudge_seen_at` (app.mjs /api/adherence): two surfaces, never gating each other.
-      const pendingNudge = user.profile?.partner_nudge;
-      if (!paused && !remindersOff && !quietHours && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your training partner nudged you", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
-        if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
-      }
-
-      // Challenge INVITE + ACCEPT pushes (Waves 126/137, multi-slot since Wave 198):
-      // iterate every slot. The pushed-markers live ON each slot as booleans
-      // (invite_pushed / accept_pushed) — the per-USER scalar watermarks collided the
-      // moment two invites could land in one sweep tick: a shared high-water mark
-      // stamped by the first send made the second invite's created_at read as already
-      // pushed, suppressing it forever (lesson 23, the exact failure the roadmap named
-      // when it scoped this feature). challengeSlots maps the legacy scalars onto the
-      // slot booleans for un-migrated rows, so nothing old re-fires and nothing
-      // un-pushed is lost. Stamp only on >= 1 delivered send (all-failed retries next
-      // tick), precondition inside the mutator so a raced slot replacement can't be
-      // mis-stamped.
-      const markSlot = async (slotId, key) => {
-        try {
-          await store.updateUser(userId, (u) => {
-            const cur = challengeSlots(u.profile);
-            if (!cur.some((ch) => ch.id === slotId)) return u; // slot replaced — nothing to mark
-            u.profile = normalizeChallengeProfile(u.profile, cur.map((ch) => ch.id === slotId ? { ...ch, [key]: true } : ch));
-            return u;
-          });
-        } catch { /* worst case: one repeat push next tick, never a lost event */ }
-      };
-      const slots = challengeSlots(user.profile);
-      for (const ch of slots) {
-        if (paused || remindersOff || quietHours) break;
-        // The invite: only the opponent's own still-PENDING, still-current invite.
-        if (ch.role === "opponent" && ch.status === "pending" && !ch.invite_pushed
-            && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
-          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
-          if (ok) await markSlot(ch.id, "invite_pushed");
+      if (hourly) {
+        // A training-partner nudge (Wave 119) is a discrete social event, not a daily
+        // cadence — push it on the NEXT hourly tick rather than waiting for the user's
+        // one local reminder hour. `nudge_pushed_at` is separate from the in-app
+        // `nudge_seen_at` (app.mjs /api/adherence): two surfaces, never gating each other.
+        const pendingNudge = user.profile?.partner_nudge;
+        if (!paused && !remindersOff && !quietHours && pendingNudge && pendingNudge.at > (user.profile?.nudge_pushed_at ?? 0)) {
+          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your training partner nudged you", body: "Your training partner nudged you — jump back in.", tag: "hb-nudge" });
+          if (ok) await stamp("nudge_pushed_at", pendingNudge.at);
         }
-        // The accept: the CHALLENGER hears the race is on. accepted_at is stamped on
-        // their copy at respond time; a pre-137 active slot has none and never fires.
-        // Declines deliberately do NOT push.
-        if (ch.role === "challenger" && ch.status === "active" && ch.accepted_at != null && !ch.accept_pushed
-            && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
-          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
-          if (ok) await markSlot(ch.id, "accept_pushed");
-        }
-      }
 
-      // A share-card CHEER (the last of Tier-3 #10's social events to reach push): unlike
-      // nudge/challenge, a cheer has no single event instant to use as a high-water
-      // mark — cheers accumulate as a running count on the share row (store.getShareCheers),
-      // keyed by share_id, not by user. So the marker here is the COUNT itself
-      // (cheers_pushed) rather than an `at` timestamp: `stamp`'s `>= at` guard works
-      // identically for a monotonic count. Only users who opted into sharing (a live
-      // share token exists) are ever looked up; most users have none and this is a
-      // single cheap no-op lookup. Fires on the next hourly tick, same as nudge/challenge,
-      // since a cheer is a discrete "someone did something nice for you" moment, not a
-      // daily cadence.
-      if (!paused && !remindersOff && !quietHours) {
-        const shareId = await store.getShareIdForUser(userId);
-        if (shareId) {
-          const cheers = await store.getShareCheers(shareId);
-          const pushedCount = user.profile?.cheers_pushed ?? 0;
-          if (cheers > pushedCount) {
-            const delta = cheers - pushedCount;
-            const body = delta === 1
-              ? "Someone cheered your progress on the Hypertrophy Bible — keep it up!"
-              : `${delta} people cheered your progress on the Hypertrophy Bible — keep it up!`;
-            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Someone cheered your progress", body, tag: "hb-cheer" });
-            if (ok) await stamp("cheers_pushed", cheers);
-          }
-        }
-      }
-
-      // A NEW FOLLOWER (Tier-1 #3, Wave 201): stamped by POST /api/following at the
-      // moment someone new follows (the one door a follow enters through), read here
-      // as the COUNT itself vs followers_pushed — the same monotonic high-water shape
-      // as cheers_pushed, because follows accumulate with no single event instant.
-      // Batches naturally: two follows between ticks are one "2 people" push, never
-      // two notifications. Email fallback stays ON — unlike the celebration echo
-      // below, a new follower is genuinely new information the user has no other way
-      // to hear about.
-      if (!paused && !remindersOff && !quietHours) {
-        const followers = user.profile?.followers_count ?? 0;
-        const followersPushed = user.profile?.followers_pushed ?? 0;
-        if (followers > followersPushed) {
-          const delta = followers - followersPushed;
-          const body = delta === 1
-            ? "Someone started following your training — your streak has an audience now."
-            : `${delta} people started following your training — your streak has an audience now.`;
-          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You have a new follower", body, tag: "hb-follower" });
-          if (ok) await stamp("followers_pushed", followers);
-        }
-      }
-
-      // The CELEBRATION echo (Tier-1 #3, Wave 201): the single top event the user's
-      // latest session earned — PR / level-up / session milestone / streak milestone —
-      // stamped by POST /api/session, delivered here as ONE notification on the next
-      // tick. Freshness-bounded: praise older than CELEBRATION_MAX_AGE_MS (a marker
-      // that outlived days of failed sends, or predates a long-dead subscription) is
-      // stale and stays silent — a happy event delivered a week late reads as a bug.
-      // The pushed flag lives ON the marker; the precondition inside the mutator keys
-      // on session_id so a newer session's marker is never mis-stamped (lesson 23's
-      // scope question: the marker is per-EVENT, so the stamp is too). Push-only by
-      // design (emailFallback:false) — the in-app recap already told this story.
-      const cel = user.profile?.celebration;
-      if (!paused && !remindersOff && !quietHours && cel && !cel.pushed
-          && now - (cel.at ?? 0) <= CELEBRATION_MAX_AGE_MS) {
-        const ok = await fanOut({ title: "The Hypertrophy Bible", ...celebrationCopy(cel) }, { emailFallback: false });
-        if (ok) {
+        // Challenge INVITE + ACCEPT pushes (Waves 126/137, multi-slot since Wave 198):
+        // iterate every slot. The pushed-markers live ON each slot as booleans
+        // (invite_pushed / accept_pushed) — the per-USER scalar watermarks collided the
+        // moment two invites could land in one sweep tick: a shared high-water mark
+        // stamped by the first send made the second invite's created_at read as already
+        // pushed, suppressing it forever (lesson 23, the exact failure the roadmap named
+        // when it scoped this feature). challengeSlots maps the legacy scalars onto the
+        // slot booleans for un-migrated rows, so nothing old re-fires and nothing
+        // un-pushed is lost. Stamp only on >= 1 delivered send (all-failed retries next
+        // tick), precondition inside the mutator so a raced slot replacement can't be
+        // mis-stamped.
+        const markSlot = async (slotId, key) => {
           try {
             await store.updateUser(userId, (u) => {
-              if (u.profile?.celebration?.session_id !== cel.session_id) return u; // replaced — don't mark the newer one
-              u.profile = { ...u.profile, celebration: { ...u.profile.celebration, pushed: true } };
+              const cur = challengeSlots(u.profile);
+              if (!cur.some((ch) => ch.id === slotId)) return u; // slot replaced — nothing to mark
+              u.profile = normalizeChallengeProfile(u.profile, cur.map((ch) => ch.id === slotId ? { ...ch, [key]: true } : ch));
               return u;
             });
           } catch { /* worst case: one repeat push next tick, never a lost event */ }
+        };
+        const slots = challengeSlots(user.profile);
+        for (const ch of slots) {
+          if (paused || remindersOff || quietHours) break;
+          // The invite: only the opponent's own still-PENDING, still-current invite.
+          if (ch.role === "opponent" && ch.status === "pending" && !ch.invite_pushed
+              && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
+            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You've been challenged to a weekly race", body: "Your training partner challenged you to a weekly race — respond before the week's up.", tag: "hb-challenge" });
+            if (ok) await markSlot(ch.id, "invite_pushed");
+          }
+          // The accept: the CHALLENGER hears the race is on. accepted_at is stamped on
+          // their copy at respond time; a pre-137 active slot has none and never fires.
+          // Declines deliberately do NOT push.
+          if (ch.role === "challenger" && ch.status === "active" && ch.accepted_at != null && !ch.accept_pushed
+              && !weekHasPassed(ch.week, now, user.profile?.tz_offset_min)) {
+            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Challenge on — your race has started", body: "Challenge on — your partner accepted. Most sessions this week wins.", tag: "hb-challenge" });
+            if (ok) await markSlot(ch.id, "accept_pushed");
+          }
         }
+
+        // A share-card CHEER (the last of Tier-3 #10's social events to reach push): unlike
+        // nudge/challenge, a cheer has no single event instant to use as a high-water
+        // mark — cheers accumulate as a running count on the share row (store.getShareCheers),
+        // keyed by share_id, not by user. So the marker here is the COUNT itself
+        // (cheers_pushed) rather than an `at` timestamp: `stamp`'s `>= at` guard works
+        // identically for a monotonic count. Only users who opted into sharing (a live
+        // share token exists) are ever looked up; most users have none and this is a
+        // single cheap no-op lookup. Fires on the next hourly tick, same as nudge/challenge,
+        // since a cheer is a discrete "someone did something nice for you" moment, not a
+        // daily cadence.
+        if (!paused && !remindersOff && !quietHours) {
+          const shareId = await store.getShareIdForUser(userId);
+          if (shareId) {
+            const cheers = await store.getShareCheers(shareId);
+            const pushedCount = user.profile?.cheers_pushed ?? 0;
+            if (cheers > pushedCount) {
+              const delta = cheers - pushedCount;
+              const body = delta === 1
+                ? "Someone cheered your progress on the Hypertrophy Bible — keep it up!"
+                : `${delta} people cheered your progress on the Hypertrophy Bible — keep it up!`;
+              const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Someone cheered your progress", body, tag: "hb-cheer" });
+              if (ok) await stamp("cheers_pushed", cheers);
+            }
+          }
+        }
+
+        // A NEW FOLLOWER (Tier-1 #3, Wave 201): stamped by POST /api/following at the
+        // moment someone new follows (the one door a follow enters through), read here
+        // as the COUNT itself vs followers_pushed — the same monotonic high-water shape
+        // as cheers_pushed, because follows accumulate with no single event instant.
+        // Batches naturally: two follows between ticks are one "2 people" push, never
+        // two notifications. Email fallback stays ON — unlike the celebration echo
+        // below, a new follower is genuinely new information the user has no other way
+        // to hear about.
+        if (!paused && !remindersOff && !quietHours) {
+          const followers = user.profile?.followers_count ?? 0;
+          const followersPushed = user.profile?.followers_pushed ?? 0;
+          if (followers > followersPushed) {
+            const delta = followers - followersPushed;
+            const body = delta === 1
+              ? "Someone started following your training — your streak has an audience now."
+              : `${delta} people started following your training — your streak has an audience now.`;
+            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "You have a new follower", body, tag: "hb-follower" });
+            if (ok) await stamp("followers_pushed", followers);
+          }
+        }
+
+        // The CELEBRATION echo (Tier-1 #3, Wave 201): the single top event the user's
+        // latest session earned — PR / level-up / session milestone / streak milestone —
+        // stamped by POST /api/session, delivered here as ONE notification on the next
+        // tick. Freshness-bounded: praise older than CELEBRATION_MAX_AGE_MS (a marker
+        // that outlived days of failed sends, or predates a long-dead subscription) is
+        // stale and stays silent — a happy event delivered a week late reads as a bug.
+        // The pushed flag lives ON the marker; the precondition inside the mutator keys
+        // on session_id so a newer session's marker is never mis-stamped (lesson 23's
+        // scope question: the marker is per-EVENT, so the stamp is too). Push-only by
+        // design (emailFallback:false) — the in-app recap already told this story.
+        const cel = user.profile?.celebration;
+        if (!paused && !remindersOff && !quietHours && cel && !cel.pushed
+            && now - (cel.at ?? 0) <= CELEBRATION_MAX_AGE_MS) {
+          const ok = await fanOut({ title: "The Hypertrophy Bible", ...celebrationCopy(cel) }, { emailFallback: false });
+          if (ok) {
+            try {
+              await store.updateUser(userId, (u) => {
+                if (u.profile?.celebration?.session_id !== cel.session_id) return u; // replaced — don't mark the newer one
+                u.profile = { ...u.profile, celebration: { ...u.profile.celebration, pushed: true } };
+                return u;
+              });
+            } catch { /* worst case: one repeat push next tick, never a lost event */ }
+          }
+        }
+
+        // Challenge RESULTS (Waves 138/139, multi-slot): if a week ended and this user
+        // never reopened the app, GET /api/challenge's self-transition never ran —
+        // settle here with the SAME shared logic (settleChallenge settles every needy
+        // slot in one call, never a second copy), then push results off the PERSISTED
+        // fields.
+        if (!paused && !remindersOff && slots.some((ch) => ch.status === "active"
+            && weekHasPassed(ch.week, now, user.profile?.tz_offset_min))) {
+          await settleChallenge(store, userId, user, now);
+          user = (await store.getUser(userId)) ?? user; // the push path reads the settled slots
+        }
+        // The result push itself (design adopted from PR #216): driven entirely off
+        // persisted state — a COMPLETED challenge for the week that JUST ended, with
+        // its recorded history entry and no result_pushed marker on the slot — so a
+        // tick where every device send fails simply retries next tick from the same
+        // stored fields (at-least-once), instead of losing the payoff moment. The
+        // marker lives ON the slot (auto-scoped: the next propose replaces it), and
+        // the just-ended-week guard keeps pre-existing old completed challenges from
+        // ever firing retroactively. A vanished-opponent completion has no history
+        // entry -> no push (never manufacture a trophy); declines stay silent.
+        // NOTE: the guard below is a DELIBERATE exact match and must stay one. It asks
+        // "is this the week that JUST ended" (a one-week window that stops old completed
+        // challenges firing retroactively), not "has this week passed" — the two other
+        // comparisons in this file were the same shape as the bug and this one is not.
+        for (const settledCh of challengeSlots(user.profile)) {
+          if (paused || remindersOff || quietHours) break;
+          if (settledCh.status !== "completed" || settledCh.result_pushed) continue;
+          if (settledCh.week !== isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) continue;
+          // Entry lookup by challenge ID first (two challenges can now end in the SAME
+          // week — a week-keyed lookup collides); legacy entries predate ids and fall
+          // back to the week, safe because the single-slot world couldn't collide.
+          const entry = (user.profile?.challenge_history ?? []).find((h) => h.id === settledCh.id)
+            ?? (user.profile?.challenge_history ?? []).find((h) => h.id == null && h.week === settledCh.week);
+          if (entry) {
+            const body = entry.result === "win"
+              ? `🏆 You won this week's challenge ${entry.my_count}–${entry.opponent_count}!`
+              : entry.result === "lose"
+                ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
+                : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
+            const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your weekly challenge result is in", body, tag: "hb-challenge" });
+            if (ok) await markSlot(settledCh.id, "result_pushed");
+          }
+        }
+
       }
 
-      // Challenge RESULTS (Waves 138/139, multi-slot): if a week ended and this user
-      // never reopened the app, GET /api/challenge's self-transition never ran —
-      // settle here with the SAME shared logic (settleChallenge settles every needy
-      // slot in one call, never a second copy), then push results off the PERSISTED
-      // fields.
-      if (!paused && !remindersOff && slots.some((ch) => ch.status === "active"
-          && weekHasPassed(ch.week, now, user.profile?.tz_offset_min))) {
-        await settleChallenge(store, userId, user, now);
-        user = (await store.getUser(userId)) ?? user; // the push path reads the settled slots
-      }
-      // The result push itself (design adopted from PR #216): driven entirely off
-      // persisted state — a COMPLETED challenge for the week that JUST ended, with
-      // its recorded history entry and no result_pushed marker on the slot — so a
-      // tick where every device send fails simply retries next tick from the same
-      // stored fields (at-least-once), instead of losing the payoff moment. The
-      // marker lives ON the slot (auto-scoped: the next propose replaces it), and
-      // the just-ended-week guard keeps pre-existing old completed challenges from
-      // ever firing retroactively. A vanished-opponent completion has no history
-      // entry -> no push (never manufacture a trophy); declines stay silent.
-      // NOTE: the guard below is a DELIBERATE exact match and must stay one. It asks
-      // "is this the week that JUST ended" (a one-week window that stops old completed
-      // challenges firing retroactively), not "has this week passed" — the two other
-      // comparisons in this file were the same shape as the bug and this one is not.
-      for (const settledCh of challengeSlots(user.profile)) {
-        if (paused || remindersOff || quietHours) break;
-        if (settledCh.status !== "completed" || settledCh.result_pushed) continue;
-        if (settledCh.week !== isoWeekKeyLocal(now - 7 * 86400e3, user.profile?.tz_offset_min)) continue;
-        // Entry lookup by challenge ID first (two challenges can now end in the SAME
-        // week — a week-keyed lookup collides); legacy entries predate ids and fall
-        // back to the week, safe because the single-slot world couldn't collide.
-        const entry = (user.profile?.challenge_history ?? []).find((h) => h.id === settledCh.id)
-          ?? (user.profile?.challenge_history ?? []).find((h) => h.id == null && h.week === settledCh.week);
-        if (entry) {
-          const body = entry.result === "win"
-            ? `🏆 You won this week's challenge ${entry.my_count}–${entry.opponent_count}!`
-            : entry.result === "lose"
-              ? `Challenge over — your partner took this week ${entry.opponent_count}–${entry.my_count}. Rematch?`
-              : `Challenge over — dead heat at ${entry.my_count}–${entry.opponent_count}.`;
-          const ok = await fanOut({ title: "The Hypertrophy Bible", subject: "Your weekly challenge result is in", body, tag: "hb-challenge" });
-          if (ok) await markSlot(settledCh.id, "result_pushed");
-        }
+      // Reminders at the times the user picks (W285): weigh-in and food log, each on its one
+      // tick a day, and only while the thing isn't done yet on the user's own calendar day.
+      // Push-only — an emailed "log your food" would be spam.
+      const rem = normalizeReminders(user.profile?.reminders);
+      const tz = user.profile?.tz_offset_min;
+      if (!paused && !remindersOff) {
+        if (rem.weigh_in.on && isReminderDue(tz, rem.weigh_in.time, now, tickMinutes)
+          && !(await store.listBodyweights(userId)).some((b) => b.date === localDayKey(now, tz))) await fanOut(REMINDER_COPY.weigh_in, { emailFallback: false });
+        if (rem.calories.on && isReminderDue(tz, rem.calories.time, now, tickMinutes)
+          && !(await store.listNutritionLog(userId)).some((e) => e.date === localDayKey(now, tz))) await fanOut(REMINDER_COPY.calories, { emailFallback: false });
       }
 
-      // Timezone-aware daily reminder: only in this user's one eligible hour/day.
-      if (!isUserPushHour(user.profile?.tz_offset_min, now)) continue;
+      // The training-days reminder is the daily slot below (streak freeze, comeback, the reminder
+      // itself), now at the user's own time — 17:00 local unless they picked another — and off
+      // with its switch. A picked time needs a stored timezone; without one the legacy 16:00-UTC
+      // slot stands.
+      const slotDue = Number.isFinite(tz) ? isReminderDue(tz, rem.workout.time, now, tickMinutes) : isReminderDue(0, "16:00", now, tickMinutes);
+      if (!rem.workout.on || !slotDue) continue;
 
       // A protectable streak (#4 adherence, loss-aversion): a held freeze token can
       // retroactively save a missed week, but today that only ever surfaces if the

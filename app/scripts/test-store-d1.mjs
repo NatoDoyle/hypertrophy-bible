@@ -166,6 +166,14 @@ try {
   await file.savePushSubscription("px1", sub); await d1.savePushSubscription("px1", sub);
   await file.markPushDelivered(sub.endpoint, 1234567890); await d1.markPushDelivered(sub.endpoint, 1234567890);
   sameSet("listPushSubscriptions matches after one save", (await file.listPushSubscriptions()).map(({ created_at, ...r }) => r), (await d1.listPushSubscriptions()).map(({ created_at, ...r }) => r));
+  // One user's devices (W286: the rest alarm pushes to the lifter's devices only).
+  const sub2 = { endpoint: "https://push/ep2", keys: { p256dh: "p2", auth: "a2" } };
+  await file.saveUser("px2", {}); await d1.saveUser("px2", {});
+  await file.savePushSubscription("px2", sub2); await d1.savePushSubscription("px2", sub2);
+  sameSet("listUserPushSubscriptions: the same rows, that user's only", (await file.listUserPushSubscriptions("px1")).map(({ created_at, ...r }) => r), (await d1.listUserPushSubscriptions("px1")).map(({ created_at, ...r }) => r));
+  ok("listUserPushSubscriptions: never another user's device (D1)", JSON.stringify((await d1.listUserPushSubscriptions("px1")).map((s) => s.endpoint)) === JSON.stringify(["https://push/ep1"]));
+  ok("listUserPushSubscriptions: a user with none gets an empty list (both)", (await file.listUserPushSubscriptions("nobody")).length === 0 && (await d1.listUserPushSubscriptions("nobody")).length === 0);
+  await file.deletePushSubscription(sub2.endpoint); await d1.deletePushSubscription(sub2.endpoint);
   await file.deletePushSubscription("https://push/ep1", "wrong-owner"); await d1.deletePushSubscription("https://push/ep1", "wrong-owner");
   ok("deletePushSubscription: both no-op when userId doesn't match owner (file)", (await file.listPushSubscriptions()).length === 1);
   ok("deletePushSubscription: both no-op when userId doesn't match owner (D1)", (await d1.listPushSubscriptions()).length === 1);

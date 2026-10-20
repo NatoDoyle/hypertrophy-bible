@@ -1,7 +1,7 @@
 // Offline shell cache. Strategy: stale-while-revalidate for the static shell
 // (instant offline open; updates land one load later), API requests untouched.
 // Bump VERSION on breaking asset changes to drop old caches.
-const VERSION = "hb-shell-v196";
+const VERSION = "hb-shell-v197";
 const SHELL = ["/", "/app.js", "/session-core.mjs", "/movement-demo.mjs", "/ui-helpers.mjs", "/account-adopt.mjs", "/styles.css", "/learn-data.js", "/manifest.webmanifest", "/icon.svg"];
 
 // The app's ES modules update ATOMICALLY. app.js statically imports named exports from
@@ -89,6 +89,9 @@ self.addEventListener("push", (e) => {
     icon: "/icon.svg",
     badge: "/icon.svg",
     tag, // one notification per tag at a time — a new one replaces the old
+    // Rest's up (W286) must ALERT — a later rest's lands on the same tag, which would otherwise
+    // replace the last one silently — and buzz.
+    ...(tag === "hb-rest" ? { renotify: true, vibrate: [200, 100, 200] } : {}),
   }));
 });
 self.addEventListener("notificationclick", (e) => {

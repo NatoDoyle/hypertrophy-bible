@@ -598,3 +598,19 @@ export function undoApplies(undo, sess, e) {
   return !!undo && !!undo.session_id && undo.session_id === sess?.session_id && e?.exercise === undo.to
     && sess.set === 0 && loggedWorkSets(sess.logged ?? [], undo.to) === 0;
 }
+
+// Rest's up (W286): what the player does about the server's rest alarm as things change — a
+// pure decision, so a reload, a crash or a locked phone can't strand it. Armed while a rest
+// runs (the phone may lock any moment); handed to the app's own chime in the last seconds
+// while the rest screen is on screen; armed again if the screen goes away after that hand-over;
+// disarmed when the rest ends early or alerts are off. An end that has passed needs nothing:
+// the alarm has fired, or the chime has.
+export const REST_ALERT_HANDOFF_MS = 3000;
+export function restAlertStep({ rest, armedUntil, now, onScreen, enabled }) {
+  const live = Number.isFinite(armedUntil) && armedUntil > now;
+  const until = Number.isFinite(rest?.until) ? rest.until : null;
+  if (!enabled || until == null) return live ? "disarm" : null;
+  if (until <= now) return null;
+  if (onScreen && until - now <= REST_ALERT_HANDOFF_MS) return live ? "disarm" : null;
+  return armedUntil === until ? null : "arm";
+}

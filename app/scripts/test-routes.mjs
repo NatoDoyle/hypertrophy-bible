@@ -891,6 +891,61 @@ try {
   const remindersRes = await json("POST", "/api/reminders", { user_id: ldUser, off: true });
   ok("#reminders still works normally with a real user_id", remindersRes.status === 200 && remindersRes.data.reminders_off === true);
 
+  // --- W286: rest's up — the door that arms and disarms the rest alarm ---
+  {
+    const calls = [];
+    const fakeAlarm = { arm: async (userId, endsAt, payload) => { calls.push({ op: "arm", userId, endsAt, payload }); }, disarm: async (userId) => { calls.push({ op: "disarm", userId }); } };
+    const rApp = createApp(store, { restAlarm: fakeAlarm });
+    const post = async (a, body) => { const res = await a.request("/api/rest-alert", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); return { status: res.status, data: await res.json().catch(() => null) }; };
+    const restU = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const endsAt = Date.now() + 90e3;
+    const arm = await post(rApp, { user_id: restU, op: "arm", ends_at: endsAt, label: "Bench press — set 2 of 3" });
+    ok("W286 arm: the alarm is set for that user, at the rest's end, with what's next",
+      arm.status === 200 && arm.data.armed === true && calls.length === 1 && calls[0].userId === restU && calls[0].endsAt === endsAt
+      && JSON.stringify(calls[0].payload) === JSON.stringify({ title: "Rest's up", body: "Next: Bench press — set 2 of 3", tag: "hb-rest" }), JSON.stringify({ arm, calls }));
+    ok("W286 …and what's pushed never carries the user's id (it's their credential)", !JSON.stringify(calls[0].payload).includes(restU));
+    const dis = await post(rApp, { user_id: restU, op: "disarm" });
+    ok("W286 disarm", dis.status === 200 && dis.data.armed === false && calls[1]?.op === "disarm" && calls[1].userId === restU);
+    const bad = await Promise.all([{ user_id: restU, op: "arm", ends_at: "soon" }, { user_id: restU, op: "arm", ends_at: Date.now() + 3600e3 }, { user_id: restU, op: "snooze" }].map((b) => post(rApp, b)));
+    ok("W286 a bad end, an end an hour away, or an unknown op is a 400 — and arms nothing", bad.every((r) => r.status === 400) && calls.length === 2, JSON.stringify(bad.map((r) => r.status)));
+    ok("W286 no user_id / an unknown user is a 404", (await post(rApp, { op: "disarm" })).status === 404 && (await post(rApp, { user_id: "nope", op: "arm", ends_at: endsAt })).status === 404 && calls.length === 2);
+    const plain = await post(app, { user_id: restU, op: "arm", ends_at: endsAt });
+    ok("W286 with no alarm configured (local Node, no VAPID): a clean 'unavailable', not an error", plain.status === 200 && plain.data.armed === false && plain.data.unavailable === true);
+  }
+
+  // --- W285: reminders at the times you pick — their own settings door ---
+  {
+    const remU = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const adhRem = async () => (await (await app.request("/api/adherence", { headers: { "X-HB-User": remU } })).json()).device_reminders;
+    ok("W285 /api/adherence carries the device reminder settings (the defaults until set)",
+      JSON.stringify(await adhRem()) === JSON.stringify({ workout: { on: true, time: "17:00" }, weigh_in: { on: false, time: "07:30" }, calories: { on: false, time: "20:00" } }), JSON.stringify(await adhRem()));
+    const setWi = await json("POST", "/api/reminders/device", { user_id: remU, kind: "weigh_in", on: true, time: "06:45" });
+    ok("W285 a kind's switch and time save together through their own door",
+      setWi.status === 200 && JSON.stringify(setWi.data.device_reminders.weigh_in) === JSON.stringify({ on: true, time: "06:45" }), JSON.stringify(setWi));
+    const setTime = await json("POST", "/api/reminders/device", { user_id: remU, kind: "workout", time: "18:30" });
+    ok("W285 a time alone keeps that kind's switch, and the other kinds are untouched",
+      setTime.status === 200 && JSON.stringify(setTime.data.device_reminders) === JSON.stringify({ workout: { on: true, time: "18:30" }, weigh_in: { on: true, time: "06:45" }, calories: { on: false, time: "20:00" } }), JSON.stringify(setTime.data));
+    const offOnly = await json("POST", "/api/reminders/device", { user_id: remU, kind: "workout", on: false });
+    ok("W285 a switch alone keeps that kind's time", JSON.stringify(offOnly.data?.device_reminders?.workout) === JSON.stringify({ on: false, time: "18:30" }));
+    ok("W285 …and /api/adherence reads back what was saved", JSON.stringify((await adhRem()).workout) === JSON.stringify({ on: false, time: "18:30" }));
+    const bad = await Promise.all([
+      { user_id: remU, kind: "lunch", on: true },
+      { user_id: remU, kind: "weigh_in", time: "25:00" },
+      { user_id: remU, kind: "weigh_in", time: "7:30" },
+      { user_id: remU, kind: "weigh_in", on: "yes" },
+      { user_id: remU, kind: "weigh_in" },
+      { user_id: remU, kind: "__proto__", on: true },
+      { user_id: remU, kind: "toString", on: true },
+    ].map((b) => json("POST", "/api/reminders/device", b)));
+    ok("W285 an unknown kind, a bad time, a non-boolean switch, or nothing to change is a 400", bad.every((r) => r.status === 400), JSON.stringify(bad.map((r) => r.status)));
+    ok("W285 …and none of them changed anything", JSON.stringify(await adhRem()) === JSON.stringify({ workout: { on: false, time: "18:30" }, weigh_in: { on: true, time: "06:45" }, calories: { on: false, time: "20:00" } }));
+    ok("W285 no user_id is a clean 404", (await json("POST", "/api/reminders/device", { kind: "weigh_in", on: true })).status === 404);
+    ok("W285 an unknown user is a 404", (await json("POST", "/api/reminders/device", { user_id: "nope", kind: "weigh_in", on: true })).status === 404);
+    // A Settings save (the wholesale profile door) leaves them alone: they're server-owned.
+    await json("POST", "/api/plan/regenerate", { user_id: remU, profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } });
+    ok("W285 a Settings save keeps the reminder settings", JSON.stringify((await adhRem()).weigh_in) === JSON.stringify({ on: true, time: "06:45" }));
+  }
+
   // --- Wave 43: nutrition targets + logging ---
   const nUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", sex: "male", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
   // no stats yet -> no plan
@@ -2868,6 +2923,9 @@ try {
     // "No machine for this" exclusions (W272) are written only by /api/exercise/cant-do,
     // which validates the id and keeps the plan consistent with them.
     unavailable_exercises: Array.from({ length: 500 }, (_, i) => ({ id: `forged-${i}` })),
+    // Device reminder settings (W285) are written only by /api/reminders/device, through
+    // the validators the push sweep reads with.
+    reminders: { weigh_in: { on: true, time: "03:00" }, workout: { on: false, time: "garbage" } },
   };
   // The fixture must COVER the set — otherwise this test silently shrinks the day
   // someone adds a field (the "green gate proves only what it measures" trap).

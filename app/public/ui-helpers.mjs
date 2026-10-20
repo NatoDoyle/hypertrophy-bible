@@ -399,3 +399,25 @@ export function friendlyList(xs, max = 3) {
   if (more > 0) return `${shown.join(", ")} and ${more} more`;
   return shown.length <= 2 ? shown.join(" and ") : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
 }
+
+// Notifications (W285). Which turn-on door a device can actually use: the real one where Web
+// Push exists ("blocked" when the person already said no in the browser — say where to undo
+// it, never re-ask); on an iPhone in Safari, where Web Push lives only in the Home-Screen app,
+// the Add-to-Home-Screen steps; nothing where it can't work at all.
+export function notifyOffer({ supported, ios, standalone, permission, on }) {
+  if (on) return null;
+  if (supported) return permission === "denied" ? "blocked" : "enable";
+  return ios && !standalone ? "home-screen" : null;
+}
+// The training-days reminder fires on the days the person said they'd train; with none, the
+// lapse nudge stands (push.mjs shouldPush: two days off) — the row says which.
+const WEEK_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+export function trainingDaysHint(days) {
+  const mine = WEEK_ORDER.filter((d) => (days ?? []).includes(d));
+  if (!mine.length) return "Pick your training days on Today and I'll remind you on those. Until then, a nudge after two days off.";
+  return `On ${friendlyList(mine.map((d) => d[0].toUpperCase() + d.slice(1)), 7)}, if you haven't trained yet.`;
+}
+// Device preferences survive an account switch (clearAccountLocalState): the RIR chips,
+// per-lift rest nudges, Nerd Mode (W284), the rest chime/alert (W286) and the one-time
+// notifications invite (W287). Everything else under hb_ is the account's, and goes.
+export const DEVICE_PREFS = new Set(["hb_rir", "hb_rest", "hb_nerd", "hb_rest_alert", "hb_notify_invite"]);
