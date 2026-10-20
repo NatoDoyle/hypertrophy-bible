@@ -1075,6 +1075,67 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
   return { beginner, objective, next, block, next_block, bodyweight };
 }
 
+// NERD MODE (W284 — owner: "add nerd mode"; design spec: a toggle within Progress). The numbers
+// behind every card, read from the SAME derivations the cards and the engine use — no second
+// calculation (lesson 1): per muscle, the week's sets and the 6-week peak the tune reads against
+// the KB's MV/MEV/MAV/MRV (model estimates, labelled so), the plan's projected and target sets and
+// the running adjustment; the block's maths (trainingContext); what the boundary would decide now
+// (blockTuneDecision and the swaps the next plan would make — the rollover's own steps); per lift
+// the weekly e1RM, the personal stall window, weeks flat and the margin under the 8-week peak.
+// Computed only when asked (/api/progress?nerd=1): progressReport also runs inside every
+// /api/today (reactiveDeloadStampDue), which must not pay for this.
+export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, report) {
+  const { index } = resolveEx(user.custom_exercises || []);
+  const weekly = perMuscleWeeklyVolume(sessions, index);
+  const peak = peakWeeklyVolume(weekly);
+  const rationale = user.plan_rationale?.volume_by_muscle ?? {};
+  const adjust = user.plan_meta?.volume_adjust ?? {};
+  const signals = Object.fromEntries((report.adaptive ?? []).map((a) => [a.muscle, a]));
+  const rows = report.volumeByMuscle ?? [];
+  const ids = [...new Set([...rows.map((v) => v.id).filter(Boolean), ...Object.keys(rationale)])];
+  const volume = ids.map((m) => {
+    const lm = muscleIndex.get(m) ?? null;
+    const row = rows.find((v) => v.id === m);
+    return {
+      id: m, name: plainMuscle(m), sets: row?.sets ?? 0, status: row?.status ?? null, peak: peak[m] ?? 0,
+      planned: rationale[m]?.projected_sets ?? null, target: rationale[m]?.target_sets ?? null, adjust: adjust[m] ?? 0,
+      signal: signals[m]?.signal ?? null, gated: signals[m]?.gated ?? null,
+      landmarks: lm ? { mv: lm.mv ?? null, mev: lm.mev ?? null, mav: lm.mav ?? null, mrv: lm.mrv ?? null } : null,
+      grade: lm?.evidence_grade ?? null, estimate: true,
+    };
+  }).sort((a, b) => b.peak - a.peak || a.name.localeCompare(b.name));
+  const ctx = trainingContext(user, sessions, nowISO);
+  const blockStart = user.plan_meta?.block_start ?? user.created_at;
+  const trainedIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, tz) / BLOCK_WEEKS);
+  const block = ctx.block ? { index: trainedIndex, week: ctx.block.week, of: ctx.block.of, phase: ctx.block.phase, set_scale: ctx.block.setScale,
+    taper: ctx.taper ? { days_until: ctx.taper.daysUntil, set_scale: ctx.taper.setScale, rir_floor: ctx.taper.rirFloor } : null } : null;
+  let next_block = null;
+  const storedIndex = user.plan_meta?.block_index ?? 0;
+  if (block && !user.program?.custom && !isSpecializing(user.profile, storedIndex)) {
+    const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, nowISO);
+    let swaps = [];
+    if (d.stalledExercises.length) {
+      // The block index the rollover will build: the trained-week clock's (a pending boundary),
+      // else the next one.
+      const nextPlan = generateUserPlan(user.profile, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+      swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
+    }
+    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust };
+  }
+  const stallWindow = adaptiveStallWindow(progressionCadence(sessions, index));
+  const stallBy = Object.fromEntries((report.stalls ?? []).map((x) => [x.exercise, x]));
+  const regressBy = Object.fromEntries((report.regressions ?? []).map((x) => [x.exercise, x]));
+  const strength = (report.progression_all ?? []).map((p) => {
+    const recent = (p.series ?? []).slice(-8).map((x) => x.value);
+    const top = recent.length ? Math.max(...recent) : 0, latest = recent[recent.length - 1] ?? 0;
+    return { exercise: p.exercise, name: p.name, series: p.series, change_pct: p.change_pct, stall_window: stallWindow,
+      weeks_flat: stallBy[p.exercise]?.weeks_flat ?? 0, stalled: !!p.stalled,
+      under_peak_pct: top > 0 ? Math.round(((top - latest) / top) * 1000) / 10 : 0,
+      regressing: !!regressBy[p.exercise], drop_pct: regressBy[p.exercise]?.drop_pct ?? null };
+  });
+  return { volume, block, next_block, strength };
+}
+
 // The Progress tab payload: everything derived, nothing asked.
 // AUTO-TUNE binder (#2): fold the just-completed block's response into the running
 // per-muscle volume adjustment. Called at each mesocycle boundary so the NEXT block

@@ -4,7 +4,7 @@ import { selectProgram, exerciseById } from "../src/kb.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -1730,6 +1730,41 @@ check("#readout a workout from an earlier week: 'next time' still holds, but thi
   const ro = sessionReadout(u, all, last, { now: roNow });
   assert.deepEqual([ro.block, ro.next_block], [[], []]);
   assert.ok(ro.next.length > 0 && quotesServed(u, all, ro), "next time is computed for now");
+});
+
+// --- W284: Nerd Mode — the numbers behind Progress, from the SAME derivations (no second calc).
+check("#nerd volume vs landmarks (labelled estimates), the plan's numbers, the tune's sample and its adjustment, per muscle", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `n${i}`, 12));
+  const u = { ...roUser("intermediate", 45), plan_rationale: { volume_by_muscle: { chest: { projected_sets: 12, target_sets: 12 } } }, plan_meta: { block_start: roDay(45), block_index: 0, volume_adjust: { chest: 2 } } };
+  const n = nerdReport(u, all, [], [], roNow, null, progressReport(u, all, [], [], roNow));
+  const chest = n.volume.find((v) => v.id === "chest");
+  assert.deepEqual(chest.landmarks.mev, { min: 8, max: 10 }, "the KB's own landmark ranges");
+  assert.equal(chest.estimate, true, "model estimates, labelled as such");
+  assert.deepEqual([chest.name, chest.planned, chest.target, chest.adjust, chest.peak], ["chest", 12, 12, 2, 12]);
+});
+check("#nerd the block's maths and the next block's decision are trainingContext and blockTuneDecision themselves", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `b${i}`, 12));
+  const u = { ...roUser("intermediate", 45), plan_rationale: { volume_by_muscle: { chest: { projected_sets: 12 } } } };
+  const n = nerdReport(u, all, [], [], roNow, null, progressReport(u, all, [], [], roNow));
+  const ctx = trainingContext(u, all, roNow), d = blockTuneDecision(u, all, {}, roNow);
+  assert.deepEqual([n.block.week, n.block.phase, n.block.set_scale], [ctx.block.week, ctx.block.phase, ctx.block.setScale]);
+  assert.deepEqual([n.next_block.bumped, n.next_block.eased, n.next_block.held], [d.tuned.bumped, d.tuned.eased, d.tuned.held]);
+  assert.ok(Array.isArray(n.next_block.swaps));
+  // …holds included: a quarter of the planned sets, flat — the boundary holds chest for completion
+  const thin = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `t${i}`, 3));
+  const nt = nerdReport(u, thin, [], [], roNow, null, progressReport(u, thin, [], [], roNow));
+  const dt = blockTuneDecision(u, thin, {}, roNow);
+  assert.ok(dt.tuned.held.some((h) => h.reason === "completion"), "precondition: something is held");
+  assert.deepEqual(nt.next_block.held, dt.tuned.held);
+});
+check("#nerd strength: each lift's weekly e1RM, its personal stall window, how flat it is, and how far under its 8-week peak", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `s${i}`, 3, i < 2 ? 60 + i * 5 : 65));
+  const n = nerdReport(roUser("intermediate", 45), all, [], [], roNow, null, progressReport(roUser("intermediate", 45), all, [], [], roNow));
+  const b = n.strength.find((x) => x.exercise === "barbell-bench-press");
+  assert.ok(b.series.length >= 5 && Number.isInteger(b.stall_window) && b.stall_window >= 4, JSON.stringify(b));
+  assert.equal(typeof b.under_peak_pct, "number");
+  assert.equal(b.weeks_flat >= 4, true);
+  assert.equal(nerdReport({ ...roUser("beginner", 45) }, all, [], [], roNow, null, progressReport(roUser("beginner", 45), all, [], [], roNow)).block, null, "beginners run no blocks");
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

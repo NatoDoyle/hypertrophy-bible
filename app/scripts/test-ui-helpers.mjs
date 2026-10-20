@@ -499,6 +499,12 @@ check("W283 wiring: an offline Exercise library in Learn (its sheets come back t
   for (const call of appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []) assert.match(call, /,/, `a demo without its lift: ${call}`);
   assert.match(fnBody(appJs, "function renderAddExercise(si) {", 2500), /!editState\.custom \?/);
 });
+check("W284 wiring: Nerd Mode is a remembered Progress toggle that asks for the numbers only when on, and survives an account switch like the RIR chips", () => {
+  const prog = fnBody(appJs, "async function renderProgress() {", 1200);
+  assert.match(prog, /nerdOn\(\) \? "\?nerd=1" : ""/);
+  assert.match(appJs, /id="nerd-toggle"[^>]*aria-pressed=/);
+  assert.match(appJs, /key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd"/);
+});
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {
   assert.match(fnBody(appJs, '$("#use-hint").onclick = () => {').split("\n").slice(0, 3).join("\n"), /clearSetConfirm\(\)/);
   assert.match(fnBody(appJs, '$("#unlink").onclick = () => {'), /delete sess\.lastSkip/);

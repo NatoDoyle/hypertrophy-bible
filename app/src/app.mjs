@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, swapStalls, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -1958,7 +1958,11 @@ export function createApp(store, config = {}) {
     // account_email rides along for the sign-in adoption probe (account-adopt.mjs):
     // this route is read-only, unlike /api/adherence, whose GET advances seen-once
     // watermarks — a declined sign-in must not cost the user an unseen partner nudge.
-    return c.json({ ...progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz), account_email: await store.accountEmail(id) });
+    const nowISO = new Date().toISOString();
+    const report = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
+    // Nerd Mode (W284) only when asked: it adds the boundary's own decision and a plan build.
+    const nerd = c.req.query("nerd") === "1" ? { nerd: nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, report) } : {};
+    return c.json({ ...report, ...nerd, account_email: await store.accountEmail(id) });
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).

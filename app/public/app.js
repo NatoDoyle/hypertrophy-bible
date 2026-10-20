@@ -2996,11 +2996,12 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
   const section = (title, items, raw = false) => items?.length
     ? `<h3>${title}</h3><ul>${items.map((i) => `<li>${raw ? i : esc(i)}</li>`).join("")}</ul>` : "";
   const nextByEx = Object.fromEntries(nexts.map((x) => [x.exercise, x]));
-  const breakdown = !isBeginner && local?.lifts?.length ? `<details class="why" style="margin:10px 0 0;padding:10px 14px"><summary style="font-size:.95rem">Every lift</summary><ul style="margin-top:6px">${local.lifts.map((l) => {
+  // Nerd Mode (W284) opens it, with the effort numbers.
+  const breakdown = !isBeginner && local?.lifts?.length ? `<details class="why" style="margin:10px 0 0;padding:10px 14px"${nerdOn() ? " open" : ""}><summary style="font-size:.95rem">Every lift</summary><ul style="margin-top:6px">${local.lifts.map((l) => {
     const u = unitLabelFor(l.exercise);
     const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
     const nx = nextByEx[l.exercise];
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && l.rir != null ? ` · avg ${l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}
@@ -3079,10 +3080,38 @@ const prDetailText = (r) => r.kind === "load" ? `${dispWeightFor(r.load_kg, r.ex
 let bwEditArm = null; // a day tapped in the full bodyweight view, to arm the Progress edit form
 let fuelEditArm = null; // its Fuel sibling
 const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "eased": "slow growth", "no-landmark": "—" }[s] || s);
+// Nerd Mode (W284): a remembered device preference (kept across an account switch, like the RIR
+// chips). The numbers are asked for only while it's on — the default Progress stays lean.
+const nerdOn = () => { try { return localStorage.getItem("hb_nerd") === "1"; } catch { return false; } };
+// The numbers behind every card, terse. Landmarks are the KB's model estimates (labelled); the
+// next-block line is the boundary's own decision, if it came today.
+function nerdHtml(n) {
+  if (!n) return "";
+  const rng = (x) => (x ? `${x.min}${x.max !== x.min ? `–${x.max}` : ""}` : "–");
+  const e1 = (kg, exId) => (unitFor(exId) === "lb" ? Math.round(kg * LB_PER_KG) : Math.round(kg));
+  const vol = (n.volume ?? []).map((v) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(cap(v.name))}</b> <span class="muted">${v.sets}/wk · 6-wk peak ${v.peak}${v.planned != null ? ` · plan ${v.planned}` : ""}${v.adjust ? ` · tuned ${v.adjust > 0 ? "+" : ""}${v.adjust}` : ""}</span>
+      <br><span class="muted">MV ${rng(v.landmarks?.mv)} · MEV ${rng(v.landmarks?.mev)} · MAV ${rng(v.landmarks?.mav)} · MRV ${rng(v.landmarks?.mrv)}${v.grade ? ` · grade ${esc(v.grade)}` : ""}${v.signal ? ` · ${esc(v.signal)}${v.gated ? ` (${esc(v.gated)})` : ""}` : ""}</span></div></div>`).join("");
+  const nameOf = (id) => (n.strength ?? []).find((s) => s.exercise === id)?.name ?? id;
+  const nb = n.next_block;
+  const ahead = nb ? [
+    nb.bumped.length ? `+2 sets: ${nb.bumped.map(friendlyMuscle).join(", ")}` : null,
+    nb.eased.length ? `−2 sets: ${nb.eased.map(friendlyMuscle).join(", ")}` : null,
+    ...nb.held.map((h) => `held: ${friendlyMuscle(h.muscle)} (${h.reason}${h.realized != null ? ` ${h.realized}/${h.planned}` : ""})`),
+    nb.swaps.length ? `fresh angle: ${nb.swaps.map(nameOf).join(", ")}` : null,
+  ].filter(Boolean) : [];
+  const b = n.block;
+  const str = (n.strength ?? []).map((s) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(s.name)}</b> <span class="muted">${(s.series ?? []).slice(-4).map((x) => e1(x.value, s.exercise)).join(" → ")} ${unitLabelFor(s.exercise)} (${s.change_pct > 0 ? "+" : ""}${s.change_pct}%)</span>
+      <br><span class="muted">${s.stalled ? `flat ${s.weeks_flat} wk (your stall window: ${s.stall_window})` : `moving (your stall window: ${s.stall_window} wk)`} · ${s.under_peak_pct}% under its 8-wk peak${s.regressing ? ` · going backwards −${s.drop_pct}%` : ""}</span></div></div>`).join("");
+  return `<h2>🤓 Nerd mode</h2>
+    <div class="card"><b>Volume vs landmarks</b> <span class="muted" style="font-size:.85rem">— weekly hard sets; the landmarks are model estimates, not measurements</span>${vol}</div>
+    ${b ? `<div class="card"><b>Block maths</b><p class="muted" style="font-size:.85rem;margin:4px 0">Block ${b.index + 1}, week ${b.week} of ${b.of} · ${esc(b.phase)} · sets ×${b.set_scale}${b.taper ? ` · taper: ${b.taper.days_until} days out, sets ×${b.taper.set_scale}, RIR ≥ ${b.taper.rir_floor}` : ""}</p>
+      ${ahead.length ? `<p class="muted" style="font-size:.85rem;margin:4px 0"><b>If the block ended today:</b> ${ahead.map(esc).join(" · ")}</p>` : ""}</div>` : ""}
+    <div class="card"><b>Strength</b> <span class="muted" style="font-size:.85rem">— estimated 1RM, last 4 weeks</span>${str || `<p class="muted">Log a few weeks to see these.</p>`}</div>`;
+}
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
-  try { p = await api(`/api/progress`); }
+  try { p = await api(`/api/progress${nerdOn() ? "?nerd=1" : ""}`); }
   catch {
     app.innerHTML = `<h1>Progress</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p>
@@ -3214,7 +3243,9 @@ async function renderProgress() {
     : "";
   app.innerHTML = `<h1>Progress</h1>
     <div id="progress-nudge"></div>
-    <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
+    <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span>
+      <button class="btn ghost inline" id="nerd-toggle" aria-pressed="${nerdOn()}" style="float:right;margin:0">🤓 Nerd mode${nerdOn() ? " · on" : ""}</button></div>
+    ${nerdOn() ? nerdHtml(p.nerd) : ""}
     ${historyCard}
     ${prCard}
     <h2>This week's sets per muscle ${helpDot("glossary", "ⓘ what these tags mean")}</h2>
@@ -3247,6 +3278,7 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  if ($("#nerd-toggle")) $("#nerd-toggle").onclick = () => { try { localStorage.setItem("hb_nerd", nerdOn() ? "0" : "1"); } catch {} renderProgress(); };
   if ($("#open-retro")) $("#open-retro").onclick = () => renderRetroLog();
   app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
   if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
@@ -4147,7 +4179,7 @@ function clearAccountLocalState() {
   const keys = [];
   try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
   for (const key of keys) {
-    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest") { // hb_rest: per-lift rest nudges, a device preference too
+    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd") { // hb_rest: per-lift rest nudges; hb_nerd: Nerd Mode (W284) — device preferences too
       try { localStorage.removeItem(key); } catch {}
     }
   }

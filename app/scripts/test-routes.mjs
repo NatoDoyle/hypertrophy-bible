@@ -1240,6 +1240,34 @@ try {
       (await store.getUser(cu)).program.custom === true && ct.block?.phase === "deload" && ct.exercises.some((e) => e.suggested_kg != null), JSON.stringify({ custom: (await store.getUser(cu)).program.custom, block: ct.block?.phase }));
   }
 
+  // --- W284: Nerd Mode. Asked for (?nerd=1) — the default Progress stays lean — and its next-block
+  // preview is the rollover's own decision: what it shows is what the boundary then applies.
+  {
+    const nu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const nprog = (await store.getUser(nu)).program;
+    await store.updateUser(nu, (x) => { x.plan_meta = { ...x.plan_meta, block_start: dAgo(50), block_index: 0 }; return x; });
+    let k = 0;
+    for (let w = 7; w >= 1; w--) for (let d = 0; d < 4; d++) {
+      const ps = nprog.sessions[k++ % nprog.sessions.length]; const when = dAgo(7 * w - d);
+      await json("POST", "/api/session", { user_id: nu, session_id: `nd-${w}-${d}`, date: when, local_date: when.slice(0, 10), session_name: ps.name, sets: ps.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: +e.rep_range.split("-")[0] + 1 }))) });
+    }
+    const plain = await (await app.request("/api/progress", { headers: { "X-HB-User": nu } })).json();
+    const nerdRes = await app.request("/api/progress?nerd=1", { headers: { "X-HB-User": nu } });
+    const nerdText = await nerdRes.text(), nerd = JSON.parse(nerdText).nerd;
+    ok("W284 the default Progress payload stays lean (no nerd numbers unless asked)", !("nerd" in plain));
+    ok("W284 ?nerd=1 adds volume vs landmarks, the block's maths, the next block and strength", Array.isArray(nerd?.volume) && nerd.volume.length > 0 && !!nerd.block && !!nerd.next_block && Array.isArray(nerd.strength), Object.keys(nerd ?? {}).join(","));
+    ok("W284 …and never carries the user's id (it's their credential)", !nerdText.includes(nu));
+    await app.request("/api/today", { headers: { "X-HB-User": nu } }); // the boundary passes
+    const applied = (await store.getUser(nu)).plan_meta;
+    const sortHeld = (h) => JSON.stringify([...(h ?? [])].sort((a, b) => a.muscle.localeCompare(b.muscle)));
+    ok("W284 the next-block preview is exactly what the rollover then applied (bumped, eased, held, swapped)",
+      applied.block_index === 1 && JSON.stringify([...nerd.next_block.bumped].sort()) === JSON.stringify([...applied.tuned_this_block.bumped].sort())
+      && JSON.stringify([...nerd.next_block.eased].sort()) === JSON.stringify([...applied.tuned_this_block.eased].sort())
+      && sortHeld(nerd.next_block.held) === sortHeld(applied.tuned_this_block.held)
+      && JSON.stringify([...nerd.next_block.swaps].sort()) === JSON.stringify([...(applied.swapped_this_block ?? [])].sort()),
+      JSON.stringify({ preview: nerd.next_block, applied: { tuned: applied.tuned_this_block, swapped: applied.swapped_this_block } }).slice(0, 600));
+  }
+
   // --- #readout (W282): the post-workout read-out. Its "next time" weight for every lift is a
   // PROMISE (lesson 60): the next /api/today must serve exactly that — in a normal week, a
   // deload week, a taper, after a skipped set, and when this very workout tips a reactive
