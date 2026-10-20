@@ -2,7 +2,7 @@
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
-  accessibleExercises, candidatePool, bestSubstitutes, applySubstitution, orderSessionItems } from "./plan-core.mjs";
+  accessibleExercises, candidatePool, bestSubstitutes, applySubstitution, orderSessionItems, contraRegion } from "./plan-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
@@ -1513,6 +1513,27 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     const r = applySubstitution(basePlan.program, basePlan.rationale, "not-a-lift-in-this-plan", { profile: base, kb });
     return r.error === "not-in-plan" && !r.program;
   })());
+}
+
+// W283: a NAMED exercise can be cautioned for an injury region, beside the pattern rules. The
+// lower-back rule's own note names loaded spinal flexion, yet no pattern rule caught the Jefferson
+// curl (its pattern, isolation-spinal-flexion, is shared with every crunch).
+{
+  const gym = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const pool = (sev) => accessibleExercises({ available_equipment: gym, injuries: [{ region: "lower-back", severity: sev }] }, kb).map((e) => e.id);
+  ok("W283 a moderate or severe low-back injury keeps the Jefferson curl out of every pool", !pool("moderate").includes("jefferson-curl") && !pool("severe").includes("jefferson-curl"));
+  // W283 review: excluded at ANY severity — loaded end-range spinal flexion is this lift's whole
+  // purpose, and it is the aggravator the lower-back rule's own note names (unlike a hinge or a
+  // squat, which load a neutral spine and sit in the caution tier).
+  ok("W283 …and a mild one too: the rule's own note names loaded spinal flexion", !pool("mild").includes("jefferson-curl"));
+  ok("W283 contraRegion names WHY a lift is out (for the swap note)", contraRegion(exercises.find((e) => e.id === "jefferson-curl"), [{ region: "lower-back", severity: "mild" }], contraindications) === "lower-back"
+    && contraRegion(exercises.find((e) => e.id === "cable-crunch"), [{ region: "lower-back", severity: "severe" }], contraindications) === null);
+  const cauKb = { ...kb, contraindications: { regions: { knee: { exclude_patterns: [], caution_patterns: [], caution_exercises: ["jefferson-curl"] } } } };
+  const kneePool = (sev) => accessibleExercises({ available_equipment: gym, injuries: [{ region: "knee", severity: sev }] }, cauKb).map((e) => e.id);
+  ok("W283 caution_exercises keeps its tiers: moderate excludes, mild allows", !kneePool("moderate").includes("jefferson-curl") && kneePool("mild").includes("jefferson-curl"));
+  ok("W283 …and only the named lift: crunches (same pattern) stay available at moderate", pool("moderate").includes("cable-crunch"));
+  const exKb = { ...kb, contraindications: { regions: { knee: { exclude_patterns: [], caution_patterns: [], exclude_exercises: ["jefferson-curl"] } } } };
+  ok("W283 exclude_exercises applies at ANY severity", !accessibleExercises({ available_equipment: gym, injuries: [{ region: "knee", severity: "mild" }] }, exKb).some((e) => e.id === "jefferson-curl"));
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

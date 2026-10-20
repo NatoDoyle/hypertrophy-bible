@@ -11,7 +11,9 @@ let uid = localStorage.getItem("hb_user");
 let tab = "today";
 let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
-let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id} or null
+let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id,from?} or null
+let learnLibrary = false, learnLibraryQuery = ""; // the Exercise library (W283) and its search
+let learnLibraryReturn = null; // {id, y}: where the reader was when they opened a sheet (W283 review)
 // Session-only: the plan-screen email form has been submitted. Deliberately not
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
@@ -34,7 +36,7 @@ function syncAccountEmail(a) {
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
-const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; };
+const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; learnLibrary = false; learnLibraryQuery = ""; learnLibraryReturn = null; };
 
 // Plain-English muscle names (MUSCLE_LABEL / friendlyMuscle) live in ui-helpers.mjs so the
 // server's copy of the map can be pinned equal to them (W282).
@@ -1159,7 +1161,7 @@ async function renderPlanEdit() {
     return;
   }
   allExercises = exs;
-  editState = { name: d.program.name, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
+  editState = { name: d.program.name, custom: !!d.program.custom, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
   pendingRm = null;
   // show the current plan's critique straight away
   const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
@@ -1175,7 +1177,7 @@ function drawEdit(critique) {
     <button class="btn ghost" data-add="${si}">+ Add exercise</button></div>`).join("");
   const crit = critique ? `<div class="card"><b>🧭 ${esc(critique.summary)}</b>${(critique.findings || []).map((f) => `<div class="win">${f.severity === "warn" ? "⚠️" : "💡"} ${esc(f.msg)}</div>`).join("")}</div>` : "";
   app.innerHTML = `<h1>Edit &amp; review</h1>
-    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan pauses the automatic accessory rotation between blocks. Rebuild from Settings any time to hand the wheel back.</p>
+    <p class="muted">Your edits are never overwritten — which also means a hand-edited plan stops rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping up when you graduate. Your weights, your 6-week build-and-deload wave, and swapping out any lift an injury you report rules out all carry on. Rebuild from Settings any time to hand the wheel back.</p>
     ${crit}${sessions}
     <button class="btn" id="savePlan">Save &amp; re-check</button>
     <button class="btn ghost" id="backPlan">Back</button>`;
@@ -1221,7 +1223,9 @@ function renderAddExercise(si) {
   const rowsFor = (items) => items
     .map((e) => `<button class="choice" data-add-id="${e.id}">${esc(e.name)} <span class="muted">${e.primary_muscles.map(titleCase).join(", ")}${e.custom ? " · yours" : ""}</span></button>`).join("")
     || `<p class="muted" style="padding:8px 0">Nothing matches — try a muscle ("chest") or equipment ("cable").</p>`;
-  app.innerHTML = `<h1>Add exercise</h1>
+  // A fair warning before a generated plan becomes hand-built (W283): what changes, and what doesn't.
+  const customNote = !editState.custom ? `<p class="muted" style="margin:0 0 8px">Adding a lift makes this plan your own once you save: I'll keep suggesting your weights, running your 6-week build-and-deload wave and swapping out any lift an injury you report rules out, but I'll stop rotating accessories, tuning volume, swapping stalled lifts, bringing a deload forward and stepping the plan up when you graduate. Rebuild from Settings any time to hand the wheel back.</p>` : "";
+  app.innerHTML = `<h1>Add exercise</h1>${customNote}
     <input id="ex-filter" type="search" placeholder="Search by name, muscle or equipment…" aria-label="Search exercises"
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
     <div class="card" style="max-height:56vh;overflow:auto" id="ex-list">${rowsFor(sorted)}</div>
@@ -1618,7 +1622,9 @@ async function renderToday() {
   // Missed-day reassurance: its own calm card (gap_note is server-derived and
   // bounded below the comeback threshold, so the two copies never share a screen).
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${gapCard}${blockCard}${readinessCard}
+  // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
+  const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -2380,7 +2386,7 @@ function renderPlayer() {
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
-    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern) : ""}
+    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern, e.exercise) : ""}
     <div class="setdots">${setDots}</div>
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
@@ -2553,7 +2559,7 @@ function renderSupersetStation(L, P) {
       ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
-      ${round === 0 ? renderMovementDemo(m.movement_pattern) : ""}
+      ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
       ${round === 0 ? whyLine(m) : ""}
@@ -2697,7 +2703,7 @@ function renderExerciseSheet(ex, d, back) {
   app.innerHTML = `<h1>${esc(name)}</h1>
     ${muscles ? `<p class="muted">Works: ${esc(muscles)}</p>` : ""}
     ${chips ? `<p>${chips}</p>` : ""}
-    ${renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern)}
+    ${renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern, ex.exercise ?? d?.id)}
     ${d?.resistance_profile ? `<p class="muted">📈 <b>Where it's hardest:</b> ${esc(d.resistance_profile)}</p>` : ""}
     ${steps ? `<h2>Step by step</h2>${steps}` : ""}
     ${cues ? `<h2>Coaching cues</h2>${cues}` : (!steps ? `<p class="muted">No cues on file for this one.</p>` : "")}
@@ -2879,7 +2885,11 @@ async function renderCantDo() {
       lock("Saving…");
       let res; try { res = await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region }) }); } catch { return stillHere() ? offline() : undefined; }
       if (!stillHere()) return;
-      pickList(res.error ? "Couldn't save that — pick a replacement for today instead." : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan. For today:`);
+      // True for both kinds of plan now (W283 review): a generated plan is rebuilt, a hand-built one
+      // has the newly ruled-out lifts swapped. A lift with no safe replacement is named, not hidden.
+      const keptNames = (res.kept ?? []).map((k) => k.name);
+      pickList(res.error ? "Couldn't save that — pick a replacement for today instead."
+        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`);
     });
   };
 }
@@ -2993,11 +3003,12 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
   const section = (title, items, raw = false) => items?.length
     ? `<h3>${title}</h3><ul>${items.map((i) => `<li>${raw ? i : esc(i)}</li>`).join("")}</ul>` : "";
   const nextByEx = Object.fromEntries(nexts.map((x) => [x.exercise, x]));
-  const breakdown = !isBeginner && local?.lifts?.length ? `<details class="why" style="margin:10px 0 0;padding:10px 14px"><summary style="font-size:.95rem">Every lift</summary><ul style="margin-top:6px">${local.lifts.map((l) => {
+  // Nerd Mode (W284) opens it, with the effort numbers.
+  const breakdown = !isBeginner && local?.lifts?.length ? `<details class="why" style="margin:10px 0 0;padding:10px 14px"${nerdOn() ? " open" : ""}><summary style="font-size:.95rem">Every lift</summary><ul style="margin-top:6px">${local.lifts.map((l) => {
     const u = unitLabelFor(l.exercise);
     const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
     const nx = nextByEx[l.exercise];
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && l.rir != null ? ` · avg ${l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}
@@ -3076,10 +3087,39 @@ const prDetailText = (r) => r.kind === "load" ? `${dispWeightFor(r.load_kg, r.ex
 let bwEditArm = null; // a day tapped in the full bodyweight view, to arm the Progress edit form
 let fuelEditArm = null; // its Fuel sibling
 const statusLabel = (s) => ({ "below-MEV": "add volume", "in-productive-range": "on target", "approaching-MRV": "near max", "over-MRV": "over max", "maintenance": "holding steady", "secondary-served": "covered by compounds", "eased": "slow growth", "no-landmark": "—" }[s] || s);
+// Nerd Mode (W284): a remembered device preference (kept across an account switch, like the RIR
+// chips). The numbers are asked for only while it's on — the default Progress stays lean.
+const nerdOn = () => { try { return localStorage.getItem("hb_nerd") === "1"; } catch { return false; } };
+// The numbers behind every card, terse. Landmarks are the KB's model estimates (labelled); the
+// next-block line is the boundary's own decision, if it came today.
+function nerdHtml(n) {
+  if (!n) return "";
+  const rng = (x) => (x ? `${x.min}${x.max !== x.min ? `–${x.max}` : ""}` : "–");
+  const e1 = (kg, exId) => (unitFor(exId) === "lb" ? Math.round(kg * LB_PER_KG) : Math.round(kg));
+  const vol = (n.volume ?? []).map((v) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(cap(v.name))}</b> <span class="muted">${v.sets}/wk · 6-wk peak ${v.peak}${v.planned != null ? ` · plan ${v.planned}` : ""}${v.adjust ? ` · tuned ${v.adjust > 0 ? "+" : ""}${v.adjust}${v.adjust_paused ? " (paused — hand-built plan)" : ""}` : ""}</span>
+      <br><span class="muted">MV ${rng(v.landmarks?.mv)} · MEV ${rng(v.landmarks?.mev)} · MAV ${rng(v.landmarks?.mav)} · MRV ${rng(v.landmarks?.mrv)}${v.grade ? ` · grade ${esc(v.grade)}` : ""}${v.signal ? ` · ${esc(v.signal)}${v.gated ? ` (${esc(v.gated)})` : ""}` : ""}</span></div></div>`).join("");
+  const nameOf = (id) => (n.strength ?? []).find((s) => s.exercise === id)?.name ?? id;
+  const nb = n.next_block;
+  const ahead = nb ? [
+    nb.specialization ? "specialization block: volume held" : null,
+    nb.bumped.length ? `+2 sets: ${nb.bumped.map(friendlyMuscle).join(", ")}` : null,
+    nb.eased.length ? `−2 sets: ${nb.eased.map(friendlyMuscle).join(", ")}` : null,
+    ...nb.held.map((h) => `held: ${friendlyMuscle(h.muscle)} (${h.reason}${h.realized != null ? ` ${h.realized}/${h.planned}` : ""})`),
+    nb.swaps.length ? `fresh angle: ${nb.swaps.map(nameOf).join(", ")}` : null,
+  ].filter(Boolean) : [];
+  const b = n.block;
+  const str = (n.strength ?? []).map((s) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(s.name)}</b> <span class="muted">${s.basis === "load" ? "top load" : "est. 1RM"} ${(s.series ?? []).slice(-4).map((x) => e1(x.value, s.exercise)).join(" → ")} ${unitLabelFor(s.exercise)} (${s.window_pct > 0 ? "+" : ""}${s.window_pct}%)</span>
+      <br><span class="muted">${s.stalled ? `flat ${s.weeks_flat} wk (your stall window: ${s.stall_window})` : `moving (your stall window: ${s.stall_window} wk)`} · ${s.under_peak_pct}% under its 8-wk peak${s.regressing ? ` · going backwards −${s.drop_pct}%` : ""}</span></div></div>`).join("");
+  return `<h2>🤓 Nerd mode</h2>
+    <div class="card"><b>Volume vs landmarks</b> <span class="muted" style="font-size:.85rem">— weekly hard sets; the landmarks are model estimates, not measurements</span>${vol}</div>
+    ${b ? `<div class="card"><b>Block maths</b><p class="muted" style="font-size:.85rem;margin:4px 0">Block ${b.index + 1}, week ${b.week} of ${b.of} · ${esc(b.phase)} · sets ×${b.set_scale}${b.taper ? ` · taper: ${b.taper.days_until} days out, sets ×${b.taper.set_scale}, RIR ≥ ${b.taper.rir_floor}` : ""}</p>
+      ${ahead.length ? `<p class="muted" style="font-size:.85rem;margin:4px 0"><b>If the block ended today:</b> ${ahead.map(esc).join(" · ")}</p>` : ""}</div>` : ""}
+    <div class="card"><b>Strength</b> <span class="muted" style="font-size:.85rem">— the last 4 logged weeks</span>${str || `<p class="muted">Log a few weeks to see these.</p>`}</div>`;
+}
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let p;
-  try { p = await api(`/api/progress`); }
+  try { p = await api(`/api/progress${nerdOn() ? "?nerd=1" : ""}`); }
   catch {
     app.innerHTML = `<h1>Progress</h1><div class="card"><p>📴 You're offline.</p>
       <p class="muted">Your progress will load when you're back online. Anything logged offline is saved and will sync.</p>
@@ -3211,7 +3251,9 @@ async function renderProgress() {
     : "";
   app.innerHTML = `<h1>Progress</h1>
     <div id="progress-nudge"></div>
-    <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span></div>
+    <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span>
+      <button class="btn ${nerdOn() ? "secondary" : "ghost"} inline" id="nerd-toggle" aria-pressed="${nerdOn()}" style="float:right;margin:0">🤓 Nerd mode</button></div>
+    ${nerdOn() ? nerdHtml(p.nerd) : ""}
     ${historyCard}
     ${prCard}
     <h2>This week's sets per muscle ${helpDot("glossary", "ⓘ what these tags mean")}</h2>
@@ -3244,6 +3286,9 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
+  // The name stays fixed (aria-pressed carries the state) and focus returns to the toggle after
+  // the redraw — keyboard and screen-reader users keep their place (W283 review).
+  if ($("#nerd-toggle")) $("#nerd-toggle").onclick = () => { try { localStorage.setItem("hb_nerd", nerdOn() ? "0" : "1"); } catch {} renderProgress().then(() => $("#nerd-toggle")?.focus()); };
   if ($("#open-retro")) $("#open-retro").onclick = () => renderRetroLog();
   app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
   if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
@@ -4144,7 +4189,7 @@ function clearAccountLocalState() {
   const keys = [];
   try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch {}
   for (const key of keys) {
-    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest") { // hb_rest: per-lift rest nudges, a device preference too
+    if (key?.startsWith("hb_") && key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd") { // hb_rest: per-lift rest nudges; hb_nerd: Nerd Mode (W284) — device preferences too
       try { localStorage.removeItem(key); } catch {}
     }
   }
@@ -4687,10 +4732,12 @@ async function renderLearn() {
   };
   app.innerHTML = `<h1>Learn</h1>
     <p class="muted">Never been to a gym? Start at the top and read a couple. Every term, every worry, answered plainly — and it all works offline.</p>
+    <button class="choice card" id="learn-library" style="width:100%;margin:0 0 10px"><span style="flex:1"><b>🏋️ Exercise library</b><br><span class="muted">Every lift in the app — how to do it, what it works, how to make it easier or harder.</span></span><span>›</span></button>
     <input id="learn-filter" type="search" placeholder="Search the guides…" aria-label="Search the guides"
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 4px">
     <div id="learn-cats">${catsFor("")}</div>`;
   $("#learn-filter").oninput = () => { $("#learn-cats").innerHTML = catsFor($("#learn-filter").value); wireLearnLinks(); };
+  $("#learn-library").onclick = () => { learnLibrary = true; renderExerciseLibrary(); };
   wireLearnLinks();
   window.scrollTo(0, 0);
 }
@@ -4719,7 +4766,9 @@ async function renderLearnData({ kind, id }) {
   // leaving a blank screen if an old cached bundle meets a new page.
   if (!d) { learnExercise = null; return renderLearnPage(learnSlug); }
   const from = LEARN_PAGES?.[learnSlug];
-  const back = { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
+  const back = learnExercise?.from === "library"
+    ? { label: "‹ Back to the exercise library", onClick: () => { learnExercise = null; renderExerciseLibrary(); } }
+    : { label: `‹ Back to ${from?.title ?? "the guide"}`, onClick: () => { learnExercise = null; renderLearnPage(learnSlug); } };
   if (kind === "exercise") renderExerciseSheet({ exercise: id, name: d.name, movement_pattern: d.movement_pattern }, d, back);
   else if (kind === "supplement") renderSupplementSheet(d, back);
   else renderMuscleSheet(d, back);
@@ -4727,6 +4776,39 @@ async function renderLearnData({ kind, id }) {
   window.scrollTo(0, 0);
 }
 const openLearnData = (kind, id) => { learnExercise = { kind, id }; renderLearnData({ kind, id }); };
+
+// The Exercise library (W283): every bundled sheet, searchable the way a lifter types
+// (filterExercises — names, aliases, muscles, equipment), offline like the rest of Learn. A
+// sheet opened from here comes back here.
+async function renderExerciseLibrary() {
+  app.innerHTML = `<h1>Exercise library</h1><p class="muted">Loading…</p>`;
+  let LEARN_EXERCISES;
+  try { ({ LEARN_EXERCISES } = await learnData()); }
+  catch { app.innerHTML = `<h1>Exercise library</h1><div class="card"><p>📴 Couldn't load the library.</p><p class="muted">Connect once and it'll be saved on this device for good.</p></div>`; return; }
+  const all = Object.values(LEARN_EXERCISES).sort((a, b) => a.name.localeCompare(b.name));
+  const rows = (q) => filterExercises(all, q).map((e) => `<button class="choice" data-lib="${esc(e.id)}"><span style="flex:1"><b>${esc(e.name)}</b><br><span class="muted">${esc((e.primary_muscles ?? []).join(", "))}${e.equipment ? ` · ${esc(e.equipment)}` : ""}</span></span><span>›</span></button>`).join("")
+    || `<p class="muted" style="padding:8px 0">Nothing matches — try another word ("curl", "squat", "chest").</p>`;
+  app.innerHTML = `<h1>Exercise library</h1>
+    <p class="muted">Every lift in the app — how to do it, what it works, and how to make it easier or harder. Works offline.</p>
+    <input id="lib-filter" type="search" placeholder="Search ${all.length} exercises…" aria-label="Search the exercise library"
+      style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
+    <div class="card" id="lib-list">${rows(learnLibraryQuery)}</div>
+    <button class="btn ghost" id="lib-back">‹ Back to Learn</button>`;
+  const wire = () => app.querySelectorAll("[data-lib]").forEach((b) => b.onclick = () => { learnLibraryReturn = { id: b.dataset.lib, y: window.scrollY }; learnExercise = { kind: "exercise", id: b.dataset.lib, from: "library" }; renderLearnData(learnExercise); });
+  $("#lib-filter").value = learnLibraryQuery;
+  // Only the LIST re-renders on input, never the input itself (focus survives every keystroke).
+  $("#lib-filter").oninput = () => { learnLibraryQuery = $("#lib-filter").value; $("#lib-list").innerHTML = rows(learnLibraryQuery); wire(); };
+  $("#lib-back").onclick = () => { learnLibrary = false; learnLibraryQuery = ""; renderLearn(); };
+  wire();
+  // Back from a sheet lands where the reader left off, on the row they opened (W283 review: the
+  // 171-row list jumped to the top every time); a fresh visit starts at the top.
+  const back = learnLibraryReturn;
+  learnLibraryReturn = null;
+  if (back) {
+    window.scrollTo(0, back.y);
+    app.querySelector(`[data-lib="${CSS.escape(back.id)}"]`)?.focus({ preventScroll: true });
+  } else window.scrollTo(0, 0);
+}
 
 // Evidence tier first, because it is the only thing most readers need: the KB's
 // whole position on supplements is that a handful work and the rest are noise.
@@ -4845,7 +4927,7 @@ function render() {
   else if (tab === "progress") renderProgress();
   else if (tab === "fuel") renderFuel();
   else if (tab === "plan") renderPlan();
-  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : renderLearn(); }
+  else if (tab === "learn") { learnExercise ? renderLearnData(learnExercise) : learnSlug ? renderLearnPage(learnSlug) : learnLibrary ? renderExerciseLibrary() : renderLearn(); }
   else renderMe();
 }
 nav.querySelectorAll("button").forEach((b) => b.onclick = () => {

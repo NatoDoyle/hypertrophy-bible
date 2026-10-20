@@ -88,6 +88,13 @@ for (const [dir, schemaName] of Object.entries(dirToSchema)) {
   }
 }
 
+// Single data files with their own schema (W283 review: the injury rules had none, so a
+// misspelled key switched a safety rule off and every gate still passed).
+for (const [file, schemaName] of [["injury-contraindications.json", "injury-contraindications"]]) {
+  const p = join(root, "data", file);
+  if (existsSync(p)) validateInstance(JSON.parse(readFileSync(p, "utf8")), schemaName, `data/${file}`);
+}
+
 // Example app-data fixtures: validate against the data-stream schemas.
 // [file, schemaName, isArray]
 const examples = [

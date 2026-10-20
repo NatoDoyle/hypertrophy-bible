@@ -1213,6 +1213,118 @@ try {
       JSON.stringify({ last_sets: hvRow?.last_sets, last_reps: hvRow?.last_reps }));
   }
 
+  // --- W283: the Jefferson curl, findable and cautioned. The library ships aliases (so the
+  // editor's search finds "Jefferson curls"), and the pickers honour the low-back caution.
+  {
+    const gym = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const lib = await (await app.request("/api/exercises")).json();
+    const jc = lib.find((e) => e.id === "jefferson-curl");
+    ok("W283 /api/exercises ships the barbell Jefferson curl with its aliases", jc?.name === "Barbell Jefferson Curl" && jc.equipment === "barbell" && (jc.aliases ?? []).includes("Jefferson curls"), JSON.stringify(jc));
+    const offered = async (sev) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, injuries: [{ region: "lower-back", severity: sev }] } })).data.user_id;
+      return (await (await app.request("/api/exercises", { headers: { "X-HB-User": uid } })).json()).some((e) => e.id === "jefferson-curl");
+    };
+    ok("W283 a moderate low-back injury: the editor's pickers never offer it", !(await offered("moderate")));
+    ok("W283 …nor a mild one (excluded at any severity — W283 review)", !(await offered("mild")));
+    // THE STORED-PLAN SCREEN (W283 review): plans generated before a rule tightened (or before an
+    // exercise changed kit) still hold the lift. /api/today swaps it out — generated or hand-built
+    // alike, since an injury the user reported outranks a hand edit — and says so once.
+    const seeded = async (profileExtra, custom) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, ...profileExtra } })).data.user_id;
+      await store.updateUser(uid, (u) => {
+        const s0 = u.program.sessions[0];
+        s0.exercises = [...s0.exercises.slice(0, -1), { exercise: "jefferson-curl", sets: 3, rep_range: "10-15", rir: "2-3" }];
+        if (custom) u.program = { ...u.program, custom: true };
+        return u;
+      });
+      const today = (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session;
+      const held = (await store.getUser(uid)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === "jefferson-curl"));
+      return { today, held };
+    };
+    const lb = await seeded({ injuries: [{ region: "lower-back", severity: "moderate" }] }, false);
+    ok("W283 a plan stored before the caution is screened: the Jefferson curl is swapped out, and Today says why once",
+      !lb.held && /Jefferson Curl/.test(lb.today.swap_note ?? "") && /lower back/.test(lb.today.swap_note ?? ""), JSON.stringify({ held: lb.held, note: lb.today.swap_note }));
+    const lbCustom = await seeded({ injuries: [{ region: "lower-back", severity: "mild" }] }, true);
+    ok("W283 …a hand-built plan too: a reported injury outranks a hand edit", !lbCustom.held && /lower back/.test(lbCustom.today.swap_note ?? ""), JSON.stringify(lbCustom.today.swap_note));
+    const db = await seeded({ available_equipment: ["dumbbell", "bodyweight"] }, false);
+    ok("W283 …and a dumbbell-only plan that now holds a barbell lift", !db.held && /barbell|equipment|kit/i.test(db.today.swap_note ?? ""), JSON.stringify(db.today.swap_note));
+    // An injury reported on a HAND-BUILT plan swaps the newly contraindicated lifts (the client's
+    // "I'll keep … out of your plan" is now true for both kinds of plan), and says what it did.
+    const hb = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym } })).data.user_id;
+    await store.updateUser(hb, (u) => { const s0 = u.program.sessions[0]; s0.exercises = [...s0.exercises.slice(0, -1), { exercise: "jefferson-curl", sets: 3, rep_range: "10-15", rir: "2-3" }]; u.program = { ...u.program, custom: true }; return u; });
+    const rep = await json("POST", "/api/profile/injury", { user_id: hb, region: "lower-back", severity: "moderate" });
+    ok("W283 an injury report on a hand-built plan swaps out what it now rules out, and the reply names it",
+      rep.status === 200 && (rep.data?.swapped ?? []).some((x) => x.from === "jefferson-curl") && !(await store.getUser(hb)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === "jefferson-curl")), JSON.stringify(rep.data));
+    // A plan saved by hand with a lift the user's injury rules out is saved (it's theirs) but flagged.
+    const sv = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym, injuries: [{ region: "lower-back", severity: "moderate" }] } })).data.user_id;
+    const svProg = (await store.getUser(sv)).program;
+    const saved = await json("POST", "/api/plan/save", { user_id: sv, program: { name: svProg.name, sessions: svProg.sessions.map((x, i) => (i === 0 ? { ...x, exercises: [...x.exercises, { exercise: "jefferson-curl", sets: 2, rep_range: "10-15" }] } : x)) } });
+    ok("W283 a hand-saved plan holding a lift your injury rules out is flagged in its critique", saved.status === 200 && (saved.data?.critique?.findings ?? []).some((f) => f.severity === "warn" && /Jefferson Curl/.test(f.msg) && /lower back/.test(f.msg)), JSON.stringify(saved.data?.critique?.findings));
+    // The Add-exercise warning promises what a hand-built plan KEEPS: its weights and the 6-week
+    // build-and-deload wave (only the block-boundary automation stops). Pinned through the routes.
+    const cu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: gym } })).data.user_id;
+    const cprog = (await store.getUser(cu)).program;
+    const edited = cprog.sessions.map((x, i) => (i === 0 ? { ...x, exercises: x.exercises.slice(0, -1) } : x));
+    await json("POST", "/api/plan/save", { user_id: cu, program: { name: cprog.name, sessions: edited } });
+    // History follows the rotation, so the session served next has lifts with history.
+    for (const [k, d] of [35, 28, 21, 14, 7].entries()) { const sx = edited[k % edited.length]; await json("POST", "/api/session", { user_id: cu, session_id: `cw-${d}`, date: dAgo(d), local_date: dAgo(d).slice(0, 10), session_name: sx.name, sets: sx.exercises.map((e) => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: 8 })) }); }
+    await store.updateUser(cu, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dAgo(38) }; return u; });
+    const ct = (await (await app.request("/api/today", { headers: { "X-HB-User": cu } })).json()).session;
+    ok("W283 a hand-built plan keeps its weights and the build-and-deload wave (week 6 is still a deload), as the warning says",
+      (await store.getUser(cu)).program.custom === true && ct.block?.phase === "deload" && ct.exercises.some((e) => e.suggested_kg != null), JSON.stringify({ custom: (await store.getUser(cu)).program.custom, block: ct.block?.phase }));
+  }
+
+  // --- W284: Nerd Mode. Asked for (?nerd=1) — the default Progress stays lean — and its next-block
+  // preview is the rollover's own decision: what it shows is what the boundary then applies.
+  {
+    const nu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const nprog = (await store.getUser(nu)).program;
+    await store.updateUser(nu, (x) => { x.plan_meta = { ...x.plan_meta, block_start: dAgo(50), block_index: 0 }; return x; });
+    let k = 0;
+    for (let w = 7; w >= 1; w--) for (let d = 0; d < 4; d++) {
+      const ps = nprog.sessions[k++ % nprog.sessions.length]; const when = dAgo(7 * w - d);
+      await json("POST", "/api/session", { user_id: nu, session_id: `nd-${w}-${d}`, date: when, local_date: when.slice(0, 10), session_name: ps.name, sets: ps.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: +e.rep_range.split("-")[0] + 1 }))) });
+    }
+    const plain = await (await app.request("/api/progress", { headers: { "X-HB-User": nu } })).json();
+    const nerdRes = await app.request("/api/progress?nerd=1", { headers: { "X-HB-User": nu } });
+    const nerdText = await nerdRes.text(), nerd = JSON.parse(nerdText).nerd;
+    ok("W284 the default Progress payload stays lean (no nerd numbers unless asked)", !("nerd" in plain));
+    ok("W284 ?nerd=1 adds volume vs landmarks, the block's maths, the next block and strength", Array.isArray(nerd?.volume) && nerd.volume.length > 0 && !!nerd.block && !!nerd.next_block && Array.isArray(nerd.strength), Object.keys(nerd ?? {}).join(","));
+    ok("W284 …and never carries the user's id (it's their credential)", !nerdText.includes(nu));
+    ok("W284 block maths name the block the trained-week clock is in (7 trained weeks: block 2, week 2 — before the boundary has run)", nerd.block?.index === 1 && nerd.block?.week === 2, JSON.stringify(nerd.block));
+    await app.request("/api/today", { headers: { "X-HB-User": nu } }); // the boundary passes
+    const applied = (await store.getUser(nu)).plan_meta;
+    const sortHeld = (h) => JSON.stringify([...(h ?? [])].sort((a, b) => a.muscle.localeCompare(b.muscle)));
+    ok("W284 the next-block preview is exactly what the rollover then applied (bumped, eased, held, swapped)",
+      applied.block_index === 1 && JSON.stringify([...nerd.next_block.bumped].sort()) === JSON.stringify([...applied.tuned_this_block.bumped].sort())
+      && JSON.stringify([...nerd.next_block.eased].sort()) === JSON.stringify([...applied.tuned_this_block.eased].sort())
+      && sortHeld(nerd.next_block.held) === sortHeld(applied.tuned_this_block.held)
+      && JSON.stringify([...nerd.next_block.swaps].sort()) === JSON.stringify([...(applied.swapped_this_block ?? [])].sort()),
+      JSON.stringify({ preview: nerd.next_block, applied: { tuned: applied.tuned_this_block, swapped: applied.swapped_this_block } }).slice(0, 600));
+    // …and when the boundary HOLDS (2 of 4 sessions a week: completion) and in a SPECIALIZATION
+    // block (tune frozen, stalled lifts still swapped) — each with a non-empty precondition (W283 review).
+    const previewThenApply = async (profileExtra, perWeek) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], ...profileExtra } })).data.user_id;
+      const prog = (await store.getUser(uid)).program;
+      await store.updateUser(uid, (x) => { x.plan_meta = { ...x.plan_meta, block_start: dAgo(50), block_index: 0 }; return x; });
+      let kk = 0;
+      for (let w = 7; w >= 1; w--) for (let d = 0; d < perWeek; d++) {
+        const ps = prog.sessions[kk++ % prog.sessions.length]; const when = dAgo(7 * w - d);
+        await json("POST", "/api/session", { user_id: uid, session_id: `pa-${w}-${d}`, date: when, local_date: when.slice(0, 10), session_name: ps.name, sets: ps.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: +e.rep_range.split("-")[0] + 1 }))) });
+      }
+      const preview = (await (await app.request("/api/progress?nerd=1", { headers: { "X-HB-User": uid } })).json()).nerd?.next_block;
+      await app.request("/api/today", { headers: { "X-HB-User": uid } });
+      return { preview, applied: (await store.getUser(uid)).plan_meta };
+    };
+    const held = await previewThenApply({}, 2);
+    ok("W284 parity when the boundary HOLDS: the preview's held list is the one applied (and isn't empty)",
+      (held.preview?.held ?? []).length > 0 && sortHeld(held.preview.held) === sortHeld(held.applied.tuned_this_block?.held), JSON.stringify({ p: held.preview?.held, a: held.applied.tuned_this_block?.held }).slice(0, 400));
+    const spec = await previewThenApply({ priority_muscles: ["chest"] }, 4);
+    ok("W284 parity in a SPECIALIZATION block: the preview still names the swaps the boundary then makes",
+      spec.preview?.specialization === true && (spec.preview.swaps ?? []).length > 0 && JSON.stringify([...spec.preview.swaps].sort()) === JSON.stringify([...(spec.applied.swapped_this_block ?? [])].sort()),
+      JSON.stringify({ p: spec.preview, a: spec.applied.swapped_this_block }).slice(0, 400));
+  }
+
   // --- #readout (W282): the post-workout read-out. Its "next time" weight for every lift is a
   // PROMISE (lesson 60): the next /api/today must serve exactly that — in a normal week, a
   // deload week, a taper, after a skipped set, and when this very workout tips a reactive

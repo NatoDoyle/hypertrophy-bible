@@ -1,9 +1,10 @@
 {
-  "$comment": "Practice-based movement-screening heuristics (Grade D) mapping a reported injury region to movement_patterns the plan engine should avoid. exclude_patterns are avoided at any severity; caution_patterns are additionally avoided at moderate/severe. Not medical advice — see content/05-recovery/injury-management.",
+  "$comment": "Practice-based movement-screening heuristics (Grade D) mapping a reported injury region to movement_patterns the plan engine should avoid. exclude_patterns (and exclude_exercises, by id) are avoided at any severity; caution_patterns (and caution_exercises, by id) are additionally avoided at moderate/severe. An exercise rule names one lift a pattern rule can't single out (W283: the Jefferson curl shares isolation-spinal-flexion with every crunch, and is excluded for the lower back at ANY severity — loaded end-range spinal flexion is its whole purpose, and the aggravator the region's note names). Not medical advice — see content/05-recovery/injury-management.",
   "regions": {
     "lower-back": {
       "exclude_patterns": [],
       "caution_patterns": ["hinge", "squat"],
+      "exclude_exercises": ["jefferson-curl"],
       "note": "Loaded spinal flexion/compression can aggravate low-back injury; prefer machine/supported leg and back work.",
       "evidence_grade": "D"
     },

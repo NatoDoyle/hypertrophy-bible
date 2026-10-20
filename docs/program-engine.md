@@ -227,6 +227,7 @@ lines show only while the workout is still this week. A queued workout's read-ou
 once it syncs, and History offers it for the latest workout), the reduce card (over-ceiling),
 the regression card, the new-block coach note (rotation, tune deltas **and holds**, real swaps),
 the plan screen's per-muscle reasons ("adaptive: +2 sets from your logged response"), and the
-graduation note. Computed-but-unsurfaced signals are tracked deliberately: `readinessIndex`,
-`confidenceTier` and `buildFeatureReport` are the un-shipped "Nerd Mode" payload (design spec §
-Nerd Mode, deferred on the roadmap), not dead code.
+graduation note, and **Nerd Mode** (W284, a Progress toggle): every muscle's sets against its
+landmarks, the block's maths, the boundary's own next-block decision (parity-tested against the
+rollover), and each lift's strength numbers. Still computed-but-unsurfaced, deliberately:
+`readinessIndex` and `confidenceTier` (they need HRV/sleep-hours data the app never collects).

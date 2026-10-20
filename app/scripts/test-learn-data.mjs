@@ -133,5 +133,13 @@ check("no page leaks a raw data/ path for ANY of the three kinds", () => {
   assert.deepEqual(leaky, []);
 });
 
+check("W283 the Jefferson curl's sheet is the barbell version, and every sheet carries the aliases the library search reads", () => {
+  const s = LEARN_EXERCISES["jefferson-curl"];
+  assert.strictEqual(s.name, "Barbell Jefferson Curl");
+  assert.strictEqual(s.equipment, "barbell");
+  assert.ok(Array.isArray(s.aliases) && s.aliases.includes("Jefferson curls"), JSON.stringify(s.aliases));
+  assert.ok(Object.values(LEARN_EXERCISES).every((x) => Array.isArray(x.aliases)));
+});
+
 console.log(`\n${pass} learn-data test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

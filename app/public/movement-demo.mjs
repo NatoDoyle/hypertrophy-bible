@@ -42,14 +42,24 @@ export const MOVEMENT_DEMO = {
   "other": ["pulse", "Move through a controlled range, then return."],
 };
 
+// A pattern's words don't fit every lift in it (W283): the Jefferson curl rolls DOWN through
+// the spine, the hanging leg raise curls the hips up, the ab-wheel rollout resists extension —
+// "curl your torso in" described none of them. Keyed by exercise id; everything else keeps its
+// pattern's caption.
+export const EXERCISE_DEMO = {
+  "jefferson-curl": ["bend", "Roll down one vertebra at a time, then restack slowly from the bottom up."],
+  "hanging-leg-raise": ["bounce", "Curl your hips up to raise your legs, then lower with control."],
+  "ab-wheel-rollout": ["side", "Roll out with your core braced, then pull back in without your low back sagging."],
+};
+
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // A tiny static line-art figure (the same one every time — it's not what moves)
 // plus one animated glyph conveying the plane of motion, and a plain-language
 // caption. `pattern` is any movement_pattern value or nullish; unknown/missing
 // falls back to "other" so every exercise renders something.
-export function renderMovementDemo(pattern) {
-  const [kind, caption] = MOVEMENT_DEMO[pattern] || MOVEMENT_DEMO.other;
+export function renderMovementDemo(pattern, exerciseId = null) {
+  const [kind, caption] = EXERCISE_DEMO[exerciseId] || MOVEMENT_DEMO[pattern] || MOVEMENT_DEMO.other;
   const rotated = kind === "side"; // "side" = the vertical bounce, rotated 90°
   const cssKind = rotated ? "bounce" : kind;
   const arrow = cssKind === "pulse"

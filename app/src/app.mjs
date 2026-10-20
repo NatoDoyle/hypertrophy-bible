@@ -2,10 +2,10 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, dailyReadiness, swapStalls, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint } from "./push.mjs";
@@ -489,7 +489,13 @@ export function createApp(store, config = {}) {
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
-    return c.json({ ok: true, critique: critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null) });
+    // A lift the user's own reported injury rules out is saved (it's their plan) but flagged
+    // (W283 review): the pickers never offer one, so it arrives only from an old plan or a direct post.
+    const injuryFlags = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]
+      .map((exId) => ({ exId, region: injuryRegionFor(updated.profile, exId) })).filter((x) => x.region)
+      .map((x) => ({ severity: "warn", msg: `${exerciseById.get(x.exId)?.name ?? x.exId}: you reported a ${x.region.replace(/-/g, " ")} issue — it's one of the lifts the plan keeps away from it.` }));
+    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null);
+    return c.json({ ok: true, critique: { ...critique, findings: [...(critique?.findings ?? []), ...injuryFlags] } });
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's
@@ -507,7 +513,8 @@ export function createApp(store, config = {}) {
     // unilateral / alternating / lengthened_bias / movement_pattern travel with the
     // row so a mid-workout swap can carry the side, "stretch-focused", and
     // inline-demo cues onto the new lift instead of silently dropping them.
-    return c.json(all.map((e) => ({ id: e.id, name: e.name, primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, rest_s: restSeconds(e), custom: !!e.custom })));
+    // aliases ride along so the editor's search finds "Jefferson curls" (W283).
+    return c.json(all.map((e) => ({ id: e.id, name: e.name, aliases: e.aliases ?? [], primary_muscles: e.primary_muscles ?? [], equipment: e.equipment, mechanic: e.mechanic, unilateral: !!e.unilateral, alternating: !!e.alternating, lengthened_bias: !!e.lengthened_bias, movement_pattern: e.movement_pattern ?? null, rest_s: restSeconds(e), custom: !!e.custom })));
   });
 
   const exerciseNameFor = (user, id) => exerciseById.get(id)?.name ?? (user.custom_exercises || []).find((x) => x.id === id)?.name ?? id;
@@ -930,6 +937,20 @@ export function createApp(store, config = {}) {
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
         if (stamped) user = stamped; // act on what was PERSISTED, not the local guess (lesson 21)
       }
+    }
+    // THE STORED-PLAN SCREEN (W283 review): a stored lift the user's CURRENT pool rejects (a rule
+    // that tightened since the plan was made, an exercise that changed kit) is swapped through the
+    // permanent-swap door — generated or hand-built alike — and Today says so once (swap_note).
+    // Decided again on the fresh copy inside the compare-and-swap (lesson 21).
+    if (screenPlan(user, sessions, nowISO)?.swaps?.length) {
+      const screened = await store.updateUser(id, (u) => {
+        const fresh = screenPlan(u, sessions, nowISO);
+        if (!fresh?.swaps?.length) return u;
+        u.program = fresh.program; u.plan_rationale = fresh.rationale;
+        u.plan_meta = { ...(u.plan_meta ?? {}), screen_swaps: { at: nowISO, swaps: fresh.swaps } };
+        return u;
+      }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+      if (screened) user = screened;
     }
     // Daily-flow status (considerations #6): the three things a user does across a
     // day — morning check-in (incl. weight), the workout, and evening calories — so
@@ -1809,6 +1830,9 @@ export function createApp(store, config = {}) {
     // the profile forever, matching no contraindication and filtering nothing.
     if (!VALID_INJURY_REGIONS.has(region)) return c.json({ error: "unknown region" }, 400);
     const severity = ["mild", "moderate", "severe"].includes(body.severity) ? body.severity : "moderate";
+    const sessions = await store.listSessions(id);
+    const nowISO = new Date().toISOString();
+    let swapped = [], kept = [];
     const updated = await store.updateUser(id, (u) => {
       const injuries = [...(u.profile?.injuries ?? [])];
       const i = injuries.findIndex((x) => x.region === region);
@@ -1822,12 +1846,21 @@ export function createApp(store, config = {}) {
       // not sit in the plan for another five weeks. The mesocycle is deliberately
       // NOT reset — an injury shouldn't cost the user their block progress (unlike
       // /api/plan/regenerate, where a training-field change means a different plan).
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+      // …through every rebuild's swap door (a plateaued lift stays demoted, a spared one stays).
+      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, sessions, nowISO) });
+      // A HAND-BUILT plan isn't regenerated (the edits are the user's), but a lift the injury now
+      // rules out is swapped out of it (W283 review) — the client's "I'll keep it out of your plan"
+      // has to be true for both kinds of plan.
+      if (u.program?.custom) {
+        const s = screenPlan(u, sessions, nowISO);
+        swapped = s?.swaps ?? []; kept = s?.kept ?? [];
+        if (swapped.length) { u.program = s.program; u.plan_rationale = s.rationale; }
+      }
       if (!u.program?.custom) { u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {} }; }
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
-    return c.json({ ok: true, injuries: updated.profile?.injuries ?? [] });
+    return c.json({ ok: true, injuries: updated.profile?.injuries ?? [], swapped, kept: kept.map((x) => ({ id: x, name: exerciseById.get(x)?.name ?? x })) });
   });
 
   // ---- Correcting the log (Wave 163) -------------------------------------
@@ -1957,7 +1990,11 @@ export function createApp(store, config = {}) {
     // account_email rides along for the sign-in adoption probe (account-adopt.mjs):
     // this route is read-only, unlike /api/adherence, whose GET advances seen-once
     // watermarks — a declined sign-in must not cost the user an unseen partner nudge.
-    return c.json({ ...progressReport(user, sessions, bodyweights, user.custom_exercises || [], new Date().toISOString(), checkins, tz), account_email: await store.accountEmail(id) });
+    const nowISO = new Date().toISOString();
+    const report = progressReport(user, sessions, bodyweights, user.custom_exercises || [], nowISO, checkins, tz);
+    // Nerd Mode (W284) only when asked: it adds the boundary's own decision and a plan build.
+    const nerd = c.req.query("nerd") === "1" ? { nerd: nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, report) } : {};
+    return c.json({ ...report, ...nerd, account_email: await store.accountEmail(id) });
   });
 
   // Bodyweight quick-add -> energy-balance inference (no calorie counting).

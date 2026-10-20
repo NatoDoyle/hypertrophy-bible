@@ -7,7 +7,7 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
-import { isSpecializing, generateUserPlan } from "./planner.mjs";
+import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -112,7 +112,43 @@ export function estimateStartingWeight(e, bodyweightKg, exId, byId = exerciseByI
   if (ratio == null || eqScale == null) return null;
   const inc = loadIncrement(exId, byId);
   const rounded = Math.floor((bodyweightKg * ratio * eqScale) / inc) * inc;
+  // A barbell can't weigh less than the bar (W283 review: the barbell Jefferson curl's guess was
+  // 7.5 kg at 80 kg bodyweight) — the empty bar is the first guess, as its own steps say.
+  if (e.equipment === "barbell") return Math.max(rounded, EMPTY_BAR_KG);
   return rounded > 0 ? rounded : inc;
+}
+const EMPTY_BAR_KG = 20;
+
+// THE STORED-PLAN SCREEN (W283 review). A plan is generated against the rules of its day; a rule
+// can tighten afterwards (W283 excluded the Jefferson curl for a lower back) or an exercise can
+// change kit (it became a barbell lift). Every lift the user's CURRENT pool rejects — injuries,
+// equipment, lifts marked unavailable (their own custom exercises are always theirs) — is swapped
+// through the permanent-swap door (applySubstitution), on a generated plan and a hand-built one
+// alike: an injury the user reported outranks a hand edit. Null when nothing needs it; a lift
+// with no fitting replacement stays, reported in `kept`.
+export function screenPlan(user, sessions, nowISO) {
+  const program = user.program;
+  if (!program?.sessions?.length) return null;
+  const pool = new Set(userExercises(user.profile, user.custom_exercises || []).map((e) => e.id));
+  const out = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))].filter((id) => !pool.has(id));
+  if (!out.length) return null;
+  const stalled = swapStalls(user, sessions, nowISO);
+  let cur = user;
+  const swaps = [], kept = [];
+  for (const id of out) {
+    const r = userApplySubstitution(cur, id, { stalled });
+    if (r.error) { kept.push(id); continue; }
+    cur = { ...cur, program: r.program, plan_rationale: r.rationale };
+    const region = injuryRegionFor(user.profile, id);
+    swaps.push({ from: id, to: r.replaced_by ?? null, reason: region ? "injury" : "equipment", ...(region ? { region } : {}) });
+  }
+  return { program: cur.program, rationale: cur.plan_rationale, swaps, kept };
+}
+// The screen's one-time word on Today (until a session is logged after it).
+function swapNoteFor(swaps, name) {
+  return swaps.map((w) => `I swapped your ${name(w.from)} for ${w.to ? name(w.to) : "another lift"} — ${w.reason === "injury"
+    ? `it's one of the lifts I keep away from your ${String(w.region).replace(/-/g, " ")}`
+    : "it needs equipment that isn't in your kit"}.`).join(" ");
 }
 
 // Double progression: hit the top of the range on every set last time -> add load;
@@ -710,6 +746,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // there would be invisible to exactly the person coming back from a gap).
   // Bounded below COMEBACK_GAP_DAYS: at >=12 days the comeback branch above owns
   // the card and eases the weights; here nothing changed and the copy says so.
+  // The stored-plan screen's word (W283 review), said until a session is logged after it.
+  const screened = user.plan_meta?.screen_swaps;
+  const swap_note = screened?.swaps?.length && !sessions.some((s) => s.date && s.date > screened.at) ? swapNoteFor(screened.swaps, name) : null;
   const gap_note = !neverTrained && layoffDays >= gentleGapDays(user.profile?.days_per_week) && layoffDays < COMEBACK_GAP_DAYS
     ? `It's been ${layoffDays} days — no problem. Your plan doesn't punish a gap: today's workout simply moved with you, nothing was skipped or lost, and your weights are unchanged.`
     : null;
@@ -824,7 +863,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // own signal, carried explicitly so no consumer re-derives it from the filter.
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note,
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1050,7 +1089,10 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     block.splice(graduating ? 3 : 2);
 
     // From week 4: what the boundary would decide if it came today — the rollover's own function.
-    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4 && !isSpecializing(user.profile, blockIndex)) {
+    // A specialization block's tune is frozen, but its boundary still swaps stalled lifts — so the
+    // swaps are said and nothing else (W283 review).
+    const specializing = isSpecializing(user.profile, blockIndex);
+    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4) {
       const d = decide();
       const muscles = (ms) => listJoin(ms.map(plainMuscle));
       if (d.tuned.bumped.length) next_block.push(`More sets for your ${muscles(d.tuned.bumped)} — stalled with room to grow.`);
@@ -1060,7 +1102,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       if (heldBy("deficit").length) next_block.push(`Your ${muscles(heldBy("deficit"))} hold — you're in a deficit, so fuel comes first.`);
       if (heldBy("recovery").length) next_block.push(`Your ${muscles(heldBy("recovery"))} hold — recovery's been short, so sleep comes first.`);
       if (d.out.length) next_block.push(`${listJoin(d.out.map(name))} ${d.out.length === 1 ? "gets" : "get"} a fresh angle — flat for weeks.`);
-      if (!next_block.length) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
+      if (!next_block.length && !specializing) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
       next_block.splice(3);
     }
   }
@@ -1073,6 +1115,75 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       : "Your bodyweight is trending down — some strength dips are normal in a deficit, and I won't add volume while it lasts.";
   }
   return { beginner, objective, next, block, next_block, bodyweight };
+}
+
+// NERD MODE (W284 — owner: "add nerd mode"; design spec: a toggle within Progress). The numbers
+// behind every card, read from the SAME derivations the cards and the engine use — no second
+// calculation (lesson 1): per muscle, the week's sets and the 6-week peak the tune reads against
+// the KB's MV/MEV/MAV/MRV (model estimates, labelled so), the plan's projected and target sets and
+// the running adjustment; the block's maths (trainingContext); what the boundary would decide now
+// (blockTuneDecision and the swaps the next plan would make — the rollover's own steps); per lift
+// the weekly e1RM, the personal stall window, weeks flat and the margin under the 8-week peak.
+// Computed only when asked (/api/progress?nerd=1): progressReport also runs inside every
+// /api/today (reactiveDeloadStampDue), which must not pay for this.
+export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, report) {
+  const { index } = resolveEx(user.custom_exercises || []);
+  const weekly = perMuscleWeeklyVolume(sessions, index);
+  const peak = peakWeeklyVolume(weekly);
+  const rationale = user.plan_rationale?.volume_by_muscle ?? {};
+  const adjust = user.plan_meta?.volume_adjust ?? {};
+  const signals = Object.fromEntries((report.adaptive ?? []).map((a) => [a.muscle, a]));
+  const rows = report.volumeByMuscle ?? [];
+  const ids = [...new Set([...rows.map((v) => v.id).filter(Boolean), ...Object.keys(rationale)])];
+  const volume = ids.map((m) => {
+    const lm = muscleIndex.get(m) ?? null;
+    const row = rows.find((v) => v.id === m);
+    return {
+      id: m, name: plainMuscle(m), sets: row?.sets ?? 0, status: row?.status ?? null, peak: peak[m] ?? 0,
+      planned: rationale[m]?.projected_sets ?? null, target: rationale[m]?.target_sets ?? null, adjust: adjust[m] ?? 0,
+      // A hand-built plan doesn't apply the stored tune (the editor says tuning stops) — shown as paused.
+      adjust_paused: !!user.program?.custom,
+      signal: signals[m]?.signal ?? null, gated: signals[m]?.gated ?? null,
+      landmarks: lm ? { mv: lm.mv ?? null, mev: lm.mev ?? null, mav: lm.mav ?? null, mrv: lm.mrv ?? null } : null,
+      grade: lm?.evidence_grade ?? null, estimate: true,
+    };
+  }).sort((a, b) => b.peak - a.peak || a.name.localeCompare(b.name));
+  const ctx = trainingContext(user, sessions, nowISO);
+  const blockStart = user.plan_meta?.block_start ?? user.created_at;
+  const trainedIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, tz) / BLOCK_WEEKS);
+  const block = ctx.block ? { index: trainedIndex, week: ctx.block.week, of: ctx.block.of, phase: ctx.block.phase, set_scale: ctx.block.setScale,
+    taper: ctx.taper ? { days_until: ctx.taper.daysUntil, set_scale: ctx.taper.setScale, rir_floor: ctx.taper.rirFloor } : null } : null;
+  let next_block = null;
+  const storedIndex = user.plan_meta?.block_index ?? 0;
+  // Every block the rollover would act on — a specialization block too: its tune is frozen, but
+  // the boundary still swaps stalled lifts (W283 review: the preview went blank and 14 lifts changed).
+  if (block && !user.program?.custom) {
+    const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, nowISO);
+    let swaps = [];
+    if (d.stalledExercises.length) {
+      // The block index the rollover will build: the trained-week clock's (a pending boundary),
+      // else the next one.
+      const nextPlan = generateUserPlan(user.profile, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+      swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
+    }
+    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex) };
+  }
+  const stallWindow = adaptiveStallWindow(progressionCadence(sessions, index));
+  const stallBy = Object.fromEntries((report.stalls ?? []).map((x) => [x.exercise, x]));
+  const regressBy = Object.fromEntries((report.regressions ?? []).map((x) => [x.exercise, x]));
+  const strength = (report.progression_all ?? []).map((p) => {
+    const recent = (p.series ?? []).slice(-8).map((x) => x.value);
+    const top = recent.length ? Math.max(...recent) : 0, latest = recent[recent.length - 1] ?? 0;
+    // The change over the four logged weeks the card draws — the lifetime % beside them read as a
+    // gain over weeks that were flat (W283 review).
+    const drawn = (p.series ?? []).slice(-4).map((x) => x.value);
+    const window_pct = drawn.length > 1 && drawn[0] > 0 ? Math.round(((drawn[drawn.length - 1] - drawn[0]) / drawn[0]) * 1000) / 10 : 0;
+    return { exercise: p.exercise, name: p.name, series: p.series, change_pct: p.change_pct, window_pct, basis: p.basis ?? "e1rm", stall_window: stallWindow,
+      weeks_flat: stallBy[p.exercise]?.weeks_flat ?? 0, stalled: !!p.stalled,
+      under_peak_pct: top > 0 ? Math.round(((top - latest) / top) * 1000) / 10 : 0,
+      regressing: !!regressBy[p.exercise], drop_pct: regressBy[p.exercise]?.drop_pct ?? null };
+  });
+  return { volume, block, next_block, strength };
 }
 
 // The Progress tab payload: everything derived, nothing asked.

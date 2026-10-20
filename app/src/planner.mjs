@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -54,6 +54,12 @@ export function critiqueUserPlan(program, customEx = [], experience = "intermedi
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus
 // their own custom exercises (always theirs to use).
+// Which reported injury rules this lift out (null when none does) — a swap's "why" (W283 review).
+export function injuryRegionFor(profile, exId) {
+  const ex = exercises.find((e) => e.id === exId);
+  return ex ? contraRegion(ex, profile?.injuries ?? [], contraindications) : null;
+}
+
 export function userExercises(profile, customEx = []) {
   return [...accessibleExercises(profile, { exercises, contraindications }), ...customEx];
 }

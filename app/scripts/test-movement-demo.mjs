@@ -6,7 +6,7 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { MOVEMENT_DEMO, renderMovementDemo } from "../public/movement-demo.mjs";
+import { MOVEMENT_DEMO, EXERCISE_DEMO, renderMovementDemo } from "../public/movement-demo.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + "\n      " + e.message); } };
@@ -45,6 +45,19 @@ check("renderMovementDemo falls back to 'other' for an unknown/missing pattern (
     assert.ok(html.includes("<svg"));
     assert.ok(html.includes(MOVEMENT_DEMO.other[1]));
   }
+});
+
+// W283: a pattern's words don't fit every lift in it — a Jefferson curl rolls DOWN through the
+// spine, a hanging leg raise curls the hips, an ab-wheel rollout resists extension.
+check("W283 per-exercise captions where the pattern's words don't fit; every other lift keeps its pattern's", () => {
+  assert.match(renderMovementDemo("isolation-spinal-flexion", "jefferson-curl"), /Roll down one vertebra at a time/);
+  assert.match(renderMovementDemo("isolation-spinal-flexion", "cable-crunch"), /Curl your torso in/);
+  assert.match(renderMovementDemo("isolation-spinal-flexion"), /Curl your torso in/);
+  for (const [id, entry] of Object.entries(EXERCISE_DEMO)) {
+    const ex = JSON.parse(readFileSync(new URL(`../../data/exercises/${id}.json`, import.meta.url), "utf8"));
+    assert.ok(ex.id === id && Array.isArray(entry) && entry.length === 2 && entry[1].length > 10, id);
+  }
+  assert.deepStrictEqual(Object.keys(EXERCISE_DEMO).sort(), ["ab-wheel-rollout", "hanging-leg-raise", "jefferson-curl"]);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
