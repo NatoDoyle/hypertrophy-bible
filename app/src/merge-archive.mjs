@@ -21,7 +21,7 @@ export const clone = (value) => value == null ? value : JSON.parse(JSON.stringif
 // doors rather than trusting a comment (lesson 33).
 export const LIVE_PROFILE_FIELDS = new Set([
   // Device/push delivery state.
-  "celebration", "freeze_pushed_week", "comeback_push", "commitment",
+  "celebration", "freeze_pushed_week", "comeback_push", "commitment", "reminders_fired",
   // Share-token and social state. A restored copy must deliberately opt in again.
   "following", "followers_count", "followers_pushed", "cheers_pushed", "cheers_seen",
   "partner_nudge", "nudge_pushed_at", "nudge_seen_at",

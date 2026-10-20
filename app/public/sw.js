@@ -84,15 +84,20 @@ self.addEventListener("push", (e) => {
       if (data.tag) tag = data.tag;
     } catch {} // malformed/foreign payload: keep the safe static reminder copy
   }
-  e.waitUntil(self.registration.showNotification(title, {
-    body,
-    icon: "/icon.svg",
-    badge: "/icon.svg",
-    tag, // one notification per tag at a time — a new one replaces the old
-    // Rest's up (W286) must ALERT — a later rest's lands on the same tag, which would otherwise
-    // replace the last one silently — and buzz.
-    ...(tag === "hb-rest" ? { renotify: true, vibrate: [200, 100, 200] } : {}),
-  }));
+  // Rest's up (W286) must ALERT on every rest. A same-tag replacement can land silently (Safari
+  // has no `renotify` — W286 review), so each rest's alert is its OWN notification, the earlier
+  // ones cleared first so the tray holds one — and it buzzes where vibration exists.
+  const rest = tag === "hb-rest";
+  e.waitUntil((async () => {
+    if (rest) { try { for (const n of await self.registration.getNotifications()) if (n.tag?.startsWith("hb-rest")) n.close(); } catch {} }
+    await self.registration.showNotification(title, {
+      body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      tag: rest ? `hb-rest-${Date.now()}` : tag, // one notification per tag at a time — a new one replaces the old
+      ...(rest ? { vibrate: [200, 100, 200] } : {}),
+    });
+  })());
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

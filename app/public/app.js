@@ -288,6 +288,9 @@ const pushSupported = () => "serviceWorker" in navigator && "PushManager" in win
 // what they're for per ACCOUNT — each reminder's switch and picked time (/api/reminders/device)
 // — except the rest alert, a device preference like hb_rest (kept across an account switch).
 const pushOn = () => { try { return localStorage.getItem("hb_push") === "1"; } catch { return false; } };
+// This device's own subscription endpoint: a rest alert goes to the device that's resting, not
+// every device on the account (W286 review). Refreshed on every open (a browser can rotate it).
+const pushEndpoint = () => { try { return localStorage.getItem("hb_push_ep"); } catch { return null; } };
 const restAlertOn = () => { try { return localStorage.getItem("hb_rest_alert") !== "0"; } catch { return true; } };
 const notifyPermission = () => (typeof Notification !== "undefined" ? Notification.permission : "default");
 const deviceNotifyOffer = () => notifyOffer({ supported: pushSupported(), ios: isIOS(), standalone: isStandalone(), permission: notifyPermission(), on: pushOn() });
@@ -307,6 +310,7 @@ async function enablePush() {
   const r = await api("/api/push/subscribe", { method: "POST", body: JSON.stringify({ user_id: uid, subscription: sub.toJSON(), tz_offset_min: -new Date().getTimezoneOffset() }) });
   if (r?.error) throw new Error(r.error);
   localStorage.setItem("hb_push", "1");
+  localStorage.setItem("hb_push_ep", sub.endpoint);
   return "on";
 }
 // Notifications, offered ONCE — right after a workout, when a rest alert and a training-day
@@ -353,6 +357,7 @@ async function disablePush() {
   const sub = await reg.pushManager.getSubscription();
   if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint, user_id: uid }) }).catch(() => {}); await sub.unsubscribe(); }
   localStorage.removeItem("hb_push");
+  localStorage.removeItem("hb_push_ep");
 }
 
 // Android/desktop Chrome fires beforeinstallprompt (only when installable and not
@@ -1899,7 +1904,14 @@ function loadSess() {
     return s;
   } catch { return null; }
 }
-function clearSess() { sess = null; try { localStorage.removeItem(SESS_KEY); } catch {} syncRestAlert(); } // a finished or abandoned workout disarms its rest alarm
+// A finished or abandoned workout disarms its rest alarm — including one armed before a reload
+// (this page never armed it, so it wouldn't know to disarm it — W286 review).
+function clearSess() {
+  let had = null; try { had = sess ? activeRest(sess, Date.now()) : null; } catch {}
+  sess = null; try { localStorage.removeItem(SESS_KEY); } catch {}
+  try { if (had && restAlertArmed == null) restAlertArmed = had.until; } catch {}
+  syncRestAlert();
+}
 
 let sess = loadSess();      // survives a reload / tab eviction
 let discardPending = false; // two-tap guard on discarding a logged workout
@@ -2278,27 +2290,38 @@ function syncRestAlert() {
     const now = Date.now();
     const rest = sess ? activeRest(sess, now) : null;
     const visible = document.visibilityState === "visible";
-    const step = restAlertStep({ rest, armedUntil: restAlertArmed, now, onScreen: visible && !!restTimer, enabled: restAlertOn() && pushOn() && !!uid });
+    const step = restAlertStep({ rest, armedUntil: restAlertArmed, now, onScreen: visible && !!restTimer, chimeReliable: chimeReliable(),
+      enabled: restAlertOn() && pushOn() && !!uid && !!pushEndpoint() });
     if (!step || (step === "arm" && visible && now < restAlertCooldown)) return; // a failed arm retries in 10 s — at once if the screen goes
-    const endsAt = step === "arm" ? rest.until : null;
+    const prev = restAlertArmed, endsAt = step === "arm" ? rest.until : null;
     restAlertArmed = endsAt;
-    const failed = () => { if (restAlertArmed === endsAt && endsAt) { restAlertArmed = null; restAlertCooldown = Date.now() + 10e3; } };
-    // keepalive: the request outlives the page being hidden or frozen right after it.
+    // A failed arm frees the next sync to retry; a failed DISARM puts the old end back and retries
+    // in 10 s — or the alarm rings mid-set (W286 review). Both stop once that end has passed.
+    const failed = () => {
+      if (step === "arm") { if (restAlertArmed === endsAt) { restAlertArmed = null; restAlertCooldown = Date.now() + 10e3; } }
+      else if (restAlertArmed == null) { restAlertArmed = prev; setTimeout(syncRestAlert, 10e3); }
+    };
+    // keepalive: the request outlives the page being hidden or frozen right after it. `at` (this
+    // device's clock) lets the alarm ignore a request that arrives after a newer one.
     fetch("/api/rest-alert", { method: "POST", keepalive: true, headers: { "content-type": "application/json" },
-      body: JSON.stringify(step === "arm" ? { user_id: uid, op: "arm", ends_at: endsAt, label: restAlertLabel } : { user_id: uid, op: "disarm" }) })
+      body: JSON.stringify(step === "arm" ? { user_id: uid, op: "arm", ends_at: endsAt, label: restAlertLabel, endpoint: pushEndpoint(), at: now } : { user_id: uid, op: "disarm", at: now }) })
       .then((r) => { if (!r.ok) failed(); }, failed);
   } catch {}
 }
 document.addEventListener("visibilitychange", syncRestAlert);
 // The chime: two soft tones. iOS unlocks audio only from a tap — the bank tap that starts each
-// rest does it — and Web Audio there respects the silent switch.
+// rest does it — and leaves it "interrupted" (not "suspended") after a lock or a call, so any
+// state but running is resumed (W286 review). Web Audio there also obeys the silent switch,
+// unseen — so on an iPhone the chime is a bonus, never trusted to replace the alarm.
 let chimeCtx = null;
+const chimeReliable = () => !isIOS() && chimeCtx?.state === "running" && restAlertOn();
 function unlockChime() {
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!restAlertOn() || !AC) return;
+    if (chimeCtx?.state === "closed") chimeCtx = null;
     chimeCtx ??= new AC();
-    if (chimeCtx.state === "suspended") chimeCtx.resume().catch(() => {});
+    if (chimeCtx.state !== "running") chimeCtx.resume().catch(() => {});
   } catch {}
 }
 // …and after a reload mid-rest (no bank tap since), any tap on the rest screen does it.
@@ -2306,7 +2329,7 @@ document.addEventListener("pointerdown", () => { if (restTimer) unlockChime(); }
 function playRestChime() {
   try {
     if (!restAlertOn() || !chimeCtx) return;
-    if (chimeCtx.state === "suspended") chimeCtx.resume().catch(() => {});
+    if (chimeCtx.state !== "running") chimeCtx.resume().catch(() => {});
     const t0 = chimeCtx.currentTime + 0.02;
     for (const [hz, at] of [[880, 0], [1320, 0.16]]) {
       const osc = chimeCtx.createOscillator(), gain = chimeCtx.createGain();
@@ -4426,7 +4449,7 @@ async function saveReminder(kind, patch, revert) {
     const r = await api("/api/reminders/device", { method: "POST", body: JSON.stringify({ user_id: uid, kind, ...patch }) });
     if (r?.error) throw new Error(r.error);
     const label = REMINDER_ROWS.find((x) => x.kind === kind)?.label ?? "Reminder";
-    say(patch.time ? `${label} reminder at ${patch.time}.` : `${label} reminder ${patch.on ? "on" : "off"}.`);
+    say(patch.time ? `${label} reminder on, at ${patch.time}.` : `${label} reminder ${patch.on ? "on" : "off"}.`);
   } catch { revert(); alertBar("📴 Couldn't save that reminder — you're offline. Try again when connected."); }
 }
 // One wiring for both slots, parameterized on the re-render so the announce-and-restore-focus
@@ -4464,12 +4487,20 @@ function wireCareCards(a, rerender) {
   const restBox = $("#rest-alert");
   if (restBox) restBox.onchange = () => { try { localStorage.setItem("hb_rest_alert", restBox.checked ? "1" : "0"); } catch {} say(restBox.checked ? "Rest alerts on." : "Rest alerts off."); };
   app.querySelectorAll("[data-rem-on]").forEach((box) => { box.onchange = () => saveReminder(box.dataset.remOn, { on: box.checked }, () => { box.checked = !box.checked; }); });
+  // Picking a time is asking for the reminder: it switches on too (W286 review: a time set on a
+  // switched-off row was announced, then never fired). Kept on the 5-minute grid the reminders
+  // fire on, and shown as saved.
   app.querySelectorAll("[data-rem-time]").forEach((field) => {
     let was = field.value;
     field.onchange = () => {
-      const time = field.value.slice(0, 5);
-      if (!/^\d{2}:\d{2}$/.test(time)) { field.value = was; return; } // a cleared picker keeps the saved time
-      saveReminder(field.dataset.remTime, { time }, () => { field.value = was; }).then(() => { was = field.value; });
+      const typed = field.value.slice(0, 5);
+      if (!/^\d{2}:\d{2}$/.test(typed)) { field.value = was; return; } // a cleared picker keeps the saved time
+      const m = Math.floor((+typed.slice(0, 2) * 60 + +typed.slice(3)) / 5) * 5;
+      const time = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      field.value = time;
+      const box = app.querySelector(`[data-rem-on="${field.dataset.remTime}"]`), wasOn = box?.checked;
+      if (box) box.checked = true;
+      saveReminder(field.dataset.remTime, { time, on: true }, () => { field.value = was; if (box) box.checked = wasOn; }).then(() => { was = field.value; });
     };
   });
   const pushBtn = $("#pushbtn");
@@ -5109,6 +5140,8 @@ nav.querySelectorAll("button").forEach((b) => b.onclick = () => {
   render();
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+// Notifications on: keep this device's endpoint current for its rest alerts (W286 review).
+if (pushOn() && "serviceWorker" in navigator) navigator.serviceWorker.ready.then((reg) => reg.pushManager?.getSubscription()).then((s) => { if (s?.endpoint) localStorage.setItem("hb_push_ep", s.endpoint); }).catch(() => {});
 flushQueue(); // push any workouts logged offline last time
 if (uid) tryPendingFollow(); // an already-signed-up user who opened a friend's share link
 render();

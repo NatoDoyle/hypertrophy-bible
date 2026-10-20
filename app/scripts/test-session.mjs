@@ -958,7 +958,7 @@ check("#local-readout an OLD workout without targets still reads (no plan, no gr
 
 check("restAlertStep (W286): armed while resting; handed to the in-app chime in the last seconds on screen; re-armed if the screen goes", () => {
   const rest = { until: 100_000 };
-  const step = (o) => restAlertStep({ rest, armedUntil: null, now: 10_000, onScreen: true, enabled: true, ...o });
+  const step = (o) => restAlertStep({ rest, armedUntil: null, now: 10_000, onScreen: true, chimeReliable: true, enabled: true, ...o });
   assert.strictEqual(REST_ALERT_HANDOFF_MS, 3000);
   assert.strictEqual(step({}), "arm", "a rest starts: arm (the phone may lock any moment)");
   assert.strictEqual(step({ armedUntil: 100_000 }), null, "already armed for this end");
@@ -974,6 +974,13 @@ check("restAlertStep (W286): armed while resting; handed to the in-app chime in 
   assert.strictEqual(step({ enabled: false }), null, "alerts off (or no notifications): never arm");
   assert.strictEqual(step({ enabled: false, armedUntil: 100_000 }), "disarm", "switched off mid-rest: disarm");
   assert.strictEqual(step({ rest: { until: NaN } }), null, "a corrupt rest is never armed");
+});
+check("restAlertStep (W286 review): never hands over to a chime that can't be trusted (iPhone: the silent switch mutes it, unseen)", () => {
+  const rest = { until: 100_000 };
+  const step = (o) => restAlertStep({ rest, armedUntil: 100_000, now: 98_000, onScreen: true, chimeReliable: false, enabled: true, ...o });
+  assert.strictEqual(step({}), null, "on screen, last seconds, chime unreliable: the alarm STAYS armed");
+  assert.strictEqual(step({ armedUntil: null }), "arm", "…and is armed if it wasn't");
+  assert.strictEqual(step({ chimeReliable: true }), "disarm", "control: a reliable chime takes over");
 });
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

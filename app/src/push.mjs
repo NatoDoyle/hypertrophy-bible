@@ -166,18 +166,25 @@ export function normalizeReminders(stored) {
   }
   return out;
 }
-// Due on the FIRST tick at or after the local time — never early, at most one tick late — so a
-// reminder fires on exactly one tick a day. A 60-minute tick is the old hourly sweep (17:00 on
-// it IS isUserPushHour); the cron ticks every CRON_TICK_MINUTES. With no stored timezone a
-// local time can't be placed, so it never fires (every subscriber has one: it's captured at
-// subscribe and refreshed by the X-HB-TZ header on every open).
+// Due on the ONE tick a day whose window holds the local time (the route keeps times on the
+// tick grid, so that's the tick AT it). Taking the tick the time falls in, never the next one,
+// keeps a time in the day's last minutes on its own day (W285 review: 23:58 fired at 00:00 the
+// next day, and checked "done today" against the wrong day). A 60-minute tick is the old hourly
+// sweep (17:00 on it IS isUserPushHour); the cron ticks every CRON_TICK_MINUTES. With no
+// stored timezone a local time can't be placed, so it never fires (every subscriber has one:
+// it's captured at subscribe and refreshed by the X-HB-TZ header on every open).
 export const CRON_TICK_MINUTES = 5;
+export const snapReminderTime = (t) => {
+  const m = Math.floor((+t.slice(0, 2) * 60 + +t.slice(3)) / CRON_TICK_MINUTES) * CRON_TICK_MINUTES;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
 export function isReminderDue(tzOffsetMin, time, now, tickMinutes) {
   const t = parseReminderTime(time);
   if (!t || !Number.isFinite(tzOffsetMin)) return false;
   const localMinute = Math.floor((+new Date(now) + tzOffsetMin * 60000) / 60000);
   const minuteOfDay = ((localMinute % 1440) + 1440) % 1440;
-  return (minuteOfDay - (+t.slice(0, 2) * 60 + +t.slice(3)) + 1440) % 1440 < tickMinutes;
+  const target = Math.floor((+t.slice(0, 2) * 60 + +t.slice(3)) / tickMinutes) * tickMinutes;
+  return minuteOfDay >= target && minuteOfDay < target + tickMinutes;
 }
 // What one cron tick does. The first tick of each hour runs everything the hourly cron ran
 // (the social events, the email-only accounts); the 16:00-UTC one also runs the comeback
@@ -529,22 +536,40 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
 
       // Reminders at the times the user picks (W285): weigh-in and food log, each on its one
       // tick a day, and only while the thing isn't done yet on the user's own calendar day.
-      // Push-only — an emailed "log your food" would be spam.
+      // Push-only — an emailed "log your food" would be spam — so only for a user with a device.
+      // Each kind fires once a day (`reminders_fired`, stamped once a device accepted it): moving
+      // its time later the same day, or the morning a DST change moves the stored offset, never
+      // sends a second (W285 review).
       const rem = normalizeReminders(user.profile?.reminders);
       const tz = user.profile?.tz_offset_min;
-      if (!paused && !remindersOff) {
-        if (rem.weigh_in.on && isReminderDue(tz, rem.weigh_in.time, now, tickMinutes)
-          && !(await store.listBodyweights(userId)).some((b) => b.date === localDayKey(now, tz))) await fanOut(REMINDER_COPY.weigh_in, { emailFallback: false });
-        if (rem.calories.on && isReminderDue(tz, rem.calories.time, now, tickMinutes)
-          && !(await store.listNutritionLog(userId)).some((e) => e.date === localDayKey(now, tz))) await fanOut(REMINDER_COPY.calories, { emailFallback: false });
+      const today = localDayKey(now, Number.isFinite(tz) ? tz : 0);
+      const fired = user.profile?.reminders_fired ?? {};
+      const markFired = async (kind) => {
+        try {
+          await store.updateUser(userId, (u) => {
+            const f = u.profile?.reminders_fired ?? {};
+            if (f[kind] === today) return u;
+            u.profile = { ...(u.profile ?? {}), reminders_fired: { ...f, [kind]: today } };
+            return u;
+          });
+        } catch { /* worst case: one repeat if its time moves later today */ }
+      };
+      if (!paused && !remindersOff && userSubs.length) {
+        if (rem.weigh_in.on && fired.weigh_in !== today && isReminderDue(tz, rem.weigh_in.time, now, tickMinutes)
+          && !(await store.listBodyweights(userId)).some((b) => b.date === today)) { if (await fanOut(REMINDER_COPY.weigh_in, { emailFallback: false })) await markFired("weigh_in"); }
+        if (rem.calories.on && fired.calories !== today && isReminderDue(tz, rem.calories.time, now, tickMinutes)
+          && !(await store.listNutritionLog(userId)).some((e) => e.date === today)) { if (await fanOut(REMINDER_COPY.calories, { emailFallback: false })) await markFired("calories"); }
       }
 
       // The training-days reminder is the daily slot below (streak freeze, comeback, the reminder
       // itself), now at the user's own time — 17:00 local unless they picked another — and off
       // with its switch. A picked time needs a stored timezone; without one the legacy 16:00-UTC
-      // slot stands.
-      const slotDue = Number.isFinite(tz) ? isReminderDue(tz, rem.workout.time, now, tickMinutes) : isReminderDue(0, "16:00", now, tickMinutes);
-      if (!rem.workout.on || !slotDue) continue;
+      // slot stands. An account with NO device is here only for the streak-freeze email, which
+      // the device settings don't govern: it keeps the old fixed slot, its local 17:00 hour on
+      // an hourly tick (W285 review: half-hour zones and stored non-:00 times never met one).
+      const slotDue = !userSubs.length ? hourly && isUserPushHour(tz, now)
+        : rem.workout.on && (Number.isFinite(tz) ? isReminderDue(tz, rem.workout.time, now, tickMinutes) : isReminderDue(0, "16:00", now, tickMinutes));
+      if (!slotDue) continue;
 
       // A protectable streak (#4 adherence, loss-aversion): a held freeze token can
       // retroactively save a missed week, but today that only ever surfaces if the
@@ -592,6 +617,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
           const ok = await fanOut({ title: "The Hypertrophy Bible", ...copy, tag: "hb-comeback" }, { emailFallback: false });
           if (ok) {
             comebackSent = true;
+            await markFired("workout"); // the comeback WAS today's training reminder
             try {
               await store.updateUser(userId, (u) => {
                 const cur = u.profile?.comeback_push;
@@ -604,8 +630,9 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         }
       }
 
+      let remindedToday = fired.workout === today;
       for (const sub of userSubs) {
-        if (comebackSent) break; // the comeback WAS today's reminder — never two notifications in one tick
+        if (comebackSent || remindedToday) break; // the comeback WAS today's reminder; one a day (W285 review)
         if (gone.has(sub.endpoint)) continue;
         // Two independent reasons to push, one send: lapse-reactive (shouldPush)
         // OR the user's own weekly commitment. subscribedAt is PER-SUBSCRIPTION
@@ -624,6 +651,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         if (res.gone) { await store.deletePushSubscription(sub.endpoint); pruned++; continue; }
         // Same delivery-evidence stamp as fanOut above — every send door (lesson 1).
         if (res.ok) { sent++; try { await store.markPushDelivered(sub.endpoint, +now); } catch { /* evidence is optional */ } }
+        if (res.ok && !remindedToday) { remindedToday = true; await markFired("workout"); }
       }
     } catch {
       // one bad user must never abort the sweep

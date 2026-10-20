@@ -8,7 +8,7 @@ import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from 
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
-import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, REMINDER_KINDS } from "./push.mjs";
+import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
 import { nutritionPlan, navyBodyFat, bmiBodyFat, ACTIVITY } from "../../tools/nutrition-core.mjs";
 import { normalizeSessionLocalDate, normalizeSessionTiming, validLocalDate } from "./session-time.mjs";
@@ -1338,9 +1338,20 @@ export function createApp(store, config = {}) {
     if (b.op === "arm" && !parsed) return c.json({ error: "bad-end" }, 400);
     if (!(await store.getUser(b.user_id))) return c.json({ error: "unknown user" }, 404);
     if (!config.restAlarm) return c.json({ armed: false, unavailable: true });
+    // The device's own clock orders its requests (they can arrive out of order); one more than
+    // a day off is not trusted with that, and the server's is used.
+    const now = Date.now();
+    const at = Number.isFinite(b.at) && Math.abs(b.at - now) < 86400e3 ? b.at : now;
+    let sub = null;
+    if (b.op === "arm") {
+      // The resting device, and only it (W286 review): its own subscription, this user's.
+      const mine = typeof b.endpoint === "string" ? (await store.listUserPushSubscriptions(b.user_id)).find((s) => s.endpoint === b.endpoint) : null;
+      if (!mine || !isAllowedPushEndpoint(mine.endpoint) || !mine.p256dh || !mine.auth) return c.json({ error: "unknown-device" }, 404);
+      sub = { endpoint: mine.endpoint, p256dh: mine.p256dh, auth: mine.auth };
+    }
     try {
-      if (b.op === "disarm") { await config.restAlarm.disarm(b.user_id); return c.json({ armed: false }); }
-      await config.restAlarm.arm(b.user_id, parsed.endsAt, restAlertPayload(parsed.label));
+      if (b.op === "disarm") { await config.restAlarm.disarm(b.user_id, at); return c.json({ armed: false }); }
+      await config.restAlarm.arm(b.user_id, parsed.endsAt, restAlertPayload(parsed.label), sub, at);
       return c.json({ armed: true });
     } catch { return c.json({ error: "alarm-unreachable" }, 502); }
   });
@@ -1351,7 +1362,8 @@ export function createApp(store, config = {}) {
   app.post("/api/reminders/device", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // parity: undefined bind THROWS on D1
-    const time = b.time === undefined ? undefined : parseReminderTime(b.time);
+    // Kept on the tick grid the reminders fire on (W285 review: 23:58 fired at 00:00 the next day).
+    const time = b.time === undefined ? undefined : (parseReminderTime(b.time) && snapReminderTime(b.time));
     if (!REMINDER_KINDS.includes(b.kind) || (b.on !== undefined && typeof b.on !== "boolean") || time === null || (b.on === undefined && time === undefined)) {
       return c.json({ error: "bad-reminder" }, 400);
     }
