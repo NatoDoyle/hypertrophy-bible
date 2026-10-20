@@ -1291,6 +1291,7 @@ try {
     ok("W284 the default Progress payload stays lean (no nerd numbers unless asked)", !("nerd" in plain));
     ok("W284 ?nerd=1 adds volume vs landmarks, the block's maths, the next block and strength", Array.isArray(nerd?.volume) && nerd.volume.length > 0 && !!nerd.block && !!nerd.next_block && Array.isArray(nerd.strength), Object.keys(nerd ?? {}).join(","));
     ok("W284 …and never carries the user's id (it's their credential)", !nerdText.includes(nu));
+    ok("W284 block maths name the block the trained-week clock is in (7 trained weeks: block 2, week 2 — before the boundary has run)", nerd.block?.index === 1 && nerd.block?.week === 2, JSON.stringify(nerd.block));
     await app.request("/api/today", { headers: { "X-HB-User": nu } }); // the boundary passes
     const applied = (await store.getUser(nu)).plan_meta;
     const sortHeld = (h) => JSON.stringify([...(h ?? [])].sort((a, b) => a.muscle.localeCompare(b.muscle)));
@@ -1300,6 +1301,28 @@ try {
       && sortHeld(nerd.next_block.held) === sortHeld(applied.tuned_this_block.held)
       && JSON.stringify([...nerd.next_block.swaps].sort()) === JSON.stringify([...(applied.swapped_this_block ?? [])].sort()),
       JSON.stringify({ preview: nerd.next_block, applied: { tuned: applied.tuned_this_block, swapped: applied.swapped_this_block } }).slice(0, 600));
+    // …and when the boundary HOLDS (2 of 4 sessions a week: completion) and in a SPECIALIZATION
+    // block (tune frozen, stalled lifts still swapped) — each with a non-empty precondition (W283 review).
+    const previewThenApply = async (profileExtra, perWeek) => {
+      const uid = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], ...profileExtra } })).data.user_id;
+      const prog = (await store.getUser(uid)).program;
+      await store.updateUser(uid, (x) => { x.plan_meta = { ...x.plan_meta, block_start: dAgo(50), block_index: 0 }; return x; });
+      let kk = 0;
+      for (let w = 7; w >= 1; w--) for (let d = 0; d < perWeek; d++) {
+        const ps = prog.sessions[kk++ % prog.sessions.length]; const when = dAgo(7 * w - d);
+        await json("POST", "/api/session", { user_id: uid, session_id: `pa-${w}-${d}`, date: when, local_date: when.slice(0, 10), session_name: ps.name, sets: ps.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: 40, reps: +e.rep_range.split("-")[0] + 1 }))) });
+      }
+      const preview = (await (await app.request("/api/progress?nerd=1", { headers: { "X-HB-User": uid } })).json()).nerd?.next_block;
+      await app.request("/api/today", { headers: { "X-HB-User": uid } });
+      return { preview, applied: (await store.getUser(uid)).plan_meta };
+    };
+    const held = await previewThenApply({}, 2);
+    ok("W284 parity when the boundary HOLDS: the preview's held list is the one applied (and isn't empty)",
+      (held.preview?.held ?? []).length > 0 && sortHeld(held.preview.held) === sortHeld(held.applied.tuned_this_block?.held), JSON.stringify({ p: held.preview?.held, a: held.applied.tuned_this_block?.held }).slice(0, 400));
+    const spec = await previewThenApply({ priority_muscles: ["chest"] }, 4);
+    ok("W284 parity in a SPECIALIZATION block: the preview still names the swaps the boundary then makes",
+      spec.preview?.specialization === true && (spec.preview.swaps ?? []).length > 0 && JSON.stringify([...spec.preview.swaps].sort()) === JSON.stringify([...(spec.applied.swapped_this_block ?? [])].sort()),
+      JSON.stringify({ p: spec.preview, a: spec.applied.swapped_this_block }).slice(0, 400));
   }
 
   // --- #readout (W282): the post-workout read-out. Its "next time" weight for every lift is a

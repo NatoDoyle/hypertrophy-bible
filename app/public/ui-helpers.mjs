@@ -52,18 +52,46 @@ export function seedCalendarDays(commitmentDays, storedDays) {
   return [];
 }
 
-// Search the way a lifter types (W283): EVERY word of the query must match some word of the
-// exercise — its name, any alias, a primary muscle or its equipment — by prefix, ignoring a
-// plural ending, in any order. "Jefferson curls", "curl jefferson", "jeff" and "lat pulldowns"
-// all land; the old whole-query substring found none of the first three.
-const searchWords = (s) => String(s ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-const searchStem = (w) => (w.length > 3 ? w.replace(/(es|s)$/, "") : w);
+// Search the way a lifter types (W283; W283 review). EVERY word of the query must match the
+// exercise — its name, an alias, its equipment, or a muscle by the words people use ("abs",
+// "traps", "pecs", "quads", "lower back") — in any order. A word matches when it is the same word,
+// plural or spelling aside ("ups"/"up", "flies"/"flye"); the start of one (type-ahead, 2+ letters);
+// or, at 4+ letters, inside one ("down" in "pulldown", "lift" in "deadlift"). Hyphenated words also
+// match joined ("pullups", "t-bar"). A stem never prefix-matches ("lats" isn't "lateral", "hams"
+// isn't "hammer"). The editor's rows carry muscle ids, the library's display names plus
+// `muscle_ids`: the same vocabulary answers both.
+const MUSCLE_SEARCH = {
+  chest: ["chest", "pecs"], "front-delts": ["front delts", "delts", "shoulders"], "side-delts": ["side delts", "delts", "shoulders"],
+  "rear-delts": ["rear delts", "delts", "shoulders"], lats: ["lats", "back"], "upper-back": ["upper back", "traps", "rhomboids", "back"],
+  "spinal-erectors": ["lower back", "erectors", "back"], quadriceps: ["quads", "quadriceps", "thighs"], hamstrings: ["hamstrings", "hams"],
+  glutes: ["glutes"], calves: ["calves", "calf"], biceps: ["biceps"], triceps: ["triceps"], forearms: ["forearms", "grip"],
+  abs: ["abs", "core", "abdominals"], neck: ["neck"],
+};
+const SEARCH_SPELLING = { flye: "fly", flyes: "fly" };
+const SEARCH_ABBREV = { db: "dumbbell", bb: "barbell", kb: "kettlebell" };
+const singularWord = (w) => (/ies$/.test(w) && w.length > 4 ? `${w.slice(0, -3)}y`
+  : /(ss|x|z|ch|sh)es$/.test(w) ? w.slice(0, -2)
+  : /[^s]s$/.test(w) && w.length > 2 ? w.slice(0, -1) : w);
+const normWord = (w) => SEARCH_SPELLING[w] ?? singularWord(w);
+const searchWordsOf = (s) => {
+  const out = [];
+  for (const tok of String(s ?? "").toLowerCase().split(/\s+/)) {
+    const parts = tok.split(/[^a-z0-9]+/).filter(Boolean);
+    out.push(...parts);
+    if (parts.length > 1) out.push(parts.join(""));
+  }
+  return out;
+};
+const wordHit = (q, hay) => { const nq = normWord(q); return hay.some((h) => normWord(h) === nq || (q.length >= 2 && h.startsWith(q)) || (q.length >= 4 && h.includes(q))); };
 export function filterExercises(list, q) {
-  const qs = searchWords(q).map(searchStem);
-  if (!qs.length) return list ?? [];
+  const terms = String(q ?? "").toLowerCase().split(/\s+/).map((tok) => tok.split(/[^a-z0-9]+/).filter(Boolean)).filter((parts) => parts.length)
+    .map((parts) => ({ parts, joined: parts.join("") }));
+  if (!terms.length) return list ?? [];
   return (list ?? []).filter((e) => {
-    const hay = [e.name, ...(e.aliases ?? []), ...(e.primary_muscles ?? []), e.equipment].flatMap(searchWords);
-    return qs.every((qw) => hay.some((h) => h.startsWith(qw) || searchStem(h) === qw));
+    const ids = e.muscle_ids ?? e.primary_muscles ?? [];
+    const hay = [e.name, ...(e.aliases ?? []), e.equipment, ...(e.primary_muscles ?? []), ...ids.flatMap((m) => [...(MUSCLE_SEARCH[m] ?? []), MUSCLE_LABEL[m] ?? ""])].flatMap(searchWordsOf);
+    const hit = (w) => wordHit(w, hay) || (!!SEARCH_ABBREV[w] && wordHit(SEARCH_ABBREV[w], hay));
+    return terms.every((t) => t.parts.every(hit) || (t.parts.length > 1 && hit(t.joined)));
   });
 }
 

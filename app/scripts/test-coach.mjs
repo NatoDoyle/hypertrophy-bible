@@ -1,6 +1,7 @@
 // Coach-logic unit tests (no web server, no deps). node:assert.
 import assert from "node:assert/strict";
 import { selectProgram, exerciseById } from "../src/kb.mjs";
+import { isSpecializing } from "../src/planner.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
@@ -1760,6 +1761,59 @@ check("#nerd the block's maths and the next block's decision are trainingContext
   const dt = blockTuneDecision(u, thin, {}, roNow);
   assert.ok(dt.tuned.held.some((h) => h.reason === "completion"), "precondition: something is held");
   assert.deepEqual(nt.next_block.held, dt.tuned.held);
+});
+check("#readout a specialization block: the next-block lines name its swaps — never 'your volume carries over' (the tune is frozen, the swaps aren't)", () => {
+  const all = [...[28, 21, 14, 7].map((d, i) => roSess(roDay(d), `sp${i}`, three(60, 8), three(50, 10))), roSess(roNow, "t", three(60, 8), three(50, 10))];
+  const u = roUser("intermediate", 31, { priority_muscles: ["lats"] });
+  assert.ok(isSpecializing(u.profile, 0), "precondition: a specialization block");
+  const ro = sessionReadout(u, all, all[4], { now: roNow });
+  assert.ok(!ro.next_block.some((l) => /carries over/.test(l)), JSON.stringify(ro.next_block));
+  assert.ok(ro.next_block.some((l) => /fresh angle/.test(l)), JSON.stringify(ro.next_block));
+  // …and with nothing to swap (lifts climbing), it says nothing rather than "carries over" — the
+  // block's end rebalances volume, so that line would be false.
+  const climbing = [...[28, 21, 14, 7].map((d, i) => roSess(roDay(d), `sc${i}`, three(50 + i * 5, 8), three(40 + i * 5, 10))), roSess(roNow, "t2", three(70, 8), three(60, 10))];
+  assert.deepEqual(sessionReadout(u, climbing, climbing[4], { now: roNow }).next_block, []);
+});
+check("#nerd strength (W283 review): the margin under the 8-week peak is the right sign and window, and a regression is named", () => {
+  const dip = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `dp${i}`, 3, [60, 70, 70, 65, 65, 65][i]));
+  const u = roUser("intermediate", 45);
+  const rep = progressReport(u, dip, [], [], roNow);
+  const b = nerdReport(u, dip, [], [], roNow, null, rep).strength.find((x) => x.exercise === "barbell-bench-press");
+  assert.equal(b.under_peak_pct, 7.2, "88.67 → 82.33");
+  assert.equal(b.regressing, true);
+  assert.equal(b.drop_pct, rep.regressions.find((r) => r.exercise === "barbell-bench-press").drop_pct);
+  // the peak counts only inside the last 8 logged weeks: an old high doesn't make today "25% under"
+  const old = [84, 77, 70, 63, 56, 49, 42, 35, 28, 21].map((d, i) => roBench(d, `ol${i}`, 3, i === 0 ? 80 : 60));
+  assert.equal(nerdReport(u, old, [], [], roNow, null, progressReport(u, old, [], [], roNow)).strength.find((x) => x.exercise === "barbell-bench-press").under_peak_pct, 0);
+  // the % beside the last 4 weeks is THEIR change (not the lifetime one), and load-tracked lifts say so
+  const climb = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `cl${i}`, 3, [40, 50, 60, 60, 60, 60][i]));
+  const c = nerdReport(u, climb, [], [], roNow, null, progressReport(u, climb, [], [], roNow)).strength.find((x) => x.exercise === "barbell-bench-press");
+  assert.equal(c.window_pct, 0, "flat over the four weeks drawn");
+  assert.ok(c.change_pct > 0, "precondition: the lifetime change is positive");
+  assert.equal(c.basis, "e1rm");
+});
+check("#nerd an EASED muscle is previewed too (the boundary's own decision, not an empty list)", () => {
+  const over = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `ov${i}`, 26));
+  const u = roUser("intermediate", 45);
+  const d = blockTuneDecision(u, over, {}, roNow);
+  assert.ok(d.tuned.eased.includes("chest"), "precondition: 26 sets over the ceiling eases chest");
+  assert.deepEqual(nerdReport(u, over, [], [], roNow, null, progressReport(u, over, [], [], roNow)).next_block.eased, d.tuned.eased);
+});
+check("#nerd block maths name the block the trained-week clock is in (a boundary may be pending)", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `bi${i}`, 12));
+  const n = nerdReport(roUser("intermediate", 45), all, [], [], roNow, null, progressReport(roUser("intermediate", 45), all, [], [], roNow));
+  assert.deepEqual([n.block.index, n.block.week], [1, 1], "6 trained weeks: block 2, week 1 — though block_index is still 0");
+});
+check("#nerd a hand-built plan's stored tune shows as PAUSED (the editor says tuning stops), and a specialization block still previews its swaps", () => {
+  const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `cu${i}`, 12));
+  const cu = { ...roUser("intermediate", 45), program: { ...roProg, custom: true }, plan_meta: { block_start: roDay(45), volume_adjust: { chest: 4 } } };
+  const row = nerdReport(cu, all, [], [], roNow, null, progressReport(cu, all, [], [], roNow)).volume.find((v) => v.id === "chest");
+  assert.deepEqual([row.adjust, row.adjust_paused], [4, true]);
+  const spec = { ...roUser("intermediate", 45, { priority_muscles: ["lats"] }), plan_meta: { block_start: roDay(45), block_index: 0 } };
+  const sn = nerdReport(spec, all, [], [], roNow, null, progressReport(spec, all, [], [], roNow));
+  assert.ok(sn.next_block, "the boundary still swaps stalled lifts in a specialization block, so the preview says so");
+  assert.deepEqual(sn.next_block.swaps.length >= 0 && [sn.next_block.bumped, sn.next_block.eased], [[], []], "the tune is frozen: nothing bumped or eased");
+  assert.equal(sn.next_block.specialization, true);
 });
 check("#nerd strength: each lift's weekly e1RM, its personal stall window, how flat it is, and how far under its 8-week peak", () => {
   const all = [42, 35, 28, 21, 14, 7].map((d, i) => roBench(d, `s${i}`, 3, i < 2 ? 60 + i * 5 : 65));

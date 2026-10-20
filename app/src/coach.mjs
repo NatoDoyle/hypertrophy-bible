@@ -1089,7 +1089,10 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     block.splice(graduating ? 3 : 2);
 
     // From week 4: what the boundary would decide if it came today — the rollover's own function.
-    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4 && !isSpecializing(user.profile, blockIndex)) {
+    // A specialization block's tune is frozen, but its boundary still swaps stalled lifts — so the
+    // swaps are said and nothing else (W283 review).
+    const specializing = isSpecializing(user.profile, blockIndex);
+    if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4) {
       const d = decide();
       const muscles = (ms) => listJoin(ms.map(plainMuscle));
       if (d.tuned.bumped.length) next_block.push(`More sets for your ${muscles(d.tuned.bumped)} — stalled with room to grow.`);
@@ -1099,7 +1102,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       if (heldBy("deficit").length) next_block.push(`Your ${muscles(heldBy("deficit"))} hold — you're in a deficit, so fuel comes first.`);
       if (heldBy("recovery").length) next_block.push(`Your ${muscles(heldBy("recovery"))} hold — recovery's been short, so sleep comes first.`);
       if (d.out.length) next_block.push(`${listJoin(d.out.map(name))} ${d.out.length === 1 ? "gets" : "get"} a fresh angle — flat for weeks.`);
-      if (!next_block.length) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
+      if (!next_block.length && !specializing) next_block.push("Your volume carries over as it is, and your accessories rotate for variety.");
       next_block.splice(3);
     }
   }
@@ -1138,6 +1141,8 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     return {
       id: m, name: plainMuscle(m), sets: row?.sets ?? 0, status: row?.status ?? null, peak: peak[m] ?? 0,
       planned: rationale[m]?.projected_sets ?? null, target: rationale[m]?.target_sets ?? null, adjust: adjust[m] ?? 0,
+      // A hand-built plan doesn't apply the stored tune (the editor says tuning stops) — shown as paused.
+      adjust_paused: !!user.program?.custom,
       signal: signals[m]?.signal ?? null, gated: signals[m]?.gated ?? null,
       landmarks: lm ? { mv: lm.mv ?? null, mev: lm.mev ?? null, mav: lm.mav ?? null, mrv: lm.mrv ?? null } : null,
       grade: lm?.evidence_grade ?? null, estimate: true,
@@ -1150,7 +1155,9 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     taper: ctx.taper ? { days_until: ctx.taper.daysUntil, set_scale: ctx.taper.setScale, rir_floor: ctx.taper.rirFloor } : null } : null;
   let next_block = null;
   const storedIndex = user.plan_meta?.block_index ?? 0;
-  if (block && !user.program?.custom && !isSpecializing(user.profile, storedIndex)) {
+  // Every block the rollover would act on — a specialization block too: its tune is frozen, but
+  // the boundary still swaps stalled lifts (W283 review: the preview went blank and 14 lifts changed).
+  if (block && !user.program?.custom) {
     const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, nowISO);
     let swaps = [];
     if (d.stalledExercises.length) {
@@ -1159,7 +1166,7 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
       const nextPlan = generateUserPlan(user.profile, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
       swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
     }
-    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust };
+    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex) };
   }
   const stallWindow = adaptiveStallWindow(progressionCadence(sessions, index));
   const stallBy = Object.fromEntries((report.stalls ?? []).map((x) => [x.exercise, x]));
@@ -1167,7 +1174,11 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
   const strength = (report.progression_all ?? []).map((p) => {
     const recent = (p.series ?? []).slice(-8).map((x) => x.value);
     const top = recent.length ? Math.max(...recent) : 0, latest = recent[recent.length - 1] ?? 0;
-    return { exercise: p.exercise, name: p.name, series: p.series, change_pct: p.change_pct, stall_window: stallWindow,
+    // The change over the four logged weeks the card draws — the lifetime % beside them read as a
+    // gain over weeks that were flat (W283 review).
+    const drawn = (p.series ?? []).slice(-4).map((x) => x.value);
+    const window_pct = drawn.length > 1 && drawn[0] > 0 ? Math.round(((drawn[drawn.length - 1] - drawn[0]) / drawn[0]) * 1000) / 10 : 0;
+    return { exercise: p.exercise, name: p.name, series: p.series, change_pct: p.change_pct, window_pct, basis: p.basis ?? "e1rm", stall_window: stallWindow,
       weeks_flat: stallBy[p.exercise]?.weeks_flat ?? 0, stalled: !!p.stalled,
       under_peak_pct: top > 0 ? Math.round(((top - latest) / top) * 1000) / 10 : 0,
       regressing: !!regressBy[p.exercise], drop_pct: regressBy[p.exercise]?.drop_pct ?? null };

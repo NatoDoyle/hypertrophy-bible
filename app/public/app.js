@@ -13,6 +13,7 @@ let learnSlug = null; // which Learn page is open (null = the Learn index)
 let learnStack = []; // traversal history WITHIN Learn — lets ‹ Back pop to the previous page
 let learnExercise = null; // a data sheet open OVER a Learn page: {kind,id,from?} or null
 let learnLibrary = false, learnLibraryQuery = ""; // the Exercise library (W283) and its search
+let learnLibraryReturn = null; // {id, y}: where the reader was when they opened a sheet (W283 review)
 // Session-only: the plan-screen email form has been submitted. Deliberately not
 // localStorage and deliberately not `hb_email` — an account exists only once the
 // emailed link is clicked, and claiming otherwise makes the whole app lie.
@@ -35,7 +36,7 @@ function syncAccountEmail(a) {
 // Learn nav state is now three fields across five reset sites. One sink, so a
 // fourth field added later cannot be forgotten at four of them (lesson 1 at
 // state scope — the shape that produced the "fix one call site" lesson).
-const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; learnLibrary = false; learnLibraryQuery = ""; };
+const resetLearnNav = () => { learnSlug = null; learnStack = []; learnExercise = null; learnLibrary = false; learnLibraryQuery = ""; learnLibraryReturn = null; };
 
 // Plain-English muscle names (MUSCLE_LABEL / friendlyMuscle) live in ui-helpers.mjs so the
 // server's copy of the map can be pinned equal to them (W282).
@@ -3095,24 +3096,25 @@ function nerdHtml(n) {
   if (!n) return "";
   const rng = (x) => (x ? `${x.min}${x.max !== x.min ? `–${x.max}` : ""}` : "–");
   const e1 = (kg, exId) => (unitFor(exId) === "lb" ? Math.round(kg * LB_PER_KG) : Math.round(kg));
-  const vol = (n.volume ?? []).map((v) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(cap(v.name))}</b> <span class="muted">${v.sets}/wk · 6-wk peak ${v.peak}${v.planned != null ? ` · plan ${v.planned}` : ""}${v.adjust ? ` · tuned ${v.adjust > 0 ? "+" : ""}${v.adjust}` : ""}</span>
+  const vol = (n.volume ?? []).map((v) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(cap(v.name))}</b> <span class="muted">${v.sets}/wk · 6-wk peak ${v.peak}${v.planned != null ? ` · plan ${v.planned}` : ""}${v.adjust ? ` · tuned ${v.adjust > 0 ? "+" : ""}${v.adjust}${v.adjust_paused ? " (paused — hand-built plan)" : ""}` : ""}</span>
       <br><span class="muted">MV ${rng(v.landmarks?.mv)} · MEV ${rng(v.landmarks?.mev)} · MAV ${rng(v.landmarks?.mav)} · MRV ${rng(v.landmarks?.mrv)}${v.grade ? ` · grade ${esc(v.grade)}` : ""}${v.signal ? ` · ${esc(v.signal)}${v.gated ? ` (${esc(v.gated)})` : ""}` : ""}</span></div></div>`).join("");
   const nameOf = (id) => (n.strength ?? []).find((s) => s.exercise === id)?.name ?? id;
   const nb = n.next_block;
   const ahead = nb ? [
+    nb.specialization ? "specialization block: volume held" : null,
     nb.bumped.length ? `+2 sets: ${nb.bumped.map(friendlyMuscle).join(", ")}` : null,
     nb.eased.length ? `−2 sets: ${nb.eased.map(friendlyMuscle).join(", ")}` : null,
     ...nb.held.map((h) => `held: ${friendlyMuscle(h.muscle)} (${h.reason}${h.realized != null ? ` ${h.realized}/${h.planned}` : ""})`),
     nb.swaps.length ? `fresh angle: ${nb.swaps.map(nameOf).join(", ")}` : null,
   ].filter(Boolean) : [];
   const b = n.block;
-  const str = (n.strength ?? []).map((s) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(s.name)}</b> <span class="muted">${(s.series ?? []).slice(-4).map((x) => e1(x.value, s.exercise)).join(" → ")} ${unitLabelFor(s.exercise)} (${s.change_pct > 0 ? "+" : ""}${s.change_pct}%)</span>
+  const str = (n.strength ?? []).map((s) => `<div class="row" style="font-size:.85rem"><div style="flex:1"><b>${esc(s.name)}</b> <span class="muted">${s.basis === "load" ? "top load" : "est. 1RM"} ${(s.series ?? []).slice(-4).map((x) => e1(x.value, s.exercise)).join(" → ")} ${unitLabelFor(s.exercise)} (${s.window_pct > 0 ? "+" : ""}${s.window_pct}%)</span>
       <br><span class="muted">${s.stalled ? `flat ${s.weeks_flat} wk (your stall window: ${s.stall_window})` : `moving (your stall window: ${s.stall_window} wk)`} · ${s.under_peak_pct}% under its 8-wk peak${s.regressing ? ` · going backwards −${s.drop_pct}%` : ""}</span></div></div>`).join("");
   return `<h2>🤓 Nerd mode</h2>
     <div class="card"><b>Volume vs landmarks</b> <span class="muted" style="font-size:.85rem">— weekly hard sets; the landmarks are model estimates, not measurements</span>${vol}</div>
     ${b ? `<div class="card"><b>Block maths</b><p class="muted" style="font-size:.85rem;margin:4px 0">Block ${b.index + 1}, week ${b.week} of ${b.of} · ${esc(b.phase)} · sets ×${b.set_scale}${b.taper ? ` · taper: ${b.taper.days_until} days out, sets ×${b.taper.set_scale}, RIR ≥ ${b.taper.rir_floor}` : ""}</p>
       ${ahead.length ? `<p class="muted" style="font-size:.85rem;margin:4px 0"><b>If the block ended today:</b> ${ahead.map(esc).join(" · ")}</p>` : ""}</div>` : ""}
-    <div class="card"><b>Strength</b> <span class="muted" style="font-size:.85rem">— estimated 1RM, last 4 weeks</span>${str || `<p class="muted">Log a few weeks to see these.</p>`}</div>`;
+    <div class="card"><b>Strength</b> <span class="muted" style="font-size:.85rem">— the last 4 logged weeks</span>${str || `<p class="muted">Log a few weeks to see these.</p>`}</div>`;
 }
 async function renderProgress() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
@@ -3250,7 +3252,7 @@ async function renderProgress() {
   app.innerHTML = `<h1>Progress</h1>
     <div id="progress-nudge"></div>
     <div class="card"><b>${p.sessions_logged}</b> <span class="muted">session${p.sessions_logged === 1 ? "" : "s"} logged</span>
-      <button class="btn ghost inline" id="nerd-toggle" aria-pressed="${nerdOn()}" style="float:right;margin:0">🤓 Nerd mode${nerdOn() ? " · on" : ""}</button></div>
+      <button class="btn ${nerdOn() ? "secondary" : "ghost"} inline" id="nerd-toggle" aria-pressed="${nerdOn()}" style="float:right;margin:0">🤓 Nerd mode</button></div>
     ${nerdOn() ? nerdHtml(p.nerd) : ""}
     ${historyCard}
     ${prCard}
@@ -3284,7 +3286,9 @@ async function renderProgress() {
   // tab, Wave 247) — fills its own box and refreshes independently.
   renderStory();
   if ($("#open-history")) $("#open-history").onclick = () => { historyWeeksShown = 4; tab = "history"; render(); };
-  if ($("#nerd-toggle")) $("#nerd-toggle").onclick = () => { try { localStorage.setItem("hb_nerd", nerdOn() ? "0" : "1"); } catch {} renderProgress(); };
+  // The name stays fixed (aria-pressed carries the state) and focus returns to the toggle after
+  // the redraw — keyboard and screen-reader users keep their place (W283 review).
+  if ($("#nerd-toggle")) $("#nerd-toggle").onclick = () => { try { localStorage.setItem("hb_nerd", nerdOn() ? "0" : "1"); } catch {} renderProgress().then(() => $("#nerd-toggle")?.focus()); };
   if ($("#open-retro")) $("#open-retro").onclick = () => renderRetroLog();
   app.querySelectorAll("[data-lift]").forEach((b) => b.onclick = () => { liftDetail = b.dataset.lift; renderProgress(); });
   if ($("#all-lifts")) $("#all-lifts").onclick = () => { showAllLifts = !showAllLifts; renderProgress(); };
@@ -4790,13 +4794,20 @@ async function renderExerciseLibrary() {
       style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px;font-size:1.05rem;margin:0 0 8px">
     <div class="card" id="lib-list">${rows(learnLibraryQuery)}</div>
     <button class="btn ghost" id="lib-back">‹ Back to Learn</button>`;
-  const wire = () => app.querySelectorAll("[data-lib]").forEach((b) => b.onclick = () => { learnExercise = { kind: "exercise", id: b.dataset.lib, from: "library" }; renderLearnData(learnExercise); });
+  const wire = () => app.querySelectorAll("[data-lib]").forEach((b) => b.onclick = () => { learnLibraryReturn = { id: b.dataset.lib, y: window.scrollY }; learnExercise = { kind: "exercise", id: b.dataset.lib, from: "library" }; renderLearnData(learnExercise); });
   $("#lib-filter").value = learnLibraryQuery;
   // Only the LIST re-renders on input, never the input itself (focus survives every keystroke).
   $("#lib-filter").oninput = () => { learnLibraryQuery = $("#lib-filter").value; $("#lib-list").innerHTML = rows(learnLibraryQuery); wire(); };
   $("#lib-back").onclick = () => { learnLibrary = false; learnLibraryQuery = ""; renderLearn(); };
   wire();
-  window.scrollTo(0, 0);
+  // Back from a sheet lands where the reader left off, on the row they opened (W283 review: the
+  // 171-row list jumped to the top every time); a fresh visit starts at the top.
+  const back = learnLibraryReturn;
+  learnLibraryReturn = null;
+  if (back) {
+    window.scrollTo(0, back.y);
+    app.querySelector(`[data-lib="${CSS.escape(back.id)}"]`)?.focus({ preventScroll: true });
+  } else window.scrollTo(0, 0);
 }
 
 // Evidence tier first, because it is the only thing most readers need: the KB's

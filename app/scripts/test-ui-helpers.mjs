@@ -78,6 +78,34 @@ check("filterExercises (W283): word by word, plural-tolerant, alias-aware, any o
   assert.deepEqual(names("jefferson press"), [], "no partial credit");
 });
 
+// W283 review: the search a lifter actually does, over BOTH row shapes — the editor's (muscle ids)
+// and the library's (display names + muscle_ids) must answer every query the same.
+check("filterExercises (W283 review): '-ups' plurals, muscle words, mid-word, no stem false-friends — identically in the editor and the library", () => {
+  const DISPLAY = { lats: "Latissimus Dorsi (Lats)", chest: "Chest (Pectoralis Major)", quadriceps: "Quadriceps", "side-delts": "Lateral Deltoid", biceps: "Biceps Brachii", neck: "Neck Flexors & Extensors", triceps: "Triceps Brachii", hamstrings: "Hamstrings", glutes: "Gluteus Maximus", abs: "Abdominals (Rectus Abdominis & Obliques)", "upper-back": "Upper Back (Trapezius & Rhomboids)", "spinal-erectors": "Spinal Erectors (Erector Spinae)" };
+  const rows = [
+    ["Pull-Up", ["lats"], "bodyweight"], ["Push-Up", ["chest"], "bodyweight"], ["Chin-Up", ["lats"], "bodyweight"], ["Dumbbell Step-Up", ["quadriceps"], "dumbbell"],
+    ["Lat Pulldown", ["lats"], "cable"], ["Cable Lateral Raise", ["side-delts"], "cable"], ["Hammer Curl", ["biceps"], "dumbbell"], ["Lying Lateral Neck Flexion", ["neck"], "bodyweight"],
+    ["Triceps Pushdown", ["triceps"], "cable"], ["Romanian Deadlift", ["hamstrings"], "barbell", ["RDL"]], ["Reverse Hyperextension", ["glutes"], "machine"], ["Glute Kickback", ["glutes"], "cable"],
+    ["Hip Abduction Machine", ["glutes"], "machine"], ["Cable Crunch", ["abs"], "cable"], ["Barbell Shrug", ["upper-back"], "barbell"], ["T-Bar Row", ["upper-back"], "barbell"],
+    ["Close-Grip Bench Press", ["triceps"], "barbell"], ["Dumbbell Flye", ["chest"], "dumbbell"], ["Barbell Jefferson Curl", ["spinal-erectors"], "barbell", ["Jefferson curl", "Jefferson curls"]],
+  ];
+  const api = rows.map(([name, ids, equipment, aliases = []]) => ({ name, aliases, primary_muscles: ids, equipment }));
+  const lib = rows.map(([name, ids, equipment, aliases = []]) => ({ name, aliases, primary_muscles: ids.map((m) => DISPLAY[m]), muscle_ids: ids, equipment }));
+  const expect = {
+    "pull ups": ["Pull-Up"], "push-ups": ["Push-Up"], "pullups": ["Pull-Up"], "chin ups": ["Chin-Up"], "step ups": ["Dumbbell Step-Up"],
+    "flies": ["Dumbbell Flye"], "flyes": ["Dumbbell Flye"], "db flye": ["Dumbbell Flye"],
+    "abs": ["Cable Crunch"], "traps": ["Barbell Shrug", "T-Bar Row"], "pecs": ["Push-Up", "Dumbbell Flye"], "lower back": ["Barbell Jefferson Curl"], "quads": ["Dumbbell Step-Up"],
+    "down": ["Lat Pulldown", "Triceps Pushdown"], "lift": ["Romanian Deadlift"], "extension": ["Reverse Hyperextension"],
+    "lats": ["Pull-Up", "Chin-Up", "Lat Pulldown"], "hams": ["Romanian Deadlift"], "t-bar": ["T-Bar Row"],
+    "jefferson curls": ["Barbell Jefferson Curl"], "rdl": ["Romanian Deadlift"],
+  };
+  for (const [q, want] of Object.entries(expect)) {
+    assert.deepEqual(filterExercises(api, q).map((e) => e.name), want, `editor: "${q}"`);
+    assert.deepEqual(filterExercises(lib, q).map((e) => e.name), want, `library: "${q}"`);
+  }
+  assert.ok(filterExercises(api, "back").some((e) => e.name === "Glute Kickback"), "'back' still finds a kickback (mid-word)");
+});
+
 check("linePath: spreads x across the width, inverts y, pads, and centers a flat series", () => {
   const { pts, min, max } = linePath([80, 82, 81], 100, 50, 5);
   assert.equal(pts.length, 3);
@@ -496,13 +524,25 @@ check("W283 wiring: an offline Exercise library in Learn (its sheets come back t
   assert.match(lib, /from: "library"/);
   assert.match(fnBody(appJs, "async function renderLearnData(", 2500), /from === "library"/);
   assert.match(appJs, /const resetLearnNav = \(\) => \{[^}]*learnLibrary = false/);
-  for (const call of appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []) assert.match(call, /,/, `a demo without its lift: ${call}`);
+  // the three call sites, pinned exactly (W283 review: a comma-only check let `null` through)
+  assert.deepEqual((appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []).sort(), [
+    "renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern, ex.exercise ?? d?.id)",
+    "renderMovementDemo(e.movement_pattern, e.exercise)",
+    "renderMovementDemo(m.movement_pattern, m.exercise)",
+  ]);
   assert.match(fnBody(appJs, "function renderAddExercise(si) {", 2500), /!editState\.custom \?/);
+  // W283 review: back from a sheet restores the reader's place and focus
+  assert.match(lib, /learnLibraryReturn = \{ id: b\.dataset\.lib, y: window\.scrollY \}/);
+  assert.match(fnBody(appJs, "async function renderExerciseLibrary() {", 4000), /window\.scrollTo\(0, back\.y\)/);
 });
 check("W284 wiring: Nerd Mode is a remembered Progress toggle that asks for the numbers only when on, and survives an account switch like the RIR chips", () => {
   const prog = fnBody(appJs, "async function renderProgress() {", 1200);
   assert.match(prog, /nerdOn\(\) \? "\?nerd=1" : ""/);
   assert.match(appJs, /id="nerd-toggle"[^>]*aria-pressed=/);
+  // W283 review: a fixed name (the state lives in aria-pressed), and focus comes back after the redraw
+  assert.match(appJs, /aria-pressed="\$\{nerdOn\(\)\}"[^>]*>🤓 Nerd mode<\/button>/);
+  assert.match(appJs, /renderProgress\(\)\.then\(\(\) => \$\("#nerd-toggle"\)\?\.focus\(\)\)/);
+  assert.match(appJs, /s\.basis === "load" \? "top load" : "est\. 1RM"/, "load-tracked lifts aren't called 1RMs");
   assert.match(appJs, /key !== "hb_rir" && key !== "hb_rest" && key !== "hb_nerd"/);
 });
 check("player: 'Use it' re-arms the typo guard (a new weight is judged afresh), and Unlink retires a round skip's undo", () => {

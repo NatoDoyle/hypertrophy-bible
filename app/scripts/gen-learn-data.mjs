@@ -253,6 +253,8 @@ for (const id of [...EX_IDS].sort()) {
     id: e.id, name: e.name, aliases: e.aliases ?? [], cues: e.cues ?? [], common_errors: e.common_errors ?? [],
     equipment: e.equipment ?? null,
     primary_muscles: muscleNames(e.primary_muscles), secondary_muscles: muscleNames(e.secondary_muscles),
+    // The ids too, so the library's search knows "abs", "traps", "lower back" (W283 review).
+    muscle_ids: e.primary_muscles ?? [],
     execution_steps: e.execution_steps ?? [], good_when: e.good_when ?? [], bad_when: e.bad_when ?? [],
     loading_bias: e.loading_bias ?? null, cns_cost: e.cns_cost ?? null, difficulty: e.difficulty ?? null,
     resistance_profile: e.resistance_profile ?? null, movement_pattern: e.movement_pattern ?? null,
