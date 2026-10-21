@@ -340,7 +340,7 @@ export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, p
 export function hintCopy(hint, { setNo, fromW, toW }) {
   const range = `${hint.min}–${hint.max}`;
   const lead = `Set ${setNo}: ${hint.reps} reps at ${fromW}`;
-  if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it." };
+  if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it, allowing for the rep or so each hard set costs." };
   if (hint.reps > hint.max) return { lead, why: `over the ${range} range`, tryW: toW, tail: "for this one to land in it." };
   const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
   return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };

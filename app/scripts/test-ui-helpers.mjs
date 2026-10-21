@@ -424,7 +424,7 @@ check("#why-unit property: every reason the REAL engine writes reaches a pounds 
 check("#hint-copy each kind of hint says what actually happened", () => {
   const j = (c) => `${c.lead} — ${c.why}. Try ${c.tryW} ${c.tail}`;
   assert.equal(j(hintCopy({ kind: "lighter", reps: 6, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 1, fromW: "60 kg", toW: "55 kg" })),
-    "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it.");
+    "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it, allowing for the rep or so each hard set costs.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 15, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 2, fromW: "40 kg", toW: "42.5 kg" })),
     "Set 2: 15 reps at 40 kg — over the 8–12 range. Try 42.5 kg for this one to land in it.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),

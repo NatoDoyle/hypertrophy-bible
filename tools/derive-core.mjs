@@ -1322,6 +1322,19 @@ export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
 }
 
+// The rep capacity (reps + RIR) a lift's NEXT set still has after this one (W288, Burst 5). Reps
+// fall set to set even with 3–5 min rest (Richmond & Godard 2004; Willardson & Burkett 2005, 2006),
+// so the next set keeps ~80% of the capacity after a set ending at ≤ 1 RIR (unlogged effort reads
+// as near failure, W279's reading), ~90% after 2–3, and all of it from 4. Engine estimates, not
+// findings. Whole percents keep the arithmetic exact (13 · 0.9 is 11.700000000000001 in floats).
+// The player (session-core) carries a byte-identical copy, pinned by test-session's parity test.
+export const SET_FATIGUE_PCT = { near: 20, mid: 10 };
+export function nextSetCapacity(reps, rir) {
+  const r = rir ?? 0;
+  const pct = r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0;
+  return (reps + r) * (100 - pct) / 100;
+}
+
 // Readiness relative to the user's OWN baseline (z-scores), not absolute values —
 // the correct way to use HRV/sleep. 0-100, higher = more recovered. Null if no data.
 export function readinessIndex(checkins) {

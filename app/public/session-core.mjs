@@ -245,14 +245,24 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
 export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
 }
+// The rep capacity (reps + RIR) a lift's NEXT set still has after this one — a BYTE-IDENTICAL
+// copy of derive-core's nextSetCapacity (W288; test-session pins the two together).
+export const SET_FATIGUE_PCT = { near: 20, mid: 10 };
+export function nextSetCapacity(reps, rir) {
+  const r = rir ?? 0;
+  const pct = r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0;
+  return (reps + r) * (100 - pct) / 100;
+}
 // "A more appropriate weight" for the NEXT set (W279b, owner consideration #3): after a work
 // set that clearly misses the prescription — under the range near failure (RIR unlogged or
 // ≤ 1; a set stopped early wasn't too heavy), or two+ reps over the top / far easier than the
 // band — the load that should land the next one in range, from the set just banked. Lighter
 // targets the range's bottom, heavier its top (the smallest move back into the range), both
 // at the band's near edge; floored to the lift's increment, at least one increment, at most
-// ±20%. Advice only: the player offers it, the user decides. Planned-easy (deload/eased),
-// warm-up and bodyweight sets never hint.
+// ±20%. The next set is NOT fresh (W288, Burst 5): the set's capacity is carried forward less
+// what the next set loses (nextSetCapacity) — 70×5 at failure on 6-10 gives 62.5, not 65.
+// Advice only: the player offers it, the user decides. Planned-easy (deload/eased), warm-up
+// and bodyweight sets never hint. `target_reps` is the rep count the weight aims at.
 export function nextSetHint(set, row) {
   if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
@@ -265,12 +275,12 @@ export function nextSetHint(set, row) {
   const under = set.reps < min && (rir == null || rir <= 1);
   const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
   if (!under && !over) return null;
-  const floored = Math.floor(loadForReps(w, set.reps, rir ?? 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const floored = Math.floor(loadForReps(w, nextSetCapacity(set.reps, rir), 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null } : null;
+  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: under ? min : max } : null;
 }
 
 // What the plan asked of each lift TODAY (W280), sent with the finished workout so the
