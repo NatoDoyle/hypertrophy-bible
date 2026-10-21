@@ -2,7 +2,7 @@
 
 > Generated from [`registry.json`](registry.json) by `tools/build-bibliography.mjs`. **Do not edit by hand.**
 
-**145** verified references.
+**150** verified references.
 
 Every entry below was confirmed to exist via a live web fetch of its DOI, PMID, or URL.
 
@@ -776,6 +776,14 @@ Rhim HC & et al. (2020). Effect of citrulline on post-exercise rating of perceiv
 - Type: meta-analysis · Population: mixed
 - DOI: [10.1016/j.jshs.2020.02.003](https://doi.org/10.1016/j.jshs.2020.02.003) · PMID: [33308806](https://pubmed.ncbi.nlm.nih.gov/33308806/)
 
+### richmond-2004-rest-recovery
+Richmond SR & Godard MP (2004). The effects of varied rest periods between sets to failure using the bench press in recreationally trained men.
+
+*Journal of Strength and Conditioning Research*, 18(4), 846-9.
+
+- Type: non-RCT-trial · Population: recreationally-active
+- DOI: [10.1519/14833.1](https://doi.org/10.1519/14833.1) · PMID: [15574093](https://pubmed.ncbi.nlm.nih.gov/15574093/)
+
 ### roberts-2015-cold-water-immersion
 Roberts LA & et al. (2015). Post-exercise cold water immersion attenuates acute anabolic signalling and long-term adaptations in muscle to strength training.
 
@@ -976,6 +984,22 @@ Seaborne RA & et al. (2018). Human Skeletal Muscle Possesses an Epigenetic Memor
 - Type: non-RCT-trial · Population: recreationally-active
 - DOI: [10.1038/s41598-018-20287-3](https://doi.org/10.1038/s41598-018-20287-3) · PMID: [29382913](https://pubmed.ncbi.nlm.nih.gov/29382913/)
 
+### simao-2005-exercise-order-reps
+Simão R & et al. (2005). Influence of exercise order on the number of repetitions performed and perceived exertion during resistance exercises.
+
+*Journal of Strength and Conditioning Research*, 19(1), 152-6.
+
+- Type: non-RCT-trial · Population: trained
+- DOI: [10.1519/1533-4287(2005)19<152:IOEOOT>2.0.CO;2](https://doi.org/10.1519/1533-4287(2005)19<152:IOEOOT>2.0.CO;2) · PMID: [15705026](https://pubmed.ncbi.nlm.nih.gov/15705026/)
+
+### simao-2012-exercise-order-review
+Simão R & et al. (2012). Exercise order in resistance training.
+
+*Sports Medicine*, 42(3), 251-65.
+
+- Type: narrative-review · Population: mixed
+- DOI: [10.2165/11597240-000000000-00000](https://doi.org/10.2165/11597240-000000000-00000) · PMID: [22292516](https://pubmed.ncbi.nlm.nih.gov/22292516/)
+
 ### singer-2024-rest-meta
 Singer A et al. (2024). Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy.
 
@@ -1103,6 +1127,22 @@ Wilborn CD et al. (2004). Effects of Zinc Magnesium Aspartate (ZMA) Supplementat
 
 - Type: RCT · Population: trained
 - DOI: [10.1186/1550-2783-1-2-12](https://doi.org/10.1186/1550-2783-1-2-12) · PMID: [18500945](https://pubmed.ncbi.nlm.nih.gov/18500945/)
+
+### willardson-2005-rest-volume
+Willardson JM & Burkett LN (2005). A comparison of 3 different rest intervals on the exercise volume completed during a workout.
+
+*Journal of Strength and Conditioning Research*, 19(1), 23-6.
+
+- Type: non-RCT-trial · Population: recreationally-active
+- DOI: [10.1519/R-13853.1](https://doi.org/10.1519/R-13853.1) · PMID: [15705039](https://pubmed.ncbi.nlm.nih.gov/15705039/)
+
+### willardson-2006-rest-sustain
+Willardson JM & Burkett LN (2006). The effect of rest interval length on the sustainability of squat and bench press repetitions.
+
+*Journal of Strength and Conditioning Research*, 20(2), 400-3.
+
+- Type: non-RCT-trial · Population: trained
+- DOI: [10.1519/R-16314.1](https://doi.org/10.1519/R-16314.1) · PMID: [16686571](https://pubmed.ncbi.nlm.nih.gov/16686571/)
 
 ### wilson-2012-concurrent-meta
 Wilson JM & et al. (2012). Concurrent training: a meta-analysis examining interference of aerobic and resistance exercises.

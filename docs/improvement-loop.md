@@ -1278,6 +1278,30 @@ These are real failures from previous iterations. Each is now a standing check.
    twice, and 23:58 rolled over to the next day. → **Standing rule:** a user-set schedule stamps
    what fired, per kind and per local day, and keeps its times on the grid it fires on.
 
+94. **A weight for a later set must carry the fatigue in between.** The next-set hint converted a
+   banked set's e1RM to the next set as if that set were fresh: 70×5 at failure gave 65 kg. That is
+   about right for a fresh set, but after a set to failure it leaves ~6.7 reps in the tank, so 6 reps
+   lands under the band — the owner's "+30%". → **Standing rule:** any weight computed for a later
+   set, or a later lift, starts from the capacity left AFTER the work in between, and the loss is a
+   named, cited engine estimate.
+95. **A pre-filled field is a prescription.** The reps stepper seeded the range's top on every set, so
+   "150 kg × 10" read as the coach's expectation, under a note that said "just under the range — keep
+   the weight". → **Standing rule:** every number a field starts on comes from the same model as the
+   advice beside it, and a field the player can resume is derived from the plan and the banked log,
+   never stored.
+96. **When two adjustments stack, the second starts from the state the first produced.** The design
+   review's order formula converted the anchor set's own capacity at a weight the base rule had
+   already bumped. A step up and a fresher position then compounded: 32.5 kg, ~5 reps at 1 RIR, under
+   the range. The capacity AT the bumped weight, from the anchor's e1RM, gives 30. Recomputing the
+   reviewer's numbers inline caught it. → **Standing rule:** recompute a reviewer's worked numbers
+   before adopting them, pin the round trip with a property test, and round to the nearest step
+   when contexts alternate (floor ratchets).
+97. **An error message must say what happened, and that needs the state read back.** Every
+   non-granted permission result said "allow it in your settings". On the owner's iPhone, iOS had
+   never been asked, so there was nothing in Settings to switch on. → **Standing rule:** a failure
+   path classifies from the state read back after the call, not from the call's return alone, and
+   only a real "no" points at Settings.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1325,6 +1349,31 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7d. **Telemetry (Waves 288–292, 2026-10-21 — Burst 5, one /plan iteration on four owner reports:
+   the weight model, the notifications button, and one question).** Every root cause was
+   reproduced by running the real functions first (the hint: 65 kg; the hold: 150 kg plus a
+   range-top stepper), not inferred.
+   - **Agents:** one Plan agent, ≈280k subagent tokens, killed once by a network error and
+     resumed through SendMessage instead of relaunched. Its notifications finding held: the
+     offer checks PushManager before an iPhone outside the Home-Screen app. One worked number
+     was wrong (lesson 96), caught by recomputing it inline. No finder or verify agents.
+   - **Evidence:** five PubMed-verified citations from E-utilities (esummary for the fields,
+     efetch abstracts for the claims). The 2012 review's abstract was read before its claim
+     was written.
+   - **Tests:**
+     - Suites: coach 146, routes 580, session-core 107, ui-helpers 68.
+     - Every new check was observed red before its fix. 17 lesson-54 code tampers each
+       turned their check red: 2 in W288, 6 in W289, 4 in W290, 5 in W291.
+     - Real browser: 19/19 checks against a scratch server with a throwaway store (the
+       owner's .data store untouched), zero console errors. A browser tamper (no reseed on
+       bank) turned exactly the two set-2 checks red.
+     - Walkthrough slips: two in my own script (a wave-scaled set count, a "Loading…" slot),
+       each fixed in the script, not the app.
+   - **Not run:**
+     - The Daytona gate (no DAYTONA_API_KEY).
+     - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when
+       the burst closed. The shipped detail code ("tap counted ✓/✗ · Home-Screen app ✓/✗")
+       makes the next tap diagnose itself.
 7e. **Telemetry (Waves 279–287b, 2026-10-19/20 — one /plan iteration: four owner requests, two
    considerations, four bursts).** Four review workflows, finders only (3–4 lenses, each in its own
    scratch dir), every candidate verified INLINE:
