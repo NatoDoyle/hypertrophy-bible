@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
+import * as uiHelpers from "../public/ui-helpers.mjs"; // Burst 5's new exports, read so a missing one fails its own check
 import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
 
@@ -585,6 +586,49 @@ check("notifyOffer (W285): the turn-on door each device can actually use", () =>
   assert.equal(notifyOffer({ supported: false, ios: true, standalone: false, on: false }), "home-screen", "an iPhone in Safari: Web Push lives in the Home-Screen app");
   assert.equal(notifyOffer({ supported: false, ios: false, standalone: false, on: false }), null, "a browser without Web Push");
   assert.equal(notifyOffer({ supported: false, ios: true, standalone: true, on: false }), null, "a Home-Screen app on an iOS too old for Web Push");
+});
+// --- W291 (Burst 5 — owner, on an iPhone: "I clicked the 'Enable notifications' button, and it just told me to
+// turn it on in my settings"). No prompt appeared and the app wasn't listed in iPhone Settings → Notifications:
+// iOS never received a request. Push only works from the Home-Screen app, so an iPhone outside it is sent
+// there even when Safari exposes PushManager; and a refusal says what actually happened.
+check("notifyOffer (W291): an iPhone outside the Home-Screen app is sent there — even when Safari exposes PushManager", () => {
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "default", on: false }), "home-screen", "a Safari tab never shows the prompt");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "denied", on: false }), "home-screen");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: true, permission: "default", on: false }), "enable", "the Home-Screen app asks");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "granted", on: true }), null, "already on stays on");
+  assert.equal(notifyOffer({ supported: true, ios: false, standalone: false, permission: "default", on: false }), "enable", "a desktop or Android browser tab asks");
+});
+check("permissionOutcome (W291): granted is on; still 'default' afterwards means nothing was asked or decided; 'denied' is blocked", () => {
+  assert.equal(uiHelpers.permissionOutcome("granted", "granted"), "on");
+  assert.equal(uiHelpers.permissionOutcome("denied", "default"), "not-asked", "WebKit refused without asking: nothing is stored");
+  assert.equal(uiHelpers.permissionOutcome("default", "default"), "not-asked", "the prompt was dismissed");
+  assert.equal(uiHelpers.permissionOutcome("denied", "denied"), "blocked");
+  assert.equal(uiHelpers.permissionOutcome(undefined, "default"), "not-asked");
+});
+check("notifyOutcome (W291): each outcome says what actually happened — and only a real 'no' points at Settings", () => {
+  const notAsked = uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: true, activation: true });
+  assert.equal(notAsked.mark, false, "the invite stays: nothing was answered");
+  assert.equal(notAsked.text, "Your phone didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ✓ · Home-Screen app ✓)");
+  assert.doesNotMatch(notAsked.text, /Settings/);
+  assert.match(uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: false, activation: false }).text, /\(Detail: tap counted ✗ · Home-Screen app ✗\)$/);
+  assert.match(uiHelpers.notifyOutcome("not-asked", { ios: false, standalone: false, activation: null }).text, /\(Detail: tap counted \? · browser tab\)$/);
+  const blockedIos = uiHelpers.notifyOutcome("blocked", { ios: true, standalone: true });
+  assert.equal(blockedIos.mark, true);
+  assert.equal(blockedIos.text, "Notifications are switched off for this app. In iPhone Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button.");
+  assert.match(uiHelpers.notifyOutcome("blocked", { ios: false }).text, /browser's site settings/);
+  assert.equal(uiHelpers.notifyOutcome("unavailable", {}).text, "Notifications aren't available right now.");
+  assert.equal(uiHelpers.notifyOutcome("unavailable", {}).mark, false);
+});
+check("enablePush (W285, kept by W291): the permission is asked BEFORE any await — Safari shows the prompt only inside the tap", () => {
+  const body = fnBody(appJs, "async function enablePush() {", 1200);
+  assert.ok(body.indexOf("Notification.requestPermission()") > 0 && body.indexOf("Notification.requestPermission()") < body.indexOf("await"), "the ask comes first");
+  assert.match(body, /const activation = navigator\.userActivation\?\.isActive \?\? null;\n\s*const permission = Notification\.requestPermission\(\);/, "the tap's activation is read just before the ask");
+  assert.match(body, /permissionOutcome\(await permission, notifyPermission\(\)\)/, "the outcome is re-read afterwards");
+});
+check("notification doors (W291): the post-workout invite and Me both speak through notifyOutcome — no 'allow it in your settings' for a question never asked", () => {
+  assert.doesNotMatch(appJs, /No problem — you can allow notifications any time in your settings\./);
+  assert.equal((appJs.match(/notifyOutcome\(res\.outcome, \{ ios: isIOS\(\), standalone: isStandalone\(\), activation: res\.activation \}\)/g) ?? []).length, 2);
+  assert.match(fnBody(appJs, "function wireNotifyInvite() {", 2500), /if \(o\.mark\) markNotifyInvite\(\); msg\(o\.text\); return;/, "a question never asked keeps the one-time invite");
 });
 check("trainingDaysHint (W285): the person's own days in week order — or what happens without any", () => {
   assert.equal(trainingDaysHint(["fri", "mon", "wed"]), "On Mon, Wed and Fri, if you haven't trained yet.");

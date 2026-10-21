@@ -406,8 +406,34 @@ export function friendlyList(xs, max = 3) {
 // the Add-to-Home-Screen steps; nothing where it can't work at all.
 export function notifyOffer({ supported, ios, standalone, permission, on }) {
   if (on) return null;
+  // On an iPhone, push lives only in the Home-Screen app (W291): a Safari tab can expose PushManager
+  // and still never show the prompt — the owner's "no popup, and not listed in Settings".
+  if (ios && !standalone) return "home-screen";
   if (supported) return permission === "denied" ? "blocked" : "enable";
-  return ios && !standalone ? "home-screen" : null;
+  return null;
+}
+// What a notifications request actually did (W291), from its result and the permission read back
+// afterwards: granted is on; still "default" means nothing was asked or decided (WebKit refused
+// without asking, or the prompt was dismissed), so there's nothing to undo; "denied" is a real no.
+export function permissionOutcome(result, after) {
+  if (result === "granted") return "on";
+  return after === "denied" ? "blocked" : "not-asked";
+}
+// The words for a notifications tap that didn't turn them on (W291), and whether it answers the
+// one-time invite (`mark`). Only a real "no" points at Settings. A question never asked says so,
+// keeps the invite, and carries a short detail — did WebKit count the tap; is this the Home-Screen
+// app — so the next attempt diagnoses itself.
+export function notifyOutcome(outcome, { ios = false, standalone = false, activation = null } = {}) {
+  if (outcome === "not-asked") {
+    const tap = activation === true ? "✓" : activation === false ? "✗" : "?";
+    const where = ios ? `Home-Screen app ${standalone ? "✓" : "✗"}` : standalone ? "installed app" : "browser tab";
+    return { mark: false, text: `Your phone didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ${tap} · ${where})` };
+  }
+  if (outcome === "blocked") return { mark: true, text: ios
+    ? "Notifications are switched off for this app. In iPhone Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button."
+    : "Notifications are blocked for this site. Allow them in your browser's site settings, then come back and tap the button." };
+  if (outcome === "unsupported") return { mark: false, text: "This browser can't show notifications." };
+  return { mark: false, text: "Notifications aren't available right now." };
 }
 // The training-days reminder fires on the days the person said they'd train; with none, the
 // lapse nudge stands (push.mjs shouldPush: two days off) — the row says which.

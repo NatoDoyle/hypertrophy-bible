@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -298,11 +298,15 @@ const deviceNotifyOffer = () => notifyOffer({ supported: pushSupported(), ios: i
 // prompt goes FIRST, before any await: Safari shows it only while the tap's user activation
 // lasts, and a network round trip before it can outlive that.
 async function enablePush() {
-  if (!pushSupported()) return "unsupported";
+  if (!pushSupported()) return { outcome: "unsupported", activation: null };
+  // Whether WebKit still counts this tap as a user gesture, read just before the ask (W291), so a
+  // refusal can say which side said no. Reading it consumes nothing.
+  const activation = navigator.userActivation?.isActive ?? null;
   const permission = Notification.requestPermission();
   const [reg, key] = await Promise.all([navigator.serviceWorker.ready, api("/api/push/key").then((r) => r.key)]);
-  if ((await permission) !== "granted") return "denied";
-  if (!key) return "unavailable";
+  const outcome = permissionOutcome(await permission, notifyPermission());
+  if (outcome !== "on") { console.info("[notifications]", { outcome, activation, permission: notifyPermission(), standalone: isStandalone() }); return { outcome, activation }; }
+  if (!key) return { outcome: "unavailable", activation };
   const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/")); // base64url -> applicationServerKey bytes
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: new Uint8Array([...raw].map((c) => c.charCodeAt(0))) });
   // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate): the reminders land at
@@ -311,7 +315,7 @@ async function enablePush() {
   if (r?.error) throw new Error(r.error);
   localStorage.setItem("hb_push", "1");
   localStorage.setItem("hb_push_ep", sub.endpoint);
-  return "on";
+  return { outcome: "on", activation };
 }
 // Notifications, offered ONCE — right after a workout, when a rest alert and a training-day
 // reminder make sense (W287 — owner: "I can't figure out how"). Answered either way, it's gone
@@ -341,8 +345,7 @@ function wireNotifyInvite() {
     const extras = [["weigh_in", $("#inv-weigh")?.checked], ["calories", $("#inv-food")?.checked]].filter(([, on]) => on).map(([kind]) => kind);
     try {
       const res = await enablePush();
-      if (res === "denied") { markNotifyInvite(); msg("No problem — you can allow notifications any time in your settings."); return; }
-      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      if (res.outcome !== "on") { const o = notifyOutcome(res.outcome, { ios: isIOS(), standalone: isStandalone(), activation: res.activation }); if (o.mark) markNotifyInvite(); msg(o.text); return; }
       markNotifyInvite();
       for (const kind of extras) await api("/api/reminders/device", { method: "POST", body: JSON.stringify({ user_id: uid, kind, on: true }) }).catch(() => {});
       card.innerHTML = `<p>🔔 Notifications on. Pick what and when in <button class="btn ghost inline" id="inv-me" style="margin:0">Me → Reminders</button>.</p>`;
@@ -4516,8 +4519,7 @@ function wireCareCards(a, rerender) {
     try {
       if (pushOn()) { await disablePush(); say("Notifications turned off on this device."); await rerender(); $("#pushbtn")?.focus(); return; }
       const res = await enablePush();
-      if (res === "denied") { msg("No problem — you can allow notifications any time in your settings."); return; }
-      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      if (res.outcome !== "on") { msg(notifyOutcome(res.outcome, { ios: isIOS(), standalone: isStandalone(), activation: res.activation }).text); return; }
       say("Notifications on."); await rerender(); $("#pushbtn")?.focus();
     } catch { msg("📴 Couldn't set up notifications — try again when you're online."); }
   };
