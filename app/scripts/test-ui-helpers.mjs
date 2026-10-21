@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
-import { suggestWeight, MUSCLE_PLAIN } from "../src/coach.mjs";
+import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
 
 let pass = 0, fail = 0;
@@ -417,6 +417,21 @@ check("#why-unit property: every reason the REAL engine writes reaches a pounds 
     }
   }
   assert.ok(seen >= 250, `scenarios exercised: ${seen}`);
+});
+check("#why-unit (W290) the order note reaches a pounds user in pounds, never kg — and never dropped", () => {
+  const prog = { sessions: [{ name: "A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+    { name: "B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  let seen = 0;
+  for (const kg of [9.07, 20.41, 30, 58.97]) {
+    const hist = [{ date: "2026-06-01T18:00:00Z", session_name: "A", sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: kg, reps })) }];
+    const s = servedLift(prog.sessions[1].exercises[1], hist, {}, undefined, null, { program: prog, session: prog.sessions[1] });
+    if (!/comes after/.test(s.suggestion_note ?? "")) continue;
+    const row = { suggested_kg: s.suggested_kg, last_kg: s.sug.last_kg };
+    const out = noteInUnit(s.suggestion_note, row, "lb", lbD, prefillInUnit(row, lbD, 5));
+    assert.ok(out != null && !/\bkg\b/.test(out), `${kg}: ${s.suggestion_note} → ${out}`);
+    seen++;
+  }
+  assert.ok(seen >= 2, `order notes exercised: ${seen}`);
 });
 // The next-set hint says what actually happened: reps under, reps over — or reps IN the range
 // with far more left in the tank than planned (that hint fires on effort; "over the range"

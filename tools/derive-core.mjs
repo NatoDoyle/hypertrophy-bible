@@ -1365,6 +1365,40 @@ export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNea
   return out;
 }
 
+// EXERCISE ORDER (W290, Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting
+// weights"). An exercise done later in a session gets fewer reps on every set (Simão et al. 2005; review
+// 2012). How much same-muscle work comes BEFORE the lift at `idx` of a planned list: each earlier lift
+// counts its sets × 1 when its primary muscle is this lift's primary, × 0.5 for a primary↔secondary
+// overlap, else 0 (`sets`); `count` is those sets unweighted and `muscles` the ones shared, for the note.
+// Engine estimates, not findings: each weighted set costs 5% of the lift's rep capacity, at most 25%, and
+// a difference under 2 weighted sets is noise. Whole percents keep the arithmetic exact.
+export const ORDER_LOSS_PCT_PER_SET = 5, ORDER_LOSS_PCT_CAP = 25, ORDER_MIN_DELTA_SETS = 2;
+export function priorOverlapSets(exercises, idx, musclesOf) {
+  const out = { sets: 0, count: 0, muscles: [] };
+  const me = musclesOf(exercises?.[idx]?.exercise);
+  if (!me) return out;
+  for (let j = 0; j < idx; j++) {
+    const m = musclesOf(exercises[j]?.exercise);
+    if (!m) continue;
+    const pp = m.primary.filter((x) => me.primary.includes(x));
+    const ps = [...m.primary.filter((x) => me.secondary.includes(x)), ...m.secondary.filter((x) => me.primary.includes(x))];
+    const w = pp.length ? 1 : ps.length ? 0.5 : 0;
+    if (!w) continue;
+    const n = exercises[j].sets ?? 0;
+    out.sets += n * w;
+    out.count += n;
+    for (const x of pp.length ? pp : ps) if (!out.muscles.includes(x)) out.muscles.push(x);
+  }
+  return out;
+}
+// The fraction of a lift's rep capacity its position costs, from priorOverlapSets' weighted sets.
+export const orderLoss = (n) => Math.min(ORDER_LOSS_PCT_CAP, ORDER_LOSS_PCT_PER_SET * n) / 100;
+// The load giving the same rep capacity `c` when the lift's position costs `toLoss` of it instead of
+// `fromLoss` (Epley, the loss scaling the fresh capacity). Swapping from and to is the exact inverse.
+export function contextLoad(kg, c, fromLoss, toLoss) {
+  return kg * (1 + c / (30 * (1 - fromLoss))) / (1 + c / (30 * (1 - toLoss)));
+}
+
 // Readiness relative to the user's OWN baseline (z-scores), not absolute values —
 // the correct way to use HRV/sleep. 0-100, higher = more recovered. Null if no data.
 export function readinessIndex(checkins) {

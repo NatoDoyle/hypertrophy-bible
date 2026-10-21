@@ -1226,6 +1226,27 @@ try {
       JSON.stringify({ kg: raRow?.suggested_kg, rep_targets: raRow?.rep_targets, expect: raExpect, note: raRow?.suggestion_note }));
   }
 
+  // --- #order (W290, Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting
+  // weights"). A custom plan holds the same lift at two positions; through the doors the phone uses —
+  // save the plan, log day A, and day B serves it lighter, and says why.
+  {
+    const oU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ordPlan = { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] };
+    const oSave = await json("POST", "/api/plan/save", { user_id: oU, program: ordPlan });
+    const oToday = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": oU } })).json()).session;
+    let oT = await oToday();
+    for (let k = 0; k < 3 && oT.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: oU }); oT = await oToday(); }
+    await json("POST", "/api/session", { user_id: oU, session_id: "ord-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day A",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const oB = await oToday();
+    const oRow = oB.exercises.find((e) => e.exercise === "incline-dumbbell-press");
+    ok("#order /api/today: the lift after 3 bench sets on day B is lighter than after nothing on day A — and says why",
+      !oSave.data?.error && oT.name === "Day A" && oB.name === "Day B" && oRow?.suggested_kg === 27.5 && /comes after 3 sets that also work your chest \(last time it came first\)/.test(oRow?.suggestion_note ?? ""),
+      JSON.stringify({ save: oSave.data?.error, first: oT.name, next: oB.name, kg: oRow?.suggested_kg, note: oRow?.suggestion_note }));
+  }
+
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
   // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
   {
@@ -1493,6 +1514,19 @@ try {
     const rC = await logToday(uC, await todayOf(uC));
     ok("#readout (fixture) a taper", /to your event/.test(rC?.readout?.objective ?? ""), rC?.readout?.objective);
     await keeps("taper", uC, rC?.readout);
+    // O — the order moves the weight (W290): a custom plan holds the same lift at two positions, so
+    // the read-out's "next time" for day B must already carry day B's position.
+    const uO = await onboard();
+    const oSave = await json("POST", "/api/plan/save", { user_id: uO, program: { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] } });
+    let tO = await todayOf(uO);
+    for (let k = 0; k < 3 && tO.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: uO }); tO = await todayOf(uO); }
+    const rO = await logToday(uO, tO);
+    const oNext = rO?.readout?.next?.find((n) => n.exercise === "incline-dumbbell-press");
+    ok("#readout (fixture) the order moves day B's weight off the base rule's", !oSave.data?.error && tO.name === "Day A" && oNext?.kg === 40 && oNext?.session === "Day B",
+      JSON.stringify({ save: oSave.data?.error, day: tO.name, next: oNext }));
+    await keeps("order context", uO, rO?.readout);
     // D — after a skipped set: one lift did 1 of its sets (the plan travels as targets)
     const uD = await onboard(); const tD = await todayOf(uD);
     const skipId = tD.exercises.find((e) => e.sets >= 2 && e.equipment !== "bodyweight")?.exercise;

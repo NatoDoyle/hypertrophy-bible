@@ -8,6 +8,7 @@ import { exercises as kbExercises, muscles as kbMuscles, contraindications as kb
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 import { servedLift } from "../src/coach.mjs";
+import * as deriveCore from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -1898,4 +1899,80 @@ check("#rep-aim Today's rows carry the aim (through buildToday)", () => {
   const row = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]).exercises[0];
   assert.equal(row.suggested_kg, 150);
   assert.deepEqual(row.rep_targets, [6, 5, 6].slice(0, row.sets), JSON.stringify({ sets: row.sets, rep_targets: row.rep_targets }));
+});
+
+// --- W290 (Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting weights";
+// the cases the owner named: the same lift on different days, and later lifts in general). A lift done
+// after more hard sets for the same muscles than last time gets fewer reps (Simão 2005, 2012), so its
+// weight and aims carry the DIFFERENCE between today's position and the anchor session's — both read
+// from the PLAN (unscaled sets), so a stable slot never moves; under 2 weighted sets is ignored.
+const ordProg = { id: "op", name: "Order", sessions: [
+  { name: "A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+  { name: "B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+] };
+const inc = (w, reps, extra = {}) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: w, reps, ...extra });
+const onDay = (session_name, d, ...sets) => ({ ...brDay(d, ...sets), session_name });
+const slotOf = (program, name) => ({ program, session: program.sessions.find((s) => s.name === name) });
+const incEx = (program, name) => slotOf(program, name).session.exercises.find((e) => e.exercise === "incline-dumbbell-press");
+const ordServed = (name, sessions, ctx = {}, now = null, program = ordProg) => servedLift(incEx(program, name), sessions, ctx, undefined, now, slotOf(program, name));
+const musclesOf = (id) => ({ primary: exerciseById.get(id)?.primary_muscles ?? [], secondary: exerciseById.get(id)?.secondary_muscles ?? [] });
+check("#order priorOverlapSets: an earlier lift counts its sets × 1 when its primary is this lift's, × 0.5 for a primary↔secondary overlap", () => {
+  const list = [{ exercise: "barbell-bench-press", sets: 3 }, { exercise: "dumbbell-overhead-triceps-extension", sets: 2 }, { exercise: "lat-pulldown", sets: 3 }, { exercise: "incline-dumbbell-press", sets: 3 }];
+  const p = deriveCore.priorOverlapSets(list, 3, musclesOf);
+  assert.equal(p.sets, 3 * 1 + 2 * 0.5, "bench chest∩chest; triceps extension triceps∩secondary; the pulldown nothing");
+  assert.equal(p.count, 5, "the overlapping hard sets, unweighted (for the note)");
+  assert.deepEqual(p.muscles, ["chest", "triceps"]);
+  assert.deepEqual(deriveCore.priorOverlapSets(list, 0, musclesOf), { sets: 0, count: 0, muscles: [] }, "the first lift of the day");
+});
+check("#order orderLoss is 5% of capacity per weighted set, capped at 25%; contextLoad there and back is the starting weight", () => {
+  assert.deepEqual([0, 1.5, 3, 5, 9].map(deriveCore.orderLoss), [0, 0.075, 0.15, 0.25, 0.25]);
+  for (const kg of [20, 57.5, 100]) for (const c of [6, 10, 14]) for (const [a, b] of [[0, 0.15], [0.1, 0.25], [0.2, 0]])
+    assert.ok(Math.abs(deriveCore.contextLoad(deriveCore.contextLoad(kg, c, a, b), c, b, a) - kg) < 1e-9, `${kg} ${c} ${a}→${b}`);
+});
+check("#order the same lift after more same-muscle work than last time is lighter, and says why (first last time → after 3 bench sets: 27.5)", () => {
+  const s = ordServed("B", [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))]);
+  assert.equal(s.suggested_kg, 27.5, "30·(1 + 10/30)/(1 + 10/25.5) = 28.73 → the nearest 2.5");
+  assert.deepEqual(s.rep_targets, [10, 10, 10]);
+  assert.match(s.suggestion_note, /Today this comes after 3 sets that also work your chest \(last time it came first\), so I've made it 27\.5 kg\./);
+});
+check("#order the reverse — fresher than last time: the earned step up, with the order in the aims (27.5×10,10,10 after bench → 30 × 8 · 8 · 8)", () => {
+  const s = ordServed("A", [onDay("B", 1, inc(27.5, 10), inc(27.5, 10), inc(27.5, 10))]);
+  assert.equal(s.suggested_kg, 30, "capacity AT 30 carried over: 31.11 → 30. The anchor's own capacity would say 32.5 — ~5 reps at 1 RIR, under 6-10");
+  assert.deepEqual(s.rep_targets, [8, 8, 8], "without the order the aim would be 7 · 7 · 7");
+  assert.match(s.suggestion_note, /top of the range — add 2\.5 kg/, "the order didn't move the weight, so the reason is the base rule's");
+});
+check("#order a stable slot, or a difference under 2 weighted sets, changes nothing (byte-identical)", () => {
+  const same = [onDay("B", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.deepEqual(ordServed("B", same), servedLift(incEx(ordProg, "B"), same, {}, undefined, null), "the same day as last time");
+  const tri = { ...ordProg, sessions: [ordProg.sessions[0], { name: "T", exercises: [{ exercise: "dumbbell-overhead-triceps-extension", sets: 3, rep_range: "10-15", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const fromA = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.deepEqual(ordServed("T", fromA, {}, null, tri), servedLift(incEx(tri, "T"), fromA, {}, undefined, null), "3 triceps sets × 0.5 = 1.5: under the gate");
+  const gone = [{ ...fromA[0], session_name: "Retired day" }];
+  assert.deepEqual(ordServed("B", gone), servedLift(incEx(ordProg, "B"), gone, {}, undefined, null), "the anchor's day isn't in the plan any more: no adjustment");
+});
+check("#order never during a comeback or a taper; a deload week takes the lighter of the two", () => {
+  const hist = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.equal(ordServed("B", hist, {}, new Date(Date.parse(hist[0].date) + 20 * 86400000).toISOString()).suggested_kg, 26.5, "the comeback ease (30 × 0.88) stands alone");
+  assert.equal(ordServed("B", hist, { taper: { setScale: 0.6, rirFloor: 2, daysUntil: 5 } }).suggested_kg, 30, "a taper holds the load");
+  assert.equal(ordServed("B", hist, { block: { phase: "deload", week: 6, setScale: 0.5 } }).suggested_kg, 27, "min(27.5, 30 × 0.9)");
+});
+check("#order a first-time lift after same-muscle work starts a plate lighter (squat after 4 leg-press sets: 40 → 37.5)", () => {
+  const prog = { id: "q", name: "Q", sessions: [{ name: "L", exercises: [{ exercise: "leg-press", sets: 4, rep_range: "10-15", rir: "1-3" }, { exercise: "barbell-back-squat", sets: 3, rep_range: "6-10", rir: "1-2" }] }] };
+  const sq = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, [], null, [], null, 80).exercises.find((r) => r.exercise === "barbell-back-squat");
+  assert.equal(sq.suggested_kg, 37.5, "40·(1 + 7/30)/(1 + 7/24) = 38.19 → 37.5");
+  assert.match(sq.suggestion_note, /after 4 sets that also work your thighs \(quads\)/);
+});
+check("#order alternating days never ratchet: performing exactly as aimed, the weights come back to where they started", () => {
+  // A 6-12 range keeps every aim under the top, so the base rule holds and only the order moves the weight.
+  const p12 = { ...ordProg, sessions: ordProg.sessions.map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, rep_range: "6-12" })) })) };
+  let hist = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  const seen = [];
+  for (let k = 0; k < 6; k++) {
+    const day = k % 2 === 0 ? "B" : "A";
+    const s = ordServed(day, hist, {}, null, p12);
+    seen.push([s.suggested_kg, s.rep_targets.join(",")]);
+    hist = [...hist, onDay(day, 2 + k, ...s.rep_targets.map((r) => inc(s.suggested_kg, r)))];
+  }
+  assert.deepEqual(seen, [[27.5, "11,11,10"], [30, "9,9,8"], [27.5, "11,11,10"], [30, "9,9,8"], [27.5, "11,11,10"], [30, "9,9,8"]],
+    "B after bench is 27.5 × 11 · 11 · 10; doing exactly that brings A back to 30 × 9 · 9 · 8 — where it began");
 });
