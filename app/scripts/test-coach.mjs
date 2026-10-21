@@ -7,6 +7,7 @@ import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
+import { servedLift } from "../src/coach.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -1845,4 +1846,56 @@ check("a maintenance day's 'light on purpose' note rides the /api/today payload"
   const t = buildToday(u, sessions);
   assert.equal(t.name, program.sessions[idx].name, "precondition: today IS the noted day");
   assert.match(t.maintenance_note ?? "", /light on purpose/i);
+});
+
+// --- W289 (Burst 5 — owner: "I had done 150kg x 5,4,5 last workout and now it is suggesting 150kg x
+// 10,10,10"). The weight held, rightly (W279: one short holds once), but the reps stepper seeded the
+// TOP of the range on every set. The aim is now per set, from last session's sets in order: at the same
+// load, beat each by a rep (double progression's "add a rep"), capped at the top; at a moved load, each
+// set's capacity (reps + RIR) carried to today's load by Epley, less the band's near edge.
+const sqSet = (w, reps, extra = {}) => ({ exercise: "barbell-back-squat", set_type: "work", weight_kg: w, reps, ...extra });
+const aim = (exercise, rep_range, rir, sets, sessions, ctx = {}) => servedLift({ exercise, sets, rep_range, rir }, sessions, ctx, undefined, null);
+check("#rep-aim the owner's case: 150×5,4,5 held at 150 → aim 6 · 5 · 6, never 10 · 10 · 10", () => {
+  const s = aim("barbell-back-squat", "6-10", "1-2", 3, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]);
+  assert.equal(s.suggested_kg, 150, "precondition: the W279 hold");
+  assert.deepEqual(s.rep_targets, [6, 5, 6]);
+});
+check("#rep-aim more sets today than last time: the extra set reuses the last one's aim; the top of the range caps it", () => {
+  assert.deepEqual(aim("barbell-back-squat", "6-10", "1-2", 4, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]).rep_targets, [6, 5, 6, 6]);
+  // "You did 2 of 3 sets last time" holds at 100 — beating 10 is capped at 10
+  const held = aim("barbell-bench-press", "6-10", "1-3", 3, [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }], brSet(100, 10), brSet(100, 10))]);
+  assert.equal(held.suggested_kg, 100, "precondition: the W280 shortfall hold");
+  assert.deepEqual(held.rep_targets, [10, 10, 10]);
+});
+check("#rep-aim the weight moved: each set's capacity carried to the new load (a bump; an ease)", () => {
+  const bump = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 10), brSet(100, 10), brSet(100, 10))]);
+  assert.equal(bump.suggested_kg, 102.5);
+  assert.deepEqual(bump.rep_targets, [9, 9, 9], "30·((100/102.5)·(1 + 11/30) − 1) − 1 = 9");
+  const ease = aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(100, 6), brSet(100, 5), brSet(100, 5))]);
+  assert.equal(ease.suggested_kg, 90);
+  assert.deepEqual(ease.rep_targets, [9, 8, 8], "under the range, unlogged effort reads as failure (W279's reading)");
+});
+check("#rep-aim a deload week: fewer sets at ~90%, aimed from the effort they were done at, capped at the top", () => {
+  const d = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 10), brSet(100, 10), brSet(100, 9))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.equal(d.suggested_kg, 90);
+  assert.deepEqual(d.rep_targets, [10, 10]);
+});
+check("#rep-aim a weight changed mid-lift last time: each set reads its own load (70×5 then 62.5×7,6 → 8 · 8 · 7)", () => {
+  const m = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(70, 5), brSet(62.5, 7), brSet(62.5, 6))]);
+  assert.equal(m.suggested_kg, 62.5, "precondition: anchored on the weight proved in the range");
+  assert.deepEqual(m.rep_targets, [8, 8, 7]);
+});
+check("#rep-aim no history → no aim; a bodyweight lift beats its own reps, and never runs Epley on added load", () => {
+  assert.equal(aim("barbell-bench-press", "6-10", "1-2", 3, []).rep_targets ?? null, null);
+  const pu = (w, reps) => ({ exercise: "pull-up", set_type: "work", weight_kg: w, reps });
+  assert.deepEqual(aim("pull-up", "6-10", "1-2", 3, [brDay(1, pu(0, 8), pu(0, 7), pu(0, 6))]).rep_targets, [9, 8, 7]);
+  const loaded = aim("pull-up", "6-10", "1-2", 3, [brDay(1, pu(10, 10), pu(10, 10), pu(10, 10))]);
+  assert.ok(loaded.suggested_kg > 10, "precondition: the top of the range adds load");
+  assert.deepEqual(loaded.rep_targets, [10, 10, 10], "added load is not the whole load — no Epley on it");
+});
+check("#rep-aim Today's rows carry the aim (through buildToday)", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-back-squat", sets: 3, rep_range: "6-10", rir: "1-2" }] }] };
+  const row = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]).exercises[0];
+  assert.equal(row.suggested_kg, 150);
+  assert.deepEqual(row.rep_targets, [6, 5, 6].slice(0, row.sets), JSON.stringify({ sets: row.sets, rep_targets: row.rep_targets }));
 });

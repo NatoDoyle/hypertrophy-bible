@@ -794,6 +794,42 @@ check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±2
   assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
 });
 
+// --- #rep-seed (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is suggesting 150kg × 10,10,10").
+// The reps stepper starts on today's AIM for this set — derived from the row and the BANKED count, never
+// stored (crash-safe by derivation) — else the last banked reps (today's carry-over, from set 2 on), else
+// the top of the range. An aim that doesn't fit the row's own range is ignored: a swapped-in lift keeps
+// the SLOT's range (PRESCRIPTION_KEYS), so its own aim may not fit.
+check("#rep-seed the aim for set k, from the row (a 4th set reuses the last aim)", () => {
+  const row = { rep_range: "6-10", rep_targets: [6, 5, 6] };
+  assert.deepStrictEqual([0, 1, 2, 3].map((k) => playerCore.repSeed(row, k, { lastReps: 9 })), [6, 5, 6, 6]);
+});
+check("#rep-seed no aim: the top of the range on set 1, the last banked reps after (today's behaviour)", () => {
+  const row = { rep_range: "6-10" };
+  assert.strictEqual(playerCore.repSeed(row, 0, { lastReps: null }), 10);
+  assert.strictEqual(playerCore.repSeed(row, 1, { lastReps: 7 }), 7);
+  assert.strictEqual(playerCore.repSeed(row, 1, {}), 10, "nothing banked yet: the top");
+});
+check("#rep-seed a malformed aim, or one outside THIS row's range, is ignored", () => {
+  for (const t of [[], [6, "5"], [6, 0], [6, 12], [6.5], "6,5,6", null, undefined])
+    assert.strictEqual(playerCore.repSeed({ rep_range: "6-10", rep_targets: t }, 0, { lastReps: null }), 10, JSON.stringify(t));
+  assert.strictEqual(playerCore.validAim({ rep_range: "12-20", rep_targets: [14, 13] })?.join(), "14,13");
+  assert.strictEqual(playerCore.validAim({ rep_range: "6-10", rep_targets: [14, 13] }), null, "a swapped slot's range");
+});
+check("#rep-seed once the weight is moved off the served pre-fill, the aim no longer applies — the last banked reps carry", () => {
+  const row = { rep_range: "6-10", rep_targets: [6, 5, 6] };
+  assert.strictEqual(playerCore.repSeed(row, 1, { lastReps: 7, atServed: false }), 7);
+  assert.strictEqual(playerCore.repSeed(row, 0, { lastReps: null, atServed: false }), 10);
+});
+check("#rep-seed lastWorkReps reads the last banked WORK set of that lift (warm-ups and other lifts don't count)", () => {
+  const logged = [{ exercise: "a", set_type: "work", reps: 8 }, { exercise: "b", set_type: "work", reps: 12 }, { exercise: "a", set_type: "warmup", reps: 5 }];
+  assert.strictEqual(playerCore.lastWorkReps(logged, "a"), 8);
+  assert.strictEqual(playerCore.lastWorkReps(logged, "c"), null);
+  assert.strictEqual(playerCore.lastWorkReps(undefined, "a"), null);
+});
+check("#rep-seed topReps reads a range's top (moved from app.js unchanged)", () => {
+  assert.deepStrictEqual(["6-10", "12-20", "", undefined].map(playerCore.topReps), [10, 20, 10, 10]);
+});
+
 // --- #targets (W280): what the plan asked of each lift TODAY rides with the workout, so the
 // engine (and the read-out) can tell a skipped or unfinished set from a full session — the
 // ORIGINAL set count (planned_sets survives a skip's shrink), and planned-easy lifts flagged.

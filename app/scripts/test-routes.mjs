@@ -1207,6 +1207,25 @@ try {
       && new RegExp(`first set at 50 kg came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, expect: brExpect, rir: brRow?.rir, note: brRow?.suggestion_note }));
   }
 
+  // --- #rep-aim (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is suggesting 150kg ×
+  // 10,10,10"). Each set's aim reaches the phone through the door it uses: set 1 one short of the range
+  // holds the weight (W279), and every set's aim beats last time's by a rep — never the range's top.
+  {
+    const raU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const raT0 = await (await app.request("/api/today", { headers: { "X-HB-User": raU } })).json();
+    const raX = raT0.session.exercises.find((e) => !/bodyweight/.test(e.equipment ?? "") && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const raMin = +raX.rep_range.split("-")[0];
+    await json("POST", "/api/session", { user_id: raU, session_id: "ra-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: raT0.session.name,
+      sets: [raMin - 1, raMin - 2, raMin - 1].map((reps) => ({ exercise: raX.exercise, set_type: "work", weight_kg: 50, reps })) });
+    await store.updateUser(raU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const raT1 = await (await app.request("/api/today", { headers: { "X-HB-User": raU } })).json();
+    const raRow = raT1.session.exercises.find((e) => e.exercise === raX.exercise);
+    const raExpect = Array.from({ length: raRow?.sets ?? 0 }, (_, k) => [raMin, raMin - 1, raMin][Math.min(k, 2)]);
+    ok("#rep-aim /api/today carries each set's aim — last time's reps + 1 at the held weight, never the range top",
+      raT1.session.name === raT0.session.name && raRow?.suggested_kg === 50 && raExpect.length > 0 && JSON.stringify(raRow?.rep_targets) === JSON.stringify(raExpect),
+      JSON.stringify({ kg: raRow?.suggested_kg, rep_targets: raRow?.rep_targets, expect: raExpect, note: raRow?.suggestion_note }));
+  }
+
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
   // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
   {

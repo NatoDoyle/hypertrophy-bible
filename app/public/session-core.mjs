@@ -283,6 +283,34 @@ export function nextSetHint(set, row) {
   return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: under ? min : max } : null;
 }
 
+// The top of a rep range ("6-10" → 10): the reps stepper's start when there is nothing better.
+export function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
+// The row's per-set rep aims (W289) when they're well-formed for THIS row's own range — whole numbers
+// from 1 to the top. A swapped-in lift keeps the SLOT's range (PRESCRIPTION_KEYS), so the aims the
+// server computed for its own range may not fit it: then there are none.
+export function validAim(row) {
+  const t = row?.rep_targets, top = topReps(row?.rep_range);
+  return Array.isArray(t) && t.length && t.every((r) => Number.isInteger(r) && r >= 1 && r <= top) ? t : null;
+}
+// The reps the stepper starts on for set k of a lift (W289, Burst 5 — owner: "150kg × 5,4,5 last
+// workout and now it is suggesting 150kg × 10,10,10"). Derived from the row and the BANKED count every
+// render, never stored, so a resume or a reload lands on the same number: today's aim for this set
+// while the weight is still the served one (`atServed`), else the last banked reps (from set 2 on —
+// the carry-over the stepper always had), else the top of the range.
+export function repSeed(row, k, { lastReps = null, atServed = true } = {}) {
+  const aim = atServed ? validAim(row) : null;
+  if (aim) return aim[Math.min(k, aim.length - 1)];
+  return k > 0 && Number.isInteger(lastReps) && lastReps >= 0 ? lastReps : topReps(row?.rep_range);
+}
+// The reps of the last banked WORK set of a lift (warm-ups and other lifts don't count), or null.
+export function lastWorkReps(logged, exercise) {
+  for (let i = (logged ?? []).length - 1; i >= 0; i--) {
+    const l = logged[i];
+    if (l?.exercise === exercise && (l.set_type ?? "work") === "work") return typeof l.reps === "number" ? l.reps : null;
+  }
+  return null;
+}
+
 // What the plan asked of each lift TODAY (W280), sent with the finished workout so the
 // engine and the read-out can tell a skipped or unfinished set from a full session: the
 // ORIGINAL set count (planned_sets survives a skip's shrink of `sets`), the range, the RIR

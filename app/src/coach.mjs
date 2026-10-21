@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repTargets, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -595,7 +595,14 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null) {
   const suggestion_note = suggested_kg != null && sug.suggested_kg != null && suggested_kg < sug.suggested_kg
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
     : sug.note;
-  return { rirBand, sets, sug, suggested_kg, suggestion_note };
+  // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
+  // deload ease), so the reps stepper starts on a number this set can hit — not the range's top.
+  const last = suggested_kg != null ? lastSetsForExercise(sessions, ex.exercise) : null;
+  const { min, max } = parseRange(ex.rep_range);
+  const nearOf = (b) => { const m = /(\d+)\s*-\s*(\d+)/.exec(b ?? ""); return m ? +m[1] : 1; };
+  const rep_targets = last ? repTargets(last.sets, { sets, weightKg: suggested_kg, min, max, near: nearOf(rirBand),
+    anchorNear: nearOf(last.target?.rir ?? ex.rir), addedLoad: byId.get(ex.exercise)?.equipment === "bodyweight" }) : null;
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
 }
 
 export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
@@ -833,6 +840,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // The reps above are the sets AT last_kg (the anchor). When the weight changed between
       // sets — the next-set hint, a ramp — every set as done: [[kg, reps], …] (Burst 1 review).
       last_sets: sug.last_sets ?? null,
+      // Each set's rep aim (W289) — the player's reps stepper starts here. Absent without history.
+      ...(served.rep_targets ? { rep_targets: served.rep_targets } : {}),
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory

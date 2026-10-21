@@ -496,6 +496,14 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
   assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
   assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
 });
+check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
+  assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
+  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: /g) ?? []).length, 2, "single lift AND station seed through repSeed");
+  assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
+  assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
+  assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
+  assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
+});
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {
   const fin = fnBody(appJs, "async function finish() {", 5000);
   const drop = fin.indexOf("// Accepted or safely queued — now it's safe to drop the in-progress copy.\n  clearSess();");

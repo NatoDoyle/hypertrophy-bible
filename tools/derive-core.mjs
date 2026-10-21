@@ -1335,6 +1335,36 @@ export function nextSetCapacity(reps, rir) {
   return (reps + r) * (100 - pct) / 100;
 }
 
+// Today's per-set rep AIM for a lift (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is
+// suggesting 150kg × 10,10,10"), from last session's work sets in order (set k reads set min(k, n−1),
+// so a weight changed mid-lift reads each set at its own load):
+//   - the same load (and the same position cost): beat it by a rep — double progression's "add a
+//     rep" — capped at the range top;
+//   - a moved load (a bump, an ease, a deload, an order change): the set's capacity (reps + RIR)
+//     carried to today's load by Epley, less today's band near edge. Unlogged effort reads as 0
+//     under the range (W279's reading) and as the anchor band's near edge in it;
+//   - added load on a bodyweight lift is not the whole load, so no Epley on it: last time's reps.
+// fromLoss/toLoss (W290) are the fractions of capacity the lift's position in the session cost then
+// and costs today. Clamped to [1, max]. Null when there's nothing to aim from.
+export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, addedLoad = false } = {}) {
+  const src = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
+  if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;
+  const out = [];
+  for (let k = 0; k < sets; k++) {
+    const s = src[Math.min(k, src.length - 1)];
+    const wk = s.weight_kg ?? 0;
+    let t;
+    if (wk === weightKg && fromLoss === toLoss) t = s.reps + 1;
+    else if (addedLoad || !(wk > 0) || !(weightKg > 0)) t = s.reps;
+    else {
+      const rho = typeof s.rir === "number" ? s.rir : s.reps < min ? 0 : anchorNear;
+      t = Math.round(30 * ((wk / weightKg) * (1 + (s.reps + rho) / (30 * (1 - fromLoss))) - 1) * (1 - toLoss) - near);
+    }
+    out.push(Math.max(1, Math.min(max, t)));
+  }
+  return out;
+}
+
 // Readiness relative to the user's OWN baseline (z-scores), not absolute values —
 // the correct way to use HRV/sleep. 0-100, higher = more recovered. Null if no data.
 export function readinessIndex(checkins) {

@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "/ui-helpers.mjs";
@@ -2040,7 +2040,6 @@ function startWeightDefault(e) {
 // one plate whenever the engine moves it, so a pounds user's 1 kg step is never swallowed by
 // plate rounding (session-core prefillInUnit) — else the first-time default.
 const startWeightDisp = (e) => prefillInUnit(e, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) ?? dispWeightFor(startWeightDefault(e), e.exercise);
-function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
 
 // The weight control. For a bodyweight move carrying no added load, a "0 kg"
 // stepper reads as broken to a novice ("do I type my bodyweight? is 0 wrong?"), so
@@ -2506,7 +2505,8 @@ function renderPlayer() {
   // sess.weights holds DISPLAY-unit values (stamped per-index in wUnits);
   // converted to kg only when logged.
   if (sess.weights[sess.i] == null) { sess.weights[sess.i] = startWeightDisp(e); sess.wUnits[sess.i] = unitFor(e.exercise); }
-  if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
+  // The reps start on THIS set's aim (W289) — derived from the row and the banked count, never stored.
+  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sess.weights[sess.i] === startWeightDisp(e) });
   // sess.eff is NEVER seeded — no answer means no rir on the logged set.
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
@@ -2521,6 +2521,8 @@ function renderPlayer() {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
+  // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
+  const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
   // the last WORK set of this lift banked this session — nothing stored, so a resume shows
   // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
@@ -2535,6 +2537,7 @@ function renderPlayer() {
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
+    ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2629,6 +2632,7 @@ function renderPlayer() {
   if ($("#use-hint")) $("#use-hint").onclick = () => {
     clearSetConfirm(); quitPending = false; // a new weight: the typo guard judges it afresh, like any stepper touch
     sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
+    sess.reps[sess.i] = hint.target_reps ?? sess.reps[sess.i]; // the reps that weight aims at (W288)
     saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
@@ -2643,6 +2647,7 @@ function renderPlayer() {
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
+    delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -2703,12 +2708,13 @@ function renderSupersetStation(L, P) {
   const memberBlock = (idx) => {
     const m = sess.ex[idx];
     if (sess.weights[idx] == null) { sess.weights[idx] = startWeightDisp(m); sess.wUnits[idx] = unitFor(m.exercise); }
-    if (sess.reps[idx] == null) sess.reps[idx] = topReps(m.rep_range);
+    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sess.weights[idx] === startWeightDisp(m) });
     // sess.eff is NEVER seeded — no answer means no rir on the logged set.
     const w = sess.weights[idx], reps = sess.reps[idx];
     return `<div class="card">
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
+      ${round === 0 && validAim(m) ? `<p class="muted" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${validAim(m).slice(0, m.sets).join(" · ")} reps</p>` : ""}
       ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
@@ -2783,6 +2789,7 @@ function renderSupersetStation(L, P) {
       const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
       sess.logged.push(loggedSet);
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
+      delete sess.reps[idx]; // …and the next round starts on its aim (W289)
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
