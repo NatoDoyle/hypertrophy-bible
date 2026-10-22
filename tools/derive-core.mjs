@@ -1350,22 +1350,29 @@ export function nextSetCapacity(reps, rir) {
 // the band the anchor session was served with (a taper, a block's first week — known from its stored
 // target, W280), the same load aims at last time's reps less that shift, with no push (Burst 5 review). Only last time's sets at or above the anchor weight (`floorKg`) set the aim: a ramp
 // logged as work sets is no evidence at today's load. fromLoss/toLoss (W290) are the fractions of
-// capacity the lift's position cost then and costs today. Clamped to [1, max]. Null when there's
-// nothing to aim from.
-export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, keepReps = false, floorKg = 0, bandShift = 0 } = {}) {
+// capacity the lift's position cost then and costs today: at the same load the aim keeps its "+1" and
+// gives back the position's cost in reps. A heavier set that failed the range (above `ceilKg`, the
+// anchor) is no evidence, just as it never anchors. Clamped to [1, max]. Null when there's nothing to
+// aim from.
+export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, keepReps = false, floorKg = 0, ceilKg = 0, bandShift = 0 } = {}) {
   const all = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
-  const atLoad = floorKg > 0 ? all.filter((s) => (s.weight_kg ?? 0) >= floorKg) : all;
-  const src = atLoad.length ? atLoad : all;
+  // A set that's no evidence at today's load (a ramp set under the floor, or a heavier set that failed the
+  // range) is read as the first set that is — keeping set k aligned with last time's set k.
+  const evidence = (s) => { const w = s.weight_kg ?? 0; return !(floorKg > 0) || (w >= floorKg && (!(ceilKg > 0) || w <= ceilKg || s.reps >= min)); };
+  const firstEvidence = all.find(evidence);
+  const src = firstEvidence ? all.map((s) => (evidence(s) ? s : firstEvidence)) : all;
   if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;
   const out = [];
   for (let k = 0; k < sets; k++) {
     const s = src[Math.min(k, src.length - 1)];
     const wk = s.weight_kg ?? 0;
     let t;
-    if (wk === weightKg && fromLoss === toLoss) t = bandShift > 0 ? s.reps - bandShift : s.reps + 1;
+    const rho = typeof s.rir === "number" ? s.rir : s.reps < min ? 0 : anchorNear;
+    const same = bandShift > 0 ? s.reps - bandShift : s.reps + 1;
+    if (wk === weightKg && fromLoss === toLoss) t = same;
     else if (keepReps || !(wk > 0) || !(weightKg > 0)) t = s.reps;
+    else if (wk === weightKg) t = Math.round(same - (s.reps + rho) * (1 - (1 - toLoss) / (1 - fromLoss)));
     else {
-      const rho = typeof s.rir === "number" ? s.rir : s.reps < min ? 0 : anchorNear;
       t = Math.round(30 * ((wk / weightKg) * (1 + (s.reps + rho) / (30 * (1 - fromLoss))) - 1) * (1 - toLoss) - near);
     }
     out.push(Math.max(1, Math.min(max, t)));

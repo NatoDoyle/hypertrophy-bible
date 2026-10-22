@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -329,7 +329,7 @@ function notifyInviteHtml() {
       <p class="muted">On iPhone, rest alerts and reminders come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>, and open the app from there.</p>
       <button class="btn ghost inline" id="inv-no">Got it</button></div>`;
   return `<div class="card" id="notify-invite"><b>🔔 Want a tap on the shoulder?</b>
-      <p class="muted">When your rest is up — even with your phone locked — and on your training days, if you haven't trained yet.</p>
+      <p class="muted">When your rest is up — even with your screen locked — and on your training days, if you haven't trained yet.</p>
       <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-weigh"> ⚖️ A morning weigh-in reminder too</label>
       <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-food"> 🍽️ An evening food-log reminder too</label>
       <button class="btn" id="inv-on">Turn on notifications</button>
@@ -2043,6 +2043,8 @@ function startWeightDefault(e) {
 // one plate whenever the engine moves it, so a pounds user's 1 kg step is never swallowed by
 // plate rounding (session-core prefillInUnit) — else the first-time default.
 const startWeightDisp = (e) => prefillInUnit(e, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) ?? dispWeightFor(startWeightDefault(e), e.exercise);
+// The step "still the served weight" is judged by: half the lift's own step (fix verification).
+const stepFor = (e) => servedStep(unitFor(e.exercise), e.inc_kg);
 
 // The weight control. For a bodyweight move carrying no added load, a "0 kg"
 // stepper reads as broken to a novice ("do I type my bodyweight? is 0 wrong?"), so
@@ -2509,7 +2511,7 @@ function renderPlayer() {
   // converted to kg only when logged.
   if (sess.weights[sess.i] == null) { sess.weights[sess.i] = startWeightDisp(e); sess.wUnits[sess.i] = unitFor(e.exercise); }
   // The reps start on THIS set's aim (W289) — derived from the row and the banked count, never stored.
-  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sameLoad(sess.weights[sess.i], startWeightDisp(e), wIncFor(e.exercise)) });
+  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sameLoad(sess.weights[sess.i], startWeightDisp(e), stepFor(e)) });
   // sess.eff is NEVER seeded — no answer means no rir on the logged set.
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
@@ -2533,7 +2535,8 @@ function renderPlayer() {
     ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
   // …judged against that set's own aim while the weight is still the served one (Burst 5 review): a set that
   // met an aim under the range is on plan, not a miss.
-  const prevAim = prevWork && sameLoad(sess.weights[sess.i], startWeightDisp(e), wIncFor(e.exercise)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
+  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
+  const prevAim = prevWork && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
   const hint = nextSetHint(prevWork, e, { aim: prevAim });
   // In the lift's display unit, always a real move (pounds round to 5-lb plates).
   const hintW = hint ? hintInUnit(hint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
@@ -2714,7 +2717,7 @@ function renderSupersetStation(L, P) {
   const memberBlock = (idx) => {
     const m = sess.ex[idx];
     if (sess.weights[idx] == null) { sess.weights[idx] = startWeightDisp(m); sess.wUnits[idx] = unitFor(m.exercise); }
-    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sameLoad(sess.weights[idx], startWeightDisp(m), wIncFor(m.exercise)) });
+    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sameLoad(sess.weights[idx], startWeightDisp(m), stepFor(m)) });
     // sess.eff is NEVER seeded — no answer means no rir on the logged set.
     const w = sess.weights[idx], reps = sess.reps[idx];
     return `<div class="card">
@@ -4413,7 +4416,7 @@ function remindersHtml(a) {
   const offer = deviceNotifyOffer();
   const on = pushOn();
   const rest = `<label class="row" style="border:0;padding:6px 0;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rest-alert" ${restAlertOn() ? "checked" : ""} style="margin-top:4px">
-      <span>🔔 <b>Rest's up</b><br><span class="muted" style="font-size:.85rem">${on ? "A chime in the app, and a notification if your phone is locked." : "A chime in the app when your rest is over."}</span></span></label>`;
+      <span>🔔 <b>Rest's up</b><br><span class="muted" style="font-size:.85rem">${on ? "A chime in the app, and a notification if your screen is locked." : "A chime in the app when your rest is over."}</span></span></label>`;
   const rem = a.device_reminders ?? {};
   const rows = REMINDER_ROWS.map((r) => {
     const set = rem[r.kind] ?? { on: false, time: "" };
@@ -4429,10 +4432,10 @@ function remindersHtml(a) {
         ${a.reminders_off ? `<p class="muted">All reminders are switched off below — turn them back on to get these. Rest alerts still work.</p>` : ""}
         <button class="btn ghost inline" id="pushbtn">Turn off notifications on this device</button>${msg}</div>`
     : offer === "enable"
-      ? `<div class="card"><p>Get a nudge when your rest is up — even with your phone locked — and reminders at the times you pick: your training days, a morning weigh-in, an evening food log.</p>
+      ? `<div class="card"><p>Get a nudge when your rest is up — even with your screen locked — and reminders at the times you pick: your training days, a morning weigh-in, an evening food log.</p>
           <button class="btn" id="pushbtn">Turn on notifications</button>${msg}${rest}</div>`
       : offer === "blocked"
-        ? `<div class="card"><p class="muted">Notifications are blocked for this app. To get rest alerts and reminders, allow notifications for it in your ${isIOS() ? "iPhone's Settings → Notifications" : "browser's site settings"}, then come back here.</p>${rest}</div>`
+        ? `<div class="card"><p class="muted">Notifications are blocked for this app. To get rest alerts and reminders, allow notifications for it in your ${isIOS() ? "Settings → Notifications" : "browser's site settings"}, then come back here.</p>${rest}</div>`
         : offer === "home-screen"
           ? `<div class="card"><p class="muted">Want a nudge when rest is up, and reminders at the times you pick? On iPhone they come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and turn notifications on here.</p>${rest}</div>`
           : `<div class="card">${rest}</div>`;

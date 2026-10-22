@@ -591,18 +591,22 @@ function orderShift(ex, last, sug, slot, byId, anchorNear) {
   // pounds user's 18.14 kg (40 lb) lighter on a fresher day, and a typed 32 kg heavier on a harder one.
   // A barbell never goes under the empty bar.
   const steps = Math.round((contextLoad(W, capAtW, fromLoss, toLoss) - W) / inc);
-  if (steps === 0) return { fromLoss, toLoss, kg: W, note: null }; // under half a step: the weight stays exactly as it was
-  let kg = Math.round((W + steps * inc) * 100) / 100;
-  if (byId.get(ex.exercise)?.equipment === "barbell") kg = Math.max(kg, Math.min(W, EMPTY_BAR_KG));
-  if (!(kg > 0) || kg === W) return { fromLoss, toLoss, kg: W, note: null };
   const harder = now.sets > then.sets;
   const muscles = listJoin((harder ? now : then).muscles.map(plainMuscle));
+  const where = `This time it comes after ${setsWord(now.count)} that also work your ${muscles} (last time it came ${then.count ? `after ${setsWord(then.count)}` : "first"})`;
+  // When the weight can't move (under half a step, or the bar) but a harder position still lowers the aim, the
+  // reason says so — only for a held weight; a bump or an ease keeps its own reason (fix verification).
+  const stays = (kgNow) => ({ fromLoss, toLoss, kg: W, note: harder && W === La ? `${where} — the same ${kgNow} kg, with today's aim allowing for that.` : null });
+  if (steps === 0) return stays(W); // under half a step: the weight stays exactly as it was
+  let kg = Math.round((W + steps * inc) * 100) / 100;
+  if (byId.get(ex.exercise)?.equipment === "barbell") kg = Math.max(kg, Math.min(W, EMPTY_BAR_KG));
+  if (!(kg > 0) || kg === W) return stays(W);
   const earned = W > La && kg <= La ? " — you'd earned a step up, but this position cancels it"
     : W > La ? " — the step up you'd earned, adjusted for the order"
     : W < La && kg < La ? " — the lighter weight your last session called for, adjusted for the order" : "";
   // "This time … (last time …)" reads right on Today AND in the read-out's "next time" (Burst 5 review).
   const note = harder
-    ? `This time it comes after ${setsWord(now.count)} that also work your ${muscles} (last time it came ${then.count ? `after ${setsWord(then.count)}` : "first"}), so I've made it ${kg} kg${earned}.`
+    ? `${where}, so I've made it ${kg} kg${earned}.`
     : `This time it comes ${now.count ? `after only ${setsWord(now.count)} that also work your ${muscles}` : "first"} (last time it came after ${setsWord(then.count)} that also work your ${muscles}), so I've made it ${kg} kg${earned}.`;
   return { fromLoss, toLoss, kg, note };
 }
@@ -650,18 +654,25 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // The reason travels to the set screen (Burst 1 review), so it must describe the weight
   // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
   // would contradict the pre-filled number; when the order moved it, the order says why.
+  // A band further from failure than the one the anchor was SERVED with (its stored target) aims lower.
+  const bandShift = last?.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0;
+  const anchorKg = last ? anchorOf(last.sets, ownMin(last, ex.rep_range)).weight : null;
+  const fewer = bandShift === 1 ? "a rep" : `${bandShift} reps`;
   const suggestion_note = deloadKg != null && deloadKg < base
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
-    : order?.note ?? sug.note;
+    : order?.note
+      ?? (bandShift > 0 && suggested_kg === anchorKg && sug.layoff_days == null
+        // the aim drops below last time's reps, so the reason must not say "add a rep or two" (fix verification)
+        ? (taper ? `Taper — same weight, more left in the tank (${rirBand.replace("-", "–")} in reserve), so aim for ${fewer} fewer per set than last time.`
+          : `Same weight as last time — this week asks for ${rirBand.replace("-", "–")} reps in reserve (${bandShift} more than last time), so aim for ${fewer} fewer per set.`)
+        : sug.note);
   // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
   // order rule and the deload ease), so the reps stepper starts on a number this set can hit.
   // A comeback's eased row keeps last time's reps (the ease is the point), and only sets at or above the
   // anchor weight set the aim (a ramp logged as work sets is no evidence at today's load) — Burst 5 review.
   const rep_targets = last ? repTargets(last.sets, { sets, weightKg: suggested_kg, min, max, near: nearOf(rirBand), anchorNear,
-    fromLoss: order?.fromLoss ?? 0, toLoss: order?.toLoss ?? 0, floorKg: anchorOf(last.sets, ownMin(last, ex.rep_range)).weight,
-    keepReps: byId.get(ex.exercise)?.equipment === "bodyweight" || sug.layoff_days != null,
-    // a band further from failure than the one the anchor was SERVED with (its stored target) aims lower
-    bandShift: last.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0 }) : null;
+    fromLoss: order?.fromLoss ?? 0, toLoss: order?.toLoss ?? 0, floorKg: Math.min(suggested_kg, anchorKg), ceilKg: anchorKg,
+    keepReps: byId.get(ex.exercise)?.equipment === "bodyweight" || sug.layoff_days != null, bandShift }) : null;
   return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
 }
 

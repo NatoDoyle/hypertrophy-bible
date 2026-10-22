@@ -556,7 +556,9 @@ export function createApp(store, config = {}) {
     sweepDanglingSupersets(program.sessions); // X's partner no longer has one
     // stored_program: the order rule (W290) reads the anchor's day from the plan as stored, where Y still
     // sits in its own day; today's position comes from this patched copy (Burst 5 review).
-    return buildTodayFor({ ...user, program, stored_program: user.program }, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null;
+    // Only when Y took X's own slot: an appended Y (X was itself a today-swap) has no known position, so the
+    // order rule must not read it as "after every other lift" (fix verification).
+    return buildTodayFor({ ...user, program, ...(placed ? { stored_program: user.program } : {}) }, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null;
   };
   app.post("/api/exercise/cant-do", async (c) => {
     const b = await c.req.json().catch(() => ({}));

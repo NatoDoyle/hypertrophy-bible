@@ -275,7 +275,9 @@ export function nextSetHint(set, row, { aim = null } = {}) {
   // A set that met its own aim (W289) is on plan, even under the range: 150×5,4,5 aims 5 on set 2 of a
   // 6-10 range, and doing 5 there is no miss (Burst 5 review). The player passes the aim only while the
   // weight is the served one.
-  const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim);
+  // …at the effort the aim assumed: met at failure under a wider band (an aim of 7 at 2-3 in reserve), it is
+  // still a miss (fix verification).
+  const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near));
   const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
   if (!under && !over) return null;
   const cap = nextSetCapacity(set.reps, rir);
@@ -286,6 +288,7 @@ export function nextSetHint(set, row, { aim = null } = {}) {
   const rounded = Math.round(kg * 4) / 4;
   // The reps the same model predicts at the hinted weight, in the range (Burst 5 review) — what "Use X kg" fills.
   const predicted = Math.round(30 * (w * (1 + cap / 30) / rounded - 1) - near);
+  if (!under && predicted < min) return null; // even one step up would land under the range (10 kg → 12.5 is +25%): no "heavier"
   return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(min, Math.min(max, predicted)) } : null;
 }
 
@@ -308,6 +311,9 @@ export function repSeed(row, k, { lastReps = null, atServed = true } = {}) {
   if (aim) return aim[Math.min(k, aim.length - 1)];
   return k > 0 && Number.isInteger(lastReps) && lastReps >= 0 ? lastReps : topReps(row?.rep_range);
 }
+// The step "the same load" is judged by (fix verification): half the lift's OWN step — 1 kg on a dumbbell
+// isolation, 2.5 kg otherwise — in kg; a 5 lb plate in pounds.
+export function servedStep(unit, incKg) { return unit === "lb" ? 5 : Math.min(2.5, incKg > 0 ? incKg : 2.5); }
 // The same load on the stepper (Burst 5 review): within half a display step, so a kg/lb toggle (330 lb →
 // 149.75 kg) or the one-plate nudge still reads as the served weight; one step off is a moved weight.
 export function sameLoad(a, b, step) {

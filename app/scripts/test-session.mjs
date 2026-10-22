@@ -807,6 +807,31 @@ check("#rep-aim-hint a set that meets its own aim is never called a miss; a set 
   assert.strictEqual(nextSetHint(w(150, 5), row)?.kind, "lighter", "no aim (the weight was moved): judged on the range, as before");
   assert.strictEqual(nextSetHint(w(150, 12), row, { aim: 6 })?.kind, "heavier", "the aim never hides a set far over the range");
 });
+// --- Burst 5 fix verification (R12): the aim exempts a set only at the effort the aim assumed — an aim of 7 under
+// a 2-3 band met at RIR 0 is 2-3 reps of capacity short: still a miss.
+check("#rep-aim-hint an aim met at the effort it assumed is on plan; met at failure under a wider band it is still a miss", () => {
+  const row = { rep_range: "8-12", rir: "2-3", inc_kg: 2.5, suggested_kg: 100, rep_targets: [7, 7] };
+  assert.strictEqual(nextSetHint(w(100, 7), row, { aim: 7 }), null, "effort unlogged: trust the aim");
+  assert.strictEqual(nextSetHint(w(100, 7, { rir: 2 }), row, { aim: 7 }), null, "at the band's near edge: on plan");
+  assert.strictEqual(nextSetHint(w(100, 7, { rir: 0 }), row, { aim: 7 })?.kind, "lighter", "at failure: the weight is too heavy for this week's band");
+});
+// --- (C11, the guard) the heavier hint stays quiet when even one step up would land under the range: 10 kg × 6
+// at RIR 4 → 12.5 kg is +25%, where the model predicts about 1 rep.
+check("#next-set the heavier hint never offers a step the model says would land under the range", () => {
+  const row610 = { rep_range: "6-10", rir: "1-2", inc_kg: 2.5 };
+  assert.strictEqual(nextSetHint(w(10, 6, { rir: 4 }), row610), null, "12.5 kg would predict ~1 rep");
+  assert.strictEqual(nextSetHint(w(60, 12), row610)?.kg, 62.5, "a step that still lands in the range is offered");
+});
+// --- (R4) the served-weight tolerance is half the lift's OWN step: 1 kg on a dumbbell isolation in kg, a 5 lb plate in lb.
+check("#rep-seed servedStep: half the lift's own step decides 'the same load'", () => {
+  assert.strictEqual(playerCore.servedStep("kg", 1), 1, "a dumbbell isolation moves in 1 kg");
+  assert.strictEqual(playerCore.servedStep("kg", 2.5), 2.5);
+  assert.strictEqual(playerCore.servedStep("kg", undefined), 2.5);
+  assert.strictEqual(playerCore.servedStep("lb", 1), 5, "pounds move in 5 lb plates");
+  assert.strictEqual(playerCore.sameLoad(9, 8, playerCore.servedStep("kg", 1)), false, "8 → 9 kg on a 1 kg lift is a move");
+  assert.strictEqual(playerCore.sameLoad(149.75, 150, playerCore.servedStep("kg", 2.5)), true, "a unit toggle is not");
+});
+
 // --- Burst 5 review (C2): "still at the served weight" survives a kg/lb toggle (330 lb → 149.75 kg) and the
 // one-plate nudge; one stepper step off is a moved weight.
 check("#rep-seed sameLoad: within half a display step is the same load", () => {

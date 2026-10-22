@@ -514,10 +514,13 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
-  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), wIncFor\((e|m)\.exercise\)\) \}\);/g) ?? []).length, 2,
+  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
     "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
   assert.match(appJs, /const hint = nextSetHint\(prevWork, e, \{ aim: prevAim \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1)");
-  assert.match(appJs, /const prevAim = prevWork && sameLoad\(sess\.weights\[sess\.i\], startWeightDisp\(e\), wIncFor\(e\.exercise\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/);
+  assert.match(appJs, /const prevAim = prevWork && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/,
+    "the aim applies by the weight the judged set was BANKED at, not what the stepper holds now (fix verification R1)");
+  assert.match(appJs, /const stepFor = \(e\) => servedStep\(unitFor\(e\.exercise\), e\.inc_kg\);/, "the lift's own step (fix verification R4)");
+  assert.doesNotMatch(appJs, /phone locked|phone is locked|iPhone's Settings/, "device-neutral notification copy (fix verification R6/R7)");
   assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
   assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
