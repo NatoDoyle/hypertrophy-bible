@@ -1343,19 +1343,27 @@ export function nextSetCapacity(reps, rir) {
 //   - a moved load (a bump, an ease, a deload, an order change): the set's capacity (reps + RIR)
 //     carried to today's load by Epley, less today's band near edge. Unlogged effort reads as 0
 //     under the range (W279's reading) and as the anchor band's near edge in it;
-//   - added load on a bodyweight lift is not the whole load, so no Epley on it: last time's reps.
-// fromLoss/toLoss (W290) are the fractions of capacity the lift's position in the session cost then
-// and costs today. Clamped to [1, max]. Null when there's nothing to aim from.
-export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, addedLoad = false } = {}) {
-  const src = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
+//   - `keepReps` — added load on a bodyweight lift (not the whole load, so no Epley on it), or a
+//     comeback's eased row (the ease IS the point; Epley would convert it back into reps): last
+//     time's reps.
+// The "+1" is for the SAME effort: when today's band sits `bandShift` reps further from failure than
+// the band the anchor session was served with (a taper, a block's first week — known from its stored
+// target, W280), the same load aims at last time's reps less that shift, with no push (Burst 5 review). Only last time's sets at or above the anchor weight (`floorKg`) set the aim: a ramp
+// logged as work sets is no evidence at today's load. fromLoss/toLoss (W290) are the fractions of
+// capacity the lift's position cost then and costs today. Clamped to [1, max]. Null when there's
+// nothing to aim from.
+export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, keepReps = false, floorKg = 0, bandShift = 0 } = {}) {
+  const all = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
+  const atLoad = floorKg > 0 ? all.filter((s) => (s.weight_kg ?? 0) >= floorKg) : all;
+  const src = atLoad.length ? atLoad : all;
   if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;
   const out = [];
   for (let k = 0; k < sets; k++) {
     const s = src[Math.min(k, src.length - 1)];
     const wk = s.weight_kg ?? 0;
     let t;
-    if (wk === weightKg && fromLoss === toLoss) t = s.reps + 1;
-    else if (addedLoad || !(wk > 0) || !(weightKg > 0)) t = s.reps;
+    if (wk === weightKg && fromLoss === toLoss) t = bandShift > 0 ? s.reps - bandShift : s.reps + 1;
+    else if (keepReps || !(wk > 0) || !(weightKg > 0)) t = s.reps;
     else {
       const rho = typeof s.rir === "number" ? s.rir : s.reps < min ? 0 : anchorNear;
       t = Math.round(30 * ((wk / weightKg) * (1 + (s.reps + rho) / (30 * (1 - fromLoss))) - 1) * (1 - toLoss) - near);

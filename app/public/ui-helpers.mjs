@@ -427,10 +427,14 @@ export function notifyOutcome(outcome, { ios = false, standalone = false, activa
   if (outcome === "not-asked") {
     const tap = activation === true ? "✓" : activation === false ? "✗" : "?";
     const where = ios ? `Home-Screen app ${standalone ? "✓" : "✗"}` : standalone ? "installed app" : "browser tab";
-    return { mark: false, text: `Your phone didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ${tap} · ${where})` };
+    // On iOS the prompt has only Allow / Don't Allow, so a "default" afterwards means it never showed; elsewhere a
+    // closed prompt is the usual cause (Burst 5 review). "Device": isIOS() includes iPads.
+    return { mark: false, text: ios
+      ? `Your device didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ${tap} · ${where})`
+      : `Nothing was decided, so nothing is switched off — tap the button again when you're ready. (Detail: tap counted ${tap} · ${where})` };
   }
   if (outcome === "blocked") return { mark: true, text: ios
-    ? "Notifications are switched off for this app. In iPhone Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button."
+    ? "Notifications are switched off for this app. In Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button."
     : "Notifications are blocked for this site. Allow them in your browser's site settings, then come back and tap the button." };
   if (outcome === "unsupported") return { mark: false, text: "This browser can't show notifications." };
   return { mark: false, text: "Notifications aren't available right now." };

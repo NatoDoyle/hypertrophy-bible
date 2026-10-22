@@ -514,7 +514,10 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
-  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: /g) ?? []).length, 2, "single lift AND station seed through repSeed");
+  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), wIncFor\((e|m)\.exercise\)\) \}\);/g) ?? []).length, 2,
+    "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
+  assert.match(appJs, /const hint = nextSetHint\(prevWork, e, \{ aim: prevAim \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1)");
+  assert.match(appJs, /const prevAim = prevWork && sameLoad\(sess\.weights\[sess\.i\], startWeightDisp\(e\), wIncFor\(e\.exercise\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/);
   assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
   assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
@@ -608,13 +611,16 @@ check("permissionOutcome (W291): granted is on; still 'default' afterwards means
 check("notifyOutcome (W291): each outcome says what actually happened — and only a real 'no' points at Settings", () => {
   const notAsked = uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: true, activation: true });
   assert.equal(notAsked.mark, false, "the invite stays: nothing was answered");
-  assert.equal(notAsked.text, "Your phone didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ✓ · Home-Screen app ✓)");
+  assert.equal(notAsked.text, "Your device didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ✓ · Home-Screen app ✓)",
+    "an iPad is iOS too: 'device', not 'phone' (Burst 5 review C13)");
   assert.doesNotMatch(notAsked.text, /Settings/);
   assert.match(uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: false, activation: false }).text, /\(Detail: tap counted ✗ · Home-Screen app ✗\)$/);
-  assert.match(uiHelpers.notifyOutcome("not-asked", { ios: false, standalone: false, activation: null }).text, /\(Detail: tap counted \? · browser tab\)$/);
+  const elsewhere = uiHelpers.notifyOutcome("not-asked", { ios: false, standalone: false, activation: null }).text;
+  assert.equal(elsewhere, "Nothing was decided, so nothing is switched off — tap the button again when you're ready. (Detail: tap counted ? · browser tab)",
+    "off iOS, a closed prompt is the usual cause: never claim it didn't show (Burst 5 review C12)");
   const blockedIos = uiHelpers.notifyOutcome("blocked", { ios: true, standalone: true });
   assert.equal(blockedIos.mark, true);
-  assert.equal(blockedIos.text, "Notifications are switched off for this app. In iPhone Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button.");
+  assert.equal(blockedIos.text, "Notifications are switched off for this app. In Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button.");
   assert.match(uiHelpers.notifyOutcome("blocked", { ios: false }).text, /browser's site settings/);
   assert.equal(uiHelpers.notifyOutcome("unavailable", {}).text, "Notifications aren't available right now.");
   assert.equal(uiHelpers.notifyOutcome("unavailable", {}).mark, false);

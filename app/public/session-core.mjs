@@ -263,7 +263,7 @@ export function nextSetCapacity(reps, rir) {
 // what the next set loses (nextSetCapacity) — 70×5 at failure on 6-10 gives 62.5, not 65.
 // Advice only: the player offers it, the user decides. Planned-easy (deload/eased), warm-up
 // and bodyweight sets never hint. `target_reps` is the rep count the weight aims at.
-export function nextSetHint(set, row) {
+export function nextSetHint(set, row, { aim = null } = {}) {
   if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
   if (!range) return null;
@@ -272,15 +272,21 @@ export function nextSetHint(set, row) {
   const near = band ? +band[1] : 1, top = band ? +band[2] : 2;
   const inc = row?.inc_kg > 0 ? row.inc_kg : 2.5;
   const w = set.weight_kg, rir = typeof set.rir === "number" ? set.rir : null;
-  const under = set.reps < min && (rir == null || rir <= 1);
+  // A set that met its own aim (W289) is on plan, even under the range: 150×5,4,5 aims 5 on set 2 of a
+  // 6-10 range, and doing 5 there is no miss (Burst 5 review). The player passes the aim only while the
+  // weight is the served one.
+  const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim);
   const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
   if (!under && !over) return null;
-  const floored = Math.floor(loadForReps(w, nextSetCapacity(set.reps, rir), 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const cap = nextSetCapacity(set.reps, rir);
+  const floored = Math.floor(loadForReps(w, cap, 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: under ? min : max } : null;
+  // The reps the same model predicts at the hinted weight, in the range (Burst 5 review) — what "Use X kg" fills.
+  const predicted = Math.round(30 * (w * (1 + cap / 30) / rounded - 1) - near);
+  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(min, Math.min(max, predicted)) } : null;
 }
 
 // The top of a rep range ("6-10" → 10): the reps stepper's start when there is nothing better.
@@ -301,6 +307,12 @@ export function repSeed(row, k, { lastReps = null, atServed = true } = {}) {
   const aim = atServed ? validAim(row) : null;
   if (aim) return aim[Math.min(k, aim.length - 1)];
   return k > 0 && Number.isInteger(lastReps) && lastReps >= 0 ? lastReps : topReps(row?.rep_range);
+}
+// The same load on the stepper (Burst 5 review): within half a display step, so a kg/lb toggle (330 lb →
+// 149.75 kg) or the one-plate nudge still reads as the served weight; one step off is a moved weight.
+export function sameLoad(a, b, step) {
+  const x = Number(a), y = Number(b);
+  return a != null && b != null && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) < step / 2;
 }
 // The reps of the last banked WORK set of a lift (warm-ups and other lifts don't count), or null.
 export function lastWorkReps(logged, exercise) {

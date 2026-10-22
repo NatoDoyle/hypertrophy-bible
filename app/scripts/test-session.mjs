@@ -767,17 +767,19 @@ check("#fatigue the owner's case: 70 kg × 5 at failure on 6-10 / 1-2 → 62.5 k
   const row610 = { rep_range: "6-10", rir: "1-2", inc_kg: 2.5 };
   // 70·(1 + 4/30)/(1 + 7/30) = 64.32 → 62.5. The fresh-set formula gave 66.2 → 65, which after a failure
   // set leaves ~6.7 reps in the tank — 6 reps would land under the 1-2 band.
-  assert.deepStrictEqual(nextSetHint(w(70, 5, { rir: 0 }), row610), { kind: "lighter", kg: 62.5, from_kg: 70, reps: 5, min: 6, max: 10, rir: 0, band: "1-2", target_reps: 6 });
+  assert.deepStrictEqual(nextSetHint(w(70, 5, { rir: 0 }), row610), { kind: "lighter", kg: 62.5, from_kg: 70, reps: 5, min: 6, max: 10, rir: 0, band: "1-2", target_reps: 7 },
+    "target_reps is what the same model predicts at 62.5: 30·(70·(1 + 4/30)/62.5 − 1) − 1 = 7.1 → 7");
   assert.strictEqual(nextSetHint(w(70, 5), row610).kg, 62.5, "effort unlogged: the same");
   assert.strictEqual(nextSetHint(w(70, 5, { rir: 0 }), { ...row610, inc_kg: 1 }).kg, 64, "in a lift's 1 kg steps");
 });
 check("#next-set a set UNDER the range near failure → a lighter next set that lands in it (100×6 on 8-12 → 87.5)", () => {
   // 100·(1 + 4.8/30)/(1 + 9/30) = 89.2 → 87.5 (was 90 before the fatigue allowance, W288).
-  assert.deepStrictEqual(nextSetHint(w(100, 6), row812), { kind: "lighter", kg: 87.5, from_kg: 100, reps: 6, min: 8, max: 12, rir: null, band: "1-3", target_reps: 8 });
+  assert.deepStrictEqual(nextSetHint(w(100, 6), row812), { kind: "lighter", kg: 87.5, from_kg: 100, reps: 6, min: 8, max: 12, rir: null, band: "1-3", target_reps: 9 });
   assert.strictEqual(nextSetHint(w(100, 6, { rir: 1 }), row812).kg, 90, "1 in reserve means more capacity (7 · 0.8 = 5.6 → 91.3) → a smaller ease");
 });
 check("#next-set a set well OVER the range, or far easier than the band → a heavier next set", () => {
-  assert.deepStrictEqual(nextSetHint(w(40, 15), row812), { kind: "heavier", kg: 42.5, from_kg: 40, reps: 15, min: 8, max: 12, rir: null, band: "1-3", target_reps: 12 });
+  assert.deepStrictEqual(nextSetHint(w(40, 15), row812), { kind: "heavier", kg: 42.5, from_kg: 40, reps: 15, min: 8, max: 12, rir: null, band: "1-3", target_reps: 9 },
+    "the model predicts 9 at 42.5 after a 15-rep set, not the range top (Burst 5 review C11)");
   assert.strictEqual(nextSetHint(w(40, 10, { rir: 5 }), row812).kind, "heavier", "RIR 5 against a 1-3 band");
   assert.strictEqual(nextSetHint(w(40, 13), row812), null, "one rep over the top: on target enough (the next session adds load)");
 });
@@ -792,6 +794,28 @@ check("#next-set no hint when on target, stopped early, a warm-up, planned-easy,
 check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±20%", () => {
   assert.strictEqual(nextSetHint(w(10, 8), { rep_range: "12-20", rir: "1-3", inc_kg: 1 }).kg, 8);
   assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
+});
+
+// --- Burst 5 review (C1): an aim below the range is still an aim. 150×5,4,5 held at 150 aims 6 · 5 · 6 on a
+// 6-10 range; a set-2 that meets its aim of 5 must not be called "under the range — go lighter". The player
+// passes the banked set's own aim when the weight is still the served one; a real miss still hints.
+check("#rep-aim-hint a set that meets its own aim is never called a miss; a set under its aim still is", () => {
+  const row = { rep_range: "6-10", rir: "1-2", inc_kg: 2.5, suggested_kg: 150, rep_targets: [6, 5, 6] };
+  assert.strictEqual(nextSetHint(w(150, 5), row, { aim: 5 }), null, "the aim was 5 and the set did 5");
+  assert.strictEqual(nextSetHint(w(150, 5, { rir: 1 }), row, { aim: 5 }), null);
+  assert.strictEqual(nextSetHint(w(150, 4), row, { aim: 5 })?.kind, "lighter", "4 against an aim of 5 is a real miss");
+  assert.strictEqual(nextSetHint(w(150, 5), row)?.kind, "lighter", "no aim (the weight was moved): judged on the range, as before");
+  assert.strictEqual(nextSetHint(w(150, 12), row, { aim: 6 })?.kind, "heavier", "the aim never hides a set far over the range");
+});
+// --- Burst 5 review (C2): "still at the served weight" survives a kg/lb toggle (330 lb → 149.75 kg) and the
+// one-plate nudge; one stepper step off is a moved weight.
+check("#rep-seed sameLoad: within half a display step is the same load", () => {
+  assert.strictEqual(playerCore.sameLoad(149.75, 150, 2.5), true, "330 lb toggled to kg");
+  assert.strictEqual(playerCore.sameLoad(147.5, 150, 2.5), false, "one step down");
+  assert.strictEqual(playerCore.sameLoad(330, 330, 5), true);
+  assert.strictEqual(playerCore.sameLoad(325, 330, 5), false);
+  assert.strictEqual(playerCore.sameLoad("150", 150, 2.5), true, "a typed value is a string");
+  assert.strictEqual(playerCore.sameLoad(null, 150, 2.5), false);
 });
 
 // --- #rep-seed (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is suggesting 150kg × 10,10,10").

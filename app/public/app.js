@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2509,7 +2509,7 @@ function renderPlayer() {
   // converted to kg only when logged.
   if (sess.weights[sess.i] == null) { sess.weights[sess.i] = startWeightDisp(e); sess.wUnits[sess.i] = unitFor(e.exercise); }
   // The reps start on THIS set's aim (W289) — derived from the row and the banked count, never stored.
-  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sess.weights[sess.i] === startWeightDisp(e) });
+  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sameLoad(sess.weights[sess.i], startWeightDisp(e), wIncFor(e.exercise)) });
   // sess.eff is NEVER seeded — no answer means no rir on the logged set.
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
@@ -2531,7 +2531,10 @@ function renderPlayer() {
   // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
   const prevWork = sess.set > 0 && !sess.deload && !e.eased
     ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
-  const hint = nextSetHint(prevWork, e);
+  // …judged against that set's own aim while the weight is still the served one (Burst 5 review): a set that
+  // met an aim under the range is on plan, not a miss.
+  const prevAim = prevWork && sameLoad(sess.weights[sess.i], startWeightDisp(e), wIncFor(e.exercise)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
+  const hint = nextSetHint(prevWork, e, { aim: prevAim });
   // In the lift's display unit, always a real move (pounds round to 5-lb plates).
   const hintW = hint ? hintInUnit(hint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
   const hc = hint && hintW != null ? hintCopy(hint, { setNo: sess.set, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
@@ -2711,7 +2714,7 @@ function renderSupersetStation(L, P) {
   const memberBlock = (idx) => {
     const m = sess.ex[idx];
     if (sess.weights[idx] == null) { sess.weights[idx] = startWeightDisp(m); sess.wUnits[idx] = unitFor(m.exercise); }
-    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sess.weights[idx] === startWeightDisp(m) });
+    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sameLoad(sess.weights[idx], startWeightDisp(m), wIncFor(m.exercise)) });
     // sess.eff is NEVER seeded — no answer means no rir on the logged set.
     const w = sess.weights[idx], reps = sess.reps[idx];
     return `<div class="card">
