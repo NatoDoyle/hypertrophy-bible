@@ -1302,6 +1302,13 @@ These are real failures from previous iterations. Each is now a standing check.
    path classifies from the state read back after the call, not from the call's return alone, and
    only a real "no" points at Settings.
 
+98. **Two rules that judge the same set must agree on what "on target" means.** W289's aim could sit
+   under the range (150×5,4,5 aims 5 on set 2 of 6–10), and W279b's next-set hint, which judges by
+   the range, then called the set that met its aim a miss and offered 12.5 kg less. The review's
+   player lens found it, not a test: each wave's tests checked its own rule. → **Standing rule:**
+   when a new prescription can sit outside an older rule's frame, every older rule that judges the
+   same set reads the new prescription, and a test pins the pair.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1361,7 +1368,9 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      efetch abstracts for the claims). The 2012 review's abstract was read before its claim
      was written.
    - **Tests:**
-     - Suites: coach 146, routes 580, session-core 107, ui-helpers 68.
+     - Suites after the review fixes: coach 170 (its summary now prints last, so every check counts —
+       W250's check and this burst's had run uncounted after it), routes 582, session-core 109,
+       ui-helpers 68.
      - Every new check was observed red before its fix. 17 lesson-54 code tampers each
        turned their check red: 2 in W288, 6 in W289, 4 in W290, 5 in W291.
      - Real browser: 19/19 checks against a scratch server with a throwaway store (the
@@ -1369,6 +1378,15 @@ and every confirmed finding was re-verified inline by the main loop before fixin
        bank) turned exactly the two set-2 checks red.
      - Walkthrough slips: two in my own script (a wave-scaled set count, a "Loading…" slot),
        each fixed in the script, not the app.
+   - **The branch review (ultracode, after a usage-limit stop killed the single reviewer).** One
+     workflow: 6 diff-scoped finder lenses, a reproducer and a refuter per finding, then a
+     completeness critic. 47 agents, ≈3.6M subagent tokens — over rule 4's fan-out caps, by the
+     owner's ultracode opt-in. 20 candidates confirmed, none refuted, all re-verified inline as
+     RED tests before any fix. 19 fixed; 1 ruled (a same-day reorder is invisible for one session,
+     the plan-based design's known cost). Two fixes of my own regressed on the first run: the
+     band-shift fix read an unwaved fallback band, and the delta rounding re-rounded a zero move.
+     Both were caught by the suites before commit. One fix tamper survived and was strengthened
+     with a full-step case (lesson 54).
    - **Not run:**
      - The Daytona gate (no DAYTONA_API_KEY).
      - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when

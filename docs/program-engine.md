@@ -62,7 +62,11 @@ set (Simão et al. 2005; review 2012 — [exercise order](../content/01-training
 Grade B for the acute effect). Before a lift, each earlier lift of the planned day counts its sets ×1
 when its primary muscle is this lift's primary, ×0.5 for a primary↔secondary overlap. Each weighted
 set costs **5%** of the lift's rep capacity, at most **25%**, and a difference under **2** weighted
-sets is ignored — engine estimates, not findings. Both positions come from the plan with its planned
+sets — or two positions that cost the same (both at the cap) — is ignored. Engine estimates, not
+findings. The weight moves from its own grid by whole steps: never the wrong way, never at all under
+half a step, never under the empty bar for a barbell lift. A lift swapped in for today reads its anchor
+from the stored plan. The reason reads "This time it comes after… (last time…)", so it is right on
+Today and in the read-out's "next time" (Burst 5 review). Both positions come from the plan with its planned
 sets, so a stable slot never moves, a deferred lift never drifts and the wave's set ramp never nudges
 a plate. The capacity converted is the one **at the base rule's weight** in the anchor's position (from
 the anchor's e1RM), so an earned step up and a position change never compound; rounding to the
@@ -74,16 +78,24 @@ moves weights in advanced plans, hand-built plans, swaps and first-time estimate
 **Each set's aim (W289).** The reps stepper starts on a per-set aim, from last session's sets in order:
 at the same load, last time's reps **+ 1**, capped at the top of the range (150×5,4,5 → 6 · 5 · 6); at a
 moved load (a bump, an ease, a deload, the order rule), each set's capacity (reps + RIR) carried to
-today's load by Epley, less the band's near edge. It is derived from the row and the banked count on
-every render, never stored, so a resume lands on the same number; once you move the weight off the
-served one, the stepper carries your last banked reps instead.
+today's load by Epley, less the band's near edge. The "+1" is for the same effort: when today's band
+sits further from failure than the band last time's session was served with (a taper, a block's first
+week — its stored target), the aim is last time's reps less that shift. A comeback's eased row keeps
+last time's reps (the ease is the point), and only last time's sets at or above the anchor weight count
+(a ramp logged as work sets doesn't drag the aim down) — Burst 5 review. The aim is derived from the row
+and the banked count on every render, never stored, so a resume lands on the same number; once you move
+the weight off the served one (by half a stepper step or more — a kg/lb toggle doesn't count), the
+stepper carries your last banked reps instead.
 
 **The next set allows for fatigue (W288).** The mid-workout "more appropriate weight" carries the banked
 set's capacity to the next set **less what the next set loses**: ~20% after a set ending at ≤ 1 RIR (or
-unlogged), ~10% at 2–3, none from 4 (engine estimates grounded in Richmond & Godard 2004 and Willardson
-& Burkett 2005/2006 — [rest periods](../content/01-training-variables/rest-periods.md), Grade B). 70×5 at
-failure on 6–10 / 1–2 now says 62.5 kg; the fresh-set formula said 65, which after a failure set leaves
-~6.7 reps in the tank.
+unlogged), ~10% at 2–3, none from 4. These are engine estimates. The cited studies (Richmond & Godard
+2004; Willardson & Burkett 2005/2006 — [rest periods](../content/01-training-variables/rest-periods.md),
+Grade B for "reps fall on the next set") took every set to failure, so the 2–3 and 4+ tiers are
+extrapolations. 70×5 at failure on 6–10 / 1–2 now says 62.5 kg; the fresh-set formula said 65, which after
+a failure set leaves ~6.7 reps in the tank. "Use X kg" fills the reps the same model predicts at that
+weight, kept in the range (7 there). A set that met its own aim (W289) is never called a miss, even when
+the aim sits under the range (Burst 5 review).
 
 Details that matter: the anchor is the **heaviest weight with a set that reached the bottom of the
 range** that session was done in (set 1's weight when none did), and reps/RIR are judged **only over
