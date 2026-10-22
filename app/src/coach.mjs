@@ -247,8 +247,9 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     }
     return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
-  return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };
+  return { suggested_kg: lastWeight, note: GENERIC_HOLD_NOTE, ...base };
 }
+const GENERIC_HOLD_NOTE = "Keep the weight and try to add a rep or two.";
 
 // Which program session is due today (simple rotation by sessions completed).
 export function nextSessionIndex(program, sessionCount) {
@@ -593,22 +594,21 @@ function orderShift(ex, last, sug, slot, byId, anchorNear) {
   const steps = Math.round((contextLoad(W, capAtW, fromLoss, toLoss) - W) / inc);
   const harder = now.sets > then.sets;
   const muscles = listJoin((harder ? now : then).muscles.map(plainMuscle));
-  const where = `This time it comes after ${setsWord(now.count)} that also work your ${muscles} (last time it came ${then.count ? `after ${setsWord(then.count)}` : "first"})`;
-  // When the weight can't move (under half a step, or the bar) but a harder position still lowers the aim, the
-  // reason says so — only for a held weight; a bump or an ease keeps its own reason (fix verification).
-  const stays = (kgNow) => ({ fromLoss, toLoss, kg: W, note: harder && W === La ? `${where} — the same ${kgNow} kg, with today's aim allowing for that.` : null });
-  if (steps === 0) return stays(W); // under half a step: the weight stays exactly as it was
+  // The position as a sentence of its own. It leads the note when it moves the weight; when it can't (under half
+  // a step, or the bar) it is added to the weight's own reason, since it still shapes the aim (round 2).
+  const clause = harder
+    ? `This time it comes after ${setsWord(now.count)} that also work your ${muscles} (last time it came ${then.count ? `after ${setsWord(then.count)}` : "first"}).`
+    : `This time it comes ${now.count ? `after only ${setsWord(now.count)} that also work your ${muscles}` : "first"} (last time it came after ${setsWord(then.count)} that also work your ${muscles}).`;
+  const stays = () => ({ fromLoss, toLoss, kg: W, note: null, clause });
+  if (steps === 0) return stays(); // under half a step: the weight stays exactly as it was
   let kg = Math.round((W + steps * inc) * 100) / 100;
   if (byId.get(ex.exercise)?.equipment === "barbell") kg = Math.max(kg, Math.min(W, EMPTY_BAR_KG));
-  if (!(kg > 0) || kg === W) return stays(W);
+  if (!(kg > 0) || kg === W) return stays();
   const earned = W > La && kg <= La ? " — you'd earned a step up, but this position cancels it"
     : W > La ? " — the step up you'd earned, adjusted for the order"
     : W < La && kg < La ? " — the lighter weight your last session called for, adjusted for the order" : "";
   // "This time … (last time …)" reads right on Today AND in the read-out's "next time" (Burst 5 review).
-  const note = harder
-    ? `${where}, so I've made it ${kg} kg${earned}.`
-    : `This time it comes ${now.count ? `after only ${setsWord(now.count)} that also work your ${muscles}` : "first"} (last time it came after ${setsWord(then.count)} that also work your ${muscles}), so I've made it ${kg} kg${earned}.`;
-  return { fromLoss, toLoss, kg, note };
+  return { fromLoss, toLoss, kg, note: `${clause.slice(0, -1)}, so I've made it ${kg} kg${earned}.` };
 }
 
 // What the app SERVES for one lift of the plan in a training context: the RIR band shown
@@ -657,15 +657,19 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // A band further from failure than the one the anchor was SERVED with (its stored target) aims lower.
   const bandShift = last?.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0;
   const anchorKg = last ? anchorOf(last.sets, ownMin(last, ex.rep_range)).weight : null;
-  const fewer = bandShift === 1 ? "a rep" : `${bandShift} reps`;
-  const suggestion_note = deloadKg != null && deloadKg < base
+  // The reason is COMPOSED (round 2 of the fix verification): the weight's own reason leads — a held weight's
+  // W279 warning or W280 "get all 3 to the top" is never replaced — and the band and the position that shape
+  // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"
+  // gives way to "Same weight as last time." when a clause lowers the aim. The deload ease keeps its own note.
+  const deloadLowered = deloadKg != null && deloadKg < base;
+  const extra = deloadLowered ? [] : [
+    bandShift > 0 && sug.layoff_days == null ? `This week asks for ${rirBand.replace("-", "–")} reps in reserve, ${bandShift} more than last time.` : null,
+    order && !order.note ? order.clause : null,
+  ].filter(Boolean);
+  const lead = order?.note ?? (extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
+  const suggestion_note = deloadLowered
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
-    : order?.note
-      ?? (bandShift > 0 && suggested_kg === anchorKg && sug.layoff_days == null
-        // the aim drops below last time's reps, so the reason must not say "add a rep or two" (fix verification)
-        ? (taper ? `Taper — same weight, more left in the tank (${rirBand.replace("-", "–")} in reserve), so aim for ${fewer} fewer per set than last time.`
-          : `Same weight as last time — this week asks for ${rirBand.replace("-", "–")} reps in reserve (${bandShift} more than last time), so aim for ${fewer} fewer per set.`)
-        : sug.note);
+    : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
   // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
   // order rule and the deload ease), so the reps stepper starts on a number this set can hit.
   // A comeback's eased row keeps last time's reps (the ease is the point), and only sets at or above the

@@ -1399,6 +1399,18 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      7 introduced by the fixes or by interactions between them, 5 older but in the burst's area.
      All 12 fixed, plus the 3 partial ones (lesson 99). 12 more tampers each turned red; real
      browser 21/21, and a browser tamper of the new gate turned exactly its check red.
+   - **Round 2 (loop-until-dry), scoped to that pass.** 3 area verifiers, then a reproducer and a
+     refuter per candidate. 24 agents, ≈1.8M subagent tokens. The critic stalled 6 times and
+     failed the run; the 23 finished results came from the journal, not a relaunch.
+     - 10 candidates, all reproduced and mostly made by the previous pass. The new notes replaced
+       a held weight's own reason (W279's warning). A substitution read the freshest set for a
+       back-off. A guard ran Epley on bodyweight added load and judged the kg, not the plate
+       offered. A narrower tolerance re-broke the unit toggle.
+     - Fixed by design, not patch by patch: composed reasons, the nearest earlier evidence set,
+       finalizeHint at the offered weight, and a toggle that re-stamps the served pre-fill.
+     - One (a second today-swap when the first substitute sits in another day) predates the burst
+       and is deferred.
+     - 6 tampers each turned red.
    - **Not run:**
      - The Daytona gate (no DAYTONA_API_KEY).
      - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when

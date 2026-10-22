@@ -66,10 +66,9 @@ sets — or two positions that cost the same (both at the cap) — is ignored. E
 findings. The weight moves from its own grid by whole steps: never the wrong way, never at all under
 half a step, never under the empty bar for a barbell lift. A lift swapped in for today reads its anchor
 from the stored plan — unless it was appended by a second today-swap, whose position is unknown. When the
-weight can't move (under half a step, or the bar) but a harder position still lowers the aim of a held
-weight, the reason says so ("…— the same 20 kg, with today's aim allowing for that."). The reason reads
-"This time it comes after… (last time…)", so it is right on Today and in the read-out's "next time"
-(Burst 5 review). Both positions come from the plan with its planned
+weight can't move (under half a step, or the bar), the position still shapes the aim and is added to
+the weight's own reason as its own sentence. Every sentence reads "This time it comes after… (last
+time…)", so it is right on Today and in the read-out's "next time" (Burst 5 review). Both positions come from the plan with its planned
 sets, so a stable slot never moves, a deferred lift never drifts and the wave's set ramp never nudges
 a plate. The capacity converted is the one **at the base rule's weight** in the anchor's position (from
 the anchor's e1RM), so an earned step up and a position change never compound; rounding to the
@@ -85,14 +84,22 @@ today's load by Epley, less the band's near edge. The "+1" is for the same effor
 sits further from failure than the band last time's session was served with (a taper, a block's first
 week — its stored target), the aim is last time's reps less that shift. A comeback's eased row keeps
 last time's reps (the ease is the point). A set that is no evidence at today's load (a ramp set under
-the lighter of today's weight and the anchor, or a heavier set that failed the range) is read as the
-first set that is, so set k stays aligned with last time's set k. At the same load with a position
-change (W290), the aim keeps its "+1" less the position's cost in reps. When the band shift lowers the
-aim, the reason says so ("Same weight as last time — this week asks for 2–3 reps in reserve…") —
-Burst 5 review. The aim is derived from the row
+the lighter of today's weight and the anchor, a back-off, or a heavier set that failed the range) is
+read as the nearest earlier set that is (the first one for a leading ramp), so set k stays aligned with
+last time's set k and a later aim never climbs back to the freshest set's. At the same load with a
+position change (W290), the aim keeps its "+1" less the position's cost in reps.
+
+**The reason is composed (Burst 5 review).** The weight's own reason leads: the progression's, the
+W279 two-strike warning, W280's "get all 3 to the top", "you hit failure". The band and the position
+that shape today's aim are added as their own sentences, each naming only its own fact ("This week
+asks for 2–3 reps in reserve, 1 more than last time. This time it comes after 2 sets that also work
+your chest (last time it came first). The rep aim allows for that."). The generic "add a rep or two"
+gives way to "Same weight as last time." when a sentence lowers the aim. The deload ease keeps its own
+note, and a position that moves the weight leads with it ("…so I've made it 27.5 kg."). The aim is derived from the row
 and the banked count on every render, never stored, so a resume lands on the same number; once you move
 the weight off the served one (by half the lift's own step or more: 1 kg on a dumbbell isolation, a
-5 lb plate in pounds — a kg/lb toggle doesn't count), the stepper carries your last banked reps instead.
+5 lb plate in pounds — a kg/lb toggle doesn't count: it re-stamps an untouched served pre-fill exactly
+in the new unit), the stepper carries your last banked reps instead.
 
 **The next set allows for fatigue (W288).** The mid-workout "more appropriate weight" carries the banked
 set's capacity to the next set **less what the next set loses**: ~20% after a set ending at ≤ 1 RIR (or
@@ -100,9 +107,11 @@ unlogged), ~10% at 2–3, none from 4. These are engine estimates. The cited stu
 2004; Willardson & Burkett 2005/2006 — [rest periods](../content/01-training-variables/rest-periods.md),
 Grade B for "reps fall on the next set") took every set to failure, so the 2–3 and 4+ tiers are
 extrapolations. 70×5 at failure on 6–10 / 1–2 now says 62.5 kg; the fresh-set formula said 65, which after
-a failure set leaves ~6.7 reps in the tank. "Use X kg" fills the reps the same model predicts at that
-weight, kept in the range (7 there), and the "heavier" hint never offers a step the model says would
-land under the range. A set that met its own aim (W289) at the effort that aim assumed (effort
+a failure set leaves ~6.7 reps in the tank. "Use X kg" fills the reps the same model predicts at the
+weight actually offered (a pounds user's next 5-lb plate, not the kg it rounds from), kept in the range
+(7 there), and the "heavier" hint never offers a step the model says would land under the range. Added
+load on a bodyweight lift is not the whole load, so none of that Epley applies there: its hint aims at
+the range edge it moves toward. A set that met its own aim (W289) at the effort that aim assumed (effort
 unlogged, or at least the band's near edge) is never called a miss, even when the aim sits under the
 range; whether the aim applies is judged by the weight that set was banked at (Burst 5 review).
 

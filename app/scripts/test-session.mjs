@@ -822,6 +822,31 @@ check("#next-set the heavier hint never offers a step the model says would land 
   assert.strictEqual(nextSetHint(w(10, 6, { rir: 4 }), row610), null, "12.5 kg would predict ~1 rep");
   assert.strictEqual(nextSetHint(w(60, 12), row610)?.kg, 62.5, "a step that still lands in the range is offered");
 });
+// --- Round 2 (N8/N9): the hint is judged at the weight actually OFFERED. A pounds user is offered the next 5-lb
+// plate, which can be heavier than the kg it rounds from; added load on a bodyweight lift is not the whole load,
+// so the guard and the predicted reps don't apply there (its aim is the range edge, as before).
+check("#next-set finalizeHint: the guard and the aim at the offered weight; never Epley on bodyweight added load", () => {
+  const r812 = { rep_range: "8-12", rir: "1-2", inc_kg: 1 };
+  const set = w(13.61, 14); // 30 lb × 14
+  const kgHint = nextSetHint(set, r812);
+  assert.strictEqual(kgHint?.kind, "heavier", "precondition: 14.5 kg passes at its own weight");
+  assert.strictEqual(playerCore.finalizeHint(kgHint, set, r812, 15.88), null, "35 lb predicts under 8: no heavier step");
+  assert.strictEqual(playerCore.finalizeHint(kgHint, set, r812, kgHint.kg)?.target_reps, kgHint.target_reps, "at its own weight it is idempotent");
+  const bw = { rep_range: "6-10", rir: "1-2", inc_kg: 2.5, equipment: "bodyweight" };
+  const pull = nextSetHint(w(20, 13), bw);
+  assert.deepStrictEqual([pull?.kind, pull?.kg, pull?.target_reps], ["heavier", 22.5, 10], "+20 kg → +22.5 kg is a ~2-3% step: offered, aiming at the range top");
+  assert.strictEqual(nextSetHint(w(5, 10, { rir: 4 }), bw)?.kind, "heavier", "+5 kg × 10 @ 4 in reserve still gets its step");
+});
+// --- Round 2 (N10): a unit toggle re-stamps an untouched served pre-fill exactly, so "the served weight" survives
+// it on a 1 kg lift (25 lb → 10.5 kg, not 11.25); a moved value converts as before.
+check("#units a unit toggle keeps an untouched served pre-fill exact", () => {
+  const servedIn = (k, u) => (u === "lb" ? 25 : 10.5);
+  const kept = normalizeWeightsToUnits({ weights: { 0: 25 }, stamps: { 0: "lb" }, fallbackUnit: "lb", unitOf: () => "kg", servedIn });
+  assert.strictEqual(kept.weights[0], 10.5);
+  const moved = normalizeWeightsToUnits({ weights: { 0: 30 }, stamps: { 0: "lb" }, fallbackUnit: "lb", unitOf: () => "kg", servedIn });
+  assert.strictEqual(moved.weights[0], convertDispWeight(30, "lb", "kg"), "a moved weight converts as before");
+  assert.strictEqual(normalizeWeightsToUnits({ weights: { 0: 25 }, stamps: { 0: "lb" }, fallbackUnit: "lb", unitOf: () => "kg" }).weights[0], convertDispWeight(25, "lb", "kg"), "no servedIn: unchanged behaviour");
+});
 // --- (R4) the served-weight tolerance is half the lift's OWN step: 1 kg on a dumbbell isolation in kg, a 5 lb plate in lb.
 check("#rep-seed servedStep: half the lift's own step decides 'the same load'", () => {
   assert.strictEqual(playerCore.servedStep("kg", 1), 1, "a dumbbell isolation moves in 1 kg");

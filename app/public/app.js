@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2023,6 +2023,7 @@ function normalizeSessUnits() {
     weights: sess.weights || {}, stamps: sess.wUnits || {},
     fallbackUnit: sess.units ?? unitPref(),
     unitOf: (k) => unitFor(sess.ex[k]?.exercise),
+    servedIn: (k, u) => { const x = sess.ex[k]; return x?.suggested_kg != null ? prefillInUnit(x, (kg) => dispW(kg, u), wIncIn(u)) : null; },
   });
   sess.weights = res.weights; sess.wUnits = res.stamps;
   // The legacy scalar tracks the GLOBAL pref so an older build resuming this blob
@@ -2537,9 +2538,12 @@ function renderPlayer() {
   // met an aim under the range is on plan, not a miss.
   // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
   const prevAim = prevWork && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
-  const hint = nextSetHint(prevWork, e, { aim: prevAim });
-  // In the lift's display unit, always a real move (pounds round to 5-lb plates).
-  const hintW = hint ? hintInUnit(hint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  const rawHint = nextSetHint(prevWork, e, { aim: prevAim });
+  // In the lift's display unit, always a real move (pounds round to 5-lb plates)…
+  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  // …and judged at that OFFERED weight: a pounds user's next plate can be heavier than the kg it rounds from.
+  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
+  const hintW = hint ? rawW : null;
   const hc = hint && hintW != null ? hintCopy(hint, { setNo: sess.set, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
   const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hint.kind === "lighter" ? "🎯" : "⬆️"} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
       ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";

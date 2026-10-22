@@ -1356,11 +1356,13 @@ export function nextSetCapacity(reps, rir) {
 // aim from.
 export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, keepReps = false, floorKg = 0, ceilKg = 0, bandShift = 0 } = {}) {
   const all = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
-  // A set that's no evidence at today's load (a ramp set under the floor, or a heavier set that failed the
-  // range) is read as the first set that is — keeping set k aligned with last time's set k.
+  // A set that's no evidence at today's load (a ramp set under the floor, a back-off, or a heavier set that
+  // failed the range) is read as the nearest EARLIER set that is — the first one for a leading ramp — keeping
+  // set k aligned with last time's set k, and never letting a later aim climb back to the freshest set's.
   const evidence = (s) => { const w = s.weight_kg ?? 0; return !(floorKg > 0) || (w >= floorKg && (!(ceilKg > 0) || w <= ceilKg || s.reps >= min)); };
   const firstEvidence = all.find(evidence);
-  const src = firstEvidence ? all.map((s) => (evidence(s) ? s : firstEvidence)) : all;
+  let lastEvidence = null;
+  const src = firstEvidence ? all.map((s) => (evidence(s) ? (lastEvidence = s) : (lastEvidence ?? firstEvidence))) : all;
   if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;
   const out = [];
   for (let k = 0; k < sets; k++) {

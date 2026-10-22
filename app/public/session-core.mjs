@@ -280,16 +280,28 @@ export function nextSetHint(set, row, { aim = null } = {}) {
   const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near));
   const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
   if (!under && !over) return null;
-  const cap = nextSetCapacity(set.reps, rir);
-  const floored = Math.floor(loadForReps(w, cap, 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const floored = Math.floor(loadForReps(w, nextSetCapacity(set.reps, rir), 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  // The reps the same model predicts at the hinted weight, in the range (Burst 5 review) — what "Use X kg" fills.
-  const predicted = Math.round(30 * (w * (1 + cap / 30) / rounded - 1) - near);
-  if (!under && predicted < min) return null; // even one step up would land under the range (10 kg → 12.5 is +25%): no "heavier"
-  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(min, Math.min(max, predicted)) } : null;
+  return rounded > 0 ? finalizeHint({ kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null }, set, row, rounded) : null;
+}
+// The hint at the weight actually OFFERED (round 2 of the fix verification): a pounds user is offered the next
+// 5-lb plate, which can be heavier than the kg it rounds from. The reps it aims at — what "Use X kg" fills — are
+// predicted there by the same model, and a "heavier" step that would land under the range is dropped (10 kg →
+// 12.5 is +25%). Added load on a bodyweight lift is not the whole load, so no Epley on it: it aims at the range
+// edge it was moved toward, as before.
+export function finalizeHint(hint, set, row, offeredKg) {
+  if (!hint) return null;
+  if (row?.equipment === "bodyweight") return { ...hint, target_reps: hint.kind === "lighter" ? hint.min : hint.max };
+  const band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
+  const near = band ? +band[1] : 1;
+  const cap = nextSetCapacity(set.reps, typeof set.rir === "number" ? set.rir : null);
+  const kg = offeredKg > 0 ? offeredKg : hint.kg;
+  const predicted = Math.round(30 * (set.weight_kg * (1 + cap / 30) / kg - 1) - near);
+  if (hint.kind === "heavier" && predicted < hint.min) return null;
+  return { ...hint, target_reps: Math.max(hint.min, Math.min(hint.max, predicted)) };
 }
 
 // The top of a rep range ("6-10" → 10): the reps stepper's start when there is nothing better.
@@ -504,13 +516,19 @@ export function sanitizeTypedValue(raw, { integer = false, fallback = null } = {
 // converted once and restamped. One function serves both a global kg/lb flip and
 // a single exercise's toggle mid-workout, so there is exactly one place a stored
 // "60" can change meaning. Returns fresh objects + whether anything moved.
-export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUnit, unitOf }) {
+// `servedIn(k, unit)` (round 2 of the fix verification): the served pre-fill of slot k in a unit. An entry still
+// sitting exactly on it is re-stamped to the new unit's pre-fill, so a toggle never reads as a moved weight
+// (25 lb → 10.5 kg on a 1 kg lift, not the converted 11.25).
+export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUnit, unitOf, servedIn = null }) {
   const w = { ...weights }, st = { ...stamps };
   let changed = false;
   for (const k of Object.keys(w)) {
     const to = unitOf(k);
     const from = st[k] ?? fallbackUnit ?? to;
-    if (from !== to) w[k] = convertDispWeight(w[k], from, to);
+    if (from !== to) {
+      const servedFrom = servedIn?.(k, from), servedTo = servedIn?.(k, to);
+      w[k] = servedFrom != null && servedTo != null && Number(w[k]) === servedFrom ? servedTo : convertDispWeight(w[k], from, to);
+    }
     if (st[k] !== to) { st[k] = to; changed = true; }
   }
   return { weights: w, stamps: st, changed };
