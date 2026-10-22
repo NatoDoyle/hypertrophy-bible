@@ -1411,6 +1411,14 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      - One (a second today-swap when the first substitute sits in another day) predates the burst
        and is deferred.
      - 6 tampers each turned red.
+   - **Round 3, scoped to that commit.** 2 verifiers, then a reproducer and a refuter per candidate.
+     12 agents, ≈0.96M subagent tokens. 4 kept, 1 refuted:
+     - Composition kept a hold's ask beside a lowered aim ("get all 4 to the top" in a week serving 3).
+     - A band sentence was claimed where the aim ignores it.
+     - The toggle re-stamp could produce a zero weight.
+
+     Each was fixed with a test that turned red first, and 3 tampers each turned red. The rounds
+     converged: 20 → 12 → 10 → 4 candidates, with severity falling.
    - **Not run:**
      - The Daytona gate (no DAYTONA_API_KEY).
      - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when

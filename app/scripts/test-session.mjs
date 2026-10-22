@@ -846,6 +846,10 @@ check("#units a unit toggle keeps an untouched served pre-fill exact", () => {
   const moved = normalizeWeightsToUnits({ weights: { 0: 30 }, stamps: { 0: "lb" }, fallbackUnit: "lb", unitOf: () => "kg", servedIn });
   assert.strictEqual(moved.weights[0], convertDispWeight(30, "lb", "kg"), "a moved weight converts as before");
   assert.strictEqual(normalizeWeightsToUnits({ weights: { 0: 25 }, stamps: { 0: "lb" }, fallbackUnit: "lb", unitOf: () => "kg" }).weights[0], convertDispWeight(25, "lb", "kg"), "no servedIn: unchanged behaviour");
+  // Round 3 (K4): never re-stamp to zero — 1 kg served rounds to 0 lb on the plate grid; 0 means "bodyweight only".
+  const tiny = normalizeWeightsToUnits({ weights: { 0: 1 }, stamps: { 0: "kg" }, fallbackUnit: "kg", unitOf: () => "lb", servedIn: (k, u) => (u === "kg" ? 1 : 0) });
+  assert.strictEqual(tiny.weights[0], convertDispWeight(1, "kg", "lb"), "a nonzero weight never converts to zero");
+  assert.ok(tiny.weights[0] > 0);
 });
 // --- (R4) the served-weight tolerance is half the lift's OWN step: 1 kg on a dumbbell isolation in kg, a 5 lb plate in lb.
 check("#rep-seed servedStep: half the lift's own step decides 'the same load'", () => {

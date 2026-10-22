@@ -2124,4 +2124,25 @@ check("#notes the band and a fresher position together: both named, no direction
   assert.equal(s.suggestion_note, "Same weight as last time. This week asks for 2–3 reps in reserve, 1 more than last time. This time it comes first (last time it came after 2 sets that also work your biceps). The rep aim allows for that.");
 });
 
+// --- Round 3 (K1/K3): when the band (or a harder position) LOWERS the aim, a held weight's note keeps its fact but
+// drops its ask — "get all 4 to the top" can't sit beside an aim under the top in a week that serves 3 sets.
+check("#notes a lowered aim drops the hold's ask, keeps its fact (W280 shortfall; hit failure)", () => {
+  const tgt = (sets, rir) => [{ exercise: "barbell-bench-press", sets, rep_range: "8-12", rir }];
+  const wave = { block: { week: 1, setScale: 0.7 } };
+  const short = aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4, "1-2"), brSet(100, 12), brSet(100, 12), brSet(100, 12))], wave);
+  assert.equal(short.suggestion_note, "You did 3 of 4 sets last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const failed = aim("barbell-bench-press", "8-12", "1-3", 3, [withTargets(tgt(3, "1-2"), brSet(100, 10, { rir: 0 }), brSet(100, 9, { rir: 0 }), brSet(100, 8, { rir: 0 }))], wave);
+  assert.equal(failed.suggestion_note, "You hit failure last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  assert.match(aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4, "1-2"), brSet(100, 12), brSet(100, 12), brSet(100, 12))]).suggestion_note,
+    /^You did 3 of 4 sets last time — get all 4 to the top of the range, then I'll add weight\.$/, "nothing lowers the aim: the ask stands");
+});
+// --- (K2) the band sentence only where the aim applies it: a weighted bodyweight lift whose load moved aims at last
+// time's reps (no Epley on added load), so no "the rep aim allows for that".
+check("#notes no band sentence where the aim ignores the band (weighted pull-up bumped in week 1)", () => {
+  const pu = (w, reps) => ({ exercise: "pull-up", set_type: "work", weight_kg: w, reps });
+  const s = aim("pull-up", "6-10", "1-3", 3, [withTargets([{ exercise: "pull-up", sets: 3, rep_range: "6-10", rir: "1-3" }], pu(10, 10), pu(10, 10), pu(10, 10))], { block: { week: 1, setScale: 0.7 } });
+  assert.equal(s.suggested_kg, 12.5, "precondition: the top of the range adds load");
+  assert.equal(s.suggestion_note, "Last time you hit the top of the range — add 2.5 kg.");
+});
+
 console.log(`\n${passed} coach test(s) passed.`);

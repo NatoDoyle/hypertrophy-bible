@@ -250,6 +250,11 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   return { suggested_kg: lastWeight, note: GENERIC_HOLD_NOTE, ...base };
 }
 const GENERIC_HOLD_NOTE = "Keep the weight and try to add a rep or two.";
+// A hold's reason with its ask dropped (the fact kept), for when today's aim sits under that ask.
+const heldLead = (note, taper) => note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.")
+  : /^You hit failure last time/.test(note) ? "You hit failure last time — same weight."
+  : /^You did \d+ of \d+ sets last time/.test(note) ? note.replace(/ — get all .*$/, " — same weight.")
+  : note;
 
 // Which program session is due today (simple rotation by sessions completed).
 export function nextSessionIndex(program, sessionCount) {
@@ -662,11 +667,17 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"
   // gives way to "Same weight as last time." when a clause lowers the aim. The deload ease keeps its own note.
   const deloadLowered = deloadKg != null && deloadKg < base;
-  const extra = deloadLowered ? [] : [
-    bandShift > 0 && sug.layoff_days == null ? `This week asks for ${rirBand.replace("-", "–")} reps in reserve, ${bandShift} more than last time.` : null,
-    order && !order.note ? order.clause : null,
-  ].filter(Boolean);
-  const lead = order?.note ?? (extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
+  // The band sentence only where the aim applies the band: a weighted bodyweight lift whose load moved aims at last
+  // time's reps (no Epley on added load), so it doesn't (round 3).
+  const bandSentence = bandShift > 0 && sug.layoff_days == null && !(byId.get(ex.exercise)?.equipment === "bodyweight" && suggested_kg !== anchorKg)
+    ? `This week asks for ${rirBand.replace("-", "–")} reps in reserve, ${bandShift} more than last time.` : null;
+  const posSentence = order && !order.note ? order.clause : null;
+  const extra = deloadLowered ? [] : [bandSentence, posSentence].filter(Boolean);
+  // When a sentence LOWERS the aim (the band, or a harder position), a hold keeps its fact but drops its ask —
+  // "get all 4 to the top" or "build reps first" can't sit beside an aim under them (round 3).
+  const lowers = !!bandSentence || (!!posSentence && order.toLoss > order.fromLoss);
+  const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
+    : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
   const suggestion_note = deloadLowered
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
     : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;

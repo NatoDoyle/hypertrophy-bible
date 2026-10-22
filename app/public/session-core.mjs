@@ -527,7 +527,8 @@ export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUni
     const from = st[k] ?? fallbackUnit ?? to;
     if (from !== to) {
       const servedFrom = servedIn?.(k, from), servedTo = servedIn?.(k, to);
-      w[k] = servedFrom != null && servedTo != null && Number(w[k]) === servedFrom ? servedTo : convertDispWeight(w[k], from, to);
+      // …never to zero (1 kg rounds to 0 lb on the plate grid; 0 means "bodyweight only") — round 3.
+      w[k] = servedFrom != null && servedTo > 0 && Number(w[k]) === servedFrom ? servedTo : convertDispWeight(w[k], from, to);
     }
     if (st[k] !== to) { st[k] = to; changed = true; }
   }
