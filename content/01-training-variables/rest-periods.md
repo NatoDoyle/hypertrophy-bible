@@ -5,7 +5,8 @@
 **Quick recommendations**
 - Rest **~2–3 min between hard compound sets**; **~1–2 min** is fine for isolation. **[Grade B]**
 - Rest until you can **hit your target reps at the target effort** on the next set — that's the real rule. **[Grade B]**
-- Expect **fewer reps on your next set** at the same weight after a hard set — even after a full rest. To stay in your rep range, **take a little weight off** rather than hoping. **[Grade B]**
+- After a set taken to failure or close to it, expect **fewer reps on your next set** at the same weight — even after a full rest. **[Grade B]**
+- To stay in your rep range when that happens, **take a little weight off** for the next set rather than hoping. **[Grade D]**
 - Don't deliberately cut rest short to chase a pump or "fat-burning"; it mostly just **lowers your volume**. **[Grade B]**
 - Use **shorter rests only to save time** on lower-stakes accessory work, accepting slightly fewer reps. **[Grade C]**
 
@@ -22,7 +23,7 @@ Rest length is really a **performance-recovery** decision. Between hard sets, th
 
 **Superset smartly.** Pairing exercises that don't compete (e.g. a calf raise between back sets, or biceps and triceps) lets you save time without shortening the *effective* rest for either muscle. Supersetting two exercises for the *same* muscle, by contrast, sacrifices load and reps.
 
-**Your next set won't match your last.** Even a full rest doesn't bring you all the way back after a hard set, so reps fall from set to set. When a set lands under your rep range, the next one needs a slightly lighter weight, not the same weight and a hope. An exercise done after other work for the same muscles starts a little lower for the same reason (see [exercise order](exercise-selection-and-order.md)).
+**Your next set won't match your last.** Even a full rest doesn't bring you all the way back after a set taken to failure or close to it, so reps fall from set to set. When a set lands under your rep range, the next one needs a slightly lighter weight, not the same weight and a hope. An exercise done after other work for the same muscles starts a little lower for the same reason (see [exercise order](exercise-selection-and-order.md)).
 
 ## The Evidence
 

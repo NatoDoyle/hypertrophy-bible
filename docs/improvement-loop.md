@@ -1308,6 +1308,12 @@ These are real failures from previous iterations. Each is now a standing check.
    player lens found it, not a test: each wave's tests checked its own rule. → **Standing rule:**
    when a new prescription can sit outside an older rule's frame, every older rule that judges the
    same set reads the new prescription, and a test pins the pair.
+99. **A fix pass needs its own adversarial check.** The review's 19 fixes went to a second workflow.
+   It re-ran every original reproduction (16 resolved; 3 only partly) and found 12 candidates, 7 of
+   them made by the fixes themselves. A filter shifted set alignment. A gate read the stepper
+   instead of the banked set. A lookup that started working met an appended swap with no known
+   position. → **Standing rule:** after a fix pass, verify the fixes' own new interactions (each fix
+   against its neighbours), not only the findings they closed.
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1387,6 +1393,12 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      band-shift fix read an unwaved fallback band, and the delta rounding re-rounded a zero move.
      Both were caught by the suites before commit. One fix tamper survived and was strengthened
      with a full-step case (lesson 54).
+   - **The fix verification (ultracode).** A second workflow: a verifier per fix group re-ran each
+     original reproduction and hunted regressions, a cross-group critic followed, and each new
+     candidate got a reproducer and a refuter. 29 agents, ≈2.1M subagent tokens. 12 candidates:
+     7 introduced by the fixes or by interactions between them, 5 older but in the burst's area.
+     All 12 fixed, plus the 3 partial ones (lesson 99). 12 more tampers each turned red; real
+     browser 21/21, and a browser tamper of the new gate turned exactly its check red.
    - **Not run:**
      - The Daytona gate (no DAYTONA_API_KEY).
      - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when
