@@ -666,6 +666,16 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // W279 warning or W280 "get all 3 to the top" is never replaced — and the band and the position that shape
   // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"
   // gives way to "Same weight as last time." when a clause lowers the aim. The deload ease keeps its own note.
+  // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
+  // order rule and the deload ease), so the reps stepper starts on a number this set can hit.
+  // A comeback's eased row keeps last time's reps (the ease is the point), and only sets at or above the
+  // anchor weight set the aim (a ramp logged as work sets is no evidence at today's load) — Burst 5 review.
+  const aimOpts = last ? { sets, weightKg: suggested_kg, min, max, near: nearOf(rirBand), anchorNear, floorKg: Math.min(suggested_kg, anchorKg), ceilKg: anchorKg,
+    keepReps: byId.get(ex.exercise)?.equipment === "bodyweight" || sug.layoff_days != null } : null;
+  const rep_targets = last ? repTargets(last.sets, { ...aimOpts, fromLoss: order?.fromLoss ?? 0, toLoss: order?.toLoss ?? 0, bandShift }) : null;
+  // The aims without the band or the position: a hold's ask is dropped only when today's aims really fall under
+  // them, or when fewer sets are served than a W280 ask names (round 4).
+  const plainAims = last ? repTargets(last.sets, aimOpts) : null;
   const deloadLowered = deloadKg != null && deloadKg < base;
   // The band sentence only where the aim applies the band: a weighted bodyweight lift whose load moved aims at last
   // time's reps (no Epley on added load), so it doesn't (round 3).
@@ -675,19 +685,14 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   const extra = deloadLowered ? [] : [bandSentence, posSentence].filter(Boolean);
   // When a sentence LOWERS the aim (the band, or a harder position), a hold keeps its fact but drops its ask —
   // "get all 4 to the top" or "build reps first" can't sit beside an aim under them (round 3).
-  const lowers = !!bandSentence || (!!posSentence && order.toLoss > order.fromLoss);
+  const plannedSets = last?.target && !last.target.deload ? last.target.sets : null;
+  const lowers = (rep_targets ?? []).some((t, k) => t < (plainAims?.[k] ?? t))
+    || (Number.isInteger(plannedSets) && sets < plannedSets && /^You did \d+ of \d+ sets/.test(sug.note));
   const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
     : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
   const suggestion_note = deloadLowered
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
     : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
-  // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
-  // order rule and the deload ease), so the reps stepper starts on a number this set can hit.
-  // A comeback's eased row keeps last time's reps (the ease is the point), and only sets at or above the
-  // anchor weight set the aim (a ramp logged as work sets is no evidence at today's load) — Burst 5 review.
-  const rep_targets = last ? repTargets(last.sets, { sets, weightKg: suggested_kg, min, max, near: nearOf(rirBand), anchorNear,
-    fromLoss: order?.fromLoss ?? 0, toLoss: order?.toLoss ?? 0, floorKg: Math.min(suggested_kg, anchorKg), ceilKg: anchorKg,
-    keepReps: byId.get(ex.exercise)?.equipment === "bodyweight" || sug.layoff_days != null, bandShift }) : null;
   return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
 }
 

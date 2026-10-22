@@ -2145,4 +2145,15 @@ check("#notes no band sentence where the aim ignores the band (weighted pull-up 
   assert.equal(s.suggestion_note, "Last time you hit the top of the range — add 2.5 kg.");
 });
 
+// --- Round 4: whether a hold's ask is dropped is read from the AIMS, not from a sentence being present. Last time over
+// the top (100×14 of 2 planned) still aims at the top in week 1, so "get all 2 to the top" stands.
+check("#notes the ask is dropped only when the aims actually fall under it (or fewer sets are served than it names)", () => {
+  const tgt = (sets) => [{ exercise: "barbell-bench-press", sets, rep_range: "8-12", rir: "1-2" }];
+  const over = aim("barbell-bench-press", "8-12", "1-3", 2, [withTargets(tgt(2), brSet(100, 14))], { block: { week: 1, setScale: 0.7 } });
+  assert.deepEqual([over.sets, over.rep_targets], [2, [12, 12]], "precondition: every served set aims at the top");
+  assert.equal(over.suggestion_note, "You did 1 of 2 sets last time — get all 2 to the top of the range, then I'll add weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const short = aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4), brSet(100, 12), brSet(100, 12), brSet(100, 12))], { block: { week: 1, setScale: 0.7 } });
+  assert.match(short.suggestion_note, /^You did 3 of 4 sets last time — same weight\./, "3 served of the 4 it names: the ask can't be met");
+});
+
 console.log(`\n${passed} coach test(s) passed.`);
