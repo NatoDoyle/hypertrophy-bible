@@ -94,9 +94,11 @@ W279 two-strike warning, W280's "get all 3 to the top", "you hit failure". The b
 that shape today's aim are added as their own sentences, each naming only its own fact ("This week
 asks for 2–3 reps in reserve, 1 more than last time. This time it comes after 2 sets that also work
 your chest (last time it came first). The rep aim allows for that."). The generic "add a rep or two"
-gives way to "Same weight as last time." when a sentence lowers the aim, and so does any hold's ask
-("You did 3 of 4 sets last time — same weight.", "You hit failure last time — same weight."): an aim
-under the top can't sit beside "get all 4 to the top". The band sentence appears only where the aim
+gives way to "Same weight as last time." when the band or the position lowers today's aims, and so does
+any hold's ask ("You did 3 of 4 sets last time — same weight.", "You hit failure last time — same
+weight."): an aim under the top can't sit beside "get all 4 to the top". "Lowers" is read from the aims
+themselves, compared with the aims the hold would get without the band and the position, or from fewer
+sets served than a W280 ask names. When the aims still reach the top, the ask stands. The band sentence appears only where the aim
 applies the band (not on a weighted bodyweight lift whose load moved). The deload ease keeps its own
 note, and a position that moves the weight leads with it ("…so I've made it 27.5 kg."). The aim is derived from the row
 and the banked count on every render, never stored, so a resume lands on the same number; once you move

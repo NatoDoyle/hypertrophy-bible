@@ -1417,8 +1417,15 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      - A band sentence was claimed where the aim ignores it.
      - The toggle re-stamp could produce a zero weight.
 
-     Each was fixed with a test that turned red first, and 3 tampers each turned red. The rounds
-     converged: 20 → 12 → 10 → 4 candidates, with severity falling.
+     Each was fixed with a test that turned red first, and 3 tampers each turned red.
+   - **Rounds 4 and 5 (one verifier each, then a reproducer and a refuter).**
+     - Round 4 (≈0.25M tokens) kept 1 minor. A hold's ask was dropped because a band sentence was
+       present, though the aims still reached the top. Fixed: "lowers" is read from the aims
+       themselves.
+     - Round 5 (≈0.1M) came back **dry**. Its verifier ran a 150k-case differential fuzz of servedLift
+       against the parent commit and a 40k-case invariant check, with no counterexample.
+     - The loop converged: 20 → 12 → 10 → 4 → 1 → 0. Across 8 workflow runs: ≈9.0M subagent tokens,
+       119 agents.
    - **Not run:**
      - The Daytona gate (no DAYTONA_API_KEY).
      - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when
