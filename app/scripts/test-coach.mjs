@@ -7,6 +7,8 @@ import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
+import { servedLift } from "../src/coach.mjs";
+import * as deriveCore from "../../tools/derive-core.mjs";
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
@@ -1825,7 +1827,6 @@ check("#nerd strength: each lift's weekly e1RM, its personal stall window, how f
   assert.equal(nerdReport({ ...roUser("beginner", 45) }, all, [], [], roNow, null, progressReport(roUser("beginner", 45), all, [], [], roNow)).block, null, "beginners run no blocks");
 });
 
-console.log(`\n${passed} coach test(s) passed.`);
 
 check("a maintenance day's 'light on purpose' note rides the /api/today payload", () => {
   // The rationale produces it (Wave 250); a producer without this consumer is the
@@ -1846,3 +1847,313 @@ check("a maintenance day's 'light on purpose' note rides the /api/today payload"
   assert.equal(t.name, program.sessions[idx].name, "precondition: today IS the noted day");
   assert.match(t.maintenance_note ?? "", /light on purpose/i);
 });
+
+// --- W289 (Burst 5 — owner: "I had done 150kg x 5,4,5 last workout and now it is suggesting 150kg x
+// 10,10,10"). The weight held, rightly (W279: one short holds once), but the reps stepper seeded the
+// TOP of the range on every set. The aim is now per set, from last session's sets in order: at the same
+// load, beat each by a rep (double progression's "add a rep"), capped at the top; at a moved load, each
+// set's capacity (reps + RIR) carried to today's load by Epley, less the band's near edge.
+const sqSet = (w, reps, extra = {}) => ({ exercise: "barbell-back-squat", set_type: "work", weight_kg: w, reps, ...extra });
+const aim = (exercise, rep_range, rir, sets, sessions, ctx = {}) => servedLift({ exercise, sets, rep_range, rir }, sessions, ctx, undefined, null);
+check("#rep-aim the owner's case: 150×5,4,5 held at 150 → aim 6 · 5 · 6, never 10 · 10 · 10", () => {
+  const s = aim("barbell-back-squat", "6-10", "1-2", 3, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]);
+  assert.equal(s.suggested_kg, 150, "precondition: the W279 hold");
+  assert.deepEqual(s.rep_targets, [6, 5, 6]);
+});
+check("#rep-aim more sets today than last time: the extra set reuses the last one's aim; the top of the range caps it", () => {
+  assert.deepEqual(aim("barbell-back-squat", "6-10", "1-2", 4, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]).rep_targets, [6, 5, 6, 6]);
+  // "You did 2 of 3 sets last time" holds at 100 — beating 10 is capped at 10
+  const held = aim("barbell-bench-press", "6-10", "1-3", 3, [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }], brSet(100, 10), brSet(100, 10))]);
+  assert.equal(held.suggested_kg, 100, "precondition: the W280 shortfall hold");
+  assert.deepEqual(held.rep_targets, [10, 10, 10]);
+});
+check("#rep-aim the weight moved: each set's capacity carried to the new load (a bump; an ease)", () => {
+  const bump = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 10), brSet(100, 10), brSet(100, 10))]);
+  assert.equal(bump.suggested_kg, 102.5);
+  assert.deepEqual(bump.rep_targets, [9, 9, 9], "30·((100/102.5)·(1 + 11/30) − 1) − 1 = 9");
+  const ease = aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(100, 6), brSet(100, 5), brSet(100, 5))]);
+  assert.equal(ease.suggested_kg, 90);
+  assert.deepEqual(ease.rep_targets, [9, 8, 8], "under the range, unlogged effort reads as failure (W279's reading)");
+});
+check("#rep-aim a deload week: fewer sets at ~90%, aimed from the effort they were done at, capped at the top", () => {
+  const d = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 10), brSet(100, 10), brSet(100, 9))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.equal(d.suggested_kg, 90);
+  assert.deepEqual(d.rep_targets, [10, 10]);
+});
+check("#rep-aim a weight changed mid-lift last time: each set reads its own load (70×5 then 62.5×7,6 → 8 · 8 · 7)", () => {
+  const m = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(70, 5), brSet(62.5, 7), brSet(62.5, 6))]);
+  assert.equal(m.suggested_kg, 62.5, "precondition: anchored on the weight proved in the range");
+  assert.deepEqual(m.rep_targets, [8, 8, 7]);
+});
+check("#rep-aim no history → no aim; a bodyweight lift beats its own reps, and never runs Epley on added load", () => {
+  assert.equal(aim("barbell-bench-press", "6-10", "1-2", 3, []).rep_targets ?? null, null);
+  const pu = (w, reps) => ({ exercise: "pull-up", set_type: "work", weight_kg: w, reps });
+  assert.deepEqual(aim("pull-up", "6-10", "1-2", 3, [brDay(1, pu(0, 8), pu(0, 7), pu(0, 6))]).rep_targets, [9, 8, 7]);
+  const loaded = aim("pull-up", "6-10", "1-2", 3, [brDay(1, pu(10, 10), pu(10, 10), pu(10, 10))]);
+  assert.ok(loaded.suggested_kg > 10, "precondition: the top of the range adds load");
+  assert.deepEqual(loaded.rep_targets, [10, 10, 10], "added load is not the whole load — no Epley on it");
+});
+check("#rep-aim Today's rows carry the aim (through buildToday)", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-back-squat", sets: 3, rep_range: "6-10", rir: "1-2" }] }] };
+  const row = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, [brDay(1, sqSet(150, 5), sqSet(150, 4), sqSet(150, 5))]).exercises[0];
+  assert.equal(row.suggested_kg, 150);
+  assert.deepEqual(row.rep_targets, [6, 5, 6].slice(0, row.sets), JSON.stringify({ sets: row.sets, rep_targets: row.rep_targets }));
+});
+
+// --- W290 (Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting weights";
+// the cases the owner named: the same lift on different days, and later lifts in general). A lift done
+// after more hard sets for the same muscles than last time gets fewer reps (Simão 2005, 2012), so its
+// weight and aims carry the DIFFERENCE between today's position and the anchor session's — both read
+// from the PLAN (unscaled sets), so a stable slot never moves; under 2 weighted sets is ignored.
+const ordProg = { id: "op", name: "Order", sessions: [
+  { name: "A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+  { name: "B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+] };
+const inc = (w, reps, extra = {}) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: w, reps, ...extra });
+const onDay = (session_name, d, ...sets) => ({ ...brDay(d, ...sets), session_name });
+const slotOf = (program, name) => ({ program, session: program.sessions.find((s) => s.name === name) });
+const incEx = (program, name) => slotOf(program, name).session.exercises.find((e) => e.exercise === "incline-dumbbell-press");
+const ordServed = (name, sessions, ctx = {}, now = null, program = ordProg) => servedLift(incEx(program, name), sessions, ctx, undefined, now, slotOf(program, name));
+const musclesOf = (id) => ({ primary: exerciseById.get(id)?.primary_muscles ?? [], secondary: exerciseById.get(id)?.secondary_muscles ?? [] });
+check("#order priorOverlapSets: an earlier lift counts its sets × 1 when its primary is this lift's, × 0.5 for a primary↔secondary overlap", () => {
+  const list = [{ exercise: "barbell-bench-press", sets: 3 }, { exercise: "dumbbell-overhead-triceps-extension", sets: 2 }, { exercise: "lat-pulldown", sets: 3 }, { exercise: "incline-dumbbell-press", sets: 3 }];
+  const p = deriveCore.priorOverlapSets(list, 3, musclesOf);
+  assert.equal(p.sets, 3 * 1 + 2 * 0.5, "bench chest∩chest; triceps extension triceps∩secondary; the pulldown nothing");
+  assert.equal(p.count, 5, "the overlapping hard sets, unweighted (for the note)");
+  assert.deepEqual(p.muscles, ["chest", "triceps"]);
+  assert.deepEqual(deriveCore.priorOverlapSets(list, 0, musclesOf), { sets: 0, count: 0, muscles: [] }, "the first lift of the day");
+});
+check("#order orderLoss is 5% of capacity per weighted set, capped at 25%; contextLoad there and back is the starting weight", () => {
+  assert.deepEqual([0, 1.5, 3, 5, 9].map(deriveCore.orderLoss), [0, 0.075, 0.15, 0.25, 0.25]);
+  for (const kg of [20, 57.5, 100]) for (const c of [6, 10, 14]) for (const [a, b] of [[0, 0.15], [0.1, 0.25], [0.2, 0]])
+    assert.ok(Math.abs(deriveCore.contextLoad(deriveCore.contextLoad(kg, c, a, b), c, b, a) - kg) < 1e-9, `${kg} ${c} ${a}→${b}`);
+});
+check("#order the same lift after more same-muscle work than last time is lighter, and says why (first last time → after 3 bench sets: 27.5)", () => {
+  const s = ordServed("B", [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))]);
+  assert.equal(s.suggested_kg, 27.5, "30·(1 + 10/30)/(1 + 10/25.5) = 28.73 → the nearest 2.5");
+  assert.deepEqual(s.rep_targets, [10, 10, 10]);
+  assert.match(s.suggestion_note, /^This time it comes after 3 sets that also work your chest \(last time it came first\), so I've made it 27\.5 kg\.$/,
+    "no 'Today': the read-out quotes this note about the NEXT session (Burst 5 review C20)");
+});
+check("#order the reverse — fresher than last time: the earned step up, with the order in the aims (27.5×10,10,10 after bench → 30 × 8 · 8 · 8)", () => {
+  const s = ordServed("A", [onDay("B", 1, inc(27.5, 10), inc(27.5, 10), inc(27.5, 10))]);
+  assert.equal(s.suggested_kg, 30, "capacity AT 30 carried over: 31.11 → 30. The anchor's own capacity would say 32.5 — ~5 reps at 1 RIR, under 6-10");
+  assert.deepEqual(s.rep_targets, [8, 8, 8], "without the order the aim would be 7 · 7 · 7");
+  assert.match(s.suggestion_note, /top of the range — add 2\.5 kg/, "the order didn't move the weight, so the reason is the base rule's");
+});
+check("#order a stable slot, or a difference under 2 weighted sets, changes nothing (byte-identical)", () => {
+  const same = [onDay("B", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.deepEqual(ordServed("B", same), servedLift(incEx(ordProg, "B"), same, {}, undefined, null), "the same day as last time");
+  const tri = { ...ordProg, sessions: [ordProg.sessions[0], { name: "T", exercises: [{ exercise: "dumbbell-overhead-triceps-extension", sets: 3, rep_range: "10-15", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const fromA = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.deepEqual(ordServed("T", fromA, {}, null, tri), servedLift(incEx(tri, "T"), fromA, {}, undefined, null), "3 triceps sets × 0.5 = 1.5: under the gate");
+  const gone = [{ ...fromA[0], session_name: "Retired day" }];
+  assert.deepEqual(ordServed("B", gone), servedLift(incEx(ordProg, "B"), gone, {}, undefined, null), "the anchor's day isn't in the plan any more: no adjustment");
+});
+check("#order never during a comeback or a taper; a deload week takes the lighter of the two", () => {
+  const hist = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  assert.equal(ordServed("B", hist, {}, new Date(Date.parse(hist[0].date) + 20 * 86400000).toISOString()).suggested_kg, 26.5, "the comeback ease (30 × 0.88) stands alone");
+  assert.equal(ordServed("B", hist, { taper: { setScale: 0.6, rirFloor: 2, daysUntil: 5 } }).suggested_kg, 30, "a taper holds the load");
+  assert.equal(ordServed("B", hist, { block: { phase: "deload", week: 6, setScale: 0.5 } }).suggested_kg, 27, "min(27.5, 30 × 0.9)");
+});
+check("#order a first-time lift after same-muscle work starts a plate lighter (squat after 4 leg-press sets: 40 → 37.5)", () => {
+  const prog = { id: "q", name: "Q", sessions: [{ name: "L", exercises: [{ exercise: "leg-press", sets: 4, rep_range: "10-15", rir: "1-3" }, { exercise: "barbell-back-squat", sets: 3, rep_range: "6-10", rir: "1-2" }] }] };
+  const sq = buildToday({ profile: { training_status: "intermediate", days_per_week: 3 }, program: prog }, [], null, [], null, 80).exercises.find((r) => r.exercise === "barbell-back-squat");
+  assert.equal(sq.suggested_kg, 37.5, "40·(1 + 7/30)/(1 + 7/24) = 38.19 → 37.5");
+  assert.match(sq.suggestion_note, /after 4 sets that also work your thighs \(quads\)/);
+});
+check("#order alternating days never ratchet: performing exactly as aimed, the weights come back to where they started", () => {
+  // A 6-12 range keeps every aim under the top, so the base rule holds and only the order moves the weight.
+  const p12 = { ...ordProg, sessions: ordProg.sessions.map((s) => ({ ...s, exercises: s.exercises.map((e) => ({ ...e, rep_range: "6-12" })) })) };
+  let hist = [onDay("A", 1, inc(30, 9), inc(30, 9), inc(30, 8))];
+  const seen = [];
+  for (let k = 0; k < 6; k++) {
+    const day = k % 2 === 0 ? "B" : "A";
+    const s = ordServed(day, hist, {}, null, p12);
+    seen.push([s.suggested_kg, s.rep_targets.join(",")]);
+    hist = [...hist, onDay(day, 2 + k, ...s.rep_targets.map((r) => inc(s.suggested_kg, r)))];
+  }
+  assert.deepEqual(seen, [[27.5, "11,11,10"], [30, "9,9,8"], [27.5, "11,11,10"], [30, "9,9,8"], [27.5, "11,11,10"], [30, "9,9,8"]],
+    "B after bench is 27.5 × 11 · 11 · 10; doing exactly that brings A back to 30 × 9 · 9 · 8 — where it began");
+});
+
+// --- Burst 5 review fixes. Each case below was confirmed by a reproducer and a refuter.
+// C7: a comeback ease (×0.88) aims at last time's reps — the ease is the point; Epley must not convert it back.
+check("#rep-aim a comeback row aims at last time's reps (the ease is the point), not the range top", () => {
+  const hist = [brDay(1, brSet(100, 8), brSet(100, 8), brSet(100, 8))];
+  const s = aim("barbell-bench-press", "8-12", "1-3", 3, hist);
+  const back = servedLift({ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-3" }, hist, {}, undefined, new Date(Date.parse(hist[0].date) + 20 * 86400000).toISOString());
+  assert.equal(back.suggested_kg, 88, "precondition: the comeback ease");
+  assert.deepEqual(back.rep_targets, [8, 8, 8], "was [12,12,12]: Epley undid the ease");
+  assert.deepEqual(s.rep_targets, [9, 9, 9], "a normal hold still beats last time");
+});
+// C8: the same load beats last time by a rep only at the same effort; a taper or a week-1 band further from
+// failure lowers the aim by the band shift.
+check("#rep-aim a band further from failure today (taper, week 1) lowers the aim — the +1 is for the same effort", () => {
+  // The band the anchor was served with is its stored target (W280) — what every finished workout sends.
+  const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 8), brSet(100, 8), brSet(100, 7))];
+  const taper = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { taper: { setScale: 0.6, rirFloor: 3, daysUntil: 5 } });
+  assert.equal(taper.rirBand, "3-4", "precondition");
+  assert.deepEqual(taper.rep_targets, [6, 6], "8 + 1 in reserve − 3: inside the taper's 3-4 band (was [9,9]: 0 in reserve)");
+  const wk1 = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { block: { week: 1, setScale: 0.7 } });
+  assert.equal(wk1.rirBand, "2-3", "precondition");
+  assert.deepEqual(wk1.rep_targets, [7, 7]);
+  const noBand = aim("barbell-bench-press", "8-12", "1-2", 3, [brDay(1, brSet(100, 8), brSet(100, 8), brSet(100, 7))], { block: { week: 1, setScale: 0.7 } });
+  assert.deepEqual(noBand.rep_targets, [9, 9], "a session without its served band (an older build) keeps the +1: no shift is known");
+});
+// C10: a ramp logged as work sets (or a warm-up not marked) must not set today's aim: only last time's sets at or
+// above the anchor weight count.
+check("#rep-aim a ramp logged as work sets doesn't drag the aim down (80×12, 90×10, 100×8 → 9 · 9 · 9, not 3 · 6 · 9)", () => {
+  const ramp = aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(80, 12), brSet(90, 10), brSet(100, 8))]);
+  assert.equal(ramp.suggested_kg, 100, "precondition: anchored on 100");
+  assert.deepEqual(ramp.rep_targets, [9, 9, 9]);
+  assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(60, 10), brSet(100, 8), brSet(100, 8))]).rep_targets, [9, 9, 9], "an unmarked warm-up");
+  assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(70, 5), brSet(62.5, 7), brSet(62.5, 6))]).rep_targets, [8, 8, 7], "a heavier first set still counts (unchanged)");
+});
+// C3 + C9: the position only ever moves the weight its own way, from the weight's own grid: a later slot is never
+// heavier, an earlier slot never lighter, and equal position costs (both at the 25% cap) move nothing.
+const ordP = (sessions) => ({ id: "op2", name: "Order 2", sessions });
+const incE = { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" };
+check("#order an off-grid weight never moves the wrong way (a pounds user's 40 lb = 18.14 kg; a typed 32 kg)", () => {
+  const p = ordP([{ name: "A", exercises: [incE] }, { name: "B2", exercises: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3" }, incE] }]);
+  const fresher = ordServed("A", [onDay("B2", 1, inc(18.14, 7), inc(18.14, 7), inc(18.14, 6))], {}, null, p);
+  assert.equal(fresher.suggested_kg, 18.14, "first today, after 2 bench sets last time: never lighter (was 17.5)");
+  const harder = ordServed("B2", [onDay("A", 1, inc(32, 7), inc(32, 7), inc(32, 6))], {}, null, p);
+  assert.equal(harder.suggested_kg, 32, "after 2 bench sets today, first last time: never heavier (was 32.5)");
+  assert.equal(harder.suggestion_note, "Same weight as last time. This time it comes after 2 sets that also work your chest (last time it came first). The rep aim allows for that.",
+    "the weight didn't move, but the position lowers the aim: the note says why (fix verification R11)");
+  assert.deepEqual(harder.rep_targets, [7, 7, 6], "last time + 1, less the position's cost (8 reps of capacity × 10% = 0.8)");
+  // A full step moves from the weight's OWN grid: 90 lb (40.82 kg) after 5 bench sets is one 2.5 kg step lighter,
+  // 38.32 — not the absolute grid's 37.5.
+  const p5 = ordP([{ name: "A", exercises: [incE] }, { name: "B5", exercises: [{ exercise: "barbell-bench-press", sets: 5, rep_range: "6-10", rir: "1-3" }, incE] }]);
+  assert.equal(ordServed("B5", [onDay("A", 1, inc(40.82, 7), inc(40.82, 7), inc(40.82, 6))], {}, null, p5).suggested_kg, 38.32);
+});
+check("#order positions that cost the same (both at the 25% cap) move nothing", () => {
+  const p = ordP([{ name: "A5", exercises: [{ exercise: "barbell-bench-press", sets: 5, rep_range: "6-10", rir: "1-3" }, incE] },
+    { name: "C8", exercises: [{ exercise: "barbell-bench-press", sets: 8, rep_range: "6-10", rir: "1-3" }, incE] }]);
+  const hist = [onDay("A5", 1, inc(32, 7), inc(32, 7), inc(32, 6))];
+  const s = ordServed("C8", hist, {}, null, p);
+  assert.deepEqual(s, servedLift(incEx(p, "C8"), hist, {}, undefined, null), "5 and 8 sets both cost 25%: byte-identical to no slot (was 32.5 under a 'comes later' note)");
+});
+// C5: a barbell lift never goes under the empty bar.
+check("#order never serves a barbell lift under the empty bar", () => {
+  const curl = { exercise: "barbell-curl", sets: 3, rep_range: "8-12", rir: "1-3" };
+  const p = ordP([{ name: "A", exercises: [curl] }, { name: "B", exercises: [{ exercise: "chin-up", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "hammer-curl", sets: 3, rep_range: "8-12", rir: "1-3" }, curl] }]);
+  const cs = (w, reps) => ({ exercise: "barbell-curl", set_type: "work", weight_kg: w, reps });
+  const s = servedLift(curl, [onDay("A", 1, cs(20, 12), cs(20, 11), cs(20, 10))], {}, undefined, null, { program: p, session: p.sessions[1] });
+  assert.equal(s.suggested_kg, 20, "the order said 17.5; a barbell can't weigh less than the bar");
+});
+// C6: the note never calls a weight no heavier than last time "the step up you'd earned".
+check("#order when the order cancels an earned step up, the note says so", () => {
+  const p = ordP([{ name: "A", exercises: [incE] }, { name: "B4", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10", rir: "1-3" }, incE] }]);
+  const s = ordServed("B4", [onDay("A", 1, inc(30, 10), inc(30, 10), inc(30, 10))], {}, null, p);
+  assert.equal(s.suggested_kg, 30, "the base rule's 32.5, carried to after 4 bench sets");
+  assert.match(s.suggestion_note, /you'd earned a step up, but this position cancels it/);
+  assert.doesNotMatch(s.suggestion_note, /the step up you'd earned, adjusted/);
+});
+// C17: in a deload week the order still runs, and the lighter of the two wins — here the order's.
+check("#order in a deload week the order's weight wins when it is the lighter, with its own reason", () => {
+  const fly = { exercise: "dumbbell-fly", sets: 3, rep_range: "15-20", rir: "1-3" };
+  const p = ordP([{ name: "A", exercises: [fly] }, { name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 5, rep_range: "6-10", rir: "1-3" }, fly] }]);
+  const fs = (w, reps) => ({ exercise: "dumbbell-fly", set_type: "work", weight_kg: w, reps });
+  const s = servedLift(fly, [onDay("A", 1, fs(30, 19), fs(30, 19), fs(30, 18))], { block: { phase: "deload", week: 6, setScale: 0.5 } }, undefined, null, { program: p, session: p.sessions[1] });
+  assert.equal(s.suggested_kg, 26, "30·(1 + 20/30)/(1 + 20/22.5) = 26.47 → 26, under the deload's 27");
+  assert.match(s.suggestion_note, /^This time it comes after 5 sets that also work your chest/);
+});
+
+// --- Burst 5 fix verification (R2): on a day served lighter than the anchor (a W279 ease), last time's sets AT
+// today's load still count — the ramp floor is the lighter of the two.
+check("#rep-aim a lighter day than the anchor keeps last time's sets at today's load (70×5, 62.5×7,6 eased to 62.5 → 8 · 8 · 7)", () => {
+  const s = aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(70, 5), brSet(62.5, 7), brSet(62.5, 6))]);
+  assert.equal(s.suggested_kg, 62.5, "precondition: the W279 ease from set 1 at 70");
+  assert.deepEqual(s.rep_targets, [8, 8, 7], "was [8,8,8]: set 3's own 6 at 62.5 was thrown out");
+});
+// --- (R3) a heavier set that failed the range is no evidence for the aim, just as it never anchors.
+check("#rep-aim a failed heavy single never sets the aim (110×1, 100×8, 100×8 → 9 · 9 · 9, not 3 · 9 · 9)", () => {
+  const s = aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(110, 1, { rir: 0 }), brSet(100, 8, { rir: 1 }), brSet(100, 8, { rir: 1 }))]);
+  assert.equal(s.suggested_kg, 100);
+  assert.deepEqual(s.rep_targets, [9, 9, 9]);
+});
+// --- (R10) when this week's band lowers the aim, the reason says so — never "try to add a rep or two".
+check("#rep-aim a band-shifted aim comes with its own reason (a block's first week; a taper)", () => {
+  const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 8), brSet(100, 8), brSet(100, 7))];
+  const wk1 = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { block: { week: 1, setScale: 0.7 } });
+  assert.equal(wk1.suggestion_note, "Same weight as last time. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const taper = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { taper: { setScale: 0.6, rirFloor: 3, daysUntil: 5 } });
+  assert.equal(taper.suggestion_note, "Taper — same weight as last time. This week asks for 3–4 reps in reserve, 2 more than last time. The rep aim allows for that.");
+});
+// --- (R11) the position still shapes the aim when the weight can't move (the bar, under half a step): +1, less its cost.
+check("#order a position that can't move the weight still explains the lower aim (a barbell curl at the bar)", () => {
+  const curl = { exercise: "barbell-curl", sets: 3, rep_range: "8-12", rir: "1-3" };
+  const p = ordP([{ name: "A", exercises: [curl] }, { name: "B", exercises: [{ exercise: "chin-up", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "hammer-curl", sets: 3, rep_range: "8-12", rir: "1-3" }, curl] }]);
+  const cs = (w, reps) => ({ exercise: "barbell-curl", set_type: "work", weight_kg: w, reps });
+  const s = servedLift(curl, [onDay("A", 1, cs(20, 12), cs(20, 11), cs(20, 10))], {}, undefined, null, { program: p, session: p.sessions[1] });
+  assert.equal(s.suggested_kg, 20);
+  assert.equal(s.suggestion_note, "Same weight as last time. This time it comes after 6 sets that also work your biceps (last time it came first). The rep aim allows for that.");
+  assert.deepEqual(s.rep_targets, [10, 9, 8], "13 − 13·0.25, 12 − 12·0.25, 11 − 11·0.25: the +1 survives, less the cost");
+});
+
+// --- Round 2 (N1): a set that's no evidence (a back-off, a failed last top set) reads the nearest EARLIER set that
+// is — never set 1, the freshest — so later aims never climb.
+check("#rep-aim a back-off or a failed last top set reads the set before it, not the freshest", () => {
+  assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 8), brSet(100, 7), brSet(90, 10))]).rep_targets, [9, 8, 8], "was [9,8,9]");
+  assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 3, [brDay(1, brSet(100, 8), brSet(100, 7), brSet(105, 4))]).rep_targets, [9, 8, 8]);
+  assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 4, [brDay(1, brSet(100, 8), brSet(100, 7), brSet(100, 6), brSet(80, 12))]).rep_targets, [9, 8, 7, 7]);
+  assert.deepEqual(aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(80, 12), brSet(90, 10), brSet(100, 8))]).rep_targets, [9, 9, 9], "a leading ramp still reads the first set that counts");
+});
+// --- Round 2 (N3/N4): a held weight keeps its OWN reason (W279's warning, W280's "get all 3 to the top", "you hit
+// failure"); the band and the position are added as their own sentences, never replacing it.
+check("#notes a held weight's own reason survives; the band and the position are added to it", () => {
+  const p = ordP([{ name: "A", exercises: [incE] }, { name: "B2", exercises: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3" }, incE] }]);
+  const warned = ordServed("B2", [onDay("A", 1, inc(32, 5), inc(32, 5), inc(32, 5))], {}, null, p);
+  assert.equal(warned.suggestion_note, "Just under the range last time (5; it starts at 6) — keep the weight. If it happens again, I'll lighten it. This time it comes after 2 sets that also work your chest (last time it came first). The rep aim allows for that.");
+  const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 7), brSet(100, 6), brSet(100, 6))];
+  const wk1 = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { block: { week: 1, setScale: 0.7 } });
+  assert.match(wk1.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight\. If it happens again, I'll lighten it\. This week asks for 2–3 reps in reserve, 1 more than last time\. The rep aim allows for that\.$/);
+});
+// --- Round 2 (N2/N5): when the band and the position both shape a held weight's aim, both are named — no sentence
+// claims a direction the other cancels.
+check("#notes the band and a fresher position together: both named, no direction claimed", () => {
+  const curl = { exercise: "barbell-curl", sets: 3, rep_range: "8-12", rir: "1-2" };
+  // 2 chin-up sets before it last time (a 10% position cost): fresher today, but under half a step from 20 kg.
+  const p = ordP([{ name: "A", exercises: [curl] }, { name: "B", exercises: [{ exercise: "chin-up", sets: 2, rep_range: "6-10", rir: "1-3" }, curl] }]);
+  const cs = (w, reps) => ({ exercise: "barbell-curl", set_type: "work", weight_kg: w, reps });
+  const last = { ...onDay("B", 1, cs(20, 10), cs(20, 9), cs(20, 8)), targets: [{ exercise: "barbell-curl", sets: 3, rep_range: "8-12", rir: "1-2" }] };
+  const s = servedLift(curl, [last], { block: { week: 1, setScale: 0.7 } }, undefined, null, { program: p, session: p.sessions[0] });
+  assert.equal(s.suggested_kg, 20, "precondition: under half a step (20.6 kg)");
+  assert.equal(s.suggestion_note, "Same weight as last time. This week asks for 2–3 reps in reserve, 1 more than last time. This time it comes first (last time it came after 2 sets that also work your biceps). The rep aim allows for that.");
+});
+
+// --- Round 3 (K1/K3): when the band (or a harder position) LOWERS the aim, a held weight's note keeps its fact but
+// drops its ask — "get all 4 to the top" can't sit beside an aim under the top in a week that serves 3 sets.
+check("#notes a lowered aim drops the hold's ask, keeps its fact (W280 shortfall; hit failure)", () => {
+  const tgt = (sets, rir) => [{ exercise: "barbell-bench-press", sets, rep_range: "8-12", rir }];
+  const wave = { block: { week: 1, setScale: 0.7 } };
+  const short = aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4, "1-2"), brSet(100, 12), brSet(100, 12), brSet(100, 12))], wave);
+  assert.equal(short.suggestion_note, "You did 3 of 4 sets last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const failed = aim("barbell-bench-press", "8-12", "1-3", 3, [withTargets(tgt(3, "1-2"), brSet(100, 10, { rir: 0 }), brSet(100, 9, { rir: 0 }), brSet(100, 8, { rir: 0 }))], wave);
+  assert.equal(failed.suggestion_note, "You hit failure last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  assert.match(aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4, "1-2"), brSet(100, 12), brSet(100, 12), brSet(100, 12))]).suggestion_note,
+    /^You did 3 of 4 sets last time — get all 4 to the top of the range, then I'll add weight\.$/, "nothing lowers the aim: the ask stands");
+});
+// --- (K2) the band sentence only where the aim applies it: a weighted bodyweight lift whose load moved aims at last
+// time's reps (no Epley on added load), so no "the rep aim allows for that".
+check("#notes no band sentence where the aim ignores the band (weighted pull-up bumped in week 1)", () => {
+  const pu = (w, reps) => ({ exercise: "pull-up", set_type: "work", weight_kg: w, reps });
+  const s = aim("pull-up", "6-10", "1-3", 3, [withTargets([{ exercise: "pull-up", sets: 3, rep_range: "6-10", rir: "1-3" }], pu(10, 10), pu(10, 10), pu(10, 10))], { block: { week: 1, setScale: 0.7 } });
+  assert.equal(s.suggested_kg, 12.5, "precondition: the top of the range adds load");
+  assert.equal(s.suggestion_note, "Last time you hit the top of the range — add 2.5 kg.");
+});
+
+// --- Round 4: whether a hold's ask is dropped is read from the AIMS, not from a sentence being present. Last time over
+// the top (100×14 of 2 planned) still aims at the top in week 1, so "get all 2 to the top" stands.
+check("#notes the ask is dropped only when the aims actually fall under it (or fewer sets are served than it names)", () => {
+  const tgt = (sets) => [{ exercise: "barbell-bench-press", sets, rep_range: "8-12", rir: "1-2" }];
+  const over = aim("barbell-bench-press", "8-12", "1-3", 2, [withTargets(tgt(2), brSet(100, 14))], { block: { week: 1, setScale: 0.7 } });
+  assert.deepEqual([over.sets, over.rep_targets], [2, [12, 12]], "precondition: every served set aims at the top");
+  assert.equal(over.suggestion_note, "You did 1 of 2 sets last time — get all 2 to the top of the range, then I'll add weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const short = aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4), brSet(100, 12), brSet(100, 12), brSet(100, 12))], { block: { week: 1, setScale: 0.7 } });
+  assert.match(short.suggestion_note, /^You did 3 of 4 sets last time — same weight\./, "3 served of the 4 it names: the ask can't be met");
+});
+
+console.log(`\n${passed} coach test(s) passed.`);

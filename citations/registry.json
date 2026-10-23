@@ -1885,6 +1885,25 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/33308806/"
     },
     {
+      "key": "richmond-2004-rest-recovery",
+      "authors": [
+        "Richmond SR",
+        "Godard MP"
+      ],
+      "year": 2004,
+      "title": "The effects of varied rest periods between sets to failure using the bench press in recreationally trained men.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "18",
+      "issue": "4",
+      "pages": "846-9",
+      "doi": "10.1519/14833.1",
+      "pmid": "15574093",
+      "study_type": "non-RCT-trial",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15574093/"
+    },
+    {
       "key": "roberts-2015-cold-water-immersion",
       "authors": [
         "Roberts LA",
@@ -2368,6 +2387,44 @@
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/29382913/"
     },
     {
+      "key": "simao-2005-exercise-order-reps",
+      "authors": [
+        "Simão R",
+        "et al."
+      ],
+      "year": 2005,
+      "title": "Influence of exercise order on the number of repetitions performed and perceived exertion during resistance exercises.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "19",
+      "issue": "1",
+      "pages": "152-6",
+      "doi": "10.1519/1533-4287(2005)19<152:IOEOOT>2.0.CO;2",
+      "pmid": "15705026",
+      "study_type": "non-RCT-trial",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15705026/"
+    },
+    {
+      "key": "simao-2012-exercise-order-review",
+      "authors": [
+        "Simão R",
+        "et al."
+      ],
+      "year": 2012,
+      "title": "Exercise order in resistance training.",
+      "source": "Sports Medicine",
+      "volume": "42",
+      "issue": "3",
+      "pages": "251-65",
+      "doi": "10.2165/11597240-000000000-00000",
+      "pmid": "22292516",
+      "study_type": "narrative-review",
+      "population": "mixed",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/22292516/"
+    },
+    {
       "key": "singer-2024-rest-meta",
       "authors": [
         "Singer A",
@@ -2676,6 +2733,44 @@
       "population": "trained",
       "verified": true,
       "verified_via": "https://pubmed.ncbi.nlm.nih.gov/18500945/"
+    },
+    {
+      "key": "willardson-2005-rest-volume",
+      "authors": [
+        "Willardson JM",
+        "Burkett LN"
+      ],
+      "year": 2005,
+      "title": "A comparison of 3 different rest intervals on the exercise volume completed during a workout.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "19",
+      "issue": "1",
+      "pages": "23-6",
+      "doi": "10.1519/R-13853.1",
+      "pmid": "15705039",
+      "study_type": "non-RCT-trial",
+      "population": "recreationally-active",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/15705039/"
+    },
+    {
+      "key": "willardson-2006-rest-sustain",
+      "authors": [
+        "Willardson JM",
+        "Burkett LN"
+      ],
+      "year": 2006,
+      "title": "The effect of rest interval length on the sustainability of squat and bench press repetitions.",
+      "source": "Journal of Strength and Conditioning Research",
+      "volume": "20",
+      "issue": "2",
+      "pages": "400-3",
+      "doi": "10.1519/R-16314.1",
+      "pmid": "16686571",
+      "study_type": "non-RCT-trial",
+      "population": "trained",
+      "verified": true,
+      "verified_via": "https://pubmed.ncbi.nlm.nih.gov/16686571/"
     },
     {
       "key": "wilson-2012-concurrent-meta",

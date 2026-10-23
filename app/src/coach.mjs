@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -62,7 +62,7 @@ function recentWorkSets(sessions, exId, k) {
     // Deload sets are planned-easy — anchoring double progression to them would
     // leave every next block permanently one increment behind. Skip them.
     const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work" && !s.deload);
-    if (sets.length) out.push({ sets, date: sessions[i].date ?? null, target: (sessions[i].targets ?? []).find((t) => t.exercise === exId) ?? null });
+    if (sets.length) out.push({ sets, date: sessions[i].date ?? null, target: (sessions[i].targets ?? []).find((t) => t.exercise === exId) ?? null, name: sessions[i].session_name ?? null });
   }
   return out;
 }
@@ -247,8 +247,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     }
     return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
-  return { suggested_kg: lastWeight, note: "Keep the weight and try to add a rep or two.", ...base };
+  return { suggested_kg: lastWeight, note: GENERIC_HOLD_NOTE, ...base };
 }
+const GENERIC_HOLD_NOTE = "Keep the weight and try to add a rep or two.";
+// A hold's reason with its ask dropped (the fact kept), for when today's aim sits under that ask.
+const heldLead = (note, taper) => note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.")
+  : /^You hit failure last time/.test(note) ? "You hit failure last time — same weight."
+  : /^You did \d+ of \d+ sets last time/.test(note) ? note.replace(/ — get all .*$/, " — same weight.")
+  : note;
 
 // Which program session is due today (simple rotation by sessions completed).
 export function nextSessionIndex(program, sessionCount) {
@@ -556,12 +562,67 @@ export function trainingContext(user, sessions, now = null) {
   return { beginner, block, taper };
 }
 
+// EXERCISE ORDER (W290, Burst 5 — owner: "Exercise order isn't taken into consideration when
+// suggesting weights"): the same lift after more same-muscle work than last time gets fewer reps (Simão
+// et al. 2005, 2012). Both positions are read from the PLAN — today's session, and the anchor session's
+// own day by name — with their planned (unscaled) sets, so a stable slot never moves, a deferred lift
+// never drifts, and the wave's set ramp never nudges a plate. Only when the difference is 2+ weighted
+// sets (derive-core's ORDER_MIN_DELTA_SETS), only for a weight that came from history (the comeback ease
+// and the taper stand alone), never on added bodyweight load. The capacity converted is the one AT the
+// base rule's weight, in the anchor's position, from the anchor's e1RM — so an earned step up and a
+// position change never compound — and the result is rounded to the NEAREST step (floor would ratchet
+// alternating days downward). Null when nothing applies; else the losses (they shape the aims too) and,
+// when the weight moved, its reason.
+const musclesFor = (byId) => (id) => { const e = byId.get(id); return e ? { primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] } : null; };
+const setsWord = (n) => `${n} set${n === 1 ? "" : "s"}`;
+function orderShift(ex, last, sug, slot, byId, anchorNear) {
+  if (!slot?.program?.sessions || !last?.name || byId.get(ex.exercise)?.equipment === "bodyweight") return null;
+  const today = slot.session?.exercises ?? [], anchorDay = slot.program.sessions.find((s) => s.name === last.name)?.exercises ?? [];
+  const ti = today.findIndex((e) => e.exercise === ex.exercise), ai = anchorDay.findIndex((e) => e.exercise === ex.exercise);
+  if (ti < 0 || ai < 0) return null;
+  const now = priorOverlapSets(today, ti, musclesFor(byId)), then = priorOverlapSets(anchorDay, ai, musclesFor(byId));
+  if (Math.abs(now.sets - then.sets) < ORDER_MIN_DELTA_SETS) return null;
+  const fromLoss = orderLoss(then.sets), toLoss = orderLoss(now.sets);
+  if (fromLoss === toLoss) return null; // both positions cost the same (e.g. both at the cap): nothing to move (Burst 5 review)
+  const anchorMin = ownMin(last, ex.rep_range);
+  const anchor = anchorOf(last.sets, anchorMin), s1 = anchor.first;
+  const rho = typeof s1.rir === "number" ? s1.rir : s1.reps < anchorMin ? 0 : anchorNear;
+  const W = sug.suggested_kg, La = anchor.weight;
+  if (!(W > 0) || !(La > 0)) return null;
+  const e1rmFresh = La * (1 + (s1.reps + rho) / (30 * (1 - fromLoss)));
+  const capAtW = (1 - fromLoss) * 30 * (e1rmFresh / W - 1);
+  if (!(capAtW > 0)) return null;
+  const inc = loadIncrement(ex.exercise, byId);
+  // Move from the weight's OWN grid by whole steps (Burst 5 review): rounding the absolute load moved a
+  // pounds user's 18.14 kg (40 lb) lighter on a fresher day, and a typed 32 kg heavier on a harder one.
+  // A barbell never goes under the empty bar.
+  const steps = Math.round((contextLoad(W, capAtW, fromLoss, toLoss) - W) / inc);
+  const harder = now.sets > then.sets;
+  const muscles = listJoin((harder ? now : then).muscles.map(plainMuscle));
+  // The position as a sentence of its own. It leads the note when it moves the weight; when it can't (under half
+  // a step, or the bar) it is added to the weight's own reason, since it still shapes the aim (round 2).
+  const clause = harder
+    ? `This time it comes after ${setsWord(now.count)} that also work your ${muscles} (last time it came ${then.count ? `after ${setsWord(then.count)}` : "first"}).`
+    : `This time it comes ${now.count ? `after only ${setsWord(now.count)} that also work your ${muscles}` : "first"} (last time it came after ${setsWord(then.count)} that also work your ${muscles}).`;
+  const stays = () => ({ fromLoss, toLoss, kg: W, note: null, clause });
+  if (steps === 0) return stays(); // under half a step: the weight stays exactly as it was
+  let kg = Math.round((W + steps * inc) * 100) / 100;
+  if (byId.get(ex.exercise)?.equipment === "barbell") kg = Math.max(kg, Math.min(W, EMPTY_BAR_KG));
+  if (!(kg > 0) || kg === W) return stays();
+  const earned = W > La && kg <= La ? " — you'd earned a step up, but this position cancels it"
+    : W > La ? " — the step up you'd earned, adjusted for the order"
+    : W < La && kg < La ? " — the lighter weight your last session called for, adjusted for the order" : "";
+  // "This time … (last time …)" reads right on Today AND in the read-out's "next time" (Burst 5 review).
+  return { fromLoss, toLoss, kg, note: `${clause.slice(0, -1)}, so I've made it ${kg} kg${earned}.` };
+}
+
 // What the app SERVES for one lift of the plan in a training context: the RIR band shown
 // (it IS the prescription autoregulation measures against), the set count after the wave or
 // taper, and the weight with its reason. The single door for "what will this lift be" —
 // buildToday serves it, and the read-out's "next time" quotes it, so the promise test can pin
-// the two equal (Burst 2, lesson 60).
-export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null) {
+// the two equal (Burst 2, lesson 60). `slot` ({ program, session }) is where the lift sits in
+// the plan today, for the exercise-order rule (W290).
+export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, slot = null) {
   const { block, taper } = ctx;
   const rirBand = taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
     : block?.phase === "deload" ? "3-4"
@@ -578,6 +639,13 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null) {
   const sets = taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
     : block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale))
     : ex.sets;
+  const last = sug.suggested_kg != null ? lastSetsForExercise(sessions, ex.exercise) : null;
+  const { min, max } = parseRange(ex.rep_range);
+  const nearOf = (b) => { const m = /(\d+)\s*-\s*(\d+)/.exec(b ?? ""); return m ? +m[1] : 1; };
+  const anchorNear = nearOf(last?.target?.rir ?? ex.rir);
+  // The exercise-order rule (W290) moves the history weight first; never during a taper or a comeback.
+  const order = last && !taper && sug.layoff_days == null ? orderShift(ex, last, sug, slot, byId, anchorNear) : null;
+  const base = order ? order.kg : sug.suggested_kg;
   // Deload load must ease from last week's ACTUAL weight, not the progressed
   // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
   // make the "~10% lighter" deload come out as heavy as, or heavier than, the peak
@@ -586,16 +654,46 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null) {
   // the prior real week and never undoes a lighter ease (a layoff comeback at
   // 0.88× stays at 0.88×, not bumped back up to 0.9×). Never during a taper — a
   // taper's whole point is holding the load while sets come down.
-  const suggested_kg = !taper && block?.phase === "deload" && sug.suggested_kg != null
-    ? Math.min(sug.suggested_kg, Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4)
-    : sug.suggested_kg;
+  const deloadKg = !taper && block?.phase === "deload" && sug.suggested_kg != null ? Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4 : null;
+  const suggested_kg = deloadKg != null ? Math.min(base, deloadKg) : base;
   // The reason travels to the set screen (Burst 1 review), so it must describe the weight
   // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
-  // would contradict the pre-filled number.
-  const suggestion_note = suggested_kg != null && sug.suggested_kg != null && suggested_kg < sug.suggested_kg
+  // would contradict the pre-filled number; when the order moved it, the order says why.
+  // A band further from failure than the one the anchor was SERVED with (its stored target) aims lower.
+  const bandShift = last?.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0;
+  const anchorKg = last ? anchorOf(last.sets, ownMin(last, ex.rep_range)).weight : null;
+  // The reason is COMPOSED (round 2 of the fix verification): the weight's own reason leads — a held weight's
+  // W279 warning or W280 "get all 3 to the top" is never replaced — and the band and the position that shape
+  // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"
+  // gives way to "Same weight as last time." when a clause lowers the aim. The deload ease keeps its own note.
+  // Each set's rep AIM (W289): from last session's sets, against the weight actually served (after the
+  // order rule and the deload ease), so the reps stepper starts on a number this set can hit.
+  // A comeback's eased row keeps last time's reps (the ease is the point), and only sets at or above the
+  // anchor weight set the aim (a ramp logged as work sets is no evidence at today's load) — Burst 5 review.
+  const aimOpts = last ? { sets, weightKg: suggested_kg, min, max, near: nearOf(rirBand), anchorNear, floorKg: Math.min(suggested_kg, anchorKg), ceilKg: anchorKg,
+    keepReps: byId.get(ex.exercise)?.equipment === "bodyweight" || sug.layoff_days != null } : null;
+  const rep_targets = last ? repTargets(last.sets, { ...aimOpts, fromLoss: order?.fromLoss ?? 0, toLoss: order?.toLoss ?? 0, bandShift }) : null;
+  // The aims without the band or the position: a hold's ask is dropped only when today's aims really fall under
+  // them, or when fewer sets are served than a W280 ask names (round 4).
+  const plainAims = last ? repTargets(last.sets, aimOpts) : null;
+  const deloadLowered = deloadKg != null && deloadKg < base;
+  // The band sentence only where the aim applies the band: a weighted bodyweight lift whose load moved aims at last
+  // time's reps (no Epley on added load), so it doesn't (round 3).
+  const bandSentence = bandShift > 0 && sug.layoff_days == null && !(byId.get(ex.exercise)?.equipment === "bodyweight" && suggested_kg !== anchorKg)
+    ? `This week asks for ${rirBand.replace("-", "–")} reps in reserve, ${bandShift} more than last time.` : null;
+  const posSentence = order && !order.note ? order.clause : null;
+  const extra = deloadLowered ? [] : [bandSentence, posSentence].filter(Boolean);
+  // When a sentence LOWERS the aim (the band, or a harder position), a hold keeps its fact but drops its ask —
+  // "get all 4 to the top" or "build reps first" can't sit beside an aim under them (round 3).
+  const plannedSets = last?.target && !last.target.deload ? last.target.sets : null;
+  const lowers = (rep_targets ?? []).some((t, k) => t < (plainAims?.[k] ?? t))
+    || (Number.isInteger(plannedSets) && sets < plannedSets && /^You did \d+ of \d+ sets/.test(sug.note));
+  const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
+    : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
+  const suggestion_note = deloadLowered
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
-    : sug.note;
-  return { rirBand, sets, sug, suggested_kg, suggestion_note };
+    : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
 }
 
 export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
@@ -783,7 +881,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const e = byId.get(ex.exercise);
     // The band, the wave-scaled sets and the weight with its reason — through the one door
     // the read-out's "next time" also uses (servedLift).
-    const served = servedLift(ex, sessions, { block, taper }, byId, now);
+    // The anchor's day is looked up in the STORED plan: a today-swap's patched copy (substituteRow) moves
+    // the swapped-in lift out of its own day, where its anchor lives (Burst 5 review).
+    const served = servedLift(ex, sessions, { block, taper }, byId, now, { program: user.stored_program ?? program, session: templateSession });
     const { rirBand, sets, sug } = served;
     let { suggested_kg, suggestion_note } = served;
     // No history for this lift: a non-beginner gets a body-scaled starting guess
@@ -792,8 +892,18 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     if (suggested_kg == null && !beginner && bodyweightKg) {
       const estimate = estimateStartingWeight(e, bodyweightKg, ex.exercise, byId);
       if (estimate != null) {
-        suggested_kg = estimate;
-        suggestion_note = "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort.";
+        // A first-time lift after same-muscle work starts a little lighter (W290): its position's cost
+        // against a fresh start, at the range's bottom near the band (rounded to the nearest step, and
+        // never under the empty bar — the estimate already errs light).
+        const today = templateSession.exercises, ti = today.findIndex((x) => x.exercise === ex.exercise);
+        const before = ti > 0 ? priorOverlapSets(today, ti, musclesFor(byId)) : null;
+        const { min } = parseRange(ex.rep_range), near = +((/^(\d+)\s*-/.exec(rirBand) ?? [, 1])[1]);
+        const inc = loadIncrement(ex.exercise, byId);
+        const eased = before && before.sets >= ORDER_MIN_DELTA_SETS && e?.equipment !== "bodyweight"
+          ? Math.max(e?.equipment === "barbell" ? EMPTY_BAR_KG : inc, Math.round(Math.round(contextLoad(estimate, min + near, 0, orderLoss(before.sets)) / inc) * inc * 4) / 4) : estimate;
+        suggested_kg = Math.min(estimate, eased);
+        suggestion_note = "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort."
+          + (suggested_kg < estimate ? ` It comes after ${setsWord(before.count)} that also work your ${listJoin(before.muscles.map(plainMuscle))}, so I've started it a little lighter.` : "");
       }
     }
     return {
@@ -833,6 +943,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       // The reps above are the sets AT last_kg (the anchor). When the weight changed between
       // sets — the next-set hint, a ramp — every set as done: [[kg, reps], …] (Burst 1 review).
       last_sets: sug.last_sets ?? null,
+      // Each set's rep aim (W289) — the player's reps stepper starts here. Absent without history.
+      ...(served.rep_targets ? { rep_targets: served.rep_targets } : {}),
     };
   });
   // The comeback ease can also fire PER-EXERCISE (a rotated-back accessory
@@ -1023,7 +1135,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     if (!hit) continue; // a session-only substitute: not in the plan, so no promise to make
     const thisWeek = hit.j < slotsLeft;
     if (!thisWeek && rollingNextWeek) continue; // the new block's plan sets that weight
-    const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow);
+    const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
     if (served.suggested_kg == null) continue;
     next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week" });
   }

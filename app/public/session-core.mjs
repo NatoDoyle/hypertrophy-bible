@@ -245,15 +245,25 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
 export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
 }
+// The rep capacity (reps + RIR) a lift's NEXT set still has after this one — a BYTE-IDENTICAL
+// copy of derive-core's nextSetCapacity (W288; test-session pins the two together).
+export const SET_FATIGUE_PCT = { near: 20, mid: 10 };
+export function nextSetCapacity(reps, rir) {
+  const r = rir ?? 0;
+  const pct = r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0;
+  return (reps + r) * (100 - pct) / 100;
+}
 // "A more appropriate weight" for the NEXT set (W279b, owner consideration #3): after a work
 // set that clearly misses the prescription — under the range near failure (RIR unlogged or
 // ≤ 1; a set stopped early wasn't too heavy), or two+ reps over the top / far easier than the
 // band — the load that should land the next one in range, from the set just banked. Lighter
 // targets the range's bottom, heavier its top (the smallest move back into the range), both
 // at the band's near edge; floored to the lift's increment, at least one increment, at most
-// ±20%. Advice only: the player offers it, the user decides. Planned-easy (deload/eased),
-// warm-up and bodyweight sets never hint.
-export function nextSetHint(set, row) {
+// ±20%. The next set is NOT fresh (W288, Burst 5): the set's capacity is carried forward less
+// what the next set loses (nextSetCapacity) — 70×5 at failure on 6-10 gives 62.5, not 65.
+// Advice only: the player offers it, the user decides. Planned-easy (deload/eased), warm-up
+// and bodyweight sets never hint. `target_reps` is the rep count the weight aims at.
+export function nextSetHint(set, row, { aim = null } = {}) {
   if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
   if (!range) return null;
@@ -262,15 +272,73 @@ export function nextSetHint(set, row) {
   const near = band ? +band[1] : 1, top = band ? +band[2] : 2;
   const inc = row?.inc_kg > 0 ? row.inc_kg : 2.5;
   const w = set.weight_kg, rir = typeof set.rir === "number" ? set.rir : null;
-  const under = set.reps < min && (rir == null || rir <= 1);
+  // A set that met its own aim (W289) is on plan, even under the range: 150×5,4,5 aims 5 on set 2 of a
+  // 6-10 range, and doing 5 there is no miss (Burst 5 review). The player passes the aim only while the
+  // weight is the served one.
+  // …at the effort the aim assumed: met at failure under a wider band (an aim of 7 at 2-3 in reserve), it is
+  // still a miss (fix verification).
+  const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near));
   const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
   if (!under && !over) return null;
-  const floored = Math.floor(loadForReps(w, set.reps, rir ?? 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const floored = Math.floor(loadForReps(w, nextSetCapacity(set.reps, rir), 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  return rounded > 0 ? { kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null } : null;
+  return rounded > 0 ? finalizeHint({ kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null }, set, row, rounded) : null;
+}
+// The hint at the weight actually OFFERED (round 2 of the fix verification): a pounds user is offered the next
+// 5-lb plate, which can be heavier than the kg it rounds from. The reps it aims at — what "Use X kg" fills — are
+// predicted there by the same model, and a "heavier" step that would land under the range is dropped (10 kg →
+// 12.5 is +25%). Added load on a bodyweight lift is not the whole load, so no Epley on it: it aims at the range
+// edge it was moved toward, as before.
+export function finalizeHint(hint, set, row, offeredKg) {
+  if (!hint) return null;
+  if (row?.equipment === "bodyweight") return { ...hint, target_reps: hint.kind === "lighter" ? hint.min : hint.max };
+  const band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
+  const near = band ? +band[1] : 1;
+  const cap = nextSetCapacity(set.reps, typeof set.rir === "number" ? set.rir : null);
+  const kg = offeredKg > 0 ? offeredKg : hint.kg;
+  const predicted = Math.round(30 * (set.weight_kg * (1 + cap / 30) / kg - 1) - near);
+  if (hint.kind === "heavier" && predicted < hint.min) return null;
+  return { ...hint, target_reps: Math.max(hint.min, Math.min(hint.max, predicted)) };
+}
+
+// The top of a rep range ("6-10" → 10): the reps stepper's start when there is nothing better.
+export function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
+// The row's per-set rep aims (W289) when they're well-formed for THIS row's own range — whole numbers
+// from 1 to the top. A swapped-in lift keeps the SLOT's range (PRESCRIPTION_KEYS), so the aims the
+// server computed for its own range may not fit it: then there are none.
+export function validAim(row) {
+  const t = row?.rep_targets, top = topReps(row?.rep_range);
+  return Array.isArray(t) && t.length && t.every((r) => Number.isInteger(r) && r >= 1 && r <= top) ? t : null;
+}
+// The reps the stepper starts on for set k of a lift (W289, Burst 5 — owner: "150kg × 5,4,5 last
+// workout and now it is suggesting 150kg × 10,10,10"). Derived from the row and the BANKED count every
+// render, never stored, so a resume or a reload lands on the same number: today's aim for this set
+// while the weight is still the served one (`atServed`), else the last banked reps (from set 2 on —
+// the carry-over the stepper always had), else the top of the range.
+export function repSeed(row, k, { lastReps = null, atServed = true } = {}) {
+  const aim = atServed ? validAim(row) : null;
+  if (aim) return aim[Math.min(k, aim.length - 1)];
+  return k > 0 && Number.isInteger(lastReps) && lastReps >= 0 ? lastReps : topReps(row?.rep_range);
+}
+// The step "the same load" is judged by (fix verification): half the lift's OWN step — 1 kg on a dumbbell
+// isolation, 2.5 kg otherwise — in kg; a 5 lb plate in pounds.
+export function servedStep(unit, incKg) { return unit === "lb" ? 5 : Math.min(2.5, incKg > 0 ? incKg : 2.5); }
+// The same load on the stepper (Burst 5 review): within half a display step, so a kg/lb toggle (330 lb →
+// 149.75 kg) or the one-plate nudge still reads as the served weight; one step off is a moved weight.
+export function sameLoad(a, b, step) {
+  const x = Number(a), y = Number(b);
+  return a != null && b != null && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) < step / 2;
+}
+// The reps of the last banked WORK set of a lift (warm-ups and other lifts don't count), or null.
+export function lastWorkReps(logged, exercise) {
+  for (let i = (logged ?? []).length - 1; i >= 0; i--) {
+    const l = logged[i];
+    if (l?.exercise === exercise && (l.set_type ?? "work") === "work") return typeof l.reps === "number" ? l.reps : null;
+  }
+  return null;
 }
 
 // What the plan asked of each lift TODAY (W280), sent with the finished workout so the
@@ -448,13 +516,20 @@ export function sanitizeTypedValue(raw, { integer = false, fallback = null } = {
 // converted once and restamped. One function serves both a global kg/lb flip and
 // a single exercise's toggle mid-workout, so there is exactly one place a stored
 // "60" can change meaning. Returns fresh objects + whether anything moved.
-export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUnit, unitOf }) {
+// `servedIn(k, unit)` (round 2 of the fix verification): the served pre-fill of slot k in a unit. An entry still
+// sitting exactly on it is re-stamped to the new unit's pre-fill, so a toggle never reads as a moved weight
+// (25 lb → 10.5 kg on a 1 kg lift, not the converted 11.25).
+export function normalizeWeightsToUnits({ weights = {}, stamps = {}, fallbackUnit, unitOf, servedIn = null }) {
   const w = { ...weights }, st = { ...stamps };
   let changed = false;
   for (const k of Object.keys(w)) {
     const to = unitOf(k);
     const from = st[k] ?? fallbackUnit ?? to;
-    if (from !== to) w[k] = convertDispWeight(w[k], from, to);
+    if (from !== to) {
+      const servedFrom = servedIn?.(k, from), servedTo = servedIn?.(k, to);
+      // …never to zero (1 kg rounds to 0 lb on the plate grid; 0 means "bodyweight only") — round 3.
+      w[k] = servedFrom != null && servedTo > 0 && Number(w[k]) === servedFrom ? servedTo : convertDispWeight(w[k], from, to);
+    }
     if (st[k] !== to) { st[k] = to; changed = true; }
   }
   return { weights: w, stamps: st, changed };

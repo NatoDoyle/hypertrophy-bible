@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
-import { suggestWeight, MUSCLE_PLAIN } from "../src/coach.mjs";
+import * as uiHelpers from "../public/ui-helpers.mjs"; // Burst 5's new exports, read so a missing one fails its own check
+import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
 
 let pass = 0, fail = 0;
@@ -418,13 +419,28 @@ check("#why-unit property: every reason the REAL engine writes reaches a pounds 
   }
   assert.ok(seen >= 250, `scenarios exercised: ${seen}`);
 });
+check("#why-unit (W290) the order note reaches a pounds user in pounds, never kg — and never dropped", () => {
+  const prog = { sessions: [{ name: "A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+    { name: "B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  let seen = 0;
+  for (const kg of [9.07, 20.41, 30, 58.97]) {
+    const hist = [{ date: "2026-06-01T18:00:00Z", session_name: "A", sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: kg, reps })) }];
+    const s = servedLift(prog.sessions[1].exercises[1], hist, {}, undefined, null, { program: prog, session: prog.sessions[1] });
+    if (!/comes after/.test(s.suggestion_note ?? "")) continue;
+    const row = { suggested_kg: s.suggested_kg, last_kg: s.sug.last_kg };
+    const out = noteInUnit(s.suggestion_note, row, "lb", lbD, prefillInUnit(row, lbD, 5));
+    assert.ok(out != null && !/\bkg\b/.test(out), `${kg}: ${s.suggestion_note} → ${out}`);
+    seen++;
+  }
+  assert.ok(seen >= 2, `order notes exercised: ${seen}`);
+});
 // The next-set hint says what actually happened: reps under, reps over — or reps IN the range
 // with far more left in the tank than planned (that hint fires on effort; "over the range"
 // was a false statement there).
 check("#hint-copy each kind of hint says what actually happened", () => {
   const j = (c) => `${c.lead} — ${c.why}. Try ${c.tryW} ${c.tail}`;
   assert.equal(j(hintCopy({ kind: "lighter", reps: 6, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 1, fromW: "60 kg", toW: "55 kg" })),
-    "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it.");
+    "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it, allowing for the rep or so each hard set costs.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 15, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 2, fromW: "40 kg", toW: "42.5 kg" })),
     "Set 2: 15 reps at 40 kg — over the 8–12 range. Try 42.5 kg for this one to land in it.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),
@@ -496,6 +512,22 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
   assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
   assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
 });
+check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
+  assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
+  assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
+    "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
+  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1)");
+  assert.match(appJs, /const prevAim = prevWork && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/,
+    "the aim applies by the weight the judged set was BANKED at, not what the stepper holds now (fix verification R1)");
+  assert.match(appJs, /const stepFor = \(e\) => servedStep\(unitFor\(e\.exercise\), e\.inc_kg\);/, "the lift's own step (fix verification R4)");
+  assert.doesNotMatch(appJs, /phone locked|phone is locked|iPhone's Settings/, "device-neutral notification copy (fix verification R6/R7)");
+  assert.match(appJs, /const hint = rawHint && rawW != null \? finalizeHint\(rawHint, prevWork, e, toKgFor\(rawW, e\.exercise\)\) : null;/, "the hint is judged at the weight actually offered (round 2 N9)");
+  assert.match(fnBody(appJs, "function normalizeSessUnits() {", 1200), /servedIn: \(k, u\) => \{ const x = sess\.ex\[k\]; return x\?\.suggested_kg != null \? prefillInUnit\(x, \(kg\) => dispW\(kg, u\), wIncIn\(u\)\) : null; \},/, "a unit toggle re-stamps the served pre-fill (round 2 N10)");
+  assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
+  assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
+  assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
+  assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
+});
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {
   const fin = fnBody(appJs, "async function finish() {", 5000);
   const drop = fin.indexOf("// Accepted or safely queued — now it's safe to drop the in-progress copy.\n  clearSess();");
@@ -562,6 +594,52 @@ check("notifyOffer (W285): the turn-on door each device can actually use", () =>
   assert.equal(notifyOffer({ supported: false, ios: true, standalone: false, on: false }), "home-screen", "an iPhone in Safari: Web Push lives in the Home-Screen app");
   assert.equal(notifyOffer({ supported: false, ios: false, standalone: false, on: false }), null, "a browser without Web Push");
   assert.equal(notifyOffer({ supported: false, ios: true, standalone: true, on: false }), null, "a Home-Screen app on an iOS too old for Web Push");
+});
+// --- W291 (Burst 5 — owner, on an iPhone: "I clicked the 'Enable notifications' button, and it just told me to
+// turn it on in my settings"). No prompt appeared and the app wasn't listed in iPhone Settings → Notifications:
+// iOS never received a request. Push only works from the Home-Screen app, so an iPhone outside it is sent
+// there even when Safari exposes PushManager; and a refusal says what actually happened.
+check("notifyOffer (W291): an iPhone outside the Home-Screen app is sent there — even when Safari exposes PushManager", () => {
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "default", on: false }), "home-screen", "a Safari tab never shows the prompt");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "denied", on: false }), "home-screen");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: true, permission: "default", on: false }), "enable", "the Home-Screen app asks");
+  assert.equal(notifyOffer({ supported: true, ios: true, standalone: false, permission: "granted", on: true }), null, "already on stays on");
+  assert.equal(notifyOffer({ supported: true, ios: false, standalone: false, permission: "default", on: false }), "enable", "a desktop or Android browser tab asks");
+});
+check("permissionOutcome (W291): granted is on; still 'default' afterwards means nothing was asked or decided; 'denied' is blocked", () => {
+  assert.equal(uiHelpers.permissionOutcome("granted", "granted"), "on");
+  assert.equal(uiHelpers.permissionOutcome("denied", "default"), "not-asked", "WebKit refused without asking: nothing is stored");
+  assert.equal(uiHelpers.permissionOutcome("default", "default"), "not-asked", "the prompt was dismissed");
+  assert.equal(uiHelpers.permissionOutcome("denied", "denied"), "blocked");
+  assert.equal(uiHelpers.permissionOutcome(undefined, "default"), "not-asked");
+});
+check("notifyOutcome (W291): each outcome says what actually happened — and only a real 'no' points at Settings", () => {
+  const notAsked = uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: true, activation: true });
+  assert.equal(notAsked.mark, false, "the invite stays: nothing was answered");
+  assert.equal(notAsked.text, "Your device didn't show the question, so nothing is switched off — tap the button again. (Detail: tap counted ✓ · Home-Screen app ✓)",
+    "an iPad is iOS too: 'device', not 'phone' (Burst 5 review C13)");
+  assert.doesNotMatch(notAsked.text, /Settings/);
+  assert.match(uiHelpers.notifyOutcome("not-asked", { ios: true, standalone: false, activation: false }).text, /\(Detail: tap counted ✗ · Home-Screen app ✗\)$/);
+  const elsewhere = uiHelpers.notifyOutcome("not-asked", { ios: false, standalone: false, activation: null }).text;
+  assert.equal(elsewhere, "Nothing was decided, so nothing is switched off — tap the button again when you're ready. (Detail: tap counted ? · browser tab)",
+    "off iOS, a closed prompt is the usual cause: never claim it didn't show (Burst 5 review C12)");
+  const blockedIos = uiHelpers.notifyOutcome("blocked", { ios: true, standalone: true });
+  assert.equal(blockedIos.mark, true);
+  assert.equal(blockedIos.text, "Notifications are switched off for this app. In Settings → Notifications, find it (the name under its Home-Screen icon), switch on Allow Notifications, then come back and tap the button.");
+  assert.match(uiHelpers.notifyOutcome("blocked", { ios: false }).text, /browser's site settings/);
+  assert.equal(uiHelpers.notifyOutcome("unavailable", {}).text, "Notifications aren't available right now.");
+  assert.equal(uiHelpers.notifyOutcome("unavailable", {}).mark, false);
+});
+check("enablePush (W285, kept by W291): the permission is asked BEFORE any await — Safari shows the prompt only inside the tap", () => {
+  const body = fnBody(appJs, "async function enablePush() {", 1200);
+  assert.ok(body.indexOf("Notification.requestPermission()") > 0 && body.indexOf("Notification.requestPermission()") < body.indexOf("await"), "the ask comes first");
+  assert.match(body, /const activation = navigator\.userActivation\?\.isActive \?\? null;\n\s*const permission = Notification\.requestPermission\(\);/, "the tap's activation is read just before the ask");
+  assert.match(body, /permissionOutcome\(await permission, notifyPermission\(\)\)/, "the outcome is re-read afterwards");
+});
+check("notification doors (W291): the post-workout invite and Me both speak through notifyOutcome — no 'allow it in your settings' for a question never asked", () => {
+  assert.doesNotMatch(appJs, /No problem — you can allow notifications any time in your settings\./);
+  assert.equal((appJs.match(/notifyOutcome\(res\.outcome, \{ ios: isIOS\(\), standalone: isStandalone\(\), activation: res\.activation \}\)/g) ?? []).length, 2);
+  assert.match(fnBody(appJs, "function wireNotifyInvite() {", 2500), /if \(o\.mark\) markNotifyInvite\(\); msg\(o\.text\); return;/, "a question never asked keeps the one-time invite");
 });
 check("trainingDaysHint (W285): the person's own days in week order — or what happens without any", () => {
   assert.equal(trainingDaysHint(["fri", "mon", "wed"]), "On Mon, Wed and Fri, if you haven't trained yet.");

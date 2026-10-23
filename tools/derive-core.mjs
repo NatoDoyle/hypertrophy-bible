@@ -1322,6 +1322,100 @@ export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
 }
 
+// The rep capacity (reps + RIR) a lift's NEXT set still has after this one (W288, Burst 5). Reps
+// fall set to set even with 3–5 min rest (Richmond & Godard 2004; Willardson & Burkett 2005, 2006),
+// so the next set keeps ~80% of the capacity after a set ending at ≤ 1 RIR (unlogged effort reads
+// as near failure, W279's reading), ~90% after 2–3, and all of it from 4. Engine estimates, not
+// findings. Whole percents keep the arithmetic exact (13 · 0.9 is 11.700000000000001 in floats).
+// The player (session-core) carries a byte-identical copy, pinned by test-session's parity test.
+export const SET_FATIGUE_PCT = { near: 20, mid: 10 };
+export function nextSetCapacity(reps, rir) {
+  const r = rir ?? 0;
+  const pct = r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0;
+  return (reps + r) * (100 - pct) / 100;
+}
+
+// Today's per-set rep AIM for a lift (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is
+// suggesting 150kg × 10,10,10"), from last session's work sets in order (set k reads set min(k, n−1),
+// so a weight changed mid-lift reads each set at its own load):
+//   - the same load (and the same position cost): beat it by a rep — double progression's "add a
+//     rep" — capped at the range top;
+//   - a moved load (a bump, an ease, a deload, an order change): the set's capacity (reps + RIR)
+//     carried to today's load by Epley, less today's band near edge. Unlogged effort reads as 0
+//     under the range (W279's reading) and as the anchor band's near edge in it;
+//   - `keepReps` — added load on a bodyweight lift (not the whole load, so no Epley on it), or a
+//     comeback's eased row (the ease IS the point; Epley would convert it back into reps): last
+//     time's reps.
+// The "+1" is for the SAME effort: when today's band sits `bandShift` reps further from failure than
+// the band the anchor session was served with (a taper, a block's first week — known from its stored
+// target, W280), the same load aims at last time's reps less that shift, with no push (Burst 5 review). Only last time's sets at or above the anchor weight (`floorKg`) set the aim: a ramp
+// logged as work sets is no evidence at today's load. fromLoss/toLoss (W290) are the fractions of
+// capacity the lift's position cost then and costs today: at the same load the aim keeps its "+1" and
+// gives back the position's cost in reps. A heavier set that failed the range (above `ceilKg`, the
+// anchor) is no evidence, just as it never anchors. Clamped to [1, max]. Null when there's nothing to
+// aim from.
+export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNear = near, fromLoss = 0, toLoss = 0, keepReps = false, floorKg = 0, ceilKg = 0, bandShift = 0 } = {}) {
+  const all = (lastSets ?? []).filter((s) => typeof s?.reps === "number" && s.reps > 0);
+  // A set that's no evidence at today's load (a ramp set under the floor, a back-off, or a heavier set that
+  // failed the range) is read as the nearest EARLIER set that is — the first one for a leading ramp — keeping
+  // set k aligned with last time's set k, and never letting a later aim climb back to the freshest set's.
+  const evidence = (s) => { const w = s.weight_kg ?? 0; return !(floorKg > 0) || (w >= floorKg && (!(ceilKg > 0) || w <= ceilKg || s.reps >= min)); };
+  const firstEvidence = all.find(evidence);
+  let lastEvidence = null;
+  const src = firstEvidence ? all.map((s) => (evidence(s) ? (lastEvidence = s) : (lastEvidence ?? firstEvidence))) : all;
+  if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;
+  const out = [];
+  for (let k = 0; k < sets; k++) {
+    const s = src[Math.min(k, src.length - 1)];
+    const wk = s.weight_kg ?? 0;
+    let t;
+    const rho = typeof s.rir === "number" ? s.rir : s.reps < min ? 0 : anchorNear;
+    const same = bandShift > 0 ? s.reps - bandShift : s.reps + 1;
+    if (wk === weightKg && fromLoss === toLoss) t = same;
+    else if (keepReps || !(wk > 0) || !(weightKg > 0)) t = s.reps;
+    else if (wk === weightKg) t = Math.round(same - (s.reps + rho) * (1 - (1 - toLoss) / (1 - fromLoss)));
+    else {
+      t = Math.round(30 * ((wk / weightKg) * (1 + (s.reps + rho) / (30 * (1 - fromLoss))) - 1) * (1 - toLoss) - near);
+    }
+    out.push(Math.max(1, Math.min(max, t)));
+  }
+  return out;
+}
+
+// EXERCISE ORDER (W290, Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting
+// weights"). An exercise done later in a session gets fewer reps on every set (Simão et al. 2005; review
+// 2012). How much same-muscle work comes BEFORE the lift at `idx` of a planned list: each earlier lift
+// counts its sets × 1 when its primary muscle is this lift's primary, × 0.5 for a primary↔secondary
+// overlap, else 0 (`sets`); `count` is those sets unweighted and `muscles` the ones shared, for the note.
+// Engine estimates, not findings: each weighted set costs 5% of the lift's rep capacity, at most 25%, and
+// a difference under 2 weighted sets is noise. Whole percents keep the arithmetic exact.
+export const ORDER_LOSS_PCT_PER_SET = 5, ORDER_LOSS_PCT_CAP = 25, ORDER_MIN_DELTA_SETS = 2;
+export function priorOverlapSets(exercises, idx, musclesOf) {
+  const out = { sets: 0, count: 0, muscles: [] };
+  const me = musclesOf(exercises?.[idx]?.exercise);
+  if (!me) return out;
+  for (let j = 0; j < idx; j++) {
+    const m = musclesOf(exercises[j]?.exercise);
+    if (!m) continue;
+    const pp = m.primary.filter((x) => me.primary.includes(x));
+    const ps = [...m.primary.filter((x) => me.secondary.includes(x)), ...m.secondary.filter((x) => me.primary.includes(x))];
+    const w = pp.length ? 1 : ps.length ? 0.5 : 0;
+    if (!w) continue;
+    const n = exercises[j].sets ?? 0;
+    out.sets += n * w;
+    out.count += n;
+    for (const x of pp.length ? pp : ps) if (!out.muscles.includes(x)) out.muscles.push(x);
+  }
+  return out;
+}
+// The fraction of a lift's rep capacity its position costs, from priorOverlapSets' weighted sets.
+export const orderLoss = (n) => Math.min(ORDER_LOSS_PCT_CAP, ORDER_LOSS_PCT_PER_SET * n) / 100;
+// The load giving the same rep capacity `c` when the lift's position costs `toLoss` of it instead of
+// `fromLoss` (Epley, the loss scaling the fresh capacity). Swapping from and to is the exact inverse.
+export function contextLoad(kg, c, fromLoss, toLoss) {
+  return kg * (1 + c / (30 * (1 - fromLoss))) / (1 + c / (30 * (1 - toLoss)));
+}
+
 // Readiness relative to the user's OWN baseline (z-scores), not absolute values —
 // the correct way to use HRV/sleep. 0-100, higher = more recovered. Null if no data.
 export function readinessIndex(checkins) {

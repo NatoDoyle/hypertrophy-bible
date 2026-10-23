@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -298,11 +298,15 @@ const deviceNotifyOffer = () => notifyOffer({ supported: pushSupported(), ios: i
 // prompt goes FIRST, before any await: Safari shows it only while the tap's user activation
 // lasts, and a network round trip before it can outlive that.
 async function enablePush() {
-  if (!pushSupported()) return "unsupported";
+  if (!pushSupported()) return { outcome: "unsupported", activation: null };
+  // Whether WebKit still counts this tap as a user gesture, read just before the ask (W291), so a
+  // refusal can say which side said no. Reading it consumes nothing.
+  const activation = navigator.userActivation?.isActive ?? null;
   const permission = Notification.requestPermission();
   const [reg, key] = await Promise.all([navigator.serviceWorker.ready, api("/api/push/key").then((r) => r.key)]);
-  if ((await permission) !== "granted") return "denied";
-  if (!key) return "unavailable";
+  const outcome = permissionOutcome(await permission, notifyPermission());
+  if (outcome !== "on") { console.info("[notifications]", { outcome, activation, permission: notifyPermission(), standalone: isStandalone() }); return { outcome, activation }; }
+  if (!key) return { outcome: "unavailable", activation };
   const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/")); // base64url -> applicationServerKey bytes
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: new Uint8Array([...raw].map((c) => c.charCodeAt(0))) });
   // Minutes EAST of UTC (getTimezoneOffset is minutes BEHIND, so negate): the reminders land at
@@ -311,7 +315,7 @@ async function enablePush() {
   if (r?.error) throw new Error(r.error);
   localStorage.setItem("hb_push", "1");
   localStorage.setItem("hb_push_ep", sub.endpoint);
-  return "on";
+  return { outcome: "on", activation };
 }
 // Notifications, offered ONCE — right after a workout, when a rest alert and a training-day
 // reminder make sense (W287 — owner: "I can't figure out how"). Answered either way, it's gone
@@ -325,7 +329,7 @@ function notifyInviteHtml() {
       <p class="muted">On iPhone, rest alerts and reminders come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>, and open the app from there.</p>
       <button class="btn ghost inline" id="inv-no">Got it</button></div>`;
   return `<div class="card" id="notify-invite"><b>🔔 Want a tap on the shoulder?</b>
-      <p class="muted">When your rest is up — even with your phone locked — and on your training days, if you haven't trained yet.</p>
+      <p class="muted">When your rest is up — even with your screen locked — and on your training days, if you haven't trained yet.</p>
       <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-weigh"> ⚖️ A morning weigh-in reminder too</label>
       <label class="row" style="border:0;padding:4px 0;gap:10px;cursor:pointer;justify-content:flex-start"><input type="checkbox" id="inv-food"> 🍽️ An evening food-log reminder too</label>
       <button class="btn" id="inv-on">Turn on notifications</button>
@@ -341,8 +345,7 @@ function wireNotifyInvite() {
     const extras = [["weigh_in", $("#inv-weigh")?.checked], ["calories", $("#inv-food")?.checked]].filter(([, on]) => on).map(([kind]) => kind);
     try {
       const res = await enablePush();
-      if (res === "denied") { markNotifyInvite(); msg("No problem — you can allow notifications any time in your settings."); return; }
-      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      if (res.outcome !== "on") { const o = notifyOutcome(res.outcome, { ios: isIOS(), standalone: isStandalone(), activation: res.activation }); if (o.mark) markNotifyInvite(); msg(o.text); return; }
       markNotifyInvite();
       for (const kind of extras) await api("/api/reminders/device", { method: "POST", body: JSON.stringify({ user_id: uid, kind, on: true }) }).catch(() => {});
       card.innerHTML = `<p>🔔 Notifications on. Pick what and when in <button class="btn ghost inline" id="inv-me" style="margin:0">Me → Reminders</button>.</p>`;
@@ -2020,6 +2023,7 @@ function normalizeSessUnits() {
     weights: sess.weights || {}, stamps: sess.wUnits || {},
     fallbackUnit: sess.units ?? unitPref(),
     unitOf: (k) => unitFor(sess.ex[k]?.exercise),
+    servedIn: (k, u) => { const x = sess.ex[k]; return x?.suggested_kg != null ? prefillInUnit(x, (kg) => dispW(kg, u), wIncIn(u)) : null; },
   });
   sess.weights = res.weights; sess.wUnits = res.stamps;
   // The legacy scalar tracks the GLOBAL pref so an older build resuming this blob
@@ -2040,7 +2044,8 @@ function startWeightDefault(e) {
 // one plate whenever the engine moves it, so a pounds user's 1 kg step is never swallowed by
 // plate rounding (session-core prefillInUnit) — else the first-time default.
 const startWeightDisp = (e) => prefillInUnit(e, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) ?? dispWeightFor(startWeightDefault(e), e.exercise);
-function topReps(range) { const m = String(range).match(/-(\d+)/); return m ? +m[1] : 10; }
+// The step "still the served weight" is judged by: half the lift's own step (fix verification).
+const stepFor = (e) => servedStep(unitFor(e.exercise), e.inc_kg);
 
 // The weight control. For a bodyweight move carrying no added load, a "0 kg"
 // stepper reads as broken to a novice ("do I type my bodyweight? is 0 wrong?"), so
@@ -2506,7 +2511,8 @@ function renderPlayer() {
   // sess.weights holds DISPLAY-unit values (stamped per-index in wUnits);
   // converted to kg only when logged.
   if (sess.weights[sess.i] == null) { sess.weights[sess.i] = startWeightDisp(e); sess.wUnits[sess.i] = unitFor(e.exercise); }
-  if (sess.reps[sess.i] == null) sess.reps[sess.i] = topReps(e.rep_range);
+  // The reps start on THIS set's aim (W289) — derived from the row and the banked count, never stored.
+  if (sess.reps[sess.i] == null) sess.reps[sess.i] = repSeed(e, loggedSetCount(e.exercise), { lastReps: lastWorkReps(sess.logged, e.exercise), atServed: sameLoad(sess.weights[sess.i], startWeightDisp(e), stepFor(e)) });
   // sess.eff is NEVER seeded — no answer means no rir on the logged set.
   const w = sess.weights[sess.i], reps = sess.reps[sess.i];
   const setDots = Array.from({ length: e.sets }, (_, k) => `<i class="${k < sess.set ? "done" : ""}"></i>`).join("");
@@ -2521,20 +2527,30 @@ function renderPlayer() {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
+  // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
+  const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
   // the last WORK set of this lift banked this session — nothing stored, so a resume shows
   // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
   const prevWork = sess.set > 0 && !sess.deload && !e.eased
     ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
-  const hint = nextSetHint(prevWork, e);
-  // In the lift's display unit, always a real move (pounds round to 5-lb plates).
-  const hintW = hint ? hintInUnit(hint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  // …judged against that set's own aim while the weight is still the served one (Burst 5 review): a set that
+  // met an aim under the range is on plan, not a miss.
+  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
+  const prevAim = prevWork && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
+  const rawHint = nextSetHint(prevWork, e, { aim: prevAim });
+  // In the lift's display unit, always a real move (pounds round to 5-lb plates)…
+  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  // …and judged at that OFFERED weight: a pounds user's next plate can be heavier than the kg it rounds from.
+  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
+  const hintW = hint ? rawW : null;
   const hc = hint && hintW != null ? hintCopy(hint, { setNo: sess.set, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
   const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hint.kind === "lighter" ? "🎯" : "⬆️"} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
       ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
+    ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2629,6 +2645,7 @@ function renderPlayer() {
   if ($("#use-hint")) $("#use-hint").onclick = () => {
     clearSetConfirm(); quitPending = false; // a new weight: the typo guard judges it afresh, like any stepper touch
     sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
+    sess.reps[sess.i] = hint.target_reps ?? sess.reps[sess.i]; // the reps that weight aims at (W288)
     saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
@@ -2643,6 +2660,7 @@ function renderPlayer() {
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
+    delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
     sess.set++;
     if (sess.set >= e.sets) {
       sess.set = 0;
@@ -2703,12 +2721,13 @@ function renderSupersetStation(L, P) {
   const memberBlock = (idx) => {
     const m = sess.ex[idx];
     if (sess.weights[idx] == null) { sess.weights[idx] = startWeightDisp(m); sess.wUnits[idx] = unitFor(m.exercise); }
-    if (sess.reps[idx] == null) sess.reps[idx] = topReps(m.rep_range);
+    if (sess.reps[idx] == null) sess.reps[idx] = repSeed(m, loggedSetCount(m.exercise), { lastReps: lastWorkReps(sess.logged, m.exercise), atServed: sameLoad(sess.weights[idx], startWeightDisp(m), stepFor(m)) });
     // sess.eff is NEVER seeded — no answer means no rir on the logged set.
     const w = sess.weights[idx], reps = sess.reps[idx];
     return `<div class="card">
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
+      ${round === 0 && validAim(m) ? `<p class="muted" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${validAim(m).slice(0, m.sets).join(" · ")} reps</p>` : ""}
       ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
@@ -2783,6 +2802,7 @@ function renderSupersetStation(L, P) {
       const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
       sess.logged.push(loggedSet);
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
+      delete sess.reps[idx]; // …and the next round starts on its aim (W289)
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
@@ -4400,7 +4420,7 @@ function remindersHtml(a) {
   const offer = deviceNotifyOffer();
   const on = pushOn();
   const rest = `<label class="row" style="border:0;padding:6px 0;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rest-alert" ${restAlertOn() ? "checked" : ""} style="margin-top:4px">
-      <span>🔔 <b>Rest's up</b><br><span class="muted" style="font-size:.85rem">${on ? "A chime in the app, and a notification if your phone is locked." : "A chime in the app when your rest is over."}</span></span></label>`;
+      <span>🔔 <b>Rest's up</b><br><span class="muted" style="font-size:.85rem">${on ? "A chime in the app, and a notification if your screen is locked." : "A chime in the app when your rest is over."}</span></span></label>`;
   const rem = a.device_reminders ?? {};
   const rows = REMINDER_ROWS.map((r) => {
     const set = rem[r.kind] ?? { on: false, time: "" };
@@ -4416,10 +4436,10 @@ function remindersHtml(a) {
         ${a.reminders_off ? `<p class="muted">All reminders are switched off below — turn them back on to get these. Rest alerts still work.</p>` : ""}
         <button class="btn ghost inline" id="pushbtn">Turn off notifications on this device</button>${msg}</div>`
     : offer === "enable"
-      ? `<div class="card"><p>Get a nudge when your rest is up — even with your phone locked — and reminders at the times you pick: your training days, a morning weigh-in, an evening food log.</p>
+      ? `<div class="card"><p>Get a nudge when your rest is up — even with your screen locked — and reminders at the times you pick: your training days, a morning weigh-in, an evening food log.</p>
           <button class="btn" id="pushbtn">Turn on notifications</button>${msg}${rest}</div>`
       : offer === "blocked"
-        ? `<div class="card"><p class="muted">Notifications are blocked for this app. To get rest alerts and reminders, allow notifications for it in your ${isIOS() ? "iPhone's Settings → Notifications" : "browser's site settings"}, then come back here.</p>${rest}</div>`
+        ? `<div class="card"><p class="muted">Notifications are blocked for this app. To get rest alerts and reminders, allow notifications for it in your ${isIOS() ? "Settings → Notifications" : "browser's site settings"}, then come back here.</p>${rest}</div>`
         : offer === "home-screen"
           ? `<div class="card"><p class="muted">Want a nudge when rest is up, and reminders at the times you pick? On iPhone they come through the Home-Screen app: tap the <b>Share</b> button (the square with an arrow pointing up) at the bottom of Safari, then <b>Add to Home Screen</b>. Open it from there and turn notifications on here.</p>${rest}</div>`
           : `<div class="card">${rest}</div>`;
@@ -4509,8 +4529,7 @@ function wireCareCards(a, rerender) {
     try {
       if (pushOn()) { await disablePush(); say("Notifications turned off on this device."); await rerender(); $("#pushbtn")?.focus(); return; }
       const res = await enablePush();
-      if (res === "denied") { msg("No problem — you can allow notifications any time in your settings."); return; }
-      if (res !== "on") { msg("Notifications aren't available right now."); return; }
+      if (res.outcome !== "on") { msg(notifyOutcome(res.outcome, { ios: isIOS(), standalone: isStandalone(), activation: res.activation }).text); return; }
       say("Notifications on."); await rerender(); $("#pushbtn")?.focus();
     } catch { msg("📴 Couldn't set up notifications — try again when you're online."); }
   };

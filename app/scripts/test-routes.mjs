@@ -1207,6 +1207,81 @@ try {
       && new RegExp(`first set at 50 kg came in at ${brMin - 3} — under the`).test(brRow.suggestion_note ?? ""), JSON.stringify({ kg: brRow?.suggested_kg, expect: brExpect, rir: brRow?.rir, note: brRow?.suggestion_note }));
   }
 
+  // --- #rep-aim (W289, Burst 5 — owner: "150kg × 5,4,5 last workout and now it is suggesting 150kg ×
+  // 10,10,10"). Each set's aim reaches the phone through the door it uses: set 1 one short of the range
+  // holds the weight (W279), and every set's aim beats last time's by a rep — never the range's top.
+  {
+    const raU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const raT0 = await (await app.request("/api/today", { headers: { "X-HB-User": raU } })).json();
+    const raX = raT0.session.exercises.find((e) => !/bodyweight/.test(e.equipment ?? "") && /^\d+-\d+$/.test(e.rep_range ?? ""));
+    const raMin = +raX.rep_range.split("-")[0];
+    await json("POST", "/api/session", { user_id: raU, session_id: "ra-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: raT0.session.name,
+      sets: [raMin - 1, raMin - 2, raMin - 1].map((reps) => ({ exercise: raX.exercise, set_type: "work", weight_kg: 50, reps })) });
+    await store.updateUser(raU, (u) => { u.plan_meta = { ...u.plan_meta, rotation_skips: u.program.sessions.length - 1 }; return u; });
+    const raT1 = await (await app.request("/api/today", { headers: { "X-HB-User": raU } })).json();
+    const raRow = raT1.session.exercises.find((e) => e.exercise === raX.exercise);
+    const raExpect = Array.from({ length: raRow?.sets ?? 0 }, (_, k) => [raMin, raMin - 1, raMin][Math.min(k, 2)]);
+    ok("#rep-aim /api/today carries each set's aim — last time's reps + 1 at the held weight, never the range top",
+      raT1.session.name === raT0.session.name && raRow?.suggested_kg === 50 && raExpect.length > 0 && JSON.stringify(raRow?.rep_targets) === JSON.stringify(raExpect),
+      JSON.stringify({ kg: raRow?.suggested_kg, rep_targets: raRow?.rep_targets, expect: raExpect, note: raRow?.suggestion_note }));
+  }
+
+  // --- #order (W290, Burst 5 — owner: "Exercise order isn't taken into consideration when suggesting
+  // weights"). A custom plan holds the same lift at two positions; through the doors the phone uses —
+  // save the plan, log day A, and day B serves it lighter, and says why.
+  {
+    const oU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ordPlan = { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] };
+    const oSave = await json("POST", "/api/plan/save", { user_id: oU, program: ordPlan });
+    const oToday = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": oU } })).json()).session;
+    let oT = await oToday();
+    for (let k = 0; k < 3 && oT.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: oU }); oT = await oToday(); }
+    await json("POST", "/api/session", { user_id: oU, session_id: "ord-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day A",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const oB = await oToday();
+    const oRow = oB.exercises.find((e) => e.exercise === "incline-dumbbell-press");
+    ok("#order /api/today: the lift after 3 bench sets on day B is lighter than after nothing on day A — and says why",
+      !oSave.data?.error && oT.name === "Day A" && oB.name === "Day B" && oRow?.suggested_kg === 27.5 && /^This time it comes after 3 sets that also work your chest \(last time it came first\)/.test(oRow?.suggestion_note ?? ""),
+      JSON.stringify({ save: oSave.data?.error, first: oT.name, next: oB.name, kg: oRow?.suggested_kg, note: oRow?.suggestion_note }));
+    // Burst 5 review (C4/C16): a lift swapped in for TODAY gets the same order rule as one the plan puts in
+    // that slot — the swap's plan copy must keep the lift's own day, where its anchor lives.
+    const sU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: sU, program: { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "machine-chest-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] } });
+    let sT = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json();
+    for (let k = 0; k < 3 && sT.session.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: sU }); sT = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json(); }
+    await json("POST", "/api/session", { user_id: sU, session_id: "ord-swap-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day A",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const sB = (await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json()).session;
+    const swapped = await json("POST", "/api/exercise/cant-do", { user_id: sU, exercise: "machine-chest-press", scope: "today", session: "Day B", live: sB.exercises.map((e) => e.exercise), pick: "incline-dumbbell-press" });
+    const sRow = swapped.data?.row;
+    // Fix verification (R5): a SECOND today-swap in the same slot (the live lift was itself a today-swap, so the
+    // stored plan doesn't hold it) appends the substitute at the session's end — its position there is unknown, so
+    // the order rule must not read it as "after every other lift".
+    const rU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: rU, program: { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "machine-chest-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] } });
+    let rT = (await (await app.request("/api/today", { headers: { "X-HB-User": rU } })).json()).session;
+    for (let k = 0; k < 3 && rT.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: rU }); rT = (await (await app.request("/api/today", { headers: { "X-HB-User": rU } })).json()).session; }
+    await json("POST", "/api/session", { user_id: rU, session_id: "ord-swap-2", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day A",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const rB = (await (await app.request("/api/today", { headers: { "X-HB-User": rU } })).json()).session;
+    const presc = { sets: 3, rep_range: "6-10", rir: "1-3" };
+    const first = await json("POST", "/api/exercise/cant-do", { user_id: rU, exercise: "machine-chest-press", scope: "today", session: "Day B", live: rB.exercises.map((e) => e.exercise), pick: "dumbbell-bench-press" });
+    const live2 = rB.exercises.map((e) => (e.exercise === "machine-chest-press" ? first.data?.row?.exercise : e.exercise));
+    const second = await json("POST", "/api/exercise/cant-do", { user_id: rU, exercise: first.data?.row?.exercise, scope: "today", session: "Day B", live: live2, prescription: presc, pick: "incline-dumbbell-press" });
+    ok("#order a second today-swap in the same slot (appended, position unknown) gets no false order cut — the same as a direct swap there",
+      first.data?.row?.exercise === "dumbbell-bench-press" && second.data?.row?.exercise === "incline-dumbbell-press" && second.data.row.suggested_kg === 30 && second.data.row.suggestion_note === "Keep the weight and try to add a rep or two.",
+      JSON.stringify({ first: first.data?.row?.exercise, second: second.status, row: second.data?.row && { kg: second.data.row.suggested_kg, note: second.data.row.suggestion_note } }));
+    ok("#order a lift swapped in for today after 3 bench sets is served the order's weight too (27.5, not 30)",
+      sB.name === "Day B" && sRow?.exercise === "incline-dumbbell-press" && sRow?.suggested_kg === 27.5 && /^This time it comes after 3 sets that also work your chest/.test(sRow?.suggestion_note ?? ""),
+      JSON.stringify({ day: sB.name, status: swapped.status, row: sRow && { ex: sRow.exercise, kg: sRow.suggested_kg, note: sRow.suggestion_note } }));
+  }
+
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
   // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
   {
@@ -1474,6 +1549,20 @@ try {
     const rC = await logToday(uC, await todayOf(uC));
     ok("#readout (fixture) a taper", /to your event/.test(rC?.readout?.objective ?? ""), rC?.readout?.objective);
     await keeps("taper", uC, rC?.readout);
+    // O — the order moves the weight (W290): a custom plan holds the same lift at two positions, so
+    // the read-out's "next time" for day B must already carry day B's position.
+    const uO = await onboard();
+    const oSave = await json("POST", "/api/plan/save", { user_id: uO, program: { sessions: [
+      { name: "Day A", exercises: [{ exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] },
+      { name: "Day B", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3" }] } ] } });
+    let tO = await todayOf(uO);
+    for (let k = 0; k < 3 && tO.name !== "Day A"; k++) { await json("POST", "/api/today/skip", { user_id: uO }); tO = await todayOf(uO); }
+    const rO = await logToday(uO, tO);
+    const oNext = rO?.readout?.next?.find((n) => n.exercise === "incline-dumbbell-press");
+    ok("#readout the order note reads right about the NEXT session (no 'Today' in a read-out's 'next time')", /^This time it comes after/.test(oNext?.note ?? ""), oNext?.note);
+    ok("#readout (fixture) the order moves day B's weight off the base rule's", !oSave.data?.error && tO.name === "Day A" && oNext?.kg === 40 && oNext?.session === "Day B",
+      JSON.stringify({ save: oSave.data?.error, day: tO.name, next: oNext }));
+    await keeps("order context", uO, rO?.readout);
     // D — after a skipped set: one lift did 1 of its sets (the plan travels as targets)
     const uD = await onboard(); const tD = await todayOf(uD);
     const skipId = tD.exercises.find((e) => e.sets >= 2 && e.equipment !== "bodyweight")?.exercise;

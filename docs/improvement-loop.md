@@ -1278,6 +1278,43 @@ These are real failures from previous iterations. Each is now a standing check.
    twice, and 23:58 rolled over to the next day. → **Standing rule:** a user-set schedule stamps
    what fired, per kind and per local day, and keeps its times on the grid it fires on.
 
+94. **A weight for a later set must carry the fatigue in between.** The next-set hint converted a
+   banked set's e1RM to the next set as if that set were fresh: 70×5 at failure gave 65 kg. That is
+   about right for a fresh set, but after a set to failure it leaves ~6.7 reps in the tank, so 6 reps
+   lands under the band — the owner's "+30%". → **Standing rule:** any weight computed for a later
+   set, or a later lift, starts from the capacity left AFTER the work in between, and the loss is a
+   named, cited engine estimate.
+95. **A pre-filled field is a prescription.** The reps stepper seeded the range's top on every set, so
+   "150 kg × 10" read as the coach's expectation, under a note that said "just under the range — keep
+   the weight". → **Standing rule:** every number a field starts on comes from the same model as the
+   advice beside it, and a field the player can resume is derived from the plan and the banked log,
+   never stored.
+96. **When two adjustments stack, the second starts from the state the first produced.** The design
+   review's order formula converted the anchor set's own capacity at a weight the base rule had
+   already bumped. A step up and a fresher position then compounded: 32.5 kg, ~5 reps at 1 RIR, under
+   the range. The capacity AT the bumped weight, from the anchor's e1RM, gives 30. Recomputing the
+   reviewer's numbers inline caught it. → **Standing rule:** recompute a reviewer's worked numbers
+   before adopting them, pin the round trip with a property test, and round to the nearest step
+   when contexts alternate (floor ratchets).
+97. **An error message must say what happened, and that needs the state read back.** Every
+   non-granted permission result said "allow it in your settings". On the owner's iPhone, iOS had
+   never been asked, so there was nothing in Settings to switch on. → **Standing rule:** a failure
+   path classifies from the state read back after the call, not from the call's return alone, and
+   only a real "no" points at Settings.
+
+98. **Two rules that judge the same set must agree on what "on target" means.** W289's aim could sit
+   under the range (150×5,4,5 aims 5 on set 2 of 6–10), and W279b's next-set hint, which judges by
+   the range, then called the set that met its aim a miss and offered 12.5 kg less. The review's
+   player lens found it, not a test: each wave's tests checked its own rule. → **Standing rule:**
+   when a new prescription can sit outside an older rule's frame, every older rule that judges the
+   same set reads the new prescription, and a test pins the pair.
+99. **A fix pass needs its own adversarial check.** The review's 19 fixes went to a second workflow.
+   It re-ran every original reproduction (16 resolved; 3 only partly) and found 12 candidates, 7 of
+   them made by the fixes themselves. A filter shifted set alignment. A gate read the stepper
+   instead of the banked set. A lookup that started working met an appended swap with no known
+   position. → **Standing rule:** after a fix pass, verify the fixes' own new interactions (each fix
+   against its neighbours), not only the findings they closed.
+
 ## Token discipline (the loop must be affordable to keep running)
 
 Session telemetry (July 2026): ~4.8M subagent tokens across 6 audit/backfill workflows, twice
@@ -1325,6 +1362,75 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7d. **Telemetry (Waves 288–292, 2026-10-21 — Burst 5, one /plan iteration on four owner reports:
+   the weight model, the notifications button, and one question).** Every root cause was
+   reproduced by running the real functions first (the hint: 65 kg; the hold: 150 kg plus a
+   range-top stepper), not inferred.
+   - **Agents:** one Plan agent, ≈280k subagent tokens, killed once by a network error and
+     resumed through SendMessage instead of relaunched. Its notifications finding held: the
+     offer checks PushManager before an iPhone outside the Home-Screen app. One worked number
+     was wrong (lesson 96), caught by recomputing it inline. No finder or verify agents.
+   - **Evidence:** five PubMed-verified citations from E-utilities (esummary for the fields,
+     efetch abstracts for the claims). The 2012 review's abstract was read before its claim
+     was written.
+   - **Tests:**
+     - Suites after the review fixes: coach 170 (its summary now prints last, so every check counts —
+       W250's check and this burst's had run uncounted after it), routes 582, session-core 109,
+       ui-helpers 68.
+     - Every new check was observed red before its fix. 17 lesson-54 code tampers each
+       turned their check red: 2 in W288, 6 in W289, 4 in W290, 5 in W291.
+     - Real browser: 19/19 checks against a scratch server with a throwaway store (the
+       owner's .data store untouched), zero console errors. A browser tamper (no reseed on
+       bank) turned exactly the two set-2 checks red.
+     - Walkthrough slips: two in my own script (a wave-scaled set count, a "Loading…" slot),
+       each fixed in the script, not the app.
+   - **The branch review (ultracode, after a usage-limit stop killed the single reviewer).** One
+     workflow: 6 diff-scoped finder lenses, a reproducer and a refuter per finding, then a
+     completeness critic. 47 agents, ≈3.6M subagent tokens — over rule 4's fan-out caps, by the
+     owner's ultracode opt-in. 20 candidates confirmed, none refuted, all re-verified inline as
+     RED tests before any fix. 19 fixed; 1 ruled (a same-day reorder is invisible for one session,
+     the plan-based design's known cost). Two fixes of my own regressed on the first run: the
+     band-shift fix read an unwaved fallback band, and the delta rounding re-rounded a zero move.
+     Both were caught by the suites before commit. One fix tamper survived and was strengthened
+     with a full-step case (lesson 54).
+   - **The fix verification (ultracode).** A second workflow: a verifier per fix group re-ran each
+     original reproduction and hunted regressions, a cross-group critic followed, and each new
+     candidate got a reproducer and a refuter. 29 agents, ≈2.1M subagent tokens. 12 candidates:
+     7 introduced by the fixes or by interactions between them, 5 older but in the burst's area.
+     All 12 fixed, plus the 3 partial ones (lesson 99). 12 more tampers each turned red; real
+     browser 21/21, and a browser tamper of the new gate turned exactly its check red.
+   - **Round 2 (loop-until-dry), scoped to that pass.** 3 area verifiers, then a reproducer and a
+     refuter per candidate. 24 agents, ≈1.8M subagent tokens. The critic stalled 6 times and
+     failed the run; the 23 finished results came from the journal, not a relaunch.
+     - 10 candidates, all reproduced and mostly made by the previous pass. The new notes replaced
+       a held weight's own reason (W279's warning). A substitution read the freshest set for a
+       back-off. A guard ran Epley on bodyweight added load and judged the kg, not the plate
+       offered. A narrower tolerance re-broke the unit toggle.
+     - Fixed by design, not patch by patch: composed reasons, the nearest earlier evidence set,
+       finalizeHint at the offered weight, and a toggle that re-stamps the served pre-fill.
+     - One (a second today-swap when the first substitute sits in another day) predates the burst
+       and is deferred.
+     - 6 tampers each turned red.
+   - **Round 3, scoped to that commit.** 2 verifiers, then a reproducer and a refuter per candidate.
+     12 agents, ≈0.96M subagent tokens. 4 kept, 1 refuted:
+     - Composition kept a hold's ask beside a lowered aim ("get all 4 to the top" in a week serving 3).
+     - A band sentence was claimed where the aim ignores it.
+     - The toggle re-stamp could produce a zero weight.
+
+     Each was fixed with a test that turned red first, and 3 tampers each turned red.
+   - **Rounds 4 and 5 (one verifier each, then a reproducer and a refuter).**
+     - Round 4 (≈0.25M tokens) kept 1 minor. A hold's ask was dropped because a band sentence was
+       present, though the aims still reached the top. Fixed: "lowers" is read from the aims
+       themselves.
+     - Round 5 (≈0.1M) came back **dry**. Its verifier ran a 150k-case differential fuzz of servedLift
+       against the parent commit and a 40k-case invariant check, with no counterexample.
+     - The loop converged: 20 → 12 → 10 → 4 → 1 → 0. Across 8 workflow runs: ≈9.0M subagent tokens,
+       119 agents.
+   - **Not run:**
+     - The Daytona gate (no DAYTONA_API_KEY).
+     - A physical iPhone. The owner's Web Inspector readout (Step 0) had not arrived when
+       the burst closed. The shipped detail code ("tap counted ✓/✗ · Home-Screen app ✓/✗")
+       makes the next tap diagnose itself.
 7e. **Telemetry (Waves 279–287b, 2026-10-19/20 — one /plan iteration: four owner requests, two
    considerations, four bursts).** Four review workflows, finders only (3–4 lenses, each in its own
    scratch dir), every candidate verified INLINE:
