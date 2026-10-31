@@ -186,6 +186,8 @@ const normalizeTargets = (list) => {
       rir: typeof t.rir === "string" && /^\d-\d$/.test(t.rir) ? t.rir : null,
       suggested_kg: Number.isFinite(kg) && kg >= 0 && kg <= MAX_SET_WEIGHT_KG ? Math.round(kg * 100) / 100 : null,
       ...(t.deload === true ? { deload: true } : {}),
+      // The planned lift this one stood in for, today only (Burst 6 review G1) — the comeback clock counts its slot.
+      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
     });
   }
   return out.length ? out : null;
@@ -635,7 +637,8 @@ export function createApp(store, config = {}) {
     // Today's best replacement for X in the live session (today-only swaps, and the live
     // half of a permanent swap whose plan side changed nothing for today).
     // The lifts the user has history on: within a fatigue class a tired swap prefers one (its weight comes pre-filled).
-    const known = tired ? new Set(ctx.sessions.flatMap((x) => (x.sets ?? []).filter((y) => (y.set_type ?? "work") === "work").map((y) => y.exercise))) : new Set();
+    // Only real (non-deload) work counts: eased sets never anchor a lift, so a lift known only from them has no weight yet (review K9).
+    const known = tired ? new Set(ctx.sessions.flatMap((x) => (x.sets ?? []).filter((y) => (y.set_type ?? "work") === "work" && !y.deload).map((y) => y.exercise))) : new Set();
     const todayPick = (u, pick = null) => {
       const fitting = userSubstitutes(u, X, { sessionName, stalled, live, scope: "today", exclude }).filter((s) => s.fits);
       if (pick != null && !fitting.some((s) => s.id === pick)) return { error: "bad-pick" };
@@ -646,10 +649,11 @@ export function createApp(store, config = {}) {
       const t = todayPick(user, b.pick ?? null);
       if (t.error) return c.json({ error: "bad-pick" }, 400);
       const Y = t.id;
-      if (!Y && tired) return c.json({ error: "no-easier", reason: "tired", message: "Nothing easier fits your equipment today." }, 409);
+      if (!Y && tired) return c.json({ error: "no-easier", reason: "tired", message: "Nothing easier fits today's workout." }, 409);
       if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
       return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }),
-        ...(tired ? { reason: "tired", known: known.has(Y) } : {}) });
+        // …and the lift the plan has in this slot — what comes back next time (the player's own library isn't loaded mid-workout).
+        ...(tired ? { reason: "tired", known: known.has(Y), planned_name: nameOf(slotOf && slotOf !== X ? slotOf : X) } : {}) });
     }
 
     // scope === "always"

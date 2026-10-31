@@ -1401,6 +1401,11 @@ try {
     ok("#tired the easiest lift that fits the slot, for today: leg extension (low cost, stable) — a full row, nothing written",
       tired.status === 200 && tired.data?.reason === "tired" && tired.data.replaced_by === "leg-extension" && tired.data.known === false && tired.data.row?.exercise === "leg-extension"
         && JSON.stringify(await store.getUser(tU)) === before, JSON.stringify({ s: tired.status, d: tired.data && { by: tired.data.replaced_by, reason: tired.data.reason, known: tired.data.known, row: tired.data.row?.exercise } }));
+    ok("#tired the answer names the lift the plan has in the slot — what comes back next time (review: the player's library isn't loaded mid-workout)",
+      tired.data?.planned_name === "Bulgarian Split Squat", JSON.stringify(tired.data?.planned_name));
+    const afterBusy = await json("POST", "/api/exercise/cant-do", { ...tBody, exercise: "hack-squat", live: tLive.map((x) => (x === "bulgarian-split-squat" ? "hack-squat" : x)), slot_of: "bulgarian-split-squat", exclude: ["bulgarian-split-squat"], reason: "tired" });
+    ok("#tired …after a busy swap too: the plan's split squat, not the hack squat standing in", afterBusy.data?.replaced_by === "leg-extension" && afterBusy.data.planned_name === "Bulgarian Split Squat",
+      JSON.stringify({ by: afterBusy.data?.replaced_by, planned: afterBusy.data?.planned_name, s: afterBusy.status }));
     const busy = await json("POST", "/api/exercise/cant-do", tBody);
     const asNull = await json("POST", "/api/exercise/cant-do", { ...tBody, reason: null });
     ok("#tired the other doors are unchanged (no reason, or reason null = absent)", busy.status === 200 && !("reason" in busy.data) && asNull.status === 200 && asNull.data.replaced_by === busy.data.replaced_by,
@@ -1409,7 +1414,7 @@ try {
       .map(async (x) => (await json("POST", "/api/exercise/cant-do", { ...tBody, ...x })).status + ":" + ((await json("POST", "/api/exercise/cant-do", { ...tBody, ...x })).data?.error)));
     ok("#tired an unknown reason, or 'tired' with a permanent scope or a pick, is refused (400 bad-reason)", bad.every((x) => x === "400:bad-reason"), JSON.stringify(bad));
     const none = await json("POST", "/api/exercise/cant-do", { ...tBody, exercise: "leg-extension", live: tLive.map((x) => (x === "bulgarian-split-squat" ? "leg-extension" : x)), slot_of: "bulgarian-split-squat", reason: "tired" });
-    ok("#tired nothing easier than leg extension: 409 no-easier, said plainly", none.status === 409 && none.data?.error === "no-easier" && none.data.reason === "tired" && /Nothing easier fits/.test(none.data.message ?? ""),
+    ok("#tired nothing easier than leg extension: 409 no-easier, said plainly (today's workout, not 'your equipment' — review K10)", none.status === 409 && none.data?.error === "no-easier" && none.data.reason === "tired" && none.data.message === "Nothing easier fits today's workout.",
       JSON.stringify({ s: none.status, d: none.data }));
     await json("POST", "/api/session", { user_id: tU, session_id: "tired-le", date: dAgo(4), local_date: dAgo(4).slice(0, 10), session_name: "Lower",
       sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 45, reps })) });
@@ -1417,6 +1422,15 @@ try {
     ok("#tired a lift the user has history on says so (known) — its weight comes pre-filled", known.data?.replaced_by === "leg-extension" && known.data.known === true && known.data.row?.suggested_kg > 0,
       JSON.stringify({ by: known.data?.replaced_by, known: known.data?.known, kg: known.data?.row?.suggested_kg }));
 
+    // Review K9: history that is ONLY eased/deload sets never anchors a lift, so it isn't "known" (or it would stay tagged
+    // eased forever, never getting a weight of its own).
+    const eU = await onbT();
+    await json("POST", "/api/plan/save", { user_id: eU, program: lowerDay });
+    await json("POST", "/api/session", { user_id: eU, session_id: "eased-le", date: dAgo(4), local_date: dAgo(4).slice(0, 10), session_name: "Lower",
+      sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 45, reps, deload: true })) });
+    const eKnown = await json("POST", "/api/exercise/cant-do", { ...tBody, user_id: eU, reason: "tired" });
+    ok("#tired (review K9) a lift whose only history is eased sets is not 'known'", eKnown.data?.replaced_by === "leg-extension" && eKnown.data.known === false,
+      JSON.stringify({ by: eKnown.data?.replaced_by, known: eKnown.data?.known }));
     // The tired day never sets the lift back: after a swap (no split-squat sets) or an eased day (its sets tagged as the
     // player tags an eased row), the next split squat continues from the last real session.
     const nextBss = async (tiredDay) => {
@@ -1431,6 +1445,54 @@ try {
     const afterEase = await nextBss({ sets: [10, 9].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 17.5, reps, deload: true })), targets: [{ exercise: "bulgarian-split-squat", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 17.5, deload: true }] });
     ok("#tired a tired day never sets the lift back: after a swap or an eased day, it continues from the last real session (22.5 kg)",
       afterSwap?.suggested_kg === 22.5 && afterEase?.suggested_kg === 22.5 && /add 2\.5 kg/.test(afterEase?.suggestion_note ?? ""), JSON.stringify({ afterSwap: afterSwap && [afterSwap.suggested_kg, afterSwap.suggestion_note], afterEase: afterEase && [afterEase.suggested_kg, afterEase.suggestion_note] }));
+  }
+
+  // --- Review round 1 (G1): a swap of a lift that comes round once a week must not read as a layoff next week. The
+  // workout's targets name the planned lift a substitute stood in for (from the player's slot_of), and the comeback
+  // clock counts that day — "It's been 14 days" was false a week after a tired swap.
+  {
+    const P = (exercise, sets = 3, rep_range = "8-12", rir = "1-3") => ({ exercise, sets, rep_range, rir });
+    const lowerDay = { sessions: [{ name: "Lower", exercises: [P("leg-press"), P("romanian-deadlift"), P("bulgarian-split-squat")] }] };
+    const weekly = async (stood) => {
+      const u = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: u, program: lowerDay });
+      await json("POST", "/api/session", { user_id: u, session_id: "w1", date: dAgo(14), local_date: dAgo(14).slice(0, 10), session_name: "Lower",
+        sets: [12, 12, 12].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 20, reps })), targets: [{ exercise: "bulgarian-split-squat", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 20 }] });
+      const saved = await json("POST", "/api/session", { user_id: u, session_id: "w2", date: dAgo(7), local_date: dAgo(7).slice(0, 10), session_name: "Lower",
+        sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps })),
+        targets: [{ exercise: "leg-extension", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 40, ...(stood ? { stood_in_for: stood } : {}) }] });
+      const row = (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session.exercises.find((e) => e.exercise === "bulgarian-split-squat");
+      return { u, saved, row };
+    };
+    const stood = await weekly("bulgarian-split-squat");
+    const bare = await weekly(null);
+    ok("#stood-in a tired swap a week ago: the split squat carries on (22.5 kg), never 'It's been 14 days'",
+      stood.row?.suggested_kg === 22.5 && !/It's been \d+ days/.test(stood.row?.suggestion_note ?? ""), JSON.stringify(stood.row && [stood.row.suggested_kg, stood.row.suggestion_note]));
+    ok("#stood-in (control) without the marker the same history reads as a layoff — the case it fixes", bare.row?.layoff_days == null && /It's been 14 days/.test(bare.row?.suggestion_note ?? ""),
+      JSON.stringify(bare.row && [bare.row.suggested_kg, bare.row.suggestion_note]));
+    const stored = (await store.listSessions(stood.u)).find((x) => x.session_id === "w2")?.targets?.[0];
+    const junkU = stood.u;
+    await json("POST", "/api/session", { user_id: junkU, session_id: "w3", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+      sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],
+      targets: [{ exercise: "leg-extension", sets: 1, stood_in_for: "../evil" }, { exercise: "leg-press", sets: 1, stood_in_for: "leg-press" }] });
+    const junk = (await store.listSessions(junkU)).find((x) => x.session_id === "w3")?.targets ?? [];
+    ok("#stood-in the target keeps the marker; a malformed one, or one naming the lift itself, is dropped",
+      stored?.stood_in_for === "bulgarian-split-squat" && junk.length === 2 && junk.every((t) => !("stood_in_for" in t)), JSON.stringify({ stored, junk }));
+  }
+
+  // --- Review round 1 (K19): the recap never praises "close to failure — that's where growth happens" for a lift whose
+  // logged effort went past what the plan asked — the read-out on the same screen says "taken to failure".
+  {
+    const rU = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: rU, program: { sessions: [{ name: "Legs", exercises: [{ exercise: "leg-press", sets: 2, rep_range: "8-12", rir: "2-3" }] }] } });
+    const drop = (rir) => [12, 10].map((reps) => ({ exercise: "leg-press", set_type: "work", weight_kg: 100, reps, ...(rir == null ? {} : { rir }) }));
+    const tgt = [{ exercise: "leg-press", sets: 2, rep_range: "8-12", rir: "2-3", suggested_kg: 100 }];
+    const now = new Date().toISOString();
+    const past = await json("POST", "/api/session", { user_id: rU, session_id: "k19-a", date: now, local_date: now.slice(0, 10), session_name: "Legs", sets: drop(0), targets: tgt });
+    const plain = await json("POST", "/api/session", { user_id: rU, session_id: "k19-b", date: now, local_date: now.slice(0, 10), session_name: "Legs", sets: drop(null), targets: tgt });
+    const said = (r) => JSON.stringify(r.data?.wins ?? []);
+    ok("#recap-wins no 'close to failure — that's where growth happens' for a lift taken past its band; still said when effort wasn't logged",
+      !/close to failure/.test(said(past)) && /close to failure/.test(said(plain)), JSON.stringify({ past: past.data?.wins, plain: plain.data?.wins }));
   }
 
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and

@@ -2166,7 +2166,8 @@ const lp = (w, reps, rir) => ({ exercise: "leg-press", set_type: "work", weight_
 const lpT = (rir, sets = 3) => [{ exercise: "leg-press", sets, rep_range: "6-10", rir, suggested_kg: 150 }];
 const lpAt = (target, prescribed, sets, { holdLoad = false, planned = 3 } = {}) =>
   suggestWeight([withTargets(target == null ? null : lpT(target, planned), ...sets)], "leg-press", "6-10", undefined, null, prescribed, holdLoad);
-const holdA = (near, far) => `You hit the top of the range last time, but closer to failure than the plan's ${near}–${far} reps in reserve — same weight until you get there with ${near} in reserve.`;
+// The ask names TODAY's band's near edge — the band the next session is judged against (review K3) — unless told otherwise.
+const holdA = (near, far, todayNear = near) => `You hit the top of the range last time, but closer to failure than the plan's ${near}–${far} reps in reserve — same weight until you get there with ${todayNear} in reserve.`;
 const kgNote = (r) => [r.suggested_kg, r.note];
 check("#effort-top the top of the range at failure holds — the owner's leg press", () => {
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0)])), [150, holdA(1, 2)]);
@@ -2178,7 +2179,7 @@ check("#effort-top past the top even counting the reps the plan wants in reserve
 check("#effort-top judged against the band the session was SERVED (its stored target), else today's", () => {
   const x3 = (reps, rir) => [lp(150, reps, rir), lp(150, reps, rir), lp(150, reps, rir)];
   assert.deepEqual(kgNote(lpAt("0-1", "1-2", x3(10, 0))), [152.5, "Last time you hit the top of the range — add 2.5 kg."], "a 0-1 week: failure WAS the plan");
-  assert.deepEqual(kgNote(lpAt("2-3", "1-2", x3(10, 1))), [150, holdA(2, 3)], "a 2-3 week met at 1 in reserve");
+  assert.deepEqual(kgNote(lpAt("2-3", "1-2", x3(10, 1))), [150, holdA(2, 3, 1)], "a 2-3 week met at 1 in reserve; today's 1-2 is what earns the bump");
   assert.deepEqual(kgNote(lpAt(null, "1-2", x3(10, 0))), [150, holdA(1, 2)], "no stored target: today's band");
   assert.deepEqual(kgNote(lpAt("2-3", "2-3", x3(11, 0))), [150, holdA(2, 3)], "11 at failure is 9 at the band's near edge");
 });
@@ -2190,8 +2191,14 @@ check("#effort-top precedence: before the RIR surplus, before W280's shortfall, 
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 5), lp(150, 10, 5)])), [150, holdA(1, 2)], "one set at failure is never averaged into a surplus bump");
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 0)])), [150, holdA(1, 2)], "2 of 3 — never promised 'get all 3 to the top' for sets that wouldn't earn it");
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 12, 0), lp(150, 12, 0)])), [150, "You did 2 of 3 sets last time — get all 3 to the top of the range, then I'll add weight."]);
-  assert.deepEqual(kgNote(lpAt("1-2", "2-3", [lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0)], { holdLoad: true })), [150, holdA(1, 2)], "a taper: never 'you'd normally add load here'");
+  assert.deepEqual(kgNote(lpAt("1-2", "2-3", [lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0)], { holdLoad: true })),
+    [150, "You hit the top of the range last time, but closer to failure than the plan's 1–2 reps in reserve — same weight."], "a taper: never 'you'd normally add load here', and no ask the taper won't honour");
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)])), [155, "You left ~4 reps in reserve last time — add 5 kg."]);
+});
+check("#effort-top (review K3) the hold's ask names TODAY's band — what the next judgement uses — never a band the card no longer shows", () => {
+  const x3 = [lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1)];
+  assert.equal(lpAt("2-3", "1-3", x3).note, holdA(2, 3, 1), "week 1's 2-3 met at 1; week 2's card says 1-3");
+  assert.equal(lpAt("3-4", "1-2", x3).note, holdA(3, 4, 1), "after a taper's 3-4, back to 1-2: never 'with 3 in reserve'");
 });
 // The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
 // that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own

@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, easeSlot, tiredOffer } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredOffer, EMPTY_BAR_KG } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2969,7 +2969,7 @@ async function undoSwap() {
 async function tiredSwap() {
   const gen = ++cantDoGen;
   const cur = sess?.ex?.[sess.i];
-  if (!cur || sess.set !== 0) return;
+  if (!cur || sess.set !== 0 || cur.tired) return;
   const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
   app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
   const st = document.createElement("p"); st.className = "muted"; st.setAttribute("role", "status"); st.textContent = "Finding something easier…"; app.appendChild(st);
@@ -2980,10 +2980,12 @@ async function tiredSwap() {
       scope: "today", live: sess.ex.map((x) => x.exercise), reason: "tired" }) });
   } catch { r = null; }
   if (!stillHere()) return;
-  const planned = cur.planned_sets ?? cur.sets, n = tiredSets(planned);
+  const n = tiredDose(cur);
   if (r?.ok && r.row?.exercise) {
     const toName = r.replaced_by_name ?? r.row.name ?? r.row.exercise;
-    const text = `Easier for today: ${toName}${n < planned ? ` — ${n} sets instead of ${planned}` : ""}. ${cur.name} is back next time.`;
+    // The lift the PLAN has in this slot is what comes back next time — never a today-only substitute (review K13); the
+    // server names it (the player's own exercise library isn't loaded mid-workout).
+    const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${n} sets instead of ${cur.sets}` : ""}. ${r.planned_name ?? cur.name} is back next time.`;
     // A substitute the user has history on is tagged eased: a tired performance never becomes its anchor.
     const why = applyReplacement(cur.exercise, { ...r.row, tired: true, ...(r.known ? { eased: true } : {}) },
       { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text },
@@ -2994,15 +2996,16 @@ async function tiredSwap() {
 }
 // The same lift, lighter and shorter — no network needed. `cause` only words the card.
 function easeInPlace(cur, cause) {
-  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5 });
+  // Judged on what the stepper SHOWS (a pounds user's plates), never under the empty bar (review K4, K7).
+  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5, floorKg: cur.equipment === "barbell" ? EMPTY_BAR_KG : 0, shown: startWeightDisp });
   if (!r.ok) { renderPlayer(0); return; }
-  const now = r.sess.ex[sess.i], planned = cur.planned_sets ?? cur.sets, n = now.sets;
-  const w = now.suggested_kg != null && now.suggested_kg < (cur.suggested_kg ?? 0) ? `${dispWeightFor(now.suggested_kg, cur.exercise)} ${unitLabelFor(cur.exercise)}` : null;
-  const what = w ? `lighter: ${n} sets at ${w}` : n < planned ? `shorter: ${n} sets instead of ${planned}` : null;
-  const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits your equipment, so " : "";
+  const now = r.sess.ex[sess.i], n = now.sets;
+  const w = now.suggested_kg !== cur.suggested_kg ? `${startWeightDisp(now)} ${unitLabelFor(cur.exercise)}` : null;
+  const what = w ? `lighter: ${n} sets at ${w}` : n < cur.sets ? `shorter: ${n} sets instead of ${cur.sets}` : null;
+  const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits today's workout, so " : "";
   const tail = now.eased ? " It won't count against your progress." : "";
   const text = what ? `${lead}I've made this ${what}.${tail}`
-    : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits your equipment — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
+    : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits today's workout — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
   sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, session_id: r.sess.session_id } };
   saveSess();
   say(w ? `Made ${cur.name} lighter for today — ${n} sets.` : `${cur.name}: ${n} sets today.`);
@@ -3070,14 +3073,14 @@ async function renderCantDo() {
 
   app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
     <p class="muted">Tell me why and I'll sort it.</p>
-    <button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today — fewer sets</span></button>
+    ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
     <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
     ${tail}`;
   wireTail();
-  $("#cd-tired").onclick = () => tiredSwap();
+  if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)
   $("#cd-machine").onclick = async () => {
     lock("Finding the best replacement…");
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }

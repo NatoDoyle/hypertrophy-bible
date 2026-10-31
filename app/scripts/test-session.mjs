@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -679,6 +679,8 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.equal(replaceSlot(old, 1, { exercise: "dip" }, { expect: "cable-pushdown" }).sess.ex[1].slot_of, "cable-pushdown",
       "no marker to read: the live lift stands for the slot (the server then appends, as before)");
     assert.ok(!("slot_of" in buildTargets(s1)[1]), "targets carry the plan, never the marker");
+    assert.equal(buildTargets(s1)[1].stood_in_for, "pushdown", "…naming the planned lift it stood in for (review G1: the comeback clock counts the slot as trained)");
+    assert.ok(!("stood_in_for" in buildTargets(mk(exs()))[1]), "a lift in its own slot names nothing");
   });
 }
 
@@ -719,6 +721,27 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.doesNotMatch(est.suggestion_note, /progress/, "…so it never claims they won't count");
     const bw = easeSlot(mkT({ exercise: "dip", name: "Dip", sets: 4, rep_range: "6-10", rir: "1-3", suggested_kg: 0, last_kg: 0, last_reps: [10, 9], equipment: "bodyweight" }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];
     assert.deepStrictEqual([bw.sets, bw.suggested_kg, bw.eased], [2, 0, true]);
+  });
+  check("#tired (review) a skip already taken is never undone: the tired dose is the smaller of the two", () => {
+    const r = easeSlot(mkT({ ...bss, sets: 1 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([r.sets, r.planned_sets], [1, 1], "skipped to 1 set, then tired: still 1, never 2");
+  });
+  check("#tired (review) a barbell never eases under the empty bar", () => {
+    assert.equal(EMPTY_BAR_KG, serverCore.EMPTY_BAR_KG, "the player's bar is the engine's");
+    assert.deepStrictEqual([easeKg(22.5, 2.5, 20), easeKg(20, 2.5, 20), easeKg(25, 2.5, 20)], [20, 20, 22.5]);
+    const bar = easeSlot(mkT({ ...bss, exercise: "squat", suggested_kg: 20, equipment: "barbell" }), 1, { expect: "squat", stepKg: 2.5, floorKg: EMPTY_BAR_KG }).sess.ex[1];
+    assert.equal(bar.suggested_kg, 20, "20 kg is the bar: it stays");
+    assert.match(bar.suggestion_note, /^Shorter today because you're tired\./, "so it says shorter, never lighter");
+  });
+  check("#tired (review) its reason says only what changed ON SCREEN: lighter, shorter, or neither", () => {
+    const lb = (row) => Math.round((row.suggested_kg * 2.20462) / 5) * 5; // a pounds user's plate-rounded stepper
+    const same = easeSlot(mkT({ ...bss, suggested_kg: 12, last_kg: 12, inc_kg: 1 }), 1, { expect: "bss", stepKg: 1, shown: lb }).sess.ex[1];
+    assert.deepStrictEqual([same.suggested_kg, /^Lighter/.test(same.suggestion_note)], [12, false], "12 → 11 kg shows as the same 25 lb plate: no hidden change, no 'lighter'");
+    const moved = easeSlot(mkT({ ...bss, suggested_kg: 11, last_kg: 11, inc_kg: 1 }), 1, { expect: "bss", stepKg: 1, shown: lb }).sess.ex[1];
+    assert.deepStrictEqual([moved.suggested_kg, /^Lighter/.test(moved.suggestion_note)], [10, true], "11 → 10 kg moves a plate (25 → 20 lb): lighter, and says so");
+    const twoSets = easeSlot(mkT({ ...bss, sets: 2, planned_sets: 2, suggested_kg: 2.5, last_kg: 2.5 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([twoSets.sets, twoSets.suggested_kg], [2, 2.5]);
+    assert.equal(twoSets.suggestion_note, "Easy does it today — stop each set while your form is solid. It won't count against your progress.", "neither shorter nor lighter: it never claims either");
   });
   check("#tired easeSlot refuses as a swap does: a lift with work banked, or a slot the cursor has left", () => {
     assert.equal(easeSlot(mkT(bss, { logged: [{ exercise: "bss", set_type: "work", weight_kg: 20, reps: 10 }] }), 1, { expect: "bss", stepKg: 2.5 }).reason, "started");
@@ -873,6 +896,8 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
     assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "150", rText: "9" }), { patch: { weight_kg: 150, reps: 9 }, flagged: false });
     assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "1500", rText: "10" }), { patch: { weight_kg: 150, reps: 10 }, flagged: true }, "a changed weight is still judged");
     assert.deepStrictEqual(resolveEdit({ ...ctx, todayKg: 150, wText: "155", rText: "10" }), { patch: { weight_kg: 155, reps: 10 }, flagged: false }, "against today's other sets too");
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "152.5", rText: "10" }), { patch: { weight_kg: 152.5, reps: 10 }, flagged: false },
+      "review K8: nudging the confirmed set's own weight is not asked again — its banked value passed the guard");
   });
   check("#pr-latch an edit can only CLEAR the latch — a PR made by an edit is never 'celebrated' silently, so the session's real later PR still toasts", () => {
     const watch = { e1rm_kg: 125, load_kg: 100 };
@@ -1269,6 +1294,22 @@ check("#effort-top localReadout: the top at the plan's effort; a top reached onl
   assert.deepStrictEqual(pick(three(10, [0, 0, 0], "3-4", { deload: true })), [false, false, false, null], "a planned-easy lift is never graded");
   const off = localReadout([], [ws("x", 30, 12, { rir: 0 })]).lifts[0];
   assert.deepStrictEqual([off.top, off.past_band], [false, false], "a lift the plan didn't have: no range, no verdict");
+});
+// Review round 1 (K2): the effort lines grade the SAME sets the engine judges — the anchor (the heaviest weight with a
+// set that reached the range; a lighter back-off is a different load, never evidence, C14) — or a back-off flipped
+// them against the next weight. "Under the range" and the counts stay over every set.
+check("#effort-top anchorSets is the server's anchor, exactly (parity over a grid)", () => {
+  const grid = [[[60, 12], [50, 12]], [[60, 10], [60, 10], [60, 12], [55, 6]], [[40, 5], [35, 8]], [[100, 3], [80, 10], [80, 9]], [[20, 4], [20, 3]]];
+  for (const sets of grid) for (const min of [6, 8, 10]) {
+    const ss = sets.map(([weight_kg, reps]) => ({ weight_kg, reps }));
+    assert.deepStrictEqual(playerCore.anchorSets(ss, min), serverCore.anchorSets(ss, min), JSON.stringify({ sets, min }));
+  }
+});
+check("#effort-top localReadout judges effort and the top over the anchor sets, as the engine does — a back-off never flips them", () => {
+  const a = localReadout([tg("a", 2, "8-12", "2-3")], [ws("a", 60, 12, { rir: 5 }), ws("a", 50, 12, { rir: 1 })]).lifts[0];
+  assert.deepStrictEqual([a.top, a.past_band, a.easy, a.in_band], [true, false, true, false], "60x12@5 then a 50 kg back-off at 1: the engine bumps for the 60s (~5 left), so does the read-out");
+  const b = localReadout([tg("b", 4, "6-10", "3-4")], [ws("b", 60, 10, { rir: 3 }), ws("b", 60, 10, { rir: 0 }), ws("b", 60, 12, { rir: 4 }), ws("b", 55, 6, { rir: 5 })]).lifts[0];
+  assert.deepStrictEqual([b.top, b.past_band, b.in_band, b.under], [false, true, false, 0], "a 55 kg back-off can't average the 60s back into the band");
 });
 check("#local-readout an OLD workout without targets still reads (no plan, no grades) — and says it had none", () => {
   const r = localReadout(undefined, [ws("a", 50, 10), ws("a", 50, 9)]);

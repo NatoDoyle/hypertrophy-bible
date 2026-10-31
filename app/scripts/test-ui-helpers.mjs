@@ -482,6 +482,7 @@ check("#readout-copy 'Effort right where the plan wanted it' only when every rat
   assert.equal(eff([L("a", { rir: 3, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "a full rep more than asked — the engine adds weight for it");
   assert.equal(eff([L("a", { rir: 0.7, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "closer to failure than asked, though not 'to failure'");
   assert.equal(eff([L("a", { rir: 1.5, in_band: true }), L("b", { past_band: true, in_band: null })]), false);
+  assert.equal(eff([L("a", { rir: 5, in_band: null }), L("b", { rir: 2, in_band: true })]), false, "review K1: effort logged on too few sets to grade is never called 'right' (the engine still acts on it)");
 });
 check("#readout-copy every set done, every lift in range — and the ones at the top are named as wins", () => {
   const r = readoutLists({ planned: 9, done: 9, lifts: [L("a", { top: true }), L("b"), L("c")] }, { nameOf: nm });
@@ -559,10 +560,17 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /slot_of: cur\.slot_of \?\? null/);
-  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /easeSlot\(sess, sess\.i, \{ expect: cur\.exercise, stepKg: cur\.inc_kg > 0 \? cur\.inc_kg : 2\.5 \}\)/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /easeSlot\(sess, sess\.i, \{ expect: cur\.exercise, stepKg: cur\.inc_kg > 0 \? cur\.inc_kg : 2\.5,/);
   assert.match(fnBody(appJs, "async function undoSwap() {", 1500), /u\.saved, \{ expect: u\.to, sets: u\.saved\.planned_sets \?\? u\.saved\.sets \}\)/);
   assert.doesNotMatch(appJs, /push it close/);
   assert.doesNotMatch(appJs, /your sets and reps stay the same/, "a tired swap changes the sets");
+  // Review round 1: a slot already made easier never offers it again (K5); the card names the PLAN's lift (K13); the sheet
+  // promises fewer sets only when it cuts them (K12); the ease is judged on what the stepper shows, never under the bar (K4, K7).
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\{cur\.tired \? "" : `<button class="choice reason" id="cd-tired">/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /if \(!cur \|\| sess\.set !== 0 \|\| cur\.tired\) return;/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\$\{r\.planned_name \?\? cur\.name\} is back next time\./);
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /Something easier, just for today\$\{tiredDose\(cur\) < cur\.sets \? " — fewer sets" : ""\}/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /floorKg: cur\.equipment === "barbell" \? EMPTY_BAR_KG : 0, shown: startWeightDisp \}\)/);
   assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {

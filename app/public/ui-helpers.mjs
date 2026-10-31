@@ -373,7 +373,8 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
     ...(skipped === 0 && local.planned > 0 && graded.length >= 2 ? [`All ${local.planned} planned sets done.`] : []),
     // Only when every lift whose effort was logged averaged INSIDE its band (Burst 6): beside the engine's "you left ~3
     // in reserve — add weight", or an average under the band, "effort right" was the read-out contradicting itself.
-    ...(graded.some((l) => l.rir != null) && !graded.some((l) => l.easy || l.failure || l.past_band || l.in_band === false) ? ["Effort right where the plan wanted it."] : []),
+    // …and graded at all: effort logged on too few sets to grade is never called "right" (review K1 — the engine acts on it).
+    ...(graded.some((l) => l.rir != null) && graded.filter((l) => l.rir != null).every((l) => l.in_band === true) && !graded.some((l) => l.past_band) ? ["Effort right where the plan wanted it."] : []),
   ].slice(0, 3);
   const watch = local.lifts.filter((l) => !l.easyDay).flatMap((l) => {
     const n = nameOf(l.exercise);

@@ -60,12 +60,15 @@ wanted 1–2 in reserve" beside "Next time: +2.5 kg": the bump waited only for t
 trigger is "all sets reach the top of the rep range **at target RIR**" (data/progressions/double-progression.json).
 Rules 1b, 2, 4 and 5 judge the anchor session's effort against the band **that session was served**
 (its stored target, W280 — the band the read-out grades it against), else today's; rule 3's target
-stays today's band. Unlogged effort reads as at the band, so a lifter who never logs RIR (every
+stays today's band, and so does rule 1b's ask ("until you get there with 1 in reserve" names the band the
+next session is judged against; inside a taper it asks for nothing, since the load holds anyway). Unlogged effort reads as at the band, so a lifter who never logs RIR (every
 beginner) is judged exactly as before. The read-out uses the same definition (`repsAtBand` has a
-byte-identical copy in the player, parity-tested): "time to go up" and "top of the range on every set"
-mean the top at the plan's effort, a top reached only past the band is its own "worth a look" line, and
-"Effort right where the plan wanted it" shows only when every lift with logged effort averaged inside
-its band. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
+byte-identical copy in the player, parity-tested), over the same sets — the anchor's (`anchorSets`, also
+shared): a lighter back-off never flips a line against the next weight. "Time to go up" and "top of the
+range on every set" mean the top at the plan's effort, a top reached only past the band is its own "worth
+a look" line, and "Effort right where the plan wanted it" shows only when every lift with logged effort
+was logged on enough sets to grade and averaged inside its band. The recap's "🔥 close to failure — that's
+where growth happens" is never said for a lift whose logged effort went past its band. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
 thing and the next weight another, except three rare, benign ones, kept: a heavy single above the
 working sets counted "under the range"; "N of M sets" beside a rule-2 bump; "top of the range" beside
 W280's "get all N to the top".
@@ -302,12 +305,16 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   finding. It does about **half the sets** (never under 2 for a lift planned at 2+; most growth comes
   from the first hard sets — minimalist training, Grade A), at the slot's own range and effort band:
   fewer sets, not softer ones. The trim is written as that day's plan (a coach-set dose, so the workout
-  reads "every set done"); a skip never rewrites the plan. When nothing easier fits your equipment, you're
-  offline, or the server can't build the row, the same tap makes the **same lift ~10% lighter** (on its
-  own kg step, at least one step; a model estimate) and shorter, with its own reason. A tired day never
-  sets a lift back: the original lift has no sets that day, and an eased lift's (or a substitute you have
-  history on) are deload-tagged, so they never anchor, never count as a PR and are never graded. Undo puts
-  the slot back exactly, sets included. Split squats after leg press and RDLs: leg extension (full gym);
+  reads "every set done"); a skip never rewrites the plan, and a skip already taken stays taken (the dose is
+  never more than the slot shows). When nothing easier fits today's workout, you're offline, or the server
+  can't build the row, the same tap makes the **same lift ~10% lighter** (on its own kg step, at least one
+  step, never under the empty bar; a model estimate) and shorter. Its reason says only what changed on the
+  screen (a pounds user's ease that rounds back onto the same plate changes nothing and claims nothing). A
+  tired day never sets a lift back: the original lift has no sets that day, and the workout's target names
+  the lift a substitute stood in for, so the comeback clock counts its slot as trained (a once-a-week lift
+  swapped out was "It's been 14 days" the next week); an eased lift's sets (or a substitute's you have real
+  history on) are deload-tagged, so they never anchor, never count as a PR and are never graded. A slot
+  already made easier isn't offered it again. Undo puts the slot back exactly, sets included. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).
 - Session order is a rotation (sessions completed modulo plan length, plus your skips and
   day swaps). Since Wave 277 the app **projects** it onto your committed weekdays and shows
