@@ -9,8 +9,11 @@ stated, with the reasoning.
 
 1. **How does weight progression work?** Double progression per exercise: hold the weight until
    every set at the anchor load hits the top of its rep range, then add 2.5 kg (1 kg for
-   dumbbell/cable isolations). If you log effort (RIR), leaving a full rep more than the plan asked
-   for moves the weight up a step without waiting for the rep ceiling; hitting failure holds it.
+   dumbbell/cable isolations). If you log effort (RIR), the top only counts at the plan's effort:
+   reaching it by going closer to failure than the band asked holds the weight until you get there
+   with the reserve the plan asked for (Burst 6); leaving a full rep more than the plan asked for
+   moves the weight up a step without waiting for the rep ceiling (never when a set fell under the
+   range); failure below the top holds it.
    If no set at your working weight reaches the range (the first falls clearly short), the next
    session lightens the load so your first set lands in it (W279). A lift that comes after more
    work for the same muscles than it did last time is served lighter, and one that comes earlier is
@@ -44,12 +47,28 @@ Decision order per exercise, first match wins:
 |---|-----------|------------|
 | 0 | never trained it | none — you pick (non-beginners get a body-scaled starting estimate) |
 | 1 | that lift untrained ≥ **12 days** | last weight × **0.88**, progression suppressed (comeback ease) |
-| 2 | logged RIR ≥ band-top + 1 | +1 increment (+2 increments at band-top + 2) |
+| 1b | every set at the anchor weight reached the top of the range, but **not at the plan's effort**: a set logged closer to failure than the band's near edge counts its reps at that edge (`repsAtBand`: 10 at 0 RIR on a 1–2 band is 9) | hold — "You hit the top of the range last time, but closer to failure than the plan's 1–2 reps in reserve — same weight until you get there with 1 in reserve." Ahead of rules 2 and 5, so a set at failure is never averaged into a bump and W280's "get all 3 to the top" is never promised for sets that wouldn't earn it (Burst 6) |
+| 2 | logged RIR ≥ band-top + 1, **every set at the anchor weight in the range** | +1 increment (+2 increments at band-top + 2). A set that fell under the range stopped early; it wasn't light (the next-set hint never says "heavier" for one either) |
 | 3 | **no set at the anchor weight reached the range**, the first of them near failure (RIR unlogged or ≤ 1): **≥ 2 reps short**, or 1 short twice running at the same or a heavier weight (each earlier session judged against the range *it* was done in) | **eased** to the load that lands that first set at the range's bottom (Epley e1RM, at the band's near edge), floored to the lift's increment: at least one increment down, at most ~20% (when that cap binds, the note says the first set may still fall short). A *first* one-rep miss holds, with a warning (W279) |
-| 4 | logged RIR ≤ 0 without hitting top of range | hold — build reps first |
-| 5 | every set at the anchor weight hit the top of the range | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) — but only when every **prescribed** set was done: a skipped set or a workout ended early holds the weight until a full session shows it (the workout carries its plan as `targets`, W280) |
+| 4 | logged RIR averaging **under 0.5** without hitting the top, where the band's near edge is at least 1 | hold — build reps first. The read-out's "taken to failure" uses the same threshold; inside a 0–1 week failure is the plan, so rule 6 holds instead (Burst 6) |
+| 5 | every set at the anchor weight hit the top of the range **at the plan's effort** | +**2.5 kg** (isolation dumbbell/cable: +**1 kg**) — but only when every **prescribed** set was done: a skipped set or a workout ended early holds the weight until a full session shows it (the workout carries its plan as `targets`, W280). A tired trim (below) rewrites that day's plan, so it is never a shortfall. A set logged at failure that went **past** the top far enough to clear it at the band still bumps, and says so ("…far enough to clear it with 1 in reserve — add 2.5 kg.") |
 | 6 | otherwise | hold — add a rep or two |
 | + | **after** the rule above: the lift's position differs from the anchor session's by **≥ 2 weighted sets** of same-muscle work before it (both read from the **plan**: today's day and the anchor's own day) — never for a comeback, a taper or added bodyweight load | the weight carried to today's position (W290, below), rounded to the **nearest** step; the reason says so |
+
+**Effort is judged against one band (Burst 6).** The owner's recap read "taken to failure — the plan
+wanted 1–2 in reserve" beside "Next time: +2.5 kg": the bump waited only for the reps. The KB's own
+trigger is "all sets reach the top of the rep range **at target RIR**" (data/progressions/double-progression.json).
+Rules 1b, 2, 4 and 5 judge the anchor session's effort against the band **that session was served**
+(its stored target, W280 — the band the read-out grades it against), else today's; rule 3's target
+stays today's band. Unlogged effort reads as at the band, so a lifter who never logs RIR (every
+beginner) is judged exactly as before. The read-out uses the same definition (`repsAtBand` has a
+byte-identical copy in the player, parity-tested): "time to go up" and "top of the range on every set"
+mean the top at the plan's effort, a top reached only past the band is its own "worth a look" line, and
+"Effort right where the plan wanted it" shows only when every lift with logged effort averaged inside
+its band. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
+thing and the next weight another, except three rare, benign ones, kept: a heavy single above the
+working sets counted "under the range"; "N of M sets" beside a rule-2 bump; "top of the range" beside
+W280's "get all N to the top".
 
 Rule 3 is the KB's own double-progression rule ("pick a weight you can do for at least the bottom
 of the range", Grade D), applied when a set proves the weight wrong. It is judged on the first set
@@ -65,7 +84,12 @@ set costs **5%** of the lift's rep capacity, at most **25%**, and a difference u
 sets — or two positions that cost the same (both at the cap) — is ignored. Engine estimates, not
 findings. The weight moves from its own grid by whole steps: never the wrong way, never at all under
 half a step, never under the empty bar for a barbell lift. A lift swapped in for today reads its anchor
-from the stored plan — unless it was appended by a second today-swap, whose position is unknown. When the
+from the stored plan, and takes the slot of the lift the plan put there — a second swap too: the player
+carries that lift across chained swaps (`slot_of`), so the second lands in the same planned slot as a
+direct swap would (Burst 6). Only an older session without the marker, or a plan edited since, appends
+the substitute (position unknown, so no order rule; its served prescription is used as is, never scaled
+twice). Every swap's row is built for the day the player is on, untrimmed, even if the rotation has
+moved mid-workout (a past workout logged from History). When the
 weight can't move (under half a step, or the bar), the position still shapes the aim and is added to
 the weight's own reason as its own sentence. Every sentence reads "This time it comes after… (last
 time…)", so it is right on Today and in the read-out's "next time" (Burst 5 review). Both positions come from the plan with its planned
@@ -96,7 +120,7 @@ asks for 2–3 reps in reserve, 1 more than last time. This time it comes after 
 your chest (last time it came first). The rep aim allows for that."). The generic "add a rep or two"
 gives way to "Same weight as last time." when the band or the position lowers today's aims, and so does
 any hold's ask ("You did 3 of 4 sets last time — same weight.", "You hit failure last time — same
-weight."): an aim under the top can't sit beside "get all 4 to the top". "Lowers" is read from the aims
+weight.", "…closer to failure than the plan's 1–2 reps in reserve — same weight."): an aim under the top can't sit beside "get all 4 to the top". "Lowers" is read from the aims
 themselves, compared with the aims the hold would get without the band and the position, or from fewer
 sets served than a W280 ask names. When the aims still reach the top, the ask stands. The band sentence appears only where the aim
 applies the band (not on a weighted bodyweight lift whose load moved). The deload ease keeps its own
@@ -267,6 +291,24 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   untrained, so a swapped-out lift can return later.
 - **You**: mid-session swap (this session only) and the injury door (permanent regeneration)
   always exist. A hand-edited (custom) plan is never rotated, tuned, or swapped at all.
+- **Too tired (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+  squats").** On a lift's first screen, once some work is banked today, "🥱 Too tired for this one?"
+  (also the first reason in "Can't do this one?") swaps in the **easiest lift that fits the slot**, for
+  today only: of the fitting substitutes, the ones no worse on systemic cost (`cns_cost`), stability and
+  skill (`difficulty`) and strictly better on cost or stability, easiest first, a lift you have history on
+  first within a class. A missing stability reads as moderate, or low for a unilateral lift. This is
+  coaching judgment built on graded lines (stable lifts let you train hard without balance being the
+  limit — exercise selection, Grade C; manage systemic fatigue — minimalist training, Grade C), not a
+  finding. It does about **half the sets** (never under 2 for a lift planned at 2+; most growth comes
+  from the first hard sets — minimalist training, Grade A), at the slot's own range and effort band:
+  fewer sets, not softer ones. The trim is written as that day's plan (a coach-set dose, so the workout
+  reads "every set done"); a skip never rewrites the plan. When nothing easier fits your equipment, you're
+  offline, or the server can't build the row, the same tap makes the **same lift ~10% lighter** (on its
+  own kg step, at least one step; a model estimate) and shorter, with its own reason. A tired day never
+  sets a lift back: the original lift has no sets that day, and an eased lift's (or a substitute you have
+  history on) are deload-tagged, so they never anchor, never count as a PR and are never graded. Undo puts
+  the slot back exactly, sets included. Split squats after leg press and RDLs: leg extension (full gym);
+  goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).
 - Session order is a rotation (sessions completed modulo plan length, plus your skips and
   day swaps). Since Wave 277 the app **projects** it onto your committed weekdays and shows
   where it lands: Today's week strip ("Mon ✓ Push A · Today · Pull A · Fri · Legs A"), the

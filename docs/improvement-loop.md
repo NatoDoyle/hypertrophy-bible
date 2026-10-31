@@ -1314,6 +1314,42 @@ These are real failures from previous iterations. Each is now a standing check.
    instead of the banked set. A lookup that started working met an appended swap with no known
    position. → **Standing rule:** after a fix pass, verify the fixes' own new interactions (each fix
    against its neighbours), not only the findings they closed.
+100. **A guard's reference must include what was already accepted, derived from the log.** The typo
+   guard judged every set of the owner's leg press against last session's 40 kg, and its "yes, that's
+   right" was an in-memory flag cleared the moment the set banked, so a confirmed 150 kg was questioned
+   again on set 2. Every banked work set already passed the guard or was confirmed, so today's sets
+   raise the reference, derived from the banked log (it survives a reload; a correction in the editor
+   corrects it). A remembered "confirmed" flag would survive the correction too. → **Standing lens:**
+   for every two-tap guard, ask what the SECOND set sees, and derive its memory from the log.
+101. **An endpoint that rebuilds a client's row must be pinned to the client's coordinates.** The swap
+   route built the substitute's row from buildToday's idea of today: the rotation's day, after its
+   trims. Whenever the player's day or slot differed — a second swap whose first substitute lives in
+   another day (N7), a past workout logged mid-workout, a low-readiness or first-session trim — the
+   row came back null and the player quietly fell back to a weightless bare row. → **Standing rule:**
+   the client says where it is (the day, the slot's planned lift); the server builds there, untrimmed;
+   and a null answer is a test failure, never a silent degradation.
+102. **A read-out and the engine must import the same predicate.** "The top of the range" ignored
+   effort in both the engine and the read-out, while the read-out's failure line counted it, so one
+   card said "time to go up" and "taken to failure", then added weight. The KB's own trigger already
+   said "at target RIR". Lesson 98 at the session level. → **Standing rule:** a line that grades what
+   the engine acts on calls the engine's own function (a byte-identical, parity-tested copy in the
+   player), judged against the same band.
+103. **Brute-force a summary against the engine it summarises.** The owner reported one contradiction;
+   a 1.6M-session search found the class and four more (an RIR-surplus bump on sets under the range, a
+   failure threshold of ≤ 0 against the read-out's < 0.5, "effort right" beside "you left 3 in the
+   tank", failure flagged inside a 0–1 week). → **Standing tool:** every user-facing summary of engine
+   decisions gets a combinatorial agreement check, and its residual classes are written down.
+104. **Expected values come from the shipped function on stated inputs.** The design judge's "dumbbells
+   only: nothing easier" and "bodyweight only: the lunge" came from equipment pools other than the
+   test's; the rule itself gives the goblet squat and the bodyweight squat. A judge's critic also
+   caught two blockers in a spec every designer had agreed on (an ease computed on a pounds plate
+   against kilograms; the old "add 2.5 kg" reason carried onto an eased weight). → **Standing rule:**
+   a panel's numbers are hypotheses; run them before they become assertions.
+105. **A tamper runner must count a crash as red.** The coach suite stops on its first failure with a
+   thrown error rather than printing ✗ lines, so a runner that counted only ✗ reported nine of twelve
+   W295 tampers as surviving. Every one had in fact failed the suite. → **Standing rule:** a tamper is
+   red on a non-zero exit as well as on a ✗ line, and a tamper that reads green is re-run by hand before
+   anyone believes it.
 
 ## Token discipline (the loop must be affordable to keep running)
 
