@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -539,26 +539,35 @@ export function createApp(store, config = {}) {
   const MAX_EXCLUSIONS = 30;
   // The row a substitute gets today: buildToday on a copy of the plan where Y stands in
   // X's slot and is the ONLY copy of Y (its own original slot elsewhere in the session —
-  // swapped away live earlier — would otherwise answer with ITS prescription). When the
-  // stored session doesn't hold X (X was itself a today-swap), Y takes the live slot's
-  // prescription in the session the player is running.
-  const substituteRow = (user, ctx, nowISO, X, Y, { sessionName = null, prescription = null } = {}) => {
+  // swapped away live earlier — would otherwise answer with ITS prescription).
+  // Built for the day the PLAYER is on (Burst 6, N7): Y goes ONLY into that day (sessionIndexFor —
+  // the day buildToday is then pinned to, untrimmed), never into another day that happens to hold X
+  // (X may itself be a today-swap that lives elsewhere — the row came back null). When that day
+  // doesn't hold X, Y takes the slot of the lift the plan put there (`slotOf`, carried by the player
+  // across chained swaps) — the stored prescription and a known position, so the order rule applies
+  // as for a direct swap; failing that (an older session, a plan edited since) it is appended with
+  // the slot's SERVED prescription, marked prescaled so it isn't waved a second time.
+  const substituteRow = (user, ctx, nowISO, X, Y, { sessionName = null, prescription = null, slotOf = null, live = null } = {}) => {
     const program = JSON.parse(JSON.stringify(user.program));
     for (const s of program.sessions) s.exercises = s.exercises.filter((e) => e.exercise !== Y);
+    const day = sessionName != null && program.sessions.some((x) => x.name === sessionName)
+      ? program.sessions[sessionIndexFor(program, ctx.sessions, user.plan_meta, sessionName)] : null;
+    const at = day && !day.exercises.some((e) => e.exercise === X) && typeof slotOf === "string" && slotOf !== X
+      && day.exercises.some((e) => e.exercise === slotOf) && !(live ?? []).includes(slotOf) ? slotOf : X;
     let placed = false;
-    for (const s of program.sessions) for (const e of s.exercises) if (e.exercise === X) { e.exercise = Y; delete e.superset_with; placed = true; }
-    if (!placed && sessionName) {
-      const s = program.sessions.find((x) => x.name === sessionName);
+    for (const s of day ? [day] : program.sessions) for (const e of s.exercises) if (e.exercise === at) { e.exercise = Y; delete e.superset_with; placed = true; }
+    if (!placed && day) {
       const p = prescription ?? {};
-      if (s) s.exercises.push({ exercise: Y, sets: Number.isInteger(p.sets) && p.sets > 0 && p.sets <= 10 ? p.sets : 3,
-        rep_range: typeof p.rep_range === "string" ? p.rep_range.slice(0, 12) : "8-12", ...(typeof p.rir === "string" ? { rir: p.rir.slice(0, 8) } : {}) });
+      day.exercises.push({ exercise: Y, sets: Number.isInteger(p.sets) && p.sets > 0 && p.sets <= 10 ? p.sets : 3,
+        rep_range: typeof p.rep_range === "string" ? p.rep_range.slice(0, 12) : "8-12", ...(typeof p.rir === "string" ? { rir: p.rir.slice(0, 8) } : {}), prescaled: true });
     }
     sweepDanglingSupersets(program.sessions); // X's partner no longer has one
     // stored_program: the order rule (W290) reads the anchor's day from the plan as stored, where Y still
     // sits in its own day; today's position comes from this patched copy (Burst 5 review).
-    // Only when Y took X's own slot: an appended Y (X was itself a today-swap) has no known position, so the
-    // order rule must not read it as "after every other lift" (fix verification).
-    return buildTodayFor({ ...user, program, ...(placed ? { stored_program: user.program } : {}) }, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null;
+    // Only when Y took a planned slot: an appended Y has no known position, so the order rule must not
+    // read it as "after every other lift" (fix verification).
+    return buildToday({ ...user, program, ...(placed ? { stored_program: user.program } : {}) }, ctx.sessions, ctx.readiness, user.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged,
+      day ? { sessionName, untrimmed: true } : {})?.exercises?.find((e) => e.exercise === Y) ?? null;
   };
   app.post("/api/exercise/cant-do", async (c) => {
     const b = await c.req.json().catch(() => ({}));
@@ -608,6 +617,9 @@ export function createApp(store, config = {}) {
     // Lifts the user swapped away earlier TODAY are never handed back (W275 review).
     const exclude = Array.isArray(b.exclude) ? b.exclude.filter((x) => typeof x === "string").slice(0, 30) : [];
     const prescription = b.prescription && typeof b.prescription === "object" ? b.prescription : null;
+    // The lift the plan put in this slot, when the live lift is itself a today-swap (N7). It only ever
+    // chooses which of the named day's own slots the substitute takes; the row is still built here.
+    const slotOf = typeof b.slot_of === "string" ? b.slot_of.slice(0, 80) : null;
     const tz = parseTzOffset(c.req.header("X-HB-TZ")) ?? user.profile?.tz_offset_min;
     const dq = c.req.query("d");
     const clientDay = dq && /^\d{4}-\d{2}-\d{2}$/.test(dq) ? dq : (localDayKey(nowISO, tz) ?? nowISO.slice(0, 10));
@@ -627,7 +639,7 @@ export function createApp(store, config = {}) {
       if (t.error) return c.json({ error: "bad-pick" }, 400);
       const Y = t.id;
       if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
-      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription }) });
+      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }) });
     }
 
     // scope === "always"
@@ -696,11 +708,13 @@ export function createApp(store, config = {}) {
     // own best fitting pick (a lift outside today's session, a dropped bonus, a replay
     // after a rebuild).
     const Y = outcome.replaced_by;
-    let todayId = Y, row = Y ? buildTodayFor(updated, ctx, nowISO)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
+    // Looked up in the day the PLAYER is on, untrimmed (Burst 6) — the rotation's own day can differ mid-workout.
+    const pin = sessionName != null && updated.program.sessions.some((x) => x.name === sessionName) ? { sessionName, untrimmed: true } : {};
+    let todayId = Y, row = Y ? buildToday(updated, ctx.sessions, ctx.readiness, updated.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged, pin)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
     if (!row) {
       const t = todayPick(updated);
       todayId = t.id ?? null;
-      row = todayId ? substituteRow(updated, ctx, nowISO, X, todayId, { sessionName, prescription }) : null;
+      row = todayId ? substituteRow(updated, ctx, nowISO, X, todayId, { sessionName, prescription, slotOf, live }) : null;
     }
     return c.json({ ok: true, scope, exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
       today: todayId ? { id: todayId, name: nameOf(todayId) } : null,

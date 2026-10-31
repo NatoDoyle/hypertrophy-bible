@@ -1282,6 +1282,107 @@ try {
       JSON.stringify({ day: sB.name, status: swapped.status, row: sRow && { ex: sRow.exercise, kg: sRow.suggested_kg, note: sRow.suggestion_note } }));
   }
 
+  // --- #n7 / #swap-pin (Burst 6): a today-swap's row is built for the day and the slot the PLAYER is on.
+  // N7: a second swap whose first substitute sits in another day put the new lift in THAT day, so the
+  // route answered row:null and the player fell back to a weightless bare row. The same null came back
+  // whenever /api/today's own day differed from the player's (the pointer moved mid-workout) or a trim
+  // dropped an appended row (low readiness, a beginner's first session); and the appended row took the
+  // client's already-scaled prescription and scaled it again.
+  {
+    const onb = async (status = "intermediate") => (await json("POST", "/api/onboard", { profile: { training_status: status, primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const P = (exercise, sets = 3, rep_range = "8-12", rir = "1-3") => ({ exercise, sets, rep_range, rir });
+    const tOf = async (u) => (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session;
+    const goTo = async (u, name) => { let t = await tOf(u); for (let k = 0; k < 4 && t.name !== name; k++) { await json("POST", "/api/today/skip", { user_id: u }); t = await tOf(u); } return t; };
+    const cd = (u, body) => json("POST", "/api/exercise/cant-do", { user_id: u, ...body });
+    const presc = (e) => ({ sets: e.planned_sets ?? e.sets, rep_range: e.rep_range, rir: e.rir });
+    const brief = (r) => r && { ex: r.exercise, kg: r.suggested_kg, last_kg: r.last_kg, sets: r.sets, rir: r.rir, aims: r.rep_targets, note: r.suggestion_note };
+
+    // N7 itself: Day A holds the first substitute (incline) — the second swap must still build its row for Day B.
+    const nU = await onb();
+    await json("POST", "/api/plan/save", { user_id: nU, program: { sessions: [
+      { name: "Day A", exercises: [P("incline-dumbbell-press", 3, "6-10"), P("lat-pulldown")] },
+      { name: "Day B", exercises: [P("barbell-bench-press", 3, "6-10"), P("machine-chest-press", 4, "10-15"), P("leg-press")] } ] } });
+    await json("POST", "/api/session", { user_id: nU, session_id: "n7-h", date: dAgo(3), local_date: dAgo(3).slice(0, 10), session_name: "Day A",
+      sets: [...[10, 9, 9].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })), ...[12, 11, 10].map((reps) => ({ exercise: "dumbbell-bench-press", set_type: "work", weight_kg: 32.5, reps }))] });
+    const nT = await goTo(nU, "Day B");
+    const nLive = nT.exercises.map((e) => e.exercise), nCur = nT.exercises.find((e) => e.exercise === "machine-chest-press");
+    const direct = await cd(nU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: nLive, prescription: presc(nCur), pick: "dumbbell-bench-press" });
+    const first = await cd(nU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: nLive, prescription: presc(nCur), pick: "incline-dumbbell-press" });
+    const n2 = { exercise: "incline-dumbbell-press", scope: "today", session: "Day B", live: nLive.map((x) => (x === "machine-chest-press" ? "incline-dumbbell-press" : x)), exclude: ["machine-chest-press"], prescription: presc(nCur) };
+    const sPick = await cd(nU, { ...n2, pick: "dumbbell-bench-press", slot_of: "machine-chest-press" });
+    const sBusy = await cd(nU, { ...n2, slot_of: "machine-chest-press" });
+    const sOld = await cd(nU, { ...n2, pick: "dumbbell-bench-press" }); // a session blob from before slot_of
+    ok("#n7 a second today-swap whose first substitute lives in another day still gets its full row (pick door)",
+      nT.name === "Day B" && first.data?.row?.exercise === "incline-dumbbell-press" && sPick.data?.row?.exercise === "dumbbell-bench-press" && sPick.data.row.suggested_kg === 32.5 && sPick.data.row.last_kg === 32.5 && sPick.data.row.pr_watch?.e1rm_kg > 0,
+      JSON.stringify({ day: nT.name, first: brief(first.data?.row), second: brief(sPick.data?.row) }));
+    ok("#n7 …and through the busy door (no pick)", sBusy.data?.row?.exercise === "dumbbell-bench-press" && sBusy.data.row.suggested_kg === 32.5, JSON.stringify(brief(sBusy.data?.row)));
+    ok("#n7 with slot_of, a second swap's row is byte-identical to a direct swap into the plan's slot",
+      !!direct.data?.row && JSON.stringify(sPick.data?.row) === JSON.stringify(direct.data.row), JSON.stringify({ got: brief(sPick.data?.row), want: brief(direct.data?.row) }));
+    ok("#n7 an older session (no slot_of) still gets a full row, built on the served prescription — never scaled twice",
+      sOld.data?.row?.exercise === "dumbbell-bench-press" && sOld.data.row.suggested_kg === 32.5 && sOld.data.row.sets === nCur.sets && sOld.data.row.rir === nCur.rir && sOld.data.row.rep_targets?.length === nCur.sets,
+      JSON.stringify({ served: presc(nCur), got: brief(sOld.data?.row) }));
+
+    // slot_of puts the second swap in the plan's slot, so the W290 order rule applies as for a direct swap.
+    const oU = await onb();
+    await json("POST", "/api/plan/save", { user_id: oU, program: { sessions: [
+      { name: "Day A", exercises: [P("incline-dumbbell-press", 3, "6-10")] },
+      { name: "Day B", exercises: [P("barbell-bench-press", 3, "6-10"), P("machine-chest-press", 3, "6-10")] } ] } });
+    await goTo(oU, "Day A");
+    await json("POST", "/api/session", { user_id: oU, session_id: "n7-o", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day A",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const oT = await tOf(oU), oLive = oT.exercises.map((e) => e.exercise), oCur = oT.exercises.find((e) => e.exercise === "machine-chest-press");
+    await cd(oU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: oLive, prescription: presc(oCur), pick: "dumbbell-bench-press" });
+    const o2 = { exercise: "dumbbell-bench-press", scope: "today", session: "Day B", live: oLive.map((x) => (x === "machine-chest-press" ? "dumbbell-bench-press" : x)), exclude: ["machine-chest-press"], prescription: presc(oCur), pick: "incline-dumbbell-press" };
+    const oSlot = await cd(oU, { ...o2, slot_of: "machine-chest-press" });
+    ok("#n7 slot_of: a second swap after 3 bench sets is served the order's weight (27.5), like a direct swap there",
+      oT.name === "Day B" && oSlot.data?.row?.suggested_kg === 27.5 && /^This time it comes after 3 sets that also work your chest/.test(oSlot.data.row.suggestion_note ?? ""),
+      JSON.stringify({ day: oT.name, row: brief(oSlot.data?.row) }));
+
+    // The row is built for the day the player NAMES, untrimmed.
+    const wide = { sessions: [{ name: "Day A", exercises: [P("lat-pulldown")] },
+      { name: "Day B", exercises: [P("barbell-bench-press", 3, "6-10"), P("machine-chest-press", 3, "10-15"), P("leg-press"), P("seated-cable-row"), P("dumbbell-lateral-raise")] }] };
+    const lU = await onb();
+    await json("POST", "/api/plan/save", { user_id: lU, program: wide });
+    await goTo(lU, "Day B");
+    await json("POST", "/api/checkin", { user_id: lU, date: new Date().toISOString().slice(0, 10), sleep_quality: 1, energy: 1, mood: 1, stress: 5 });
+    const lT = await tOf(lU), lLive = lT.exercises.map((e) => e.exercise), lCur = lT.exercises.find((e) => e.exercise === "machine-chest-press");
+    await cd(lU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: lLive, prescription: presc(lCur), pick: "pec-deck" });
+    const lS = await cd(lU, { exercise: "pec-deck", scope: "today", session: "Day B", live: lLive.map((x) => (x === "machine-chest-press" ? "pec-deck" : x)), exclude: ["machine-chest-press"], prescription: presc(lCur), pick: "dumbbell-fly" });
+    ok("#swap-pin a low-readiness day (its last lift trimmed) still builds an appended swap's row",
+      lT.readiness === "low" && lLive.length === 4 && lS.data?.row?.exercise === "dumbbell-fly", JSON.stringify({ r: lT.readiness, n: lLive.length, status: lS.status, row: brief(lS.data?.row) }));
+    const bU = await onb("beginner");
+    await json("POST", "/api/plan/save", { user_id: bU, program: wide });
+    const bT = await goTo(bU, "Day B"), bLive = bT.exercises.map((e) => e.exercise), bCur = bT.exercises.find((e) => e.exercise === "machine-chest-press");
+    await cd(bU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: bLive, prescription: presc(bCur), pick: "pec-deck" });
+    const bLive2 = bLive.map((x) => (x === "machine-chest-press" ? "pec-deck" : x));
+    const bAlt = (await (await app.request(`/api/exercise/pec-deck/alternatives?session=${encodeURIComponent("Day B")}&live=${bLive2.join(",")}&exclude=machine-chest-press`, { headers: { "X-HB-User": bU } })).json()).alternatives?.[0]?.id;
+    const bS = await cd(bU, { exercise: "pec-deck", scope: "today", session: "Day B", live: bLive2, exclude: ["machine-chest-press"], prescription: presc(bCur), pick: bAlt });
+    ok("#swap-pin a beginner's first session (trimmed to 4 lifts) still builds an appended swap's row",
+      bT.name === "Day B" && bLive.length === 4 && !!bAlt && bS.data?.row?.exercise === bAlt, JSON.stringify({ day: bT.name, n: bLive.length, alt: bAlt, status: bS.status, row: brief(bS.data?.row) }));
+    const pU = await onb();
+    await json("POST", "/api/plan/save", { user_id: pU, program: { sessions: [{ name: "Day A", exercises: [P("incline-dumbbell-press", 3, "6-10"), P("lat-pulldown")] },
+      { name: "Day B", exercises: [P("barbell-bench-press", 3, "6-10"), P("machine-chest-press", 3, "10-15"), P("leg-press")] }] } });
+    const pT = await goTo(pU, "Day B"), pLive = pT.exercises.map((e) => e.exercise), pCur = pT.exercises.find((e) => e.exercise === "machine-chest-press");
+    await json("POST", "/api/session", { user_id: pU, session_id: "n7-retro", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: "Day A", sets: [{ exercise: "lat-pulldown", set_type: "work", weight_kg: 50, reps: 10 }] });
+    const pMoved = (await tOf(pU)).name;
+    const pS = await cd(pU, { exercise: "machine-chest-press", scope: "today", session: "Day B", live: pLive, prescription: presc(pCur), pick: "dumbbell-bench-press" });
+    ok("#swap-pin a swap after the rotation moved mid-workout (a past workout logged) is built for the player's day",
+      pMoved === "Day A" && pS.data?.row?.exercise === "dumbbell-bench-press" && pS.data.row.rep_range === "10-15", JSON.stringify({ moved: pMoved, status: pS.status, row: brief(pS.data?.row) }));
+    // Two days with one name (the save route defaults an unnamed day to "Day"): the player's own day wins.
+    const dU = await onb();
+    await json("POST", "/api/plan/save", { user_id: dU, program: { sessions: [
+      { name: "Day", exercises: [P("incline-dumbbell-press", 3, "6-10")] },
+      { name: "Day", exercises: [P("barbell-bench-press", 3, "6-10"), P("machine-chest-press", 3, "6-10")] } ] } });
+    let dT = await tOf(dU);
+    for (let k = 0; k < 3 && dT.exercises[0]?.exercise !== "incline-dumbbell-press"; k++) { await json("POST", "/api/today/skip", { user_id: dU }); dT = await tOf(dU); }
+    await json("POST", "/api/session", { user_id: dU, session_id: "n7-d", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Day",
+      sets: [9, 9, 8].map((reps) => ({ exercise: "incline-dumbbell-press", set_type: "work", weight_kg: 30, reps })) });
+    const dT2 = await tOf(dU), dLive = dT2.exercises.map((e) => e.exercise), dCur = dT2.exercises.find((e) => e.exercise === "machine-chest-press");
+    const dS = await cd(dU, { exercise: "machine-chest-press", scope: "today", session: "Day", live: dLive, prescription: presc(dCur), pick: "incline-dumbbell-press" });
+    ok("#swap-pin two days named alike: the swap lands in the player's own day (after 3 bench sets: the order's 27.5)",
+      !!dCur && dS.data?.row?.exercise === "incline-dumbbell-press" && dS.data.row.suggested_kg === 27.5, JSON.stringify({ live: dLive, status: dS.status, row: brief(dS.data?.row) }));
+  }
+
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
   // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
   {

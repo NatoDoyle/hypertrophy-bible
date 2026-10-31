@@ -624,7 +624,10 @@ function orderShift(ex, last, sug, slot, byId, anchorNear) {
 // the plan today, for the exercise-order rule (W290).
 export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, slot = null) {
   const { block, taper } = ctx;
-  const rirBand = taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
+  // A `prescaled` entry (a today-swap appended at its slot's SERVED prescription — Burst 6, N7) is already
+  // waved, tapered or deloaded: its band and sets are used as they are, never scaled a second time.
+  const rirBand = ex.prescaled ? ex.rir ?? "1-3"
+    : taper ? taperRir(ex.rir ?? "1-3", taper.rirFloor)
     : block?.phase === "deload" ? "3-4"
     : block ? waveRir(ex.rir ?? "1-3", block.week)
     : ex.rir ?? "1-3";
@@ -636,7 +639,8 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // seeing five 1-set entries). Deload recovery still lands via the halved big
   // lifts, the ~10% load ease below, and RIR 3-4. A taper uses its OWN scale
   // instead (see taperPhase) — it overrides the wave rather than compounding.
-  const sets = taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
+  const sets = ex.prescaled ? ex.sets
+    : taper ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * taper.setScale))
     : block ? Math.max(Math.min(ex.sets, 2), Math.round(ex.sets * block.setScale))
     : ex.sets;
   const last = sug.suggested_kg != null ? lastSetsForExercise(sessions, ex.exercise) : null;
@@ -696,7 +700,22 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
 }
 
-export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false) {
+// The day a live workout is on, by the name the player carries (Burst 6, N7): the rotation's own day
+// when it carries that name — a plan can hold two days with one name (the save route defaults an
+// unnamed day to "Day") — else the first day with it, else the rotation's day. One definition, so the
+// swap route patches the same day buildToday then builds.
+export function sessionIndexFor(program, sessions, planMeta, sessionName) {
+  const { idx } = rotationState(program, sessions, planMeta);
+  if (sessionName == null || program.sessions[idx]?.name === sessionName) return idx;
+  const named = program.sessions.findIndex((s) => s.name === sessionName);
+  return named >= 0 ? named : idx;
+}
+
+// `opts` is the swap route's only: `sessionName` builds the day the PLAYER is on (the rotation can move
+// mid-workout — a past workout logged from History, another device), and `untrimmed` skips the two trims
+// (low readiness, a beginner's first session), which decide whether a row exists, never its values —
+// a substitute appended at the end must not be trimmed out of its own answer.
+export function buildToday(user, sessions, readiness = null, customEx = [], now = null, bodyweightKg = null, hasAnySession = false, { sessionName = null, untrimmed = false } = {}) {
   const { byId, name } = resolveEx(customEx);
   const program = user.program;
   const ctx = trainingContext(user, sessions, now);
@@ -707,7 +726,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // rotation_base rebases the cycle at the last regenerate: the deterministic
   // program id is reused, so without it old sessions phase-shift a fresh plan.
   // rotationState folds in the user's skips and this cycle's day swaps on top.
-  const { idx } = rotationState(program, sessions, user.plan_meta);
+  const idx = sessionIndexFor(program, sessions, user.plan_meta, sessionName);
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;
   let coach_note = null;
@@ -718,7 +737,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // still ease effort; the one thing we must never do is tell someone who reported
     // awful sleep/energy that they're "in their normal range" (that fabricates a
     // status against their own input and teaches them the check-in is fake).
-    if (templateExercises.length > 3) {
+    if (templateExercises.length > 3 && !untrimmed) {
       templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, -1)); // drop the last accessory
       coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
     } else {
@@ -854,7 +873,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // `templateExercises` meant a low-readiness day one had already dropped an
   // accessory, so the card reported "4 instead of 6" while the plan screen showed 7.
   const firstSessionFull = templateSession.exercises.length;
-  const firstSession = beginner && neverTrained && templateExercises.length > FIRST_SESSION_EXERCISES;
+  const firstSession = !untrimmed && beginner && neverTrained && templateExercises.length > FIRST_SESSION_EXERCISES;
   if (firstSession) {
     templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, FIRST_SESSION_EXERCISES));
     // No `coach_note` here. The client gates `coach_note` on `readiness != null`,

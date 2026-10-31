@@ -2954,9 +2954,11 @@ async function renderCantDo() {
   // Lifts swapped away TODAY are never offered back by a second "Can't do".
   const exclude = () => sess.ruledOut ?? [];
   // The live slot's prescription rides along: the server builds the substitute's row FOR
-  // this slot, even when the stored plan doesn't hold the lift (a today-only swap).
+  // this slot, even when the stored plan doesn't hold the lift (a today-only swap) — its
+  // planned count (a skip only shrank the old lift's), and the lift the plan put in the slot
+  // when this one is itself a swap (slot_of, N7), so a second swap lands in the plan's slot.
   const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
-    exclude: exclude(), prescription: { sets: cur.sets, rep_range: cur.rep_range, rir: cur.rir }, ...body }) });
+    exclude: exclude(), prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null, ...body }) });
   // Still on THIS sheet for THIS lift? A response that lands after the user moved on
   // must never repaint over whatever they're looking at now.
   const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;

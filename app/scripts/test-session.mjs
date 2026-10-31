@@ -603,6 +603,30 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     const out = replaceSlot(mk(exs()), 1, oldShape, { expect: "pushdown" }).sess.ex[1];
     assert.ok(!("rest_s" in out), "the old lift's rest length must not ride along");
   });
+  // N7 (Burst 6): a second swap must land in the PLAN's slot, so the slot remembers the lift the plan put
+  // there (slot_of) across chained swaps — computed here, never trusted from a row, gone once the slot holds
+  // that lift again, and never sent with the finished workout.
+  check("#n7 chained swaps carry the slot's ORIGINAL planned lift (slot_of); an Undo back to it leaves none — through a crash", () => {
+    const s0 = mk(exs());
+    const s1 = replaceSlot(s0, 1, row, { expect: "pushdown" });
+    assert.equal(s1.sess.ex[1].slot_of, "pushdown");
+    const crashed = JSON.parse(JSON.stringify(s1.sess)); // the localStorage mirror, read back
+    const s2 = replaceSlot(crashed, 1, { exercise: "dip", name: "Dip", suggested_kg: 0 }, { expect: "cable-pushdown" });
+    assert.equal(s2.sess.ex[1].slot_of, "pushdown", "a second swap still names the plan's lift, not the first substitute");
+    const u1 = replaceSlot(s2.sess, 1, s1.sess.ex[1], { expect: "dip" });
+    assert.equal(u1.sess.ex[1].slot_of, "pushdown", "undoing the second swap restores the first substitute, still standing in");
+    const u0 = replaceSlot(u1.sess, 1, s0.ex[1], { expect: "cable-pushdown" });
+    assert.ok(!("slot_of" in u0.sess.ex[1]), "back on its own planned lift, the slot carries no stand-in marker");
+    assert.deepStrictEqual(u0.sess.ex, s0.ex);
+  });
+  check("#n7 slot_of is computed, never inherited from a row; an older blob falls back to the live lift; the workout's targets never carry it", () => {
+    const s1 = replaceSlot(mk(exs()), 1, row, { expect: "pushdown" }).sess;
+    assert.equal(replaceSlot(s1, 1, { exercise: "dip", slot_of: "evil" }, { expect: "cable-pushdown" }).sess.ex[1].slot_of, "pushdown");
+    const old = mk([ex("bench", 3), { ...cur, exercise: "cable-pushdown" }, ex("curl", 3)]); // swapped by a build before the field
+    assert.equal(replaceSlot(old, 1, { exercise: "dip" }, { expect: "cable-pushdown" }).sess.ex[1].slot_of, "cable-pushdown",
+      "no marker to read: the live lift stands for the slot (the server then appends, as before)");
+    assert.ok(!("slot_of" in buildTargets(s1)[1]), "targets carry the plan, never the marker");
+  });
 }
 
 // --- #rest-state (W273): the rest is an absolute END TIME in the crash-safe session, so a

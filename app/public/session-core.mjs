@@ -71,6 +71,11 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
   const { superset_with, superset_with_name, ...slot } = row;
   for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  // The lift the PLAN put in this slot (N7, Burst 6), kept across chained swaps so a second "Can't do"
+  // lands in the plan's slot, not appended. Computed here, never taken from a row; gone once the slot
+  // holds that lift again (an Undo back to it). An older blob has none: the live lift stands for it.
+  const origin = typeof cur.slot_of === "string" ? cur.slot_of : cur.exercise;
+  if (origin !== row.exercise) slot.slot_of = origin; else delete slot.slot_of;
   // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
   // planned count (a swap is only ever offered before any set of the old lift was banked).
   if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
