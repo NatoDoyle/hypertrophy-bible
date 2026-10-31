@@ -71,13 +71,20 @@ function recentWorkSets(sessions, exId, k) {
 // `stoodIn` (the comeback ease only — Burst 6 review G1): a session where a substitute stood in for the lift in its own
 // slot (the workout's target names it) and was trained counts too. The muscles weren't laid off: a once-a-week lift
 // swapped out when tired read as "It's been 14 days" the next week, and came back eased.
+// ONE hop only (review round 2): a stand-in counts only when the lift itself was trained within the comeback window before
+// it — weeks of stand-ins, a stand-in after a long gap, or one on a day the ease was already due still ease the lift back in.
 function lastAnyDateForExercise(sessions, exId, { stoodIn = false } = {}) {
-  for (let i = sessions.length - 1; i >= 0; i--) {
-    const sets = sessions[i].sets ?? [];
-    const work = (id) => sets.some((s) => s.exercise === id && (s.set_type ?? "work") === "work");
-    if (work(exId) || (stoodIn && (sessions[i].targets ?? []).some((t) => t?.stood_in_for === exId && work(t.exercise)))) return sessions[i].date ?? null;
+  const work = (session, id) => (session.sets ?? []).some((s) => s.exercise === id && (s.set_type ?? "work") === "work");
+  let own = -1;
+  for (let i = sessions.length - 1; i >= 0 && own < 0; i--) if (work(sessions[i], exId)) own = i;
+  const ownDate = own >= 0 ? sessions[own].date ?? null : null;
+  if (!stoodIn || !ownDate) return ownDate;
+  for (let i = sessions.length - 1; i > own; i--) {
+    const s = sessions[i];
+    if (s.date && (s.targets ?? []).some((t) => t?.stood_in_for === exId && work(s, t.exercise))
+      && (+new Date(s.date) - +new Date(ownDate)) / 86400000 < COMEBACK_GAP_DAYS) return s.date;
   }
-  return null;
+  return ownDate;
 }
 
 // A gap this long since an exercise was last trained triggers a deload on return —
@@ -1065,11 +1072,16 @@ export function sessionRecap(user, allSessions, newSession, customEx = []) {
   const prox = proximityFromRepDropoff(newSession);
   // …never for a lift whose LOGGED effort went closer to failure than its plan asked (Burst 6 review K19): the read-out on
   // the same screen says "taken to failure — the plan wanted 2–3 in reserve".
-  const pastBand = (exId) => {
-    const b = /^(\d+)-(\d+)$/.exec((newSession.targets ?? []).find((t) => t?.exercise === exId)?.rir ?? "");
-    return !!b && (newSession.sets ?? []).some((x) => x.exercise === exId && (x.set_type ?? "work") === "work" && typeof x.rir === "number" && x.rir < +b[1]);
+  // …nor for a lift planned easy (round 2: a tired ease — "Lighter for today because you're tired" — or a deload: its reps
+  // drop off because the lifter is tired, not because they pushed).
+  const quiet = (exId) => {
+    const t = (newSession.targets ?? []).find((x) => x?.exercise === exId);
+    const sets = (newSession.sets ?? []).filter((x) => x.exercise === exId && (x.set_type ?? "work") === "work");
+    if (t?.deload || (sets.length && sets.every((x) => x.deload))) return true;
+    const b = /^(\d+)-(\d+)$/.exec(t?.rir ?? "");
+    return !!b && sets.some((x) => typeof x.rir === "number" && x.rir < +b[1]);
   };
-  const closeToFailure = Object.entries(prox).filter(([k, v]) => v.inferred === "trained-close-to-failure" && !pastBand(k.split("@")[0]));
+  const closeToFailure = Object.entries(prox).filter(([k, v]) => v.inferred === "trained-close-to-failure" && !quiet(k.split("@")[0]));
   if (closeToFailure.length) {
     const ex = closeToFailure[0][0].split("@")[0];
     wins.push(`🔥 You trained ${name(ex)} close to failure — that's where growth happens.`);

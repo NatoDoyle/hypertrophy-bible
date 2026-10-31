@@ -1406,6 +1406,17 @@ try {
     const afterBusy = await json("POST", "/api/exercise/cant-do", { ...tBody, exercise: "hack-squat", live: tLive.map((x) => (x === "bulgarian-split-squat" ? "hack-squat" : x)), slot_of: "bulgarian-split-squat", exclude: ["bulgarian-split-squat"], reason: "tired" });
     ok("#tired …after a busy swap too: the plan's split squat, not the hack squat standing in", afterBusy.data?.replaced_by === "leg-extension" && afterBusy.data.planned_name === "Bulgarian Split Squat",
       JSON.stringify({ by: afterBusy.data?.replaced_by, planned: afterBusy.data?.planned_name, s: afterBusy.status }));
+    // Round 2 (N3/N7): after "No machine" the plan no longer holds the split squat — the card must never promise it back.
+    const pU = await onbT();
+    await json("POST", "/api/plan/save", { user_id: pU, program: lowerDay });
+    const machine = await json("POST", "/api/exercise/cant-do", { ...tBody, user_id: pU, scope: "always" });
+    const repl = machine.data?.today?.id ?? machine.data?.replaced_by;
+    const afterPerm = await json("POST", "/api/exercise/cant-do", { ...tBody, user_id: pU, exercise: repl, live: tLive.map((x) => (x === "bulgarian-split-squat" ? repl : x)), slot_of: "bulgarian-split-squat", exclude: ["bulgarian-split-squat"], reason: "tired" });
+    ok("#tired (round 2) after a permanent swap, 'back next time' names the plan's NEW lift, never the one just removed",
+      !!repl && afterPerm.status === 200 && afterPerm.data.planned_name !== "Bulgarian Split Squat" && afterPerm.data.planned_name === machine.data?.replaced_by_name,
+      JSON.stringify({ repl, by: afterPerm.data?.replaced_by, planned: afterPerm.data?.planned_name, newName: machine.data?.replaced_by_name }));
+    const stray = await json("POST", "/api/exercise/cant-do", { ...tBody, exercise: "hack-squat", live: tLive.map((x) => (x === "bulgarian-split-squat" ? "hack-squat" : x)), slot_of: "pec-deck", reason: "tired" });
+    ok("#tired (round 2) a slot the stored day can't name gets no 'back next time' at all", stray.status === 200 && stray.data.planned_name == null, JSON.stringify({ s: stray.status, planned: stray.data?.planned_name }));
     const busy = await json("POST", "/api/exercise/cant-do", tBody);
     const asNull = await json("POST", "/api/exercise/cant-do", { ...tBody, reason: null });
     ok("#tired the other doors are unchanged (no reason, or reason null = absent)", busy.status === 200 && !("reason" in busy.data) && asNull.status === 200 && asNull.data.replaced_by === busy.data.replaced_by,
@@ -1470,6 +1481,21 @@ try {
       stood.row?.suggested_kg === 22.5 && !/It's been \d+ days/.test(stood.row?.suggestion_note ?? ""), JSON.stringify(stood.row && [stood.row.suggested_kg, stood.row.suggestion_note]));
     ok("#stood-in (control) without the marker the same history reads as a layoff — the case it fixes", bare.row?.layoff_days == null && /It's been 14 days/.test(bare.row?.suggestion_note ?? ""),
       JSON.stringify(bare.row && [bare.row.suggested_kg, bare.row.suggestion_note]));
+    // Round 2 (N8, G2): a stand-in bridges ONE gap — it counts only when the lift itself was trained within the comeback
+    // window before it. Weeks of stand-ins, a stand-in after a long gap, or one on a day the ease was already due, all ease.
+    const hop = async (ownAgo, standIns) => {
+      const u = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: u, program: lowerDay });
+      await json("POST", "/api/session", { user_id: u, session_id: "own", date: dAgo(ownAgo), local_date: dAgo(ownAgo).slice(0, 10), session_name: "Lower",
+        sets: [12, 12, 12].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 20, reps })), targets: [{ exercise: "bulgarian-split-squat", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 20 }] });
+      for (const d of standIns) await json("POST", "/api/session", { user_id: u, session_id: `si-${d}`, date: dAgo(d), local_date: dAgo(d).slice(0, 10), session_name: "Lower",
+        sets: [12, 12].map((reps) => ({ exercise: "hack-squat", set_type: "work", weight_kg: 60, reps })), targets: [{ exercise: "hack-squat", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 60, stood_in_for: "bulgarian-split-squat" }] });
+      return (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session.exercises.find((e) => e.exercise === "bulgarian-split-squat");
+    };
+    const weeks = await hop(63, [56, 49, 42, 35, 28, 21, 14, 7]), lateOne = await hop(60, [3]), dueEase = await hop(20, [6]);
+    ok("#stood-in (round 2) one hop only: 8 weeks of stand-ins, one after 57 days off, or one when the ease was already due — all come back eased",
+      [weeks, lateOne, dueEase].every((r) => r?.suggested_kg === 17.5 && /It's been \d+ days/.test(r?.suggestion_note ?? "")),
+      JSON.stringify([weeks, lateOne, dueEase].map((r) => r && [r.suggested_kg, r.suggestion_note])));
     const stored = (await store.listSessions(stood.u)).find((x) => x.session_id === "w2")?.targets?.[0];
     const junkU = stood.u;
     await json("POST", "/api/session", { user_id: junkU, session_id: "w3", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
@@ -1493,6 +1519,10 @@ try {
     const said = (r) => JSON.stringify(r.data?.wins ?? []);
     ok("#recap-wins no 'close to failure — that's where growth happens' for a lift taken past its band; still said when effort wasn't logged",
       !/close to failure/.test(said(past)) && /close to failure/.test(said(plain)), JSON.stringify({ past: past.data?.wins, plain: plain.data?.wins }));
+    const easy = await json("POST", "/api/session", { user_id: rU, session_id: "k19-c", date: now, local_date: now.slice(0, 10), session_name: "Legs",
+      sets: drop(null).map((x) => ({ ...x, deload: true })), targets: tgt.map((t) => ({ ...t, deload: true })) });
+    ok("#recap-wins (round 2) never for a planned-easy lift — a tired ease or a deload ('Lighter for today because you're tired' isn't 'close to failure')",
+      !/close to failure/.test(said(easy)), JSON.stringify(easy.data?.wins));
   }
 
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and

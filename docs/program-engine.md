@@ -68,7 +68,9 @@ shared): a lighter back-off never flips a line against the next weight. "Time to
 range on every set" mean the top at the plan's effort, a top reached only past the band is its own "worth
 a look" line, and "Effort right where the plan wanted it" shows only when every lift with logged effort
 was logged on enough sets to grade and averaged inside its band. The recap's "🔥 close to failure — that's
-where growth happens" is never said for a lift whose logged effort went past its band. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
+where growth happens" is never said for a lift whose logged effort went past its band, nor for one planned
+easy. "Top of the range on every set" says so only when every set was graded ("at your working weight"
+otherwise), and Nerd Mode's average covers every set it prints. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
 thing and the next weight another, except three rare, benign ones, kept: a heavy single above the
 working sets counted "under the range"; "N of M sets" beside a rule-2 bump; "top of the range" beside
 W280's "get all N to the top".
@@ -307,14 +309,19 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   fewer sets, not softer ones. The trim is written as that day's plan (a coach-set dose, so the workout
   reads "every set done"); a skip never rewrites the plan, and a skip already taken stays taken (the dose is
   never more than the slot shows). When nothing easier fits today's workout, you're offline, or the server
-  can't build the row, the same tap makes the **same lift ~10% lighter** (on its own kg step, at least one
-  step, never under the empty bar; a model estimate) and shorter. Its reason says only what changed on the
-  screen (a pounds user's ease that rounds back onto the same plate changes nothing and claims nothing). A
-  tired day never sets a lift back: the original lift has no sets that day, and the workout's target names
-  the lift a substitute stood in for, so the comeback clock counts its slot as trained (a once-a-week lift
-  swapped out was "It's been 14 days" the next week); an eased lift's sets (or a substitute's you have real
-  history on) are deload-tagged, so they never anchor, never count as a PR and are never graded. A slot
-  already made easier isn't offered it again. Undo puts the slot back exactly, sets included. Split squats after leg press and RDLs: leg extension (full gym);
+  can't build the row, the same tap makes the **same lift lighter and shorter**: a progression bump served
+  today drops back to last time's weight exactly; with no bump, ~10% off (on its own kg step, at least one
+  step, never under the empty bar — 45 lb for a pounds user; a model estimate). Its reason says only what
+  changed on the screen (a pounds user's ease that rounds back onto the same plate changes nothing and claims
+  nothing). A tired day never sets a lift back: the original lift has no sets that day, and the workout's
+  target names the lift a substitute stood in for, so the comeback clock counts its slot as trained — one hop
+  only, when the lift itself was trained within the comeback window before it (a once-a-week lift swapped out
+  was "It's been 14 days" the next week; weeks of stand-ins, or one after a long gap, still ease it back in).
+  An eased lift's sets are always deload-tagged (with history or without), and a substitute's when you have
+  real history on it, so they never anchor, never count as a PR, are never graded and never earn the
+  "🔥 close to failure" win. The card says what comes back next time only while the plan still holds it (not
+  after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
+  sets and skips included. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).
 - Session order is a rotation (sessions completed modulo plan length, plus your skips and
   day swaps). Since Wave 277 the app **projects** it onto your committed weekdays and shows

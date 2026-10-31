@@ -269,8 +269,9 @@ one-line safety moment fires. All framed as help, never correction.
 beginner wants a friendlier variant. **Too tired** (Burst 6, owner consideration): once some work is banked
 today, a lift's first screen offers "🥱 Too tired for this one?" (also the first reason in "Can't do this
 one?") — one tap swaps in the easiest lift that fits the slot (no harder on any count — systemic cost,
-stability, skill — and steadier or less taxing) at about half the sets, or, when nothing easier fits or the phone is offline, makes the same lift ~10%
-lighter and shorter. A tired day never sets a lift back, and Undo puts the slot back exactly. A second
+stability, skill — and steadier or less taxing) at about half the sets (a 2-set lift stays at 2), or, when
+nothing easier fits or the phone is offline, makes the same lift lighter (today's bump dropped, else ~10%) and
+shorter. A tired day never sets a lift back, and Undo puts the slot back exactly. A second
 swap in the same slot lands where the first did (the plan's slot), with its own weight and history.
 
 **7. Finish → Session Summary.** Chain +1; any est-1RM PR called out (*"New best on bench 🎉"*); **one**

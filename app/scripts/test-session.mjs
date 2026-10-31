@@ -713,18 +713,31 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.ok(!("lastSkip" in r.sess));
     assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true }, "an eased lift's workout is planned-easy: never graded, never an anchor");
   });
-  check("#tired easeSlot: no history → only the sets are cut and nothing is tagged (those sets seed a weight); a bodyweight lift with history is tagged", () => {
+  check("#tired easeSlot: a tired day never counts — even on a lift with no history it is tagged eased (round 2: 'keep this one easy' was then graded 'too easy'); a bodyweight lift is tagged too", () => {
     const fresh = easeSlot(mkT({ exercise: "bss", name: "BSS", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: null, last_kg: null, last_reps: null }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
-    assert.deepStrictEqual([fresh.sets, fresh.suggested_kg, !!fresh.eased, fresh.tired], [2, null, false, true]);
+    assert.deepStrictEqual([fresh.sets, fresh.suggested_kg, fresh.eased, fresh.tired], [2, null, true, true]);
     const est = easeSlot(mkT({ ...bss, last_kg: null, last_reps: null, suggested_kg: 20 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
-    assert.deepStrictEqual([est.suggested_kg, !!est.eased], [17.5, false], "a first-time estimate is eased, but the sets still seed the lift");
-    assert.doesNotMatch(est.suggestion_note, /progress/, "…so it never claims they won't count");
+    assert.deepStrictEqual([est.suggested_kg, est.eased], [17.5, true], "a first-time estimate is eased, and the tired sets never become its anchor");
+    assert.match(est.suggestion_note, /It won't count against your progress\.$/);
     const bw = easeSlot(mkT({ exercise: "dip", name: "Dip", sets: 4, rep_range: "6-10", rir: "1-3", suggested_kg: 0, last_kg: 0, last_reps: [10, 9], equipment: "bodyweight" }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];
     assert.deepStrictEqual([bw.sets, bw.suggested_kg, bw.eased], [2, 0, true]);
   });
   check("#tired (review) a skip already taken is never undone: the tired dose is the smaller of the two", () => {
     const r = easeSlot(mkT({ ...bss, sets: 1 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
     assert.deepStrictEqual([r.sets, r.planned_sets], [1, 1], "skipped to 1 set, then tired: still 1, never 2");
+  });
+  check("#tired (round 2) a bump served today is dropped back to last time's weight; with no bump, ~10% off", () => {
+    const bump = easeSlot(mkT({ ...bss, suggested_kg: 22.5, last_kg: 20 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.equal(bump.suggested_kg, 20, "22.5 served after 20 last time: tired → 20, exactly last time's (the stepper shows it as is)");
+    const lbBump = easeSlot(mkT({ ...bss, suggested_kg: 7.8, last_kg: 6.8, inc_kg: 1 }), 1, { expect: "bss", stepKg: 1 }).sess.ex[1];
+    assert.equal(lbBump.suggested_kg, 6.8, "a pounds user's 15 → 20 lb bump: back to 15 lb, never a kept +33%");
+    const hold = easeSlot(mkT({ ...bss, suggested_kg: 20, last_kg: 20 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.equal(hold.suggested_kg, 17.5);
+  });
+  check("#tired (round 2) a pounds user's 45-lb bar is the floor (20.41 kg), never '40 lb'", () => {
+    const barLb = 45 / 2.20462;
+    const hold = easeSlot(mkT({ ...bss, exercise: "squat", suggested_kg: 20.41, last_kg: 20.41, equipment: "barbell" }), 1, { expect: "squat", stepKg: 2.5, floorKg: barLb }).sess.ex[1];
+    assert.equal(hold.suggested_kg, 20.41, "the bar stays the bar");
   });
   check("#tired (review) a barbell never eases under the empty bar", () => {
     assert.equal(EMPTY_BAR_KG, serverCore.EMPTY_BAR_KG, "the player's bar is the engine's");
@@ -755,6 +768,14 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.deepStrictEqual(u.sess.ex, s0.ex, "Undo (through a crash) puts the full 3/3 back — the live slot's 2 would have stuck");
     const plain = replaceSlot(s0, 1, { exercise: "leg-extension" }, { expect: "bss" });
     assert.deepStrictEqual([plain.sess.ex[1].sets, plain.sess.ex[1].planned_sets], [3, 3], "without `sets`: as before");
+  });
+  check("#tired (round 2) Undo puts the slot back EXACTLY — a skip taken before the tired tap stays taken", () => {
+    const skipped = mkT({ ...bss, sets: 3, planned_sets: 4 }); // 1 of 4 skipped
+    const eased = easeSlot(skipped, 1, { expect: "bss", stepKg: 2.5 }).sess;
+    assert.deepStrictEqual([eased.ex[1].sets, eased.ex[1].planned_sets], [2, 2]);
+    const saved = skipped.ex[1];
+    const back = replaceSlot(JSON.parse(JSON.stringify(eased)), 1, saved, { expect: "bss", sets: saved.sets, plannedSets: saved.planned_sets }).sess.ex[1];
+    assert.deepStrictEqual([back.sets, back.planned_sets], [3, 4], "3 of 4 (1 skipped), as it was");
   });
   check("#tired with N7's slot_of: a tired swap of a slot that's itself a swap keeps the plan's lift; easing a substitute in place keeps it too", () => {
     const busy = replaceSlot(mkT(), 1, { exercise: "hack-squat", suggested_kg: 80 }, { expect: "bss" }).sess;
@@ -1310,6 +1331,16 @@ check("#effort-top localReadout judges effort and the top over the anchor sets, 
   assert.deepStrictEqual([a.top, a.past_band, a.easy, a.in_band], [true, false, true, false], "60x12@5 then a 50 kg back-off at 1: the engine bumps for the 60s (~5 left), so does the read-out");
   const b = localReadout([tg("b", 4, "6-10", "3-4")], [ws("b", 60, 10, { rir: 3 }), ws("b", 60, 10, { rir: 0 }), ws("b", 60, 12, { rir: 4 }), ws("b", 55, 6, { rir: 5 })]).lifts[0];
   assert.deepStrictEqual([b.top, b.past_band, b.in_band, b.under], [false, true, false, 0], "a 55 kg back-off can't average the 60s back into the band");
+});
+check("#effort-top (round 2) the read-out says WHICH sets it graded, and Nerd Mode's average is over the sets it lists", () => {
+  const h = localReadout([tg("h", 2, "6-10", "1-2")], [ws("h", 50, 4), ws("h", 60, 10), ws("h", 60, 10)]).lifts[0];
+  assert.deepStrictEqual([h.top, h.graded_all, h.under], [true, false, 1], "a ramp set under the range: the top is the 60s', not every set's");
+  const all = localReadout([tg("a", 3)], [ws("a", 50, 12), ws("a", 50, 12), ws("a", 50, 12)]).lifts[0];
+  assert.equal(all.graded_all, true);
+  const b = localReadout([tg("b", 3, "8-12", "2-3")], [ws("b", 60, 10, { rir: 3 }), ws("b", 60, 9, { rir: 3 }), ws("b", 50, 12, { rir: 0 })]).lifts[0];
+  assert.deepStrictEqual([b.rir, b.rir_all], [3, 2], "graded over the 60s; the Nerd line's average covers every set it prints");
+  const d = localReadout([tg("d", 2, "8-12", "3-4", { deload: true })], [ws("d", 54, 10, { rir: 4, deload: true }), ws("d", 45, 12, { rir: 1, deload: true })]).lifts[0];
+  assert.equal(d.rir_all, 2.5, "a planned-easy lift is never graded; its average is still every set's");
 });
 check("#local-readout an OLD workout without targets still reads (no plan, no grades) — and says it had none", () => {
   const r = localReadout(undefined, [ws("a", 50, 10), ws("a", 50, 9)]);

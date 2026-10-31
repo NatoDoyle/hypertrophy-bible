@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredOffer, EMPTY_BAR_KG } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2954,7 +2954,8 @@ async function undoSwap() {
   // The saved row is the old lift's OWN server-built row, so reverting with it can't
   // leak anything; the same guards apply (a banked set of the substitute stays).
   // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.planned_sets ?? u.saved.sets });
+  // (and its plan: a skip taken before the tired tap stays taken — round 2).
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets });
   sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from) };
   saveSess();
   renderPlayer(0);
@@ -2966,6 +2967,7 @@ async function undoSwap() {
 // easiest lift that fits the slot (the server picks it), for today only, at about half the sets; when nothing easier
 // fits — or offline, or no row came back — the same lift, lighter and shorter (easeSlot). The slot keeps its range and
 // effort band (fewer sets, not softer ones), a tired day never sets the lift back, and Undo puts the slot back exactly.
+const setsN = (n) => `${n} set${n === 1 ? "" : "s"}`; // "1 set", never "1 sets" (a skip can leave one — round 2)
 async function tiredSwap() {
   const gen = ++cantDoGen;
   const cur = sess?.ex?.[sess.i];
@@ -2985,11 +2987,12 @@ async function tiredSwap() {
     const toName = r.replaced_by_name ?? r.row.name ?? r.row.exercise;
     // The lift the PLAN has in this slot is what comes back next time — never a today-only substitute (review K13); the
     // server names it (the player's own exercise library isn't loaded mid-workout).
-    const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${n} sets instead of ${cur.sets}` : ""}. ${r.planned_name ?? cur.name} is back next time.`;
+    // …and only when the stored plan still holds it (round 2: after "No machine" it named the lift just removed).
+    const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${setsN(n)} instead of ${cur.sets}` : ""}.${r.planned_name ? ` ${r.planned_name} is back next time.` : ""}`;
     // A substitute the user has history on is tagged eased: a tired performance never becomes its anchor.
     const why = applyReplacement(cur.exercise, { ...r.row, tired: true, ...(r.known ? { eased: true } : {}) },
       { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text },
-      { sets: n, said: `Swapped for ${toName} for today — ${n} sets.` });
+      { sets: n, said: `Swapped for ${toName} for today — ${setsN(n)}.` });
     if (!why) return;
   }
   easeInPlace(cur, r == null ? "offline" : r?.error === "no-easier" ? "none" : "other");
@@ -2997,18 +3000,18 @@ async function tiredSwap() {
 // The same lift, lighter and shorter — no network needed. `cause` only words the card.
 function easeInPlace(cur, cause) {
   // Judged on what the stepper SHOWS (a pounds user's plates), never under the empty bar (review K4, K7).
-  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5, floorKg: cur.equipment === "barbell" ? EMPTY_BAR_KG : 0, shown: startWeightDisp });
+  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5, floorKg: cur.equipment === "barbell" ? (unitFor(cur.exercise) === "lb" ? toKgIn(EMPTY_BAR_LB, "lb") : EMPTY_BAR_KG) : 0, shown: startWeightDisp });
   if (!r.ok) { renderPlayer(0); return; }
   const now = r.sess.ex[sess.i], n = now.sets;
   const w = now.suggested_kg !== cur.suggested_kg ? `${startWeightDisp(now)} ${unitLabelFor(cur.exercise)}` : null;
-  const what = w ? `lighter: ${n} sets at ${w}` : n < cur.sets ? `shorter: ${n} sets instead of ${cur.sets}` : null;
+  const what = w ? `lighter: ${setsN(n)} at ${w}` : n < cur.sets ? `shorter: ${setsN(n)} instead of ${cur.sets}` : null;
   const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits today's workout, so " : "";
   const tail = now.eased ? " It won't count against your progress." : "";
   const text = what ? `${lead}I've made this ${what}.${tail}`
     : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits today's workout — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
   sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, session_id: r.sess.session_id } };
   saveSess();
-  say(w ? `Made ${cur.name} lighter for today — ${n} sets.` : `${cur.name}: ${n} sets today.`);
+  say(w ? `Made ${cur.name} lighter for today — ${setsN(n)}.` : `${cur.name}: ${setsN(n)} today.`);
   renderPlayer(0);
 }
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
@@ -3253,7 +3256,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const u = unitLabelFor(l.exercise);
     const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
     const nx = nextByEx[l.exercise];
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && l.rir != null ? ` · avg ${l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && (l.rir_all ?? l.rir) != null ? ` · avg ${l.rir_all ?? l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}

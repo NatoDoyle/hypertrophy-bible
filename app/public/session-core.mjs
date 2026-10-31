@@ -62,7 +62,7 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
 // target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
 export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
-export function replaceSlot(sess, i, row, { expect, sets } = {}) {
+export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
   if (!cur || !row?.exercise) return refuse("no-slot");
@@ -82,7 +82,8 @@ export function replaceSlot(sess, i, row, { expect, sets } = {}) {
   // A tired swap or ease (Burst 6) does a trimmed dose, written as the slot's plan for TODAY — a coach-set dose, so the
   // workout reads "every set done", never a shortfall that holds the lift (W280). A skip never does this (it keeps
   // planned_sets); Undo passes the saved row's own count back, or the trimmed count would stick to the old lift.
-  if (Number.isInteger(sets) && sets > 0) { slot.sets = sets; slot.planned_sets = sets; }
+  // `plannedSets`: an Undo restores the saved row's own plan too, so a skip taken before the tired tap stays taken (round 2).
+  if (Number.isInteger(sets) && sets > 0) { slot.sets = sets; slot.planned_sets = Number.isInteger(plannedSets) && plannedSets >= sets ? plannedSets : sets; }
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
@@ -117,15 +118,18 @@ export const tiredDose = (row) => Math.min(row.sets, tiredSets(row.planned_sets 
 // Its reason says only what changed ON SCREEN (review): `shown(row)` is the weight the stepper will show for a row (the
 // player passes its plate-rounded pre-fill), so a pounds user's 1 kg ease that rounds back onto the same plate changes
 // nothing and claims nothing; "shorter" only when sets were cut; neither, and it says neither.
+// A bump served today is dropped back to last time's weight, exactly (round 2: a pounds user's plate rounding kept a +33%
+// bump, or cut 40% from a light one); with no bump, ~10% off. Every tired day is tagged `eased` — with history or without
+// (round 2: "keep this one easy" was then graded "too easy" on a never-done lift) — so it never anchors, PRs or grades.
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };
-  const had = Array.isArray(cur.last_reps) && cur.last_reps.length > 0;
-  const kg = easeKg(cur.suggested_kg, stepKg, floorKg);
+  const bumped = cur.last_kg > 0 && cur.suggested_kg > cur.last_kg;
+  const kg = bumped ? cur.last_kg : easeKg(cur.suggested_kg, stepKg, floorKg);
   const lighter = kg != null && kg < cur.suggested_kg && shown({ ...cur, suggested_kg: kg }) < shown(cur);
   const sets = tiredDose(cur);
-  const note = `${lighter ? "Lighter for today because you're tired" : sets < cur.sets ? "Shorter today because you're tired" : "Easy does it today — stop each set while your form is solid"}.${had ? " It won't count against your progress." : ""}`;
-  const row = { ...cur, ...(lighter ? { suggested_kg: kg } : {}), tired: true, ...(had ? { eased: true } : {}), suggestion_note: note };
+  const note = `${lighter ? "Lighter for today because you're tired" : sets < cur.sets ? "Shorter today because you're tired" : "Easy does it today — stop each set while your form is solid"}. It won't count against your progress.`;
+  const row = { ...cur, ...(lighter ? { suggested_kg: kg } : {}), tired: true, eased: true, suggestion_note: note };
   return replaceSlot(sess, i, row, { expect, sets });
 }
 // Offer it at the first set of a lift not yet started, once some work is banked today; never on a superset member (a
@@ -339,8 +343,10 @@ export function anchorSets(sets, min) {
   const judged = sets.filter((s) => (s.weight_kg ?? 0) === weight);
   return { weight, judged, first: judged[0] };
 }
-// An empty Olympic bar — derive-core's EMPTY_BAR_KG (pinned equal): a tired ease never goes under it.
+// An empty Olympic bar — derive-core's EMPTY_BAR_KG (pinned equal): a tired ease never goes under it. A pounds user's
+// bar is the 45-lb one (20.41 kg), never "40 lb" (Burst 6 review round 2).
 export const EMPTY_BAR_KG = 20;
+export const EMPTY_BAR_LB = 45;
 // A set's reps AT THE PLAN'S EFFORT — a BYTE-IDENTICAL copy of derive-core's repsAtBand (Burst 6;
 // test-session pins the two together): the read-out judges "the top of the range" exactly as the engine does.
 export function repsAtBand(reps, rir, near) {
@@ -506,12 +512,17 @@ export function localReadout(targets, logged) {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
       top, past_band: graded && !top && judged.every((s) => s.reps >= max),
+      // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
+      // range sat beside it otherwise).
+      graded_all: judged.length === sets.length,
       under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
       easy: rated && avg >= +band[2] + 2,
       failure: rated && +band[1] >= 1 && avg < 0.5,
       // The logged effort averaged inside the band ("Effort right" says so only then); null when too little was logged.
       in_band: rated ? avg >= +band[1] && avg <= +band[2] : null,
       easyDay, rir: avg == null ? null : Math.round(avg * 10) / 10, band: t?.rir ?? null,
+      // Nerd Mode prints every set's reps beside an average: over every set it prints (round 2), not just the graded ones.
+      rir_all: (() => { const all = sets.map((s) => s.rir).filter((r) => typeof r === "number"); return all.length ? Math.round((all.reduce((a, b) => a + b, 0) / all.length) * 10) / 10 : null; })(),
     };
   }).filter((l) => l.done > 0 || (l.planned ?? 0) > 0);
   return { lifts, planned: lifts.reduce((a, l) => a + (l.planned ?? l.done), 0), done: lifts.reduce((a, l) => a + l.done, 0), hasPlan: tgs.length > 0 };

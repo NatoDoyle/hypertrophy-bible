@@ -571,6 +571,12 @@ export function createApp(store, config = {}) {
     return buildToday({ ...user, program, ...(placed ? { stored_program: user.program } : {}) }, ctx.sessions, ctx.readiness, user.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged,
       day ? { sessionName, untrimmed: true } : {})?.exercises?.find((e) => e.exercise === Y) ?? null;
   };
+  const plannedNameFor = (user, ctx, sessionName, slotOf, X) => {
+    const day = sessionName != null && user.program.sessions.some((x) => x.name === sessionName)
+      ? user.program.sessions[sessionIndexFor(user.program, ctx.sessions, user.plan_meta, sessionName)] : null;
+    const id = [slotOf, X].find((v) => typeof v === "string" && day?.exercises.some((e) => e.exercise === v));
+    return id ? exerciseNameFor(user, id) : null;
+  };
   app.post("/api/exercise/cant-do", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // before the store call (D1 throws on an undefined bind)
@@ -652,8 +658,10 @@ export function createApp(store, config = {}) {
       if (!Y && tired) return c.json({ error: "no-easier", reason: "tired", message: "Nothing easier fits today's workout." }, 409);
       if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
       return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }),
-        // …and the lift the plan has in this slot — what comes back next time (the player's own library isn't loaded mid-workout).
-        ...(tired ? { reason: "tired", known: known.has(Y), planned_name: nameOf(slotOf && slotOf !== X ? slotOf : X) } : {}) });
+        // …and the lift the STORED plan has in this slot — what comes back next time (the player's own library isn't loaded
+        // mid-workout): the slot's planned lift while the day still holds it, else the live lift when the plan holds it (a
+        // permanent swap's replacement), else nothing to promise (round 2: "No machine" then tired named the lift just removed).
+        ...(tired ? { reason: "tired", known: known.has(Y), planned_name: plannedNameFor(user, ctx, sessionName, slotOf, X) } : {}) });
     }
 
     // scope === "always"

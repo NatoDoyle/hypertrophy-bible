@@ -369,7 +369,7 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
     : "Every set done, every lift in its range — a session that moves you forward.";
   if (beginner) return { headline, went_well: [], watch: [] };
   const went_well = [
-    ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range on every set.`),
+    ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range ${l.graded_all === false ? "at your working weight" : "on every set"}.`),
     ...(skipped === 0 && local.planned > 0 && graded.length >= 2 ? [`All ${local.planned} planned sets done.`] : []),
     // Only when every lift whose effort was logged averaged INSIDE its band (Burst 6): beside the engine's "you left ~3
     // in reserve — add weight", or an average under the band, "effort right" was the read-out contradicting itself.
