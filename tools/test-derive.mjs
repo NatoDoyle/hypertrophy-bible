@@ -49,7 +49,7 @@ import {
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
 import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood } from "./derive-core.mjs";
-import { restSeconds } from "./derive-core.mjs";
+import { restSeconds, repsAtBand } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
 let passed = 0;
@@ -1563,6 +1563,15 @@ check("#rest a custom lift is tiered from what its author gave it; only a row wi
   assert.equal(restSeconds({ id: "custom-z", mechanic: "compound", equipment: "machine", custom: true }), 120);
   assert.equal(restSeconds(null), 120);
   assert.equal(restSeconds({ id: "an-unknown-id" }), 120);
+});
+
+// --- #effort-top (Burst 6 — owner: "the end of session recap is contradictory. It says I need to pay attention to
+// the rir because I hit failure on one of the lifts but then told me to increase the weight next workout"). The KB's
+// own trigger is "all sets reach the top of the rep range at target RIR" (data/progressions/double-progression.json):
+// a set's reps AT THE PLAN'S EFFORT are its reps less however far it went past the band's near edge.
+check("#effort-top repsAtBand: a set's reps at the plan's effort — unlogged effort reads as at the band", () => {
+  assert.deepEqual([[10, 0, 1], [12, 0, 1], [10, null, 1], [10, undefined, 2], [10, 1, 2], [10, 3, 1], [10, 0, 0], [11, 0, 2]].map(([r, rir, n]) => repsAtBand(r, rir, n)),
+    [9, 11, 10, 10, 9, 10, 10, 9]);
 });
 
 console.log(`\n${passed} test(s) passed.`);

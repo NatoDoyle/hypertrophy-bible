@@ -370,7 +370,9 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
   const went_well = [
     ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range on every set.`),
     ...(skipped === 0 && local.planned > 0 && graded.length >= 2 ? [`All ${local.planned} planned sets done.`] : []),
-    ...(graded.some((l) => l.rir != null) && !graded.some((l) => l.easy || l.failure) ? ["Effort right where the plan wanted it."] : []),
+    // Only when every lift whose effort was logged averaged INSIDE its band (Burst 6): beside the engine's "you left ~3
+    // in reserve — add weight", or an average under the band, "effort right" was the read-out contradicting itself.
+    ...(graded.some((l) => l.rir != null) && !graded.some((l) => l.easy || l.failure || l.past_band || l.in_band === false) ? ["Effort right where the plan wanted it."] : []),
   ].slice(0, 3);
   const watch = local.lifts.filter((l) => !l.easyDay).flatMap((l) => {
     const n = nameOf(l.exercise);
@@ -378,7 +380,8 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
       ...(l.planned != null && l.done < l.planned ? [`${n}: ${l.done} of ${l.planned} sets.`] : []),
       ...(l.under ? [`${n}: ${l.under} of ${l.done} sets under the ${l.min}–${l.max} range.`] : []),
       ...(l.easy ? [`${n}: about ${l.rir} reps left in the tank — the plan asked for ${band(l.band)}.`] : []),
-      ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`] : []),
+      ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`]
+        : l.past_band ? [`${n}: top of the range, but closer to failure than the ${band(l.band)} in reserve the plan asked for.`] : []),
     ];
   }).slice(0, 3);
   return { headline, went_well, watch };

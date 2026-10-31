@@ -13,8 +13,8 @@ import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds, load
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
-import { planFitCopy, planFitRequest } from "../public/ui-helpers.mjs";
-import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets } from "../public/session-core.mjs";
+import { planFitCopy, planFitRequest, readoutLists } from "../public/ui-helpers.mjs";
+import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout } from "../public/session-core.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
@@ -1682,6 +1682,24 @@ try {
     const rE = { readout: await readoutOf(uE, "rdE-today") };
     ok("#readout (fixture) this workout tips a reactive deload, and the read-out says so", /bringing your deload forward/.test((rE?.readout?.block ?? []).join(" ")), JSON.stringify(rE?.readout?.block));
     await keeps("reactive deload due", uE, rE?.readout);
+
+    // G — Burst 6 (owner: "the end of session recap is contradictory… I hit failure on one of the lifts but then [it] told
+    // me to increase the weight"): every set at the top of the range at failure. Nothing says "go up", every "next time"
+    // holds and says why, and the promise is kept. H — past the top even counting the reserve: the bump says so.
+    const uG = await onboard(); const tG = await todayOf(uG);
+    const rG = await logToday(uG, tG, { tag: { rir: 0 } });
+    const gLists = readoutLists(localReadout(targetsFor(tG), setsFor(tG, { tag: { rir: 0 } })));
+    ok("#readout top of the range at failure: never 'go up', never 'top of the range' — every next time holds, saying why",
+      (rG?.readout?.next?.length ?? 0) > 0 && rG.readout.next.every((n) => n.kg === n.last_kg && /^You hit the top of the range last time, but closer to failure than the plan's \d–\d reps in reserve/.test(n.note))
+        && !/go up/.test(gLists.headline) && !gLists.went_well.some((x) => /top of the range/.test(x)),
+      JSON.stringify({ headline: gLists.headline, went_well: gLists.went_well, next: rG?.readout?.next?.map((n) => [n.exercise, n.last_kg, n.kg, n.note]) }));
+    await keeps("top at failure", uG, rG?.readout);
+    const uH = await onboard(); const tH = await todayOf(uH);
+    const rH = await logToday(uH, tH, { reps: (e) => +e.rep_range.split("-")[1] + 3, tag: { rir: 0 } });
+    ok("#readout past the top at failure, even counting the reserve: the bump, and its reason says so",
+      (rH?.readout?.next?.length ?? 0) > 0 && rH.readout.next.every((n) => n.kg > n.last_kg && /^Last time you went past the top of the range — far enough to clear it with \d in reserve — add/.test(n.note)),
+      JSON.stringify(rH?.readout?.next?.map((n) => [n.exercise, n.last_kg, n.kg, n.note])));
+    await keeps("past the top at failure", uH, rH?.readout);
 
     // The offline door: POST /api/session/recap answers for the LATEST workout with the same
     // read-out; an older one gets { past: true } (its context has moved on); junk is refused.

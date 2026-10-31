@@ -1177,6 +1177,27 @@ check("#local-readout a planned lift with no sets at all is listed (0 of N) — 
   assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned]), [["a", 1, 3], ["b", 0, 3]]);
   assert.deepStrictEqual([r.planned, r.done], [6, 1]);
 });
+// Burst 6 (owner: "the end of session recap is contradictory… I hit failure on one of the lifts but then [it] told
+// me to increase the weight"). The top of the range is judged at the plan's effort — the band the workout was served
+// — exactly as the engine judges it (repsAtBand, pinned to the server's copy), so "time to go up" / "top of the range"
+// never sit beside "taken to failure" and a held weight.
+check("#effort-top repsAtBand is the server's formula, exactly (parity over a grid)", () => {
+  for (const reps of [1, 5, 6, 10, 12, 15]) for (const rir of [null, undefined, 0, 1, 2, 3, 5]) for (const near of [0, 1, 2, 3])
+    assert.strictEqual(playerCore.repsAtBand(reps, rir, near), serverCore.repsAtBand(reps, rir, near), `${reps} @ ${rir}, near ${near}`);
+});
+check("#effort-top localReadout: the top at the plan's effort; a top reached only past the band is its own flag; effort inside the band", () => {
+  const three = (reps, rirs, rir = "1-2", extra = {}) => localReadout([tg("a", 3, "6-10", rir, extra)], rirs.map((x) => ws("a", 150, reps, x == null ? {} : { rir: x }))).lifts[0];
+  const pick = (l) => [l.top, l.past_band, l.failure, l.in_band];
+  assert.deepStrictEqual(pick(three(10, [0, 0, 0])), [false, true, true, false], "the owner's leg press: at the top only by going to failure");
+  assert.deepStrictEqual(pick(three(12, [0, 0, 0])), [true, false, true, false], "past the top even counting the rep the plan wants in reserve");
+  assert.deepStrictEqual(pick(three(10, [null, null, null])), [true, false, false, null], "unlogged effort reads as at the band (beginners unchanged)");
+  assert.deepStrictEqual(pick(three(10, [1, 1, 1], "2-3")), [false, true, false, false], "a 2-3 band met at 1 in reserve");
+  assert.deepStrictEqual(pick(three(10, [0, null, null])), [false, true, false, null], "one set logged past the band is enough; too few logged to grade the effort");
+  assert.deepStrictEqual(pick(three(10, [1, 2, 1])), [true, false, false, true], "inside the band");
+  assert.deepStrictEqual(pick(three(10, [0, 0, 0], "3-4", { deload: true })), [false, false, false, null], "a planned-easy lift is never graded");
+  const off = localReadout([], [ws("x", 30, 12, { rir: 0 })]).lifts[0];
+  assert.deepStrictEqual([off.top, off.past_band], [false, false], "a lift the plan didn't have: no range, no verdict");
+});
 check("#local-readout an OLD workout without targets still reads (no plan, no grades) — and says it had none", () => {
   const r = localReadout(undefined, [ws("a", 50, 10), ws("a", 50, 9)]);
   assert.deepStrictEqual(r.lifts.map((l) => [l.exercise, l.done, l.planned, l.top, l.under]), [["a", 2, null, false, 0]]);

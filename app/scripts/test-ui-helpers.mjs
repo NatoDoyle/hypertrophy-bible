@@ -462,8 +462,26 @@ check("muscle names: the server's copy of the plain-English map IS the client's 
 // --- W282: the read-out's words for WHAT HAPPENED — a headline that never shames (Goal 4), what
 // went well, and what's worth a look. Beginners get the headline only (the weights for next
 // time come from the server lines).
-const L = (exercise, o) => ({ exercise, planned: 3, done: 3, min: 8, max: 12, reps: [], kg: [], top: false, under: 0, easy: false, failure: false, easyDay: false, rir: null, band: "1-3", ...o });
+const L = (exercise, o) => ({ exercise, planned: 3, done: 3, min: 8, max: 12, reps: [], kg: [], top: false, past_band: false, under: 0, easy: false, failure: false, easyDay: false, rir: null, in_band: null, band: "1-3", ...o });
 const nm = (id) => ({ a: "Bench Press", b: "Row", c: "Curl" })[id] ?? id;
+// Burst 6 (owner: "the end of session recap is contradictory"): a top reached only past the band is worth a look, never
+// "top of the range" or "time to go up" (the engine holds it); "Effort right" only when every rated lift averaged inside
+// its band — beside the engine's "you left ~3 in reserve" or a below-band average it was false.
+check("#readout-copy a top reached only past the band is worth a look — never 'top of the range', 'go up' or 'effort right'", () => {
+  const r = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, band: "2-3", rir: 1, in_band: false })] }, { nameOf: nm });
+  assert.equal(r.headline, "Every set done, every lift in its range — a session that moves you forward.");
+  assert.deepEqual(r.went_well, []);
+  assert.deepEqual(r.watch, ["Bench Press: top of the range, but closer to failure than the 2–3 in reserve the plan asked for."]);
+  const f = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, failure: true, band: "1-2", rir: 0, in_band: false })] }, { nameOf: nm });
+  assert.deepEqual(f.watch, ["Bench Press: taken to failure — the plan wanted 1–2 in reserve."], "the failure line says it; never both");
+});
+check("#readout-copy 'Effort right where the plan wanted it' only when every rated lift averaged inside its band", () => {
+  const eff = (lifts) => readoutLists({ planned: 6, done: 6, lifts }, { nameOf: nm }).went_well.includes("Effort right where the plan wanted it.");
+  assert.equal(eff([L("a", { rir: 1.5, in_band: true }), L("b", { rir: 2, in_band: true })]), true);
+  assert.equal(eff([L("a", { rir: 3, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "a full rep more than asked — the engine adds weight for it");
+  assert.equal(eff([L("a", { rir: 0.7, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "closer to failure than asked, though not 'to failure'");
+  assert.equal(eff([L("a", { rir: 1.5, in_band: true }), L("b", { past_band: true, in_band: null })]), false);
+});
 check("#readout-copy every set done, every lift in range — and the ones at the top are named as wins", () => {
   const r = readoutLists({ planned: 9, done: 9, lifts: [L("a", { top: true }), L("b"), L("c")] }, { nameOf: nm });
   assert.equal(r.headline, "Every set done, every lift in its range — 1 at the top, ready to go up.");

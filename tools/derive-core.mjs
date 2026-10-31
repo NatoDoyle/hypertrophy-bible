@@ -1314,6 +1314,15 @@ export function proximityFromRepDropoff(session) {
   return out;
 }
 
+// A set's reps AT THE PLAN'S EFFORT (Burst 6): its reps less however far it went past the band's near
+// edge — 10 at failure on a 1–2 band counts as 9, 12 at failure as 11 — so "the top of the range" means
+// what the KB's trigger says: every set reaching it "at target RIR" (double-progression.json). Unlogged
+// effort reads as at the band, so a lifter who never logs it (every beginner) is judged as before. The
+// player (session-core) carries a byte-identical copy, pinned by test-session's parity test.
+export function repsAtBand(reps, rir, near) {
+  return typeof rir === "number" && near > rir ? reps - (near - rir) : reps;
+}
+
 // The load that should land `targetReps` at `targetRir` reps in reserve, from a set of
 // `reps` at `weightKg` with `rir` in reserve: its Epley e1RM carried to the target (W279/
 // W279b). Pure arithmetic; the caller floors to the lift's increment and clamps. The

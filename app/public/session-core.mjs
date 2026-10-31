@@ -279,6 +279,11 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
 export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
 }
+// A set's reps AT THE PLAN'S EFFORT — a BYTE-IDENTICAL copy of derive-core's repsAtBand (Burst 6;
+// test-session pins the two together): the read-out judges "the top of the range" exactly as the engine does.
+export function repsAtBand(reps, rir, near) {
+  return typeof rir === "number" && near > rir ? reps - (near - rir) : reps;
+}
 // The rep capacity (reps + RIR) a lift's NEXT set still has after this one — a BYTE-IDENTICAL
 // copy of derive-core's nextSetCapacity (W288; test-session pins the two together).
 export const SET_FATIGUE_PCT = { near: 20, mid: 10 };
@@ -424,13 +429,20 @@ export function localReadout(targets, logged) {
     const rirs = sets.map((s) => s.rir).filter((r) => typeof r === "number");
     const rated = !easyDay && !!band && sets.length > 0 && rirs.length >= Math.ceil(sets.length / 2);
     const avg = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
+    // The top of the range AT THE PLAN'S EFFORT (Burst 6), as the engine judges it — against the band this workout
+    // was served. Reached only by going past the band, it is its own flag: worth a look, never "time to go up".
+    const near = band ? +band[1] : 0;
+    const graded = !easyDay && max != null && sets.length > 0;
+    const top = graded && sets.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
     return {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
-      top: !easyDay && max != null && sets.length > 0 && sets.every((s) => s.reps >= max),
+      top, past_band: graded && !top && sets.every((s) => s.reps >= max),
       under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
       easy: rated && avg >= +band[2] + 2,
       failure: rated && +band[1] >= 1 && avg < 0.5,
+      // The logged effort averaged inside the band ("Effort right" says so only then); null when too little was logged.
+      in_band: rated ? avg >= +band[1] && avg <= +band[2] : null,
       easyDay, rir: avg == null ? null : Math.round(avg * 10) / 10, band: t?.rir ?? null,
     };
   }).filter((l) => l.done > 0 || (l.planned ?? 0) > 0);

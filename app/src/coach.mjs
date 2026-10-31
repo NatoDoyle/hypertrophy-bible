@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -173,7 +173,15 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const anchor = anchorOf(last.sets, ownMin(last, repRange));
   const lastWeight = anchor.weight;
   const judged = anchor.judged;
-  const allHitTop = judged.every((s) => s.reps >= max);
+  // THE TOP, AT THE PLAN'S EFFORT (Burst 6 — owner: "It says I need to pay attention to the rir because I hit
+  // failure… but then told me to increase the weight"). The KB's trigger is "all sets reach the top of the rep
+  // range at target RIR" (double-progression.json): a set's reps at the band's near edge (repsAtBand; unlogged
+  // effort reads as at the band, so beginners are judged as before). ONE band judges the anchor's effort — the band
+  // its session was SERVED (its stored target, W280: the band the read-out grades it against), else today's.
+  const judgeBand = /(\d+)\s*-\s*(\d+)/.exec(last.target?.rir ?? prescribedRir ?? "");
+  const judgeNear = judgeBand ? +judgeBand[1] : 0;
+  const rawTop = judged.every((s) => s.reps >= max);
+  const allHitTop = judged.every((s) => repsAtBand(s.reps, s.rir, judgeNear) >= max);
   const base = { last_kg: lastWeight, last_reps: judged.map((s) => s.reps), last_sets: last.sets.map((s) => [s.weight_kg ?? 0, s.reps]) };
   // Layoff deload: if it's been a while, ease the load and suppress the progression
   // bump — overrides everything below so a comeback never loads heavier than before.
@@ -185,17 +193,23 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     const eased = Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4;
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
   }
+  // The top reached only by going PAST the band holds (Burst 6; the KB: "below target (too hard) -> hold"), and
+  // says what earns the bump. Ahead of the RIR surplus, so one set at failure among easy ones is never averaged
+  // into a bump, and of W280's shortfall, so "get all 3 to the top" is never promised for sets that wouldn't earn it.
+  if (rawTop && !allHitTop) return { suggested_kg: lastWeight, note: `You hit the top of the range last time, but closer to failure than the plan's ${judgeBand[1]}–${judgeBand[2]} reps in reserve — same weight until you get there with ${judgeNear} in reserve.`, ...base };
   // RIR autoregulation (only when effort was logged): MORE left in the tank than
   // the prescription asked for -> go up. The threshold is relative to the
-  // prescribed band's top (default 2 -> bump at 3, the historical behavior):
+  // judged band's top (default 2 -> bump at 3, the historical behavior):
   // a week-1 lifter told "3-4 RIR" who complies at 3.5 is following the eased
   // wave, not sandbagging — bumping their load would undo the easy week.
+  // Never for a set that came in UNDER the range (Burst 6): it stopped early, it wasn't light — the next-set hint
+  // never says "heavier" for one either (lesson 98), and the read-out's "under the range" sat beside "add 2.5 kg".
   const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
   const band = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? "");
   const avgRir = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
   if (rirs.length) {
-    const bandTop = band ? +band[2] : 2;
-    if (!holdLoad && avgRir >= bandTop + 1) {
+    const bandTop = judgeBand ? +judgeBand[2] : 2;
+    if (!holdLoad && avgRir >= bandTop + 1 && judged.every((s) => s.reps >= min)) {
       const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
@@ -235,7 +249,9 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
       return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
     }
   }
-  if (rirs.length && avgRir <= 0 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
+  // Failure as the read-out reads it — an average under 0.5 (Burst 6: "taken to failure" sat beside "add a rep or
+  // two") — and only where failure was off the plan: inside a 0-1 week it is the plan, not a warning.
+  if (rirs.length && avgRir < 0.5 && judgeNear >= 1 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   if (allHitTop) {
     if (holdLoad) return { suggested_kg: lastWeight, note: "Taper — hold this weight. You'd normally add load here; save that push for after the event.", ...base };
     // Every PRESCRIBED set at the top earns the bump (W280, the owner's call: "hold until
@@ -245,7 +261,12 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     if (Number.isInteger(planned) && last.sets.length < planned) {
       return { suggested_kg: lastWeight, note: `You did ${last.sets.length} of ${planned} sets last time — get all ${planned} to the top of the range, then I'll add weight.`, ...base };
     }
-    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
+    // Past the top even counting the reserve the plan asked for, at failure: the bump stands — said so it can't
+    // read as a contradiction of the read-out's "taken to failure" (Burst 6).
+    const overshot = judged.some((s) => typeof s.rir === "number" && s.rir < judgeNear);
+    return { suggested_kg: Math.round((lastWeight + loadIncrement(exId, byId)) * 4) / 4, note: overshot
+      ? `Last time you went past the top of the range — far enough to clear it with ${judgeNear} in reserve — add ${loadIncrement(exId, byId)} kg.`
+      : `Last time you hit the top of the range — add ${loadIncrement(exId, byId)} kg.`, ...base };
   }
   return { suggested_kg: lastWeight, note: GENERIC_HOLD_NOTE, ...base };
 }
@@ -253,6 +274,7 @@ const GENERIC_HOLD_NOTE = "Keep the weight and try to add a rep or two.";
 // A hold's reason with its ask dropped (the fact kept), for when today's aim sits under that ask.
 const heldLead = (note, taper) => note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.")
   : /^You hit failure last time/.test(note) ? "You hit failure last time — same weight."
+  : /^You hit the top of the range last time, but/.test(note) ? note.replace(/ until you get there with \d+ in reserve\.$/, ".")
   : /^You did \d+ of \d+ sets last time/.test(note) ? note.replace(/ — get all .*$/, " — same weight.")
   : note;
 
