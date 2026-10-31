@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2135,7 +2135,14 @@ const setExKey = (idx) => sess.ex[idx]?.exercise;
 // travels with the number it describes).
 const sessUnitOf = (idx) => sess.wUnits?.[idx] ?? unitFor(sess.ex[idx]?.exercise);
 const bankKg = (idx) => toKgIn(sess.weights[idx], sessUnitOf(idx));
-const setLooksLikeTypo = (idx) => isImplausibleSet(bankKg(idx), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+// What the guard judges slot `idx` against — the lift's history, raised by today's banked work sets of it
+// (Burst 6: a weight already logged today isn't questioned again). ONE binder for the Done button, the
+// station, the cue and the set editor (`exceptIdx`: the logged entry being edited, left out).
+const typoOpts = (idx, exceptIdx = -1) => {
+  const ex = sess.ex[idx], t = todayTopSet(sess.logged, ex?.exercise, exceptIdx);
+  return { lastKg: ex?.last_kg ?? null, priorBests: ex?.pr_watch ?? null, todayKg: t.kg, todayReps: t.reps };
+};
+const setLooksLikeTypo = (idx) => isImplausibleSet(bankKg(idx), sess.reps[idx], typoOpts(idx));
 // Which of these station members still owe a confirming tap. Both players go through
 // session-core's `unconfirmedFlagged` so "flagged and unconfirmed" has ONE definition.
 const stationNeedsConfirm = (indices) => unconfirmedFlagged(indices, setExKey, setLooksLikeTypo, confirmSet);
@@ -2146,14 +2153,18 @@ const needsSetConfirm = (idx) => stationNeedsConfirm([idx]).length > 0;
 // glance — and never accuses: a real jump is a tap away, not a blocked action.
 const setConfirmCue = (idx) => {
   const ex = sess.ex[idx];
-  const ref = [ex?.last_kg, ex?.pr_watch?.load_kg].find((v) => typeof v === "number" && v > 0);
+  // The reference the guard judged against, named for what it is (Burst 6): today's heaviest set, last
+  // time's load, or the best — never "you last did" for a best.
+  const ref = typoReference(typoOpts(idx));
   const reps = sess.reps[idx];
-  if (typeof reps === "number" && reps > 50) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
+  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
   // Quote the entry VERBATIM in its own unit — this dialog's whole job is "is this
   // exact number right?", and a plate-rounding round-trip could name 135 while the
   // confirming tap banks a typed 137.
   const u = sessUnitOf(idx);
-  return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${ref != null ? ` from the ${dispWeightFor(ref, ex?.exercise)} ${unitLabelFor(ex?.exercise)} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
+  const refW = ref ? `${dispWeightFor(ref.kg, ex?.exercise)} ${unitLabelFor(ex?.exercise)}` : "";
+  const from = !ref ? "" : ref.from === "today" ? ` from the ${refW} you did earlier today` : ref.from === "best" ? ` from your best of ${refW} on this lift` : ` from the ${refW} you last did`;
+  return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${from}. Tap again if it's right — otherwise fix it above.`;
 };
 
 // Clearing a pending typo-confirm from a TYPED edit must NOT repaint — the focused
@@ -2409,8 +2420,10 @@ function openSetEditor(idx, host, rerender) {
     // never holds a half-typed intermediate of a suspect number.
     const row = sess.ex.find((x) => x.exercise === ed.exercise);
     const key = editConfirmKey(entry0, ed.idx);
+    // …against the same reference the Done button uses: history raised by today's other banked sets (Burst 6).
+    const { lastKg, priorBests, todayKg, todayReps } = typoOpts(sess.ex.findIndex((x) => x.exercise === ed.exercise), ed.idx);
     const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, shownW, shownR, unit: ed.unit,
-      lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null, confirmed: editConfirmed.has(key) });
+      lastKg, priorBests, todayKg, todayReps, confirmed: editConfirmed.has(key) });
     const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
     if (next !== sess.logged) {
       sess.logged = next;

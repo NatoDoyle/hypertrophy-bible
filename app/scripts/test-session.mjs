@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -441,6 +441,59 @@ check("isImplausibleSet: a rep count past any prescribed band is flagged on its 
   assert.equal(isImplausibleSet(20, 30, { lastKg: 20 }), false, "30 reps IS a prescribed band (fat-loss pumpIso tops out at 20-30)");
 });
 
+// --- #typo-today (Burst 6 — owner: "It asked me if that's the right number because it's such a big jump,
+// and I clicked yes… On my second set, it asked me again… It shouldn't ask me the second time"). The
+// reference was history only (last time's load, else the best); today's banked sets never counted and the
+// confirmation clears once a set banks, so every later set at the new weight was questioned again. Today's
+// heaviest banked WORK set now raises the reference — derived from the log, so a reload, a resume or a
+// correction in the editor can never leave it stale.
+check("#typo-today the owner's leg press: 40 -> 150 asks on set 1, NOT on set 2 once set 1 is banked — a reload changes nothing", () => {
+  const hist = { lastKg: 40, priorBests: { load_kg: null, e1rm_kg: 53.33 } };
+  const w = (kg, reps, k) => ({ exercise: "leg-press", set_type: "work", weight_kg: kg, reps, completed_at: `t${k}` });
+  const opts = (logged) => { const t = todayTopSet(logged, "leg-press"); return { ...hist, todayKg: t.kg, todayReps: t.reps }; };
+  assert.equal(isImplausibleSet(150, 10, opts([])), true, "set 1: a big jump from last time's 40 — asked once");
+  const logged = JSON.parse(JSON.stringify([w(150, 10, 1)])); // banked (confirmed), read back after a crash
+  assert.deepStrictEqual(todayTopSet(logged, "leg-press"), { kg: 150, reps: 10 });
+  assert.equal(isImplausibleSet(150, 10, opts(logged)), false, "set 2 at the confirmed weight is not asked again");
+  assert.equal(isImplausibleSet(155, 9, opts(logged)), false, "nor a small step up from it");
+  assert.equal(isImplausibleSet(1500, 10, opts(logged)), true, "a stray zero against today's 150 is still caught");
+  assert.equal(isImplausibleSet(330, 10, opts(logged)), true, "and lb typed into a kg field (2.2x)");
+});
+check("#typo-today only banked WORK sets of this lift vouch — never a warm-up (never checked), another lift, or a 0 kg set", () => {
+  const logged = [{ exercise: "leg-press", set_type: "warmup", weight_kg: 150, reps: 5 }, { exercise: "leg-press", set_type: "work", weight_kg: 0, reps: 12 },
+    { exercise: "hack-squat", set_type: "work", weight_kg: 150, reps: 10 }];
+  assert.deepStrictEqual(todayTopSet(logged, "leg-press"), { kg: null, reps: 12 });
+  assert.equal(isImplausibleSet(150, 10, { lastKg: 40, todayKg: todayTopSet(logged, "leg-press").kg }), true);
+  assert.deepStrictEqual(todayTopSet([{ exercise: "leg-press", set_type: "work", weight_kg: 150, reps: 10 }, { exercise: "leg-press", set_type: "work", weight_kg: 120, reps: 12, deload: true }], "leg-press"),
+    { kg: 150, reps: 12 }, "the heaviest set and the most reps; a deload-tagged set passed the guard too");
+  assert.deepStrictEqual(todayTopSet([{ exercise: "leg-press", set_type: "work", weight_kg: 150, reps: 10 }], "leg-press", 0), { kg: null, reps: null }, "the entry being edited can't vouch for itself");
+});
+check("#typo-today today's sets only ever RAISE the reference: a lift with no history is still never questioned (the find-your-weight ramp)", () => {
+  assert.equal(isImplausibleSet(1000, 8, { todayKg: 100 }), false, "no history: as before, no question");
+  assert.equal(isImplausibleSet(90, 8, { todayKg: 40 }), false, "a first-ever lift ramped across work sets, as its card says to");
+  assert.equal(isImplausibleSet(150, 8, { lastKg: 100, todayKg: 40 }), false, "a light set today never LOWERS the reference below history");
+  assert.equal(isImplausibleSet(220, 8, { lastKg: 100, todayKg: 40 }), true, "…which still catches a jump from history");
+});
+check("#typo-today reps: a count no higher than one already banked today isn't asked again", () => {
+  assert.equal(isImplausibleSet(20, 60, { lastKg: 20 }), true);
+  assert.equal(isImplausibleSet(20, 55, { lastKg: 20, todayReps: 60 }), false);
+  assert.equal(isImplausibleSet(20, 88, { lastKg: 20, todayReps: 60 }), true);
+});
+check("#typo-today the cue names the reference the guard judged against", () => {
+  assert.deepStrictEqual(typoReference({ lastKg: 40, priorBests: { load_kg: null }, todayKg: 150 }), { kg: 150, from: "today" });
+  assert.deepStrictEqual(typoReference({ lastKg: 40, priorBests: { load_kg: null } }), { kg: 40, from: "last" });
+  assert.deepStrictEqual(typoReference({ lastKg: null, priorBests: { load_kg: 60 } }), { kg: 60, from: "best" });
+  assert.deepStrictEqual(typoReference({ lastKg: 200, todayKg: 150 }), { kg: 200, from: "last" });
+  assert.equal(typoReference({ todayKg: 150 }), null);
+  assert.equal(typoReference({}), null);
+});
+check("#typo-today a superset round already confirmed at its weights banks round 2 on ONE tap", () => {
+  const logged = [{ exercise: "leg-press", set_type: "work", weight_kg: 150, reps: 10 }, { exercise: "leg-curl", set_type: "work", weight_kg: 90, reps: 10 }];
+  const ex = [{ exercise: "leg-press", last_kg: 40 }, { exercise: "leg-curl", last_kg: 30 }], weights = [150, 90];
+  const flagged = (i) => { const t = todayTopSet(logged, ex[i].exercise); return isImplausibleSet(weights[i], 10, { lastKg: ex[i].last_kg, todayKg: t.kg, todayReps: t.reps }); };
+  assert.deepStrictEqual(unconfirmedFlagged([0, 1], (i) => ex[i].exercise, flagged, new Set()), []);
+});
+
 // ---------- Typed entry + per-exercise kg/lb units ----------
 // These guard the player's typed inputs and the per-key session unit migration —
 // the two places a stored "60" could silently change meaning (which then anchors
@@ -741,6 +794,13 @@ check("#rest-state adjustRest: ±30 s moves the END (from when the rest began), 
     assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "100", rText: "8", confirmed: true }), { patch: { weight_kg: 45.36, reps: 8 }, flagged: false }, "confirmed: written");
     assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "45", rText: "8" }), { patch: { weight_kg: 20.41, reps: 8 }, flagged: false }, "text as shown → the stored value, exactly");
     assert.equal(resolveEdit({ ...ctx, entry0: { ...entry0, set_type: "warmup" }, wText: "100", rText: "8" }).flagged, false, "warm-ups aren't typo-guarded at banking either");
+  });
+  check("#edit-resolve (Burst 6) only what changed is judged — a reps fix on a confirmed big-jump set is written, not held for 'Keep it'", () => {
+    const entry0 = { exercise: "leg-press", set_type: "work", weight_kg: 150, reps: 10, completed_at: t(1) };
+    const ctx = { entry0, shownW: "150", shownR: "10", unit: "kg", lastKg: 40, priorBests: { load_kg: null }, confirmed: false };
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "150", rText: "9" }), { patch: { weight_kg: 150, reps: 9 }, flagged: false });
+    assert.deepStrictEqual(resolveEdit({ ...ctx, wText: "1500", rText: "10" }), { patch: { weight_kg: 150, reps: 10 }, flagged: true }, "a changed weight is still judged");
+    assert.deepStrictEqual(resolveEdit({ ...ctx, todayKg: 150, wText: "155", rText: "10" }), { patch: { weight_kg: 155, reps: 10 }, flagged: false }, "against today's other sets too");
   });
   check("#pr-latch an edit can only CLEAR the latch — a PR made by an edit is never 'celebrated' silently, so the session's real later PR still toasts", () => {
     const watch = { e1rm_kg: 125, load_kg: 100 };

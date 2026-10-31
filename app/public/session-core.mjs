@@ -189,23 +189,52 @@ export function checkSetPR(exercise, weightKg, reps, setType, priorBests, deload
 // Judged against the lift's OWN history — `last_kg` (what they actually lifted on
 // this exercise last time) first, falling back to its best logged load — so a
 // genuinely strong lifter is never second-guessed, and a lift with no history at
-// all is never questioned (there's nothing to be implausible against).
+// all is never questioned (there's nothing to be implausible against; and a new
+// lift's find-your-weight card tells them to add weight set by set).
+//
+// …raised by TODAY's heaviest banked work set of the lift (Burst 6 — owner: "it asked
+// me again… It shouldn't ask me the second time"). Every banked work set passed this
+// guard or was confirmed, so a weight already logged today is never questioned again;
+// a stray zero against it still is. Today's sets only ever RAISE the reference — a
+// light set never lowers it, and they never create one for a lift with no history.
+// Derived from the log, never a remembered "confirmed" flag, so a reload or an edit
+// that corrects the set can't leave it stale. Warm-ups never vouch (never checked).
 //
 // BOTH a ratio and an absolute gap must be exceeded. Ratio alone would nag on
 // small weights where a real jump is proportionally huge (2.5 kg → 7.5 kg on a
 // lateral raise is 3x and entirely normal); the absolute floor keeps those quiet
 // while still catching the two errors that actually happen: a stray zero (10x) and
 // an lb/kg mix-up (2.2x). Reps get a flat ceiling instead — no prescribed band in
-// the engine goes near 50, so there's no plausible entry to false-positive on.
+// the engine goes near 50, so there's no plausible entry to false-positive on — and
+// a count no higher than one already banked today isn't asked again either.
 export const IMPLAUSIBLE_RATIO = 2;
 export const IMPLAUSIBLE_MIN_JUMP_KG = 20;
 export const IMPLAUSIBLE_REPS = 50;
-export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = null } = {}) {
-  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS) return true;
+// Today's heaviest banked WORK set of a lift, and its most reps. `exceptIdx` leaves out the
+// entry being edited (it can't vouch for itself, and the editor writes keystrokes into it).
+export function todayTopSet(logged, exercise, exceptIdx = -1) {
+  let kg = null, reps = null;
+  (logged ?? []).forEach((l, k) => {
+    if (k === exceptIdx || l?.exercise !== exercise || (l.set_type ?? "work") !== "work") return;
+    if (typeof l.weight_kg === "number" && Number.isFinite(l.weight_kg) && l.weight_kg > 0 && (kg == null || l.weight_kg > kg)) kg = l.weight_kg;
+    if (Number.isInteger(l.reps) && (reps == null || l.reps > reps)) reps = l.reps;
+  });
+  return { kg, reps };
+}
+// The load an entry is judged against, and where it came from (the cue names it): last time's,
+// else the best — raised to today's heaviest banked set when that is at least as heavy.
+export function typoReference({ lastKg = null, priorBests = null, todayKg = null } = {}) {
+  const ok = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  const hist = ok(lastKg) ? { kg: lastKg, from: "last" } : ok(priorBests?.load_kg) ? { kg: priorBests.load_kg, from: "best" } : null;
+  if (!hist) return null;
+  return ok(todayKg) && todayKg >= hist.kg ? { kg: todayKg, from: "today" } : hist;
+}
+export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = null, todayKg = null, todayReps = null } = {}) {
+  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS && !(Number.isInteger(todayReps) && reps <= todayReps)) return true;
   if (!(typeof weightKg === "number" && Number.isFinite(weightKg) && weightKg > 0)) return false;
-  const ref = [lastKg, priorBests?.load_kg].find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+  const ref = typoReference({ lastKg, priorBests, todayKg });
   if (ref == null) return false;
-  return weightKg >= ref * IMPLAUSIBLE_RATIO && weightKg - ref >= IMPLAUSIBLE_MIN_JUMP_KG;
+  return weightKg >= ref.kg * IMPLAUSIBLE_RATIO && weightKg - ref.kg >= IMPLAUSIBLE_MIN_JUMP_KG;
 }
 
 // Which of a station's exercises still owe a confirming tap: flagged as a possible
@@ -645,7 +674,10 @@ export const editConfirmKey = (entry, idx) => `edit:${entry?.exercise ?? ""}:${e
 // numbers) writes the ORIGINAL values until confirmed — a clear-and-retype passes
 // through plausible intermediates ("1", "10"…), and the log must never keep one of
 // those when the final number is the suspect one.
-export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, confirmed = false }) {
+// Only what CHANGED is judged (Burst 6): an untouched number already passed the guard (or was
+// confirmed) when it banked — re-judging it refused a reps-only fix on a confirmed big jump —
+// and against today's other banked sets (`todayKg`/`todayReps`, the edited entry left out).
+export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, todayKg = null, todayReps = null, confirmed = false }) {
   const w = String(wText ?? "").trim(), r = String(rText ?? "").trim();
   const kg = w === shownW ? entry0.weight_kg : parseEdit(w, unit);
   const reps = r === shownR ? entry0.reps : (/^\d{1,3}$/.test(r) ? Number(r) : null);
@@ -653,7 +685,8 @@ export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg
   if (kg != null) patch.weight_kg = kg;
   if (reps != null) patch.reps = reps;
   const cand = { ...entry0, ...patch };
-  const flagged = (cand.set_type ?? "work") === "work" && !confirmed && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg, priorBests });
+  const flagged = (cand.set_type ?? "work") === "work" && !confirmed
+    && isImplausibleSet(cand.weight_kg !== entry0.weight_kg ? cand.weight_kg : null, cand.reps !== entry0.reps ? cand.reps : null, { lastKg, priorBests, todayKg, todayReps });
   return flagged ? { patch: { weight_kg: entry0.weight_kg, reps: entry0.reps }, flagged: true } : { patch, flagged: false };
 }
 // After an edit the lift's "PR already celebrated" latch must match what the log now
