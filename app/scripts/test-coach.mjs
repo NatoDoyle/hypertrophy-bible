@@ -2200,6 +2200,15 @@ check("#effort-top (review K3) the hold's ask names TODAY's band — what the ne
   assert.equal(lpAt("2-3", "1-3", x3).note, holdA(2, 3, 1), "week 1's 2-3 met at 1; week 2's card says 1-3");
   assert.equal(lpAt("3-4", "1-2", x3).note, holdA(3, 4, 1), "after a taper's 3-4, back to 1-2: never 'with 3 in reserve'");
 });
+check("#effort-top (round 3) after an easier day (a tired ease, a deload), 'last time' is named for what it is: the last FULL session", () => {
+  const full = withTargets(lpT("1-2"), lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1));
+  const easy = { date: "2026-06-04T18:00:00Z", sets: [lp(135, 8), lp(135, 7)].map((x) => ({ ...x, deload: true })), targets: [{ exercise: "leg-press", sets: 2, rep_range: "6-10", rir: "1-2", deload: true }] };
+  const r = aim("leg-press", "6-10", "1-2", 3, [full, easy]);
+  assert.deepStrictEqual([r.suggested_kg, r.last_easy], [152.5, true]);
+  assert.equal(r.suggestion_note, "In your last full session you hit the top of the range — add 2.5 kg.");
+  const plain = aim("leg-press", "6-10", "1-2", 3, [full]);
+  assert.deepStrictEqual([plain.suggestion_note, plain.last_easy], ["Last time you hit the top of the range — add 2.5 kg.", false]);
+});
 // The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
 // that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own
 // threshold and band (the read-out says "taken to failure" from an average under 0.5, and only where the band's near

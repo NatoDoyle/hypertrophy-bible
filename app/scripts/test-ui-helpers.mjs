@@ -277,7 +277,7 @@ check("swapUndoCopy: an Undo that put the lift back vs one the live session refu
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: true, from: "Hack squat", to: "Leg press" }), "Hack squat is back — in today's workout and your plan.");
   assert.equal(swapUndoCopy({ revertedLive: false, permanent: true, from: "Hack squat", to: "Leg press" }), "Leg press stays for today (you've started it) — Hack squat is back from your next session.");
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Leg press" }), "Hack squat is back.");
-  assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Hack squat", same: true }), "Back to the full Hack squat.", "undoing a tired ease (Burst 6): the same lift, at full dose");
+  assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Hack squat", same: true }), "Hack squat is back as it was.", "undoing a tired ease (Burst 6 round 3): as it was, skips included");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -476,6 +476,11 @@ check("#readout-copy a top reached only past the band is worth a look — never 
   const f = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, failure: true, band: "1-2", rir: 0, in_band: false })] }, { nameOf: nm });
   assert.deepEqual(f.watch, ["Bench Press: taken to failure — the plan wanted 1–2 in reserve."], "the failure line says it; never both");
 });
+check("#readout-copy (round 3) one set is 'set', never '1 of 1 sets'", () => {
+  const r = readoutLists({ planned: 1, done: 1, lifts: [L("a", { planned: 1, done: 1, under: 1, min: 10, max: 15 })] }, { nameOf: nm });
+  assert.ok(r.watch.includes("Bench Press: 1 of 1 set under the 10–15 range."), JSON.stringify(r.watch));
+  assert.ok(readoutLists({ planned: 2, done: 1, lifts: [L("a", { planned: 2, done: 1 })] }, { nameOf: nm }).watch.includes("Bench Press: 1 of 2 sets."));
+});
 check("#readout-copy (round 2) 'top of the range on every set' only when every set was graded; otherwise it names the working weight", () => {
   assert.deepEqual(readoutLists({ planned: 3, done: 3, lifts: [L("a", { top: true })] }, { nameOf: nm }).went_well, ["Bench Press: top of the range on every set."]);
   const ramp = readoutLists({ planned: 3, done: 3, lifts: [L("a", { top: true, graded_all: false, under: 1 })] }, { nameOf: nm });
@@ -581,7 +586,17 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets \}\)/);
   assert.doesNotMatch(fnBody(appJs, "async function tiredSwap() {", 3000) + fnBody(appJs, "function easeInPlace(", 2500), /\$\{n\} sets/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\$\{r\.planned_name \? ` \$\{r\.planned_name\} is back next time\.` : ""\}/);
-  assert.match(appJs, /avg \$\{l\.rir_all \?\? l\.rir\} RIR/, "an older stored read-out (no rir_all) still reads");
+  // Round 3: Nerd Mode compares the GRADED average with the band, saying which weight it's for when back-offs weren't graded;
+  // "Target: 1 set"; a tired first-time lift isn't told it's finding its weight; after an easier day "last time" is named for
+  // what it is; the bodyweight ease says "bodyweight"; the tired Undo brings a skip's own Undo back.
+  assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
+  assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
+  assert.match(appJs, /\$\{firstEver \? \(e\.tired \? `<div class="card info"><b>New lift, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /\$\{e\.last_easy \? "Last full session" : "Last time"\}:/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /"bodyweight"/);
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /lastSkip: sess\.lastSkip \?\? null/);
   assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {

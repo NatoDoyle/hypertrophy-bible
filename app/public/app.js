@@ -2066,7 +2066,8 @@ const lastTimeLine = (e) => {
     : mixed ? e.last_sets.reduce((acc, [kg, r]) => { const last = acc[acc.length - 1]; if (last && last.kg === kg) last.reps.push(r); else acc.push({ kg, reps: [r] }); return acc; }, [])
         .map((g) => `${dispWeightFor(g.kg, e.exercise)} ${u} × ${g.reps.join(", ")}`).join(" · ")
     : `${dispWeightFor(e.last_kg, e.exercise)} ${u} × ${e.last_reps.join(", ")}`;
-  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">Last time: ${body}</p>`;
+  // After an easier session (a tired ease, a deload) these sets are the last FULL session's (round 3).
+  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">${e.last_easy ? "Last full session" : "Last time"}: ${body}</p>`;
 };
 // WHY this weight (Burst 1 review): the engine's reason for the pre-filled suggestion —
 // "add 2.5 kg", "lightened to 52.5 kg", "you did 2 of 3 sets" — had never reached the screen,
@@ -2562,7 +2563,7 @@ function renderPlayer() {
       ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
-    <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
+    <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
@@ -2573,9 +2574,10 @@ function renderPlayer() {
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
-    ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
+    ${firstEver ? (e.tired ? `<div class="card info"><b>New lift, on a tired day 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
-      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
+      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
     ${skipUndoStrip()}
     <div class="card">
       ${hintHtml}
@@ -2956,7 +2958,7 @@ async function undoSwap() {
   // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
   // (and its plan: a skip taken before the tired tap stays taken — round 2).
   const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets });
-  sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from) };
+  sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from), ...(back.ok && u.lastSkip ? { lastSkip: u.lastSkip } : {}) };
   saveSess();
   renderPlayer(0);
   alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName, same: u.to === u.from }));
@@ -2991,7 +2993,7 @@ async function tiredSwap() {
     const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${setsN(n)} instead of ${cur.sets}` : ""}.${r.planned_name ? ` ${r.planned_name} is back next time.` : ""}`;
     // A substitute the user has history on is tagged eased: a tired performance never becomes its anchor.
     const why = applyReplacement(cur.exercise, { ...r.row, tired: true, ...(r.known ? { eased: true } : {}) },
-      { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text },
+      { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: sess.lastSkip ?? null },
       { sets: n, said: `Swapped for ${toName} for today — ${setsN(n)}.` });
     if (!why) return;
   }
@@ -3000,16 +3002,18 @@ async function tiredSwap() {
 // The same lift, lighter and shorter — no network needed. `cause` only words the card.
 function easeInPlace(cur, cause) {
   // Judged on what the stepper SHOWS (a pounds user's plates), never under the empty bar (review K4, K7).
+  const skip = sess.lastSkip ?? null; // a skip's own Undo, brought back by this one's (round 3)
   const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5, floorKg: cur.equipment === "barbell" ? (unitFor(cur.exercise) === "lb" ? toKgIn(EMPTY_BAR_LB, "lb") : EMPTY_BAR_KG) : 0, shown: startWeightDisp });
   if (!r.ok) { renderPlayer(0); return; }
   const now = r.sess.ex[sess.i], n = now.sets;
-  const w = now.suggested_kg !== cur.suggested_kg ? `${startWeightDisp(now)} ${unitLabelFor(cur.exercise)}` : null;
+  const w = now.suggested_kg === cur.suggested_kg ? null
+    : cur.equipment === "bodyweight" && !(now.suggested_kg > 0) ? "bodyweight" : `${startWeightDisp(now)} ${unitLabelFor(cur.exercise)}`;
   const what = w ? `lighter: ${setsN(n)} at ${w}` : n < cur.sets ? `shorter: ${setsN(n)} instead of ${cur.sets}` : null;
   const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits today's workout, so " : "";
   const tail = now.eased ? " It won't count against your progress." : "";
   const text = what ? `${lead}I've made this ${what}.${tail}`
     : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits today's workout — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
-  sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, session_id: r.sess.session_id } };
+  sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: skip, session_id: r.sess.session_id } };
   saveSess();
   say(w ? `Made ${cur.name} lighter for today — ${setsN(n)}.` : `${cur.name}: ${setsN(n)} today.`);
   renderPlayer(0);
@@ -3256,7 +3260,11 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const u = unitLabelFor(l.exercise);
     const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
     const nx = nextByEx[l.exercise];
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && (l.rir_all ?? l.rir) != null ? ` · avg ${l.rir_all ?? l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    // The band is compared with the average the GRADE used (round 3): over the working-weight sets, named when back-offs or
+    // ramps weren't graded; a planned-easy lift isn't graded, so its average covers every set.
+    const avg = l.easyDay ? (l.rir_all ?? l.rir) : l.rir;
+    const at = !l.easyDay && l.graded_all === false && l.anchor_kg > 0 ? ` at ${dispWeightFor(l.anchor_kg, l.exercise)} ${u}` : "";
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && avg != null ? ` · avg ${avg} RIR${at}${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}

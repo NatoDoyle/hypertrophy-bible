@@ -82,7 +82,8 @@ function lastAnyDateForExercise(sessions, exId, { stoodIn = false } = {}) {
   for (let i = sessions.length - 1; i > own; i--) {
     const s = sessions[i];
     if (s.date && (s.targets ?? []).some((t) => t?.stood_in_for === exId && work(s, t.exercise))
-      && (+new Date(s.date) - +new Date(ownDate)) / 86400000 < COMEBACK_GAP_DAYS) return s.date;
+      // in whole days, as the ease itself counts them (round 3: 11.6 days rounds to the 12 that WAS due)
+      && Math.round((+new Date(s.date) - +new Date(ownDate)) / 86400000) < COMEBACK_GAP_DAYS) return s.date;
   }
   return ownDate;
 }
@@ -725,10 +726,17 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     || (Number.isInteger(plannedSets) && sets < plannedSets && /^You did \d+ of \d+ sets/.test(sug.note));
   const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
     : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
-  const suggestion_note = deloadLowered
+  const composed = deloadLowered
     ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
     : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
-  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets };
+  // After an easier session of this lift (a tired ease, a deload) — sets that never anchor — "last time" in the reason is the
+  // last FULL session, two workouts back: say so (Burst 6 review round 3: the read-out put "Last time you hit the top of the
+  // range" right under today's tired 8, 7 reps).
+  const lastAny = last ? lastAnyDateForExercise(sessions, ex.exercise) : null;
+  const last_easy = !!(last?.date && lastAny && +new Date(lastAny) > +new Date(last.date));
+  const suggestion_note = last_easy && composed
+    ? composed.replace(/\bLast time\b/g, "In your last full session").replace(/\blast time\b/g, "in your last full session") : composed;
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy };
 }
 
 // The day a live workout is on, by the name the player carries (Burst 6, N7): the rotation's own day
@@ -973,6 +981,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
+      // The reason's "last time" is the last FULL session (an easier one came since) — the set screen labels it so (round 3).
+      ...(served.last_easy ? { last_easy: true } : {}),
       // Per-exercise layoff ease (this lift returned after >=12 days even though
       // the session isn't a whole-session comeback — e.g. a rotated-back
       // accessory): its sets are planned-easy and must be deload-tagged too, or

@@ -1454,6 +1454,9 @@ try {
     };
     const afterSwap = await nextBss({ sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps })), targets: [{ exercise: "leg-extension", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: null }] });
     const afterEase = await nextBss({ sets: [10, 9].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 17.5, reps, deload: true })), targets: [{ exercise: "bulgarian-split-squat", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 17.5, deload: true }] });
+    ok("#tired (round 3) after the eased day, the row says 'last time' is the last FULL session",
+      afterEase?.last_easy === true && /^In your last full session you hit the top of the range — add 2\.5 kg\./.test(afterEase?.suggestion_note ?? "") && afterSwap?.last_easy !== true,
+      JSON.stringify({ afterEase: afterEase && [afterEase.last_easy, afterEase.suggestion_note], afterSwap: afterSwap?.last_easy }));
     ok("#tired a tired day never sets the lift back: after a swap or an eased day, it continues from the last real session (22.5 kg)",
       afterSwap?.suggested_kg === 22.5 && afterEase?.suggested_kg === 22.5 && /add 2\.5 kg/.test(afterEase?.suggestion_note ?? ""), JSON.stringify({ afterSwap: afterSwap && [afterSwap.suggested_kg, afterSwap.suggestion_note], afterEase: afterEase && [afterEase.suggested_kg, afterEase.suggestion_note] }));
   }
@@ -1493,6 +1496,9 @@ try {
       return (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session.exercises.find((e) => e.exercise === "bulgarian-split-squat");
     };
     const weeks = await hop(63, [56, 49, 42, 35, 28, 21, 14, 7]), lateOne = await hop(60, [3]), dueEase = await hop(20, [6]);
+    const edgeIn = await hop(18.4, [7]), edgeOut = await hop(18.6, [7]);
+    ok("#stood-in (round 3) the hop's window counts days as the ease does (rounded): 11.4 days after the lift bridges, 11.6 doesn't",
+      edgeIn?.suggested_kg === 22.5 && edgeOut?.suggested_kg === 17.5, JSON.stringify([edgeIn, edgeOut].map((r) => r && [r.suggested_kg, r.suggestion_note])));
     ok("#stood-in (round 2) one hop only: 8 weeks of stand-ins, one after 57 days off, or one when the ease was already due — all come back eased",
       [weeks, lateOne, dueEase].every((r) => r?.suggested_kg === 17.5 && /It's been \d+ days/.test(r?.suggestion_note ?? "")),
       JSON.stringify([weeks, lateOne, dueEase].map((r) => r && [r.suggested_kg, r.suggestion_note])));

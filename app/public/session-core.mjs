@@ -124,7 +124,8 @@ export const tiredDose = (row) => Math.min(row.sets, tiredSets(row.planned_sets 
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };
-  const bumped = cur.last_kg > 0 && cur.suggested_kg > cur.last_kg;
+  // (a bodyweight lift's first added load is a bump over bodyweight, last_kg 0 — round 3)
+  const bumped = typeof cur.last_kg === "number" && (cur.last_kg > 0 || (cur.last_kg === 0 && cur.equipment === "bodyweight")) && cur.suggested_kg > cur.last_kg;
   const kg = bumped ? cur.last_kg : easeKg(cur.suggested_kg, stepKg, floorKg);
   const lighter = kg != null && kg < cur.suggested_kg && shown({ ...cur, suggested_kg: kg }) < shown(cur);
   const sets = tiredDose(cur);
@@ -515,6 +516,7 @@ export function localReadout(targets, logged) {
       // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
       // range sat beside it otherwise).
       graded_all: judged.length === sets.length,
+      anchor_kg: judged.length ? judged[0].weight_kg ?? 0 : null, // the weight the grade is for (Nerd Mode names it — round 3)
       under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
       easy: rated && avg >= +band[2] + 2,
       failure: rated && +band[1] >= 1 && avg < 0.5,

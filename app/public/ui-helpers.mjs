@@ -307,7 +307,7 @@ export function bringBackCopy({ mode, restored = 0, name = "That lift" } = {}) {
 // The player's Undo: the live slot goes back only if the substitute has no banked work
 // (replaceSlot's guard); the plan side of a permanent swap is undone either way.
 export function swapUndoCopy({ revertedLive, permanent, from, to, same = false }) {
-  if (same) return `Back to the full ${from}.`; // a tired ease undone (Burst 6): the same lift, at full dose
+  if (same) return `${from} is back as it was.`; // a tired ease undone (Burst 6): as it was — sets and skips included
   if (!permanent) return `${from} is back.`;
   return revertedLive ? `${from} is back — in today's workout and your plan.` : `${to} stays for today (you've started it) — ${from} is back from your next session.`;
 }
@@ -380,7 +380,7 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
     const n = nameOf(l.exercise);
     return [
       ...(l.planned != null && l.done < l.planned ? [`${n}: ${l.done} of ${l.planned} sets.`] : []),
-      ...(l.under ? [`${n}: ${l.under} of ${l.done} sets under the ${l.min}–${l.max} range.`] : []),
+      ...(l.under ? [`${n}: ${l.under} of ${l.done} set${l.done === 1 ? "" : "s"} under the ${l.min}–${l.max} range.`] : []),
       ...(l.easy ? [`${n}: about ${l.rir} reps left in the tank — the plan asked for ${band(l.band)}.`] : []),
       ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`]
         : l.past_band ? [`${n}: top of the range, but closer to failure than the ${band(l.band)} in reserve the plan asked for.`] : []),

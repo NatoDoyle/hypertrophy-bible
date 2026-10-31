@@ -70,7 +70,11 @@ a look" line, and "Effort right where the plan wanted it" shows only when every 
 was logged on enough sets to grade and averaged inside its band. The recap's "🔥 close to failure — that's
 where growth happens" is never said for a lift whose logged effort went past its band, nor for one planned
 easy. "Top of the range on every set" says so only when every set was graded ("at your working weight"
-otherwise), and Nerd Mode's average covers every set it prints. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
+otherwise), and Nerd Mode compares the band with the average the grade used, naming the working weight when
+back-offs or ramps weren't graded. After an easier session of a lift (a tired ease, a deload) — sets that never
+anchor — every "last time" in its reason becomes "your last full session", and the set screen's "Last time:" line
+reads "Last full session:", so the read-out never puts "Last time you hit the top of the range" under today's
+tired reps. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
 thing and the next weight another, except three rare, benign ones, kept: a heavy single above the
 working sets counted "under the range"; "N of M sets" beside a rule-2 bump; "top of the range" beside
 W280's "get all N to the top".
@@ -315,13 +319,16 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   changed on the screen (a pounds user's ease that rounds back onto the same plate changes nothing and claims
   nothing). A tired day never sets a lift back: the original lift has no sets that day, and the workout's
   target names the lift a substitute stood in for, so the comeback clock counts its slot as trained — one hop
-  only, when the lift itself was trained within the comeback window before it (a once-a-week lift swapped out
+  only, when the lift itself was trained within the comeback window before it, in whole days as the ease counts
+  them (a once-a-week lift swapped out
   was "It's been 14 days" the next week; weeks of stand-ins, or one after a long gap, still ease it back in).
+  A bodyweight lift's first added load counts as a bump too (tired: back to bodyweight). On a lift with no
+  history the tired day is light by design and won't set its starting weight ("New lift, on a tired day").
   An eased lift's sets are always deload-tagged (with history or without), and a substitute's when you have
   real history on it, so they never anchor, never count as a PR, are never graded and never earn the
   "🔥 close to failure" win. The card says what comes back next time only while the plan still holds it (not
   after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
-  sets and skips included. Split squats after leg press and RDLs: leg extension (full gym);
+  sets and skips included — a skip's own Undo comes back too. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).
 - Session order is a rotation (sessions completed modulo plan length, plus your skips and
   day swaps). Since Wave 277 the app **projects** it onto your committed weekdays and shows
