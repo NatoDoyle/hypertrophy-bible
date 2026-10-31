@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, easeSlot, tiredOffer } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2564,6 +2564,7 @@ function renderPlayer() {
     ${swapUndoCard(e)}
     <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
+    ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2599,6 +2600,7 @@ function renderPlayer() {
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
+  if ($("#tired")) $("#tired").onclick = () => tiredSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
@@ -2929,13 +2931,14 @@ function swapUndoCard(e) {
     <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
 }
 // Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
-function applyReplacement(expect, row, undo) {
-  const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect });
+// `sets`: a tired swap's trimmed dose (Burst 6), written as the slot's plan for today; `said`: its own announcement.
+function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) {
+  const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect, ...(sets ? { sets } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
   saveSess();
-  say(undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`);
+  say(said ?? (undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`));
   renderPlayer(0);
   return null;
 }
@@ -2950,11 +2953,60 @@ async function undoSwap() {
   }
   // The saved row is the old lift's OWN server-built row, so reverting with it can't
   // leak anything; the same guards apply (a banked set of the substitute stays).
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to });
+  // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.planned_sets ?? u.saved.sets });
   sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from) };
   saveSess();
   renderPlayer(0);
-  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName }));
+  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName, same: u.to === u.from }));
+}
+// "TOO TIRED FOR THIS ONE?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+// squats. There is currently no solution for this situation in the app besides 'skip this one', is this correct?" — it
+// was). One tap, from the first screen of a lift (after some work today) or the Can't-do sheet's first reason: the
+// easiest lift that fits the slot (the server picks it), for today only, at about half the sets; when nothing easier
+// fits — or offline, or no row came back — the same lift, lighter and shorter (easeSlot). The slot keeps its range and
+// effort band (fewer sets, not softer ones), a tired day never sets the lift back, and Undo puts the slot back exactly.
+async function tiredSwap() {
+  const gen = ++cantDoGen;
+  const cur = sess?.ex?.[sess.i];
+  if (!cur || sess.set !== 0) return;
+  const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
+  app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
+  const st = document.createElement("p"); st.className = "muted"; st.setAttribute("role", "status"); st.textContent = "Finding something easier…"; app.appendChild(st);
+  let r = null;
+  try {
+    r = await api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
+      exclude: sess.ruledOut ?? [], prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null,
+      scope: "today", live: sess.ex.map((x) => x.exercise), reason: "tired" }) });
+  } catch { r = null; }
+  if (!stillHere()) return;
+  const planned = cur.planned_sets ?? cur.sets, n = tiredSets(planned);
+  if (r?.ok && r.row?.exercise) {
+    const toName = r.replaced_by_name ?? r.row.name ?? r.row.exercise;
+    const text = `Easier for today: ${toName}${n < planned ? ` — ${n} sets instead of ${planned}` : ""}. ${cur.name} is back next time.`;
+    // A substitute the user has history on is tagged eased: a tired performance never becomes its anchor.
+    const why = applyReplacement(cur.exercise, { ...r.row, tired: true, ...(r.known ? { eased: true } : {}) },
+      { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text },
+      { sets: n, said: `Swapped for ${toName} for today — ${n} sets.` });
+    if (!why) return;
+  }
+  easeInPlace(cur, r == null ? "offline" : r?.error === "no-easier" ? "none" : "other");
+}
+// The same lift, lighter and shorter — no network needed. `cause` only words the card.
+function easeInPlace(cur, cause) {
+  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5 });
+  if (!r.ok) { renderPlayer(0); return; }
+  const now = r.sess.ex[sess.i], planned = cur.planned_sets ?? cur.sets, n = now.sets;
+  const w = now.suggested_kg != null && now.suggested_kg < (cur.suggested_kg ?? 0) ? `${dispWeightFor(now.suggested_kg, cur.exercise)} ${unitLabelFor(cur.exercise)}` : null;
+  const what = w ? `lighter: ${n} sets at ${w}` : n < planned ? `shorter: ${n} sets instead of ${planned}` : null;
+  const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits your equipment, so " : "";
+  const tail = now.eased ? " It won't count against your progress." : "";
+  const text = what ? `${lead}I've made this ${what}.${tail}`
+    : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits your equipment — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
+  sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, session_id: r.sess.session_id } };
+  saveSess();
+  say(w ? `Made ${cur.name} lighter for today — ${n} sets.` : `${cur.name}: ${n} sets today.`);
+  renderPlayer(0);
 }
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
 // so a slow or doubled response can tell it has been overtaken.
@@ -3017,13 +3069,15 @@ async function renderCantDo() {
   };
 
   app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
-    <p class="muted">Tell me why and I'll sort it — your sets and reps stay the same.</p>
+    <p class="muted">Tell me why and I'll sort it.</p>
+    <button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today — fewer sets</span></button>
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
     <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
     ${tail}`;
   wireTail();
+  $("#cd-tired").onclick = () => tiredSwap();
   $("#cd-machine").onclick = async () => {
     lock("Finding the best replacement…");
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }

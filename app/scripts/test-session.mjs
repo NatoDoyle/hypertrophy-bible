@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -679,6 +679,78 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.equal(replaceSlot(old, 1, { exercise: "dip" }, { expect: "cable-pushdown" }).sess.ex[1].slot_of, "cable-pushdown",
       "no marker to read: the live lift stands for the slot (the server then appends, as before)");
     assert.ok(!("slot_of" in buildTargets(s1)[1]), "targets carry the plan, never the marker");
+  });
+}
+
+// --- #tired (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split squats. There is
+// currently no solution… besides 'skip this one', is this correct?"). One tap at the first set of a lift: the easiest
+// lift that fits the slot (the server picks it) at about half the sets, or — nothing easier fits, offline, or no row —
+// the SAME lift, about 10% lighter and shorter. Either way the tired day never sets the lift back, and Undo puts the
+// slot back exactly. The pieces are pure, so a crash between the tap and the next set resumes on the same state.
+check("#tired tiredSets: about half, never under 2 for a lift planned at 2+, never more than planned", () => {
+  assert.deepStrictEqual([1, 2, 3, 4, 5, 6].map(tiredSets), [1, 2, 2, 2, 3, 3]);
+});
+check("#tired easeKg: about 10% off on the lift's own KG step, at least one step, never to zero", () => {
+  assert.deepStrictEqual([easeKg(20, 2.5), easeKg(22.5, 2.5), easeKg(100, 2.5), easeKg(10, 1), easeKg(5, 1)], [17.5, 20, 90, 9, 4]);
+  assert.equal(easeKg(2.5, 2.5), 2.5, "one step down would be zero: the weight stays");
+  assert.equal(easeKg(null, 2.5), null); assert.equal(easeKg(0, 2.5), null);
+});
+{
+  const bss = { exercise: "bss", name: "BSS", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 22.5, last_kg: 20, last_reps: [12, 12, 12], inc_kg: 2.5,
+    suggestion_note: "Last time you hit the top of the range — add 2.5 kg.", rep_targets: [12, 12, 12] };
+  const mkT = (row = bss, o = {}) => ({ session_id: "s1", ex: [ex("leg-press", 3), { ...row }, ex("curl", 3)], logged: [{ exercise: "leg-press", set_type: "work", weight_kg: 150, reps: 10 }],
+    i: 1, set: 0, weights: { 1: 22.5 }, reps: { 1: 12 }, eff: {}, wUnits: { 1: "kg" }, ...o });
+  check("#tired easeSlot: the same lift, ~10% lighter and about half the sets, tagged so it never anchors — with its OWN reason, never the old 'add 2.5 kg'", () => {
+    const r = easeSlot(mkT(bss, { lastSkip: { ids: ["bss"] } }), 1, { expect: "bss", stepKg: 2.5 });
+    assert.equal(r.ok, true);
+    const out = r.sess.ex[1];
+    assert.deepStrictEqual([out.sets, out.planned_sets, out.suggested_kg, out.eased, out.tired], [2, 2, 20, true, true]);
+    assert.doesNotMatch(out.suggestion_note, /add \d/, "the why line describes the eased weight");
+    assert.deepStrictEqual(out.rep_targets, [12, 12, 12], "the aims set for the heavier weight are still in reach");
+    assert.ok(!(1 in r.sess.weights) && !(1 in r.sess.reps), "the stepper re-prefills at the eased weight");
+    assert.ok(!("lastSkip" in r.sess));
+    assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true }, "an eased lift's workout is planned-easy: never graded, never an anchor");
+  });
+  check("#tired easeSlot: no history → only the sets are cut and nothing is tagged (those sets seed a weight); a bodyweight lift with history is tagged", () => {
+    const fresh = easeSlot(mkT({ exercise: "bss", name: "BSS", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: null, last_kg: null, last_reps: null }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([fresh.sets, fresh.suggested_kg, !!fresh.eased, fresh.tired], [2, null, false, true]);
+    const est = easeSlot(mkT({ ...bss, last_kg: null, last_reps: null, suggested_kg: 20 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([est.suggested_kg, !!est.eased], [17.5, false], "a first-time estimate is eased, but the sets still seed the lift");
+    assert.doesNotMatch(est.suggestion_note, /progress/, "…so it never claims they won't count");
+    const bw = easeSlot(mkT({ exercise: "dip", name: "Dip", sets: 4, rep_range: "6-10", rir: "1-3", suggested_kg: 0, last_kg: 0, last_reps: [10, 9], equipment: "bodyweight" }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([bw.sets, bw.suggested_kg, bw.eased], [2, 0, true]);
+  });
+  check("#tired easeSlot refuses as a swap does: a lift with work banked, or a slot the cursor has left", () => {
+    assert.equal(easeSlot(mkT(bss, { logged: [{ exercise: "bss", set_type: "work", weight_kg: 20, reps: 10 }] }), 1, { expect: "bss", stepKg: 2.5 }).reason, "started");
+    assert.equal(easeSlot(mkT(), 2, { expect: "bss", stepKg: 2.5 }).reason, "moved");
+  });
+  check("#tired replaceSlot's `sets`: the swapped-in lift does the trimmed dose, recorded as its plan; Undo restores the slot's own count", () => {
+    const s0 = mkT();
+    const s1 = replaceSlot(s0, 1, { exercise: "leg-extension", name: "Leg Extension", suggested_kg: 45, tired: true }, { expect: "bss", sets: 2 });
+    assert.deepStrictEqual([s1.sess.ex[1].sets, s1.sess.ex[1].planned_sets, s1.sess.ex[1].slot_of], [2, 2, "bss"]);
+    const u = replaceSlot(JSON.parse(JSON.stringify(s1.sess)), 1, s0.ex[1], { expect: "leg-extension", sets: s0.ex[1].planned_sets ?? s0.ex[1].sets });
+    assert.deepStrictEqual(u.sess.ex, s0.ex, "Undo (through a crash) puts the full 3/3 back — the live slot's 2 would have stuck");
+    const plain = replaceSlot(s0, 1, { exercise: "leg-extension" }, { expect: "bss" });
+    assert.deepStrictEqual([plain.sess.ex[1].sets, plain.sess.ex[1].planned_sets], [3, 3], "without `sets`: as before");
+  });
+  check("#tired with N7's slot_of: a tired swap of a slot that's itself a swap keeps the plan's lift; easing a substitute in place keeps it too", () => {
+    const busy = replaceSlot(mkT(), 1, { exercise: "hack-squat", suggested_kg: 80 }, { expect: "bss" }).sess;
+    const tired = replaceSlot(JSON.parse(JSON.stringify(busy)), 1, { exercise: "leg-extension", suggested_kg: 45, tired: true }, { expect: "hack-squat", sets: 2 }).sess;
+    assert.deepStrictEqual([tired.ex[1].slot_of, tired.ex[1].sets], ["bss", 2]);
+    const eased = easeSlot(busy, 1, { expect: "hack-squat", stepKg: 2.5 }).sess.ex[1];
+    assert.deepStrictEqual([eased.slot_of, eased.suggested_kg, eased.sets], ["bss", 72.5, 2]);
+  });
+  check("#tired the offer: the first set of a lift not yet started, after some work today — never on a superset member, a slot already made easier, or one showing its swap's Undo", () => {
+    const offer = (o = {}, row = bss) => tiredOffer(mkT(row, o));
+    assert.equal(offer(), true);
+    assert.equal(offer({ logged: [] }), false, "nothing done yet today");
+    assert.equal(offer({ logged: [{ exercise: "leg-press", set_type: "warmup", weight_kg: 60, reps: 10 }] }), false, "warm-ups aren't work");
+    assert.equal(offer({ set: 1 }), false);
+    assert.equal(offer({ logged: [{ exercise: "bss", set_type: "work", weight_kg: 20, reps: 10 }] }), false, "started: Skip this set and End early cover it");
+    assert.equal(offer({}, { ...bss, superset_with: "curl" }), false);
+    assert.equal(offer({}, { ...bss, tired: true }), false, "already the tired version");
+    assert.equal(offer({}, { ...bss, eased: true }), true, "a comeback-eased lift (12+ days off) is not a tired one — it can still be made easier");
+    assert.equal(offer({ swapUndo: { to: "bss", session_id: "s1" } }), false, "its swap's Undo is showing");
   });
 }
 

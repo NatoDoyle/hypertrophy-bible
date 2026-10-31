@@ -277,6 +277,7 @@ check("swapUndoCopy: an Undo that put the lift back vs one the live session refu
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: true, from: "Hack squat", to: "Leg press" }), "Hack squat is back — in today's workout and your plan.");
   assert.equal(swapUndoCopy({ revertedLive: false, permanent: true, from: "Hack squat", to: "Leg press" }), "Leg press stays for today (you've started it) — Hack squat is back from your next session.");
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Leg press" }), "Hack squat is back.");
+  assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Hack squat", same: true }), "Back to the full Hack squat.", "undoing a tired ease (Burst 6): the same lift, at full dose");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -550,6 +551,18 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "const setConfirmCue = (idx) => {", 1500), /typoReference\(typoOpts\(idx\)\)/);
   assert.match(fnBody(appJs, "const apply = () => {", 1500), /typoOpts\(sess\.ex\.findIndex\(\(x\) => x\.exercise === ed\.exercise\), ed\.idx\)/);
   assert.doesNotMatch(appJs, /reps > 50/, "the cue's rep ceiling is IMPLAUSIBLE_REPS");
+  // Burst 6 — "Too tired for this one?": the first-screen line only through the pure offer; both doors (the line and the
+  // sheet's first reason) one handler; a swap's trimmed dose and its Undo; the ease on the lift's KG step; nothing that
+  // promises effort the slot's band doesn't ask for.
+  assert.match(appJs, /\$\{tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
+  assert.match(appJs, /if \(\$\("#tired"\)\) \$\("#tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /slot_of: cur\.slot_of \?\? null/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /easeSlot\(sess, sess\.i, \{ expect: cur\.exercise, stepKg: cur\.inc_kg > 0 \? cur\.inc_kg : 2\.5 \}\)/);
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1500), /u\.saved, \{ expect: u\.to, sets: u\.saved\.planned_sets \?\? u\.saved\.sets \}\)/);
+  assert.doesNotMatch(appJs, /push it close/);
+  assert.doesNotMatch(appJs, /your sets and reps stay the same/, "a tired swap changes the sets");
   assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {

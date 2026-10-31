@@ -1383,6 +1383,56 @@ try {
       !!dCur && dS.data?.row?.exercise === "incline-dumbbell-press" && dS.data.row.suggested_kg === 27.5, JSON.stringify({ live: dLive, status: dS.status, row: brief(dS.data?.row) }));
   }
 
+  // --- #tired (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split squats. There is
+  // currently no solution for this situation in the app besides 'skip this one', is this correct?"). "Can't do" gains a
+  // reason: the easiest lift that fits today's slot, chosen for you — today only, nothing written — or a clear "nothing
+  // easier fits" the player turns into a lighter, shorter version of the same lift. A tired day never sets a lift back.
+  {
+    const P = (exercise, sets = 3, rep_range = "8-12", rir = "1-3") => ({ exercise, sets, rep_range, rir });
+    const lowerDay = { sessions: [{ name: "Lower", exercises: [P("leg-press"), P("romanian-deadlift"), P("bulgarian-split-squat"), P("lying-leg-curl"), P("standing-calf-raise")] }] };
+    const onbT = async () => (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const tU = await onbT();
+    await json("POST", "/api/plan/save", { user_id: tU, program: lowerDay });
+    const tT = (await (await app.request("/api/today", { headers: { "X-HB-User": tU } })).json()).session;
+    const tLive = tT.exercises.map((e) => e.exercise), bss = tT.exercises.find((e) => e.exercise === "bulgarian-split-squat");
+    const tBody = { user_id: tU, exercise: "bulgarian-split-squat", scope: "today", session: "Lower", live: tLive, prescription: { sets: bss.sets, rep_range: bss.rep_range, rir: bss.rir } };
+    const before = JSON.stringify(await store.getUser(tU));
+    const tired = await json("POST", "/api/exercise/cant-do", { ...tBody, reason: "tired" });
+    ok("#tired the easiest lift that fits the slot, for today: leg extension (low cost, stable) — a full row, nothing written",
+      tired.status === 200 && tired.data?.reason === "tired" && tired.data.replaced_by === "leg-extension" && tired.data.known === false && tired.data.row?.exercise === "leg-extension"
+        && JSON.stringify(await store.getUser(tU)) === before, JSON.stringify({ s: tired.status, d: tired.data && { by: tired.data.replaced_by, reason: tired.data.reason, known: tired.data.known, row: tired.data.row?.exercise } }));
+    const busy = await json("POST", "/api/exercise/cant-do", tBody);
+    const asNull = await json("POST", "/api/exercise/cant-do", { ...tBody, reason: null });
+    ok("#tired the other doors are unchanged (no reason, or reason null = absent)", busy.status === 200 && !("reason" in busy.data) && asNull.status === 200 && asNull.data.replaced_by === busy.data.replaced_by,
+      JSON.stringify({ busy: busy.data?.replaced_by, asNull: [asNull.status, asNull.data?.replaced_by] }));
+    const bad = await Promise.all([{ reason: "sleepy" }, { reason: "tired", scope: "always" }, { reason: "tired", pick: "leg-extension" }]
+      .map(async (x) => (await json("POST", "/api/exercise/cant-do", { ...tBody, ...x })).status + ":" + ((await json("POST", "/api/exercise/cant-do", { ...tBody, ...x })).data?.error)));
+    ok("#tired an unknown reason, or 'tired' with a permanent scope or a pick, is refused (400 bad-reason)", bad.every((x) => x === "400:bad-reason"), JSON.stringify(bad));
+    const none = await json("POST", "/api/exercise/cant-do", { ...tBody, exercise: "leg-extension", live: tLive.map((x) => (x === "bulgarian-split-squat" ? "leg-extension" : x)), slot_of: "bulgarian-split-squat", reason: "tired" });
+    ok("#tired nothing easier than leg extension: 409 no-easier, said plainly", none.status === 409 && none.data?.error === "no-easier" && none.data.reason === "tired" && /Nothing easier fits/.test(none.data.message ?? ""),
+      JSON.stringify({ s: none.status, d: none.data }));
+    await json("POST", "/api/session", { user_id: tU, session_id: "tired-le", date: dAgo(4), local_date: dAgo(4).slice(0, 10), session_name: "Lower",
+      sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 45, reps })) });
+    const known = await json("POST", "/api/exercise/cant-do", { ...tBody, reason: "tired" });
+    ok("#tired a lift the user has history on says so (known) — its weight comes pre-filled", known.data?.replaced_by === "leg-extension" && known.data.known === true && known.data.row?.suggested_kg > 0,
+      JSON.stringify({ by: known.data?.replaced_by, known: known.data?.known, kg: known.data?.row?.suggested_kg }));
+
+    // The tired day never sets the lift back: after a swap (no split-squat sets) or an eased day (its sets tagged as the
+    // player tags an eased row), the next split squat continues from the last real session.
+    const nextBss = async (tiredDay) => {
+      const u = await onbT();
+      await json("POST", "/api/plan/save", { user_id: u, program: lowerDay });
+      await json("POST", "/api/session", { user_id: u, session_id: "pre", date: dAgo(5), local_date: dAgo(5).slice(0, 10), session_name: "Lower",
+        sets: [12, 12, 12].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 20, reps })), targets: [{ exercise: "bulgarian-split-squat", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 20 }] });
+      await json("POST", "/api/session", { user_id: u, session_id: "tired", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: "Lower", ...tiredDay });
+      return (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session.exercises.find((e) => e.exercise === "bulgarian-split-squat");
+    };
+    const afterSwap = await nextBss({ sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps })), targets: [{ exercise: "leg-extension", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: null }] });
+    const afterEase = await nextBss({ sets: [10, 9].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 17.5, reps, deload: true })), targets: [{ exercise: "bulgarian-split-squat", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 17.5, deload: true }] });
+    ok("#tired a tired day never sets the lift back: after a swap or an eased day, it continues from the last real session (22.5 kg)",
+      afterSwap?.suggested_kg === 22.5 && afterEase?.suggested_kg === 22.5 && /add 2\.5 kg/.test(afterEase?.suggestion_note ?? ""), JSON.stringify({ afterSwap: afterSwap && [afterSwap.suggested_kg, afterSwap.suggestion_note], afterEase: afterEase && [afterEase.suggested_kg, afterEase.suggestion_note] }));
+  }
+
   // --- #targets (W280): the plan the user saw rides with the workout — whitelisted and
   // bounded like a set (it steers progression), preserved by a History edit, absent on old rows.
   {

@@ -306,7 +306,8 @@ export function bringBackCopy({ mode, restored = 0, name = "That lift" } = {}) {
 }
 // The player's Undo: the live slot goes back only if the substitute has no banked work
 // (replaceSlot's guard); the plan side of a permanent swap is undone either way.
-export function swapUndoCopy({ revertedLive, permanent, from, to }) {
+export function swapUndoCopy({ revertedLive, permanent, from, to, same = false }) {
+  if (same) return `Back to the full ${from}.`; // a tired ease undone (Burst 6): the same lift, at full dose
   if (!permanent) return `${from} is back.`;
   return revertedLive ? `${from} is back — in today's workout and your plan.` : `${to} stays for today (you've started it) — ${from} is back from your next session.`;
 }

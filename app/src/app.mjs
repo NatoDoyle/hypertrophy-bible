@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
@@ -577,6 +577,11 @@ export function createApp(store, config = {}) {
     const X = typeof b.exercise === "string" ? b.exercise : "";
     const scope = b.scope;
     if (!["always", "today", "undo"].includes(scope)) return c.json({ error: "bad-scope" }, 400);
+    // "Too tired for this one?" (Burst 6): a reason the server chooses for — the easiest lift that fits, today only.
+    // Absent (or null) is every other door; anything else, or "tired" with a permanent scope or a pick, is a client bug.
+    const reason = b.reason ?? null;
+    if (reason != null && (reason !== "tired" || scope !== "today" || b.pick != null)) return c.json({ error: "bad-reason" }, 400);
+    const tired = reason === "tired";
     const sessionName = typeof b.session === "string" ? b.session.slice(0, 80) : null;
     const nowISO = new Date().toISOString();
     const nameOf = (id) => exerciseNameFor(user, id);
@@ -629,17 +634,22 @@ export function createApp(store, config = {}) {
 
     // Today's best replacement for X in the live session (today-only swaps, and the live
     // half of a permanent swap whose plan side changed nothing for today).
+    // The lifts the user has history on: within a fatigue class a tired swap prefers one (its weight comes pre-filled).
+    const known = tired ? new Set(ctx.sessions.flatMap((x) => (x.sets ?? []).filter((y) => (y.set_type ?? "work") === "work").map((y) => y.exercise))) : new Set();
     const todayPick = (u, pick = null) => {
       const fitting = userSubstitutes(u, X, { sessionName, stalled, live, scope: "today", exclude }).filter((s) => s.fits);
       if (pick != null && !fitting.some((s) => s.id === pick)) return { error: "bad-pick" };
+      if (tired) return { id: userEasierSubstitutes(u, X, fitting, [...known])[0]?.id ?? null };
       return { id: pick ?? fitting[0]?.id ?? null };
     };
     if (scope === "today") {
       const t = todayPick(user, b.pick ?? null);
       if (t.error) return c.json({ error: "bad-pick" }, 400);
       const Y = t.id;
+      if (!Y && tired) return c.json({ error: "no-easier", reason: "tired", message: "Nothing easier fits your equipment today." }, 409);
       if (!Y) return c.json({ error: "no-candidate", message: `Nothing else trains the same muscle with your equipment today — keep ${nameOf(X)}, or do it later.` }, 409);
-      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }) });
+      return c.json({ ok: true, scope, exercise: X, replaced_by: Y, replaced_by_name: nameOf(Y), row: substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }),
+        ...(tired ? { reason: "tired", known: known.has(Y) } : {}) });
     }
 
     // scope === "always"

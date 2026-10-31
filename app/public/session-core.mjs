@@ -62,7 +62,7 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
 // target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
 export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
-export function replaceSlot(sess, i, row, { expect } = {}) {
+export function replaceSlot(sess, i, row, { expect, sets } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
   if (!cur || !row?.exercise) return refuse("no-slot");
@@ -79,12 +79,56 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
   // planned count (a swap is only ever offered before any set of the old lift was banked).
   if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
+  // A tired swap or ease (Burst 6) does a trimmed dose, written as the slot's plan for TODAY — a coach-set dose, so the
+  // workout reads "every set done", never a shortfall that holds the lift (W280). A skip never does this (it keeps
+  // planned_sets); Undo passes the saved row's own count back, or the trimmed count would stick to the old lift.
+  if (Number.isInteger(sets) && sets > 0) { slot.sets = sets; slot.planned_sets = sets; }
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
   delete out.lastSkip; // a swap rewrites the slot's count: an older skip's undo no longer describes it
   if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
   return { ok: true, sess: out };
+}
+
+// "Too tired for this one?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+// squats. There is currently no solution… besides 'skip this one'"). Most of a set's growth comes from the first few
+// hard sets (minimalist-and-low-volume-training.md, Grade A), so a tired lift does about half its sets — never under
+// 2 for a lift planned at 2+ (the engine's own no-1-set rule), never more than planned.
+export const tiredSets = (n) => (n <= 2 ? n : Math.max(2, Math.ceil(n / 2)));
+// About 10% off, on the lift's own KG step (never a display step: a pounds user's 5-lb plate against a kg weight cut
+// 20 kg to 15), at least one step; never to zero. Null when there is no weight to ease. A model estimate (Grade D).
+export function easeKg(kg, stepKg) {
+  if (!(typeof kg === "number" && kg > 0) || !(stepKg > 0)) return null;
+  let w = Math.round((0.9 * kg) / stepKg) * stepKg;
+  if (w >= kg) w = kg - stepKg;
+  return w > 0 ? Math.round(w * 100) / 100 : kg;
+}
+// When nothing easier fits (or offline, or the server couldn't build a row): the SAME lift, ~10% lighter and about half
+// the sets. A lift with history is tagged `eased` — its sets bank deload-tagged, so a tired day never becomes its
+// anchor, a PR or a grade — and says so; a lift with none isn't (its sets seed a starting weight). `tired` marks the
+// slot as the tired version (`eased` alone also means a comeback). Its OWN reason replaces the served one ("add
+// 2.5 kg" beside an eased weight was the recap's contradiction on the set screen). Same guards as a swap.
+export function easeSlot(sess, i, { expect, stepKg } = {}) {
+  const cur = sess?.ex?.[i];
+  if (!cur) return { ok: false, reason: "no-slot", sess };
+  const had = Array.isArray(cur.last_reps) && cur.last_reps.length > 0;
+  const kg = easeKg(cur.suggested_kg, stepKg);
+  const lighter = kg != null && kg < cur.suggested_kg;
+  const note = lighter ? `Lighter for today because you're tired${had ? " — it won't count against your progress" : ""}.`
+    : had ? "Shorter today because you're tired — it won't count against your progress." : null;
+  const row = { ...cur, ...(lighter ? { suggested_kg: kg } : {}), tired: true, ...(had ? { eased: true } : {}), ...(note ? { suggestion_note: note } : {}) };
+  return replaceSlot(sess, i, row, { expect, sets: tiredSets(cur.planned_sets ?? cur.sets) });
+}
+// Offer it at the first set of a lift not yet started, once some work is banked today; never on a superset member (a
+// station keeps "Skip this round"), a slot already made easier, or one showing its swap's Undo. Mid-lift, "Skip this
+// set" and "End workout early" already cover it.
+export function tiredOffer(sess) {
+  const cur = sess?.ex?.[sess.i];
+  return !!cur && !cur.superset_with && !cur.tired && sess.set === 0
+    && loggedWorkSets(sess.logged ?? [], cur.exercise) === 0
+    && (sess.logged ?? []).some((l) => (l?.set_type ?? "work") === "work")
+    && !undoApplies(sess.swapUndo, sess, cur);
 }
 
 // "Skip this set" / "Skip this round" (W281, owner: "need ability to skip a set mid

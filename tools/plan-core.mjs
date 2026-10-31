@@ -1612,6 +1612,31 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   }));
 }
 
+// "Too tired for this one?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+// squats"). Of the substitutes that FIT today's slot (bestSubstitutes, scope "today"), the ones easier on a tired
+// body: no worse than X on systemic cost, stability or skill, and strictly better on cost or stability — easiest
+// first (cost, then stability); within a class, a lift the user has history on first (`known` — its weight comes
+// pre-filled), then the slot's own ranking. A missing stability reads as moderate, or as low for a unilateral lift
+// (a lunge is a balance task); a missing cost or difficulty as moderate / intermediate. Coaching judgment built on
+// the KB's graded lines (stable lifts let you train hard without balance being the limit — exercise selection,
+// Grade C; keep systemically taxing work shy of failure when recovery is short — minimalist training, Grade C),
+// labelled as such in docs/program-engine.md. Pure and deterministic; bestSubstitutes itself is untouched.
+const EASE_CNS = { low: 0, moderate: 1, high: 2 }, EASE_STAB = { high: 0, moderate: 1, low: 2 }, EASE_DIFF = { beginner: 0, intermediate: 1, advanced: 2 };
+export function easierSubstitutes(fitting, exId, { kb, customExercises = [], known = [] } = {}) {
+  const lookup = new Map([...(kb?.exercises ?? []), ...customExercises].map((e) => [e.id, e]));
+  const X = lookup.get(exId);
+  if (!X) return [];
+  const cns = (e) => EASE_CNS[e.cns_cost] ?? 1;
+  const st = (e) => (e.stability ? EASE_STAB[e.stability] ?? 1 : e.unilateral ? 2 : 1);
+  const diff = (e) => EASE_DIFF[e.difficulty] ?? 1;
+  const had = new Set(known);
+  return (fitting ?? [])
+    .map((s, k) => ({ s, e: lookup.get(s.id), k }))
+    .filter(({ e }) => e && cns(e) <= cns(X) && st(e) <= st(X) && diff(e) <= diff(X) && (cns(e) < cns(X) || st(e) < st(X)))
+    .sort((a, b) => cns(a.e) - cns(b.e) || st(a.e) - st(b.e) || (had.has(a.s.id) ? 0 : 1) - (had.has(b.s.id) ? 0 : 1) || a.k - b.k)
+    .map(({ s }) => s);
+}
+
 // The PERMANENT swap ("No machine for this"): X leaves every session that holds it,
 // progressively (each slot's fit sees the slots already swapped) and all-or-nothing —
 // if any slot has no fitting replacement nothing is returned to write, because X must

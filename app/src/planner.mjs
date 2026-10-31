@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -15,6 +15,10 @@ export function generateUserPlan(profile, opts = {}) {
 export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always", exclude = [] } = {}) {
   return bestSubstitutes(exId, { profile: user.profile, kb: KB, program: user.program, rationale: user.plan_rationale ?? null,
     sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [] });
+}
+// The fitting substitutes that are easier on a tired body (Burst 6), easiest first — the custom library bound in.
+export function userEasierSubstitutes(user, exId, fitting, known = []) {
+  return easierSubstitutes(fitting, exId, { kb: KB, customExercises: user.custom_exercises || [], known });
 }
 export function userApplySubstitution(user, exId, { sessionName = null, stalled = [] } = {}) {
   return applySubstitution(user.program, user.plan_rationale ?? null, exId, { profile: user.profile, kb: KB, stalled, sessionName,
