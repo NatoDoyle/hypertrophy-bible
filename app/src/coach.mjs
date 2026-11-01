@@ -940,6 +940,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       coach_note = "You're feeling fresh — great day for your first session. Keep the weights comfortable anyway; day one is for learning the movements, not chasing records.";
     }
   }
+  // The player banks a day planned-easy exactly when the response says deload week or comeback (app.js: block.phase ===
+  // "deload" || comeback), and a taper drops the block (below) — so a deload week inside a taper banks regular (round 7).
+  const plannedEasy = (!taper && block?.phase === "deload") || layoffDays >= COMEBACK_GAP_DAYS;
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     // The band, the wave-scaled sets and the weight with its reason — through the one door
@@ -967,7 +970,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
         suggested_kg = Math.min(estimate, eased);
         // A lift tried only on an easier day (its sets never anchor) isn't "new" to the lifter (Burst 6 review round 4).
         // On a planned-easy day (a comeback, a deload week) every set banks planned-easy, so it never asks to be calibrated (round 6).
-        suggestion_note = `${lastAnyDateForExercise(sessions, ex.exercise) ? "Only an easier day on this so far" : "No history yet"} — a starting estimate scaled to your bodyweight. ${block?.phase === "deload" || layoffDays >= COMEBACK_GAP_DAYS
+        suggestion_note = `${lastAnyDateForExercise(sessions, ex.exercise) ? "Only an easier day on this so far" : "No history yet"} — a starting estimate scaled to your bodyweight. ${plannedEasy
           ? "Today's an easier day, so keep it light — your starting weight gets set on your next regular session." : "Adjust it up or down until the last rep is right around the target effort."}`
           + (suggested_kg < estimate ? ` It comes after ${setsWord(before.count)} that also work your ${listJoin(before.muscles.map(plainMuscle))}, so I've started it a little lighter.` : "");
       }

@@ -334,7 +334,8 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   read-out's headline names a lift kept easy and claims "every other lift" only; "Easy day done" means a day planned
   easy start to finish (a tired lift and the rest never started is "N of M planned sets done"). No screen promises that
   a planned-easy day's sets set a starting weight: on a comeback or a deload-week session a never-done lift reads "New
-  lift — keep it light today" (its estimate, "your starting weight gets set on your next regular session"), and a lift
+  lift — keep it light today" (its estimate, "your starting weight gets set on your next regular session" — a deload
+  week inside a taper is a taper, and its sets count), and a lift
   tried only on an easier day, tired again, reads "Still finding your weight, on a tired day". The card says what comes back next time only while the plan still holds it (not
   after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
   sets and skips included — a skip's own Undo comes back too. Split squats after leg press and RDLs: leg extension (full gym);

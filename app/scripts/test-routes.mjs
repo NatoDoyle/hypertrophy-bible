@@ -1461,6 +1461,29 @@ try {
       afterSwap?.suggested_kg === 22.5 && afterEase?.suggested_kg === 22.5 && /add 2\.5 kg/.test(afterEase?.suggestion_note ?? ""), JSON.stringify({ afterSwap: afterSwap && [afterSwap.suggested_kg, afterSwap.suggestion_note], afterEase: afterEase && [afterEase.suggested_kg, afterEase.suggestion_note] }));
   }
 
+  // --- Review round 7 (C0): the estimate's "today's an easier day" follows the SAME planned-easy rule the player tags
+  // sets by (the response's block.phase === "deload" || comeback). A calendar deload week inside a taper window is a
+  // taper — the response drops the block — so its sets bank regular, and the line must not say they won't count.
+  {
+    const P = (exercise) => ({ exercise, sets: 3, rep_range: "8-12", rir: "1-3" });
+    const dayOf = async (weeksDone, eventIn) => {
+      const u = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/bodyweight", { user_id: u, kg: 80 });
+      await json("POST", "/api/plan/save", { user_id: u, program: { sessions: [{ name: "A", exercises: [P("leg-press"), P("leg-extension")] }] } });
+      await store.updateUser(u, (x) => { x.plan_meta = { ...(x.plan_meta ?? {}), block_start: dAgo(7 * weeksDone + 6) }; if (eventIn != null) x.profile = { ...x.profile, goal_event_date: dAgo(-eventIn).slice(0, 10) }; return x; });
+      for (let k = 1; k <= weeksDone; k++) await json("POST", "/api/session", { user_id: u, session_id: "w" + k, date: dAgo(7 * k), local_date: dAgo(7 * k).slice(0, 10), session_name: "A",
+        sets: [10, 10, 10].map((reps) => ({ exercise: "leg-press", set_type: "work", weight_kg: 100, reps, rir: 2 })) });
+      return (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session;
+    };
+    const days = { deloadInTaper: await dayOf(5, 5), taperOnly: await dayOf(4, 5), deloadOnly: await dayOf(5, null) };
+    const view = Object.fromEntries(Object.entries(days).map(([k, t]) => [k, { easy: t.block?.phase === "deload" || t.comeback === true, taper: !!t.taper,
+      note: t.exercises.find((e) => e.exercise === "leg-extension")?.suggestion_note }]));
+    ok("#effort-top (round 7) the fixtures reach all three days: a deload week inside a taper is a taper; outside one it's planned easy",
+      view.deloadInTaper.taper && !view.deloadInTaper.easy && view.taperOnly.taper && !view.taperOnly.easy && !view.deloadOnly.taper && view.deloadOnly.easy, JSON.stringify(view));
+    ok("#effort-top (round 7) a never-done lift's estimate says 'today's an easier day' exactly when the player banks the day planned easy",
+      Object.values(view).every((v) => typeof v.note === "string" && /Today's an easier day/.test(v.note) === v.easy && /Adjust it up or down/.test(v.note) === !v.easy), JSON.stringify(view));
+  }
+
   // --- Review round 1 (G1): a swap of a lift that comes round once a week must not read as a layoff next week. The
   // workout's targets name the planned lift a substitute stood in for (from the player's slot_of), and the comeback
   // clock counts that day — "It's been 14 days" was false a week after a tired swap.
