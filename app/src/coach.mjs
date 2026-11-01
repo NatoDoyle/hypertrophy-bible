@@ -1234,12 +1234,15 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
   // boundary may already have acted on (W282 review).
   const sameWeek = !!now && sessionWeekKey(session) === isoWeekKeyLocal(now, tz);
   if (!beginner && sameWeek) {
+    // A taper that starts next week overrides the block there — the response drops it, the player banks the week regular,
+    // the weights hold — so a forecast about next week says the taper, never a deload or a climb (Burst 6 review round 8).
+    const taperNext = !!nextWeekCtx.taper;
     if (rolling) block.push("Your next session starts a new block — your accessories rotate and your main lifts carry over.");
     else if (rd && !nextCtx.taper) block.push("Your hardest lifts have gone flat at the top of what you can recover from, so I'm bringing your deload forward — the rest of this week is lighter. That's where this block's work turns into growth.");
-    else if (todayCtx.block?.phase === "deload" && !todayCtx.taper) block.push("A deload session doesn't move your progression — your weights pick up again after this week.");
+    else if (todayCtx.block?.phase === "deload" && !todayCtx.taper) block.push(`A deload session doesn't move your progression${taperNext ? "." : " — your weights pick up again after this week."}`);
     if (rollingNextWeek) block.push("A new block starts next week — your accessories rotate and your main lifts carry over; their next weights come with the new plan.");
-    if (!graduating && todayCtx.block && !todayCtx.taper && !rd && !rolling && todayCtx.block.phase !== "deload" && todayCtx.block.week === BLOCK_WEEKS - 1) {
-      block.push("Next training week is your deload — fewer sets and lighter weights, to bank this block's work.");
+    if (!graduating && todayCtx.block && !todayCtx.taper && !rd && !rolling && (todayCtx.block.phase === "deload" ? taperNext : todayCtx.block.week === BLOCK_WEEKS - 1)) {
+      block.push(taperNext ? "Next training week is part of your taper — fewer sets, so you arrive fresh." : "Next training week is your deload — fewer sets and lighter weights, to bank this block's work.");
     }
     const regress = regressionDetect(sessions, index).filter((r) => liftIds.includes(r.exercise));
     if (regress.length) block.push(`Your ${listJoin(regress.map((r) => name(r.exercise)))} ${regress.length === 1 ? "is" : "are"} down about ${regress[0].drop_pct}% from ${regress.length === 1 ? "its" : "their"} recent best — usually sleep or food, not training. I won't add volume there until it turns around.`);

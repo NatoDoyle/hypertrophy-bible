@@ -336,7 +336,9 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   a planned-easy day's sets set a starting weight: on a comeback or a deload-week session a never-done lift reads "New
   lift — keep it light today" (its estimate, "your starting weight gets set on your next regular session" — a deload
   week inside a taper is a taper, and its sets count), and a lift
-  tried only on an easier day, tired again, reads "Still finding your weight, on a tired day". The card says what comes back next time only while the plan still holds it (not
+  tried only on an easier day, tired again, reads "Still finding your weight, on a tired day". A swap of a tired
+  slot ("It's busy right now", "Pick one myself", "No machine") is still the tired day: the new lift keeps the tired
+  dose, the load rule and the planned-easy tag. The card says what comes back next time only while the plan still holds it (not
   after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
   sets and skips included — a skip's own Undo comes back too. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).
@@ -365,7 +367,9 @@ weight. The weight is computed for the week that lift's next session falls in: c
 left, or days per week minus days already trained. It's exactly what that session serves, pinned
 by a promise test that checks next-week weights a week later. No weight is promised into a new
 block. Then this block, and from week 4 what the boundary would decide if it came today. Block
-lines show only while the workout is still this week. A queued workout's read-out reaches Today
+lines show only while the workout is still this week, and a forecast about next week reads next week:
+a taper starting then overrides its deload and its climb, so week 5 and the deload say "Next training
+week is part of your taper", never "your deload" or "your weights pick up again" (Burst 6 round 8). A queued workout's read-out reaches Today
 once it syncs, and History offers it for the latest workout), the reduce card (over-ceiling),
 the regression card, the new-block coach note (rotation, tune deltas **and holds**, real swaps),
 the plan screen's per-muscle reasons ("adaptive: +2 sets from your logged response"), and the

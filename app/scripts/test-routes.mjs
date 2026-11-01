@@ -1484,6 +1484,39 @@ try {
       Object.values(view).every((v) => typeof v.note === "string" && /Today's an easier day/.test(v.note) === v.easy && /Adjust it up or down/.test(v.note) === !v.easy), JSON.stringify(view));
   }
 
+  // --- Review round 8 (K1): the read-out's forecasts about next week read next week's context. A taper that starts next
+  // week overrides the block's deload and its climb (the response drops the block; the player banks it regular; the
+  // weights hold), so the read-out says the taper — never "next training week is your deload", never "pick up again".
+  {
+    const P = (exercise) => ({ exercise, sets: 3, rep_range: "8-12", rir: "1-3" });
+    const readoutAfter = async (weeksDone, eventIn) => {
+      const u = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: u, program: { sessions: [{ name: "A", exercises: [P("leg-press"), P("leg-extension")] }] } });
+      await store.updateUser(u, (x) => { x.plan_meta = { ...(x.plan_meta ?? {}), block_start: dAgo(7 * weeksDone + 6) }; if (eventIn != null) x.profile = { ...x.profile, goal_event_date: dAgo(-eventIn).slice(0, 10) }; return x; });
+      for (let k = 1; k <= weeksDone; k++) await json("POST", "/api/session", { user_id: u, session_id: "w" + k, date: dAgo(7 * k), local_date: dAgo(7 * k).slice(0, 10), session_name: "A",
+        sets: [...[10, 10, 10].map((reps) => ({ exercise: "leg-press", set_type: "work", weight_kg: 100, reps, rir: 2 })), ...[12, 12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps, rir: 2 }))] });
+      const t = (await (await app.request("/api/today", { headers: { "X-HB-User": u } })).json()).session;
+      const easy = t.block?.phase === "deload" || t.comeback === true; // the player's own banking rule (app.js)
+      const tag = easy ? { deload: true } : {};
+      await json("POST", "/api/session", { user_id: u, session_id: "today", date: dAgo(0), local_date: dAgo(0).slice(0, 10), session_name: "A",
+        sets: t.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work", weight_kg: e.suggested_kg, reps: 10, rir: 3, ...tag }))),
+        targets: t.exercises.map((e) => ({ exercise: e.exercise, sets: e.sets, rep_range: e.rep_range, rir: e.rir, suggested_kg: e.suggested_kg, ...tag })) });
+      const ro = (await json("POST", "/api/session/recap", { user_id: u, session_id: "today" })).data?.readout;
+      return { week: t.block?.week ?? null, phase: t.block?.phase ?? null, taper: !!t.taper, block: ro?.block ?? null };
+    };
+    const r = { wk5Taper: await readoutAfter(4, 15), wk5: await readoutAfter(4, null), wk6Taper: await readoutAfter(5, 15), wk6: await readoutAfter(5, null) };
+    const TAPER_NEXT = "Next training week is part of your taper — fewer sets, so you arrive fresh.";
+    ok("#readout (round 8) the fixtures reach a week-5 day and a deload-week day, none of them inside the taper yet",
+      [r.wk5Taper, r.wk5].every((x) => x.week === 5 && x.phase !== "deload" && !x.taper) && [r.wk6Taper, r.wk6].every((x) => x.phase === "deload" && !x.taper), JSON.stringify(r));
+    ok("#readout (round 8) a taper starting next week: the forecast says the taper — never a deload next week, never a climb",
+      [r.wk5Taper, r.wk6Taper].every((x) => x.block?.includes(TAPER_NEXT) && !x.block.some((l) => /Next training week is your deload|pick up again/.test(l)))
+      && r.wk6Taper.block.includes("A deload session doesn't move your progression."), JSON.stringify(r));
+    ok("#readout (round 8) …and with no taper ahead, the block's own forecasts, as before",
+      r.wk5.block?.includes("Next training week is your deload — fewer sets and lighter weights, to bank this block's work.")
+      && r.wk6.block?.includes("A deload session doesn't move your progression — your weights pick up again after this week.") && ![r.wk5, r.wk6].some((x) => x.block.includes(TAPER_NEXT))
+      && !r.wk6.block.some((l) => /Next training week is your deload/.test(l)), JSON.stringify(r)); // a deload day never forecasts another
+  }
+
   // --- Review round 1 (G1): a swap of a lift that comes round once a week must not read as a layoff next week. The
   // workout's targets name the planned lift a substitute stood in for (from the player's slot_of), and the comeback
   // clock counts that day — "It's been 14 days" was false a week after a tired swap.

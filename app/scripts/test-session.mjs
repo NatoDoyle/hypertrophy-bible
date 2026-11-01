@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow, swapInRow } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -745,6 +745,21 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.equal(tiredSwapRow({ exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10] }).suggested_kg, 0, "a bodyweight lift's first added load: dropped too");
     assert.equal(tiredSwapRow({ exercise: "leg-extension", suggested_kg: 42.5, last_kg: 40, last_reps: [12, 12, 12], last_easy: true, suggestion_note: "In your last regular session you hit the top of the range — add 2.5 kg." }).suggestion_note,
       "Same weight as your last regular session — no step up on a tired day. It won't count against your progress.", "round 6: never 'last time' under 'Last regular session'");
+  });
+  check("#tired (round 8) a swap OF a tired slot is still the tired day: the busy / pick / no-machine doors' row is held, eased and says it won't count", () => {
+    const stepUp = { exercise: "dumbbell-step-up", name: "Dumbbell Step-Up", suggested_kg: 7.5, last_kg: 5, last_reps: [12, 12], suggestion_note: "Last time you hit the top of the range — add 2.5 kg." };
+    const held = swapInRow({ exercise: "hack-squat", sets: 2, planned_sets: 2, tired: true, eased: true, slot_of: "bss" }, stepUp);
+    assert.deepStrictEqual([held.suggested_kg, held.tired, held.eased, held.suggestion_note], [5, true, true, "Same weight as last time — no step up on a tired day. It won't count against your progress."]);
+    assert.equal(swapInRow({ exercise: "hack-squat", sets: 3 }, stepUp), stepUp, "a regular slot: the server's row exactly as it came");
+    // End to end through session-core, as the player does it: a tired swap, then "It's busy right now" on the substitute.
+    const tiredSess = replaceSlot(mkT(), 1, tiredSwapRow({ exercise: "hack-squat", name: "Hack Squat", suggested_kg: null, last_kg: null, last_reps: null }), { expect: "bss", sets: 2 }).sess;
+    const busy = replaceSlot(tiredSess, 1, swapInRow(tiredSess.ex[1], { exercise: "dumbbell-step-up", name: "Dumbbell Step-Up", suggested_kg: null, last_kg: null, last_reps: null }), { expect: "hack-squat" });
+    assert.ok(busy.ok, busy.reason);
+    const slot = busy.sess.ex[1];
+    assert.deepStrictEqual([slot.exercise, slot.sets, slot.tired, slot.eased, slot.slot_of], ["dumbbell-step-up", 2, true, true, "bss"], "the tired dose AND the tired day carry over");
+    assert.equal(slot.suggestion_note, "Keep it light today — it won't set this lift's starting weight.");
+    assert.equal(tiredOffer({ ...busy.sess, set: 0 }), false, "never offered again — a second halving");
+    assert.deepStrictEqual(buildTargets(busy.sess)[1], { ...buildTargets(busy.sess)[1], deload: true, stood_in_for: "bss" }, "it banks planned easy: never the new lift's anchor, a PR or a grade");
   });
   check("#tired (round 3) a bodyweight lift's first added load is a bump too: tired → back to bodyweight", () => {
     const dip = easeSlot(mkT({ ...bss, exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10, 10] }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];

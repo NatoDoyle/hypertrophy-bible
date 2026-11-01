@@ -136,6 +136,10 @@ export function tiredSwapRow(row) {
     : "Keep it light today — it won't set this lift's starting weight.";
   return { ...row, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
 }
+// A swap OF a tired slot is still the tired day (round 8): "It's busy right now", "Pick one myself" and "No machine" hand
+// back a row the server built at the new lift's own progression — kept planned easy, any bump held, "it won't count", the
+// tired dose carried by replaceSlot — or the tired day's light sets became the new lift's anchor. A regular slot: as it came.
+export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };
