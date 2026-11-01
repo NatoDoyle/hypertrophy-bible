@@ -2543,6 +2543,9 @@ function renderPlayer() {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
+  // A planned-easy session (a comeback, a deload week) banks every set planned-easy: no card may promise that today's sets set
+  // a starting weight (Burst 6 review round 6).
+  const easyToday = !!sess.deload;
   // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
   const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
@@ -2576,10 +2579,13 @@ function renderPlayer() {
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
-    ${firstEver ? (e.tired ? `<div class="card info"><b>New lift, on a tired day 🎯</b>
-      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>`
+    ${firstEver ? (e.tired ? (e.tried_easy ? `<div class="card info"><b>Still finding your weight, on a tired day 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight either — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift, on a tired day 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>`)
       : e.tried_easy ? `<div class="card info"><b>Finding your weight 🎯</b>
-      <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — today's sets will.</p></div>`
+      <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — ${easyToday ? "today's an easier day too, so your next regular session will." : "today's sets will."}</p></div>`
+      : easyToday ? `<div class="card info"><b>New lift — keep it light today 🎯</b>
+      <p class="muted">Today's an easier day, so its sets won't set your starting weight. Start light and stop each set while your form is solid — your next regular session finds it.</p></div>`
       : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}

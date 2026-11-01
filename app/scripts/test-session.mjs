@@ -743,6 +743,8 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     const fresh = tiredSwapRow({ exercise: "leg-extension", suggested_kg: 5, last_kg: null, last_reps: null, suggestion_note: "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort." });
     assert.deepStrictEqual([fresh.suggested_kg, fresh.suggestion_note], [5, "Keep it light today — it won't set this lift's starting weight."], "never asked to calibrate a weight that won't be kept");
     assert.equal(tiredSwapRow({ exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10] }).suggested_kg, 0, "a bodyweight lift's first added load: dropped too");
+    assert.equal(tiredSwapRow({ exercise: "leg-extension", suggested_kg: 42.5, last_kg: 40, last_reps: [12, 12, 12], last_easy: true, suggestion_note: "In your last regular session you hit the top of the range — add 2.5 kg." }).suggestion_note,
+      "Same weight as your last regular session — no step up on a tired day. It won't count against your progress.", "round 6: never 'last time' under 'Last regular session'");
   });
   check("#tired (round 3) a bodyweight lift's first added load is a bump too: tired → back to bodyweight", () => {
     const dip = easeSlot(mkT({ ...bss, exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10, 10] }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];

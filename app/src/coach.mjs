@@ -966,7 +966,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
           ? Math.max(e?.equipment === "barbell" ? EMPTY_BAR_KG : inc, Math.round(Math.round(contextLoad(estimate, min + near, 0, orderLoss(before.sets)) / inc) * inc * 4) / 4) : estimate;
         suggested_kg = Math.min(estimate, eased);
         // A lift tried only on an easier day (its sets never anchor) isn't "new" to the lifter (Burst 6 review round 4).
-        suggestion_note = `${lastAnyDateForExercise(sessions, ex.exercise) ? "Only an easier day on this so far" : "No history yet"} — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort.`
+        // On a planned-easy day (a comeback, a deload week) every set banks planned-easy, so it never asks to be calibrated (round 6).
+        suggestion_note = `${lastAnyDateForExercise(sessions, ex.exercise) ? "Only an easier day on this so far" : "No history yet"} — a starting estimate scaled to your bodyweight. ${block?.phase === "deload" || layoffDays >= COMEBACK_GAP_DAYS
+          ? "Today's an easier day, so keep it light — your starting weight gets set on your next regular session." : "Adjust it up or down until the last rep is right around the target effort."}`
           + (suggested_kg < estimate ? ` It comes after ${setsWord(before.count)} that also work your ${listJoin(before.muscles.map(plainMuscle))}, so I've started it a little lighter.` : "");
       }
     }

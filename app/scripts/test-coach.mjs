@@ -2232,6 +2232,17 @@ check("#effort-top (round 5) a lift tried only on an easier day is flagged for t
   assert.deepStrictEqual([row.suggested_kg, row.tried_easy], [null, true]);
   assert.equal(buildToday(beg, [], null, [], new Date().toISOString(), null).exercises[0].tried_easy, undefined, "truly new: no flag");
 });
+check("#effort-top (round 6) on a planned-easy day (a comeback), a never-done lift's estimate never asks to be calibrated — its sets won't be kept", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "leg-press", sets: 3, rep_range: "8-12", rir: "1-3" }, { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog };
+  const old = [{ date: new Date(Date.now() - 20 * 86400000).toISOString(), program_ref: "p", sets: [{ exercise: "leg-press", set_type: "work", weight_kg: 100, reps: 10 }] }];
+  const t = buildToday(u, old, null, [], new Date().toISOString(), 80);
+  assert.equal(t.comeback, true, "precondition: a comeback session (every set banks planned-easy)");
+  const row = t.exercises.find((e) => e.exercise === "barbell-bench-press");
+  assert.equal(row.suggestion_note, "No history yet — a starting estimate scaled to your bodyweight. Today's an easier day, so keep it light — your starting weight gets set on your next regular session.");
+  const fresh = buildToday(u, [], null, [], new Date().toISOString(), 80).exercises.find((e) => e.exercise === "barbell-bench-press");
+  assert.match(fresh.suggestion_note, /Adjust it up or down until the last rep is right around the target effort\.$/, "a regular day: as before");
+});
 // The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
 // that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own
 // threshold and band (the read-out says "taken to failure" from an average under 0.5, and only where the band's near

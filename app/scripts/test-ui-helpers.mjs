@@ -603,12 +603,19 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // what it is; the bodyweight ease says "bodyweight"; the tired Undo brings a skip's own Undo back.
   assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
   assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
-  assert.match(appJs, /\$\{firstEver \? \(e\.tired \? `<div class="card info"><b>New lift, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /\$\{firstEver \? \(e\.tired \? \(e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /<b>New lift, on a tired day 🎯<\/b>/);
   assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
   // Round 4: a tired SWAP's substitute is planned-easy too (its first exposure, tired, never sets its starting weight).
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /applyReplacement\(cur\.exercise, tiredSwapRow\(r\.row\),/);
   // Round 5: a lift tried only on an easier day isn't "New lift"; the typo cue names the last REGULAR session after one.
   assert.match(appJs, /e\.tried_easy \? `<div class="card info"><b>Finding your weight 🎯<\/b>/);
+  // Round 6: tired AND tried-easy is never "New lift"; on a planned-easy session (a comeback, a deload week) no card promises
+  // that today's sets set the starting weight — they bank planned-easy.
+  assert.match(appJs, /e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /const easyToday = !!sess\.deload;/);
+  assert.match(appJs, /\$\{easyToday \? "today's an easier day too, so your next regular session will\." : "today's sets will\."\}/);
+  assert.match(appJs, /easyToday \? `<div class="card info"><b>New lift — keep it light today 🎯<\/b>/);
   assert.match(fnBody(appJs, "const setConfirmCue = (idx) => {", 1500), /ex\?\.last_easy \? ` from the \$\{refW\} in your last regular session`/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /"bodyweight"/);
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);

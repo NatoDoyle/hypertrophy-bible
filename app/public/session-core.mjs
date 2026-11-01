@@ -130,7 +130,8 @@ export const tiredBump = (row) => typeof row?.last_kg === "number" && (row.last_
 export function tiredSwapRow(row) {
   const bumped = tiredBump(row);
   const known = Array.isArray(row.last_reps) && row.last_reps.length > 0;
-  const note = bumped ? "Same weight as last time — no step up on a tired day. It won't count against your progress."
+  // (after an easier day of the substitute, its last time WAS that day: name the regular one, as its own screen does — round 6)
+  const note = bumped ? `Same weight as ${row.last_easy ? "your last regular session" : "last time"} — no step up on a tired day. It won't count against your progress.`
     : known ? `${row.suggestion_note ? `${row.suggestion_note} ` : ""}It won't count against your progress.`
     : "Keep it light today — it won't set this lift's starting weight.";
   return { ...row, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
