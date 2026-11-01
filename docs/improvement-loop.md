@@ -1469,8 +1469,11 @@ and every confirmed finding was re-verified inline by the main loop before fixin
        ultracode opt-in.
    - **Rulings kept for the owner:** the tired line costs 62 px on the first screen; a tired swap's known
      substitute keeps its own reason and aims ("fewer sets, not softer ones"; only a bump is held); a
-     comeback's "Add load as it feels easy"; W280's "1 of 3 holds, 0 of 3 bumps" incentive is the owner's
-     call (reported, not changed).
+     comeback's "Add load as it feels easy". The design panel's W280 "1 of 3 holds, 0 of 3 bumps" incentive,
+     carried as an owner question all burst, dissolved when measured at the close through the routes:
+     doing 1 of 3 sets and skipping the lift serve the same next weight (22.5 kg after a top-of-range
+     session, 20 kg after a mid-range one). Only the reason differs, and each is true against its own "Last
+     time" line. No change; lesson 104 again.
    - **Not run:** the Daytona gate (no DAYTONA_API_KEY); a physical iPhone.
 7d. **Telemetry (Waves 288–292, 2026-10-21 — Burst 5, one /plan iteration on four owner reports:
    the weight model, the notifications button, and one question).** Every root cause was
