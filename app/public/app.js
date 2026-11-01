@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2164,7 +2164,9 @@ const setConfirmCue = (idx) => {
   // confirming tap banks a typed 137.
   const u = sessUnitOf(idx);
   const refW = ref ? `${dispWeightFor(ref.kg, ex?.exercise)} ${unitLabelFor(ex?.exercise)}` : "";
-  const from = !ref ? "" : ref.from === "today" ? ` from the ${refW} you did earlier today` : ref.from === "best" ? ` from your best of ${refW} on this lift` : ` from the ${refW} you last did`;
+  // After an easier day the reference is the last REGULAR session's weight (round 5), as the set screen's own line says.
+  const from = !ref ? "" : ref.from === "today" ? ` from the ${refW} you did earlier today` : ref.from === "best" ? ` from your best of ${refW} on this lift`
+    : ex?.last_easy ? ` from the ${refW} in your last regular session` : ` from the ${refW} you last did`;
   return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${from}. Tap again if it's right — otherwise fix it above.`;
 };
 
@@ -2575,7 +2577,10 @@ function renderPlayer() {
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
     ${firstEver ? (e.tired ? `<div class="card info"><b>New lift, on a tired day 🎯</b>
-      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>`
+      : e.tried_easy ? `<div class="card info"><b>Finding your weight 🎯</b>
+      <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — today's sets will.</p></div>`
+      : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
     ${skipUndoStrip()}
@@ -2991,9 +2996,9 @@ async function tiredSwap() {
     // server names it (the player's own exercise library isn't loaded mid-workout).
     // …and only when the stored plan still holds it (round 2: after "No machine" it named the lift just removed).
     const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${setsN(n)} instead of ${cur.sets}` : ""}.${r.planned_name ? ` ${r.planned_name} is back next time.` : ""}`;
-    // Planned easy, like every tired day (round 4): a tired performance never becomes the substitute's anchor — nor, on a lift
-    // the user has never done, its starting weight (the card says so).
-    const why = applyReplacement(cur.exercise, { ...r.row, tired: true, eased: true },
+    // Planned easy, like every tired day (round 4), its load held off any bump served today and its reason saying the day won't
+    // count (round 5) — session-core's tiredSwapRow, one rule with the ease's.
+    const why = applyReplacement(cur.exercise, tiredSwapRow(r.row),
       { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: sess.lastSkip ?? null },
       { sets: n, said: `Swapped for ${toName} for today — ${setsN(n)}.` });
     if (!why) return;

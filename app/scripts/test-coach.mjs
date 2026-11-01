@@ -2224,6 +2224,14 @@ check("#effort-top (round 4) a lift tried only on an easier day is never 'No his
   assert.match(row.suggestion_note, /^Only an easier day on this so far — a starting estimate scaled to your bodyweight\./);
   assert.match(buildToday(u, [], null, [], new Date().toISOString(), 80).exercises[0].suggestion_note, /^No history yet/, "truly new: as before");
 });
+check("#effort-top (round 5) a lift tried only on an easier day is flagged for the set screen even with no estimate (a beginner, no bodyweight)", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const easyOnly = [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), program_ref: "p", sets: [brSet(30, 10, { deload: true })], targets: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3", deload: true }] }];
+  const beg = { profile: { training_status: "beginner", days_per_week: 3 }, program: prog };
+  const row = buildToday(beg, easyOnly, null, [], new Date().toISOString(), null).exercises[0];
+  assert.deepStrictEqual([row.suggested_kg, row.tried_easy], [null, true]);
+  assert.equal(buildToday(beg, [], null, [], new Date().toISOString(), null).exercises[0].tried_easy, undefined, "truly new: no flag");
+});
 // The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
 // that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own
 // threshold and band (the read-out says "taken to failure" from an average under 0.5, and only where the band's near

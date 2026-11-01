@@ -324,10 +324,15 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   was "It's been 14 days" the next week; weeks of stand-ins, or one after a long gap, still ease it back in).
   A bodyweight lift's first added load counts as a bump too (tired: back to bodyweight). On a lift with no
   history the tired day is light by design and won't set its starting weight ("New lift, on a tired day").
+  A tired swap's substitute gets the same load rule as the ease: a bump served today is held at last time's weight
+  (a never-done substitute is told "Keep it light today — it won't set this lift's starting weight", never asked
+  to calibrate a weight that won't be kept).
   Every tired day is planned easy — an eased lift and a tired swap's substitute alike, with history or without —
   so its sets are deload-tagged: they never anchor, never count as a PR, are never graded and never earn the
-  "🔥 close to failure" win; a lift tried only that way reads "Only an easier day on this so far" next time,
-  never "No history yet". The read-out's headline names a lift kept easy and claims "every other lift" only. The card says what comes back next time only while the plan still holds it (not
+  "🔥 close to failure" win; a lift tried only that way is never "new" next time ("Only an easier day on this so
+  far" on its estimate; "Finding your weight — your last go at this was an easier day" on the set screen). The
+  read-out's headline names a lift kept easy and claims "every other lift" only; "Easy day done" means a day planned
+  easy start to finish (a tired lift and the rest never started is "N of M planned sets done"). The card says what comes back next time only while the plan still holds it (not
   after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
   sets and skips included — a skip's own Undo comes back too. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).

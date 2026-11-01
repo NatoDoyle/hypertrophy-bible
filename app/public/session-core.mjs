@@ -121,11 +121,24 @@ export const tiredDose = (row) => Math.min(row.sets, tiredSets(row.planned_sets 
 // A bump served today is dropped back to last time's weight, exactly (round 2: a pounds user's plate rounding kept a +33%
 // bump, or cut 40% from a light one); with no bump, ~10% off. Every tired day is tagged `eased` — with history or without
 // (round 2: "keep this one easy" was then graded "too easy" on a never-done lift) — so it never anchors, PRs or grades.
+// Was a progression bump served today? (A bodyweight lift's first added load is a bump over bodyweight, last_kg 0 — round 3.)
+// ONE rule for the ease and a tired swap alike: a tired day never steps up (round 5).
+export const tiredBump = (row) => typeof row?.last_kg === "number" && (row.last_kg > 0 || (row.last_kg === 0 && row.equipment === "bodyweight")) && row.suggested_kg > row.last_kg;
+// A tired SWAP's substitute (round 5): planned easy like every tired day; a bump served today held at last time's weight (a
+// tired lifter was handed a never-lifted 42.5 kg on the "easier" lift); and its reason says the day won't count — never the
+// estimate's "adjust it up or down until…", a weight that tag then throws away.
+export function tiredSwapRow(row) {
+  const bumped = tiredBump(row);
+  const known = Array.isArray(row.last_reps) && row.last_reps.length > 0;
+  const note = bumped ? "Same weight as last time — no step up on a tired day. It won't count against your progress."
+    : known ? `${row.suggestion_note ? `${row.suggestion_note} ` : ""}It won't count against your progress.`
+    : "Keep it light today — it won't set this lift's starting weight.";
+  return { ...row, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
+}
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };
-  // (a bodyweight lift's first added load is a bump over bodyweight, last_kg 0 — round 3)
-  const bumped = typeof cur.last_kg === "number" && (cur.last_kg > 0 || (cur.last_kg === 0 && cur.equipment === "bodyweight")) && cur.suggested_kg > cur.last_kg;
+  const bumped = tiredBump(cur);
   const kg = bumped ? cur.last_kg : easeKg(cur.suggested_kg, stepKg, floorKg);
   const lighter = kg != null && kg < cur.suggested_kg && shown({ ...cur, suggested_kg: kg }) < shown(cur);
   const sets = tiredDose(cur);

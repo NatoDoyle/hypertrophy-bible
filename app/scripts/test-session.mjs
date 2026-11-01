@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -733,6 +733,16 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.equal(lbBump.suggested_kg, 6.8, "a pounds user's 15 → 20 lb bump: back to 15 lb, never a kept +33%");
     const hold = easeSlot(mkT({ ...bss, suggested_kg: 20, last_kg: 20 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
     assert.equal(hold.suggested_kg, 17.5);
+  });
+  check("#tired (round 5) a tired SWAP holds its substitute's load too: a bump served today drops back to last time's weight; it never counts, and says so", () => {
+    const known = tiredSwapRow({ exercise: "leg-extension", suggested_kg: 42.5, last_kg: 40, last_reps: [12, 12, 12], suggestion_note: "Last time you hit the top of the range — add 2.5 kg." });
+    assert.deepStrictEqual([known.suggested_kg, known.tired, known.eased], [40, true, true]);
+    assert.equal(known.suggestion_note, "Same weight as last time — no step up on a tired day. It won't count against your progress.");
+    const placed = tiredSwapRow({ exercise: "leg-extension", suggested_kg: 37.5, last_kg: 40, last_reps: [12, 12], suggestion_note: "This time it comes after 6 sets that also work your thighs (quads) (last time it came first), so I've made it 37.5 kg." });
+    assert.deepStrictEqual([placed.suggested_kg, placed.suggestion_note], [37.5, "This time it comes after 6 sets that also work your thighs (quads) (last time it came first), so I've made it 37.5 kg. It won't count against your progress."], "already under last time (its position): kept");
+    const fresh = tiredSwapRow({ exercise: "leg-extension", suggested_kg: 5, last_kg: null, last_reps: null, suggestion_note: "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort." });
+    assert.deepStrictEqual([fresh.suggested_kg, fresh.suggestion_note], [5, "Keep it light today — it won't set this lift's starting weight."], "never asked to calibrate a weight that won't be kept");
+    assert.equal(tiredSwapRow({ exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10] }).suggested_kg, 0, "a bodyweight lift's first added load: dropped too");
   });
   check("#tired (round 3) a bodyweight lift's first added load is a bump too: tired → back to bodyweight", () => {
     const dip = easeSlot(mkT({ ...bss, exercise: "dip", equipment: "bodyweight", suggested_kg: 2.5, last_kg: 0, last_reps: [10, 10, 10] }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];

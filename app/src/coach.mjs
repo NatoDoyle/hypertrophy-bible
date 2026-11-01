@@ -987,8 +987,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
-      // The reason's "last time" is the last FULL session (an easier one came since) — the set screen labels it so (round 3).
+      // The reason's "last time" is the last REGULAR session (an easier one came since) — the set screen labels it so (round 3).
       ...(served.last_easy ? { last_easy: true } : {}),
+      // Tried only on an easier day (no anchor, but sets in History): never "New lift" on the set screen (round 5).
+      ...(sug.last_kg == null && lastAnyDateForExercise(sessions, ex.exercise) ? { tried_easy: true } : {}),
       // Per-exercise layoff ease (this lift returned after >=12 days even though
       // the session isn't a whole-session comeback — e.g. a rotated-back
       // accessory): its sets are planned-easy and must be deload-tagged too, or

@@ -485,6 +485,8 @@ check("#readout-copy (round 4) a lift kept easy today is named, and 'every lift'
   assert.equal(readoutLists({ planned: 8, done: 8, lifts: [L("a", { top: true }), L("c"), easyLift] }, { nameOf: nm }).headline,
     "Every set done — Row kept easy, and every other lift in its range: 1 at the top, ready to go up.");
   assert.equal(readoutLists({ planned: 2, done: 2, lifts: [easyLift] }, { nameOf: nm }).headline, "Easy day done — recovery is part of the plan.", "all easy: unchanged");
+  assert.equal(readoutLists({ planned: 8, done: 2, lifts: [easyLift, L("a", { planned: 3, done: 0 }), L("c", { planned: 3, done: 0 })] }, { nameOf: nm }).headline,
+    "2 of 8 planned sets done — every one of them counts.", "round 5: a tired lift and the rest never started is a short day, not a planned easy one");
 });
 check("#readout-copy (round 3) one set is 'set', never '1 of 1 sets'", () => {
   const r = readoutLists({ planned: 1, done: 1, lifts: [L("a", { planned: 1, done: 1, under: 1, min: 10, max: 15 })] }, { nameOf: nm });
@@ -604,7 +606,10 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(appJs, /\$\{firstEver \? \(e\.tired \? `<div class="card info"><b>New lift, on a tired day 🎯<\/b>/);
   assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
   // Round 4: a tired SWAP's substitute is planned-easy too (its first exposure, tired, never sets its starting weight).
-  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\{ \.\.\.r\.row, tired: true, eased: true \}/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /applyReplacement\(cur\.exercise, tiredSwapRow\(r\.row\),/);
+  // Round 5: a lift tried only on an easier day isn't "New lift"; the typo cue names the last REGULAR session after one.
+  assert.match(appJs, /e\.tried_easy \? `<div class="card info"><b>Finding your weight 🎯<\/b>/);
+  assert.match(fnBody(appJs, "const setConfirmCue = (idx) => {", 1500), /ex\?\.last_easy \? ` from the \$\{refW\} in your last regular session`/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /"bodyweight"/);
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);
