@@ -7,7 +7,7 @@ import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
-import { servedLift } from "../src/coach.mjs";
+import { servedLift, lastRegular } from "../src/coach.mjs";
 import * as deriveCore from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -2200,14 +2200,29 @@ check("#effort-top (review K3) the hold's ask names TODAY's band — what the ne
   assert.equal(lpAt("2-3", "1-3", x3).note, holdA(2, 3, 1), "week 1's 2-3 met at 1; week 2's card says 1-3");
   assert.equal(lpAt("3-4", "1-2", x3).note, holdA(3, 4, 1), "after a taper's 3-4, back to 1-2: never 'with 3 in reserve'");
 });
-check("#effort-top (round 3) after an easier day (a tired ease, a deload), 'last time' is named for what it is: the last FULL session", () => {
+check("#effort-top (round 3/4) after an easier day (a tired ease, a deload), 'last time' is named for what it is: the last REGULAR session", () => {
   const full = withTargets(lpT("1-2"), lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1));
   const easy = { date: "2026-06-04T18:00:00Z", sets: [lp(135, 8), lp(135, 7)].map((x) => ({ ...x, deload: true })), targets: [{ exercise: "leg-press", sets: 2, rep_range: "6-10", rir: "1-2", deload: true }] };
   const r = aim("leg-press", "6-10", "1-2", 3, [full, easy]);
   assert.deepStrictEqual([r.suggested_kg, r.last_easy], [152.5, true]);
-  assert.equal(r.suggestion_note, "In your last full session you hit the top of the range — add 2.5 kg.");
+  assert.equal(r.suggestion_note, "In your last regular session you hit the top of the range — add 2.5 kg.", "round 4: 'full' read as 'complete' beside 'You did 2 of 3 sets'");
   const plain = aim("leg-press", "6-10", "1-2", 3, [full]);
   assert.deepStrictEqual([plain.suggestion_note, plain.last_easy], ["Last time you hit the top of the range — add 2.5 kg.", false]);
+});
+check("#effort-top (round 4) every 'last time' AND 'your last session' is renamed — the order note named one anchor two ways", () => {
+  assert.equal(lastRegular("This time it comes after 4 sets that also work your thighs (quads) (last time it came first), so I've made it 32.5 kg — the lighter weight your last session called for, adjusted for the order."),
+    "This time it comes after 4 sets that also work your thighs (quads) (in your last regular session it came first), so I've made it 32.5 kg — the lighter weight your last regular session called for, adjusted for the order.");
+  assert.equal(lastRegular("You did 2 of 3 sets last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time."),
+    "You did 2 of 3 sets in your last regular session — same weight. This week asks for 2–3 reps in reserve, 1 more than in your last regular session.");
+});
+check("#effort-top (round 4) a lift tried only on an easier day is never 'No history yet' — the estimate says what it knows", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog };
+  const easyOnly = [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), program_ref: "p", sets: [brSet(30, 10, { deload: true }), brSet(30, 9, { deload: true })], targets: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3", deload: true }] }];
+  const row = buildToday(u, easyOnly, null, [], new Date().toISOString(), 80).exercises[0];
+  assert.equal(row.suggested_kg, 35);
+  assert.match(row.suggestion_note, /^Only an easier day on this so far — a starting estimate scaled to your bodyweight\./);
+  assert.match(buildToday(u, [], null, [], new Date().toISOString(), 80).exercises[0].suggestion_note, /^No history yet/, "truly new: as before");
 });
 // The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
 // that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own

@@ -2067,7 +2067,7 @@ const lastTimeLine = (e) => {
         .map((g) => `${dispWeightFor(g.kg, e.exercise)} ${u} × ${g.reps.join(", ")}`).join(" · ")
     : `${dispWeightFor(e.last_kg, e.exercise)} ${u} × ${e.last_reps.join(", ")}`;
   // After an easier session (a tired ease, a deload) these sets are the last FULL session's (round 3).
-  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">${e.last_easy ? "Last full session" : "Last time"}: ${body}</p>`;
+  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">${e.last_easy ? "Last regular session" : "Last time"}: ${body}</p>`;
 };
 // WHY this weight (Burst 1 review): the engine's reason for the pre-filled suggestion —
 // "add 2.5 kg", "lightened to 52.5 kg", "you did 2 of 3 sets" — had never reached the screen,
@@ -2991,8 +2991,9 @@ async function tiredSwap() {
     // server names it (the player's own exercise library isn't loaded mid-workout).
     // …and only when the stored plan still holds it (round 2: after "No machine" it named the lift just removed).
     const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${setsN(n)} instead of ${cur.sets}` : ""}.${r.planned_name ? ` ${r.planned_name} is back next time.` : ""}`;
-    // A substitute the user has history on is tagged eased: a tired performance never becomes its anchor.
-    const why = applyReplacement(cur.exercise, { ...r.row, tired: true, ...(r.known ? { eased: true } : {}) },
+    // Planned easy, like every tired day (round 4): a tired performance never becomes the substitute's anchor — nor, on a lift
+    // the user has never done, its starting weight (the card says so).
+    const why = applyReplacement(cur.exercise, { ...r.row, tired: true, eased: true },
       { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: sess.lastSkip ?? null },
       { sets: n, said: `Swapped for ${toName} for today — ${setsN(n)}.` });
     if (!why) return;

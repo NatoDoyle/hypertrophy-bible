@@ -476,6 +476,16 @@ check("#readout-copy a top reached only past the band is worth a look — never 
   const f = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, failure: true, band: "1-2", rir: 0, in_band: false })] }, { nameOf: nm });
   assert.deepEqual(f.watch, ["Bench Press: taken to failure — the plan wanted 1–2 in reserve."], "the failure line says it; never both");
 });
+check("#readout-copy (round 4) a lift kept easy today is named, and 'every lift' claims only the others", () => {
+  const easyLift = L("b", { easyDay: true, done: 2, planned: 2, reps: [8, 7] });
+  assert.equal(readoutLists({ planned: 5, done: 5, lifts: [L("a", { top: true }), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift at the top of its range: time to go up.");
+  assert.equal(readoutLists({ planned: 5, done: 5, lifts: [L("a"), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift in its range: a session that moves you forward.");
+  assert.equal(readoutLists({ planned: 8, done: 8, lifts: [L("a", { top: true }), L("c"), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift in its range: 1 at the top, ready to go up.");
+  assert.equal(readoutLists({ planned: 2, done: 2, lifts: [easyLift] }, { nameOf: nm }).headline, "Easy day done — recovery is part of the plan.", "all easy: unchanged");
+});
 check("#readout-copy (round 3) one set is 'set', never '1 of 1 sets'", () => {
   const r = readoutLists({ planned: 1, done: 1, lifts: [L("a", { planned: 1, done: 1, under: 1, min: 10, max: 15 })] }, { nameOf: nm });
   assert.ok(r.watch.includes("Bench Press: 1 of 1 set under the 10–15 range."), JSON.stringify(r.watch));
@@ -592,7 +602,9 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
   assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
   assert.match(appJs, /\$\{firstEver \? \(e\.tired \? `<div class="card info"><b>New lift, on a tired day 🎯<\/b>/);
-  assert.match(appJs, /\$\{e\.last_easy \? "Last full session" : "Last time"\}:/);
+  assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
+  // Round 4: a tired SWAP's substitute is planned-easy too (its first exposure, tired, never sets its starting weight).
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\{ \.\.\.r\.row, tired: true, eased: true \}/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /"bodyweight"/);
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);

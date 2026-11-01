@@ -648,6 +648,12 @@ function orderShift(ex, last, sug, slot, byId, anchorNear) {
   return { fromLoss, toLoss, kg, note: `${clause.slice(0, -1)}, so I've made it ${kg} kg${earned}.` };
 }
 
+// Every "last time" (and "your last session") in a reason, renamed for the session it means when an easier one came after it:
+// "your last REGULAR session" — not "full", which read as "complete" beside "You did 2 of 3 sets" (Burst 6 review round 4).
+export const lastRegular = (note) => note
+  .replace(/\bLast time\b/g, "In your last regular session").replace(/\blast time\b/g, "in your last regular session")
+  .replace(/\byour last session\b/g, "your last regular session");
+
 // What the app SERVES for one lift of the plan in a training context: the RIR band shown
 // (it IS the prescription autoregulation measures against), the set count after the wave or
 // taper, and the weight with its reason. The single door for "what will this lift be" —
@@ -734,8 +740,7 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // range" right under today's tired 8, 7 reps).
   const lastAny = last ? lastAnyDateForExercise(sessions, ex.exercise) : null;
   const last_easy = !!(last?.date && lastAny && +new Date(lastAny) > +new Date(last.date));
-  const suggestion_note = last_easy && composed
-    ? composed.replace(/\bLast time\b/g, "In your last full session").replace(/\blast time\b/g, "in your last full session") : composed;
+  const suggestion_note = last_easy && composed ? lastRegular(composed) : composed;
   return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy };
 }
 
@@ -960,7 +965,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
         const eased = before && before.sets >= ORDER_MIN_DELTA_SETS && e?.equipment !== "bodyweight"
           ? Math.max(e?.equipment === "barbell" ? EMPTY_BAR_KG : inc, Math.round(Math.round(contextLoad(estimate, min + near, 0, orderLoss(before.sets)) / inc) * inc * 4) / 4) : estimate;
         suggested_kg = Math.min(estimate, eased);
-        suggestion_note = "No history yet — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort."
+        // A lift tried only on an easier day (its sets never anchor) isn't "new" to the lifter (Burst 6 review round 4).
+        suggestion_note = `${lastAnyDateForExercise(sessions, ex.exercise) ? "Only an easier day on this so far" : "No history yet"} — a starting estimate scaled to your bodyweight. Adjust it up or down until the last rep is right around the target effort.`
           + (suggested_kg < estimate ? ` It comes after ${setsWord(before.count)} that also work your ${listJoin(before.muscles.map(plainMuscle))}, so I've started it a little lighter.` : "");
       }
     }

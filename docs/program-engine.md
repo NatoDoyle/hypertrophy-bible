@@ -72,8 +72,8 @@ where growth happens" is never said for a lift whose logged effort went past its
 easy. "Top of the range on every set" says so only when every set was graded ("at your working weight"
 otherwise), and Nerd Mode compares the band with the average the grade used, naming the working weight when
 back-offs or ramps weren't graded. After an easier session of a lift (a tired ease, a deload) — sets that never
-anchor — every "last time" in its reason becomes "your last full session", and the set screen's "Last time:" line
-reads "Last full session:", so the read-out never puts "Last time you hit the top of the range" under today's
+anchor — every "last time" in its reason becomes "your last regular session" (not "full", which reads as "complete"), and the set screen's "Last time:" line
+reads "Last regular session:", so the read-out never puts "Last time you hit the top of the range" under today's
 tired reps. A brute force over ~1.6M sessions found no remaining pair of lines where the read-out says one
 thing and the next weight another, except three rare, benign ones, kept: a heavy single above the
 working sets counted "under the range"; "N of M sets" beside a rule-2 bump; "top of the range" beside
@@ -324,9 +324,10 @@ so week 1's 0.7× ramp walks you into the bigger targets, and the app announces 
   was "It's been 14 days" the next week; weeks of stand-ins, or one after a long gap, still ease it back in).
   A bodyweight lift's first added load counts as a bump too (tired: back to bodyweight). On a lift with no
   history the tired day is light by design and won't set its starting weight ("New lift, on a tired day").
-  An eased lift's sets are always deload-tagged (with history or without), and a substitute's when you have
-  real history on it, so they never anchor, never count as a PR, are never graded and never earn the
-  "🔥 close to failure" win. The card says what comes back next time only while the plan still holds it (not
+  Every tired day is planned easy — an eased lift and a tired swap's substitute alike, with history or without —
+  so its sets are deload-tagged: they never anchor, never count as a PR, are never graded and never earn the
+  "🔥 close to failure" win; a lift tried only that way reads "Only an easier day on this so far" next time,
+  never "No history yet". The read-out's headline names a lift kept easy and claims "every other lift" only. The card says what comes back next time only while the plan still holds it (not
   after "No machine"). A slot already made easier isn't offered it again. Undo puts the slot back exactly,
   sets and skips included — a skip's own Undo comes back too. Split squats after leg press and RDLs: leg extension (full gym);
   goblet squat (dumbbells only); bodyweight squat, then lunge (bodyweight only).

@@ -1455,7 +1455,7 @@ try {
     const afterSwap = await nextBss({ sets: [12, 12].map((reps) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps })), targets: [{ exercise: "leg-extension", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: null }] });
     const afterEase = await nextBss({ sets: [10, 9].map((reps) => ({ exercise: "bulgarian-split-squat", set_type: "work", weight_kg: 17.5, reps, deload: true })), targets: [{ exercise: "bulgarian-split-squat", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 17.5, deload: true }] });
     ok("#tired (round 3) after the eased day, the row says 'last time' is the last FULL session",
-      afterEase?.last_easy === true && /^In your last full session you hit the top of the range — add 2\.5 kg\./.test(afterEase?.suggestion_note ?? "") && afterSwap?.last_easy !== true,
+      afterEase?.last_easy === true && /^In your last regular session you hit the top of the range — add 2\.5 kg\./.test(afterEase?.suggestion_note ?? "") && afterSwap?.last_easy !== true,
       JSON.stringify({ afterEase: afterEase && [afterEase.last_easy, afterEase.suggestion_note], afterSwap: afterSwap?.last_easy }));
     ok("#tired a tired day never sets the lift back: after a swap or an eased day, it continues from the last real session (22.5 kg)",
       afterSwap?.suggested_kg === 22.5 && afterEase?.suggested_kg === 22.5 && /add 2\.5 kg/.test(afterEase?.suggestion_note ?? ""), JSON.stringify({ afterSwap: afterSwap && [afterSwap.suggested_kg, afterSwap.suggestion_note], afterEase: afterEase && [afterEase.suggested_kg, afterEase.suggestion_note] }));

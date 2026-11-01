@@ -360,10 +360,15 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
   const underN = graded.filter((l) => l.under > 0).length;
   const tops = graded.filter((l) => l.top);
   const band = (b) => String(b ?? "").replace("-", "–");
+  // A lift kept easy today (a tired ease or swap) isn't graded, so "every lift" claims only the others — and says so (Burst 6
+  // review round 4: "every lift in its range" sat above the tired lift's 8, 7 on an 8–12).
+  const keptEasy = local.lifts.filter((l) => l.easyDay && l.done > 0 && l.min != null);
+  const others = keptEasy.length ? `${friendlyList(keptEasy.map((l) => nameOf(l.exercise)))} kept easy, and every other lift` : null;
   const headline = !local.done ? "Workout saved."
     : !graded.length ? "Easy day done — recovery is part of the plan."
     : skipped > 0 ? `${local.done} of ${local.planned} planned sets done — every one of them counts.`
     : underN ? `Every set done — ${underN === 1 ? "1 lift" : `${underN} lifts`} came in under ${underN === 1 ? "its" : "their"} range, and next time is set up for that.`
+    : others ? `Every set done — ${others} ${tops.length === graded.length ? "at the top of its range: time to go up." : tops.length ? `in its range: ${tops.length} at the top, ready to go up.` : "in its range: a session that moves you forward."}`
     : tops.length === graded.length ? "Every set done, and every lift at the top of its range — time to go up."
     : tops.length ? `Every set done, every lift in its range — ${tops.length} at the top, ready to go up.`
     : "Every set done, every lift in its range — a session that moves you forward.";
