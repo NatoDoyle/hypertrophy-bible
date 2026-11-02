@@ -306,7 +306,8 @@ export function bringBackCopy({ mode, restored = 0, name = "That lift" } = {}) {
 }
 // The player's Undo: the live slot goes back only if the substitute has no banked work
 // (replaceSlot's guard); the plan side of a permanent swap is undone either way.
-export function swapUndoCopy({ revertedLive, permanent, from, to }) {
+export function swapUndoCopy({ revertedLive, permanent, from, to, same = false }) {
+  if (same) return `${from} is back as it was.`; // a tired ease undone (Burst 6): as it was — sets and skips included
   if (!permanent) return `${from} is back.`;
   return revertedLive ? `${from} is back — in today's workout and your plan.` : `${to} stays for today (you've started it) — ${from} is back from your next session.`;
 }
@@ -359,26 +360,36 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
   const underN = graded.filter((l) => l.under > 0).length;
   const tops = graded.filter((l) => l.top);
   const band = (b) => String(b ?? "").replace("-", "–");
+  // A lift kept easy today (a tired ease or swap) isn't graded, so "every lift" claims only the others — and says so (Burst 6
+  // review round 4: "every lift in its range" sat above the tired lift's 8, 7 on an 8–12).
+  const keptEasy = local.lifts.filter((l) => l.easyDay && l.done > 0 && l.min != null);
+  const others = keptEasy.length ? `${friendlyList(keptEasy.map((l) => nameOf(l.exercise)))} kept easy, and every other lift` : null;
   const headline = !local.done ? "Workout saved."
-    : !graded.length ? "Easy day done — recovery is part of the plan."
+    // An easy day is one planned easy start to finish — a tired lift and the rest never started is a short day (round 5).
+    : !graded.length && skipped === 0 ? "Easy day done — recovery is part of the plan."
     : skipped > 0 ? `${local.done} of ${local.planned} planned sets done — every one of them counts.`
     : underN ? `Every set done — ${underN === 1 ? "1 lift" : `${underN} lifts`} came in under ${underN === 1 ? "its" : "their"} range, and next time is set up for that.`
+    : others ? `Every set done — ${others} ${tops.length === graded.length ? "at the top of its range: time to go up." : tops.length ? `in its range: ${tops.length} at the top, ready to go up.` : "in its range: a session that moves you forward."}`
     : tops.length === graded.length ? "Every set done, and every lift at the top of its range — time to go up."
     : tops.length ? `Every set done, every lift in its range — ${tops.length} at the top, ready to go up.`
     : "Every set done, every lift in its range — a session that moves you forward.";
   if (beginner) return { headline, went_well: [], watch: [] };
   const went_well = [
-    ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range on every set.`),
+    ...tops.slice(0, 2).map((l) => `${nameOf(l.exercise)}: top of the range ${l.graded_all === false ? "at your working weight" : "on every set"}.`),
     ...(skipped === 0 && local.planned > 0 && graded.length >= 2 ? [`All ${local.planned} planned sets done.`] : []),
-    ...(graded.some((l) => l.rir != null) && !graded.some((l) => l.easy || l.failure) ? ["Effort right where the plan wanted it."] : []),
+    // Only when every lift whose effort was logged averaged INSIDE its band (Burst 6): beside the engine's "you left ~3
+    // in reserve — add weight", or an average under the band, "effort right" was the read-out contradicting itself.
+    // …and graded at all: effort logged on too few sets to grade is never called "right" (review K1 — the engine acts on it).
+    ...(graded.some((l) => l.rir != null) && graded.filter((l) => l.rir != null).every((l) => l.in_band === true) && !graded.some((l) => l.past_band) ? ["Effort right where the plan wanted it."] : []),
   ].slice(0, 3);
   const watch = local.lifts.filter((l) => !l.easyDay).flatMap((l) => {
     const n = nameOf(l.exercise);
     return [
       ...(l.planned != null && l.done < l.planned ? [`${n}: ${l.done} of ${l.planned} sets.`] : []),
-      ...(l.under ? [`${n}: ${l.under} of ${l.done} sets under the ${l.min}–${l.max} range.`] : []),
+      ...(l.under ? [`${n}: ${l.under} of ${l.done} set${l.done === 1 ? "" : "s"} under the ${l.min}–${l.max} range.`] : []),
       ...(l.easy ? [`${n}: about ${l.rir} reps left in the tank — the plan asked for ${band(l.band)}.`] : []),
-      ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`] : []),
+      ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`]
+        : l.past_band ? [`${n}: top of the range, but closer to failure than the ${band(l.band)} in reserve the plan asked for.`] : []),
     ];
   }).slice(0, 3);
   return { headline, went_well, watch };

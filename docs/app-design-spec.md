@@ -245,7 +245,8 @@ timer.
 
 **3. Log a set in ~2 taps** — confirm the pre-filled numbers, nudge them with − / +, or **type them**
 (the value between the stepper buttons is a real input; typing is the fast path for a big jump —
-20→80 kg is no longer 24 taps). Weight and reps are the **only** inputs. The unit beside the weight is
+20→80 kg is no longer 24 taps). A number that looks like a typo (a stray zero, lb into a kg field) is
+questioned once before it banks; a weight already logged today is never questioned again (Burst 6). Weight and reps are the **only** inputs. The unit beside the weight is
 tappable: it flips **that exercise** between kg and lb (the mixed-unit gym — a machine stack labelled in
 lb while the bars stay kg), remembered for future sessions; storage stays kg everywhere. Rest timer
 auto-starts (learned from the user's real `restTimes`), buzzes on completion so you never watch the
@@ -265,7 +266,13 @@ fell: *"Looked like you had more in the tank — let's add 2.5 kg next set."* If
 one-line safety moment fires. All framed as help, never correction.
 
 **6. Swap anytime.** One-tap, equipment-aware substitution if a machine is taken, a lift feels wrong, or a
-beginner wants a friendlier variant.
+beginner wants a friendlier variant. **Too tired** (Burst 6, owner consideration): once some work is banked
+today, a lift's first screen offers "🥱 Too tired for this one?" (also the first reason in "Can't do this
+one?") — one tap swaps in the easiest lift that fits the slot (no harder on any count — systemic cost,
+stability, skill — and steadier or less taxing) at about half the sets (a 2-set lift stays at 2), or, when
+nothing easier fits or the phone is offline, makes the same lift lighter (today's bump dropped, else ~10%) and
+shorter. A tired day never sets a lift back, and Undo puts the slot back exactly. A second
+swap in the same slot lands where the first did (the plan's slot), with its own weight and history.
 
 **7. Finish → Session Summary.** Chain +1; any est-1RM PR called out (*"New best on bench 🎉"*); **one**
 specific, genuine derived win; *"Logged. Next up: Legs, Thursday."* At most one optional tap (energy 1–5).

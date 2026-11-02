@@ -277,6 +277,7 @@ check("swapUndoCopy: an Undo that put the lift back vs one the live session refu
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: true, from: "Hack squat", to: "Leg press" }), "Hack squat is back — in today's workout and your plan.");
   assert.equal(swapUndoCopy({ revertedLive: false, permanent: true, from: "Hack squat", to: "Leg press" }), "Leg press stays for today (you've started it) — Hack squat is back from your next session.");
   assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Leg press" }), "Hack squat is back.");
+  assert.equal(swapUndoCopy({ revertedLive: true, permanent: false, from: "Hack squat", to: "Hack squat", same: true }), "Hack squat is back as it was.", "undoing a tired ease (Burst 6 round 3): as it was, skips included");
 });
 
 // --- Day chooser math (owner report: "I can't log yesterday's weight or calories").
@@ -462,8 +463,49 @@ check("muscle names: the server's copy of the plain-English map IS the client's 
 // --- W282: the read-out's words for WHAT HAPPENED — a headline that never shames (Goal 4), what
 // went well, and what's worth a look. Beginners get the headline only (the weights for next
 // time come from the server lines).
-const L = (exercise, o) => ({ exercise, planned: 3, done: 3, min: 8, max: 12, reps: [], kg: [], top: false, under: 0, easy: false, failure: false, easyDay: false, rir: null, band: "1-3", ...o });
+const L = (exercise, o) => ({ exercise, planned: 3, done: 3, min: 8, max: 12, reps: [], kg: [], top: false, graded_all: true, past_band: false, under: 0, easy: false, failure: false, easyDay: false, rir: null, rir_all: null, in_band: null, band: "1-3", ...o });
 const nm = (id) => ({ a: "Bench Press", b: "Row", c: "Curl" })[id] ?? id;
+// Burst 6 (owner: "the end of session recap is contradictory"): a top reached only past the band is worth a look, never
+// "top of the range" or "time to go up" (the engine holds it); "Effort right" only when every rated lift averaged inside
+// its band — beside the engine's "you left ~3 in reserve" or a below-band average it was false.
+check("#readout-copy a top reached only past the band is worth a look — never 'top of the range', 'go up' or 'effort right'", () => {
+  const r = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, band: "2-3", rir: 1, in_band: false })] }, { nameOf: nm });
+  assert.equal(r.headline, "Every set done, every lift in its range — a session that moves you forward.");
+  assert.deepEqual(r.went_well, []);
+  assert.deepEqual(r.watch, ["Bench Press: top of the range, but closer to failure than the 2–3 in reserve the plan asked for."]);
+  const f = readoutLists({ planned: 3, done: 3, lifts: [L("a", { past_band: true, failure: true, band: "1-2", rir: 0, in_band: false })] }, { nameOf: nm });
+  assert.deepEqual(f.watch, ["Bench Press: taken to failure — the plan wanted 1–2 in reserve."], "the failure line says it; never both");
+});
+check("#readout-copy (round 4) a lift kept easy today is named, and 'every lift' claims only the others", () => {
+  const easyLift = L("b", { easyDay: true, done: 2, planned: 2, reps: [8, 7] });
+  assert.equal(readoutLists({ planned: 5, done: 5, lifts: [L("a", { top: true }), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift at the top of its range: time to go up.");
+  assert.equal(readoutLists({ planned: 5, done: 5, lifts: [L("a"), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift in its range: a session that moves you forward.");
+  assert.equal(readoutLists({ planned: 8, done: 8, lifts: [L("a", { top: true }), L("c"), easyLift] }, { nameOf: nm }).headline,
+    "Every set done — Row kept easy, and every other lift in its range: 1 at the top, ready to go up.");
+  assert.equal(readoutLists({ planned: 2, done: 2, lifts: [easyLift] }, { nameOf: nm }).headline, "Easy day done — recovery is part of the plan.", "all easy: unchanged");
+  assert.equal(readoutLists({ planned: 8, done: 2, lifts: [easyLift, L("a", { planned: 3, done: 0 }), L("c", { planned: 3, done: 0 })] }, { nameOf: nm }).headline,
+    "2 of 8 planned sets done — every one of them counts.", "round 5: a tired lift and the rest never started is a short day, not a planned easy one");
+});
+check("#readout-copy (round 3) one set is 'set', never '1 of 1 sets'", () => {
+  const r = readoutLists({ planned: 1, done: 1, lifts: [L("a", { planned: 1, done: 1, under: 1, min: 10, max: 15 })] }, { nameOf: nm });
+  assert.ok(r.watch.includes("Bench Press: 1 of 1 set under the 10–15 range."), JSON.stringify(r.watch));
+  assert.ok(readoutLists({ planned: 2, done: 1, lifts: [L("a", { planned: 2, done: 1 })] }, { nameOf: nm }).watch.includes("Bench Press: 1 of 2 sets."));
+});
+check("#readout-copy (round 2) 'top of the range on every set' only when every set was graded; otherwise it names the working weight", () => {
+  assert.deepEqual(readoutLists({ planned: 3, done: 3, lifts: [L("a", { top: true })] }, { nameOf: nm }).went_well, ["Bench Press: top of the range on every set."]);
+  const ramp = readoutLists({ planned: 3, done: 3, lifts: [L("a", { top: true, graded_all: false, under: 1 })] }, { nameOf: nm });
+  assert.deepEqual(ramp.went_well, ["Bench Press: top of the range at your working weight."], "never 'on every set' beside '1 of 3 sets under the range'");
+});
+check("#readout-copy 'Effort right where the plan wanted it' only when every rated lift averaged inside its band", () => {
+  const eff = (lifts) => readoutLists({ planned: 6, done: 6, lifts }, { nameOf: nm }).went_well.includes("Effort right where the plan wanted it.");
+  assert.equal(eff([L("a", { rir: 1.5, in_band: true }), L("b", { rir: 2, in_band: true })]), true);
+  assert.equal(eff([L("a", { rir: 3, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "a full rep more than asked — the engine adds weight for it");
+  assert.equal(eff([L("a", { rir: 0.7, band: "1-2", in_band: false }), L("b", { rir: 2, in_band: true })]), false, "closer to failure than asked, though not 'to failure'");
+  assert.equal(eff([L("a", { rir: 1.5, in_band: true }), L("b", { past_band: true, in_band: null })]), false);
+  assert.equal(eff([L("a", { rir: 5, in_band: null }), L("b", { rir: 2, in_band: true })]), false, "review K1: effort logged on too few sets to grade is never called 'right' (the engine still acts on it)");
+});
 check("#readout-copy every set done, every lift in range — and the ones at the top are named as wins", () => {
   const r = readoutLists({ planned: 9, done: 9, lifts: [L("a", { top: true }), L("b"), L("c")] }, { nameOf: nm });
   assert.equal(r.headline, "Every set done, every lift in its range — 1 at the top, ready to go up.");
@@ -526,6 +568,64 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
   assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
+  // Burst 6: every typo-guard door reads today's banked sets through ONE binder; the cue names what the guard
+  // judged against; the editor leaves out the entry being edited; one rep ceiling.
+  assert.match(appJs, /const setLooksLikeTypo = \(idx\) => isImplausibleSet\(bankKg\(idx\), sess\.reps\[idx\], typoOpts\(idx\)\);/);
+  assert.match(fnBody(appJs, "const setConfirmCue = (idx) => {", 1500), /typoReference\(typoOpts\(idx\)\)/);
+  assert.match(fnBody(appJs, "const apply = () => {", 1500), /typoOpts\(sess\.ex\.findIndex\(\(x\) => x\.exercise === ed\.exercise\), ed\.idx\)/);
+  assert.doesNotMatch(appJs, /reps > 50/, "the cue's rep ceiling is IMPLAUSIBLE_REPS");
+  // Burst 6 — "Too tired for this one?": the first-screen line only through the pure offer; both doors (the line and the
+  // sheet's first reason) one handler; a swap's trimmed dose and its Undo; the ease on the lift's KG step; nothing that
+  // promises effort the slot's band doesn't ask for.
+  assert.match(appJs, /\$\{tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
+  assert.match(appJs, /if \(\$\("#tired"\)\) \$\("#tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /slot_of: cur\.slot_of \?\? null/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /easeSlot\(sess, sess\.i, \{ expect: cur\.exercise, stepKg: cur\.inc_kg > 0 \? cur\.inc_kg : 2\.5,/);
+
+  assert.doesNotMatch(appJs, /push it close/);
+  assert.doesNotMatch(appJs, /your sets and reps stay the same/, "a tired swap changes the sets");
+  // Review round 1: a slot already made easier never offers it again (K5); the card names the PLAN's lift (K13); the sheet
+  // promises fewer sets only when it cuts them (K12); the ease is judged on what the stepper shows, never under the bar (K4, K7).
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\{cur\.tired \? "" : `<button class="choice reason" id="cd-tired">/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /if \(!cur \|\| sess\.set !== 0 \|\| cur\.tired\) return;/);
+
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /Something easier, just for today\$\{tiredDose\(cur\) < cur\.sets \? " — fewer sets" : ""\}/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /floorKg: cur\.equipment === "barbell" \? \(unitFor\(cur\.exercise\) === "lb" \? toKgIn\(EMPTY_BAR_LB, "lb"\) : EMPTY_BAR_KG\) : 0, shown: startWeightDisp \}\)/);
+  // Round 2: Undo restores the saved count AND its plan (a skip stays taken); "1 set", never "1 sets"; the card says what's
+  // back next time only when the server could name it; Nerd Mode's average covers the sets it prints.
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets \}\)/);
+  assert.doesNotMatch(fnBody(appJs, "async function tiredSwap() {", 3000) + fnBody(appJs, "function easeInPlace(", 2500), /\$\{n\} sets/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\$\{r\.planned_name \? ` \$\{r\.planned_name\} is back next time\.` : ""\}/);
+  // Round 3: Nerd Mode compares the GRADED average with the band, saying which weight it's for when back-offs weren't graded;
+  // "Target: 1 set"; a tired first-time lift isn't told it's finding its weight; after an easier day "last time" is named for
+  // what it is; the bodyweight ease says "bodyweight"; the tired Undo brings a skip's own Undo back.
+  assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
+  assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
+  assert.match(appJs, /\$\{firstEver \? \(e\.tired \? \(e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /<b>New lift, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
+  // Round 4: a tired SWAP's substitute is planned-easy too (its first exposure, tired, never sets its starting weight).
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /applyReplacement\(cur\.exercise, tiredSwapRow\(r\.row\),/);
+  // Round 5: a lift tried only on an easier day isn't "New lift"; the typo cue names the last REGULAR session after one.
+  assert.match(appJs, /e\.tried_easy \? `<div class="card info"><b>Finding your weight 🎯<\/b>/);
+  // Round 6: tired AND tried-easy is never "New lift"; on a planned-easy session (a comeback, a deload week) no card promises
+  // that today's sets set the starting weight — they bank planned-easy.
+  assert.match(appJs, /e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
+  assert.match(appJs, /const easyToday = !!sess\.deload;/);
+  // Round 8: every door that replaces a slot from the Can't-do sheet (busy, pick, no machine — and the tired swap) goes
+  // through applyReplacement, which keeps a tired slot's substitute the tired day (session-core swapInRow); only Undo
+  // restores a saved row as it was.
+  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\) \}\);/);
+  assert.equal((appJs.match(/replaceSlot\(/g) ?? []).length, 2, "applyReplacement and undoSwap are the only slot writers in the player");
+  assert.match(appJs, /\$\{easyToday \? "today's an easier day too, so your next regular session will\." : "today's sets will\."\}/);
+  assert.match(appJs, /easyToday \? `<div class="card info"><b>New lift — keep it light today 🎯<\/b>/);
+  assert.match(fnBody(appJs, "const setConfirmCue = (idx) => {", 1500), /ex\?\.last_easy \? ` from the \$\{refW\} in your last regular session`/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /"bodyweight"/);
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
+  assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);
+  assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /lastSkip: sess\.lastSkip \?\? null/);
   assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {

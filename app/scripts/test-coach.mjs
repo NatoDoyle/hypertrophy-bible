@@ -7,7 +7,7 @@ import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
 import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
-import { servedLift } from "../src/coach.mjs";
+import { servedLift, lastRegular } from "../src/coach.mjs";
 import * as deriveCore from "../../tools/derive-core.mjs";
 
 let passed = 0;
@@ -2154,6 +2154,115 @@ check("#notes the ask is dropped only when the aims actually fall under it (or f
   assert.equal(over.suggestion_note, "You did 1 of 2 sets last time — get all 2 to the top of the range, then I'll add weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
   const short = aim("barbell-bench-press", "8-12", "1-3", 4, [withTargets(tgt(4), brSet(100, 12), brSet(100, 12), brSet(100, 12))], { block: { week: 1, setScale: 0.7 } });
   assert.match(short.suggestion_note, /^You did 3 of 4 sets last time — same weight\./, "3 served of the 4 it names: the ask can't be met");
+});
+
+// --- #effort-top (Burst 6 — owner: "the end of session recap is contradictory. It says I need to pay attention to the
+// rir because I hit failure on one of the lifts but then told me to increase the weight next workout"). The bump waited
+// only for the reps, whatever the effort: 150 × 10,10,10 at failure on a 1–2 band said "add 2.5 kg" beside the read-out's
+// "taken to failure". The KB's trigger is the top AT THE PLAN'S EFFORT (double-progression.json: "at target RIR"), judged
+// against the band the session was served — its stored target, the band the read-out grades it against — else today's.
+// One band judges the anchor's effort everywhere (the RIR surplus, the failure hold, the top).
+const lp = (w, reps, rir) => ({ exercise: "leg-press", set_type: "work", weight_kg: w, reps, ...(rir === undefined || rir === null ? {} : { rir }) });
+const lpT = (rir, sets = 3) => [{ exercise: "leg-press", sets, rep_range: "6-10", rir, suggested_kg: 150 }];
+const lpAt = (target, prescribed, sets, { holdLoad = false, planned = 3 } = {}) =>
+  suggestWeight([withTargets(target == null ? null : lpT(target, planned), ...sets)], "leg-press", "6-10", undefined, null, prescribed, holdLoad);
+// The ask names TODAY's band's near edge — the band the next session is judged against (review K3) — unless told otherwise.
+const holdA = (near, far, todayNear = near) => `You hit the top of the range last time, but closer to failure than the plan's ${near}–${far} reps in reserve — same weight until you get there with ${todayNear} in reserve.`;
+const kgNote = (r) => [r.suggested_kg, r.note];
+check("#effort-top the top of the range at failure holds — the owner's leg press", () => {
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0)])), [150, holdA(1, 2)]);
+});
+check("#effort-top past the top even counting the reps the plan wants in reserve: the bump, said so it can't contradict 'taken to failure'", () => {
+  for (const reps of [12, 11]) assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, reps, 0), lp(150, reps, 0), lp(150, reps, 0)])),
+    [152.5, "Last time you went past the top of the range — far enough to clear it with 1 in reserve — add 2.5 kg."], `${reps} @ 0`);
+});
+check("#effort-top judged against the band the session was SERVED (its stored target), else today's", () => {
+  const x3 = (reps, rir) => [lp(150, reps, rir), lp(150, reps, rir), lp(150, reps, rir)];
+  assert.deepEqual(kgNote(lpAt("0-1", "1-2", x3(10, 0))), [152.5, "Last time you hit the top of the range — add 2.5 kg."], "a 0-1 week: failure WAS the plan");
+  assert.deepEqual(kgNote(lpAt("2-3", "1-2", x3(10, 1))), [150, holdA(2, 3, 1)], "a 2-3 week met at 1 in reserve; today's 1-2 is what earns the bump");
+  assert.deepEqual(kgNote(lpAt(null, "1-2", x3(10, 0))), [150, holdA(1, 2)], "no stored target: today's band");
+  assert.deepEqual(kgNote(lpAt("2-3", "2-3", x3(11, 0))), [150, holdA(2, 3)], "11 at failure is 9 at the band's near edge");
+});
+check("#effort-top unlogged effort is unchanged (beginners never log it); with partial logging each set is judged", () => {
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10), lp(150, 10), lp(150, 10)])), [152.5, "Last time you hit the top of the range — add 2.5 kg."]);
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10), lp(150, 10)])), [150, holdA(1, 2)]);
+});
+check("#effort-top precedence: before the RIR surplus, before W280's shortfall, inside a taper; the surplus itself unchanged", () => {
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 5), lp(150, 10, 5)])), [150, holdA(1, 2)], "one set at failure is never averaged into a surplus bump");
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 0), lp(150, 10, 0)])), [150, holdA(1, 2)], "2 of 3 — never promised 'get all 3 to the top' for sets that wouldn't earn it");
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 12, 0), lp(150, 12, 0)])), [150, "You did 2 of 3 sets last time — get all 3 to the top of the range, then I'll add weight."]);
+  assert.deepEqual(kgNote(lpAt("1-2", "2-3", [lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0)], { holdLoad: true })),
+    [150, "You hit the top of the range last time, but closer to failure than the plan's 1–2 reps in reserve — same weight."], "a taper: never 'you'd normally add load here', and no ask the taper won't honour");
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)])), [155, "You left ~4 reps in reserve last time — add 5 kg."]);
+});
+check("#effort-top (review K3) the hold's ask names TODAY's band — what the next judgement uses — never a band the card no longer shows", () => {
+  const x3 = [lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1)];
+  assert.equal(lpAt("2-3", "1-3", x3).note, holdA(2, 3, 1), "week 1's 2-3 met at 1; week 2's card says 1-3");
+  assert.equal(lpAt("3-4", "1-2", x3).note, holdA(3, 4, 1), "after a taper's 3-4, back to 1-2: never 'with 3 in reserve'");
+});
+check("#effort-top (round 3/4) after an easier day (a tired ease, a deload), 'last time' is named for what it is: the last REGULAR session", () => {
+  const full = withTargets(lpT("1-2"), lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1));
+  const easy = { date: "2026-06-04T18:00:00Z", sets: [lp(135, 8), lp(135, 7)].map((x) => ({ ...x, deload: true })), targets: [{ exercise: "leg-press", sets: 2, rep_range: "6-10", rir: "1-2", deload: true }] };
+  const r = aim("leg-press", "6-10", "1-2", 3, [full, easy]);
+  assert.deepStrictEqual([r.suggested_kg, r.last_easy], [152.5, true]);
+  assert.equal(r.suggestion_note, "In your last regular session you hit the top of the range — add 2.5 kg.", "round 4: 'full' read as 'complete' beside 'You did 2 of 3 sets'");
+  const plain = aim("leg-press", "6-10", "1-2", 3, [full]);
+  assert.deepStrictEqual([plain.suggestion_note, plain.last_easy], ["Last time you hit the top of the range — add 2.5 kg.", false]);
+});
+check("#effort-top (round 4) every 'last time' AND 'your last session' is renamed — the order note named one anchor two ways", () => {
+  assert.equal(lastRegular("This time it comes after 4 sets that also work your thighs (quads) (last time it came first), so I've made it 32.5 kg — the lighter weight your last session called for, adjusted for the order."),
+    "This time it comes after 4 sets that also work your thighs (quads) (in your last regular session it came first), so I've made it 32.5 kg — the lighter weight your last regular session called for, adjusted for the order.");
+  assert.equal(lastRegular("You did 2 of 3 sets last time — same weight. This week asks for 2–3 reps in reserve, 1 more than last time."),
+    "You did 2 of 3 sets in your last regular session — same weight. This week asks for 2–3 reps in reserve, 1 more than in your last regular session.");
+});
+check("#effort-top (round 4) a lift tried only on an easier day is never 'No history yet' — the estimate says what it knows", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog };
+  const easyOnly = [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), program_ref: "p", sets: [brSet(30, 10, { deload: true }), brSet(30, 9, { deload: true })], targets: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3", deload: true }] }];
+  const row = buildToday(u, easyOnly, null, [], new Date().toISOString(), 80).exercises[0];
+  assert.equal(row.suggested_kg, 35);
+  assert.match(row.suggestion_note, /^Only an easier day on this so far — a starting estimate scaled to your bodyweight\./);
+  assert.match(buildToday(u, [], null, [], new Date().toISOString(), 80).exercises[0].suggestion_note, /^No history yet/, "truly new: as before");
+});
+check("#effort-top (round 5) a lift tried only on an easier day is flagged for the set screen even with no estimate (a beginner, no bodyweight)", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const easyOnly = [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), program_ref: "p", sets: [brSet(30, 10, { deload: true })], targets: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3", deload: true }] }];
+  const beg = { profile: { training_status: "beginner", days_per_week: 3 }, program: prog };
+  const row = buildToday(beg, easyOnly, null, [], new Date().toISOString(), null).exercises[0];
+  assert.deepStrictEqual([row.suggested_kg, row.tried_easy], [null, true]);
+  assert.equal(buildToday(beg, [], null, [], new Date().toISOString(), null).exercises[0].tried_easy, undefined, "truly new: no flag");
+});
+check("#effort-top (round 6) on a planned-easy day (a comeback), a never-done lift's estimate never asks to be calibrated — its sets won't be kept", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "leg-press", sets: 3, rep_range: "8-12", rir: "1-3" }, { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 3 }, program: prog };
+  const old = [{ date: new Date(Date.now() - 20 * 86400000).toISOString(), program_ref: "p", sets: [{ exercise: "leg-press", set_type: "work", weight_kg: 100, reps: 10 }] }];
+  const t = buildToday(u, old, null, [], new Date().toISOString(), 80);
+  assert.equal(t.comeback, true, "precondition: a comeback session (every set banks planned-easy)");
+  const row = t.exercises.find((e) => e.exercise === "barbell-bench-press");
+  assert.equal(row.suggestion_note, "No history yet — a starting estimate scaled to your bodyweight. Today's an easier day, so keep it light — your starting weight gets set on your next regular session.");
+  const fresh = buildToday(u, [], null, [], new Date().toISOString(), 80).exercises.find((e) => e.exercise === "barbell-bench-press");
+  assert.match(fresh.suggestion_note, /Adjust it up or down until the last rep is right around the target effort\.$/, "a regular day: as before");
+});
+// The other ways the read-out told two stories (a brute force over ~1.6M sessions found them): the RIR-surplus bump on sets
+// that came in UNDER the range (the next-set hint never says "heavier" for one — lesson 98), and the failure hold's own
+// threshold and band (the read-out says "taken to failure" from an average under 0.5, and only where the band's near
+// edge is at least 1 — failure inside a 0-1 week is the plan).
+check("#effort-top no RIR-surplus bump when a set came in under the range — the next-set hint never says 'heavier' for one either", () => {
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 5, 3), lp(150, 5, 3), lp(150, 5, 3)])), [150, "Keep the weight and try to add a rep or two."]);
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 3), lp(150, 10, 3), lp(150, 5, 3)])), [150, "Keep the weight and try to add a rep or two."]);
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 8, 3), lp(150, 8, 3), lp(150, 8, 3)])), [152.5, "You left ~3 reps in reserve last time — add 2.5 kg."], "in the range: unchanged");
+});
+check("#effort-top the failure hold reads 'failure' as the read-out does (an average under 0.5), and never inside a 0-1 week", () => {
+  assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 6, 0), lp(150, 6, 0), lp(150, 6, 1)])), [150, "You hit failure last time — keep the weight and build reps first."]);
+  assert.deepEqual(kgNote(lpAt("0-1", "0-1", [lp(150, 8, 0), lp(150, 8, 0), lp(150, 8, 0)])), [150, "Keep the weight and try to add a rep or two."]);
+});
+check("#effort-top the composed note drops the ask when the band lowers the aim (heldLead), keeps it when nothing does", () => {
+  const sess = [withTargets(lpT("1-2"), lp(150, 10, 0), lp(150, 10, 0), lp(150, 10, 0))];
+  const wk1 = aim("leg-press", "6-10", "1-2", 3, sess, { block: { phase: "build", week: 1, setScale: 1 } });
+  assert.deepEqual([wk1.rirBand, wk1.suggested_kg, wk1.rep_targets], ["2-3", 150, [9, 9, 9]]);
+  assert.equal(wk1.suggestion_note, "You hit the top of the range last time, but closer to failure than the plan's 1–2 reps in reserve — same weight. This week asks for 2–3 reps in reserve, 1 more than last time. The rep aim allows for that.");
+  const same = aim("leg-press", "6-10", "1-2", 3, sess);
+  assert.deepEqual([same.rep_targets, same.suggestion_note], [[10, 10, 10], holdA(1, 2)]);
 });
 
 console.log(`\n${passed} coach test(s) passed.`);

@@ -2,7 +2,7 @@
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
-  accessibleExercises, candidatePool, bestSubstitutes, applySubstitution, orderSessionItems, contraRegion } from "./plan-core.mjs";
+  accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion } from "./plan-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
@@ -1534,6 +1534,33 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok("W283 …and only the named lift: crunches (same pattern) stay available at moderate", pool("moderate").includes("cable-crunch"));
   const exKb = { ...kb, contraindications: { regions: { knee: { exclude_patterns: [], caution_patterns: [], exclude_exercises: ["jefferson-curl"] } } } };
   ok("W283 exclude_exercises applies at ANY severity", !accessibleExercises({ available_equipment: gym, injuries: [{ region: "knee", severity: "mild" }] }, exKb).some((e) => e.id === "jefferson-curl"));
+}
+
+// #easier (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split squats. There is
+// currently no solution… besides 'skip this one'"). Of the lifts that FIT today's slot, the ones easier on a tired body:
+// no worse on systemic cost, stability or skill, and strictly better on cost or stability — easiest first; within a
+// class, one the user has history on first (its weight comes pre-filled), then the slot's own ranking.
+{
+  const lower = { sessions: [{ name: "Lower", exercises: ["leg-press", "romanian-deadlift", "bulgarian-split-squat", "lying-leg-curl", "standing-calf-raise"].map((exercise) => ({ exercise, sets: 3, rep_range: "8-12", rir: "1-3" })) }] };
+  const FULL = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const live = lower.sessions[0].exercises.map((e) => e.exercise);
+  const easier = (equip, X = "bulgarian-split-squat", known = []) => {
+    const profile = { user_id: "tired-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: equip };
+    const fitting = bestSubstitutes(X, { profile, kb, program: lower, sessionName: "Lower", scope: "today", live }).filter((s) => s.fits);
+    return easierSubstitutes(fitting, X, { kb, known }).map((s) => s.id);
+  };
+  const full = easier(FULL);
+  ok("#easier a full gym, split squats after leg press and RDLs: leg extension first (low cost, stable), then the steadier squats",
+    JSON.stringify(full) === JSON.stringify(["leg-extension", "hack-squat", "goblet-squat"]));
+  ok("#easier dumbbells only: the goblet squat (two feet down) — never the walking lunge or step-up (no steadier), never the sissy squat (skill)",
+    JSON.stringify(easier(["dumbbell", "bodyweight"])) === JSON.stringify(["goblet-squat"]));
+  ok("#easier bodyweight only: the squat, then the plain lunge (a unilateral lift of unknown stability counts as unsteady, but it costs less)",
+    JSON.stringify(easier(["bodyweight"])) === JSON.stringify(["bodyweight-squat", "bodyweight-lunge"]));
+  ok("#easier the easiest lift already: nothing easier", easier(FULL, "leg-extension").length === 0);
+  ok("#easier within a class, a lift the user has history on comes first; otherwise the slot's own ranking",
+    JSON.stringify(easierSubstitutes([{ id: "hack-squat" }, { id: "leg-press" }], "bulgarian-split-squat", { kb, known: ["leg-press"] }).map((s) => s.id)) === JSON.stringify(["leg-press", "hack-squat"])
+    && JSON.stringify(easierSubstitutes([{ id: "hack-squat" }, { id: "leg-press" }], "bulgarian-split-squat", { kb }).map((s) => s.id)) === JSON.stringify(["hack-squat", "leg-press"]));
+  ok("#easier deterministic, and an unknown lift has nothing to compare against", JSON.stringify(easier(FULL)) === JSON.stringify(full) && easierSubstitutes([{ id: "leg-extension" }], "no-such-lift", { kb }).length === 0);
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

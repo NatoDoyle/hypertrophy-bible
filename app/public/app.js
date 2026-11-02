@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2066,7 +2066,8 @@ const lastTimeLine = (e) => {
     : mixed ? e.last_sets.reduce((acc, [kg, r]) => { const last = acc[acc.length - 1]; if (last && last.kg === kg) last.reps.push(r); else acc.push({ kg, reps: [r] }); return acc; }, [])
         .map((g) => `${dispWeightFor(g.kg, e.exercise)} ${u} × ${g.reps.join(", ")}`).join(" · ")
     : `${dispWeightFor(e.last_kg, e.exercise)} ${u} × ${e.last_reps.join(", ")}`;
-  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">Last time: ${body}</p>`;
+  // After an easier session (a tired ease, a deload) these sets are the last FULL session's (round 3).
+  return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">${e.last_easy ? "Last regular session" : "Last time"}: ${body}</p>`;
 };
 // WHY this weight (Burst 1 review): the engine's reason for the pre-filled suggestion —
 // "add 2.5 kg", "lightened to 52.5 kg", "you did 2 of 3 sets" — had never reached the screen,
@@ -2135,7 +2136,14 @@ const setExKey = (idx) => sess.ex[idx]?.exercise;
 // travels with the number it describes).
 const sessUnitOf = (idx) => sess.wUnits?.[idx] ?? unitFor(sess.ex[idx]?.exercise);
 const bankKg = (idx) => toKgIn(sess.weights[idx], sessUnitOf(idx));
-const setLooksLikeTypo = (idx) => isImplausibleSet(bankKg(idx), sess.reps[idx], { lastKg: sess.ex[idx]?.last_kg ?? null, priorBests: sess.ex[idx]?.pr_watch ?? null });
+// What the guard judges slot `idx` against — the lift's history, raised by today's banked work sets of it
+// (Burst 6: a weight already logged today isn't questioned again). ONE binder for the Done button, the
+// station, the cue and the set editor (`exceptIdx`: the logged entry being edited, left out).
+const typoOpts = (idx, exceptIdx = -1) => {
+  const ex = sess.ex[idx], t = todayTopSet(sess.logged, ex?.exercise, exceptIdx);
+  return { lastKg: ex?.last_kg ?? null, priorBests: ex?.pr_watch ?? null, todayKg: t.kg, todayReps: t.reps };
+};
+const setLooksLikeTypo = (idx) => isImplausibleSet(bankKg(idx), sess.reps[idx], typoOpts(idx));
 // Which of these station members still owe a confirming tap. Both players go through
 // session-core's `unconfirmedFlagged` so "flagged and unconfirmed" has ONE definition.
 const stationNeedsConfirm = (indices) => unconfirmedFlagged(indices, setExKey, setLooksLikeTypo, confirmSet);
@@ -2146,14 +2154,20 @@ const needsSetConfirm = (idx) => stationNeedsConfirm([idx]).length > 0;
 // glance — and never accuses: a real jump is a tap away, not a blocked action.
 const setConfirmCue = (idx) => {
   const ex = sess.ex[idx];
-  const ref = [ex?.last_kg, ex?.pr_watch?.load_kg].find((v) => typeof v === "number" && v > 0);
+  // The reference the guard judged against, named for what it is (Burst 6): today's heaviest set, last
+  // time's load, or the best — never "you last did" for a best.
+  const ref = typoReference(typoOpts(idx));
   const reps = sess.reps[idx];
-  if (typeof reps === "number" && reps > 50) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
+  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS) return `⚠️ <b>${reps} reps</b> — that's well past any target here. Tap again if it's right.`;
   // Quote the entry VERBATIM in its own unit — this dialog's whole job is "is this
   // exact number right?", and a plate-rounding round-trip could name 135 while the
   // confirming tap banks a typed 137.
   const u = sessUnitOf(idx);
-  return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${ref != null ? ` from the ${dispWeightFor(ref, ex?.exercise)} ${unitLabelFor(ex?.exercise)} you last did` : ""}. Tap again if it's right — otherwise fix it above.`;
+  const refW = ref ? `${dispWeightFor(ref.kg, ex?.exercise)} ${unitLabelFor(ex?.exercise)}` : "";
+  // After an easier day the reference is the last REGULAR session's weight (round 5), as the set screen's own line says.
+  const from = !ref ? "" : ref.from === "today" ? ` from the ${refW} you did earlier today` : ref.from === "best" ? ` from your best of ${refW} on this lift`
+    : ex?.last_easy ? ` from the ${refW} in your last regular session` : ` from the ${refW} you last did`;
+  return `⚠️ <b>${sess.weights[idx]} ${u}</b> is a big jump${from}. Tap again if it's right — otherwise fix it above.`;
 };
 
 // Clearing a pending typo-confirm from a TYPED edit must NOT repaint — the focused
@@ -2409,8 +2423,10 @@ function openSetEditor(idx, host, rerender) {
     // never holds a half-typed intermediate of a suspect number.
     const row = sess.ex.find((x) => x.exercise === ed.exercise);
     const key = editConfirmKey(entry0, ed.idx);
+    // …against the same reference the Done button uses: history raised by today's other banked sets (Burst 6).
+    const { lastKg, priorBests, todayKg, todayReps } = typoOpts(sess.ex.findIndex((x) => x.exercise === ed.exercise), ed.idx);
     const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, shownW, shownR, unit: ed.unit,
-      lastKg: row?.last_kg ?? null, priorBests: row?.pr_watch ?? null, confirmed: editConfirmed.has(key) });
+      lastKg, priorBests, todayKg, todayReps, confirmed: editConfirmed.has(key) });
     const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
     if (next !== sess.logged) {
       sess.logged = next;
@@ -2527,6 +2543,9 @@ function renderPlayer() {
   }
 
   const firstEver = e.suggested_kg == null && sess.set === 0;
+  // A planned-easy session (a comeback, a deload week) banks every set planned-easy: no card may promise that today's sets set
+  // a starting weight (Burst 6 review round 6).
+  const easyToday = !!sess.deload;
   // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
   const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
@@ -2549,8 +2568,9 @@ function renderPlayer() {
       ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
-    <p class="muted">Target: ${e.sets} sets${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
+    <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
+    ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2559,9 +2579,16 @@ function renderPlayer() {
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
-    ${firstEver ? `<div class="card info"><b>New lift — let's find your weight 🎯</b>
+    ${firstEver ? (e.tired ? (e.tried_easy ? `<div class="card info"><b>Still finding your weight, on a tired day 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight either — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift, on a tired day 🎯</b>
+      <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight — that's for a fresher day.</p></div>`)
+      : e.tried_easy ? `<div class="card info"><b>Finding your weight 🎯</b>
+      <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — ${easyToday ? "today's an easier day too, so your next regular session will." : "today's sets will."}</p></div>`
+      : easyToday ? `<div class="card info"><b>New lift — keep it light today 🎯</b>
+      <p class="muted">Today's an easier day, so its sets won't set your starting weight. Start light and stop each set while your form is solid — your next regular session finds it.</p></div>`
+      : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
-      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>` : ""}
+      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
     ${skipUndoStrip()}
     <div class="card">
       ${hintHtml}
@@ -2586,6 +2613,7 @@ function renderPlayer() {
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
+  if ($("#tired")) $("#tired").onclick = () => tiredSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
@@ -2916,13 +2944,16 @@ function swapUndoCard(e) {
     <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
 }
 // Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
-function applyReplacement(expect, row, undo) {
-  const r = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === expect), row, { expect });
+// `sets`: a tired swap's trimmed dose (Burst 6), written as the slot's plan for today; `said`: its own announcement.
+function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) {
+  const i = sess.ex.findIndex((x) => x.exercise === expect);
+  // Every door off the Can't-do sheet comes through here, so a tired slot's substitute stays the tired day (round 8).
+  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], row), { expect, ...(sets ? { sets } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
   saveSess();
-  say(undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`);
+  say(said ?? (undo.permanent ? `Swapped for ${undo.toName} from now on.` : `Swapped for ${undo.toName} for today.`));
   renderPlayer(0);
   return null;
 }
@@ -2937,11 +2968,69 @@ async function undoSwap() {
   }
   // The saved row is the old lift's OWN server-built row, so reverting with it can't
   // leak anything; the same guards apply (a banked set of the substitute stays).
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to });
-  sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from) };
+  // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
+  // (and its plan: a skip taken before the tired tap stays taken — round 2).
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets });
+  sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from), ...(back.ok && u.lastSkip ? { lastSkip: u.lastSkip } : {}) };
   saveSess();
   renderPlayer(0);
-  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName }));
+  alertBar(swapUndoCopy({ revertedLive: back.ok, permanent: u.permanent, from: u.fromName, to: u.toName, same: u.to === u.from }));
+}
+// "TOO TIRED FOR THIS ONE?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+// squats. There is currently no solution for this situation in the app besides 'skip this one', is this correct?" — it
+// was). One tap, from the first screen of a lift (after some work today) or the Can't-do sheet's first reason: the
+// easiest lift that fits the slot (the server picks it), for today only, at about half the sets; when nothing easier
+// fits — or offline, or no row came back — the same lift, lighter and shorter (easeSlot). The slot keeps its range and
+// effort band (fewer sets, not softer ones), a tired day never sets the lift back, and Undo puts the slot back exactly.
+const setsN = (n) => `${n} set${n === 1 ? "" : "s"}`; // "1 set", never "1 sets" (a skip can leave one — round 2)
+async function tiredSwap() {
+  const gen = ++cantDoGen;
+  const cur = sess?.ex?.[sess.i];
+  if (!cur || sess.set !== 0 || cur.tired) return;
+  const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
+  app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
+  const st = document.createElement("p"); st.className = "muted"; st.setAttribute("role", "status"); st.textContent = "Finding something easier…"; app.appendChild(st);
+  let r = null;
+  try {
+    r = await api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
+      exclude: sess.ruledOut ?? [], prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null,
+      scope: "today", live: sess.ex.map((x) => x.exercise), reason: "tired" }) });
+  } catch { r = null; }
+  if (!stillHere()) return;
+  const n = tiredDose(cur);
+  if (r?.ok && r.row?.exercise) {
+    const toName = r.replaced_by_name ?? r.row.name ?? r.row.exercise;
+    // The lift the PLAN has in this slot is what comes back next time — never a today-only substitute (review K13); the
+    // server names it (the player's own exercise library isn't loaded mid-workout).
+    // …and only when the stored plan still holds it (round 2: after "No machine" it named the lift just removed).
+    const text = `Easier for today: ${toName}${n < cur.sets ? ` — ${setsN(n)} instead of ${cur.sets}` : ""}.${r.planned_name ? ` ${r.planned_name} is back next time.` : ""}`;
+    // Planned easy, like every tired day (round 4), its load held off any bump served today and its reason saying the day won't
+    // count (round 5) — session-core's tiredSwapRow, one rule with the ease's.
+    const why = applyReplacement(cur.exercise, tiredSwapRow(r.row),
+      { to: r.row.exercise, toName, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: sess.lastSkip ?? null },
+      { sets: n, said: `Swapped for ${toName} for today — ${setsN(n)}.` });
+    if (!why) return;
+  }
+  easeInPlace(cur, r == null ? "offline" : r?.error === "no-easier" ? "none" : "other");
+}
+// The same lift, lighter and shorter — no network needed. `cause` only words the card.
+function easeInPlace(cur, cause) {
+  // Judged on what the stepper SHOWS (a pounds user's plates), never under the empty bar (review K4, K7).
+  const skip = sess.lastSkip ?? null; // a skip's own Undo, brought back by this one's (round 3)
+  const r = easeSlot(sess, sess.i, { expect: cur.exercise, stepKg: cur.inc_kg > 0 ? cur.inc_kg : 2.5, floorKg: cur.equipment === "barbell" ? (unitFor(cur.exercise) === "lb" ? toKgIn(EMPTY_BAR_LB, "lb") : EMPTY_BAR_KG) : 0, shown: startWeightDisp });
+  if (!r.ok) { renderPlayer(0); return; }
+  const now = r.sess.ex[sess.i], n = now.sets;
+  const w = now.suggested_kg === cur.suggested_kg ? null
+    : cur.equipment === "bodyweight" && !(now.suggested_kg > 0) ? "bodyweight" : `${startWeightDisp(now)} ${unitLabelFor(cur.exercise)}`;
+  const what = w ? `lighter: ${setsN(n)} at ${w}` : n < cur.sets ? `shorter: ${setsN(n)} instead of ${cur.sets}` : null;
+  const lead = cause === "offline" ? "📴 You're offline, so " : cause === "none" ? "Nothing easier fits today's workout, so " : "";
+  const tail = now.eased ? " It won't count against your progress." : "";
+  const text = what ? `${lead}I've made this ${what}.${tail}`
+    : `${cause === "offline" ? "📴 You're offline — " : cause === "none" ? "Nothing easier fits today's workout — " : ""}keep this one easy: stop each set while your form is solid.${tail}`;
+  sess = { ...r.sess, swapUndo: { to: cur.exercise, toName: cur.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, reason: "tired", text, lastSkip: skip, session_id: r.sess.session_id } };
+  saveSess();
+  say(w ? `Made ${cur.name} lighter for today — ${setsN(n)}.` : `${cur.name}: ${setsN(n)} today.`);
+  renderPlayer(0);
 }
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
 // so a slow or doubled response can tell it has been overtaken.
@@ -2954,9 +3043,11 @@ async function renderCantDo() {
   // Lifts swapped away TODAY are never offered back by a second "Can't do".
   const exclude = () => sess.ruledOut ?? [];
   // The live slot's prescription rides along: the server builds the substitute's row FOR
-  // this slot, even when the stored plan doesn't hold the lift (a today-only swap).
+  // this slot, even when the stored plan doesn't hold the lift (a today-only swap) — its
+  // planned count (a skip only shrank the old lift's), and the lift the plan put in the slot
+  // when this one is itself a swap (slot_of, N7), so a second swap lands in the plan's slot.
   const post = (body) => api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
-    exclude: exclude(), prescription: { sets: cur.sets, rep_range: cur.rep_range, rir: cur.rir }, ...body }) });
+    exclude: exclude(), prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null, ...body }) });
   // Still on THIS sheet for THIS lift? A response that lands after the user moved on
   // must never repaint over whatever they're looking at now.
   const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
@@ -3002,13 +3093,15 @@ async function renderCantDo() {
   };
 
   app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
-    <p class="muted">Tell me why and I'll sort it — your sets and reps stay the same.</p>
+    <p class="muted">Tell me why and I'll sort it.</p>
+    ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
     <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
     ${tail}`;
   wireTail();
+  if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)
   $("#cd-machine").onclick = async () => {
     lock("Finding the best replacement…");
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }
@@ -3181,7 +3274,11 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const u = unitLabelFor(l.exercise);
     const kgs = [...new Set(l.kg)].map((k) => dispWeightFor(k, l.exercise)).join("/");
     const nx = nextByEx[l.exercise];
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && l.rir != null ? ` · avg ${l.rir} RIR${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    // The band is compared with the average the GRADE used (round 3): over the working-weight sets, named when back-offs or
+    // ramps weren't graded; a planned-easy lift isn't graded, so its average covers every set.
+    const avg = l.easyDay ? (l.rir_all ?? l.rir) : l.rir;
+    const at = !l.easyDay && l.graded_all === false && l.anchor_kg > 0 ? ` at ${dispWeightFor(l.anchor_kg, l.exercise)} ${u}` : "";
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && avg != null ? ` · avg ${avg} RIR${at}${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}

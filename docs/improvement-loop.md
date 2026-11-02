@@ -1314,6 +1314,71 @@ These are real failures from previous iterations. Each is now a standing check.
    instead of the banked set. A lookup that started working met an appended swap with no known
    position. → **Standing rule:** after a fix pass, verify the fixes' own new interactions (each fix
    against its neighbours), not only the findings they closed.
+100. **A guard's reference must include what was already accepted, derived from the log.** The typo
+   guard judged every set of the owner's leg press against last session's 40 kg, and its "yes, that's
+   right" was an in-memory flag cleared the moment the set banked, so a confirmed 150 kg was questioned
+   again on set 2. Every banked work set already passed the guard or was confirmed, so today's sets
+   raise the reference, derived from the banked log (it survives a reload; a correction in the editor
+   corrects it). A remembered "confirmed" flag would survive the correction too. → **Standing lens:**
+   for every two-tap guard, ask what the SECOND set sees, and derive its memory from the log.
+101. **An endpoint that rebuilds a client's row must be pinned to the client's coordinates.** The swap
+   route built the substitute's row from buildToday's idea of today: the rotation's day, after its
+   trims. Whenever the player's day or slot differed — a second swap whose first substitute lives in
+   another day (N7), a past workout logged mid-workout, a low-readiness or first-session trim — the
+   row came back null and the player quietly fell back to a weightless bare row. → **Standing rule:**
+   the client says where it is (the day, the slot's planned lift); the server builds there, untrimmed;
+   and a null answer is a test failure, never a silent degradation.
+102. **A read-out and the engine must import the same predicate.** "The top of the range" ignored
+   effort in both the engine and the read-out, while the read-out's failure line counted it, so one
+   card said "time to go up" and "taken to failure", then added weight. The KB's own trigger already
+   said "at target RIR". Lesson 98 at the session level. → **Standing rule:** a line that grades what
+   the engine acts on calls the engine's own function (a byte-identical, parity-tested copy in the
+   player), judged against the same band.
+103. **Brute-force a summary against the engine it summarises.** The owner reported one contradiction;
+   a 1.6M-session search found the class and four more (an RIR-surplus bump on sets under the range, a
+   failure threshold of ≤ 0 against the read-out's < 0.5, "effort right" beside "you left 3 in the
+   tank", failure flagged inside a 0–1 week). → **Standing tool:** every user-facing summary of engine
+   decisions gets a combinatorial agreement check, and its residual classes are written down.
+104. **Expected values come from the shipped function on stated inputs.** The design judge's "dumbbells
+   only: nothing easier" and "bodyweight only: the lunge" came from equipment pools other than the
+   test's; the rule itself gives the goblet squat and the bodyweight squat. A judge's critic also
+   caught two blockers in a spec every designer had agreed on (an ease computed on a pounds plate
+   against kilograms; the old "add 2.5 kg" reason carried onto an eased weight). → **Standing rule:**
+   a panel's numbers are hypotheses; run them before they become assertions.
+105. **A tamper runner must count a crash as red.** The coach suite stops on its first failure with a
+   thrown error rather than printing ✗ lines, so a runner that counted only ✗ reported nine of twelve
+   W295 tampers as surviving. Every one had in fact failed the suite. → **Standing rule:** a tamper is
+   red on a non-zero exit as well as on a ✗ line, and a tamper that reads green is re-run by hand before
+   anyone believes it.
+
+106. **A renamed concept must reach every door that composes it.** After an easier day, "last time" meant
+   the easier day. Rounds 3–6 each found the old phrase in a door the previous sweep hadn't rendered: the
+   engine's "Last time…" and "your last session", the player's fixed tired-swap note, the typo cue. →
+   **Standing rule:** list every door that composes text about the concept (server notes, client-fixed
+   strings, cues, cards), render each one in the sweep, and grep for every phrasing, not one spelling.
+107. **"Today won't count" is one predicate, and every surface reads it.** Whether today's sets will
+   anchor a lift is decided once — the player tags a set planned-easy from the response's deload week or
+   comeback, or a tired slot — yet six surfaces chose their own copy (the tired ease and swap, the New-lift
+   and Finding-your-weight cards, the estimate, the headline), and rounds 4–8 each found one that disagreed.
+   The estimate read the server's internal block while the response drops it in a taper; a busy swap of a
+   tired slot rebuilt the row without the tired mark, so the tired day's sets anchored the new lift. →
+   **Standing rule:** a mode belongs to the slot, not to the door that set it, and every door that replaces
+   the slot inherits it through one function (swapInRow); a server line that predicts the player's tagging
+   is pinned to it by an iff test through the route.
+108. **A forecast reads the context of the day it forecasts — every line of it.** W282 made each lift's
+   "next time" weight read next week's context, but the block lines beside them still read today's. A taper
+   starting next week was announced as "your deload — lighter weights" above per-lift lines saying "Taper —
+   same weight". → **Standing rule:** a read-out line about a future day is computed from that day's
+   context, and its sweep compares the line with what /api/today serves on that day, under a clock that
+   visits every weekday.
+109. **A stalled agent can be a model request that never returns, not a long command.** Round 7's critic
+   and both round-9 agents stalled six times each. Their transcripts show the last shell command returning
+   in under a second, then no further request for ten minutes, and every retry freezing before its first
+   tool call. Both round-9 agents froze within six seconds of each other. A five-minute command rule added
+   after round 7 didn't prevent it (round 8 succeeding was luck). → **Standing rule:** read the transcript
+   timestamps before blaming the workload. Salvage the agents' scratch scripts and finish the round inline,
+   re-running each script and checking its sensitivity with a tamper, rather than relaunching into the same
+   stall (rule 6).
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1362,6 +1427,54 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7c. **Telemetry (Waves 293–297, 2026-10-31/11-01 — Burst 6, one iteration on three owner notes and the
+   deferred N7).** Each root cause was reproduced through the real functions and routes first. The swap
+   row came back null whenever the player's day or slot differed from the rotation's (N7, broader than
+   reported). The typo guard judged every set against history only, and its "yes" was cleared on bank. The
+   engine bumped on a raw top while the read-out flagged failure. A tired lifter had only skip, do later, a
+   reason-less "Can't do" or end early ("is this correct?" — yes, it was).
+   - **Design:** one judge-panel workflow for "Too tired", 8 agents, ≈1.33M subagent tokens. Its critic
+     caught two blockers every designer had agreed on (lesson 104).
+   - **Tests:**
+     - Suites at the close: coach 194, routes 620, session-core 146, ui-helpers 73; both chains green, and
+       the build-data clean-tree check passes.
+     - Every new check was observed red before its fix. 113 lesson-54 code tampers each turned red: 44 in
+       the waves (W293 9, W294 9, W295 12, W296 14) and 69 in the review fixes (20, 11, 10, 6, 7, 5, 3, 7).
+       The runner first counted only ✗ lines and missed fail-fast suites (lesson 105). One round-8 tamper
+       first survived, and its test was strengthened until it turned red.
+     - Real browser: six walkthroughs against a scratch server and a throwaway store (typo, swap, recap,
+       tired, review, busy-after-tired), 35/35, with zero console errors beyond offline fetches. A browser
+       tamper of the round-8 swap rule turned exactly its three tired-day checks red.
+   - **The review (ultracode, loop-until-dry).** Kept per round: 20 → 8 → 5 → 2 → 3 (+2 critic gaps) →
+     3 (+1) → 1 → 2 → 0.
+     - Round 1: 60 agents, ≈4.80M. A brute force over ≈1.6M sessions found four more contradiction classes
+       (lesson 103).
+     - Rounds 2–4: 26, 19 and 6 agents (≈2.25M, ≈1.61M, ≈0.71M). The fix passes' own interactions, "last
+       time" named for what it is, every tired day planned easy.
+     - Round 5: 8 agents, ≈0.84M. Sweeps: 185k sessions of read-out vs engine with no new class; 25k
+       tired-door sequences with 81 benign flags; 40k renamed notes with none bad. Its ruling 4 was revisited:
+       a tired swap now drops a bump.
+     - Round 6: 10 agents, ≈0.91M. All copy on rare paths (no card promises a planned-easy day sets your
+       weight).
+     - Round 7: 6 agents, ≈0.53M. 320 first-set screens rendered through the real routes; one kept (a
+       deload week inside a taper). The critic stalled six times; its results came from the journal.
+     - Round 8: 6 agents, ≈0.66M. Two completeness lenses (copy vs truth over 22 code sites and 242
+       read-outs; the player's state in headless Chromium, 19 scenarios, ~40 reload/Undo comparisons). Two
+       kept: next week's forecast read today's context, and a busy swap of a tired slot dropped the tired mark.
+     - Round 9: 2 agents, ≈0.24M; both stalled six times (lesson 109). Finished inline. The doors agent's
+       own sweep was re-run on HEAD: 36 combinations, 0 violations. A new forecast sweep ran the real routes
+       under a fake clock: 4,368 read-outs (7 weekdays × 2 plan kinds × 13 day states × 24 event dates),
+       0 violations. Reverting the round-8 fix turned it red (14 flags). Dry.
+     - Across 10 workflow runs: ≈13.9M subagent tokens, 151 agents — over rule 4's caps, by the owner's
+       ultracode opt-in.
+   - **Rulings kept for the owner:** the tired line costs 62 px on the first screen; a tired swap's known
+     substitute keeps its own reason and aims ("fewer sets, not softer ones"; only a bump is held); a
+     comeback's "Add load as it feels easy". The design panel's W280 "1 of 3 holds, 0 of 3 bumps" incentive,
+     carried as an owner question all burst, dissolved when measured at the close through the routes:
+     doing 1 of 3 sets and skipping the lift serve the same next weight (22.5 kg after a top-of-range
+     session, 20 kg after a mid-range one). Only the reason differs, and each is true against its own "Last
+     time" line. No change; lesson 104 again.
+   - **Not run:** the Daytona gate (no DAYTONA_API_KEY); a physical iPhone.
 7d. **Telemetry (Waves 288–292, 2026-10-21 — Burst 5, one /plan iteration on four owner reports:
    the weight model, the notifications button, and one question).** Every root cause was
    reproduced by running the real functions first (the hint: 65 kg; the hold: 150 kg plus a

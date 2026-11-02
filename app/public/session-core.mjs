@@ -62,7 +62,7 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
 // target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
 export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
-export function replaceSlot(sess, i, row, { expect } = {}) {
+export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
   if (!cur || !row?.exercise) return refuse("no-slot");
@@ -71,15 +71,95 @@ export function replaceSlot(sess, i, row, { expect } = {}) {
   if (sess.ex.some((x, k) => k !== i && x.exercise === row.exercise)) return refuse("duplicate");
   const { superset_with, superset_with_name, ...slot } = row;
   for (const k of PRESCRIPTION_KEYS) { if (k in cur) slot[k] = cur[k]; else delete slot[k]; }
+  // The lift the PLAN put in this slot (N7, Burst 6), kept across chained swaps so a second "Can't do"
+  // lands in the plan's slot, not appended. Computed here, never taken from a row; gone once the slot
+  // holds that lift again (an Undo back to it). An older blob has none: the live lift stands for it.
+  const origin = typeof cur.slot_of === "string" ? cur.slot_of : cur.exercise;
+  if (origin !== row.exercise) slot.slot_of = origin; else delete slot.slot_of;
   // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
   // planned count (a swap is only ever offered before any set of the old lift was banked).
   if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
+  // A tired swap or ease (Burst 6) does a trimmed dose, written as the slot's plan for TODAY — a coach-set dose, so the
+  // workout reads "every set done", never a shortfall that holds the lift (W280). A skip never does this (it keeps
+  // planned_sets); Undo passes the saved row's own count back, or the trimmed count would stick to the old lift.
+  // `plannedSets`: an Undo restores the saved row's own plan too, so a skip taken before the tired tap stays taken (round 2).
+  if (Number.isInteger(sets) && sets > 0) { slot.sets = sets; slot.planned_sets = Number.isInteger(plannedSets) && plannedSets >= sets ? plannedSets : sets; }
   const without = (cache) => { const out = { ...(cache ?? {}) }; delete out[i]; return out; };
   const out = { ...sess, ex: sess.ex.map((x, k) => (k === i ? slot : x)),
     weights: without(sess.weights), reps: without(sess.reps), eff: without(sess.eff), wUnits: without(sess.wUnits) };
   delete out.lastSkip; // a swap rewrites the slot's count: an older skip's undo no longer describes it
   if (sess.i === i) out.set = loggedWorkSets(sess.logged, row.exercise);
   return { ok: true, sess: out };
+}
+
+// "Too tired for this one?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
+// squats. There is currently no solution… besides 'skip this one'"). Most of a set's growth comes from the first few
+// hard sets (minimalist-and-low-volume-training.md, Grade A), so a tired lift does about half its sets — never under
+// 2 for a lift planned at 2+ (the engine's own no-1-set rule), never more than planned.
+export const tiredSets = (n) => (n <= 2 ? n : Math.max(2, Math.ceil(n / 2)));
+// About 10% off, on the lift's own KG step (never a display step: a pounds user's 5-lb plate against a kg weight cut
+// 20 kg to 15), at least one step; never to zero. Null when there is no weight to ease. A model estimate (Grade D).
+// `floorKg`: never under it — the empty bar for a barbell lift (review K7: 20 kg went to 17.5).
+export function easeKg(kg, stepKg, floorKg = 0) {
+  if (!(typeof kg === "number" && kg > 0) || !(stepKg > 0)) return null;
+  let w = Math.round((0.9 * kg) / stepKg) * stepKg;
+  if (w >= kg) w = kg - stepKg;
+  w = Math.max(w, floorKg);
+  return w > 0 && w < kg ? Math.round(w * 100) / 100 : kg;
+}
+// The tired dose for a slot: about half its planned sets — never more than it shows now (a skip already taken stays
+// taken: 1 set left never became 2 — review K6).
+export const tiredDose = (row) => Math.min(row.sets, tiredSets(row.planned_sets ?? row.sets));
+// When nothing easier fits (or offline, or the server couldn't build a row): the SAME lift, ~10% lighter and about half
+// the sets. A lift with history is tagged `eased` — its sets bank deload-tagged, so a tired day never becomes its
+// anchor, a PR or a grade — and says so; a lift with none isn't (its sets seed a starting weight). `tired` marks the
+// slot as the tired version (`eased` alone also means a comeback). Its OWN reason replaces the served one ("add
+// 2.5 kg" beside an eased weight was the recap's contradiction on the set screen). Same guards as a swap.
+// Its reason says only what changed ON SCREEN (review): `shown(row)` is the weight the stepper will show for a row (the
+// player passes its plate-rounded pre-fill), so a pounds user's 1 kg ease that rounds back onto the same plate changes
+// nothing and claims nothing; "shorter" only when sets were cut; neither, and it says neither.
+// A bump served today is dropped back to last time's weight, exactly (round 2: a pounds user's plate rounding kept a +33%
+// bump, or cut 40% from a light one); with no bump, ~10% off. Every tired day is tagged `eased` — with history or without
+// (round 2: "keep this one easy" was then graded "too easy" on a never-done lift) — so it never anchors, PRs or grades.
+// Was a progression bump served today? (A bodyweight lift's first added load is a bump over bodyweight, last_kg 0 — round 3.)
+// ONE rule for the ease and a tired swap alike: a tired day never steps up (round 5).
+export const tiredBump = (row) => typeof row?.last_kg === "number" && (row.last_kg > 0 || (row.last_kg === 0 && row.equipment === "bodyweight")) && row.suggested_kg > row.last_kg;
+// A tired SWAP's substitute (round 5): planned easy like every tired day; a bump served today held at last time's weight (a
+// tired lifter was handed a never-lifted 42.5 kg on the "easier" lift); and its reason says the day won't count — never the
+// estimate's "adjust it up or down until…", a weight that tag then throws away.
+export function tiredSwapRow(row) {
+  const bumped = tiredBump(row);
+  const known = Array.isArray(row.last_reps) && row.last_reps.length > 0;
+  // (after an easier day of the substitute, its last time WAS that day: name the regular one, as its own screen does — round 6)
+  const note = bumped ? `Same weight as ${row.last_easy ? "your last regular session" : "last time"} — no step up on a tired day. It won't count against your progress.`
+    : known ? `${row.suggestion_note ? `${row.suggestion_note} ` : ""}It won't count against your progress.`
+    : "Keep it light today — it won't set this lift's starting weight.";
+  return { ...row, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
+}
+// A swap OF a tired slot is still the tired day (round 8): "It's busy right now", "Pick one myself" and "No machine" hand
+// back a row the server built at the new lift's own progression — kept planned easy, any bump held, "it won't count", the
+// tired dose carried by replaceSlot — or the tired day's light sets became the new lift's anchor. A regular slot: as it came.
+export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
+export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
+  const cur = sess?.ex?.[i];
+  if (!cur) return { ok: false, reason: "no-slot", sess };
+  const bumped = tiredBump(cur);
+  const kg = bumped ? cur.last_kg : easeKg(cur.suggested_kg, stepKg, floorKg);
+  const lighter = kg != null && kg < cur.suggested_kg && shown({ ...cur, suggested_kg: kg }) < shown(cur);
+  const sets = tiredDose(cur);
+  const note = `${lighter ? "Lighter for today because you're tired" : sets < cur.sets ? "Shorter today because you're tired" : "Easy does it today — stop each set while your form is solid"}. It won't count against your progress.`;
+  const row = { ...cur, ...(lighter ? { suggested_kg: kg } : {}), tired: true, eased: true, suggestion_note: note };
+  return replaceSlot(sess, i, row, { expect, sets });
+}
+// Offer it at the first set of a lift not yet started, once some work is banked today; never on a superset member (a
+// station keeps "Skip this round"), a slot already made easier, or one showing its swap's Undo. Mid-lift, "Skip this
+// set" and "End workout early" already cover it.
+export function tiredOffer(sess) {
+  const cur = sess?.ex?.[sess.i];
+  return !!cur && !cur.superset_with && !cur.tired && sess.set === 0
+    && loggedWorkSets(sess.logged ?? [], cur.exercise) === 0
+    && (sess.logged ?? []).some((l) => (l?.set_type ?? "work") === "work")
+    && !undoApplies(sess.swapUndo, sess, cur);
 }
 
 // "Skip this set" / "Skip this round" (W281, owner: "need ability to skip a set mid
@@ -184,23 +264,52 @@ export function checkSetPR(exercise, weightKg, reps, setType, priorBests, deload
 // Judged against the lift's OWN history — `last_kg` (what they actually lifted on
 // this exercise last time) first, falling back to its best logged load — so a
 // genuinely strong lifter is never second-guessed, and a lift with no history at
-// all is never questioned (there's nothing to be implausible against).
+// all is never questioned (there's nothing to be implausible against; and a new
+// lift's find-your-weight card tells them to add weight set by set).
+//
+// …raised by TODAY's heaviest banked work set of the lift (Burst 6 — owner: "it asked
+// me again… It shouldn't ask me the second time"). Every banked work set passed this
+// guard or was confirmed, so a weight already logged today is never questioned again;
+// a stray zero against it still is. Today's sets only ever RAISE the reference — a
+// light set never lowers it, and they never create one for a lift with no history.
+// Derived from the log, never a remembered "confirmed" flag, so a reload or an edit
+// that corrects the set can't leave it stale. Warm-ups never vouch (never checked).
 //
 // BOTH a ratio and an absolute gap must be exceeded. Ratio alone would nag on
 // small weights where a real jump is proportionally huge (2.5 kg → 7.5 kg on a
 // lateral raise is 3x and entirely normal); the absolute floor keeps those quiet
 // while still catching the two errors that actually happen: a stray zero (10x) and
 // an lb/kg mix-up (2.2x). Reps get a flat ceiling instead — no prescribed band in
-// the engine goes near 50, so there's no plausible entry to false-positive on.
+// the engine goes near 50, so there's no plausible entry to false-positive on — and
+// a count no higher than one already banked today isn't asked again either.
 export const IMPLAUSIBLE_RATIO = 2;
 export const IMPLAUSIBLE_MIN_JUMP_KG = 20;
 export const IMPLAUSIBLE_REPS = 50;
-export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = null } = {}) {
-  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS) return true;
+// Today's heaviest banked WORK set of a lift, and its most reps. `exceptIdx` leaves out the
+// entry being edited (it can't vouch for itself, and the editor writes keystrokes into it).
+export function todayTopSet(logged, exercise, exceptIdx = -1) {
+  let kg = null, reps = null;
+  (logged ?? []).forEach((l, k) => {
+    if (k === exceptIdx || l?.exercise !== exercise || (l.set_type ?? "work") !== "work") return;
+    if (typeof l.weight_kg === "number" && Number.isFinite(l.weight_kg) && l.weight_kg > 0 && (kg == null || l.weight_kg > kg)) kg = l.weight_kg;
+    if (Number.isInteger(l.reps) && (reps == null || l.reps > reps)) reps = l.reps;
+  });
+  return { kg, reps };
+}
+// The load an entry is judged against, and where it came from (the cue names it): last time's,
+// else the best — raised to today's heaviest banked set when that is at least as heavy.
+export function typoReference({ lastKg = null, priorBests = null, todayKg = null } = {}) {
+  const ok = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  const hist = ok(lastKg) ? { kg: lastKg, from: "last" } : ok(priorBests?.load_kg) ? { kg: priorBests.load_kg, from: "best" } : null;
+  if (!hist) return null;
+  return ok(todayKg) && todayKg >= hist.kg ? { kg: todayKg, from: "today" } : hist;
+}
+export function isImplausibleSet(weightKg, reps, { lastKg = null, priorBests = null, todayKg = null, todayReps = null } = {}) {
+  if (typeof reps === "number" && reps > IMPLAUSIBLE_REPS && !(Number.isInteger(todayReps) && reps <= todayReps)) return true;
   if (!(typeof weightKg === "number" && Number.isFinite(weightKg) && weightKg > 0)) return false;
-  const ref = [lastKg, priorBests?.load_kg].find((v) => typeof v === "number" && Number.isFinite(v) && v > 0);
+  const ref = typoReference({ lastKg, priorBests, todayKg });
   if (ref == null) return false;
-  return weightKg >= ref * IMPLAUSIBLE_RATIO && weightKg - ref >= IMPLAUSIBLE_MIN_JUMP_KG;
+  return weightKg >= ref.kg * IMPLAUSIBLE_RATIO && weightKg - ref.kg >= IMPLAUSIBLE_MIN_JUMP_KG;
 }
 
 // Which of a station's exercises still owe a confirming tap: flagged as a possible
@@ -244,6 +353,23 @@ export function isLuckySet(sessionId, exercise, hardSetIndex) {
 // loadForReps (the server's W279 ease uses that one; test-session pins the two together).
 export function loadForReps(weightKg, reps, rir, targetReps, targetRir) {
   return weightKg * (1 + (reps + rir) / 30) / (1 + (targetReps + targetRir) / 30);
+}
+// THE ANCHOR of a lift's session — a BYTE-IDENTICAL copy of derive-core's anchorSets (Burst 6 review; test-session pins
+// the two): the read-out grades effort and the top over the SAME sets the engine judges, never a lighter back-off.
+export function anchorSets(sets, min) {
+  const proved = sets.filter((s) => s.reps >= min).map((s) => s.weight_kg ?? 0);
+  const weight = proved.length ? Math.max(...proved) : (sets[0].weight_kg ?? 0);
+  const judged = sets.filter((s) => (s.weight_kg ?? 0) === weight);
+  return { weight, judged, first: judged[0] };
+}
+// An empty Olympic bar — derive-core's EMPTY_BAR_KG (pinned equal): a tired ease never goes under it. A pounds user's
+// bar is the 45-lb one (20.41 kg), never "40 lb" (Burst 6 review round 2).
+export const EMPTY_BAR_KG = 20;
+export const EMPTY_BAR_LB = 45;
+// A set's reps AT THE PLAN'S EFFORT — a BYTE-IDENTICAL copy of derive-core's repsAtBand (Burst 6;
+// test-session pins the two together): the read-out judges "the top of the range" exactly as the engine does.
+export function repsAtBand(reps, rir, near) {
+  return typeof rir === "number" && near > rir ? reps - (near - rir) : reps;
 }
 // The rep capacity (reps + RIR) a lift's NEXT set still has after this one — a BYTE-IDENTICAL
 // copy of derive-core's nextSetCapacity (W288; test-session pins the two together).
@@ -354,6 +480,9 @@ export function buildTargets(sess) {
     rir: x.rir ?? null,
     suggested_kg: x.suggested_kg ?? null,
     ...(sess.deload || x.eased ? { deload: true } : {}),
+    // The planned lift a substitute stood in for (its slot_of — Burst 6 review G1): the comeback clock counts the slot as
+    // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
+    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
   }));
 }
 
@@ -387,17 +516,33 @@ export function localReadout(targets, logged) {
     const min = range ? +range[1] : null, max = range ? +range[2] : null;
     const band = /(\d+)\s*-\s*(\d+)/.exec(t?.rir ?? "");
     const easyDay = !!t?.deload || sets.some((s) => s.deload);
-    const rirs = sets.map((s) => s.rir).filter((r) => typeof r === "number");
-    const rated = !easyDay && !!band && sets.length > 0 && rirs.length >= Math.ceil(sets.length / 2);
+    // Effort and the top are graded over the ANCHOR sets — the ones the engine judges (Burst 6 review): a lighter
+    // back-off set is a different load, never evidence, so it can't flip a line against the next weight.
+    const judged = sets.length && min != null ? anchorSets(sets, min).judged : sets;
+    const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
+    const rated = !easyDay && !!band && judged.length > 0 && rirs.length >= Math.ceil(judged.length / 2);
     const avg = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
+    // The top of the range AT THE PLAN'S EFFORT (Burst 6), as the engine judges it — against the band this workout
+    // was served. Reached only by going past the band, it is its own flag: worth a look, never "time to go up".
+    const near = band ? +band[1] : 0;
+    const graded = !easyDay && max != null && judged.length > 0;
+    const top = graded && judged.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
     return {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
-      top: !easyDay && max != null && sets.length > 0 && sets.every((s) => s.reps >= max),
+      top, past_band: graded && !top && judged.every((s) => s.reps >= max),
+      // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
+      // range sat beside it otherwise).
+      graded_all: judged.length === sets.length,
+      anchor_kg: judged.length ? judged[0].weight_kg ?? 0 : null, // the weight the grade is for (Nerd Mode names it — round 3)
       under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
       easy: rated && avg >= +band[2] + 2,
       failure: rated && +band[1] >= 1 && avg < 0.5,
+      // The logged effort averaged inside the band ("Effort right" says so only then); null when too little was logged.
+      in_band: rated ? avg >= +band[1] && avg <= +band[2] : null,
       easyDay, rir: avg == null ? null : Math.round(avg * 10) / 10, band: t?.rir ?? null,
+      // Nerd Mode prints every set's reps beside an average: over every set it prints (round 2), not just the graded ones.
+      rir_all: (() => { const all = sets.map((s) => s.rir).filter((r) => typeof r === "number"); return all.length ? Math.round((all.reduce((a, b) => a + b, 0) / all.length) * 10) / 10 : null; })(),
     };
   }).filter((l) => l.done > 0 || (l.planned ?? 0) > 0);
   return { lifts, planned: lifts.reduce((a, l) => a + (l.planned ?? l.done), 0), done: lifts.reduce((a, l) => a + l.done, 0), hasPlan: tgs.length > 0 };
@@ -640,7 +785,10 @@ export const editConfirmKey = (entry, idx) => `edit:${entry?.exercise ?? ""}:${e
 // numbers) writes the ORIGINAL values until confirmed — a clear-and-retype passes
 // through plausible intermediates ("1", "10"…), and the log must never keep one of
 // those when the final number is the suspect one.
-export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, confirmed = false }) {
+// Only what CHANGED is judged (Burst 6): an untouched number already passed the guard (or was
+// confirmed) when it banked — re-judging it refused a reps-only fix on a confirmed big jump —
+// and against today's other banked sets (`todayKg`/`todayReps`, the edited entry left out).
+export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, todayKg = null, todayReps = null, confirmed = false }) {
   const w = String(wText ?? "").trim(), r = String(rText ?? "").trim();
   const kg = w === shownW ? entry0.weight_kg : parseEdit(w, unit);
   const reps = r === shownR ? entry0.reps : (/^\d{1,3}$/.test(r) ? Number(r) : null);
@@ -648,7 +796,11 @@ export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg
   if (kg != null) patch.weight_kg = kg;
   if (reps != null) patch.reps = reps;
   const cand = { ...entry0, ...patch };
-  const flagged = (cand.set_type ?? "work") === "work" && !confirmed && isImplausibleSet(cand.weight_kg, cand.reps, { lastKg, priorBests });
+  const flagged = (cand.set_type ?? "work") === "work" && !confirmed
+    // …and the set's OWN banked value vouches for it (it passed the guard, or was confirmed, when it banked — review K8:
+    // nudging a confirmed 150 to 152.5 was asked again).
+    && isImplausibleSet(cand.weight_kg !== entry0.weight_kg ? cand.weight_kg : null, cand.reps !== entry0.reps ? cand.reps : null,
+      { lastKg, priorBests, todayKg: Math.max(todayKg ?? 0, entry0.weight_kg ?? 0) || null, todayReps: Math.max(todayReps ?? 0, entry0.reps ?? 0) || null });
   return flagged ? { patch: { weight_kg: entry0.weight_kg, reps: entry0.reps }, flagged: true } : { patch, flagged: false };
 }
 // After an edit the lift's "PR already celebrated" latch must match what the log now
