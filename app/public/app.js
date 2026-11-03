@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitRequest, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1690,6 +1690,13 @@ async function renderToday() {
       <p class="muted" style="margin:4px 0 8px">${esc(fit.body)}</p>
       <button class="btn secondary inline" id="fit-rebuild" style="margin:0 6px 0 0">${esc(fit.rebuild)}</button>
       <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
+  // The three ways back (W304): offered by the server when the plan can't hold its necessary volume, in the owner's
+  // ranking; each choice says what it wins or costs; "Keep" is answered once, on the server (every device agrees).
+  const tfit = timeFitCopy(dy.plan_time_fit);
+  const timeCard = tfit ? `<div class="card" id="time-fit"><b>⏱️ ${esc(tfit.title)}</b>
+      <p class="muted" style="margin:4px 0 8px">${esc(tfit.body)}</p>
+      ${tfit.options.map((o, i) => `<button class="btn ${i === 0 ? "secondary" : "ghost"}" data-tfit="${i}" style="margin:0 0 6px;text-align:left"><b>${esc(o.label)}</b><br><span class="muted" style="font-size:.85rem;font-weight:400">${esc(o.detail)}</span></button>`).join("")}
+      <div id="tfit-day" hidden></div></div>` : "";
 
   // A workout saved offline has synced: its read-out is ready (W282, the offline door).
   const pendingRo = getPendingReadout();
@@ -1702,12 +1709,12 @@ async function renderToday() {
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
   // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
   const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${timeCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
-      : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}
     ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;
@@ -1738,6 +1745,42 @@ async function renderToday() {
     pendingNotice = `🗓️ Rebuilt for ${fit.days} days a week — a fresh training block starts with your next workout.`;
     refreshToday(); // the notice waits for the next Today if the user has moved on
   };
+  // The three ways back (W304). More days or minutes rebuild through the Settings door (a fresh block, said on the
+  // card); one more day for someone who keeps a weekly schedule asks which day first, so the week's own card never
+  // then offers to rebuild back to the old count.
+  if (tfit) {
+    const lockFit = (on) => app.querySelectorAll("[data-tfit], [data-tfit-day]").forEach((x) => { x.disabled = on; });
+    const committed = adh.commitment?.days ?? [];
+    const rebuildFit = async (o, day = null) => {
+      lockFit(true);
+      let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...timeFitRequest(o) }) }); } catch { r = null; }
+      if (!r?.program) { lockFit(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
+      if (day) { try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days: [...committed, day] }) }); } catch {} }
+      try { localStorage.setItem("hb_program", r.program.name); } catch {}
+      pendingNotice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — a fresh training block starts with your next workout.`
+        : `⏱️ Rebuilt for ${o.minutes}-minute workouts — a fresh training block starts with your next workout.`;
+      refreshToday();
+    };
+    app.querySelectorAll("[data-tfit]").forEach((b) => b.onclick = async () => {
+      const { kind, option: o, label } = tfit.options[+b.dataset.tfit];
+      if (kind === "keep") {
+        lockFit(true);
+        let r; try { r = await api("/api/plan/time-fit", { method: "POST", body: JSON.stringify({ user_id: uid, choice: "keep" }) }); } catch { r = null; }
+        if (!r?.ok) { lockFit(false); if (!stale()) alertBar("📴 Couldn't save that — try again in a moment."); return; }
+        $("#time-fit")?.remove(); say(`${label.replace(/^Keep /, "Kept ")}.`); return;
+      }
+      if (kind === "add_day" && committed.length && committed.length < o.days) {
+        const host = $("#tfit-day");
+        host.innerHTML = `<p class="muted" style="margin:6px 0">Which day will you add?</p>` + Object.keys(DAY_LONG).filter((d) => !committed.includes(d))
+          .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("");
+        host.hidden = false;
+        host.querySelectorAll("[data-tfit-day]").forEach((x) => x.onclick = () => rebuildFit(o, x.dataset.tfitDay));
+        host.querySelector("button")?.focus();
+        return;
+      }
+      await rebuildFit(o);
+    });
+  }
   if ($("#fit-keep")) $("#fit-keep").onclick = () => {
     try { localStorage.setItem("hb_fit_kept", fit.key); } catch {}
     $("#plan-fit")?.remove();

@@ -270,6 +270,39 @@ export function planFitCopy(fit) {
 // COMMITTED count — and whether the card shows at all ("Keep" hides that one pair).
 export const planFitRequest = (fit) => (fit?.days ? { profile: { days_per_week: fit.days } } : null);
 export const planFitVisible = (fit, keptKey) => !!fit && keptKey !== fit.key;
+
+// The three ways back (W304, considerations iteration — owner: "If the necessary amount of volume can't fit within the
+// chosen workout length preference please suggest to the user 3 options in order of best to worst"). Worded from the
+// engine's own measurements (daily.plan_time_fit), in the engine's ranking; every option says what it wins or costs,
+// and "keep" says what stays short. A day or minutes change is a real training change, so it starts a fresh block —
+// said, never sprung. Null when there's nothing to choose between (keep alone is not a choice).
+export function timeFitCopy(fit) {
+  const opts = (fit?.options ?? []).filter((o) => o?.kind);
+  if (opts.filter((o) => o.kind !== "keep").length === 0) return null;
+  const names = (ms) => friendlyList((ms ?? []).map(friendlyMuscle));
+  const clock = (fit.trimmed_sets ?? 0) > 0 || (fit.unfit_days ?? 0) > 0;
+  const shortLine = fit.mev_short?.length
+    ? ` ${names(fit.mev_short)[0].toUpperCase()}${names(fit.mev_short).slice(1)} ${fit.mev_short.length === 1 ? "gets" : "get"} less than the minimum that builds muscle.` : "";
+  const cut = clock
+    ? (fit.trimmed_sets > 0 ? `To fit ${fit.minutes} minutes, ${fit.trimmed_sets} set${fit.trimmed_sets === 1 ? "" : "s"} came out of your week.` : `Some of your workouts still run past ${fit.minutes} minutes.`)
+    : `Your workouts are as full as quality allows.`;
+  const wins = (o) => o.lifted?.length ? `${names(o.lifted)} reach${o.lifted.length === 1 ? "es" : ""} ${o.lifted.length === 1 ? "its" : "their"} minimum`
+    : (fit.trimmed_sets ?? 0) > (o.trimmed_sets ?? 0) ? `wins back ${fit.trimmed_sets - (o.trimmed_sets ?? 0)} of the cut sets` : "more room for your volume";
+  const options = opts.map((o) => {
+    if (o.kind === "add_day") return { kind: o.kind, option: o, label: `Train ${o.days} days a week`, detail: `${wins(o)} · about ${Math.round(o.max_minutes)} min a day · starts a fresh 6-week block` };
+    if (o.kind === "longer") return { kind: o.kind, option: o, label: `Make workouts ${o.minutes} min`, detail: `${wins(o)} · starts a fresh 6-week block` };
+    const stays = o.mev_short?.length ? `${names(o.mev_short)} stay${o.mev_short.length === 1 ? "s" : ""} under the minimum`
+      : o.trimmed_sets > 0 ? `the ${o.trimmed_sets} cut set${o.trimmed_sets === 1 ? "" : "s"} stay out` : "nothing else changes";
+    return { kind: o.kind, option: o, label: `Keep ${o.days} × ${o.minutes} min`, detail: stays };
+  });
+  return {
+    title: clock ? `Your plan doesn't fit ${fit.minutes} minutes` : `${fit.days} workouts of ${fit.minutes} min can't hold all your plan needs`,
+    body: `${cut}${shortLine}`.trim(), options, key: fit.key,
+  };
+}
+// The request each choice sends: a schedule change goes through the Settings door (the only one that rebuilds a plan).
+export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_per_week: o.days } }
+  : o?.kind === "longer" ? { profile: { session_length_min: o.minutes } } : null);
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;

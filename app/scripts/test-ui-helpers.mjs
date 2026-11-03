@@ -3,7 +3,7 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitRequest, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
 import * as uiHelpers from "../public/ui-helpers.mjs"; // Burst 5's new exports, read so a missing one fails its own check
 import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
@@ -220,6 +220,44 @@ check("nextSessionLine: the next workout by day — tomorrow, a weekday, or (no 
 
 // --- W278 (the owner's option 1): the plan's size vs the days actually committed. The copy
 // says what the mismatch costs, what a rebuild changes, and that it starts a fresh block.
+// W304 (considerations iteration, Burst 8): the three ways back, worded. Ranked as the owner ranked them; every option
+// says what it wins or costs (measured by the engine, never promised); keep says what stays short.
+check("timeFitCopy: the clock cut sets — the title names the minutes, each option says what it wins, keep says what stays short", () => {
+  const fit = { days: 4, minutes: 45, trimmed_sets: 11, unfit_days: 0, mev_deficit: 3, mev_short: ["chest", "side-delts"], max_minutes: 45, key: "4:45:advanced:20",
+    options: [
+      { kind: "add_day", days: 5, minutes: 45, trimmed_sets: 2, unfit_days: 0, mev_deficit: 0, mev_short: [], max_minutes: 44, lifted: ["chest", "side-delts"] },
+      { kind: "longer", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 1, mev_short: ["side-delts"], max_minutes: 58, lifted: ["chest"] },
+      { kind: "keep", days: 4, minutes: 45, trimmed_sets: 11, unfit_days: 0, mev_deficit: 3, mev_short: ["chest", "side-delts"], max_minutes: 45, lifted: [] }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.title, "Your plan doesn't fit 45 minutes");
+  assert.match(c.body, /11 sets came out of your week/);
+  assert.match(c.body, /chest and shoulders \(side\) get less than the minimum/i, "a sentence starts with a capital");
+  assert.deepEqual(c.options.map((o) => o.kind), ["add_day", "longer", "keep"]);
+  assert.equal(c.options[0].label, "Train 5 days a week");
+  assert.match(c.options[0].detail, /chest and shoulders \(side\) reach their minimum/);
+  assert.match(c.options[0].detail, /about 44 min a day/);
+  assert.match(c.options[0].detail, /a fresh 6-week block/);
+  assert.equal(c.options[1].label, "Make workouts 60 min");
+  assert.equal(c.options[2].label, "Keep 4 × 45 min");
+  assert.match(c.options[2].detail, /chest and shoulders \(side\) stay under the minimum/);
+});
+check("timeFitCopy: a ceiling-bound plan (nothing cut for time) says what's short instead of blaming the clock", () => {
+  const c = timeFitCopy({ days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 4, mev_short: ["chest"], max_minutes: 58, key: "k",
+    options: [{ kind: "add_day", days: 5, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 0, mev_short: [], max_minutes: 52, lifted: ["chest"] },
+      { kind: "keep", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 4, mev_short: ["chest"], max_minutes: 58, lifted: [] }] });
+  assert.equal(c.title, "4 workouts of 60 min can't hold all your plan needs");
+  assert.match(c.body, /^Your workouts are as full as quality allows\. Chest gets less than the minimum that builds muscle\.$/);
+  assert.doesNotMatch(c.body, /came out/);
+});
+check("timeFitCopy: nothing to offer → no card", () => {
+  assert.equal(timeFitCopy(null), null);
+  assert.equal(timeFitCopy({ options: [{ kind: "keep" }] }), null, "keep alone is not a choice");
+});
+check("timeFitRequest: more days or minutes go through the Settings door; keep has no rebuild", () => {
+  assert.deepEqual(timeFitRequest({ kind: "add_day", days: 5 }), { profile: { days_per_week: 5 } });
+  assert.deepEqual(timeFitRequest({ kind: "longer", minutes: 60 }), { profile: { session_length_min: 60 } });
+  assert.equal(timeFitRequest({ kind: "keep" }), null);
+});
 check("planFitCopy: fewer days than workouts — they roll into next week, your muscles get less; the rebuild fits the week", () => {
   assert.deepEqual(planFitCopy({ plan_days: 4, committed_days: 3 }), {
     title: "Fit your plan to your 3 days?",
