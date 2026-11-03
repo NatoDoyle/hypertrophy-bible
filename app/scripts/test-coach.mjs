@@ -181,8 +181,10 @@ check("#spec-spent the block-boundary tune runs for a SPENT specialization block
 // rebuild) must reach the permanent "No machine" swap too — it re-orders the session, and
 // would otherwise order it as if the block were still running (151 of 366 swaps measured).
 check("#spec-spent the permanent swap honours a spent specialization block — the binder passes the flag the plan was built with", () => {
+  // (W303: with the 16-set ceiling honoured, a chest-priority 3-day plan now swaps identically either way — measured 0 of
+  // 17 — so the fixture moved to side delts, where the flag still reorders every swap: 17 of 17.)
   const profile = { user_id: "spent-swap", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
-    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] };
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts"] };
   const gen = generateUserPlan(profile, { blockIndex: 0, specSpent: true });
   const user = { profile, program: gen.program, plan_rationale: gen.rationale, plan_meta: { block_index: 0, spec_spent: true } };
   const kb = { exercises: kbExercises, muscles: kbMuscles, contraindications: kbContra, guidelines: kbGuidelines };

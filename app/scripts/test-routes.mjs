@@ -4024,6 +4024,14 @@ try {
       const seedProfile = { user_id: "al-beginner-4-bw-hypertrophy", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["bodyweight"] };
       const bnU = (await json("POST", "/api/onboard", { profile: { ...prof, ...seedProfile, user_id: undefined } })).data.user_id;
       const fixed = generateUserPlan(seedProfile);
+      // W303: the generator no longer pairs this 60-minute bodyweight day (the rescue now fires only when minutes bind the
+      // set budget), but plans built before it are still STORED with such a pair until their next rebuild — so the pair
+      // is placed exactly as the 4c rescue placed it, and the route's handling of it is what this proves.
+      const ubFix = fixed.program.sessions.find((x) => x.name === "Upper B");
+      ubFix.exercises.find((e) => e.exercise === "bench-dip").superset_with = "prone-reverse-fly";
+      ubFix.exercises.push({ exercise: "prone-reverse-fly", sets: 2, rep_range: "10-15", rir: "0-1", superset_with: "bench-dip" });
+      fixed.rationale.exercise_choices.push({ exercise: "prone-reverse-fly", for_muscle: "rear-delts", session: "Upper B", sets: 2, rep_range: "10-15", rir: "0-1",
+        why: ["superset — fits extra volume into your session length", "paired with bench-dip"], difficulty: "beginner", citations: [] });
       await store.updateUser(bnU, (u) => { u.profile = { ...u.profile, user_id: seedProfile.user_id }; u.program = fixed.program; u.plan_rationale = fixed.rationale; return u; });
       const bn0 = await store.getUser(bnU);
       const r = await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "always", session: "Upper B" });
