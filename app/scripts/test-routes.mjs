@@ -767,6 +767,20 @@ try {
     && typeof statsBody.push_subscriptions === "number" && typeof statsBody.push_delivered_7d === "number"
     && "retention_wow" in statsBody);
   ok("#210 the aggregates carry no per-user data (no ids, no emails)", !/user_id|email|@|[0-9a-f]{8}-[0-9a-f]{4}/.test(JSON.stringify(statsBody)));
+  // W299 (considerations iteration, Burst 7 — measure first): real pace rides the same owner-only door — medians and
+  // counts only. A workout posted through the client's door lands once, its 150 s gaps in its lift's rest tier.
+  {
+    const paceOf = async () => (await (await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } })).json()).pace;
+    const before = await paceOf();
+    const pu = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+    const t = Date.now() - 2 * 86400000, at = (s) => new Date(t + s * 1000).toISOString();
+    await json("POST", "/api/session", { user_id: pu, session_id: "pace-1", date: at(0), local_date: at(0).slice(0, 10),
+      sets: [0, 1, 2].map((k) => ({ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 10, completed_at: at(300 + k * 150) })) });
+    const after = await paceOf();
+    ok("#pace the owner's stats carry a pace aggregate: the workout counts once, its two 150 s gaps land in the isolation tier",
+      after?.sessions === before?.sessions + 1 && after.between_sets_s.isolation.n === before.between_sets_s.isolation.n + 2
+      && after.duration_min.n === before.duration_min.n + 1, JSON.stringify({ before, after }));
+  }
   // The burst-shape aggregate reads `magic_links.rl_key`, and that key EMBEDS the
   // onboarding IP ("onboard:203.0.113.7"). Only counts may leave this endpoint, so
   // the payload is checked for address shapes directly rather than trusting that

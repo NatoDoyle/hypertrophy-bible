@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
@@ -246,7 +246,11 @@ export function createApp(store, config = {}) {
   // 2xx evidence instead of a human vigil.
   app.get("/api/stats", async (c) => {
     if (!config.statsKey || c.req.header("X-HB-Stats-Key") !== config.statsKey) return c.json({ error: "not found" }, 404);
-    return c.json(await store.stats(Date.now()));
+    const now = Date.now();
+    // Real pace (W299): what sets, lift changes and sessions actually take — the session-time model's calibration.
+    // Medians and counts only; a lift the KB doesn't know (a custom one) has no rest tier and stays out of the tiers.
+    const pace = paceAggregate(await store.paceSamples(now), (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; });
+    return c.json({ ...(await store.stats(now)), pace });
   });
 
   // Onboarding: profile -> a plan GENERATED from the KB (volume landmarks +

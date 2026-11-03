@@ -91,3 +91,18 @@ export function sessionTimingIssue(session, nowMs = Date.now()) {
 export function isDerivableSession(session, nowMs = Date.now()) {
   return !sessionTimingIssue(session, nowMs);
 }
+
+// PACE SAMPLES (W299, considerations iteration — measure first): the one projection both stores hand the owner's
+// stats route, so the pace aggregate can never depend on which runtime answered. In: rows of
+// { session_id, date, local_date, sets } from live, non-smoke accounts. Out: the derivable workouts of the last
+// PACE_WINDOW_DAYS, each reduced to its date, its id and every set's lift, type and instant — never a user id,
+// never a weight — sorted by (date, session_id).
+export const PACE_WINDOW_DAYS = 120;
+export function paceSampleRows(rows, nowMs = Date.now()) {
+  const since = nowMs - PACE_WINDOW_DAYS * 86400000;
+  return (rows ?? [])
+    .filter((r) => isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs) && parseSessionInstant(r.date) >= since)
+    .map((r) => ({ session_id: r.session_id, date: r.date,
+      sets: (Array.isArray(r.sets) ? r.sets : []).map((x) => ({ exercise: x?.exercise ?? null, set_type: x?.set_type ?? "work", completed_at: x?.completed_at ?? null })) }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.session_id < b.session_id ? -1 : a.session_id > b.session_id ? 1 : 0));
+}
