@@ -483,6 +483,9 @@ export function buildTargets(sess) {
     // The planned lift a substitute stood in for (its slot_of — Burst 6 review G1): the comeback clock counts the slot as
     // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
     ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
+    // The per-set aims served today (W298), only when the player itself would use them (validAim) — so later
+    // learning can judge a set against what it was asked, not just the range.
+    ...(validAim(x) ? { rep_targets: validAim(x) } : {}),
   }));
 }
 

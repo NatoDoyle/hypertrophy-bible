@@ -188,6 +188,10 @@ const normalizeTargets = (list) => {
       ...(t.deload === true ? { deload: true } : {}),
       // The planned lift this one stood in for, today only (Burst 6 review G1) — the comeback clock counts its slot.
       ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
+      // The per-set aims the player served (W298): whole reps 1-50, at most one per planned set. A malformed list is
+      // dropped whole — half an aim list would misjudge every set after the gap.
+      ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets
+        && t.rep_targets.every((r) => Number.isInteger(r) && r >= 1 && r <= 50) ? { rep_targets: t.rep_targets.slice() } : {}),
     });
   }
   return out.length ? out : null;

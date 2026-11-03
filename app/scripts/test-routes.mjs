@@ -1566,6 +1566,16 @@ try {
     const junk = (await store.listSessions(junkU)).find((x) => x.session_id === "w3")?.targets ?? [];
     ok("#stood-in the target keeps the marker; a malformed one, or one naming the lift itself, is dropped",
       stored?.stood_in_for === "bulgarian-split-squat" && junk.length === 2 && junk.every((t) => !("stood_in_for" in t)), JSON.stringify({ stored, junk }));
+    // W298: the served per-set aims survive the door (whitelisted and bounded like everything else in a target):
+    // whole reps 1-50, one per planned set at most. A malformed list is dropped whole, never half-kept.
+    await json("POST", "/api/session", { user_id: junkU, session_id: "w4", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+      sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],
+      targets: [{ exercise: "leg-extension", sets: 3, rep_range: "8-12", rep_targets: [12, 11, 10] },
+        { exercise: "leg-press", sets: 2, rep_targets: [10, 9, 9] }, { exercise: "leg-curl", sets: 2, rep_targets: [10, 9.5] },
+        { exercise: "calf-raise", sets: 2, rep_targets: [0, 12] }, { exercise: "hack-squat", sets: 2, rep_targets: "10,10" }] });
+    const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
+    ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
+      JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
   }
 
   // --- Review round 1 (K19): the recap never praises "close to failure — that's where growth happens" for a lift whose
