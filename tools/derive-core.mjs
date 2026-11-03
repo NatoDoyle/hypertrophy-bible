@@ -1521,3 +1521,66 @@ export function restSeconds(ex) {
   if (ex.mechanic === "compound") return ex.equipment === "barbell" || ex.cns_cost === "high" ? REST_HEAVY_S : REST_MODERATE_S;
   return ex.cns_cost === "moderate" || ex.cns_cost === "high" ? REST_MODERATE_S : REST_ISOLATION_S;
 }
+// The rest tier a lift's timer starts from, named — restSeconds' own three answers (W299), so a pace sample is
+// grouped exactly as the timer that paced it.
+export function restTier(ex) {
+  const s = restSeconds(ex);
+  return s === REST_HEAVY_S ? "heavy" : s === REST_ISOLATION_S ? "isolation" : "moderate";
+}
+
+// PACE FROM REAL WORKOUTS (W299, considerations iteration — measure first). What a set, a lift change and a whole
+// session actually take, read only from the timestamps every banked set already carries (`completed_at`) — never
+// asked. A gap is measured between consecutive WORK sets of the same lift, so it includes the set itself: "time
+// between sets", not "rest". A superset round banks both legs at one instant, so a lift sharing an instant with
+// another lift in that workout is a superset lift and stays out of the straight-set medians and lift changes (its
+// time is the round's). Gaps over PACE_MAX_GAP_S are interruptions, not pace — set past the player's own longest rest
+// (600 s) plus a long set, so the longest resters are measured, not dropped. A workout whose sets all share ONE instant
+// was typed in after the fact ("Log a past workout" stamps every set at noon) and carries no pace at all. A lead and a
+// duration need a real start: a date-only legacy row and a History-corrected start (the projection hands it in as
+// null) have none, and a start nothing followed for PACE_MAX_LEAD_S was an idle tap, so it is neither. `restTierOf(exerciseId)` → "heavy" | "moderate" | "isolation" | null.
+// Pure; medians with their sample counts, and honest nulls when nothing qualifies.
+export const PACE_MAX_GAP_S = 900;
+export const PACE_MAX_LEAD_S = 1800;
+export function paceAggregate(sessions, restTierOf) {
+  const tiers = { heavy: [], moderate: [], isolation: [] }, transitions = [], leads = [], durations = [];
+  let used = 0;
+  for (const s of sessions ?? []) {
+    const work = (s?.sets ?? [])
+      .filter((x) => (x?.set_type ?? "work") === "work" && typeof x?.exercise === "string")
+      .map((x, i) => ({ ex: x.exercise, ms: Date.parse(x.completed_at ?? ""), i }))
+      .filter((x) => Number.isFinite(x.ms));
+    if (work.length < 2 || new Set(work.map((w) => w.ms)).size < 2) continue;
+    used++;
+    const byMs = new Map();
+    for (const w of work) byMs.set(w.ms, (byMs.get(w.ms) ?? new Set()).add(w.ex));
+    const paired = new Set();
+    for (const lifts of byMs.values()) if (lifts.size > 1) for (const e of lifts) paired.add(e);
+    const ord = [...work].sort((a, b) => a.ms - b.ms || a.i - b.i);
+    for (let k = 1; k < ord.length; k++) {
+      const a = ord[k - 1], b = ord[k], gap = (b.ms - a.ms) / 1000;
+      if (!(gap > 0) || gap > PACE_MAX_GAP_S || paired.has(a.ex) || paired.has(b.ex)) continue;
+      if (a.ex !== b.ex) { transitions.push(gap); continue; }
+      const t = restTierOf(b.ex);
+      if (tiers[t]) tiers[t].push(gap);
+    }
+    const start = /T/.test(s?.date ?? "") ? Date.parse(s.date) : NaN;
+    if (Number.isFinite(start)) {
+      const lead = (ord[0].ms - start) / 1000, mins = (ord[ord.length - 1].ms - start) / 60000;
+      if (lead > 0 && lead <= PACE_MAX_LEAD_S) {
+        leads.push(lead);
+        if (mins >= 5 && mins <= 240) durations.push(mins);
+      }
+    }
+  }
+  const med = (arr, digits = 0) => {
+    if (!arr.length) return { median: null, n: 0 };
+    const v = [...arr].sort((x, y) => x - y), m = v.length >> 1;
+    const raw = v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2, f = 10 ** digits;
+    return { median: Math.round(raw * f) / f, n: v.length };
+  };
+  return {
+    sessions: used,
+    between_sets_s: { heavy: med(tiers.heavy), moderate: med(tiers.moderate), isolation: med(tiers.isolation) },
+    transition_s: med(transitions), start_to_first_set_s: med(leads), duration_min: med(durations, 1),
+  };
+}

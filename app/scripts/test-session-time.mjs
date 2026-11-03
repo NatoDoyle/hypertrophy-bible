@@ -11,6 +11,8 @@ import {
   sessionTimingIssue,
   tomorrowLocalDate,
   validLocalDate,
+  paceSampleRows,
+  PACE_MAX_SESSIONS,
 } from "../src/session-time.mjs";
 
 let pass = 0, fail = 0;
@@ -178,5 +180,14 @@ check("a corrected row is DERIVABLE at the SAME instant it was corrected", () =>
 });
 
 
+// W301b (Burst 7 review): the owner's stats call reads pace inline, so its cost is bounded — the most recent
+// PACE_MAX_SESSIONS workouts after every filter, the same cut in both stores (they share this function).
+check("pace samples: voided rows never count; only the most recent PACE_MAX_SESSIONS survive, oldest dropped first", () => {
+  const now = Date.parse("2026-11-03T12:00:00.000Z");
+  const row = (id, daysAgo, extra = {}) => ({ session_id: id, date: new Date(now - daysAgo * 86400000).toISOString(), local_date: null, sets: [], ...extra });
+  const rows = [row("a", 3), row("b", 2), row("c", 1), row("v", 1, { voided_at: "2026-11-03T00:00:00.000Z" })];
+  assert.deepStrictEqual(paceSampleRows(rows, now, { limit: 2 }).map((r) => r.session_id), ["b", "c"]);
+  assert.ok(PACE_MAX_SESSIONS >= 500 && PACE_MAX_SESSIONS <= 2000, String(PACE_MAX_SESSIONS));
+});
 console.log(`\n${pass} session-time test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
-import { isDerivableSession, parseSessionInstant, sessionTimingIssue } from "./session-time.mjs";
+import { isDerivableSession, parseSessionInstant, sessionTimingIssue, paceSampleRows } from "./session-time.mjs";
 import { activationFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 export function createFileStore(path) {
@@ -321,6 +321,18 @@ export function createFileStore(path) {
         (db.push_deliveries ??= {})[endpoint] = at;
         flush();
       }
+    },
+    // Pace samples for the owner's stats (W299): live, non-smoke accounts' derivable workouts of the last
+    // PACE_WINDOW_DAYS, projected by the shared paceSampleRows — the D1 store hands back the identical list.
+    async paceSamples(now = Date.now()) {
+      const rows = [];
+      for (const [uid, list] of Object.entries(db.sessions ?? {})) {
+        const u = db.users?.[uid];
+        if (!u || u._merged_into || u.profile?.smoke === true) continue;
+        for (const x of list) rows.push({ session_id: x.session_id, date: x.date, local_date: x.local_date ?? null,
+          voided_at: x.voided_at ?? null, timing_corrected_at: x.timing_corrected_at ?? null, sets: x.sets });
+      }
+      return paceSampleRows(rows, now);
     },
     // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
     // computed entirely from rows this store already holds; counts only, no

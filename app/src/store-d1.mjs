@@ -4,7 +4,7 @@
 // Rows hold a JSON blob per record — the app owns the shape, D1 is just durable
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
-import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS } from "./session-time.mjs";
+import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS, paceSampleRows, PACE_WINDOW_DAYS, PACE_MAX_SESSIONS } from "./session-time.mjs";
 import { activationFunnel, onboardShape, reachCohort, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
@@ -414,6 +414,28 @@ export function createD1Store(db) {
       await ensureExtensions(db);
       await db.prepare("INSERT INTO push_deliveries (endpoint, last_ok_at) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM push_subscriptions WHERE endpoint = ?) ON CONFLICT(endpoint) DO UPDATE SET last_ok_at = excluded.last_ok_at")
         .bind(endpoint, at, endpoint).run();
+    },
+    // Pace samples for the owner's stats (W299): the file store's twin. Live, non-smoke accounts and non-voided rows are
+    // chosen IN SQL (W301b review: no per-user blob reads in the Worker), newest first, bounded with slack above
+    // PACE_MAX_SESSIONS for the shared filter's few JS-only rejections; the shared projection applies the exact window
+    // and cut. Only the set list leaves each blob.
+    async paceSamples(now = Date.now()) {
+      await ensureExtensions(db);
+      const since = new Date(now - (PACE_WINDOW_DAYS + 1) * 86400000).toISOString().slice(0, 10);
+      const { results } = await db
+        .prepare(`SELECT s.session_id AS session_id, s.date AS date, json_extract(s.data, '$.local_date') AS local_date,
+                         json_extract(s.data, '$.timing_corrected_at') AS timing_corrected_at, json_extract(s.data, '$.sets') AS sets
+                  FROM sessions s JOIN users u ON u.id = s.user_id
+                  WHERE json_extract(u.data, '$._merged_into') IS NULL AND COALESCE(json_extract(u.data, '$.profile.smoke'), 0) != 1
+                    AND ${notVoided("s.data")} AND ${DERIVABLE_SHAPE.replaceAll("date", "s.date")} AND substr(s.date, 1, 10) >= ?
+                  ORDER BY s.date DESC, s.session_id DESC LIMIT ?`)
+        .bind(derivableShapeBound(now), since, PACE_MAX_SESSIONS + 200).all();
+      const rows = results.map((r) => {
+        let sets = [];
+        try { sets = JSON.parse(r.sets ?? "[]"); } catch {}
+        return { session_id: r.session_id, date: r.date, local_date: r.local_date ?? null, voided_at: null, timing_corrected_at: r.timing_corrected_at ?? null, sets };
+      });
+      return paceSampleRows(rows, now);
     },
     // Owner-only aggregates (BLOCKERS #7 — the zero-new-collection proposal):
     // counts only, no per-user view, no PII. Valid voided sessions remain

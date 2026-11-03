@@ -7,7 +7,7 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
-import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
+import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -1265,7 +1265,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
       let out = [];
       if (d.stalledExercises.length) {
-        const nextPlan = generateUserPlan(user.profile, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
         out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
       }
       return (decision = { ...d, out });
@@ -1290,7 +1290,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     // From week 4: what the boundary would decide if it came today — the rollover's own function.
     // A specialization block's tune is frozen, but its boundary still swaps stalled lifts — so the
     // swaps are said and nothing else (W283 review).
-    const specializing = isSpecializing(user.profile, blockIndex);
+    const specializing = isSpecializing(user.profile, blockIndex, user.plan_meta?.spec_spent === true);
     if (!program?.custom && todayCtx.block && !todayCtx.taper && !graduating && !rolling && todayCtx.block.week >= 4) {
       const d = decide();
       const muscles = (ms) => listJoin(ms.map(plainMuscle));
@@ -1362,10 +1362,10 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     if (d.stalledExercises.length) {
       // The block index the rollover will build: the trained-week clock's (a pending boundary),
       // else the next one.
-      const nextPlan = generateUserPlan(user.profile, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
       swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
     }
-    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex) };
+    next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex, user.plan_meta?.spec_spent === true) };
   }
   const stallWindow = adaptiveStallWindow(progressionCadence(sessions, index));
   const stallBy = Object.fromEntries((report.stalls ?? []).map((x) => [x.exercise, x]));
@@ -1572,7 +1572,7 @@ export function blockTuneDecision(user, sessions, { checkins = [], bodyweights =
   // `planVolume` (consideration #1): the sets this plan delivers per muscle, so a stall on
   // well under them holds instead of earning +2 on paper. A hand-built plan's stored
   // rationale may not describe it → null (permissive).
-  const { adjust, held, notCompleting = [] } = isSpecializing(user.profile, user.plan_meta?.block_index ?? 0)
+  const { adjust, held, notCompleting = [] } = isSpecializing(user.profile, user.plan_meta?.block_index ?? 0, user.plan_meta?.spec_spent === true)
     ? { adjust: prevAdjust, held: [] }
     : computeVolumeAdjust(prevAdjust, sessions, user.custom_exercises || [], { checkins: checkins.filter((c) => inWindow(c.date)), bodyweights: bodyweights.filter((b) => inWindow(b.date)), goal: user.profile?.primary_goal, planVolume: user.program?.custom ? null : user.plan_rationale?.volume_by_muscle, currentWeek: weekOf(nowISO, user.profile?.tz_offset_min), sinceWeek: weekOf(user.plan_meta?.block_start, user.profile?.tz_offset_min) });
   // What CHANGED this block — so the new-block coach note announces the actual adjustment,

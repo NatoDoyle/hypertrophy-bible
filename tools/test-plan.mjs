@@ -1211,7 +1211,9 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
 // digest computed on the engine BEFORE W272 touched it.
 // The KB is FROZEN in tools/fixtures/golden-kb.json (exercises cut to the fields the
 // engine reads: id, name, primary/secondary_muscles, movement_pattern, mechanic,
-// equipment, lengthened_bias, difficulty, cns_cost, citations; muscles,
+// equipment, lengthened_bias, difficulty, cns_cost, citations, and — for the session-time
+// model (W300, added before generatePlan reads them, so this pin did not move; easierSubstitutes already reads
+// unilateral, outside this pin) — unilateral and alternating where the KB sets them; muscles,
 // contraindications and the cardio guideline whole), so a KB data wave never moves
 // this pin — only an engine change does. If the engine's output is MEANT to change,
 // re-pin deliberately and say why in the commit; never re-pin to make it pass.

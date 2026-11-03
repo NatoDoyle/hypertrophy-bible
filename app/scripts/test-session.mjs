@@ -711,7 +711,10 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.deepStrictEqual(out.rep_targets, [12, 12, 12], "the aims set for the heavier weight are still in reach");
     assert.ok(!(1 in r.sess.weights) && !(1 in r.sess.reps), "the stepper re-prefills at the eased weight");
     assert.ok(!("lastSkip" in r.sess));
-    assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true }, "an eased lift's workout is planned-easy: never graded, never an anchor");
+    // (W298: the served aims now travel too — they were what the player asked; a planned-easy target is excluded from learning anyway.)
+    // (W298 review: the aims are the ones SERVED — the player shows aim.slice(0, sets) — so a tired row's trimmed dose sends
+    // only its own two; a longer list would be dropped whole by the server.)
+    assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true, rep_targets: [12, 12] }, "an eased lift's workout is planned-easy: never graded, never an anchor");
   });
   check("#tired easeSlot: a tired day never counts — even on a lift with no history it is tagged eased (round 2: 'keep this one easy' was then graded 'too easy'); a bodyweight lift is tagged too", () => {
     const fresh = easeSlot(mkT({ exercise: "bss", name: "BSS", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: null, last_kg: null, last_reps: null }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
@@ -1169,6 +1172,19 @@ check("#targets buildTargets: the original set count, range, band and suggestion
   ]);
   assert.strictEqual(buildTargets({ ...sess, deload: true }).every((t) => t.deload === true), true, "a deload week: every lift planned easy");
   assert.deepStrictEqual(buildTargets(null), []);
+});
+// W298 (considerations iteration, Burst 7 — measure first): the per-set aims the player served travel with the
+// workout, so later learning (the fade check, item 9's estimates) can judge a set against what it was ASKED, not
+// only the range. Only aims the player itself would use (validAim) are sent; anything else is omitted, never null.
+check("#targets buildTargets carries the served rep aims when the player would use them; junk aims are omitted", () => {
+  const sess = { deload: false, ex: [
+    { exercise: "a", sets: 3, rep_range: "6-10", rir: "1-2", rep_targets: [7, 6, 6] },
+    { exercise: "b", sets: 3, rep_range: "6-10", rep_targets: [11, 9, 9] }, // over the range top: the player ignores it
+    { exercise: "c", sets: 2, rep_range: "8-12", rep_targets: "8,8" },
+  ] };
+  const t = buildTargets(sess);
+  assert.deepStrictEqual(t[0].rep_targets, [7, 6, 6], "the aims served today");
+  assert.ok(!("rep_targets" in t[1]) && !("rep_targets" in t[2]), "aims the player wouldn't use are not sent");
 });
 
 // --- #skip (W281, owner: "need ability to skip a set mid-workout"). A skip SHRINKS today's

@@ -91,3 +91,21 @@ export function sessionTimingIssue(session, nowMs = Date.now()) {
 export function isDerivableSession(session, nowMs = Date.now()) {
   return !sessionTimingIssue(session, nowMs);
 }
+
+// PACE SAMPLES (W299, considerations iteration — measure first): the one projection both stores hand the owner's
+// stats route, so the pace aggregate can never depend on which runtime answered. In: rows of
+// { session_id, date, local_date, voided_at, timing_corrected_at, sets } from live, non-smoke accounts. Out: the
+// derivable, NON-voided workouts of the last PACE_WINDOW_DAYS — at most the most recent PACE_MAX_SESSIONS, so the
+// owner's stats call stays bounded (W301b) — each reduced to its date, its id and every set's lift, type and
+// instant, never a user id or a weight, sorted by (date, session_id). A History-corrected workout keeps its real set
+// instants but its start is no longer the moment Start was tapped, so its date is handed on as null.
+export const PACE_WINDOW_DAYS = 120;
+export const PACE_MAX_SESSIONS = 1000;
+export function paceSampleRows(rows, nowMs = Date.now(), { limit = PACE_MAX_SESSIONS } = {}) {
+  const since = nowMs - PACE_WINDOW_DAYS * 86400000;
+  const kept = (rows ?? [])
+    .filter((r) => !r.voided_at && isDerivableSession({ date: r.date, local_date: r.local_date ?? null }, nowMs) && parseSessionInstant(r.date) >= since)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.session_id < b.session_id ? -1 : a.session_id > b.session_id ? 1 : 0));
+  return kept.slice(Math.max(0, kept.length - limit)).map((r) => ({ session_id: r.session_id, date: r.timing_corrected_at ? null : r.date,
+    sets: (Array.isArray(r.sets) ? r.sets : []).map((x) => ({ exercise: x?.exercise ?? null, set_type: x?.set_type ?? "work", completed_at: x?.completed_at ?? null })) }));
+}
