@@ -49,7 +49,7 @@ import {
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
 import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood } from "./derive-core.mjs";
-import { restSeconds, restTier, repsAtBand, paceAggregate, PACE_MAX_GAP_S } from "./derive-core.mjs";
+import { restSeconds, restTier, repsAtBand, paceAggregate, PACE_MAX_GAP_S, sessionMinutes, SESSION_PACE_DEFAULTS, itemsFromLog, paceModelCheck } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
 let passed = 0;
@@ -1623,6 +1623,50 @@ check("#pace paceAggregate: nothing usable → honest nulls, never a guessed num
   assert.deepEqual(paceAggregate([], () => "heavy"), { sessions: 0, between_sets_s: { heavy: empty, moderate: empty, isolation: empty },
     transition_s: empty, start_to_first_set_s: empty, duration_min: empty });
   assert.equal(PACE_MAX_GAP_S, 900, "the player's own longest rest (600 s) plus a long set still counts; past 15 minutes is an interruption");
+});
+
+// W302 (considerations iteration, Burst 8 — "60 minutes means 60 minutes"): what a served day takes, from the same
+// three rest tiers the player's timer uses, calibrated against real logged workouts (W299's pace, 2026-11-03).
+check("#session-time the defaults are the measured pace, named", () => {
+  assert.deepEqual({ ...SESSION_PACE_DEFAULTS }, { heavy: 191, moderate: 187, isolation: 119, transition: 159, lead: 353, work: 40, round_rest: 60 });
+});
+check("#session-time sessionMinutes: the lead, (n − 1) gaps per lift at its tier, one change per further lift", () => {
+  const exById = new Map([
+    ["squat", { id: "squat", mechanic: "compound", equipment: "barbell", cns_cost: "high" }],    // heavy
+    ["press", { id: "press", mechanic: "compound", equipment: "machine", cns_cost: "moderate" }],  // moderate
+    ["curl", { id: "curl", mechanic: "isolation", equipment: "cable", cns_cost: "low" }],         // isolation
+    ["split", { id: "split", mechanic: "compound", equipment: "dumbbell", cns_cost: "moderate", unilateral: true }],
+    ["raise", { id: "raise", mechanic: "isolation", equipment: "dumbbell", cns_cost: "low" }],
+  ]);
+  // 353 + 3×191 + 159 + 2×187 + 159 + 1×119 = 1737 s
+  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "press", sets: 3 }, { exercise: "curl", sets: 2 }], exById), 29);
+  // a unilateral lift's every gap carries the second side's work: 353 + 2×(187 + 40) = 807 s
+  assert.equal(sessionMinutes([{ exercise: "split", sets: 3 }], exById), 13.5);
+  // a superset pair is ONE station: (2 rounds − 1) × (60 + 40 + 40), then the longer lift's extra set at its own gap
+  // (119): 353 + 3×191 + 159 + 140 + 119 = 1344 s
+  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "curl", sets: 3, superset_with: "raise" }, { exercise: "raise", sets: 2, superset_with: "curl" }], exById), 22.4);
+  // the user's own pace replaces only the numbers it has: 353 + 2×150 = 653 s
+  assert.equal(sessionMinutes([{ exercise: "press", sets: 3 }], exById, { moderate: 150 }), 10.9);
+  // a lift the KB doesn't know rests like the app's long-standing default (moderate); an empty day is 0
+  assert.equal(sessionMinutes([{ exercise: "mystery", sets: 2 }], exById), sessionMinutes([{ exercise: "press", sets: 2 }], exById));
+  assert.equal(sessionMinutes([], exById), 0);
+});
+check("#session-time itemsFromLog: a logged workout back into lifts and set counts, a shared-instant pair as a superset", () => {
+  const at = (s) => new Date(Date.parse("2026-10-01T17:00:00.000Z") + s * 1000).toISOString();
+  const w = (exercise, s, set_type = "work") => ({ exercise, set_type, completed_at: at(s) });
+  assert.deepEqual(itemsFromLog([w("squat", 10), w("squat", 200, "warmup"), w("squat", 400), w("fly", 600), w("raise", 600), w("fly", 800), w("raise", 800), w("curl", 900)]), [
+    { exercise: "squat", sets: 2 }, { exercise: "fly", sets: 2, superset_with: "raise" }, { exercise: "raise", sets: 2, superset_with: "fly" }, { exercise: "curl", sets: 1 }]);
+});
+check("#session-time paceModelCheck: the model's minutes for each real workout's OWN lifts against how long it really took", () => {
+  const exById = new Map([["squat", { mechanic: "compound", equipment: "barbell", cns_cost: "high" }], ["curl", { mechanic: "isolation", equipment: "cable", cns_cost: "low" }]]);
+  const t0 = Date.parse("2026-10-01T17:00:00.000Z"), at = (s) => new Date(t0 + s * 1000).toISOString();
+  const w = (exercise, s) => ({ exercise, set_type: "work", completed_at: at(s) });
+  // laid out at exactly the default pace: lead 353, two squat gaps of 191, a change of 159, a curl gap of 119 → 1013 s
+  const exact = { date: at(0), sets: [w("squat", 353), w("squat", 544), w("squat", 735), w("curl", 894), w("curl", 1013)] };
+  const slow = { date: at(0), sets: [w("squat", 353), w("squat", 544), w("squat", 735), w("curl", 894), w("curl", 2026)] }; // took twice as long
+  assert.deepEqual(paceModelCheck([exact], (id) => exById.get(id)), { median_abs_error_pct: 0, n: 1 });
+  assert.deepEqual(paceModelCheck([exact, slow], (id) => exById.get(id)), { median_abs_error_pct: 25, n: 2 }, "errors 0% and 50% of the real duration");
+  assert.deepEqual(paceModelCheck([{ date: null, sets: exact.sets }], (id) => exById.get(id)), { median_abs_error_pct: null, n: 0 }, "no start, no check");
 });
 
 console.log(`\n${passed} test(s) passed.`);

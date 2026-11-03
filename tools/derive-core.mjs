@@ -1584,3 +1584,81 @@ export function paceAggregate(sessions, restTierOf) {
     transition_s: med(transitions), start_to_first_set_s: med(leads), duration_min: med(durations, 1),
   };
 }
+
+// SESSION TIME (W302, considerations iteration — Burst 8, "60 minutes means 60 minutes"). What a served day takes, in
+// minutes, from the same three rest tiers the player's timer uses (restTier). The defaults are MEASURED, not assumed:
+// W299's pace over 17 real logged workouts (2026-11-03) — the time between two sets of one lift (which includes the
+// set itself), a lift change (rest, walk, set-up and the next lift's first set) and the lead from Start to the first
+// set (warm-up included). So a day is: the lead, then (n − 1) gaps for each lift, then one change per further lift —
+// exactly "Start → last set", the duration the same data measured (median 59.6 min). A unilateral lift's every gap
+// carries the second side's work. A superset pair is ONE station: its paired rounds at the player's 60 s round rest
+// plus both sets' work (`work` and `round_rest` are the two estimates here — supersets and single sets aren't timed
+// apart in the data), then the longer lift's extra sets at its own gap. `pace` (the user's own medians, later) replaces
+// only the numbers it carries. Pure.
+export const SESSION_PACE_DEFAULTS = Object.freeze({ heavy: 191, moderate: 187, isolation: 119, transition: 159, lead: 353, work: 40, round_rest: 60 });
+export function sessionMinutes(exercises, exById, pace = null) {
+  const p = { ...SESSION_PACE_DEFAULTS };
+  for (const [k, v] of Object.entries(pace ?? {})) if (k in p && Number.isFinite(v) && v > 0) p[k] = v;
+  const items = (exercises ?? []).filter((it) => (Number(it?.sets) || 0) > 0);
+  const byId = new Map(items.map((it) => [it.exercise, it]));
+  const ex = (it) => exById?.get?.(it.exercise) ?? null;
+  const gap = (it) => p[restTier(ex(it))] + (ex(it)?.unilateral ? p.work : 0);
+  const work = (it) => p.work * (ex(it)?.unilateral ? 2 : 1);
+  const done = new Set();
+  let stations = 0, s = 0;
+  for (const it of items) {
+    if (done.has(it.exercise)) continue;
+    done.add(it.exercise);
+    stations++;
+    const mate = it.superset_with ? byId.get(it.superset_with) : null;
+    if (mate && mate.superset_with === it.exercise && !done.has(mate.exercise)) {
+      done.add(mate.exercise);
+      const a = Number(it.sets), b = Number(mate.sets), rounds = Math.min(a, b), longer = a >= b ? it : mate;
+      s += (rounds - 1) * (p.round_rest + work(it) + work(mate)) + Math.abs(a - b) * gap(longer);
+    } else {
+      s += (Number(it.sets) - 1) * gap(it);
+    }
+  }
+  if (!stations) return 0;
+  s += p.lead + (stations - 1) * p.transition;
+  return Math.round(s / 6) / 10;
+}
+
+// A logged workout back into the shape sessionMinutes reads (W302): its WORK sets in time order, one item per lift in
+// first-appearance order with its set count; two lifts that bank at one shared instant are a superset round, so they
+// pair. Pure.
+export function itemsFromLog(sets) {
+  const work = (sets ?? []).map((x, i) => ({ x, i, ms: Date.parse(x?.completed_at ?? "") }))
+    .filter(({ x, ms }) => (x?.set_type ?? "work") === "work" && typeof x?.exercise === "string" && Number.isFinite(ms))
+    .sort((a, b) => a.ms - b.ms || a.i - b.i);
+  const items = [], byEx = new Map(), atMs = new Map();
+  for (const { x, ms } of work) {
+    if (!byEx.has(x.exercise)) { const it = { exercise: x.exercise, sets: 0 }; byEx.set(x.exercise, it); items.push(it); }
+    byEx.get(x.exercise).sets++;
+    atMs.set(ms, (atMs.get(ms) ?? new Set()).add(x.exercise));
+  }
+  const mates = new Map();
+  for (const lifts of atMs.values()) if (lifts.size === 2) { const [a, b] = [...lifts]; mates.set(a, b); mates.set(b, a); }
+  for (const it of items) if (mates.has(it.exercise) && mates.get(mates.get(it.exercise)) === it.exercise) it.superset_with = mates.get(it.exercise);
+  return items;
+}
+
+// The model against reality (W302): for each real workout with a real start (the same rules paceAggregate uses), the
+// minutes sessionMinutes gives ITS OWN lifts against how long it actually took (Start → last set). The median absolute
+// error, as a % of the real duration — the session-time model's standing check on the owner's stats. Pure.
+export function paceModelCheck(sessions, exOf) {
+  const lookup = { get: (id) => exOf?.(id) ?? null };
+  const errs = [];
+  for (const s of sessions ?? []) {
+    const ms = (s?.sets ?? []).filter((x) => (x?.set_type ?? "work") === "work").map((x) => Date.parse(x?.completed_at ?? "")).filter(Number.isFinite);
+    if (ms.length < 2 || new Set(ms).size < 2) continue;
+    const start = /T/.test(s?.date ?? "") ? Date.parse(s.date) : NaN;
+    if (!Number.isFinite(start)) continue;
+    const lead = (Math.min(...ms) - start) / 1000, actual = (Math.max(...ms) - start) / 60000;
+    if (!(lead > 0 && lead <= PACE_MAX_LEAD_S) || actual < 5 || actual > 240) continue;
+    errs.push(Math.abs(sessionMinutes(itemsFromLog(s.sets), lookup) - actual) / actual * 100);
+  }
+  if (!errs.length) return { median_abs_error_pct: null, n: 0 };
+  const v = errs.sort((a, b) => a - b), m = v.length >> 1;
+  return { median_abs_error_pct: Math.round(v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2), n: v.length };
+}

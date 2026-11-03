@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
@@ -251,7 +251,12 @@ export function createApp(store, config = {}) {
     // Medians and counts only; a lift the KB doesn't know (a custom one) has no rest tier and stays out of the tiers.
     // A pace failure is reported as null, never a failed stats call (W301b review: prod-smoke needs this 200).
     let pace = null;
-    try { pace = paceAggregate(await store.paceSamples(now), (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; }); }
+    // …and the session-time model's standing check against how long those workouts really took (W302).
+    try {
+      const samples = await store.paceSamples(now);
+      pace = { ...paceAggregate(samples, (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; }),
+        model_check: paceModelCheck(samples, (id) => exerciseById.get(id) ?? null) };
+    }
     catch (e) { console.error("stats: pace failed", e?.message ?? e); }
     return c.json({ ...(await store.stats(now)), pace });
   });

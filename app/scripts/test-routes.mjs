@@ -780,6 +780,8 @@ try {
     ok("#pace the owner's stats carry a pace aggregate: the workout counts once, its two 150 s gaps land in the isolation tier",
       after?.sessions === before?.sessions + 1 && after.between_sets_s.isolation.n === before.between_sets_s.isolation.n + 2
       && after.duration_min.n === before.duration_min.n + 1, JSON.stringify({ before, after }));
+    ok("#session-time the owner's stats carry the time model's check against real durations: this workout is one more case",
+      after.model_check?.n === (before.model_check?.n ?? 0) + 1 && Number.isFinite(after.model_check.median_abs_error_pct), JSON.stringify(after.model_check));
   }
   // W301b (review): pace is read inline, so its failure must never take down the owner's stats (prod-smoke needs the 200).
   {
