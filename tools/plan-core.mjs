@@ -43,7 +43,7 @@ export const SECONDARY_SERVED = new Set(["forearms", "spinal-erectors"]);
 // Per-session hard-set ceiling by training age (see the step-4 comment in
 // generatePlan for the reasoning). Module-scope because the lever helper below
 // must know when the CLOCK stops being the binding constraint.
-const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+export const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
 
 // The volume LEVERS that actually bind for this profile, named honestly. The
 // caveat's whole job is telling the user what would buy more — and two cohorts
@@ -63,6 +63,47 @@ export const volumeLevers = ({ days, sessionMin, experience, timeBound } = {}) =
   if (timeBinds) return "longer sessions would let the plan give it more";
   return "six days already hold as much quality work as pays off per session — this closes as your work capacity grows, or by making the muscle a priority";
 };
+
+// THE THREE WAYS BACK (W304, considerations iteration — owner: "If the necessary amount of volume can't fit within the
+// chosen workout length preference please suggest to the user 3 options in order of best to worst: increase no. of
+// workouts per week, increase workout length or decrease volume"). Read off the plan generatePlan just built (`base`):
+// what the clock cut (time_trim), the days nothing more could come off (unfit), and the week's NECESSARY volume left
+// short — the muscles the engine itself marks below-MEV. An alternative is offered only when it MEASURABLY wins
+// something back: at least half the cut sets, an unfit day made to fit, or the MEV deficit down by 2+ sets — so a
+// shortfall no schedule fixes never becomes a card. "Longer sessions" is tried only when the clock bound (volumeLevers'
+// own rule: a longer session can't help a ceiling-bound day). Ranked as the owner ranked them; "keep" is always last
+// and carries what keeping costs. Pure and deterministic: each alternative is this engine run on the same inputs.
+export function timeFitOptions(profile, kb, opts = {}, base) {
+  const days = base?.program?.sessions?.length ?? 0;
+  if (!days) return null;
+  const exById = new Map((kb.exercises ?? []).map((e) => [e.id, e]));
+  const minutes = clamp(profile.session_length_min ?? 60, 30, 120);
+  const measure = (g) => {
+    const short = Object.entries(g.rationale?.volume_by_muscle ?? {}).filter(([, r]) => r.projected_status === "below-MEV" && r.landmark?.mev);
+    return {
+      trimmed_sets: g.meta?.time_trim?.removed_sets ?? 0,
+      unfit_days: g.meta?.time_trim?.unfit?.length ?? 0,
+      mev_deficit: Math.round(short.reduce((a, [, r]) => a + Math.max(0, r.landmark.mev.min - (r.projected_sets ?? 0)), 0) * 10) / 10,
+      mev_short: short.map(([m]) => m).sort(),
+      max_minutes: Math.max(0, ...(g.program?.sessions ?? []).map((s) => dayMinutes(s.exercises, exById))),
+    };
+  };
+  const now = measure(base);
+  const alts = [];
+  if (days < 6) alts.push({ kind: "add_day", days: days + 1, minutes, plan: generatePlan({ ...profile, days_per_week: days + 1 }, kb, opts) });
+  if ((now.trimmed_sets > 0 || now.unfit_days > 0) && minutes < 120) {
+    const longer = Math.min(120, minutes + 15);
+    alts.push({ kind: "longer", days, minutes: longer, plan: generatePlan({ ...profile, session_length_min: longer }, kb, opts) });
+  }
+  const options = alts.map(({ plan, ...o }) => {
+    const m = measure(plan);
+    return { ...o, ...m, lifted: now.mev_short.filter((x) => !m.mev_short.includes(x)) };
+  }).filter((o) => (now.trimmed_sets > 0 && now.trimmed_sets - o.trimmed_sets >= Math.ceil(now.trimmed_sets / 2))
+    || (now.unfit_days > 0 && o.unfit_days < now.unfit_days)
+    || now.mev_deficit - o.mev_deficit >= 2);
+  if (!options.length) return null;
+  return { days, minutes, ...now, options: [...options, { kind: "keep", days, minutes, ...now, lifted: [] }] };
+}
 
 // split by days_per_week × training_status → ordered list of archetypes
 const SPLIT_TABLE = {

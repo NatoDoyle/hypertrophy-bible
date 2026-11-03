@@ -2,7 +2,7 @@
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
-  accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers } from "./plan-core.mjs";
+  accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions } from "./plan-core.mjs";
 import { sessionMinutes as dayMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
@@ -1644,6 +1644,36 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok("#time-fit volumeLevers offers 'longer sessions' exactly when the clock, not the quality cap, bound the day",
     /longer sessions/.test(volumeLevers({ days: 4, sessionMin: 60, experience: "advanced", timeBound: true }))
     && !/longer sessions/.test(volumeLevers({ days: 4, sessionMin: 60, experience: "advanced", timeBound: false })));
+}
+
+// --- W304 (considerations iteration, Burst 8 — owner: "If the necessary amount of volume can't fit within the chosen
+// workout length preference please suggest to the user 3 options in order of best to worst: increase no. of workouts
+// per week, increase workout length or decrease volume"). Computed at generation time from the plan the engine just
+// built: offered only when a real alternative recovers what the clock cut (≥ half the trimmed sets, or an unfit day
+// made to fit) or lifts the week's necessary volume (the MEV deficit down by ≥ 2 sets). Never for a shortfall no
+// alternative fixes. Ranked as the owner ranked them; "keep" is always last and states what keeping costs.
+{
+  const FULL = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const fitFor = (profile, opts = {}) => timeFitOptions(profile, kb, opts, generatePlan(profile, kb, opts));
+  const flag = { user_id: "ss-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL };
+  const f1 = fitFor(flag);
+  ok(`#fit-options the flagship 4d/60 (ceiling-bound, MEV-short) is offered a 5th day first and keep last — no 'longer' (the clock never bound): ${JSON.stringify(f1?.options?.map((o) => o.kind))}`,
+    f1 && f1.options[0].kind === "add_day" && f1.options[0].days === 5 && f1.options.at(-1).kind === "keep" && !f1.options.some((o) => o.kind === "longer"));
+  ok("#fit-options the 5th day's consequence is measured, not promised: it lifts at least one muscle to its minimum, and every day's minutes are said",
+    f1.options[0].mev_deficit <= f1.mev_deficit - 2 && f1.options[0].lifted.length > 0 && f1.options[0].max_minutes > 0 && f1.mev_short.includes("chest"));
+  const timed = { user_id: "tf-adv-4-45", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 45, available_equipment: FULL };
+  const base45 = generatePlan(timed, kb), f2 = timeFitOptions(timed, kb, {}, base45);
+  const longer = f2?.options?.find((o) => o.kind === "longer");
+  ok(`#fit-options a clock-bound plan (advanced 4d/45 trimmed ${base45.meta.time_trim.removed_sets} sets) is offered longer sessions that win the cut sets back`,
+    base45.meta.time_trim.removed_sets > 0 && longer && longer.minutes === 60 && longer.trimmed_sets <= Math.floor(base45.meta.time_trim.removed_sets / 2));
+  ok("#fit-options …ranked as the owner ranked them: more days before longer sessions before keep",
+    f2.options.map((o) => o.kind).join(">") === ["add_day", "longer", "keep"].filter((k) => f2.options.some((o) => o.kind === k)).join(">"));
+  const six = { ...flag, user_id: "ss-6", days_per_week: 6 };
+  const f6 = fitFor(six);
+  ok("#fit-options a 6-day plan is never offered a 7th day", !f6 || !f6.options.some((o) => o.kind === "add_day"));
+  const easy = { user_id: "fit-none", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 90, available_equipment: FULL };
+  ok("#fit-options nothing to win back → no card at all (null), never a nag about a shortfall no option fixes", fitFor(easy) === null);
+  ok("#fit-options deterministic: the same plan gives the same offer", JSON.stringify(fitFor(flag)) === JSON.stringify(f1));
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

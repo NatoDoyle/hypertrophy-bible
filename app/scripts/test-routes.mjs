@@ -2114,6 +2114,30 @@ try {
     && fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
     && Date.parse(fitU.plan_meta.block_start) > Date.parse(fitPre.plan_meta.block_start) + 9 * 86400000
     && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+  // W304 (considerations iteration, Burst 8): the three ways back, through the client's door. Offered when the plan
+  // can't hold its necessary volume, said once, kept server-side (every device agrees, and a block rotation — which
+  // rebuilds plan_meta — can't bring it back), and re-asked only when the schedule itself changes.
+  {
+    const tf = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 4, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const today = async () => (await app.request("/api/today", { headers: { "X-HB-User": tf } })).json();
+    const t1 = await today();
+    ok("#time-fit Today offers the ways back for a plan that can't hold its necessary volume (a 5th day first, keep last)",
+      t1.daily?.plan_time_fit?.options?.[0]?.kind === "add_day" && t1.daily.plan_time_fit.options.at(-1).kind === "keep" && typeof t1.daily.plan_time_fit.key === "string",
+      JSON.stringify(t1.daily?.plan_time_fit)?.slice(0, 300));
+    ok("#time-fit Today says how long the workout takes (about N min, the session-time model)",
+      Number.isFinite(t1.session?.minutes_estimate) && t1.session.minutes_estimate > 10 && t1.session.minutes_estimate <= 75, String(t1.session?.minutes_estimate));
+    const kept = await json("POST", "/api/plan/time-fit", { user_id: tf, choice: "keep" });
+    const t2 = await today(), u2 = await store.getUser(tf);
+    ok("#time-fit 'Keep' is asked once: gone on every device, and stored outside plan_meta (a block rotation can't revive it)",
+      kept.status === 200 && t2.daily?.plan_time_fit == null && typeof u2.time_fit_kept === "string" && !("time_fit_kept" in (u2.plan_meta ?? {})));
+    ok("#time-fit an unknown choice is refused, never stored", (await json("POST", "/api/plan/time-fit", { user_id: tf, choice: "lol" })).status === 400);
+    await json("POST", "/api/plan/regenerate", { user_id: tf, profile: { days_per_week: 5 } });
+    const t3 = await today(), u3 = await store.getUser(tf);
+    ok("#time-fit a new schedule is a new question: the old keep never hides the new plan's offer",
+      JSON.stringify(t3.daily?.plan_time_fit ? { ...t3.daily.plan_time_fit, key: undefined } : null) === JSON.stringify(u3.plan_meta.time_fit ? { ...u3.plan_meta.time_fit, key: undefined } : null),
+      JSON.stringify([t3.daily?.plan_time_fit?.key, u3.time_fit_kept]));
+  }
   // …and a specialization block that already RAN stays run (W278 review: block_index resets
   // on any training change, so the offer re-armed it). Only new priorities start another.
   const specFit = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.priority_muscles = ["side-delts"]; } });

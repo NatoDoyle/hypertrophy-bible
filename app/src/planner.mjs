@@ -1,12 +1,17 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
+// The three ways back (W304) are computed HERE, when the plan is built — never per request (numbers recomputed on
+// every load drift between loads) — and stored with it as meta.time_fit. A forecast of the next plan passes
+// `fit: false`: it only needs the program.
 export function generateUserPlan(profile, opts = {}) {
-  return generatePlan(profile, KB, opts);
+  const { fit = true, ...engine } = opts;
+  const out = generatePlan(profile, KB, engine);
+  return fit ? { ...out, meta: { ...out.meta, time_fit: timeFitOptions(profile, KB, engine, out) } } : out;
 }
 
 // The user-derived generatePlan opts every door shares (W301, considerations iteration — Burst 7). One place, so a

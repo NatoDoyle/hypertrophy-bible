@@ -6,7 +6,7 @@ import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
-import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
+import { SPEC_MAX_BLOCKS, SESSION_QUALITY_CAP } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
@@ -148,6 +148,10 @@ export function sanitizeInjuries(injuries) {
 // both filter on it, and the whitelist silently dropping it once made the entire
 // deload-aware pipeline inert in production while unit tests (which bypass this
 // route) stayed green.
+// What a "keep" for the three ways back is ABOUT (W304): the schedule and the ceiling the plan was built under. A new
+// number of days, a new length, a new status or a new ceiling is a new question.
+const timeFitKey = (u) => `${u?.program?.sessions?.length ?? 0}:${u?.profile?.session_length_min ?? 60}:${u?.profile?.training_status ?? "intermediate"}:${SESSION_QUALITY_CAP[u?.profile?.training_status ?? "intermediate"] ?? 16}`;
+
 const normalizeSet = (s) => ({
   exercise: s.exercise,
   set_type: s.set_type ?? "work",
@@ -348,6 +352,19 @@ export function createApp(store, config = {}) {
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
+  // "Keep my plan" for the three ways back (W304). Stored at the top of the user doc, never in plan_meta: a block
+  // rotation rebuilds plan_meta, and a kept answer must not come back every six weeks. Choosing more days or longer
+  // sessions goes through /api/plan/regenerate (the Settings door) — the only door that rebuilds a plan.
+  app.post("/api/plan/time-fit", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, b);
+    if (error) return error;
+    if (b.choice !== "keep") return c.json({ error: "unknown choice" }, 400);
+    const updated = await store.updateUser(id, (u) => { u.time_fit_kept = timeFitKey(u); return u; });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, kept: updated.time_fit_kept });
+  });
+
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
@@ -1075,6 +1092,12 @@ export function createApp(store, config = {}) {
     const planDays = user.program?.sessions?.length ?? 0, keptDays = plan?.days?.length ?? 0;
     daily.plan_fit = plan?.carried && commitmentStood(user.profile?.commitment, clientDay) && !user.paused && !user.program?.custom && planDays && keptDays >= 2 && keptDays <= 6 && keptDays !== planDays
       ? { plan_days: planDays, committed_days: keptDays } : null;
+    // The three ways back (W304): offered when the plan the engine built couldn't hold its necessary volume (its own
+    // meta.time_fit, computed at build time), unless this very schedule was already answered "keep" — a server-side
+    // answer keyed on what the question was about, so every device agrees and only a real change re-asks it.
+    const fitKey = timeFitKey(user);
+    daily.plan_time_fit = !user.paused && !user.program?.custom && user.plan_meta?.time_fit && user.time_fit_kept !== fitKey
+      ? { ...user.plan_meta.time_fit, key: fitKey } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).

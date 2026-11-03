@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -1048,7 +1048,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // own signal, carried explicitly so no consumer re-derives it from the filter.
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note, swap_note,
+  // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
+  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId);
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1265,7 +1267,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
       let out = [];
       if (d.stalledExercises.length) {
-        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
+        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises, fit: false })).program;
         out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
       }
       return (decision = { ...d, out });
@@ -1362,7 +1364,7 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     if (d.stalledExercises.length) {
       // The block index the rollover will build: the trained-week clock's (a pending boundary),
       // else the next one.
-      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
+      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises, fit: false })).program;
       swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
     }
     next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex, user.plan_meta?.spec_spent === true) };
