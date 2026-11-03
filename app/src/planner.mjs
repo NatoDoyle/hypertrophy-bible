@@ -9,6 +9,16 @@ export function generateUserPlan(profile, opts = {}) {
   return generatePlan(profile, KB, opts);
 }
 
+// The user-derived generatePlan opts every door shares (W301, considerations iteration — Burst 7). One place, so a
+// door can never forget one: the injury door alone omitted specSpent and re-armed a FINISHED specialization block
+// after a schedule rebuild. Door-specific values (blockIndex, volumeAdjust, stalledExercises) and a door's deliberate
+// override (rebuildPlan's own specSpent: new priorities start a new block) ride in `extra`, which wins. Later
+// per-user inputs (the learned session cap, preference scores) join here, so every door — and every forecast of
+// the next plan — sees them at once.
+export function planOptsFor(user, extra = {}) {
+  return { ...(user?.plan_meta?.spec_spent === true ? { specSpent: true } : {}), ...extra };
+}
+
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
 // swap — bound to the bundled KB and the user's OWN profile, plan, rationale, custom
 // lifts and block (specialization ordering depends on where they are in it).

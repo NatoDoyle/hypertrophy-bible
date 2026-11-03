@@ -2113,6 +2113,13 @@ try {
     && specAfter.plan_meta.spec_spent === true);
   await json("POST", "/api/plan/regenerate", { user_id: specFit, profile: { days_per_week: 4 } }); // a second schedule change: still spent
   const specAgain = await store.getUser(specFit);
+  // W301: the injury door regenerates too, and it alone omitted specSpent — an injury report after a schedule rebuild
+  // re-armed the finished block. Every door now builds its opts through planner.mjs planOptsFor.
+  await json("POST", "/api/profile/injury", { user_id: specFit, region: "shoulder", severity: "mild" });
+  const specInj = await store.getUser(specFit);
+  ok("#spec-spent an injury report after a schedule rebuild leaves a FINISHED specialization block finished",
+    specAgain.plan_meta.spec_spent === true && specInj.plan_meta.block_index === 0
+    && specInj.plan_rationale.goal_prescription.specialization.active === false, JSON.stringify(specInj.plan_rationale.goal_prescription.specialization));
   await json("POST", "/api/plan/regenerate", { user_id: specFit, profile: { priority_muscles: ["chest"] } });
   const specNew = await store.getUser(specFit);
   ok("#plan-fit …through a second schedule change too; NEW priorities start a new block",

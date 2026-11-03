@@ -7,7 +7,7 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
-import { isSpecializing, generateUserPlan, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
+import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
   const m = String(s ?? "8-12").match(/(\d+)\s*-\s*(\d+)/);
@@ -1265,7 +1265,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
       let out = [];
       if (d.stalledExercises.length) {
-        const nextPlan = generateUserPlan(user.profile, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
         out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
       }
       return (decision = { ...d, out });
@@ -1362,7 +1362,7 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     if (d.stalledExercises.length) {
       // The block index the rollover will build: the trained-week clock's (a pending boundary),
       // else the next one.
-      const nextPlan = generateUserPlan(user.profile, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises }).program;
+      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
       swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
     }
     next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex) };

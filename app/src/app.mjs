@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
@@ -306,7 +306,7 @@ export function createApp(store, config = {}) {
     if (config.statsKey && c.req.header("X-HB-Stats-Key") === config.statsKey) profile.smoke = true;
     profile.units ??= "metric";
     profile.days_per_week ??= 3;
-    const { program, rationale, meta } = generateUserPlan(profile);
+    const { program, rationale, meta } = generateUserPlan(profile, planOptsFor({ profile }));
     const user = { profile, program, plan_rationale: rationale, plan_meta: { ...meta, block_start: new Date().toISOString() }, created_at: new Date().toISOString() };
     await store.saveUser(user_id, user);
     return c.json({ user_id, program: { id: program.id, name: program.name, days_per_week: program.days_per_week, split: program.split } });
@@ -414,7 +414,7 @@ export function createApp(store, config = {}) {
       // boundary's own door, so a lift the completion gate spared stays (W282 review: a units
       // save right after a boundary swapped out every lift the boundary had just kept).
       const stalledExercises = swapStalls(u, priorSessions, nowISO);
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises, ...(specSpent ? { specSpent: true } : {}) });
+      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex, volumeAdjust, stalledExercises, specSpent }));
       // A cosmetic save is not amnesia: every mid-block stamp survives it. A REAL
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
@@ -885,7 +885,7 @@ export function createApp(store, config = {}) {
         // A promotion RAISES the volume target (mev.min -> mav.min, or -> mav.max).
         // Start a fresh block so the mesocycle's own week-1 ramp (0.7x) walks them
         // into it, instead of the new target landing whole overnight.
-        const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+        const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} }));
         u.program = program; u.plan_rationale = rationale;
         u.plan_meta = {
           ...meta,
@@ -930,7 +930,7 @@ export function createApp(store, config = {}) {
           // different angle. Decided by coach.mjs blockTuneDecision on the FRESH copy, the
           // same function the post-workout read-out forecasts with (Burst 2).
           const { volumeAdjust, tuned: tunedThisBlock, stalledExercises, spared } = blockTuneDecision(u, sessions, { checkins, bodyweights }, nowISO);
-          const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex, volumeAdjust, stalledExercises });
+          const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex, volumeAdjust, stalledExercises }));
           // STALLED_DEMOTION is a ranking demotion, not an exclusion — a muscle with
           // one accessible lift re-picks the same one. The coach note says "I've
           // swapped it", so stamp only the lifts the new program actually DROPPED,
@@ -1946,7 +1946,7 @@ export function createApp(store, config = {}) {
       // NOT reset — an injury shouldn't cost the user their block progress (unlike
       // /api/plan/regenerate, where a training-field change means a different plan).
       // …through every rebuild's swap door (a plateaued lift stays demoted, a spared one stays).
-      const { program, rationale, meta } = generateUserPlan(u.profile, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, sessions, nowISO) });
+      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, sessions, nowISO) }));
       // A HAND-BUILT plan isn't regenerated (the edits are the user's), but a lift the injury now
       // rules out is swapped out of it (W283 review) — the client's "I'll keep it out of your plan"
       // has to be true for both kinds of plan.
