@@ -161,6 +161,22 @@ check("#week a day swap stops at its cycle's edge in the projection too (B·A·B
   assert.deepEqual(upcomingSessions(rotProg, [], {}, 0), []);
 });
 
+// W301b (Burst 7 review): a SPENT block rebuilt at block 0 (spec_spent, block_index 0) is not specializing — the block
+// boundary's tune must run for it. isSpecializing ignored the flag, so it froze the tune for the whole block.
+check("#spec-spent the block-boundary tune runs for a SPENT specialization block rebuilt at block 0", () => {
+  const profile = { user_id: "spent-tune", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+    available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] };
+  const gen = generateUserPlan(profile, { blockIndex: 0, specSpent: true });
+  const day = (d) => new Date(Date.now() - d * 86400000).toISOString();
+  const sessions = [6, 5, 4, 3, 2, 1].map((w) => ({ session_id: `st-${w}`, date: day(w * 7), local_date: day(w * 7).slice(0, 10), session_name: gen.program.sessions[0].name,
+    sets: [1, 2, 3].map(() => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8, rir: 1, completed_at: day(w * 7) })) }));
+  const tuneFor = (meta) => blockTuneDecision({ profile, program: gen.program, plan_rationale: gen.rationale, plan_meta: { block_index: 0, volume_adjust: {}, ...meta } }, sessions, {}, new Date().toISOString()).tuned;
+  const moved = (t) => t.bumped.length + t.eased.length + t.held.length;
+  assert.ok(moved(tuneFor({ spec_spent: true })) > 0, "spent: the tune reads the block (a stalled chest is bumped or held with a reason)");
+  assert.equal(moved(tuneFor({})), 0, "running: the block's tune stays frozen, as designed");
+  assert.equal(isSpecializing(profile, 0, true), false);
+});
+
 // W278 review: a SPENT specialization block (plan_meta.spec_spent, kept through a schedule
 // rebuild) must reach the permanent "No machine" swap too — it re-orders the session, and
 // would otherwise order it as if the block were still running (151 of 366 swaps measured).

@@ -458,13 +458,17 @@ try {
     await s.addSession("pc-real", { session_id: "pc-a", date: pIso(3), sets: [pSet("squat", 3, 400), pSet("squat", 3, 600)] });
     await s.addSession("pc-real", { session_id: "pc-old", date: pIso(200), sets: [pSet("squat", 200, 400), pSet("squat", 200, 600)] });
     await s.addSession("pc-smoke", { session_id: "pc-s", date: pIso(2), sets: [pSet("squat", 2, 400), pSet("squat", 2, 600)] });
+    // Review fixes (W301b): a voided workout is not pace; a History date correction keeps its real set instants but its
+    // start is no longer the moment Start was tapped, so the projection drops the start (date: null).
+    await s.addSession("pc-real", { session_id: "pc-v", date: pIso(4), voided_at: pIso(1), sets: [pSet("squat", 4, 400), pSet("squat", 4, 401)] });
+    await s.addSession("pc-real", { session_id: "pc-c", date: pIso(5), timing_corrected_at: pIso(1), sets: [pSet("squat", 5, 400), pSet("squat", 5, 600)] });
   }
   const paceAfter = await file.paceSamples(P_NOW);
   same("paceSamples: byte-identical projections from both stores", paceAfter, await d1.paceSamples(P_NOW));
   const mine = paceAfter.filter((x) => String(x.session_id).startsWith("pc-"));
-  ok("paceSamples: only the live account's in-window workout, projected (no user id, no weight)",
-    mine.length === 1 && mine[0].session_id === "pc-a" && mine[0].date === pIso(3) && !("user_id" in mine[0])
-    && JSON.stringify(mine[0].sets) === JSON.stringify([{ exercise: "squat", set_type: "work", completed_at: pIso(3, 400) },
+  ok("paceSamples: the live account's in-window workouts (a voided one never; a date-corrected one without its start), projected",
+    mine.length === 2 && mine[0].session_id === "pc-c" && mine[0].date === null && mine[1].session_id === "pc-a" && mine[1].date === pIso(3) && !("user_id" in mine[1])
+    && JSON.stringify(mine[1].sets) === JSON.stringify([{ exercise: "squat", set_type: "work", completed_at: pIso(3, 400) },
       { exercise: "squat", set_type: "work", completed_at: pIso(3, 600) }]), JSON.stringify(mine));
 
   // --- Wave 215: recoverable merge archives ---------------------------------

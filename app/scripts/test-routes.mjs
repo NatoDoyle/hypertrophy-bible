@@ -14,7 +14,7 @@ import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 import { planFitCopy, planFitRequest, readoutLists } from "../public/ui-helpers.mjs";
-import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout } from "../public/session-core.mjs";
+import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout, easeSlot } from "../public/session-core.mjs";
 import { generateUserPlan } from "../src/planner.mjs";
 
 let pass = 0, fail = 0;
@@ -780,6 +780,14 @@ try {
     ok("#pace the owner's stats carry a pace aggregate: the workout counts once, its two 150 s gaps land in the isolation tier",
       after?.sessions === before?.sessions + 1 && after.between_sets_s.isolation.n === before.between_sets_s.isolation.n + 2
       && after.duration_min.n === before.duration_min.n + 1, JSON.stringify({ before, after }));
+  }
+  // W301b (review): pace is read inline, so its failure must never take down the owner's stats (prod-smoke needs the 200).
+  {
+    const brittle = createApp({ ...store, paceSamples: async () => { throw new Error("pace boom"); } }, { statsKey: "test-stats-key" });
+    const res = await brittle.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } });
+    const body = await res.json();
+    ok("#pace a pace failure never takes the owner's stats down: 200, the counts, pace null",
+      res.status === 200 && typeof body.sessions_7d === "number" && body.pace === null, JSON.stringify(body).slice(0, 200));
   }
   // The burst-shape aggregate reads `magic_links.rl_key`, and that key EMBEDS the
   // onboarding IP ("onboard:203.0.113.7"). Only counts may leave this endpoint, so
@@ -1590,6 +1598,17 @@ try {
     const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
     ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
       JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
+    // W301b (review): a tired lift's trimmed dose sends only the aims it served, so the door keeps them (it drops a
+    // list longer than the planned sets whole).
+    {
+      const row = { exercise: "leg-extension", name: "Leg Extension", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: 40, inc_kg: 2.5, rep_targets: [12, 11, 11] };
+      const r = easeSlot({ session_id: "ez", ex: [row], logged: [], i: 0, set: 0, weights: {}, reps: {}, eff: {}, wUnits: {} }, 0, { expect: "leg-extension", stepKg: 2.5 });
+      await json("POST", "/api/session", { user_id: junkU, session_id: "w5", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+        sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 37.5, reps: 12, deload: true }], targets: buildTargets(r.sess) });
+      const t5 = (await store.listSessions(junkU)).find((x) => x.session_id === "w5")?.targets?.[0];
+      ok("#rep-aims a tired lift's served aims survive the door (its trimmed dose, not the full list)",
+        r.ok && t5?.sets === 2 && JSON.stringify(t5?.rep_targets) === "[12,11]", JSON.stringify(t5));
+    }
   }
 
   // --- Review round 1 (K19): the recap never praises "close to failure — that's where growth happens" for a lift whose
@@ -2908,6 +2927,24 @@ try {
   const afterManual = await (await app.request("/api/plan/explain", gradHdr)).json();
   ok("#grad a user who sets a HIGHER status keeps it — graduation promotes, never demotes",
     afterManual.profile?.training_status === "advanced");
+  // W301b (review): graduation regenerates at block 0 through planOptsFor — a spent specialization block must STAY spent
+  // in the meta it writes, or the next block-0 rebuild (a units save, an injury report) re-arms it mid-block.
+  {
+    const gs = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id;
+    await store.updateUser(gs, (u) => { u.plan_meta = { ...u.plan_meta, spec_spent: true }; return u; });
+    for (let w = GRADUATION.intermediate.weeks; w > 0; w--) for (let n = 0; n < 2; n++)
+      await json("POST", "/api/session", { user_id: gs, session_id: `gs-${w}-${n}`, date: new Date(Date.now() - (w * 7 + n) * 86400000).toISOString(),
+        sets: [...Array(3).fill({ exercise: gradEx, weight_kg: 60, reps: 8 })] });
+    await (await app.request("/api/today", { headers: { "X-HB-User": gs } })).json();
+    const g1 = await store.getUser(gs);
+    await json("POST", "/api/plan/regenerate", { user_id: gs, profile: { ...g1.profile, units: "imperial" } });
+    const g2 = await store.getUser(gs);
+    const sp = (u) => u.plan_rationale?.goal_prescription?.specialization;
+    ok("#spec-spent graduation keeps a spent block spent, and a units save after it can't re-arm it",
+      g1.profile.training_status === "intermediate" && g1.plan_meta.spec_spent === true && sp(g1)?.active === false && sp(g2)?.active === false,
+      JSON.stringify([g1.profile.training_status, g1.plan_meta.spec_spent, sp(g1), sp(g2)]));
+  }
 
   // ---- Wave 166: regression ------------------------------------------------
   // A lifter going BACKWARDS was invisible: stallDetect structurally can't flag a

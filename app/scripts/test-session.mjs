@@ -712,7 +712,9 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     assert.ok(!(1 in r.sess.weights) && !(1 in r.sess.reps), "the stepper re-prefills at the eased weight");
     assert.ok(!("lastSkip" in r.sess));
     // (W298: the served aims now travel too — they were what the player asked; a planned-easy target is excluded from learning anyway.)
-    assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true, rep_targets: [12, 12, 12] }, "an eased lift's workout is planned-easy: never graded, never an anchor");
+    // (W298 review: the aims are the ones SERVED — the player shows aim.slice(0, sets) — so a tired row's trimmed dose sends
+    // only its own two; a longer list would be dropped whole by the server.)
+    assert.deepStrictEqual(buildTargets(r.sess)[1], { exercise: "bss", sets: 2, rep_range: "8-12", rir: "1-3", suggested_kg: 20, deload: true, rep_targets: [12, 12] }, "an eased lift's workout is planned-easy: never graded, never an anchor");
   });
   check("#tired easeSlot: a tired day never counts — even on a lift with no history it is tagged eased (round 2: 'keep this one easy' was then graded 'too easy'); a bodyweight lift is tagged too", () => {
     const fresh = easeSlot(mkT({ exercise: "bss", name: "BSS", sets: 3, rep_range: "8-12", rir: "1-3", suggested_kg: null, last_kg: null, last_reps: null }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];

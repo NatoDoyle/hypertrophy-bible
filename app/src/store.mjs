@@ -329,7 +329,8 @@ export function createFileStore(path) {
       for (const [uid, list] of Object.entries(db.sessions ?? {})) {
         const u = db.users?.[uid];
         if (!u || u._merged_into || u.profile?.smoke === true) continue;
-        for (const x of list) rows.push({ session_id: x.session_id, date: x.date, local_date: x.local_date ?? null, sets: x.sets });
+        for (const x of list) rows.push({ session_id: x.session_id, date: x.date, local_date: x.local_date ?? null,
+          voided_at: x.voided_at ?? null, timing_corrected_at: x.timing_corrected_at ?? null, sets: x.sets });
       }
       return paceSampleRows(rows, now);
     },

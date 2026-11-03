@@ -1533,10 +1533,14 @@ export function restTier(ex) {
 // asked. A gap is measured between consecutive WORK sets of the same lift, so it includes the set itself: "time
 // between sets", not "rest". A superset round banks both legs at one instant, so a lift sharing an instant with
 // another lift in that workout is a superset lift and stays out of the straight-set medians and lift changes (its
-// time is the round's). Gaps over PACE_MAX_GAP_S are interruptions, not pace. A duration needs a real start
-// instant — a date-only legacy row has none. `restTierOf(exerciseId)` → "heavy" | "moderate" | "isolation" | null.
+// time is the round's). Gaps over PACE_MAX_GAP_S are interruptions, not pace — set past the player's own longest rest
+// (600 s) plus a long set, so the longest resters are measured, not dropped. A workout whose sets all share ONE instant
+// was typed in after the fact ("Log a past workout" stamps every set at noon) and carries no pace at all. A lead and a
+// duration need a real start: a date-only legacy row and a History-corrected start (the projection hands it in as
+// null) have none, and a start nothing followed for PACE_MAX_LEAD_S was an idle tap, so it is neither. `restTierOf(exerciseId)` → "heavy" | "moderate" | "isolation" | null.
 // Pure; medians with their sample counts, and honest nulls when nothing qualifies.
-export const PACE_MAX_GAP_S = 600;
+export const PACE_MAX_GAP_S = 900;
+export const PACE_MAX_LEAD_S = 1800;
 export function paceAggregate(sessions, restTierOf) {
   const tiers = { heavy: [], moderate: [], isolation: [] }, transitions = [], leads = [], durations = [];
   let used = 0;
@@ -1545,7 +1549,7 @@ export function paceAggregate(sessions, restTierOf) {
       .filter((x) => (x?.set_type ?? "work") === "work" && typeof x?.exercise === "string")
       .map((x, i) => ({ ex: x.exercise, ms: Date.parse(x.completed_at ?? ""), i }))
       .filter((x) => Number.isFinite(x.ms));
-    if (work.length < 2) continue;
+    if (work.length < 2 || new Set(work.map((w) => w.ms)).size < 2) continue;
     used++;
     const byMs = new Map();
     for (const w of work) byMs.set(w.ms, (byMs.get(w.ms) ?? new Set()).add(w.ex));
@@ -1562,8 +1566,10 @@ export function paceAggregate(sessions, restTierOf) {
     const start = /T/.test(s?.date ?? "") ? Date.parse(s.date) : NaN;
     if (Number.isFinite(start)) {
       const lead = (ord[0].ms - start) / 1000, mins = (ord[ord.length - 1].ms - start) / 60000;
-      if (lead >= 0 && lead <= 1800) leads.push(lead);
-      if (mins >= 5 && mins <= 240) durations.push(mins);
+      if (lead > 0 && lead <= PACE_MAX_LEAD_S) {
+        leads.push(lead);
+        if (mins >= 5 && mins <= 240) durations.push(mins);
+      }
     }
   }
   const med = (arr, digits = 0) => {

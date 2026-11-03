@@ -1588,7 +1588,7 @@ check("#pace paceAggregate: medians between sets per rest tier, lift changes, st
     w("curl", 1450), w("curl", 1550),                          // lift change 130; isolation: 100
     w("fly", 1700), w("raise", 1700), w("fly", 1800), w("raise", 1800), // a superset round banks both legs at one instant
   ] };
-  const s2 = { date: "2026-10-03", sets: [w("curl", 0), w("curl", 90), w("curl", 790)] }; // date-only start; 700 s = an interruption
+  const s2 = { date: "2026-10-03", sets: [w("curl", 0), w("curl", 90), w("curl", 1090)] }; // date-only start; 1000 s = an interruption
   const r = paceAggregate([s1, s2, { date: at(0), sets: [w("curl", 10)] }], tier);
   assert.equal(r.sessions, 2, "a one-set workout carries no pace");
   assert.deepEqual(r.between_sets_s, { heavy: { median: 220, n: 2 }, moderate: { median: 160, n: 2 }, isolation: { median: 95, n: 2 } },
@@ -1604,11 +1604,25 @@ check("#pace restTier names restSeconds' own three answers, so a pace sample is 
   assert.equal(restTier({ mechanic: "isolation", cns_cost: "low" }), "isolation");
   assert.equal(restTier(null), "moderate", "no mechanic → the app's long-standing 120 s");
 });
+check("#pace a backfilled workout (every set at one instant) carries no pace; a start nothing followed for 30+ min has no lead or duration", () => {
+  const t0 = Date.parse("2026-10-01T12:00:00.000Z"), at = (s) => new Date(t0 + s * 1000).toISOString();
+  const cw = (s) => ({ exercise: "curl", set_type: "work", completed_at: at(s) });
+  const retro = { date: at(0), sets: [cw(0), cw(0), cw(0)] };          // "Log a past workout": a noon start, every set at noon
+  const idle = { date: at(0), sets: [cw(2400), cw(2500)] };             // tapped Start, trained 40 minutes later
+  const r = paceAggregate([retro, idle], () => "isolation");
+  assert.equal(r.sessions, 1, "a workout whose sets all share one instant was typed in after the fact: no pace at all");
+  assert.deepEqual([r.start_to_first_set_s, r.duration_min], [{ median: null, n: 0 }, { median: null, n: 0 }], "an idle start is neither a lead nor part of a duration");
+  assert.deepEqual(r.between_sets_s.isolation, { median: 100, n: 1 }, "…though its set-to-set gap is still real pace");
+  const corrected = { date: null, sets: [cw(0), cw(150)] };            // a History date correction: the projection drops the start
+  assert.deepEqual(paceAggregate([corrected], () => "isolation").start_to_first_set_s, { median: null, n: 0 });
+  const typedStart = { date: at(0), sets: [cw(0), cw(150)] };          // a first set AT the start instant was typed, not tapped
+  assert.deepEqual(paceAggregate([typedStart], () => "isolation").start_to_first_set_s, { median: null, n: 0 }, "a 0 s lead is not a lead");
+});
 check("#pace paceAggregate: nothing usable → honest nulls, never a guessed number", () => {
   const empty = { median: null, n: 0 };
   assert.deepEqual(paceAggregate([], () => "heavy"), { sessions: 0, between_sets_s: { heavy: empty, moderate: empty, isolation: empty },
     transition_s: empty, start_to_first_set_s: empty, duration_min: empty });
-  assert.equal(PACE_MAX_GAP_S, 600, "over 10 minutes between two sets is an interruption, not pace");
+  assert.equal(PACE_MAX_GAP_S, 900, "the player's own longest rest (600 s) plus a long set still counts; past 15 minutes is an interruption");
 });
 
 console.log(`\n${passed} test(s) passed.`);

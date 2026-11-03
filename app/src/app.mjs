@@ -249,7 +249,10 @@ export function createApp(store, config = {}) {
     const now = Date.now();
     // Real pace (W299): what sets, lift changes and sessions actually take — the session-time model's calibration.
     // Medians and counts only; a lift the KB doesn't know (a custom one) has no rest tier and stays out of the tiers.
-    const pace = paceAggregate(await store.paceSamples(now), (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; });
+    // A pace failure is reported as null, never a failed stats call (W301b review: prod-smoke needs this 200).
+    let pace = null;
+    try { pace = paceAggregate(await store.paceSamples(now), (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; }); }
+    catch (e) { console.error("stats: pace failed", e?.message ?? e); }
     return c.json({ ...(await store.stats(now)), pace });
   });
 
@@ -885,7 +888,8 @@ export function createApp(store, config = {}) {
         // A promotion RAISES the volume target (mev.min -> mav.min, or -> mav.max).
         // Start a fresh block so the mesocycle's own week-1 ramp (0.7x) walks them
         // into it, instead of the new target landing whole overnight.
-        const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} }));
+        const gradOpts = planOptsFor(u, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
+        const { program, rationale, meta } = generateUserPlan(u.profile, gradOpts);
         u.program = program; u.plan_rationale = rationale;
         u.plan_meta = {
           ...meta,
@@ -898,6 +902,9 @@ export function createApp(store, config = {}) {
           // under the new block) — a step up you earned is a win to celebrate
           // (Goal 4), not a settings change to discover.
           graduated_to: fresh,
+          // A spent specialization block stays spent through the promotion (W301b review): this meta is rebuilt whole, and
+          // dropping the flag let the next block-0 rebuild (a units save, an injury report) re-arm the block mid-block.
+          ...(gradOpts.specSpent ? { spec_spent: true } : {}),
         };
         return u;
       }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
