@@ -273,32 +273,46 @@ export const planFitVisible = (fit, keptKey) => !!fit && keptKey !== fit.key;
 
 // The three ways back (W304, considerations iteration — owner: "If the necessary amount of volume can't fit within the
 // chosen workout length preference please suggest to the user 3 options in order of best to worst"). Worded from the
-// engine's own measurements (daily.plan_time_fit), in the engine's ranking; every option says what it wins or costs,
-// and "keep" says what stays short. A day or minutes change is a real training change, so it starts a fresh block —
-// said, never sprung. Null when there's nothing to choose between (keep alone is not a choice).
+// engine's own measurements (daily.plan_time_fit), in the engine's ranking. W305c (Burst 8 review): every option says
+// what it wins AND what it newly leaves short (#15); keep says only what it forgoes — what some option would lift — and
+// any day it leaves long (#17 #49); a landmark is "the usual starting point for growth (an estimate)", never "the minimum
+// that builds muscle" (#6 #19 — the KB's MEV is an estimate where a growth block starts); no verb has to agree with a
+// muscle's name (#30); minutes compare like for like, the longest workout then and now (#29 #41); a block restart only
+// where there are blocks (#27); a day past its minutes is said even when no option helps — keep alone acknowledges it
+// (#21). Null when there's nothing to say.
 export function timeFitCopy(fit) {
   const opts = (fit?.options ?? []).filter((o) => o?.kind);
-  if (opts.filter((o) => o.kind !== "keep").length === 0) return null;
+  const over = fit?.over ?? [], unfit = fit?.unfit_days ?? over.length;
+  if (!opts.length || (opts.every((o) => o.kind === "keep") && !(unfit > 0 && over.length))) return null;
   const names = (ms) => friendlyList((ms ?? []).map(friendlyMuscle));
-  const clock = (fit.trimmed_sets ?? 0) > 0 || (fit.unfit_days ?? 0) > 0;
-  const shortLine = fit.mev_short?.length
-    ? ` ${names(fit.mev_short)[0].toUpperCase()}${names(fit.mev_short).slice(1)} ${fit.mev_short.length === 1 ? "gets" : "get"} less than the minimum that builds muscle.` : "";
-  const cut = clock
-    ? (fit.trimmed_sets > 0 ? `To fit ${fit.minutes} minutes, ${fit.trimmed_sets} set${fit.trimmed_sets === 1 ? "" : "s"} came out of your week.` : `Some of your workouts still run past ${fit.minutes} minutes.`)
-    : `Your workouts are as full as quality allows.`;
-  const wins = (o) => o.lifted?.length ? `${names(o.lifted)} reach${o.lifted.length === 1 ? "es" : ""} ${o.lifted.length === 1 ? "its" : "their"} minimum`
-    : (fit.trimmed_sets ?? 0) > (o.trimmed_sets ?? 0) ? `wins back ${fit.trimmed_sets - (o.trimmed_sets ?? 0)} of the cut sets` : "more room for your volume";
+  const mins = (x) => Math.round(x ?? 0);
+  const s = (n) => (n === 1 ? "" : "s");
+  const body = [];
+  if (unfit > 0 && over.length) {
+    body.push(`${over[0].session} takes about ${mins(over[0].minutes)} min${unfit > 1 ? `, the longest of ${unfit}` : ""}.`);
+    body.push(fit.trimmed_sets > 0 ? `${fit.trimmed_sets} set${s(fit.trimmed_sets)} already came out to save time.` : "What's left is your main lifts and the sets your muscles need.");
+  } else if (fit.trimmed_sets > 0) body.push(`To fit ${fit.minutes} minutes, ${fit.trimmed_sets} set${s(fit.trimmed_sets)} came out of your week.`);
+  if (fit.mev_short?.length) body.push(`Below the usual starting point for growth (an estimate): ${names(fit.mev_short)}.`);
+  const now = mins(fit.max_minutes);
   const options = opts.map((o) => {
-    if (o.kind === "add_day") return { kind: o.kind, option: o, label: `Train ${o.days} days a week`, detail: `${wins(o)} · about ${Math.round(o.max_minutes)} min a day · starts a fresh 6-week block` };
-    if (o.kind === "longer") return { kind: o.kind, option: o, label: `Make workouts ${o.minutes} min`, detail: `${wins(o)} · starts a fresh 6-week block` };
-    const stays = o.mev_short?.length ? `${names(o.mev_short)} stay${o.mev_short.length === 1 ? "s" : ""} under the minimum`
-      : o.trimmed_sets > 0 ? `the ${o.trimmed_sets} cut set${o.trimmed_sets === 1 ? "" : "s"} stay out` : "nothing else changes";
-    return { kind: o.kind, option: o, label: `Keep ${o.days} × ${o.minutes} min`, detail: stays };
+    if (o.kind === "keep") {
+      const parts = [unfit > 0 && over.length ? `${over[0].session} stays about ${mins(over[0].minutes)} min${unfit > 1 ? `, and ${unfit - 1} more past ${fit.minutes}` : ""}` : "",
+        o.forgoes?.length ? `leaves ${names(o.forgoes)} below it` : ""].filter(Boolean);
+      return { kind: o.kind, option: o, label: `Keep ${o.days} × ${o.minutes} min`, detail: parts.join(" · ") || "nothing changes" };
+    }
+    const fitted = unfit - (o.unfit_days ?? 0);
+    const parts = [
+      o.lifted?.length ? `brings ${names(o.lifted)} up to it` : "",
+      fitted > 0 ? (o.unfit_days ? `${fitted} more workout${s(fitted)} fit${fitted === 1 ? "s" : ""}` : "every workout fits") : "",
+      o.newly?.length ? `leaves ${names(o.newly)} below it` : "",
+      `longest workout about ${mins(o.max_minutes)} min (now ${now})`,
+      fit.blocks === false ? "" : "starts a fresh 6-week block",
+    ].filter(Boolean);
+    return { kind: o.kind, option: o, label: o.kind === "add_day" ? `Train ${o.days} days a week` : `Make workouts ${o.minutes} min`, detail: parts.join(" · ") };
   });
-  return {
-    title: clock ? `Your plan doesn't fit ${fit.minutes} minutes` : `${fit.days} workouts of ${fit.minutes} min can't hold all your plan needs`,
-    body: `${cut}${shortLine}`.trim(), options, key: fit.key,
-  };
+  const title = unfit > 0 && over.length ? (unfit === 1 ? `${over[0].session} runs past ${fit.minutes} minutes` : `${unfit} workouts run past ${fit.minutes} minutes`)
+    : `${fit.days} workouts of ${fit.minutes} min leave some muscles short`;
+  return { title, body: body.join(" "), options, key: fit.key };
 }
 // The request each choice sends: a schedule change goes through the Settings door (the only one that rebuilds a plan).
 export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_per_week: o.days } }

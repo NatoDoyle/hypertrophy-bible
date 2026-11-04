@@ -1319,7 +1319,10 @@ export function createApp(store, config = {}) {
       const week = isoWeekKeyLocal(Date.now(), tzNow);
       const stored = u.profile?.commitment;
       const pending = (stored?.week ?? "") >= week && Array.isArray(stored?.resume_days) && stored.resume_days.length ? stored.resume_days : null;
-      const resume = pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
+      // New USUAL days for a cleared week (Burst 8 review #46 — the time-fit card's extra day): they come back from next
+      // week, and this week stays free. Only on a clear: a week with days picked keeps the days it promised.
+      const usual = !days.length && Array.isArray(b.resume_days) ? [...new Set(b.resume_days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : null;
+      const resume = (usual?.length ? usual : null) ?? pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
       u.profile = { ...(u.profile ?? {}), commitment: { week, days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;
     });

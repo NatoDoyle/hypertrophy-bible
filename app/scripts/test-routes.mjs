@@ -1168,6 +1168,17 @@ try {
   await json("POST", "/api/commitment", { user_id: cUser, days: [] });
   ok("#commitment …and clearing again keeps the usual days, not the one-off pick",
     JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  // Burst 8 review #46: a day ADDED to the usual days in a cleared week (the time-fit card's "Train N+1 days") joins them
+  // from next week — this week stays free, as the user said; nothing but valid weekdays is stored.
+  const addUsual = await json("POST", "/api/commitment", { user_id: cUser, days: [], resume_days: ["mon", "fri", "wed", "funday"] });
+  const addAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a cleared week can take new usual days (resume_days) — this week stays free (review #46)",
+    addUsual.status === 200 && addAdh.commitment === null && JSON.stringify(addAdh.commitment_resume_days) === JSON.stringify(["mon", "fri", "wed"])
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri", "wed"]), JSON.stringify(addAdh.commitment_resume_days));
+  const noUsual = await json("POST", "/api/commitment", { user_id: cUser, days: ["sat"], resume_days: ["tue"] });
+  ok("#commitment …but resume_days only ever names the usual days of a CLEAR: a week with days picked keeps the promised ones",
+    noUsual.status === 200 && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri", "wed"]));
+  await json("POST", "/api/commitment", { user_id: cUser, days: [], resume_days: ["mon", "fri"] });
   await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: [], resume_days: ["tue"], set_on: "2020-01-01" }; return u; });
   const resumedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment days back after a cleared week are marked resumed (the card must not say 'same as last week')",

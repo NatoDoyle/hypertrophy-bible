@@ -223,36 +223,72 @@ check("nextSessionLine: the next workout by day — tomorrow, a weekday, or (no 
 // says what the mismatch costs, what a rebuild changes, and that it starts a fresh block.
 // W304 (considerations iteration, Burst 8): the three ways back, worded. Ranked as the owner ranked them; every option
 // says what it wins or costs (measured by the engine, never promised); keep says what stays short.
-check("timeFitCopy: the clock cut sets — the title names the minutes, each option says what it wins, keep says what stays short", () => {
-  const fit = { days: 4, minutes: 45, trimmed_sets: 11, unfit_days: 0, mev_deficit: 3, mev_short: ["chest", "side-delts"], max_minutes: 45, key: "4:45:advanced:20",
-    options: [
-      { kind: "add_day", days: 5, minutes: 45, trimmed_sets: 2, unfit_days: 0, mev_deficit: 0, mev_short: [], max_minutes: 44, lifted: ["chest", "side-delts"] },
-      { kind: "longer", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 1, mev_short: ["side-delts"], max_minutes: 58, lifted: ["chest"] },
-      { kind: "keep", days: 4, minutes: 45, trimmed_sets: 11, unfit_days: 0, mev_deficit: 3, mev_short: ["chest", "side-delts"], max_minutes: 45, lifted: [] }] };
-  const c = timeFitCopy(fit);
-  assert.equal(c.title, "Your plan doesn't fit 45 minutes");
-  assert.match(c.body, /11 sets came out of your week/);
-  assert.match(c.body, /chest and shoulders \(side\) get less than the minimum/i, "a sentence starts with a capital");
+// W305c (Burst 8 review #6 #15 #17 #19 #21 #27 #29 #30 #41 #49): every option says what it wins AND what it newly
+// leaves short; keep says only what it forgoes (and any day it leaves long); a landmark is "the usual starting point for
+// growth (an estimate)", never "the minimum that builds muscle"; no verb has to agree with a muscle's name; the minutes
+// compared are like for like (longest workout, now vs then); a beginner has no block to restart; days still past their
+// minutes are said even when sets were cut — and even when no option helps (keep alone, to acknowledge).
+const FIT_SHORT = { days: 4, minutes: 60, blocks: true, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 4.5, mev_short: ["chest", "side-delts", "calves"], max_minutes: 49.4, key: "k1",
+  options: [
+    { kind: "add_day", days: 5, minutes: 60, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 1, mev_short: ["calves", "abs"], max_minutes: 50.7, lifted: ["chest", "side-delts"], newly: ["abs"] },
+    { kind: "longer", days: 4, minutes: 75, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 2, mev_short: ["calves"], max_minutes: 61.1, lifted: ["chest", "side-delts"], newly: [] },
+    { kind: "keep", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 4.5, mev_short: ["chest", "side-delts", "calves"], max_minutes: 49.4, lifted: [], newly: [], forgoes: ["chest", "side-delts"] }] };
+check("timeFitCopy: what's short is 'below the usual starting point for growth (an estimate)' — never 'the minimum that builds muscle' (#6 #19)", () => {
+  const c = timeFitCopy(FIT_SHORT);
+  assert.equal(c.title, "4 workouts of 60 min leave some muscles short");
+  assert.equal(c.body, "Below the usual starting point for growth (an estimate): chest, shoulders (side) and calves.");
+  for (const o of c.options) assert.doesNotMatch(`${c.body} ${o.detail}`, /minimum that builds|builds muscle|stays? under the minimum/);
+});
+check("timeFitCopy: an option says what it lifts AND what it newly leaves short; keep names only what it forgoes (#15 #17)", () => {
+  const c = timeFitCopy(FIT_SHORT);
   assert.deepEqual(c.options.map((o) => o.kind), ["add_day", "longer", "keep"]);
   assert.equal(c.options[0].label, "Train 5 days a week");
-  assert.match(c.options[0].detail, /chest and shoulders \(side\) reach their minimum/);
-  assert.match(c.options[0].detail, /about 44 min a day/);
-  assert.match(c.options[0].detail, /a fresh 6-week block/);
-  assert.equal(c.options[1].label, "Make workouts 60 min");
-  assert.equal(c.options[2].label, "Keep 4 × 45 min");
-  assert.match(c.options[2].detail, /chest and shoulders \(side\) stay under the minimum/);
+  assert.match(c.options[0].detail, /^brings chest and shoulders \(side\) up to it · leaves abs below it · /);
+  assert.doesNotMatch(c.options[1].detail, /leaves/, "nothing newly short → nothing said about it");
+  assert.equal(c.options[2].label, "Keep 4 × 60 min");
+  assert.equal(c.options[2].detail, "leaves chest and shoulders (side) below it", "calves are short whatever you pick — not keep's cost");
 });
-check("timeFitCopy: a ceiling-bound plan (nothing cut for time) says what's short instead of blaming the clock", () => {
-  const c = timeFitCopy({ days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 4, mev_short: ["chest"], max_minutes: 58, key: "k",
-    options: [{ kind: "add_day", days: 5, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 0, mev_short: [], max_minutes: 52, lifted: ["chest"] },
-      { kind: "keep", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, mev_deficit: 4, mev_short: ["chest"], max_minutes: 58, lifted: [] }] });
-  assert.equal(c.title, "4 workouts of 60 min can't hold all your plan needs");
-  assert.match(c.body, /^Your workouts are as full as quality allows\. Chest gets less than the minimum that builds muscle\.$/);
-  assert.doesNotMatch(c.body, /came out/);
+check("timeFitCopy: no verb has to agree with a muscle's name — calves, abs, hamstrings read right alone (#30)", () => {
+  const one = { ...FIT_SHORT, mev_short: ["calves"], options: [{ ...FIT_SHORT.options[0], lifted: ["calves"], newly: [], mev_short: [] }, { ...FIT_SHORT.options[2], mev_short: ["calves"], forgoes: ["calves"] }] };
+  const c = timeFitCopy(one);
+  assert.doesNotMatch(`${c.body} ${c.options.map((o) => o.detail).join(" ")}`, /\b(gets|reaches its|stays)\b/);
+  assert.match(c.body, /: calves\.$/);
+  assert.match(c.options[0].detail, /^brings calves up to it/);
 });
-check("timeFitCopy: nothing to offer → no card", () => {
+check("timeFitCopy: minutes are compared like for like — the longest workout, then and now (#29 #41)", () => {
+  const c = timeFitCopy(FIT_SHORT);
+  assert.match(c.options[0].detail, /longest workout about 51 min \(now 49\)/);
+  assert.match(c.options[1].detail, /longest workout about 61 min \(now 49\)/, "'Make workouts 75 min' shows what the days would really take");
+  assert.doesNotMatch(c.options[0].detail, /min a day/);
+});
+check("timeFitCopy: a block restart is said only where there are blocks — a beginner has none (#27)", () => {
+  assert.match(timeFitCopy(FIT_SHORT).options[0].detail, /starts a fresh 6-week block$/);
+  const beg = timeFitCopy({ ...FIT_SHORT, blocks: false });
+  for (const o of beg.options) assert.doesNotMatch(o.detail, /block/);
+});
+check("timeFitCopy: days still past their minutes are said even when sets were cut — never 'to fit', and keep names the overrun (#49)", () => {
+  const fit = { days: 4, minutes: 30, blocks: true, trimmed_sets: 5, unfit_days: 2, over: [{ session: "Lower A", minutes: 35.7 }, { session: "Upper A", minutes: 31.2 }],
+    mev_deficit: 0, mev_short: [], max_minutes: 35.7, key: "k2",
+    options: [{ kind: "longer", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 0, mev_short: [], max_minutes: 41, lifted: [], newly: [] },
+      { kind: "keep", days: 4, minutes: 30, trimmed_sets: 5, unfit_days: 2, over: [{ session: "Lower A", minutes: 35.7 }, { session: "Upper A", minutes: 31.2 }], mev_deficit: 0, mev_short: [], max_minutes: 35.7, lifted: [], newly: [], forgoes: [] }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.title, "2 workouts run past 30 minutes");
+  assert.match(c.body, /^Lower A takes about 36 min, the longest of 2\. 5 sets already came out to save time\.$/);
+  assert.doesNotMatch(c.body, /To fit/);
+  assert.match(c.options[0].detail, /^every workout fits · longest workout about 41 min \(now 36\)/);
+  assert.equal(c.options[1].detail, "Lower A stays about 36 min, and 1 more past 30");
+});
+check("timeFitCopy: a day past its minutes that no option fixes is still said — keep alone, to acknowledge (#21)", () => {
+  const fit = { days: 2, minutes: 30, blocks: true, trimmed_sets: 0, unfit_days: 1, over: [{ session: "Full Body A", minutes: 36.3 }], mev_deficit: 0, mev_short: [], max_minutes: 36.3, key: "k3",
+    options: [{ kind: "keep", days: 2, minutes: 30, trimmed_sets: 0, unfit_days: 1, over: [{ session: "Full Body A", minutes: 36.3 }], mev_deficit: 0, mev_short: [], max_minutes: 36.3, lifted: [], newly: [], forgoes: [] }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.title, "Full Body A runs past 30 minutes");
+  assert.match(c.body, /^Full Body A takes about 36 min\. What's left is your main lifts and the sets your muscles need\.$/);
+  assert.deepEqual(c.options.map((o) => [o.kind, o.label, o.detail]), [["keep", "Keep 2 × 30 min", "Full Body A stays about 36 min"]]);
+});
+check("timeFitCopy: nothing to say → no card", () => {
   assert.equal(timeFitCopy(null), null);
-  assert.equal(timeFitCopy({ options: [{ kind: "keep" }] }), null, "keep alone is not a choice");
+  assert.equal(timeFitCopy({ unfit_days: 0, options: [{ kind: "keep" }] }), null, "keep alone, with nothing over its minutes, is no question");
 });
 check("timeFitRequest: more days or minutes go through the Settings door; keep has no rebuild", () => {
   assert.deepEqual(timeFitRequest({ kind: "add_day", days: 5 }), { profile: { days_per_week: 5 } });
@@ -718,6 +754,21 @@ check("#47 typing after a typo prompt removes ONLY the confirm cue — the set h
   const setHint = between(appJs, 'const hintHtml = hc ? `<div class="cue" id="set-hint"', "</div>`");
   const legHint = between(appJs, "const lh = setHintFor(m); return lh.hc ?", "</div>`");
   for (const h of [setHint, legHint, restHintWire(), between(appJs, "const restHintHtml =", ";\n")]) assert.doesNotMatch(h, /data-confirm-cue/);
+});
+check("time-fit card (Burst 8 review #9 #16 #18 #46 #48 #51): keep names its question; the extra-day picker asks for EVERY day the plan needs — in a labelled, spoken group with a confirm — and a failed days save is said", () => {
+  const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
+  assert.match(tf, /JSON\.stringify\(\{ user_id: uid, choice: "keep", key: tfit\.key \}\)/, "#16 the keep names the question it answers");
+  assert.match(tf, /if \(r\?\.stale\) \{ refreshToday\(\); return; \}/, "#16 a stale card shows the question asked now");
+  assert.match(tf, /const usual = adh\.commitment\?\.days\?\.length \? adh\.commitment\.days : \(adh\.commitment_resume_days \?\? \[\]\);/, "#46 a cleared week's usual days count");
+  assert.match(tf, /const need = o\.days - usual\.length/, "#18 every day the new plan needs, not one");
+  assert.match(tf, /<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q"/, "#48 a labelled group");
+  assert.match(tf, /say\(q\);/, "#48 its question is spoken");
+  assert.match(tf, /aria-pressed="false" aria-label="\$\{DAY_LONG\[d\]\}"/, "#51 full day names, toggled");
+  assert.match(tf, /<button class="btn secondary" id="tfit-go" disabled/, "#51 a confirm — one stray tap never rebuilds");
+  assert.match(tf, /\$\("#tfit-go"\)\.disabled = picked\(\)\.length !== need;/);
+  assert.match(tf, /cleared \? \{ user_id: uid, days: \[\], resume_days: \[\.\.\.usual, \.\.\.days\] \} : \{ user_id: uid, days: \[\.\.\.usual, \.\.\.days\] \}/, "#46 a cleared week stays free; the new day joins the usual ones");
+  assert.match(tf, /if \(!c\?\.commitment && !stale\(\)\) alertBar\("📴 Your plan was rebuilt, but your days didn't save/, "#9 a failed days save is said, never swallowed");
+  assert.doesNotMatch(tf, /catch \{\}/, "#9 no silent catch");
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");

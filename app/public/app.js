@@ -1746,17 +1746,24 @@ async function renderToday() {
     refreshToday(); // the notice waits for the next Today if the user has moved on
   };
   // The three ways back (W304). More days or minutes rebuild through the Settings door (a fresh block, said on the
-  // card); one more day for someone who keeps a weekly schedule asks which day first, so the week's own card never
-  // then offers to rebuild back to the old count.
+  // card). W305d (Burst 8 review #9 #16 #18 #46 #48 #51): an extra day for someone who keeps a weekly schedule asks for
+  // EVERY day the new plan needs beyond the days kept — a cleared week's usual days count, and that week stays free —
+  // in a labelled group whose question is spoken, with a confirm (one stray tap never rebuilds); a days save that fails
+  // after the rebuild is said, never swallowed (the days card would then offer to rebuild back). Keep names the
+  // question it answers: a card gone stale (the schedule changed elsewhere) refreshes to the question asked now.
   if (tfit) {
-    const lockFit = (on) => app.querySelectorAll("[data-tfit], [data-tfit-day]").forEach((x) => { x.disabled = on; });
-    const committed = adh.commitment?.days ?? [];
-    const rebuildFit = async (o, day = null) => {
+    const lockFit = (on) => app.querySelectorAll("[data-tfit], [data-tfit-day], #tfit-go").forEach((x) => { x.disabled = on; });
+    const cleared = !adh.commitment?.days?.length && (adh.commitment_resume_days?.length ?? 0) > 0;
+    const usual = adh.commitment?.days?.length ? adh.commitment.days : (adh.commitment_resume_days ?? []);
+    const rebuildFit = async (o, days = []) => {
       lockFit(true);
       let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...timeFitRequest(o) }) }); } catch { r = null; }
       if (!r?.program) { lockFit(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
-      if (day) { try { await api("/api/commitment", { method: "POST", body: JSON.stringify({ user_id: uid, days: [...committed, day] }) }); } catch {} }
-      try { localStorage.setItem("hb_program", r.program.name); } catch {}
+      if (days.length) {
+        let c; try { c = await api("/api/commitment", { method: "POST", body: JSON.stringify(cleared ? { user_id: uid, days: [], resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] }) }); } catch { c = null; }
+        if (!c?.commitment && !stale()) alertBar("📴 Your plan was rebuilt, but your days didn't save — set them on the days card.");
+      }
+      try { localStorage.setItem("hb_program", r.program.name); } catch { /* storage off: the name is only a convenience */ }
       pendingNotice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — a fresh training block starts with your next workout.`
         : `⏱️ Rebuilt for ${o.minutes}-minute workouts — a fresh training block starts with your next workout.`;
       refreshToday();
@@ -1765,17 +1772,27 @@ async function renderToday() {
       const { kind, option: o, label } = tfit.options[+b.dataset.tfit];
       if (kind === "keep") {
         lockFit(true);
-        let r; try { r = await api("/api/plan/time-fit", { method: "POST", body: JSON.stringify({ user_id: uid, choice: "keep" }) }); } catch { r = null; }
+        let r; try { r = await api("/api/plan/time-fit", { method: "POST", body: JSON.stringify({ user_id: uid, choice: "keep", key: tfit.key }) }); } catch { r = null; }
+        if (r?.stale) { refreshToday(); return; }
         if (!r?.ok) { lockFit(false); if (!stale()) alertBar("📴 Couldn't save that — try again in a moment."); return; }
         $("#time-fit")?.remove(); say(`${label.replace(/^Keep /, "Kept ")}.`); return;
       }
-      if (kind === "add_day" && committed.length && committed.length < o.days) {
-        const host = $("#tfit-day");
-        host.innerHTML = `<p class="muted" style="margin:6px 0">Which day will you add?</p>` + Object.keys(DAY_LONG).filter((d) => !committed.includes(d))
-          .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("");
+      if (kind === "add_day" && usual.length && usual.length < o.days) {
+        const need = o.days - usual.length, host = $("#tfit-day");
+        const q = `${need === 1 ? "Which day will you add?" : `Which ${need} days will you add?`}${cleared ? ` ${need === 1 ? "It starts" : "They start"} next week — this week stays free.` : ""}`;
+        host.innerHTML = `<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q" style="margin:6px 0">${esc(q)}</p>`
+          + Object.keys(DAY_LONG).filter((d) => !usual.includes(d))
+            .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" aria-pressed="false" aria-label="${DAY_LONG[d]}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("")
+          + `<button class="btn secondary" id="tfit-go" disabled style="margin-top:4px">Rebuild for ${o.days} days</button></div>`;
         host.hidden = false;
-        host.querySelectorAll("[data-tfit-day]").forEach((x) => x.onclick = () => rebuildFit(o, x.dataset.tfitDay));
-        host.querySelector("button")?.focus();
+        const picked = () => [...host.querySelectorAll('[data-tfit-day][aria-pressed="true"]')].map((x) => x.dataset.tfitDay);
+        host.querySelectorAll("[data-tfit-day]").forEach((x) => x.onclick = () => {
+          x.setAttribute("aria-pressed", x.getAttribute("aria-pressed") === "true" ? "false" : "true");
+          $("#tfit-go").disabled = picked().length !== need;
+        });
+        $("#tfit-go").onclick = () => rebuildFit(o, picked());
+        say(q);
+        host.querySelector("[data-tfit-day]")?.focus();
         return;
       }
       await rebuildFit(o);
