@@ -1274,7 +1274,7 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
       const d = blockTuneDecision(user, sessions, { checkins, bodyweights }, now);
       let out = [];
       if (d.stalledExercises.length) {
-        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises, fit: false })).program;
+        const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: blockIndex + 1, volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
         out = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
       }
       return (decision = { ...d, out });
@@ -1371,7 +1371,7 @@ export function nerdReport(user, sessions, bodyweights, checkins, nowISO, tz, re
     if (d.stalledExercises.length) {
       // The block index the rollover will build: the trained-week clock's (a pending boundary),
       // else the next one.
-      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises, fit: false })).program;
+      const nextPlan = generateUserPlan(user.profile, planOptsFor(user, { blockIndex: Math.max(storedIndex + 1, trainedIndex), volumeAdjust: d.volumeAdjust, stalledExercises: d.stalledExercises })).program;
       swaps = d.stalledExercises.filter((sid) => !nextPlan.sessions.some((x) => x.exercises.some((e) => e.exercise === sid)));
     }
     next_block = { bumped: d.tuned.bumped, eased: d.tuned.eased, held: d.tuned.held, swaps, volume_adjust: d.volumeAdjust, specialization: isSpecializing(user.profile, storedIndex, user.plan_meta?.spec_spent === true) };

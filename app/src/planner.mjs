@@ -1,17 +1,25 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, timeFitOptions, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
-// The three ways back (W304) are computed HERE, when the plan is built — never per request (numbers recomputed on
-// every load drift between loads) — and stored with it as meta.time_fit. A forecast of the next plan passes
-// `fit: false`: it only needs the program.
 export function generateUserPlan(profile, opts = {}) {
-  const { fit = true, ...engine } = opts;
-  const out = generatePlan(profile, KB, engine);
-  return fit ? { ...out, meta: { ...out.meta, time_fit: timeFitOptions(profile, KB, engine, out) } } : out;
+  return generatePlan(profile, KB, opts);
+}
+
+// THE THREE WAYS BACK, measured when Today asks (W305c, Burst 8 review #13 #14 #26 #39) — once stored at build time,
+// which left a legacy plan with none, a swapped plan with the old plan's numbers, and a later block's card unseen. From
+// the plan the user HAS, against alternatives built exactly as the button's rebuild builds them (rebuildPlan for a
+// schedule change: block 0, the per-muscle tune kept, a finished specialization block stays finished, today's stalls).
+// Two generatePlan runs (~0.35 ms each); deterministic for the same stored plan.
+export function userTimeFit(user, { stalledExercises = [] } = {}) {
+  if (!user?.program?.sessions?.length || user.program.custom) return null;
+  const altOpts = planOptsFor(user, { blockIndex: 0, volumeAdjust: user.plan_meta?.volume_adjust ?? {}, stalledExercises,
+    specSpent: !!user.plan_meta?.spec_spent || (user.plan_meta?.block_index ?? 0) >= SPEC_MAX_BLOCKS });
+  return timeFitOptions(user.profile ?? {}, KB, { program: user.program, rationale: user.plan_rationale ?? null, meta: user.plan_meta ?? null },
+    altOpts, { customExercises: user.custom_exercises || [] });
 }
 
 // The user-derived generatePlan opts every door shares (W301, considerations iteration — Burst 7). One place, so a
@@ -69,8 +77,8 @@ export function explainUserPlan(profile, rationale, program) {
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus
