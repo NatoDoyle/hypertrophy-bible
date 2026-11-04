@@ -290,7 +290,9 @@ export function timeFitCopy(fit) {
   const body = [];
   if (unfit > 0 && over.length) {
     body.push(`${over[0].session} takes about ${mins(over[0].minutes)} min${unfit > 1 ? `, the longest of ${unfit}` : ""}.`);
-    body.push(fit.trimmed_sets > 0 ? `${fit.trimmed_sets} set${s(fit.trimmed_sets)} already came out to save time.` : "What's left is your main lifts and the sets your muscles need.");
+    // A plan from an older engine was never sized to the minutes: said so, never "what's left is what you need" (fix C2).
+    body.push(fit.trimmed_sets > 0 ? `${fit.trimmed_sets} set${s(fit.trimmed_sets)} already came out to save time.`
+      : fit.fitted === false ? "Your plan was built before workouts were sized to your minutes." : "What's left is your main lifts and the sets your muscles need.");
   } else if (fit.trimmed_sets > 0) body.push(`To fit ${fit.minutes} minutes, ${fit.trimmed_sets} set${s(fit.trimmed_sets)} came out of your week.`);
   if (fit.mev_short?.length) body.push(`Below the usual starting point for growth (an estimate): ${names(fit.mev_short)}.`);
   const now = mins(fit.max_minutes);
@@ -305,10 +307,11 @@ export function timeFitCopy(fit) {
       o.lifted?.length ? `brings ${names(o.lifted)} up to it` : "",
       fitted > 0 ? (o.unfit_days ? `${fitted} more workout${s(fitted)} fit${fitted === 1 ? "s" : ""}` : "every workout fits") : "",
       o.newly?.length ? `leaves ${names(o.newly)} below it` : "",
+      o.kind === "refit" ? (fit.blocks === false ? "same days" : "same days, same block") : "",
       `longest workout about ${mins(o.max_minutes)} min (now ${now})`,
-      fit.blocks === false ? "" : "starts a fresh 6-week block",
+      o.kind === "refit" || fit.blocks === false ? "" : "starts a fresh 6-week block",
     ].filter(Boolean);
-    return { kind: o.kind, option: o, label: o.kind === "add_day" ? `Train ${o.days} days a week` : `Make workouts ${o.minutes} min`, detail: parts.join(" · ") };
+    return { kind: o.kind, option: o, label: o.kind === "add_day" ? `Train ${o.days} days a week` : o.kind === "refit" ? `Refit to ${o.minutes} min` : `Make workouts ${o.minutes} min`, detail: parts.join(" · ") };
   });
   const title = unfit > 0 && over.length ? (unfit === 1 ? `${over[0].session} runs past ${fit.minutes} minutes` : `${unfit} workouts run past ${fit.minutes} minutes`)
     : `${fit.days} workouts of ${fit.minutes} min leave some muscles short`;
@@ -316,7 +319,8 @@ export function timeFitCopy(fit) {
 }
 // The request each choice sends: a schedule change goes through the Settings door (the only one that rebuilds a plan).
 export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_per_week: o.days } }
-  : o?.kind === "longer" ? { profile: { session_length_min: o.minutes } } : null);
+  : o?.kind === "longer" ? { profile: { session_length_min: o.minutes } }
+  : o?.kind === "refit" ? { profile: {} } : null); // a refit asks for no change: the same block, today's engine (fix C2)
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;

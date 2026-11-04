@@ -2139,7 +2139,9 @@ check("#alt (Burst 8 review #37/#40) never under the empty bar, never more than 
   const ohp = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20, 7, 6, 6));
   assert.equal(ohp.suggested_kg, 20);
   assert.equal(ohp.alt_kg ?? null, null, "17.5 kg is under the 20 kg bar");
-  assert.equal(ohp.suggestion_note, "Just under the range last time (7; it starts at 8) — keep the weight. If it happens again, I'll lighten it.");
+  // W305h (fix C4): at the bar nothing lighter exists, so the note never promises a lightening (it once did — and the
+  // repeat miss then held, the promise broken).
+  assert.equal(ohp.suggestion_note, "Just under the range last time (7; it starts at 8) — keep the weight: the empty bar is as light as it goes, so build the reps here.");
   const arnold = aim("arnold-press", "8-12", "1-2", 3, missed("arnold-press", "8-12", "1-2", 5, 7, 6, 6));
   assert.equal(arnold.alt_kg ?? null, null, "5 → 2.5 kg is half the load, not an alternative");
   assert.doesNotMatch(arnold.suggestion_note, /or use/);
@@ -2151,6 +2153,31 @@ check("#alt (Burst 8 review #37) the two-rep ease never goes under the empty bar
   assert.doesNotMatch(at.note, /lightened/);
   assert.equal(suggestWeight(missed("barbell-overhead-press", "8-12", "1-2", 22.5, 4, 4, 4), "barbell-overhead-press", "8-12", undefined, null, "1-2").suggested_kg, 20, "17.5 → the bar");
   assert.equal(suggestWeight(missed("dumbbell-bench-press", "8-12", "1-2", 20, 6, 5, 5), "dumbbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 17.5, "control: a dumbbell isn't floored");
+});
+// --- W305h (fix verification C3/C4/C6): the bar floor is the lifter's OWN bar — 45 lb (20.41 kg) for a pounds lift — and
+// it binds only a lift done ON the full bar: an EZ-bar skullcrusher at 15 kg still eases. At the bar, nothing lighter
+// exists, so no note promises one. The alternative carries the model's e1RM, so the player predicts reps exactly at
+// whatever plate it offers (a pounds plate can round UP from alt_kg).
+check("#alt (fix C3) a pounds lift at the 45-lb bar: no ease to 20 kg (a 40-lb 'bar' on the stepper), and the note says why", () => {
+  const two = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20.41, 6, 5, 5), { units: "imperial" });
+  assert.equal(two.suggested_kg, 20.41, "held at the 45-lb bar");
+  assert.doesNotMatch(two.suggestion_note, /lightened|lighten it/);
+  assert.match(two.suggestion_note, /empty bar is as light as it goes/);
+  const one = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20.41, 7, 6, 6), { exerciseUnits: { "barbell-overhead-press": "imperial" } });
+  assert.equal(one.alt_kg ?? null, null, "a per-lift pounds choice counts too");
+  assert.doesNotMatch(one.suggestion_note, /lighten it/);
+  assert.equal(aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 22.68, 6, 5, 5), { units: "imperial" }).suggested_kg, 20.41, "control: 50 lb eases to the 45-lb bar, never 20 kg");
+});
+check("#alt (fix C4) a lift lighter than the full bar (an EZ bar) still eases — the Olympic bar is no floor under it", () => {
+  const ez = aim("skullcrusher", "8-12", "1-2", 3, missed("skullcrusher", "8-12", "1-2", 15, 7, 6, 6));
+  assert.equal(ez.alt_kg, 12.5, "15 → 12.5 kg is a real step (17% down)");
+  assert.equal(suggestWeight(missed("skullcrusher", "8-12", "1-2", 15, 6, 5, 5), "skullcrusher", "8-12", undefined, null, "1-2").suggested_kg, 12.5, "two short: lightened, as for any lift");
+});
+check("#alt (fix C6) the alternative carries the model's e1RM, so the reps at ANY offered weight come from set 1 itself", () => {
+  const le = aim("leg-extension", "8-12", "1-2", 3, missed("leg-extension", "8-12", "1-2", 12.5, 7, 6, 6));
+  assert.equal(le.alt_kg, 10);
+  assert.equal(le.alt_e1rm, Math.round(12.5 * (1 + 7 / 30) * 100) / 100, "set 1's Epley e1RM (7 at failure)");
+  assert.equal(le.alt_reps, 12, "the kg fill stays clamped to the range");
 });
 // --- Burst 8 review #34 (R8): the alternative carries the reps the model predicts AT it — 'Use 17.5 kg' filled 10 (the
 // range's bottom), ~5 from failure on a leg extension.

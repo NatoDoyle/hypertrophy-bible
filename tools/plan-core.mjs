@@ -84,9 +84,7 @@ export const volumeLevers = ({ days, sessionMin, experience, timeBound } = {}) =
 //   day fitting and nothing short, are no question at all (#29).
 // Ranked as the owner ranked them; "keep" is always last and names what it forgoes (what some option would lift — not
 // what every option leaves short, #17). Pure and deterministic: each alternative is this engine run on the same inputs.
-export function timeFitOptions(profile, kb, current, altOpts = {}, { customExercises = [] } = {}) {
-  const days = current?.program?.sessions?.length ?? 0;
-  if (!days) return null;
+function fitKit(profile, kb, customExercises = []) {
   const all = [...(kb.exercises ?? []), ...customExercises];
   const exById = new Map(all.map((e) => [e.id, e]));
   const exIx = new Map(all.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
@@ -113,18 +111,45 @@ export function timeFitOptions(profile, kb, current, altOpts = {}, { customExerc
       max_minutes: Math.max(0, ...mins.map((d) => d.minutes)),
     };
   };
-  const now = measure(current, minutes);
+  return { minutes, experience, measure };
+}
+// THE QUESTION the card asks — the plan as it is, no alternatives (W305h, fix verification C0/C10): what a "keep" answers
+// and what the explanation reads. Independent of today's stalls, which only shape the alternatives.
+export function timeFitQuestion(profile, kb, current, { customExercises = [] } = {}) {
+  const days = current?.program?.sessions?.length ?? 0;
+  if (!days) return null;
+  const { minutes, experience, measure } = fitKit(profile, kb, customExercises);
+  return { days, minutes, blocks: experience !== "beginner", ...measure(current, minutes), fitted: !!current?.meta?.time_trim };
+}
+export function timeFitOptions(profile, kb, current, altOpts = {}, { customExercises = [], refitOpts = null } = {}) {
+  const asked = timeFitQuestion(profile, kb, current, { customExercises });
+  if (!asked) return null;
+  const { days, minutes, blocks, ...now } = asked;
+  const { measure } = fitKit(profile, kb, customExercises);
+  const vs = (m, ref) => ({ lifted: ref.mev_short.filter((x) => !m.mev_short.includes(x)), newly: m.mev_short.filter((x) => !ref.mev_short.includes(x)) });
+  const better = (m, ref) => { const d = vs(m, ref); return m.unfit_days <= ref.unfit_days && m.mev_short.length <= ref.mev_short.length
+    && m.mev_deficit <= ref.mev_deficit && (m.unfit_days < ref.unfit_days || d.lifted.length > d.newly.length); };
+  // The schedule's own effect (W305h, fix verification C12): a rebuild at the SAME schedule, built the same way (block 0,
+  // today's stalls). An option must beat it too — a gain a plain rebuild brings (a stall swap the next block boundary
+  // makes anyway) is no reason to add a day or minutes.
+  const same = measure(generatePlan(profile, kb, altOpts), minutes);
   const alts = [];
   if (days < 6) alts.push({ kind: "add_day", days: days + 1, minutes, plan: generatePlan({ ...profile, days_per_week: days + 1 }, kb, altOpts) });
   if (minutes < 120) alts.push({ kind: "longer", days, minutes: Math.min(120, minutes + 15), plan: generatePlan({ ...profile, session_length_min: Math.min(120, minutes + 15) }, kb, altOpts) });
   const options = alts.map(({ plan, ...o }) => {
     const m = measure(plan, o.minutes); // each option against ITS OWN minutes
-    return { ...o, ...m, lifted: now.mev_short.filter((x) => !m.mev_short.includes(x)), newly: m.mev_short.filter((x) => !now.mev_short.includes(x)) };
-  }).filter((o) => o.unfit_days <= now.unfit_days && o.mev_short.length <= now.mev_short.length && o.mev_deficit <= now.mev_deficit
-    && (o.unfit_days < now.unfit_days || o.lifted.length > o.newly.length));
+    return { ...o, ...m, ...vs(m, now), beats_same: better(m, same) };
+  }).filter((o) => better(o, now) && o.beats_same).map(({ beats_same, ...o }) => o);
+  // A plan built BEFORE the fit-to-time pass (no meta.time_trim — every plan from an older engine) whose day runs over is
+  // offered a REFIT: the same days and minutes rebuilt by today's engine at the CURRENT block (`refitOpts`, the cosmetic
+  // rebuild's own opts) — when it fits a day. What it newly leaves short is carried, as for every option (C2).
+  if (!now.fitted && now.unfit_days > 0 && refitOpts) {
+    const m = measure(generatePlan(profile, kb, refitOpts), minutes);
+    if (m.unfit_days < now.unfit_days) options.push({ kind: "refit", days, minutes, ...m, ...vs(m, now) });
+  }
   if (!options.length && !now.unfit_days) return null;
   const forgoes = now.mev_short.filter((m) => options.some((o) => o.lifted.includes(m)));
-  return { days, minutes, blocks: experience !== "beginner", ...now,
+  return { days, minutes, blocks, ...now,
     options: [...options, { kind: "keep", days, minutes, ...now, lifted: [], newly: [], forgoes }] };
 }
 
@@ -1396,22 +1421,32 @@ export function generatePlan(profile, kb, opts = {}) {
       for (const m of prim(it.exercise)) timeTrim.by_muscle[m] = (timeTrim.by_muscle[m] ?? 0) + n;
       timeTrim.removed_sets += n;
       timeTrim.taken.push({ session: s.name, exercise: it.exercise, sets: n, dropped: n >= it.sets });
-      if (n >= it.sets) s.exercises.splice(s.exercises.indexOf(it), 1); else it.sets -= n;
+      if (n >= it.sets) {
+        s.exercises.splice(s.exercises.indexOf(it), 1);
+        // a dropped lift takes its pairing with it — the day is pair-free again, so the pairing can be re-tried (C1/C13)
+        const mate = it.superset_with ? s.exercises.find((x) => x.exercise === it.superset_with) : null;
+        if (mate) delete mate.superset_with;
+      } else it.sets -= n;
     };
     for (const s of outSessions) {
       const key = (it) => `${s.name}|${it.exercise}`;
-      if (over(s) && !s.exercises.some((it) => it.superset_with)) {
+      // Pair before cutting — and again whenever a shed leaves the day pair-free (the rescue pair's bonus gone, C1/C13).
+      const tryPair = () => {
+        if (!over(s) || s.exercises.some((it) => it.superset_with)) return false;
         const isos = s.exercises.filter((it) => exById.get(it.exercise)?.mechanic === "isolation");
-        pair: for (let i = 0; i < isos.length; i++) for (let j = i + 1; j < isos.length; j++) {
+        for (let i = 0; i < isos.length; i++) for (let j = i + 1; j < isos.length; j++) {
           const mine = new Set(credits(isos[i].exercise).map(([m]) => m));
           if (credits(isos[j].exercise).some(([m]) => mine.has(m))) continue;
           isos[i].superset_with = isos[j].exercise; isos[j].superset_with = isos[i].exercise;
-          timeTrim.paired.push(s.name);
+          if (!timeTrim.paired.includes(s.name)) timeTrim.paired.push(s.name);
           for (const [a, b] of [[isos[i], isos[j]], [isos[j], isos[i]]]) exerciseChoices.find((c) => c.session === s.name && c.exercise === a.exercise)?.why?.push("paired with " + b.exercise);
-          break pair;
+          return true;
         }
-      }
+        return false;
+      };
+      tryPair();
       for (let guard = 0; guard < 60 && over(s); guard++) {
+        if (tryPair()) continue;
         const week = projectWeek();
         // …and never the PARTNER of a rescue bonus the guards kept: the bonus's time is paid only by its pairing (Wave 276).
         const sheddable = (it, n) => credits(it.exercise).every(([m, w]) => !priority.has(m)
@@ -1922,7 +1957,7 @@ function reprojectVolumes(program, rationale, kb, lookup) {
 // Every line below is READ OUT OF the plan and its rationale — never re-derived, never
 // asserted. If the engine stops doing a thing, the line describing it disappears with
 // it, so this can't become the "we do X" comment that outlives X (lesson 11/15).
-export function explainPersonalization(profile, rationale, program) {
+export function explainPersonalization(profile, rationale, program, live = null) {
   const out = [];
   const say = (input, answer, effect) => out.push({ input, answer, effect });
   const p = profile ?? {}, r = rationale ?? {};
@@ -1936,8 +1971,10 @@ export function explainPersonalization(profile, rationale, program) {
     // time back — so quoting the cap here contradicted the session list below it.
     // What the minutes COST, when they did (Burst 8 review #33 #42): a plan whose days run past them, or that lost sets
     // to them, never hears they're "long enough to do the work".
-    const over = budget.over ?? [], cut = budget.time_cut ?? 0;
-    const costs = [cut ? `${cut} set${cut === 1 ? "" : "s"} came out of your week to fit them` : "", over.length ? `${over.length === 1 ? over[0] : `${over.length} days`} still run${over.length === 1 ? "s" : ""} a little past them at a typical pace` : ""].filter(Boolean);
+    // …read from the SAME live measure as Today's card when the binder has one (a plan from an older engine carries
+    // neither field — fix verification K0), else from what the generator recorded.
+    const over = live?.over ?? budget.over ?? [], cut = live ? (live.trimmed_sets ?? 0) : (budget.time_cut ?? 0);
+    const costs = [cut ? `${cut} set${cut === 1 ? "" : "s"} came out of your week to fit them` : "", over.length ? `${over.length === 1 ? over[0] : `${over.length} days`} still run${over.length === 1 ? "s" : ""} past them at a typical pace` : ""].filter(Boolean);
     say("session_length_min", `${budget.minutes ?? p.session_length_min}-minute sessions`, costs.length
       ? `up to ${budget.hard_sets} hard sets on your biggest session — ${costs.join(", and ")}.`
       : `up to ${budget.hard_sets} hard sets on your biggest session — long enough to do the work, short enough that the last sets still count.`);

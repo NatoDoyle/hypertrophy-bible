@@ -286,6 +286,22 @@ check("timeFitCopy: a day past its minutes that no option fixes is still said �
   assert.match(c.body, /^Full Body A takes about 36 min\. What's left is your main lifts and the sets your muscles need\.$/);
   assert.deepEqual(c.options.map((o) => [o.kind, o.label, o.detail]), [["keep", "Keep 2 × 30 min", "Full Body A stays about 36 min"]]);
 });
+// W305h (fix C2): a plan from an older engine is said to be one — never "what's left is what your muscles need" about a
+// day nothing was ever trimmed from — and its REFIT keeps the days, the minutes and the block.
+check("timeFitCopy: a plan from an older engine says so, and its refit keeps the days and the block (fix C2)", () => {
+  const over = [{ session: "Upper B", minutes: 47.2 }];
+  const fit = { days: 4, minutes: 45, blocks: true, fitted: false, trimmed_sets: 0, unfit_days: 1, over, mev_deficit: 0, mev_short: [], max_minutes: 47.2, key: "k4",
+    options: [{ kind: "refit", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 0, mev_short: [], max_minutes: 44, lifted: [], newly: [] },
+      { kind: "keep", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 1, over, mev_deficit: 0, mev_short: [], max_minutes: 47.2, lifted: [], newly: [], forgoes: [], fitted: false }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.body, "Upper B takes about 47 min. Your plan was built before workouts were sized to your minutes.");
+  assert.doesNotMatch(c.body, /What's left/);
+  assert.equal(c.options[0].label, "Refit to 45 min");
+  assert.equal(c.options[0].detail, "every workout fits · same days, same block · longest workout about 44 min (now 47)");
+  assert.doesNotMatch(c.options[0].detail, /fresh 6-week block/);
+  assert.equal(timeFitCopy({ ...fit, blocks: false }).options[0].detail, "every workout fits · same days · longest workout about 44 min (now 47)", "a beginner has no block to keep");
+  assert.deepEqual(timeFitRequest({ kind: "refit", days: 4, minutes: 45 }), { profile: {} }, "a refit asks for no change: the Settings door rebuilds at the same block");
+});
 check("timeFitCopy: nothing to say → no card", () => {
   assert.equal(timeFitCopy(null), null);
   assert.equal(timeFitCopy({ unfit_days: 0, options: [{ kind: "keep" }] }), null, "keep alone, with nothing over its minutes, is no question");
@@ -737,7 +753,8 @@ check("#35 rest hint: the tap repaints ONLY its line — no redraw to wipe the r
   const w = restHintWire();
   assert.doesNotMatch(w, /renderPlayer|renderSupersetStation|showRest|innerHTML = `<div|app\.innerHTML|say\(/);
   assert.match(w, /applyHint\(idx, m, rh\.hint, rh\.hintW\); saveSess\(\);\s*line\.innerHTML = `✓ /, "a short confirmation in place");
-  assert.match(w, /if \(had\) \(\$\(`#rest-use-hint-\$\{idx\}`\) \?\? \$\("#skip"\)\)\?\.focus\(\);/, "focus never drops to the page when the tapped button goes");
+  // (fix C9 then sends it on to the next leg's waiting hint before "I'm ready")
+  assert.match(w, /if \(had\) \(\$\(`#rest-use-hint-\$\{idx\}`\) \?\? app\.querySelector\('\[id\^="rest-use-hint-"\]'\) \?\? \$\("#skip"\)\)\?\.focus\(\);/, "focus never drops to the page when the tapped button goes");
 });
 check("#36 rest hint: the rest's one announcement carries each hint (focus lands on 'I'm ready', after it)", () => {
   assert.match(playerRest(), /, \$\{e\.name\}\.\$\{restHintSay\(e, rh, false\)\}`/);
@@ -759,16 +776,27 @@ check("time-fit card (Burst 8 review #9 #16 #18 #46 #48 #51): keep names its que
   const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
   assert.match(tf, /JSON\.stringify\(\{ user_id: uid, choice: "keep", key: tfit\.key \}\)/, "#16 the keep names the question it answers");
   assert.match(tf, /if \(r\?\.stale\) \{ refreshToday\(\); return; \}/, "#16 a stale card shows the question asked now");
-  assert.match(tf, /const usual = adh\.commitment\?\.days\?\.length \? adh\.commitment\.days : \(adh\.commitment_resume_days \?\? \[\]\);/, "#46 a cleared week's usual days count");
-  assert.match(tf, /const need = o\.days - usual\.length/, "#18 every day the new plan needs, not one");
+  assert.match(tf, /need = o\.days - usual\.length;/, "#18 every day the new plan needs, not one");
   assert.match(tf, /<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q"/, "#48 a labelled group");
   assert.match(tf, /say\(q\);/, "#48 its question is spoken");
   assert.match(tf, /aria-pressed="false" aria-label="\$\{DAY_LONG\[d\]\}"/, "#51 full day names, toggled");
   assert.match(tf, /<button class="btn secondary" id="tfit-go" disabled/, "#51 a confirm — one stray tap never rebuilds");
   assert.match(tf, /\$\("#tfit-go"\)\.disabled = picked\(\)\.length !== need;/);
-  assert.match(tf, /cleared \? \{ user_id: uid, days: \[\], resume_days: \[\.\.\.usual, \.\.\.days\] \} : \{ user_id: uid, days: \[\.\.\.usual, \.\.\.days\] \}/, "#46 a cleared week stays free; the new day joins the usual ones");
-  assert.match(tf, /if \(!c\?\.commitment && !stale\(\)\) alertBar\("📴 Your plan was rebuilt, but your days didn't save/, "#9 a failed days save is said, never swallowed");
+  assert.match(tf, /: \{ user_id: uid, days: \[\.\.\.usual, \.\.\.days\] \}/, "#46 the new day joins the usual ones (the cleared week's form is pinned by the fix-verification check)");
+  assert.match(tf, /but your days didn't save — set them on the days card/, "#9 a failed days save is said, never swallowed");
   assert.doesNotMatch(tf, /catch \{\}/, "#9 no silent catch");
+});
+check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cleared week, the confirm guarded after a failure, focus to the next hint, one card at a time, a failed save said after the refresh", () => {
+  const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
+  assert.match(tf, /const cleared = \(adh\.commitment_resume_days\?\.length \?\? 0\) > 0;/, "C7: a clear in force — one-off days or not");
+  assert.match(tf, /const usual = cleared \? adh\.commitment_resume_days : \(adh\.commitment\?\.days \?\? \[\]\);/, "C7: the usual days, never this week's one-off");
+  assert.match(tf, /cleared \? \{ user_id: uid, days: adh\.commitment\?\.days \?\? \[\], resume_days: \[\.\.\.usual, \.\.\.days\] \}/, "C7: this week stays as it is");
+  assert.match(tf, /const lockFit = \(on\) => \{[^}]*\$\("#tfit-go"\)[^}]*picked/, "C8: the confirm comes back only with the days picked");
+  assert.match(tf, /pendingNotice = c === null \|\| \(c && !c\.commitment\) \? /, "#9: the failure rides the refresh, never wiped by it");
+  assert.doesNotMatch(tf, /alertBar\("📴 Your plan was rebuilt/, "#9: no alert the refresh erases");
+  const rest = fnBody(appJs, "function wireRestHint(idx, shown, named) {", 2000);
+  assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
+  assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected");
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");

@@ -1327,6 +1327,10 @@ export function anchorSets(sets, min) {
 // An empty Olympic bar: no barbell weight is ever served under it (the order rule, a first-time estimate, a tired ease).
 // The player carries the same constant (session-core), pinned equal by test-session.
 export const EMPTY_BAR_KG = 20;
+// A pounds lifter's empty bar is the 45-lb one (W305h, fix C3) — in kg, rounded as the player banks it (20.41). Byte-equal
+// to session-core's EMPTY_BAR_LB / LB_PER_KG (test-session pins the pair).
+export const EMPTY_BAR_LB = 45, LB_PER_KG = 2.2046226;
+export const EMPTY_BAR_LB_KG = Math.round((EMPTY_BAR_LB / LB_PER_KG) * 100) / 100;
 
 // A set's reps AT THE PLAN'S EFFORT (Burst 6): its reps less however far it went past the band's near
 // edge — 10 at failure on a 1–2 band counts as 9, 12 at failure as 11 — so "the top of the range" means

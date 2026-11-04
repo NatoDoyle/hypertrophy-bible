@@ -1283,8 +1283,12 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // minutes (75 → 88, all flagged and said on Today) rather than lose a muscle's last lift or its MEV. 0 days past the
   // quality ceiling. 59 plans' warnings changed: "longer sessions" is now offered per muscle, only where it helps. meta.
   // time_trim gains taken/paired; session_budget gains time_cut/over (for the explanation's honest line).
+  // …and once more in W305h (the fix verification, C1/C13): 5a re-tries its pairing whenever a shed leaves a day
+  // pair-free (the rescue pair's bonus gone). Measured against 9524500 again: 89 programs changed (183 sessions); the
+  // clock now cuts 254 sets (was 304 at W305b, 544 before the review), days past their minutes 71 (was 88; 75 before),
+  // 72 days pair instead of cutting, still 0 past the quality ceiling.
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
-    grid.length === 390 && digestOf(grid) === "8998bcc349b994f1178924d7cca505113bab00bb3045c72d237e48d273e5752a");
+    grid.length === 390 && digestOf(grid) === "eaa1fac692dd5ff3308a67a4a3f22435772d82423e72dee8d3de9c87e2e16390");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
@@ -1674,7 +1678,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   };
   const growth = (r) => r && r.target_sets > 0 && !r.maintenance && !r.eased && !r.secondary_served;
   let plans = 0, withTake = 0;
-  const bad = { mev: [], pri: [], last: [], kf: [], grace: [], pairs: [], unrecorded: [] };
+  const bad = { mev: [], pri: [], last: [], kf: [], grace: [], pairs: [], unrecorded: [], said: [] };
   for (const st of ["beginner", "intermediate", "advanced"]) for (const days of [2, 3, 4, 5, 6]) for (const len of [30, 35, 45, 60, 75, 90])
     for (const goal of ["hypertrophy", "fat-loss"]) for (const eq of [FULL, ["dumbbell", "bodyweight"], ["bodyweight"]]) for (const pri of [[], ["hamstrings"], ["chest"]]) {
       const id = `g5-${st}-${days}-${len}-${goal}-${eq.length}-${pri.join("+")}`;
@@ -1694,6 +1698,12 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
           if (isKf(t.exercise) && !g.program.sessions.some((s) => s.exercises.some((e) => isKf(e.exercise)))) bad.kf.push(`${id} ${t.exercise}`);
         }
       }
+      for (const c of g.rationale.exercise_choices) for (const w of c.why ?? []) {
+        const z = /^paired with (.+)$/.exec(w)?.[1];
+        if (!z) continue;
+        const sx = g.program.sessions.find((x) => x.name === c.session);
+        if (sx?.exercises.find((e) => e.exercise === c.exercise)?.superset_with !== z || sx?.exercises.find((e) => e.exercise === z)?.superset_with !== c.exercise) bad.said.push(`${id} ${c.session}: ${c.exercise} ~ ${z}`);
+      }
       for (const s of g.program.sessions) {
         const over = dayMinutes(s.exercises, exById) > Math.min(120, Math.max(30, len)) + 1;
         if (over !== tt.unfit.includes(s.name)) bad.grace.push(`${id} ${s.name} ${dayMinutes(s.exercises, exById)}`);
@@ -1708,6 +1718,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok(`#fit-guards never the week's last knee-flexion lift (#0): ${show(bad.kf)}`, bad.kf.length === 0);
   ok(`#fit-grace a day is flagged over its minutes exactly when it runs more than a minute past them (#24): ${show(bad.grace)}`, bad.grace.length === 0);
   ok(`#fit-pair the pairing step never stacks a second pair on a day (one pair a session — accents, not the meal): ${show(bad.pairs)}`, bad.pairs.length === 0);
+  ok(`#fit-pair every "paired with Z" the plan's explanation says is a real, mutual pair after the trim (W305h): ${show(bad.said)}`, bad.said.length === 0);
   const bw2 = generatePlan({ user_id: "g5-bw-2-30", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 30, available_equipment: ["bodyweight"] }, kb);
   ok(`#fit-guards the review's beginner 2d/30 bodyweight case keeps its knee-flexion lift and its hamstring work (${JSON.stringify(bw2.meta.time_trim.by_muscle)})`,
     bw2.program.sessions.some((s) => s.exercises.some((e) => isKf(e.exercise))) && !bw2.meta.time_trim.by_muscle.hamstrings);
@@ -1854,6 +1865,63 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     !!fs && fs.unfit_days >= 1 && fs.over[0].session === stuffed.program.sessions[0].name && fs.over[0].minutes > 46);
   ok("#fit-options the payload says whether a block restart is a real cost (a beginner has no blocks — #27)",
     fitFor({ ...m45, user_id: "fo-beg", training_status: "beginner", session_length_min: 30 })?.blocks === false && f45?.blocks === true);
+}
+
+// --- W305h (Burst 8 fix verification — lesson 99): the fixes' own interactions.
+// (C1/C13) 5a re-tries its pairing whenever a shed leaves the day pair-free (the rescue pair gone) — never "runs past"
+// while one pairing would fit it. (C12) an option must beat a rebuild at the SAME schedule built the same way (block 0,
+// today's stalls): a gain the rebuild alone brings (a stall swap) is no reason to add a day or minutes. (C2) a plan built
+// before the fit-to-time pass is said to be one, and offered a refit at the same days and block — never told "what's left
+// is what your muscles need". (K0) the explanation reads the same live measure as Today's card.
+{
+  const FULL = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const exById = new Map(exercises.map((e) => [e.id, e]));
+  const credits = (id) => [...(exById.get(id)?.primary_muscles ?? []), ...(exById.get(id)?.secondary_muscles ?? [])];
+  const cur = (g) => ({ program: g.program, rationale: g.rationale, meta: g.meta });
+  let pairable = [];
+  for (const st of ["beginner", "intermediate", "advanced"]) for (const days of [2, 3, 4, 5, 6]) for (const len of [30, 45, 60])
+    for (const [en, eq] of Object.entries({ full: FULL, db: ["dumbbell", "bodyweight"] })) for (const goal of ["hypertrophy", "fat-loss"]) {
+      const g = generatePlan({ training_status: st, primary_goal: goal, days_per_week: days, session_length_min: len, available_equipment: eq, user_id: `pr-${st}-${days}-${len}-${en}-${goal}` }, kb);
+      for (const s of g.program.sessions) {
+        if (!g.meta.time_trim.unfit.includes(s.name) || s.exercises.some((e) => e.superset_with)) continue;
+        const isos = s.exercises.filter((e) => exById.get(e.exercise)?.mechanic === "isolation");
+        for (let i = 0; i < isos.length; i++) for (let j = i + 1; j < isos.length; j++) {
+          if (credits(isos[i].exercise).some((m) => credits(isos[j].exercise).includes(m))) continue;
+          const tried = s.exercises.map((e) => e === isos[i] ? { ...e, superset_with: isos[j].exercise } : e === isos[j] ? { ...e, superset_with: isos[i].exercise } : e);
+          if (dayMinutes(tried, exById) <= len + FIT_GRACE_MIN) pairable.push(`${st}-${days}-${len}-${en}-${goal} ${s.name} ${dayMinutes(s.exercises, exById)}→${dayMinutes(tried, exById)}`);
+        }
+      }
+    }
+  ok(`#fit-pair a day flagged over its minutes never has one 5a pairing left that would fit it (C1/C13): ${pairable.length}${pairable.length ? " e.g. " + pairable.slice(0, 2).join(" | ") : ""}`, pairable.length === 0);
+  // C12: intermediate 6×60, leg press stalled — the stall swap (not 15 more minutes) brings abs up.
+  const six = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60, available_equipment: FULL };
+  const gs = generatePlan(six, kb);
+  const fs = timeFitOptions(six, kb, cur(gs), { blockIndex: 0, stalledExercises: ["leg-press"] });
+  ok(`#fit-options an option must beat a rebuild at the SAME schedule: a stall swap's gain is never credited to longer workouts (C12) — ${JSON.stringify(fs?.options?.map((o) => [o.kind, o.lifted]))}`,
+    !(fs?.options ?? []).some((o) => o.kind === "longer" && o.lifted.includes("abs")));
+  // C2: a legacy plan (no meta.time_trim) whose day runs over: said as legacy, offered a refit at the same block.
+  const m45 = { user_id: "fo-int-4-45-open", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 45, available_equipment: ["dumbbell", "bodyweight"] };
+  const g45 = generatePlan(m45, kb), legacy = JSON.parse(JSON.stringify(cur(g45)));
+  delete legacy.meta.time_trim;
+  legacy.program.sessions.forEach((s) => s.exercises.forEach((e) => { e.superset_with = undefined; delete e.superset_with; if (exById.get(e.exercise)?.mechanic === "isolation") e.sets += 1; }));
+  const fl = timeFitOptions(m45, kb, legacy, { blockIndex: 0 }, { refitOpts: { blockIndex: 2 } });
+  const refit = fl?.options?.find((o) => o.kind === "refit");
+  ok(`#fit-options a plan built before the fit-to-time pass is said to be one (fitted:false) and offered a refit at the same days (C2) — ${JSON.stringify(fl && { fitted: fl.fitted, unfit: fl.unfit_days, kinds: fl.options.map((o) => o.kind), refit: refit && [refit.days, refit.minutes, refit.unfit_days] })}`,
+    fl?.fitted === false && fl.unfit_days > 0 && !!refit && refit.days === 4 && refit.minutes === 45 && refit.unfit_days < fl.unfit_days
+    && fl.options.map((o) => o.kind).indexOf("refit") === fl.options.length - 2);
+  // …never for a plan that went through the pass, even where another block's rebuild would fit a day (a rotation is
+  // the block boundary's business, not a card's): beginner 6×30 dumbbells, 1 day over at block 0, 0 at block 1.
+  const rb = { user_id: "rf-beginner-6-30-db", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 30, available_equipment: ["dumbbell", "bodyweight"] };
+  const grb = generatePlan(rb, kb, { blockIndex: 0 });
+  const frb = timeFitOptions(rb, kb, cur(grb), { blockIndex: 0 }, { refitOpts: { blockIndex: 1 } });
+  ok(`#fit-options …a plan that went through the pass is never offered a refit, and says so (fitted:true) — ${JSON.stringify(frb && { fitted: frb.fitted, unfit: frb.unfit_days, kinds: frb.options.map((o) => o.kind), block1Unfit: generatePlan(rb, kb, { blockIndex: 1 }).meta.time_trim.unfit.length })}`,
+    grb.meta.time_trim.unfit.length > 0 && generatePlan(rb, kb, { blockIndex: 1 }).meta.time_trim.unfit.length < grb.meta.time_trim.unfit.length
+    && frb?.fitted === true && !frb.options.some((o) => o.kind === "refit"));
+  // K0: the explanation reads the live measure the card reads — a legacy plan's over-long day is said there too.
+  const line = explainPersonalization(m45, legacy.rationale, legacy.program, { over: fl?.over?.map((d) => d.session) ?? [], trimmed_sets: 0 })
+    .find((x) => x.input === "session_length_min")?.effect ?? "";
+  ok(`#levers the explanation reads the card's live measure: a legacy plan's day past its minutes is said, never "long enough" (K0) — ${line}`,
+    /past them/.test(line) && !/long enough to do the work/.test(line));
 }
 
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

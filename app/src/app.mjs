@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, userTimeFit, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, SESSION_QUALITY_CAP } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
@@ -343,8 +343,10 @@ export function createApp(store, config = {}) {
     // program. Null when the plan is user-customised (its rationale is cleared then,
     // and inventing an explanation for a plan the engine didn't build is the lie this
     // card exists to prevent).
+    // …reading the same live measure as Today's card (fix K0: a plan from an older engine records no overrun itself).
+    const asked = user.plan_rationale ? userTimeFitQuestion(user) : null;
     const personalization = user.plan_rationale
-      ? explainUserPlan(user.profile, user.plan_rationale, user.program) : null;
+      ? explainUserPlan(user.profile, user.plan_rationale, user.program, asked ? { over: asked.over.map((d) => d.session), trimmed_sets: asked.trimmed_sets } : null) : null;
     // "Not available at your gym" (W272): the lifts the user said they can't do, by
     // name, each with its "Bring back" door — resolved here so the client never has to
     // look up a lift the filtered exercise list deliberately no longer carries.
@@ -369,11 +371,13 @@ export function createApp(store, config = {}) {
     const { id, error } = await requireUser(c, b);
     if (error) return error;
     if (b.choice !== "keep") return c.json({ error: "unknown choice" }, 400);
+    // The QUESTION the card asked (the plan as it is) — never a re-measure of the alternatives, which today's stalls
+    // shape (fix verification C0/C10: a stalled lift made every keep a 409).
     let stale = false;
     const updated = await store.updateUser(id, (u) => {
-      const fit = userTimeFit(u);
-      stale = !fit || timeFitKey(u, fit) !== b.key;
-      if (!stale) u.time_fit_kept = { sched: timeFitSched(u), short: fit.mev_short, unfit: fit.unfit_days };
+      const q = userTimeFitQuestion(u);
+      stale = !q || timeFitKey(u, q) !== b.key;
+      if (!stale) u.time_fit_kept = { sched: timeFitSched(u), short: q.mev_short, unfit: q.unfit_days };
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
@@ -1111,9 +1115,9 @@ export function createApp(store, config = {}) {
     // The three ways back (W304): offered when the plan the user HAS can't hold its necessary volume or runs past its
     // minutes — measured now, from the stored plan (W305c: a swap, a rotation, a plan built before the fit-to-time pass) —
     // unless a server-side "keep" already covers this very question, so every device agrees and only something new
-    // re-asks. Never while paused, over a hand-edited plan, in the final pre-event taper (review #38), or beside the
-    // plan-fit card — one schedule question at a time, the days actually kept first (review #18).
-    const fitNow = !user.paused && !user.program?.custom && !session?.taper && !daily.plan_fit
+    // re-asks. Never while paused, over a hand-edited plan, or in the final pre-event taper (review #38). One schedule
+    // question at a time is the client's call (review #18): the days card's keep lives on the device (fix C14).
+    const fitNow = !user.paused && !user.program?.custom && !session?.taper
       ? userTimeFit(user, { stalledExercises: swapStalls(user, sessions, nowISO) }) : null;
     daily.plan_time_fit = fitNow && !keepCovers(user, fitNow) ? { ...fitNow, key: timeFitKey(user, fitNow) } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
@@ -1321,7 +1325,8 @@ export function createApp(store, config = {}) {
       const pending = (stored?.week ?? "") >= week && Array.isArray(stored?.resume_days) && stored.resume_days.length ? stored.resume_days : null;
       // New USUAL days for a cleared week (Burst 8 review #46 — the time-fit card's extra day): they come back from next
       // week, and this week stays free. Only on a clear: a week with days picked keeps the days it promised.
-      const usual = !days.length && Array.isArray(b.resume_days) ? [...new Set(b.resume_days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : null;
+      // …and while a clear is in force, a one-off day picked for this week doesn't stop them (fix C7/C11).
+      const usual = (!days.length || pending) && Array.isArray(b.resume_days) ? [...new Set(b.resume_days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : null;
       const resume = (usual?.length ? usual : null) ?? pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
       u.profile = { ...(u.profile ?? {}), commitment: { week, days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;

@@ -1175,10 +1175,21 @@ try {
   ok("#commitment a cleared week can take new usual days (resume_days) — this week stays free (review #46)",
     addUsual.status === 200 && addAdh.commitment === null && JSON.stringify(addAdh.commitment_resume_days) === JSON.stringify(["mon", "fri", "wed"])
     && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri", "wed"]), JSON.stringify(addAdh.commitment_resume_days));
-  const noUsual = await json("POST", "/api/commitment", { user_id: cUser, days: ["sat"], resume_days: ["tue"] });
-  ok("#commitment …but resume_days only ever names the usual days of a CLEAR: a week with days picked keeps the promised ones",
-    noUsual.status === 200 && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri", "wed"]));
+  // …and while that clear is in force, a one-off day picked for THIS week doesn't stop new usual days (fix C7/C11): this
+  // week's one-off stays, and the usual days come back with the added one.
+  const oneOff = await json("POST", "/api/commitment", { user_id: cUser, days: ["sun"], resume_days: ["mon", "fri", "wed", "tue"] });
+  const oneOffAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a cleared week with a one-off day still takes new usual days; the one-off stays this week's (fix C7/C11)",
+    oneOff.status === 200 && JSON.stringify(oneOffAdh.commitment?.days) === JSON.stringify(["sun"]) && JSON.stringify(oneOffAdh.commitment_resume_days) === JSON.stringify(["mon", "fri", "wed", "tue"]),
+    JSON.stringify([oneOffAdh.commitment?.days, oneOffAdh.commitment_resume_days]));
   await json("POST", "/api/commitment", { user_id: cUser, days: [], resume_days: ["mon", "fri"] });
+  {
+    const nUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+    await json("POST", "/api/commitment", { user_id: nUser, days: ["mon", "fri"] });
+    await json("POST", "/api/commitment", { user_id: nUser, days: ["mon", "wed", "fri"], resume_days: ["tue"] });
+    ok("#commitment …but with no clear in force, resume_days names nothing: the week's days are the usual ones",
+      (await store.getUser(nUser)).profile.commitment.resume_days == null && JSON.stringify((await store.getUser(nUser)).profile.commitment.days) === JSON.stringify(["mon", "wed", "fri"]));
+  }
   await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: [], resume_days: ["tue"], set_on: "2020-01-01" }; return u; });
   const resumedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment days back after a cleared week are marked resumed (the card must not say 'same as last week')",
@@ -2261,13 +2272,52 @@ try {
     ok("#time-fit no schedule question during the final pre-event taper (review #38)", !!tT.session?.taper && tT.daily?.plan_time_fit == null,
       JSON.stringify([tT.session?.taper, !!tT.daily?.plan_time_fit]));
   }
-  // One schedule question at a time (review #18): while the plan-fit card asks to rebuild for the days actually kept,
-  // the time-fit card waits.
+  // One schedule question at a time (review #18) is the CLIENT's call (W305h, fix verification C14): the plan-fit card's
+  // "Keep my N-day plan" lives on the device, so a server that withheld the time-fit card whenever plan_fit was set
+  // silenced both for good. The server sends both; the player shows the time-fit card only when the days card isn't up.
   {
     const both = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.program.sessions[0].exercises.forEach((e) => { e.sets += 3; }); } });
     const tb = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": both } })).json();
-    ok("#time-fit never beside the plan-fit card: the days question comes first (review #18)",
-      !!tb.daily?.plan_fit && tb.daily?.plan_time_fit == null, JSON.stringify([tb.daily?.plan_fit, !!tb.daily?.plan_time_fit]));
+    ok("#time-fit the server sends both schedule questions; the client shows one at a time (review #18, fix C14)",
+      !!tb.daily?.plan_fit && !!tb.daily?.plan_time_fit, JSON.stringify([tb.daily?.plan_fit, !!tb.daily?.plan_time_fit]));
+  }
+  // Keep works while a lift is stalled (fix verification C0/C10): the keep door checks the question the card ASKED (the
+  // plan as it is: the schedule, the muscles short, the days over) — never a re-measure whose alternatives depend on
+  // today's stalls. Fixture: a seed whose card exists only WITH the stall (lat-pulldown) — the exact failing case.
+  {
+    const ks = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id;
+    await store.updateUser(ks, (u) => { u.profile.user_id = "ks-beginner-3-45-chest-0"; const g = generateUserPlan(u.profile); u.program = g.program; u.plan_rationale = g.rationale; u.plan_meta = { ...u.plan_meta, ...g.meta, block_index: 0 }; return u; });
+    for (let w = 0; w < 6; w++) await json("POST", "/api/session", { user_id: ks, session_id: `ks-${w}`, date: dAgo(36 - w * 7), local_date: dAgo(36 - w * 7).slice(0, 10),
+      sets: Array.from({ length: 3 }, () => ({ exercise: "lat-pulldown", set_type: "work", weight_kg: 40, reps: 10, completed_at: dAgo(36 - w * 7) })) });
+    const uk = await store.getUser(ks);
+    const tk = await (await app.request("/api/today", { headers: { "X-HB-User": ks } })).json();
+    ok("#time-fit (C0) precondition: the card exists only with today's stall", !userTimeFit(uk) && !!tk.daily?.plan_time_fit, JSON.stringify([!!userTimeFit(uk), !!tk.daily?.plan_time_fit]));
+    const kk = await json("POST", "/api/plan/time-fit", { user_id: ks, choice: "keep", key: tk.daily?.plan_time_fit?.key });
+    const tk2 = await (await app.request("/api/today", { headers: { "X-HB-User": ks } })).json();
+    ok("#time-fit Keep works while a lift is stalled: stored, and the card is gone (fix C0/C10)",
+      kk.status === 200 && tk2.daily?.plan_time_fit == null && !!(await store.getUser(ks)).time_fit_kept, JSON.stringify([kk.status, kk.data]));
+  }
+  // A plan from an older engine (no meta.time_trim) whose day runs over is offered a REFIT through the route the button
+  // uses — the same days and minutes, the SAME block — and the explanation says the overrun too (fix C2/K0).
+  {
+    const lg = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 4, session_length_min: 45, available_equipment: ["dumbbell", "bodyweight"] } })).data.user_id;
+    const exIso = new Set((await import("../src/kb-data.mjs")).exercises.filter((e) => e.mechanic === "isolation").map((e) => e.id));
+    await store.updateUser(lg, (u) => { delete u.plan_meta.time_trim; u.plan_meta.block_start = dAgo(9); // index stays 0: no trained weeks, so Today won't rotate it
+      u.program.sessions.forEach((s) => s.exercises.forEach((e) => { delete e.superset_with; if (exIso.has(e.exercise)) e.sets += 1; })); return u; });
+    const tl = await (await app.request("/api/today", { headers: { "X-HB-User": lg } })).json();
+    const fit = tl.daily?.plan_time_fit, refit = fit?.options?.find((o) => o.kind === "refit");
+    ok("#time-fit a plan from an older engine whose day runs over says so (fitted:false) and is offered a refit at the same days (fix C2)",
+      fit?.fitted === false && fit.unfit_days > 0 && !!refit && refit.days === 4 && refit.minutes === 45, JSON.stringify(fit && { fitted: fit.fitted, kinds: fit.options.map((o) => o.kind) }));
+    const ex = (await (await app.request("/api/plan/explain", { headers: { "X-HB-User": lg } })).json()).personalization?.find((x) => x.input === "session_length_min")?.effect ?? "";
+    ok("#time-fit …and 'What your answers changed' says the overrun the card says — never 'long enough to do the work' (fix K0)", /past them/.test(ex) && !/long enough/.test(ex), ex);
+    const before = await store.getUser(lg);
+    const rr = await json("POST", "/api/plan/regenerate", { user_id: lg, profile: {} });
+    const after = await store.getUser(lg), ta = await (await app.request("/api/today", { headers: { "X-HB-User": lg } })).json();
+    ok("#time-fit tapping Refit rebuilds through the Settings door at the SAME block (index and start kept) and the days now fit",
+      rr.status === 200 && (after.plan_meta.block_index ?? 0) === (before.plan_meta.block_index ?? 0) && after.plan_meta.block_start === before.plan_meta.block_start
+      && !!after.plan_meta.time_trim && (ta.daily?.plan_time_fit?.unfit_days ?? 0) < fit.unfit_days, JSON.stringify([rr.status, after.plan_meta.block_index, ta.daily?.plan_time_fit?.unfit_days]));
   }
   // …and a specialization block that already RAN stays run (W278 review: block_index resets
   // on any training change, so the offer re-armed it). Only new priorities start another.

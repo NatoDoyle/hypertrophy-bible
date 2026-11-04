@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -166,7 +166,7 @@ function swapNoteFor(swaps, name) {
 // is" — chasing a PR into an event contradicts the freshness the taper exists to
 // buy. The layoff-comeback ease still overrides (safety first; buildToday makes
 // the taper copy honest about it), and the failure/hold paths are unchanged.
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false) {
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false, { barKg = EMPTY_BAR_KG } = {}) {
   const last = lastSetsForExercise(sessions, exId);
   const { min, max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -249,10 +249,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
     const floored = Math.floor(raw / inc + 1e-9) * inc;
     const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
-    // Never under the empty bar for a barbell lift (Burst 8 review #37/#40) — at the bar, nothing lighter exists.
-    const bar = byId.get(exId)?.equipment === "barbell" ? EMPTY_BAR_KG : 0;
+    // Never under the empty bar for a barbell lift (Burst 8 review #37/#40) — the LIFTER's bar (45 lb = 20.41 kg for a
+    // pounds lift, fix C3), and only for a lift done ON it: an EZ-bar skullcrusher at 15 kg is no bar-floor case (fix C4).
+    // At the bar nothing lighter exists — said, never promised (fix C4).
+    const bar = byId.get(exId)?.equipment === "barbell" && lastWeight >= barKg - 0.02 ? barKg : 0;
     const eased = Math.max(bar, Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4);
+    const atBar = bar > 0 && !(eased < lastWeight);
     if (min - s1.reps >= 2 || prevUnder) {
+      if (atBar) return { suggested_kg: lastWeight, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — but the empty bar is as light as it goes, so build the reps here.`, ...base };
       // The model aims the FIRST set at the range's bottom, so that is all the copy promises —
       // and when the ~20% cap binds, not even that.
       const tail = floored < lowest ? " (as far as I'll drop it in one go)." : " — your first set should land in the range.";
@@ -263,10 +267,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
       // and at most ~20% down (Burst 8 review #37: 5 → 2.5 kg is half the load). Its reps are the model's at it (#34) —
       // set 1's capacity carried there by Epley, as the in-session hint fills them; added load on a bodyweight lift isn't
       // the whole load, so the range's bottom there.
+      if (atBar) return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight: the empty bar is as light as it goes, so build the reps here.`, ...base };
       if (eased > 0 && eased < lastWeight && eased >= lastWeight * 0.8 - 1e-9) {
-        const alt_reps = byId.get(exId)?.equipment === "bodyweight" ? min
-          : Math.max(min, Math.min(max, Math.round(30 * (lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30) / eased - 1) - near)));
-        return { suggested_kg: lastWeight, alt_kg: eased, alt_reps, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight and aim for ${min}, or use ${eased} kg if it felt like too much. If it happens again, I'll lighten it.`, ...base };
+        // …with set 1's Epley e1RM, so the player predicts the reps at whatever plate it OFFERS (a pounds plate can round
+        // up from alt_kg — fix C6), clamped there as here.
+        const bw = byId.get(exId)?.equipment === "bodyweight";
+        const alt_e1rm = Math.round(lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30) * 100) / 100;
+        const alt_reps = bw ? min : Math.max(min, Math.min(max, Math.round(30 * (alt_e1rm / eased - 1) - near)));
+        return { suggested_kg: lastWeight, alt_kg: eased, alt_reps, ...(bw ? {} : { alt_e1rm }), note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight and aim for ${min}, or use ${eased} kg if it felt like too much. If it happens again, I'll lighten it.`, ...base };
       }
       return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
     }
@@ -682,7 +690,9 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     : block?.phase === "deload" ? "3-4"
     : block ? waveRir(ex.rir ?? "1-3", block.week)
     : ex.rir ?? "1-3";
-  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper);
+  // The lifter's own bar for this lift (fix C3): a pounds lift's is the 45-lb one.
+  const barKg = (ctx.exerciseUnits?.[ex.exercise] ?? ctx.units) === "imperial" ? EMPTY_BAR_LB_KG : EMPTY_BAR_KG;
+  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper, { barKg });
   // Apply the mesocycle wave: sets scale with the block week — but never below 2
   // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
   // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
@@ -758,7 +768,8 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // a comeback moved it, the alternative no longer describes it.
   const alt_kg = sug.alt_kg != null && suggested_kg === sug.suggested_kg ? sug.alt_kg : null;
   const alt_reps = alt_kg != null ? sug.alt_reps ?? null : null; // the reps the model predicts there (Burst 8 review #34)
-  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy, alt_kg, alt_reps };
+  const alt_e1rm = alt_kg != null ? sug.alt_e1rm ?? null : null; // …and its e1RM, for any plate the player offers (fix C6)
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy, alt_kg, alt_reps, alt_e1rm };
 }
 
 // The day a live workout is on, by the name the player carries (Burst 6, N7): the rotation's own day
@@ -966,7 +977,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // the read-out's "next time" also uses (servedLift).
     // The anchor's day is looked up in the STORED plan: a today-swap's patched copy (substituteRow) moves
     // the swapped-in lift out of its own day, where its anchor lives (Burst 5 review).
-    const served = servedLift(ex, sessions, { block, taper }, byId, now, { program: user.stored_program ?? program, session: templateSession });
+    const served = servedLift(ex, sessions, { block, taper, units: user.profile?.units, exerciseUnits: user.profile?.exercise_units }, byId, now, { program: user.stored_program ?? program, session: templateSession });
     const { rirBand, sets, sug } = served;
     let { suggested_kg, suggestion_note } = served;
     // No history for this lift: a non-beginner gets a body-scaled starting guess
@@ -1009,7 +1020,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
-      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps } : {}), // → "Use X kg" beside a held weight's note (W305), at the model's reps
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, ...(served.alt_e1rm ? { alt_e1rm: served.alt_e1rm } : {}) } : {}), // → "Use X kg" beside a held weight's note (W305), at the model's reps
       // The reason's "last time" is the last REGULAR session (an easier one came since) — the set screen labels it so (round 3).
       ...(served.last_easy ? { last_easy: true } : {}),
       // Tried only on an easier day (no anchor, but sets in History): never "New lift" on the set screen (round 5).
@@ -1239,12 +1250,12 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     if (!hit) continue; // a session-only substitute: not in the plan, so no promise to make
     const thisWeek = hit.j < slotsLeft;
     if (!thisWeek && rollingNextWeek) continue; // the new block's plan sets that weight
-    const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
+    const served = servedLift(hit.ex, sessions, { ...(thisWeek ? nextCtx : nextWeekCtx), units: user.profile?.units, exerciseUnits: user.profile?.exercise_units }, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
     if (served.suggested_kg == null) continue;
     next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week",
       // The held weight's alternative, with what the player's ONE offer (altOffer) needs to say it in the lift's unit or
       // drop it — the set screen's note and this line name the same weight (Burst 8 review #7).
-      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, rep_range: hit.ex.rep_range, rir: served.rirBand, equipment: byId.get(id)?.equipment ?? null } : {}) });
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, ...(served.alt_e1rm ? { alt_e1rm: served.alt_e1rm } : {}), rep_range: hit.ex.rep_range, rir: served.rirBand, equipment: byId.get(id)?.equipment ?? null } : {}) });
   }
 
   const block = [];

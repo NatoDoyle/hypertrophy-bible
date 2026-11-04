@@ -1692,7 +1692,9 @@ async function renderToday() {
       <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
   // The three ways back (W304): offered by the server when the plan can't hold its necessary volume, in the owner's
   // ranking; each choice says what it wins or costs; "Keep" is answered once, on the server (every device agrees).
-  const tfit = timeFitCopy(dy.plan_time_fit);
+  // One schedule question at a time (review #18): it waits while the days card is up — decided HERE, where that card's
+  // own "Keep" lives (on the device; a server-side gate silenced both for good — fix C14).
+  const tfit = planFitVisible(fit, fitKey) ? null : timeFitCopy(dy.plan_time_fit);
   const timeCard = tfit ? `<div class="card" id="time-fit"><b>⏱️ ${esc(tfit.title)}</b>
       <p class="muted" style="margin:4px 0 8px">${esc(tfit.body)}</p>
       ${tfit.options.map((o, i) => `<button class="btn ${i === 0 ? "secondary" : "ghost"}" data-tfit="${i}" style="margin:0 0 6px;text-align:left"><b>${esc(o.label)}</b><br><span class="muted" style="font-size:.85rem;font-weight:400">${esc(o.detail)}</span></button>`).join("")}
@@ -1752,19 +1754,24 @@ async function renderToday() {
   // after the rebuild is said, never swallowed (the days card would then offer to rebuild back). Keep names the
   // question it answers: a card gone stale (the schedule changed elsewhere) refreshes to the question asked now.
   if (tfit) {
-    const lockFit = (on) => app.querySelectorAll("[data-tfit], [data-tfit-day], #tfit-go").forEach((x) => { x.disabled = on; });
-    const cleared = !adh.commitment?.days?.length && (adh.commitment_resume_days?.length ?? 0) > 0;
-    const usual = adh.commitment?.days?.length ? adh.commitment.days : (adh.commitment_resume_days ?? []);
+    // A clear in force (fix C7/C11) — with or without a one-off day picked for this week: the USUAL days are the ones
+    // that come back, so they're what an extra day joins (this week's own days stay as they are).
+    const cleared = (adh.commitment_resume_days?.length ?? 0) > 0;
+    const usual = cleared ? adh.commitment_resume_days : (adh.commitment?.days ?? []);
+    let picked = () => [], need = 0;
+    // The confirm comes back only with the days picked — a failed Keep must not arm a day-less rebuild (fix C8).
+    const lockFit = (on) => { app.querySelectorAll("[data-tfit], [data-tfit-day]").forEach((x) => (x.disabled = on)); const go = $("#tfit-go"); if (go) go.disabled = on || picked().length !== need; };
     const rebuildFit = async (o, days = []) => {
       lockFit(true);
       let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...timeFitRequest(o) }) }); } catch { r = null; }
       if (!r?.program) { lockFit(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
-      if (days.length) {
-        let c; try { c = await api("/api/commitment", { method: "POST", body: JSON.stringify(cleared ? { user_id: uid, days: [], resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] }) }); } catch { c = null; }
-        if (!c?.commitment && !stale()) alertBar("📴 Your plan was rebuilt, but your days didn't save — set them on the days card.");
-      }
+      let c;
+      if (days.length) { try { c = await api("/api/commitment", { method: "POST", body: JSON.stringify(cleared ? { user_id: uid, days: adh.commitment?.days ?? [], resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] }) }); } catch { c = null; } }
       try { localStorage.setItem("hb_program", r.program.name); } catch { /* storage off: the name is only a convenience */ }
-      pendingNotice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — a fresh training block starts with your next workout.`
+      // The notice rides the refresh (#9: an alert drawn here was wiped by it, so a failed days save went unsaid).
+      pendingNotice = c === null || (c && !c.commitment) ? `📴 Rebuilt for ${o.days} days a week, but your days didn't save — set them on the days card.`
+        : o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — a fresh training block starts with your next workout.`
+        : o.kind === "refit" ? `⏱️ Refit to ${o.minutes}-minute workouts — same days, same block.`
         : `⏱️ Rebuilt for ${o.minutes}-minute workouts — a fresh training block starts with your next workout.`;
       refreshToday();
     };
@@ -1778,14 +1785,15 @@ async function renderToday() {
         $("#time-fit")?.remove(); say(`${label.replace(/^Keep /, "Kept ")}.`); return;
       }
       if (kind === "add_day" && usual.length && usual.length < o.days) {
-        const need = o.days - usual.length, host = $("#tfit-day");
+        need = o.days - usual.length;
+        const host = $("#tfit-day");
         const q = `${need === 1 ? "Which day will you add?" : `Which ${need} days will you add?`}${cleared ? ` ${need === 1 ? "It starts" : "They start"} next week — this week stays free.` : ""}`;
         host.innerHTML = `<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q" style="margin:6px 0">${esc(q)}</p>`
           + Object.keys(DAY_LONG).filter((d) => !usual.includes(d))
             .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" aria-pressed="false" aria-label="${DAY_LONG[d]}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("")
           + `<button class="btn secondary" id="tfit-go" disabled style="margin-top:4px">Rebuild for ${o.days} days</button></div>`;
         host.hidden = false;
-        const picked = () => [...host.querySelectorAll('[data-tfit-day][aria-pressed="true"]')].map((x) => x.dataset.tfitDay);
+        picked = () => [...host.querySelectorAll('[data-tfit-day][aria-pressed="true"]')].map((x) => x.dataset.tfitDay);
         host.querySelectorAll("[data-tfit-day]").forEach((x) => x.onclick = () => {
           x.setAttribute("aria-pressed", x.getAttribute("aria-pressed") === "true" ? "false" : "true");
           $("#tfit-go").disabled = picked().length !== need;
@@ -2631,7 +2639,8 @@ function wireRestHint(idx, shown, named) {
         : `${rh.hintW} ${unitLabelFor(m.exercise)}${rh.hint.target_reps ? `, aiming for ${rh.hint.target_reps},` : ""}`} is set for your next ${named ? "round" : "set"}.`;
     } else if (rh.hc) { line.innerHTML = restHintBody(idx, m, rh, named); wireRestHint(idx, rh, named); }
     else line.remove();
-    if (had) ($(`#rest-use-hint-${idx}`) ?? $("#skip"))?.focus();
+    // …to the next leg's hint still waiting, never past it to "I'm ready" (fix C9).
+    if (had) ($(`#rest-use-hint-${idx}`) ?? app.querySelector('[id^="rest-use-hint-"]') ?? $("#skip"))?.focus();
   };
 }
 function renderPlayer() {

@@ -1143,7 +1143,34 @@ check("#next-set (Burst 8 review #40) a barbell 'lighter' is floored at the empt
     assert.equal(playerCore.altOffer(legExt, inLb(45)).reps, 12, "in pounds the offered 40 lb (18.14 kg) is a little heavier: the same model, carried there (30·(26/18.14 − 1) − 1 ≈ 12)");
     assert.equal(playerCore.altOffer({ ...legExt, alt_reps: undefined }, inKg(20)).reps, 10, "an older row without the model's reps: the range's bottom, as before");
   });
+  // W305h (fix C6): the server's alt_reps is clamped to the range, so re-deriving from it under-fills a plate that rounds
+  // UP from alt_kg; the row's alt_e1rm (set 1's own Epley e1RM) predicts the reps exactly at any offered weight.
+  check("#alt-offer (fix C6) the reps at a pounds plate that rounds UP come from set 1's e1RM, never the clamped alt_reps", () => {
+    const e1 = Math.round(20.41 * (1 + 8 / 30) * 100) / 100; // 45 lb × 7 @1 on 8-12
+    const le = { exercise: "leg-extension", equipment: "machine", rep_range: "8-12", rir: "1-2", suggested_kg: 20.41, last_kg: 20.41, alt_kg: 17.5, alt_reps: 12, alt_e1rm: e1 };
+    const o = playerCore.altOffer(le, inLb(45));
+    assert.equal(o.w, 40);
+    assert.equal(o.reps, Math.max(8, Math.min(12, Math.round(30 * (e1 / lbToKg(40) - 1) - 1))), "the model from set 1 at 40 lb");
+    assert.equal(o.reps, 12, "(the clamped 12 at 17.5 kg re-derived at 40 lb said 10)");
+  });
+  // W305h (fix C4): the Olympic bar floors only a lift done ON it — an EZ-bar lift lighter than 20 kg / 45 lb still has
+  // a lighter weight, in the hint and in the offer.
+  check("#alt-offer (fix C4) a barbell-tagged lift lighter than the full bar (an EZ bar) still gets its lighter alternative", () => {
+    const ez = { exercise: "skullcrusher", equipment: "barbell", rep_range: "8-12", rir: "1-2", suggested_kg: 15.88, last_kg: 15.88, alt_kg: 13.61, alt_reps: 10 };
+    assert.equal(playerCore.altOffer(ez, inLb(35))?.w, 30, "35 lb → 30 lb, never floored to a 45-lb bar it isn't on");
+  });
 }
+check("#next-set (fix C4) an EZ-bar set under the full bar's weight still gets 'lighter' — the Olympic bar is no floor under it", () => {
+  const h = nextSetHint(w(15, 6, { rir: 0 }), { rep_range: "8-12", rir: "1-2", inc_kg: 2.5, equipment: "barbell" });
+  assert.equal(h?.kind, "lighter");
+  assert.equal(h.kg, 12.5);
+  assert.equal(nextSetHint(w(20, 6, { rir: 0 }), { rep_range: "8-12", rir: "1-2", inc_kg: 2.5, equipment: "barbell" }), null, "control: ON the 20 kg bar, nothing lighter");
+});
+check("#parity (fix C3) the server's pounds bar is the player's: 45 lb at the same lb-per-kg", () => {
+  assert.equal(serverCore.EMPTY_BAR_LB, playerCore.EMPTY_BAR_LB);
+  assert.equal(serverCore.LB_PER_KG, playerCore.LB_PER_KG);
+  assert.equal(serverCore.EMPTY_BAR_LB_KG, Math.round((playerCore.EMPTY_BAR_LB / playerCore.LB_PER_KG) * 100) / 100);
+});
 check("#next-set (W305) a 'same' hint stays on the plate it was on (no forced move)", () => {
   assert.strictEqual(hintInUnit({ kind: "same", kg: 100, from_kg: 100 }, (k) => k, 2.5), 100);
   assert.strictEqual(hintInUnit({ kind: "same", kg: 20, from_kg: 20 }, (k) => Math.round(k * 2.2046226 / 5) * 5, 5), 45, "in pounds: the plate shown");

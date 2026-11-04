@@ -427,7 +427,8 @@ export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   if (!kind) return null;
   if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(Math.min(ref, min), Math.min(max, Math.floor(reach + 1e-9))) };
   const under = kind === "lighter";
-  const bar = under && row?.equipment === "barbell" ? EMPTY_BAR_KG : 0;
+  // …only for a set ON the full bar: a barbell-tagged lift done lighter (an EZ bar at 15 kg) still eases (fix C4).
+  const bar = under && row?.equipment === "barbell" && w >= EMPTY_BAR_KG - 1e-9 ? EMPTY_BAR_KG : 0;
   const floored = Math.floor(loadForReps(w, cap, 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.max(bar, Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored)))
@@ -604,14 +605,18 @@ export function altOffer(row, { toDisp, toKg, step, served, unit }) {
   if (!(row?.alt_kg > 0) || row.tired || row.eased || !(served > 0)) return null;
   let w = toDisp(row.alt_kg);
   if (!(w < served)) w = served - step;
-  if (row.equipment === "barbell") w = Math.max(w, unit === "lb" ? EMPTY_BAR_LB : EMPTY_BAR_KG);
+  const barDisp = unit === "lb" ? EMPTY_BAR_LB : EMPTY_BAR_KG;
+  if (row.equipment === "barbell" && served >= barDisp - 1e-9) w = Math.max(w, barDisp); // a lift ON the full bar only (fix C4)
   if (!(w > 0 && w < served) || w < served * (1 - ALT_MAX_DROP) - 1e-9) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row.rep_range ?? "");
   const min = range ? +range[1] : null, max = range ? +range[2] : null;
   if (!Number.isInteger(row.alt_reps) || row.equipment === "bodyweight") return { w, reps: Number.isInteger(row.alt_reps) ? row.alt_reps : min };
   const band = /(\d+)\s*-\s*(\d+)/.exec(row.rir ?? "");
   const near = band ? +band[1] : 1;
-  const reps = Math.round(30 * (row.alt_kg * (1 + (row.alt_reps + near) / 30) / toKg(w) - 1) - near);
+  // From set 1's own e1RM when the row carries it (fix C6: alt_reps is clamped to the range, so re-deriving from it
+  // under-fills a plate that rounds UP from alt_kg); an older row falls back to alt_reps at alt_kg.
+  const e1 = row.alt_e1rm > 0 ? row.alt_e1rm : row.alt_kg * (1 + (row.alt_reps + near) / 30);
+  const reps = Math.round(30 * (e1 / toKg(w) - 1) - near);
   return { w, reps: min == null ? reps : Math.max(min, Math.min(max, reps)) };
 }
 
