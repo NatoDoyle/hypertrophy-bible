@@ -1087,6 +1087,11 @@ check("#next-set (Burst 8 review #22) under the range with reps left: judged aga
   assert.deepStrictEqual(pickHint(nextSetHint(w(150, 5, { rir: 2 }), row, { aim: 6, nextAim: 5 })), { kind: "same", kg: 150, target_reps: 5 }, "(5 + 2)·0.9 − 1 = 5.3 ≥ the next aim of 5 — never 'Try 145 kg'");
   assert.equal(nextSetHint(w(150, 5, { rir: 2 }), row, { aim: 6 }).kind, "lighter", "no next aim (off the served weight): the range's bottom, 6");
   assert.equal(nextSetHint(w(150, 4, { rir: 2 }), row, { aim: 6, nextAim: 5 }).kind, "lighter", "(4 + 2)·0.9 − 1 = 4.4: under even that aim");
+  // …and the aim only ever LOWERS the bar (integration of the #22 fix): an aim above the range's bottom never turns a set
+  // stopped early into a back-off — 100×7 @3 on 8-12 against aims [12,11,10] can still land 8 at 100: the same weight.
+  const hi = { rep_range: "8-12", rir: "1-2", inc_kg: 2.5, suggested_kg: 100, rep_targets: [12, 11, 10] };
+  assert.deepStrictEqual(pickHint(nextSetHint(w(100, 7, { rir: 3 }), hi, { aim: 12, nextAim: 11 })), { kind: "same", kg: 100, target_reps: 8 },
+    "(7 + 3)·0.9 − 1 = 8 reaches the range — a next aim of 11 is no reason to go lighter");
 });
 // --- Burst 8 review #8: a 'same' hint names EXACTLY the weight banked, at the precision typed — a typed 22.5 lb dumbbell
 // is never "25 lb again" (heavier, after a set that fell short).

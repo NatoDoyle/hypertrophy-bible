@@ -416,7 +416,9 @@ export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   // still a miss (fix verification).
   const metAim = Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near);
   const cap = nextSetCapacity(set.reps, rir), reach = cap - near; // the next set's reps at the near edge, same weight
-  const ref = Number.isInteger(nextAim) ? nextAim : min; // the next set's own aim, never raised to the range (#22)
+  // The next set's own aim LOWERS the bar (W289 aims can sit under the range, #22) — never raises it: an aim above the
+  // range's bottom is no reason to send a set stopped early lighter.
+  const ref = Number.isInteger(nextAim) ? Math.min(nextAim, min) : min;
   const short = set.reps < min && !metAim;
   const kind = short && (rir == null || rir <= 1) ? "lighter"
     : short && rir >= 2 ? (reach >= ref ? "same" : "lighter")

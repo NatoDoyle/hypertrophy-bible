@@ -649,6 +649,11 @@ check("player (Burst 8 review #8) a 'same' hint, and every hint's lead, name the
   assert.match(body, /hintInUnit\(rawHint, \(kg\) => dispWeightFor\(kg, e\.exercise\), wIncFor\(e\.exercise\), unitFor\(e\.exercise\)\)/, "the unit, so 'same' keeps 22.5 lb");
   assert.match(body, /fromW: `\$\{\+editDisplay\(hint\.from_kg, unitFor\(e\.exercise\)\)\} \$\{unitLabelFor\(e\.exercise\)\}`/, "'Set 1: 7 reps at 22.5 lb' — never the 25-lb plate");
 });
+check("read-out (Burst 8 review #7) the next-time line names the alternative the player OFFERS — the same altOffer, or none", () => {
+  const ro = fnBody(appJs, "function readoutCardHtml(", 3000);
+  assert.match(ro, /const alt = n\.alt_kg \? altOffer\(\{ \.\.\.n, suggested_kg: n\.kg \}, \{ toDisp, toKg: \(v\) => toKgFor\(v, n\.exercise\), step: wIncFor\(n\.exercise\), served: disp, unit: unitFor\(n\.exercise\) \}\) : undefined;/);
+  assert.match(ro, /noteInUnit\(n\.note, row, unitFor\(n\.exercise\), toDisp, disp, alt === undefined \? undefined : alt\?\.w \?\? null\)/, "an alternative the player can't offer is dropped from the note");
+});
 check("player (Burst 8 review #7/#25/#34) the held weight's alternative: ONE offer (altOffer) for the note, the button and the tap", () => {
   assert.match(appJs, /const altFor = \(e\) => altOffer\(e, \{ toDisp: \(kg\) => dispWeightFor\(kg, e\.exercise\), toKg: \(v\) => toKgFor\(v, e\.exercise\), step: wIncFor\(e\.exercise\), served: startWeightDisp\(e\), unit: unitFor\(e\.exercise\) \}\);/);
   const why = fnBody(appJs, "const whyLine = (e, idx = sess?.i) => {", 900);

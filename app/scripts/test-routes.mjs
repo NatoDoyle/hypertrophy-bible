@@ -2142,6 +2142,14 @@ try {
     const want = Math.max(lo, Math.min(hi, Math.round(30 * (60 * (1 + (lo - 1) / 30) / row?.alt_kg - 1) - near)));
     ok("#alt (Burst 8 review #34) Today's row carries the model's reps at the alternative, through the client's door",
       Number.isInteger(row?.alt_reps) && row.alt_reps === want, JSON.stringify(row && [row.alt_kg, row.alt_reps, want]));
+    // The read-out's "next time" line names the same alternative as the note on the set screen — so it carries what the
+    // player's ONE offer (altOffer) needs to say it in the lift's unit, or drop it (Burst 8 review #7, the read-out door).
+    const ro = (await json("POST", "/api/session/recap", { user_id: au, session_id: "alt-1" })).data?.readout;
+    const nx = ro?.next?.find((n) => n.exercise === first.exercise);
+    ok("#alt the read-out's next-time line carries the alternative the set screen offers (weight, reps, range, band, equipment)",
+      !nx || !/or use/.test(nx.note ?? "") || (nx.alt_kg === row.alt_kg && nx.alt_reps === row.alt_reps && nx.rep_range === row.rep_range && nx.rir === row.rir && nx.equipment === row.equipment),
+      JSON.stringify(nx && [nx.alt_kg, nx.alt_reps, nx.rep_range, nx.rir, nx.equipment, row.rir]));
+    ok("#alt …and the read-out reached that lift with the held note (not vacuous)", !!nx && /or use/.test(nx.note ?? ""), JSON.stringify(nx));
   }
   // Burst 8 review #37: a barbell lift held at the empty bar offers no 'Use 17.5 kg' — through the door the client reads.
   {

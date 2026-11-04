@@ -1241,7 +1241,10 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     if (!thisWeek && rollingNextWeek) continue; // the new block's plan sets that weight
     const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
     if (served.suggested_kg == null) continue;
-    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week" });
+    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week",
+      // The held weight's alternative, with what the player's ONE offer (altOffer) needs to say it in the lift's unit or
+      // drop it — the set screen's note and this line name the same weight (Burst 8 review #7).
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, rep_range: hit.ex.rep_range, rir: served.rirBand, equipment: byId.get(id)?.equipment ?? null } : {}) });
   }
 
   const block = [];

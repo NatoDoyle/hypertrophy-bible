@@ -3392,7 +3392,9 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const row = { suggested_kg: n.kg, last_kg: n.last_kg };
     const disp = prefillInUnit(row, toDisp, wIncFor(n.exercise)) ?? toDisp(n.kg);
     const moved = n.last_kg > 0 && disp !== toDisp(n.last_kg);
-    const note = noteInUnit(n.note, row, unitFor(n.exercise), toDisp, disp);
+    // The held weight's alternative as the player will OFFER it — the same altOffer — or none (Burst 8 review #7).
+    const alt = n.alt_kg ? altOffer({ ...n, suggested_kg: n.kg }, { toDisp, toKg: (v) => toKgFor(v, n.exercise), step: wIncFor(n.exercise), served: disp, unit: unitFor(n.exercise) }) : undefined;
+    const note = noteInUnit(n.note, row, unitFor(n.exercise), toDisp, disp, alt === undefined ? undefined : alt?.w ?? null);
     return { moved, disp, html: `<b>${esc(n.name)}</b> — ${disp} ${unitLabelFor(n.exercise)}${note ? `. ${esc(note)}` : ""}` };
   };
   const nexts = (ro?.next ?? []).map((n) => ({ ...nextOf(n), exercise: n.exercise }));
