@@ -2233,12 +2233,13 @@ const setConfirmCue = (idx) => {
 // Clearing a pending typo-confirm from a TYPED edit must NOT repaint — the focused
 // input dies with the screen, so one keystroke after the cue's own "fix it above"
 // advice would eject the user from the field. Instead: reset the flag, remove the
-// cue line(s) (only confirm cues carry role="status" inside the player card), and
+// cue line(s) — by their own marker, data-confirm-cue: the set hint and each superset
+// leg's hint are role="status" cues too, and must survive (Burst 8 review #47) — and
 // restore the Done button's idle label stashed at render time. The stepper − / +
 // buttons keep their existing repaint-on-clear path — they hold no text focus.
 function dismissConfirmCueInPlace() {
   if (!clearSetConfirm()) return;
-  app.querySelectorAll('.cue[role="status"]').forEach((el) => el.remove());
+  app.querySelectorAll("[data-confirm-cue]").forEach((el) => el.remove());
   const btn = app.querySelector("#done, #doner");
   if (btn?.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
 }
@@ -2588,6 +2589,34 @@ function applyHint(idx, e, hint, hintW) {
   if (hint.kind !== "same") { sess.weights[idx] = hintW; sess.wUnits[idx] = unitFor(e.exercise); }
   sess.reps[idx] = hint.target_reps ?? sess.reps[idx]; // the reps that weight aims at (W288)
 }
+// The hint ON the rest screen, for slot `idx` (W305; Burst 8 review #11/#12/#35/#36): "Next set" on a straight rest, the
+// leg's name on a superset round rest (`named`). Derived from banked sets like every hint, so a reload mid-rest repaints it.
+const restHintBody = (idx, m, rh, named) => `${hintIcon(rh.hint)} ${named ? `<b>${esc(m.name)}</b>` : "Next set"}: ${rh.hint.kind === "same"
+  ? `${rh.hintW} ${unitLabelFor(m.exercise)} again — aim for ${rh.hint.target_reps}. You had the reps.`
+  : `try <b>${rh.hintW} ${unitLabelFor(m.exercise)}</b> — ${esc(rh.hc.why)}.`} ${hintButton(rh.hint, rh.hintW, sess.weights[idx], sess.reps[idx], m, `rest-use-hint-${idx}`)}`;
+const restHintHtml = (idx, m, rh, named) => rh?.hc ? `<span class="cue" id="rest-hint-${idx}" role="status" style="display:block;margin-top:8px;text-align:left">${restHintBody(idx, m, rh, named)}</span>` : "";
+// …and in the rest's one announcement (#36): focus goes to "I'm ready", AFTER the hint, so its words travel with the announcement.
+const restHintSay = (m, rh, named) => !rh?.hc ? "" : ` ${named ? m.name : "Next set"}: ${rh.hint.kind === "same"
+  ? `${rh.hintW} ${unitLabelFor(m.exercise)} again, aim for ${rh.hint.target_reps}.` : `try ${rh.hintW} ${unitLabelFor(m.exercise)} — ${rh.hc.why}.`}`;
+// Its one tap. Re-judged AT THE TAP (#12): a set fixed in the editor during the rest can change or retire the advice, and
+// then the line shows what's true now instead of pushing the stale weight. A tap that applies repaints ONLY this line (#35):
+// a redraw would clear the readiness ticks, close an open fix and announce the rest again. The timer reads sess.rest.until.
+function wireRestHint(idx, shown, named) {
+  const b = $(`#rest-use-hint-${idx}`);
+  if (!b) return;
+  b.onclick = () => {
+    const had = document.activeElement === b;
+    const m = sess.ex[idx], rh = setHintFor(m), line = $(`#rest-hint-${idx}`);
+    const still = rh.hint && rh.hint.kind === shown.hint.kind && rh.hintW === shown.hintW && rh.hint.target_reps === shown.hint.target_reps;
+    if (still) {
+      applyHint(idx, m, rh.hint, rh.hintW); saveSess();
+      line.innerHTML = `✓ ${named ? `${esc(m.name)}: ` : ""}${rh.hint.kind === "same" ? `Aim for ${rh.hint.target_reps}`
+        : `${rh.hintW} ${unitLabelFor(m.exercise)}${rh.hint.target_reps ? `, aiming for ${rh.hint.target_reps},` : ""}`} is set for your next ${named ? "round" : "set"}.`;
+    } else if (rh.hc) { line.innerHTML = restHintBody(idx, m, rh, named); wireRestHint(idx, rh, named); }
+    else line.remove();
+    if (had) ($(`#rest-use-hint-${idx}`) ?? $("#skip"))?.focus();
+  };
+}
 function renderPlayer() {
   stopRestTimer();
   setEditor = null;
@@ -2633,15 +2662,13 @@ function renderPlayer() {
   if (rest) {
     quitPending = false;
     // The next set's hint, ON the rest screen (W305 — owner: "it didn't suggest a more appropriate weight"): the rest is
-    // when the plates get changed, and the set screen only came after it.
-    const rh = rest.kind === "set" ? setHintFor(e) : null;
-    const restHint = rh?.hc ? `<span class="cue" id="rest-hint" role="status" style="display:block;margin-top:8px;text-align:left">${hintIcon(rh.hint)} ${rh.hint.kind === "same"
-      ? `Next set: ${rh.hintW} ${unitLabelFor(e.exercise)} again — aim for ${rh.hint.target_reps}. You had the reps.`
-      : `Next set: try <b>${rh.hintW} ${unitLabelFor(e.exercise)}</b> — ${esc(rh.hc.why)}.`} ${hintButton(rh.hint, rh.hintW, w, reps, e, "rest-use-hint")}</span>` : "";
-    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}${restHint}`, e, () => renderPlayer(0),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`,
+    // when the plates get changed, and the set screen only came after it. A superset's remainder rest is between sets of
+    // the same lift too (Burst 8 review #11).
+    const rh = rest.kind === "set" || rest.kind === "remainder" ? setHintFor(e) : null;
+    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}${restHintHtml(sess.i, e, rh, false)}`, e, () => renderPlayer(0),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.${restHintSay(e, rh, false)}`,
       `${e.name} — set ${sess.set + 1} of ${e.sets}`);
-    if ($("#rest-use-hint")) $("#rest-use-hint").onclick = () => { applyHint(sess.i, e, rh.hint, rh.hintW); saveSess(); renderPlayer(0); };
+    if (rh?.hc) wireRestHint(sess.i, rh, false);
     return;
   }
 
@@ -2687,7 +2714,7 @@ function renderPlayer() {
       ${sess.set === 0 && !firstEver ? whyLine(e) : ""}
       ${repsStepper(reps, null)}
       ${effChips(sess.i)}
-      ${confirmSet.has(e.exercise) ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
+      ${confirmSet.has(e.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
@@ -2830,9 +2857,12 @@ function renderSupersetStation(L, P) {
   const rest = activeRest(sess, Date.now());
   if (rest) {
     quitPending = false;
-    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}`, null, () => renderSupersetStation(L, P),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`,
+    // Each leg's hint on the round rest too — the plates get changed here (Burst 8 review #11).
+    const legs = [L, P].map((idx) => [idx, setHintFor(sess.ex[idx])]);
+    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}${legs.map(([idx, rh]) => restHintHtml(idx, sess.ex[idx], rh, true)).join("")}`, null, () => renderSupersetStation(L, P),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.${legs.map(([idx, rh]) => restHintSay(sess.ex[idx], rh, true)).join("")}`,
       `${A.name} + ${B.name} — round ${round + 1} of ${paired}`);
+    for (const [idx, rh] of legs) if (rh.hc) wireRestHint(idx, rh, true);
     return;
   }
 
@@ -2856,7 +2886,7 @@ function renderSupersetStation(L, P) {
       ${round === 0 ? whyLine(m, idx) : ""}
       ${repsStepper(reps, idx)}
       ${effChips(idx)}
-      ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
+      ${confirmSet.has(m.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -2905,11 +2935,15 @@ function renderSupersetStation(L, P) {
     if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
     applySkip(skipRound(sess, L, P), () => renderPlayer(0));
   };
-  wireAltWeight(() => renderSupersetStation(L, P));
+  // A new weight disarms "End workout early" and is judged afresh by the typo guard, as on the straight player (Burst 8 review #10).
+  wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderSupersetStation(L, P); });
   // Each leg's next-round hint (W305): the same advice a straight set gets, one tap fills that leg's steppers.
   for (const idx of [L, P]) {
     const b = $(`#leg-hint-${idx}`);
-    if (b) b.onclick = () => { const m = sess.ex[idx], lh = setHintFor(m); if (lh.hint) applyHint(idx, m, lh.hint, lh.hintW); saveSess(); renderSupersetStation(L, P); };
+    if (b) b.onclick = () => {
+      clearSetConfirm(); quitPending = false;
+      const m = sess.ex[idx], lh = setHintFor(m); if (lh.hint) applyHint(idx, m, lh.hint, lh.hintW); saveSess(); renderSupersetStation(L, P);
+    };
   }
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"

@@ -641,7 +641,7 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
   // W305: ONE hint computation (setHintFor) speaks for the set screen, the rest screen and each superset leg.
   assert.match(fnBody(appJs, "function setHintFor(e) {", 2500), /hintCopy\(hint, \{ setNo: done,/);
   assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const \{ hint, hintW, hc \} = setHintFor\(e\);/, "the set screen");
-  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const rh = rest\.kind === "set" \? setHintFor\(e\) : null;/, "the rest screen, where the plates get changed");
+  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const rh = rest\.kind === "set" \|\| rest\.kind === "remainder" \? setHintFor\(e\) : null;/, "the rest screen, where the plates get changed");
   assert.match(fnBody(appJs, "function renderSupersetStation(L, P) {", 6000), /const lh = setHintFor\(m\);/, "each superset leg");
 });
 check("player (Burst 8 review #8) a 'same' hint, and every hint's lead, name the weight BANKED at the precision typed", () => {
@@ -662,6 +662,57 @@ check("player (Burst 8 review #7/#25/#34) the held weight's alternative: ONE off
   assert.match(wire, /sess\.weights\[idx\] = a\.w;/);
   assert.match(wire, /sess\.reps\[idx\] = a\.reps;/, "#34: the reps the model predicts there");
   assert.doesNotMatch(wire, /rep_range/, "#34: never the range's bottom");
+});
+
+// --- Burst 8 review (W305f): the rest screen's hint and the station's leg hints. app.js can't run under Node, so these
+// pin the wiring by its exact text (the rest of this file's convention); a real-browser walkthrough backs them.
+const between = (src, head, end) => { const a = src.indexOf(head); assert.ok(a >= 0, `missing: ${head}`); const b = src.indexOf(end, a + head.length); assert.ok(b > a, `missing after ${head}: ${end}`); return src.slice(a, b); };
+const stationRest = () => between(appJs, "function renderSupersetStation(L, P) {", "const memberBlock = (idx) => {");
+const playerRest = () => between(appJs, "const rest = activeRest(sess, Date.now());\n  if (rest) {\n    quitPending = false;\n    // The next set's hint", "const firstEver =");
+const restHintWire = () => between(appJs, "function wireRestHint(idx, shown, named) {", "\n}\n");
+check("#10 station: a leg hint's or the alt weight's tap disarms 'End workout early' and judges the typo guard afresh, like the straight player", () => {
+  const st = fnBody(appJs, "function renderSupersetStation(L, P) {", 12000);
+  assert.match(st, /wireAltWeight\(\(\) => \{ clearSetConfirm\(\); quitPending = false; renderSupersetStation\(L, P\); \}\);/, "the station's alt weight");
+  assert.match(between(st, "const b = $(`#leg-hint-${idx}`);", "$(\"#doner\").onclick"), /if \(b\) b\.onclick = \(\) => \{\s*clearSetConfirm\(\); quitPending = false;/, "each leg's hint button");
+});
+check("#11 rest hint: a superset's remainder rest and every round rest carry the hint (per leg, with its own button)", () => {
+  assert.match(playerRest(), /rest\.kind === "remainder"/, "the remainder rest is between sets of the same lift");
+  const sr = stationRest();
+  assert.match(sr, /const legs = \[L, P\]\.map\(\(idx\) => \[idx, setHintFor\(sess\.ex\[idx\]\)\]\);/, "each leg's hint on the round rest");
+  assert.match(sr, /legs\.map\(\(\[idx, rh\]\) => restHintHtml\(idx, sess\.ex\[idx\], rh, true\)\)\.join\(""\)/);
+  assert.match(sr, /for \(const \[idx, rh\] of legs\) if \(rh\.hc\) wireRestHint\(idx, rh, true\);/);
+  assert.match(playerRest(), /restHintHtml\(sess\.i, e, rh, false\)/);
+  assert.match(playerRest(), /if \(rh\?\.hc\) wireRestHint\(sess\.i, rh, false\);/);
+});
+check("#12 rest hint: 'Use X' re-judges the advice at the tap — a set fixed during the rest never pushes the stale weight", () => {
+  const w = restHintWire();
+  assert.match(w, /const m = sess\.ex\[idx\], rh = setHintFor\(m\), line = \$\(`#rest-hint-\$\{idx\}`\);/, "recomputed at click time");
+  assert.match(w, /rh\.hint && rh\.hint\.kind === shown\.hint\.kind && rh\.hintW === shown\.hintW && rh\.hint\.target_reps === shown\.hint\.target_reps/, "applied only when it is still what the button said");
+  assert.ok(w.indexOf("applyHint(") > w.indexOf("const still ="), "applyHint is gated on the fresh judgement");
+  assert.match(w, /else if \(rh\.hc\) \{ line\.innerHTML = restHintBody\(idx, m, rh, named\); wireRestHint\(idx, rh, named\); \}\s*else line\.remove\(\);/, "otherwise only the line is repainted");
+  assert.doesNotMatch(playerRest(), /applyHint\(/, "no render-time closure applies a hint any more");
+});
+check("#35 rest hint: the tap repaints ONLY its line — no redraw to wipe the readiness ticks, an open fix or re-announce the rest", () => {
+  const w = restHintWire();
+  assert.doesNotMatch(w, /renderPlayer|renderSupersetStation|showRest|innerHTML = `<div|app\.innerHTML|say\(/);
+  assert.match(w, /applyHint\(idx, m, rh\.hint, rh\.hintW\); saveSess\(\);\s*line\.innerHTML = `✓ /, "a short confirmation in place");
+  assert.match(w, /if \(had\) \(\$\(`#rest-use-hint-\$\{idx\}`\) \?\? \$\("#skip"\)\)\?\.focus\(\);/, "focus never drops to the page when the tapped button goes");
+});
+check("#36 rest hint: the rest's one announcement carries each hint (focus lands on 'I'm ready', after it)", () => {
+  assert.match(playerRest(), /, \$\{e\.name\}\.\$\{restHintSay\(e, rh, false\)\}`/);
+  assert.match(stationRest(), /with \$\{B\.name\}\.\$\{legs\.map\(\(\[idx, rh\]\) => restHintSay\(sess\.ex\[idx\], rh, true\)\)\.join\(""\)\}`/);
+  assert.match(fnBody(appJs, "function showRest(", 2000), /say\(announce\);\n\s*\$\("#skip"\)\.focus\(\);/, "said once, at render");
+});
+check("#47 typing after a typo prompt removes ONLY the confirm cue — the set hint and each leg's hint (and their buttons) stay", () => {
+  const dismiss = fnBody(appJs, "function dismissConfirmCueInPlace() {", 400);
+  assert.match(dismiss, /app\.querySelectorAll\("\[data-confirm-cue\]"\)\.forEach\(\(el\) => el\.remove\(\)\);/);
+  assert.doesNotMatch(dismiss, /role="status"/);
+  assert.equal((appJs.match(/<div class="cue" role="status" data-confirm-cue>\$\{setConfirmCue\((sess\.i|idx)\)\}<\/div>/g) ?? []).length, 2, "both confirm cues carry the marker");
+  assert.equal((appJs.match(/setConfirmCue\(/g) ?? []).length, 2, "…and there is no third, unmarked one");
+  // The hints the dismissal must spare, as rendered: none carries the marker.
+  const setHint = between(appJs, 'const hintHtml = hc ? `<div class="cue" id="set-hint"', "</div>`");
+  const legHint = between(appJs, "const lh = setHintFor(m); return lh.hc ?", "</div>`");
+  for (const h of [setHint, legHint, restHintWire(), between(appJs, "const restHintHtml =", ";\n")]) assert.doesNotMatch(h, /data-confirm-cue/);
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
