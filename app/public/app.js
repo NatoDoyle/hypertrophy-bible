@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitRequest, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2119,21 +2119,24 @@ const lastTimeLine = (e) => {
 // The engine writes it in kg; noteInUnit puts every figure in the lift's own unit (or drops a
 // line that would contradict the stepper).
 // …and a held weight's lighter alternative (W305), one tap — offered only while the stepper still holds the served weight.
+// ONE offer (altOffer) for the note, the button and the tap (Burst 8 review #7/#25/#34/#37): a real step in the lift's unit,
+// never under the bar or ~20% down, never on a tired row, at the model's reps — and the note names it, or nothing.
+const altFor = (e) => altOffer(e, { toDisp: (kg) => dispWeightFor(kg, e.exercise), toKg: (v) => toKgFor(v, e.exercise), step: wIncFor(e.exercise), served: startWeightDisp(e), unit: unitFor(e.exercise) });
 const whyLine = (e, idx = sess?.i) => {
   if (!e.suggestion_note || e.suggested_kg == null) return "";
-  const note = noteInUnit(e.suggestion_note, e, unitFor(e.exercise), (kg) => dispWeightFor(kg, e.exercise), startWeightDisp(e));
-  const alt = e.alt_kg > 0 ? dispWeightFor(e.alt_kg, e.exercise) : null;
-  const altBtn = alt != null && alt !== startWeightDisp(e) && Number(sess?.weights?.[idx]) === startWeightDisp(e)
-    ? `<br><button class="btn ghost inline" data-alt-weight="${idx}" style="margin:4px 0 0">Use ${alt} ${unitLabelFor(e.exercise)}</button>` : "";
+  const alt = altFor(e);
+  const note = noteInUnit(e.suggestion_note, e, unitFor(e.exercise), (kg) => dispWeightFor(kg, e.exercise), startWeightDisp(e), alt?.w ?? null);
+  const altBtn = alt && Number(sess?.weights?.[idx]) === startWeightDisp(e)
+    ? `<br><button class="btn ghost inline" data-alt-weight="${idx}" style="margin:4px 0 0">Use ${alt.w} ${unitLabelFor(e.exercise)}</button>` : "";
   return note ? `<p class="muted" id="why-weight" style="font-size:.85rem;margin:0 0 6px">📈 ${esc(note)}${altBtn}</p>` : "";
 };
-// The lighter alternative's tap: the weight, and the bottom of the range it aims at.
+// The lighter alternative's tap: the weight, and the reps the model predicts there (Burst 8 review #34 — was the range's bottom).
 function wireAltWeight(rerender) {
   app.querySelectorAll("[data-alt-weight]").forEach((b) => b.onclick = () => {
-    const idx = +b.dataset.altWeight, e = sess.ex[idx];
-    sess.weights[idx] = dispWeightFor(e.alt_kg, e.exercise); sess.wUnits[idx] = unitFor(e.exercise);
-    const lo = /(\d+)\s*-/.exec(e.rep_range ?? "");
-    if (lo) sess.reps[idx] = +lo[1];
+    const idx = +b.dataset.altWeight, e = sess.ex[idx], a = altFor(e);
+    if (!a) return;
+    sess.weights[idx] = a.w; sess.wUnits[idx] = unitFor(e.exercise);
+    if (Number.isInteger(a.reps)) sess.reps[idx] = a.reps;
     saveSess(); rerender();
   });
 }
@@ -2561,13 +2564,16 @@ function setHintFor(e) {
   const prevWork = done > 0 && !sess.deload && !e.eased
     ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
   const aims = validAim(e);
-  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
-  const prevAim = prevWork && aims && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? aims[Math.min(done - 1, aims.length - 1)] ?? null : null;
-  const rawHint = nextSetHint(prevWork, e, { aim: prevAim, nextAim: aims?.[done] ?? null });
-  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss. Today's aims
+  // belong to the SERVED load: the next set's too (Burst 8 review #23 — as repSeed's atServed).
+  const atServed = !!prevWork && !!aims && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e));
+  const prevAim = atServed ? aims[Math.min(done - 1, aims.length - 1)] ?? null : null;
+  const rawHint = nextSetHint(prevWork, e, { aim: prevAim, nextAim: atServed ? aims[done] ?? null : null });
+  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise), unitFor(e.exercise)) : null;
   const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
   const hintW = hint ? rawW : null;
-  const hc = hint && hintW != null ? hintCopy(hint, { setNo: done, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
+  // The lead names the weight BANKED, as typed (Burst 8 review #8: a typed 22.5 lb read "7 reps at 25 lb").
+  const hc = hint && hintW != null ? hintCopy(hint, { setNo: done, fromW: `${+editDisplay(hint.from_kg, unitFor(e.exercise))} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
   return { hint: hc ? hint : null, hintW: hc ? hintW : null, hc };
 }
 const hintIcon = (hint) => (hint?.kind === "heavier" ? "⬆️" : hint?.kind === "same" ? "💪" : "🎯");

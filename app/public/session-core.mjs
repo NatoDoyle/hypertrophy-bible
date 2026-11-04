@@ -134,7 +134,8 @@ export function tiredSwapRow(row) {
   const note = bumped ? `Same weight as ${row.last_easy ? "your last regular session" : "last time"} — no step up on a tired day. It won't count against your progress.`
     : known ? `${row.suggestion_note ? `${row.suggestion_note} ` : ""}It won't count against your progress.`
     : "Keep it light today — it won't set this lift's starting weight.";
-  return { ...row, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
+  const { alt_kg: _altKg, alt_reps: _altReps, ...kept } = row; // a tired day offers no lighter alternative (Burst 8 review #25)
+  return { ...kept, ...(bumped ? { suggested_kg: row.last_kg } : {}), tired: true, eased: true, suggestion_note: note };
 }
 // A swap OF a tired slot is still the tired day (round 8): "It's busy right now", "Pick one myself" and "No machine" hand
 // back a row the server built at the new lift's own progression — kept planned easy, any bump held, "it won't count", the
@@ -148,7 +149,10 @@ export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) =
   const lighter = kg != null && kg < cur.suggested_kg && shown({ ...cur, suggested_kg: kg }) < shown(cur);
   const sets = tiredDose(cur);
   const note = `${lighter ? "Lighter for today because you're tired" : sets < cur.sets ? "Shorter today because you're tired" : "Easy does it today — stop each set while your form is solid"}. It won't count against your progress.`;
-  const row = { ...cur, ...(lighter ? { suggested_kg: kg } : {}), tired: true, eased: true, suggestion_note: note };
+  // The held weight's lighter alternative belongs to the SERVED weight: dropped (Burst 8 review #25 — "Use 92.5 kg" sat
+  // under a tired 90 kg and undid the ease in one tap).
+  const { alt_kg: _altKg, alt_reps: _altReps, ...kept } = cur;
+  const row = { ...kept, ...(lighter ? { suggested_kg: kg } : {}), tired: true, eased: true, suggestion_note: note };
   return replaceSlot(sess, i, row, { expect, sets });
 }
 // Offer it at the first set of a lift not yet started, once some work is banked today; never on a superset member (a
@@ -392,9 +396,10 @@ export function nextSetCapacity(reps, rir) {
 // W305 (considerations iteration — owner: "I didn't achieve the recommended reps and intensity and it didn't suggest a
 // more appropriate weight"): every miss the capacity model can judge gets an answer. Under the range WITH reps left
 // (RIR ≥ 2) is no longer silent: if the set's capacity, less what the next set costs, still reaches the range at the
-// band's near edge, "same" — the same weight, aim for that many; if not, lighter. A set IN the range but closer to
-// failure than the band hints lighter only when the next set would miss ITS aim (`nextAim`, else the range's bottom) —
-// aims that already expect the drop are met, so straight sets never turn into back-offs.
+// band's near edge — the next set's served aim (`nextAim`: W289 aims can sit under the range — Burst 8 review #22), else
+// the range's bottom — "same": the same weight, aim for that many; if not, lighter. A set IN (or just over) the range
+// taken past the band gets no hint (Burst 8 review #4/#28/#45: following that back-off taught the engine wrong aims and
+// earned a bump on one set). A barbell's lighter weight never goes under the empty bar; at the bar there is none (#40).
 export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
@@ -411,22 +416,23 @@ export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   // still a miss (fix verification).
   const metAim = Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near);
   const cap = nextSetCapacity(set.reps, rir), reach = cap - near; // the next set's reps at the near edge, same weight
-  const aimNext = Number.isInteger(nextAim) ? Math.max(min, Math.min(max, nextAim)) : min;
+  const ref = Number.isInteger(nextAim) ? nextAim : min; // the next set's own aim, never raised to the range (#22)
   const short = set.reps < min && !metAim;
   const kind = short && (rir == null || rir <= 1) ? "lighter"
-    : short && rir >= 2 ? (reach >= min ? "same" : "lighter")
+    : short && rir >= 2 ? (reach >= ref ? "same" : "lighter")
     : set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min) ? "heavier"
-    : rir != null && rir < near && set.reps >= min && reach < (Number.isInteger(nextAim) ? nextAim : min) ? "lighter"
     : null;
   if (!kind) return null;
-  if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(min, Math.min(max, Math.floor(reach + 1e-9))) };
+  if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(Math.min(ref, min), Math.min(max, Math.floor(reach + 1e-9))) };
   const under = kind === "lighter";
-  const floored = Math.floor(loadForReps(w, cap, 0, under ? (set.reps < min ? min : aimNext) : max, near) / inc + 1e-9) * inc;
+  const bar = under && row?.equipment === "barbell" ? EMPTY_BAR_KG : 0;
+  const floored = Math.floor(loadForReps(w, cap, 0, under ? min : max, near) / inc + 1e-9) * inc;
   const kg = under
-    ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
+    ? Math.max(bar, Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored)))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
   const rounded = Math.round(kg * 4) / 4;
-  return rounded > 0 ? finalizeHint({ kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null }, set, row, rounded) : null;
+  if (under && !(rounded < w)) return null; // at the bar: nothing lighter exists (#40)
+  return rounded > 0 ? finalizeHint({ kind: under ? "lighter" : "heavier", kg: rounded, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, ...(bar ? { floor_kg: bar } : {}) }, set, row, rounded) : null;
 }
 // The hint at the weight actually OFFERED (round 2 of the fix verification): a pounds user is offered the next
 // 5-lb plate, which can be heavier than the kg it rounds from. The reps it aims at — what "Use X kg" fills — are
@@ -511,13 +517,16 @@ export function buildTargets(sess) {
 // step that the 5-lb plate rounding collapses back onto the weight just used becomes the next
 // plate (`step`) in the hint's direction — never "Try 20 lb" from 20 lb. Null when the move
 // would reach zero.
-export function hintInUnit(hint, toDisp, step) {
+// A "same" hint names the weight BANKED, at the precision typed when `unit` is given (Burst 8 review #8: a typed 22.5 lb
+// read "25 lb again" — heavier, after a set that fell short). A barbell's lighter move stops at the empty bar in this unit
+// (`floor_kg`: 45 lb, never a 40-lb "bar"); none left → null (Burst 8 review #40).
+export function hintInUnit(hint, toDisp, step, unit = null) {
   if (!hint) return null;
-  if (hint.kind === "same") { const at = toDisp(hint.kg); return at > 0 ? at : null; } // W305: the weight stays where it is
+  if (hint.kind === "same") { const at = unit ? +editDisplay(hint.kg, unit) : toDisp(hint.kg); return at > 0 ? at : null; } // W305: the weight stays where it is
   const from = toDisp(hint.from_kg), to = toDisp(hint.kg);
-  if (to !== from) return to > 0 ? to : null;
-  const nudged = from + (hint.kind === "lighter" ? -step : step);
-  return nudged > 0 ? nudged : null;
+  let out = to !== from ? to : from + (hint.kind === "lighter" ? -step : step);
+  if (hint.kind === "lighter" && hint.floor_kg > 0) { out = Math.max(out, toDisp(hint.floor_kg)); if (!(out < from)) return null; }
+  return out > 0 ? out : null;
 }
 
 // WHAT HAPPENED in a workout (W282 read-out) — from the workout itself: the plan it carried
@@ -582,6 +591,26 @@ export function prefillInUnit(row, toDisp, step) {
   if (kg == null) return null;
   if (!(last > 0) || kg === last) return toDisp(kg);
   return hintInUnit({ kind: kg > last ? "heavier" : "lighter", kg, from_kg: last }, toDisp, step) ?? toDisp(kg);
+}
+// A held weight's lighter alternative (W305's alt_kg) as the player OFFERS it, in the lift's display unit — `served` is the
+// stepper's pre-fill. Burst 8 review: a REAL step under the served weight (#7: a pounds user's 1 kg ease rounds back onto
+// the same plate — then the next plate down), never under the empty bar (#37/#40), never more than ~20% down; never on a
+// tired or eased row (#25). Its reps are the model's at the offered weight (#34: the server's alt_reps at alt_kg, carried
+// there by Epley — never the range's bottom, which left ~5 in reserve). Null: no offer — the note then names none either.
+export const ALT_MAX_DROP = 0.2;
+export function altOffer(row, { toDisp, toKg, step, served, unit }) {
+  if (!(row?.alt_kg > 0) || row.tired || row.eased || !(served > 0)) return null;
+  let w = toDisp(row.alt_kg);
+  if (!(w < served)) w = served - step;
+  if (row.equipment === "barbell") w = Math.max(w, unit === "lb" ? EMPTY_BAR_LB : EMPTY_BAR_KG);
+  if (!(w > 0 && w < served) || w < served * (1 - ALT_MAX_DROP) - 1e-9) return null;
+  const range = /(\d+)\s*-\s*(\d+)/.exec(row.rep_range ?? "");
+  const min = range ? +range[1] : null, max = range ? +range[2] : null;
+  if (!Number.isInteger(row.alt_reps) || row.equipment === "bodyweight") return { w, reps: Number.isInteger(row.alt_reps) ? row.alt_reps : min };
+  const band = /(\d+)\s*-\s*(\d+)/.exec(row.rir ?? "");
+  const near = band ? +band[1] : 1;
+  const reps = Math.round(30 * (row.alt_kg * (1 + (row.alt_reps + near) / 30) / toKg(w) - 1) - near);
+  return { w, reps: min == null ? reps : Math.max(min, Math.min(max, reps)) };
 }
 
 export function isHardSet(set, { hardSetRpe = 7 } = {}) {

@@ -351,7 +351,11 @@ export function swapUndoCopy({ revertedLive, permanent, from, to, same = false }
 // a weight as the stepper shows it (`preDisp` is the pre-filled value), a step ("add N kg")
 // as the plates actually moved. A reason that would still contradict the screen — an "add"
 // while the stepper shows last time's weight — is dropped (null), never shown.
-export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, preDisp) {
+// A held weight's "or use X kg" (W305) names exactly what the player OFFERS — `alt`, already in the lift's unit — and
+// nothing when it offers nothing (null), so the note and the 'Use X' button always agree (Burst 8 review #7/#25: a
+// pounds user read "or use 20 lb" with the stepper on 20 lb). Left as written when no offer is passed.
+export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, preDisp, alt) {
+  if (note && alt !== undefined) note = note.replace(/, or use \d+(?:\.\d+)? kg( if it felt like too much)/, alt == null ? "" : `, or use ${alt} ${unit}$1`);
   if (!note || unit !== "lb") return note ?? null;
   const lastDisp = last_kg > 0 ? toDisp(last_kg) : null;
   let contradicts = false;
@@ -375,9 +379,9 @@ export function hintCopy(hint, { setNo, fromW, toW }) {
   const range = `${hint.min}–${hint.max}`;
   const lead = `Set ${setNo}: ${hint.reps} reps at ${fromW}`;
   const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
-  // W305: under the range with reps left, and in the range but past the band — the two answers that used to be silence.
+  // W305: under the range with reps left — the answer that used to be silence. (Its in-range "lighter" is gone: Burst 8
+  // review #4/#28/#45 — a 'lighter' only ever follows a set under the range.)
   if (hint.kind === "same") return { lead, why: `under the ${range} range, with about ${hint.rir} left in the tank`, tryW: toW, tail: `again and aim for ${hint.target_reps} — you had the reps.` };
-  if (hint.kind === "lighter" && hint.reps >= hint.min) return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one: after a set that hard, the same weight would fall short." };
   if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it, allowing for the rep or so each hard set costs." };
   if (hint.reps > hint.max) return { lead, why: `over the ${range} range`, tryW: toW, tail: "for this one to land in it." };
   return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };

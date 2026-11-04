@@ -249,16 +249,25 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
     const floored = Math.floor(raw / inc + 1e-9) * inc;
     const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
-    const eased = Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4;
+    // Never under the empty bar for a barbell lift (Burst 8 review #37/#40) — at the bar, nothing lighter exists.
+    const bar = byId.get(exId)?.equipment === "barbell" ? EMPTY_BAR_KG : 0;
+    const eased = Math.max(bar, Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4);
     if (min - s1.reps >= 2 || prevUnder) {
       // The model aims the FIRST set at the range's bottom, so that is all the copy promises —
       // and when the ~20% cap binds, not even that.
       const tail = floored < lowest ? " (as far as I'll drop it in one go)." : " — your first set should land in the range.";
-      if (eased > 0) return { suggested_kg: eased, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg${tail}`, ...base };
+      if (eased > 0 && eased < lastWeight) return { suggested_kg: eased, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg${tail}`, ...base };
     } else {
       // W305 (owner: "it didn't suggest a more appropriate weight"): one set is noise, so the weight still holds once —
-      // but the lighter one is OFFERED beside it, the choice the lifter's own feel should make.
-      if (eased > 0) return { suggested_kg: lastWeight, alt_kg: eased, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight and aim for ${min}, or use ${eased} kg if it felt like too much. If it happens again, I'll lighten it.`, ...base };
+      // but the lighter one is OFFERED beside it, the choice the lifter's own feel should make. Only a real one: lighter,
+      // and at most ~20% down (Burst 8 review #37: 5 → 2.5 kg is half the load). Its reps are the model's at it (#34) —
+      // set 1's capacity carried there by Epley, as the in-session hint fills them; added load on a bodyweight lift isn't
+      // the whole load, so the range's bottom there.
+      if (eased > 0 && eased < lastWeight && eased >= lastWeight * 0.8 - 1e-9) {
+        const alt_reps = byId.get(exId)?.equipment === "bodyweight" ? min
+          : Math.max(min, Math.min(max, Math.round(30 * (lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30) / eased - 1) - near)));
+        return { suggested_kg: lastWeight, alt_kg: eased, alt_reps, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight and aim for ${min}, or use ${eased} kg if it felt like too much. If it happens again, I'll lighten it.`, ...base };
+      }
       return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
     }
   }
@@ -289,6 +298,7 @@ const heldLead = (note, taper) => note === GENERIC_HOLD_NOTE ? (taper ? "Taper �
   : /^You hit failure last time/.test(note) ? "You hit failure last time — same weight."
   : /^You hit the top of the range last time, but/.test(note) ? note.replace(/ until you get there with \d+ in reserve\.$/, ".")
   : /^You did \d+ of \d+ sets last time/.test(note) ? note.replace(/ — get all .*$/, " — same weight.")
+  : /^Just under the range last time/.test(note) ? note.replace(/ — keep the weight and aim for \d+, or use /, " — keep the weight, or use ") // W305's held note (Burst 8 review #5)
   : note;
 
 // Which program session is due today (simple rotation by sessions completed).
@@ -747,7 +757,8 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // The held weight's lighter alternative (W305) travels only while the weight IS the held one — once position, taper or
   // a comeback moved it, the alternative no longer describes it.
   const alt_kg = sug.alt_kg != null && suggested_kg === sug.suggested_kg ? sug.alt_kg : null;
-  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy, alt_kg };
+  const alt_reps = alt_kg != null ? sug.alt_reps ?? null : null; // the reps the model predicts there (Burst 8 review #34)
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy, alt_kg, alt_reps };
 }
 
 // The day a live workout is on, by the name the player carries (Burst 6, N7): the rotation's own day
@@ -998,7 +1009,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
-      ...(served.alt_kg ? { alt_kg: served.alt_kg } : {}), // → "Use X kg" beside a held weight's note (W305)
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps } : {}), // → "Use X kg" beside a held weight's note (W305), at the model's reps
       // The reason's "last time" is the last REGULAR session (an easier one came since) — the set screen labels it so (round 3).
       ...(served.last_easy ? { last_easy: true } : {}),
       // Tried only on an easier day (no anchor, but sets in History): never "New lift" on the set screen (round 5).

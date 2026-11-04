@@ -7,6 +7,7 @@ import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExe
 import * as uiHelpers from "../public/ui-helpers.mjs"; // Burst 5's new exports, read so a missing one fails its own check
 import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
+import * as sessionCore from "../public/session-core.mjs"; // Burst 8 review: the hint/alternative helpers, read so a missing one fails its own check
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -473,6 +474,34 @@ check("#why-unit (W290) the order note reaches a pounds user in pounds, never kg
   }
   assert.ok(seen >= 2, `order notes exercised: ${seen}`);
 });
+// --- Burst 8 review #7/#25 (R6/R7): the held note's "or use X" and the 'Use X' button always agree — the note names
+// exactly what the player offers (altOffer), in the lift's unit, or names nothing when nothing is offered.
+check("#why-unit (Burst 8 review #7) the held note's alternative is the one offered — or none, in kg as in pounds", () => {
+  const n = "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 8 kg if it felt like too much. If it happens again, I'll lighten it.";
+  const row = { suggested_kg: 9.07, last_kg: 9.07, alt_kg: 8 };
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20, null), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8. If it happens again, I'll lighten it.");
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20, 15), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 15 lb if it felt like too much. If it happens again, I'll lighten it.");
+  assert.equal(noteInUnit(n, row, "kg", (k) => k, 9, null), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8. If it happens again, I'll lighten it.", "a tired row in kg: no alternative named");
+  assert.equal(noteInUnit(n, row, "kg", (k) => k, 9, 8), n);
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 20 lb if it felt like too much. If it happens again, I'll lighten it.", "no offer given (another caller): as before");
+});
+check("#why-unit (Burst 8 review #7) the real engine → the player: a pounds user at 20 lb gets no same-plate 'or use 20 lb' — and no button", () => {
+  const sets = [7, 6, 6].map((reps) => ({ exercise: "dumbbell-lateral-raise", set_type: "work", weight_kg: 9.07, reps, rir: 0 }));
+  const s = servedLift({ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }, [{ date: "2026-06-01T18:00:00Z", sets, targets: [{ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }] }], {}, undefined, null);
+  assert.deepEqual([s.suggested_kg, s.alt_kg], [9.07, 8], "precondition: held at 9.07 kg with 8 kg beside it");
+  const lbK = (v) => Math.round((v / 2.2046226) * 100) / 100;
+  for (const [kg, unit, toDisp, step] of [[9.07, "lb", lbD, 5], [13.61, "lb", lbD, 5], [9.07, "kg", (k) => Math.round(k * 4) / 4, 2.5]]) {
+    const hist = [{ date: "2026-06-01T18:00:00Z", sets: sets.map((x) => ({ ...x, weight_kg: kg })), targets: [{ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }] }];
+    const sv = servedLift({ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }, hist, {}, undefined, null);
+    const row = { equipment: "dumbbell", rep_range: "8-12", rir: "1-2", suggested_kg: sv.suggested_kg, last_kg: sv.sug.last_kg, alt_kg: sv.alt_kg, alt_reps: sv.alt_reps };
+    const served = prefillInUnit(row, toDisp, step);
+    const offer = sessionCore.altOffer(row, { toDisp, toKg: unit === "lb" ? lbK : (v) => v, step, served, unit });
+    const note = noteInUnit(sv.suggestion_note, row, unit, toDisp, served, offer?.w ?? null);
+    const named = /or use ([\d.]+) (?:lb|kg)/.exec(note)?.[1];
+    assert.equal(named == null ? null : +named, offer?.w ?? null, `${kg} kg in ${unit}: the note names ${named}, the button ${offer?.w} — ${note}`);
+    if (offer) assert.ok(offer.w < served, `a real step under the served ${served}: ${offer.w}`);
+  }
+});
 // The next-set hint says what actually happened: reps under, reps over — or reps IN the range
 // with far more left in the tank than planned (that hint fires on effort; "over the range"
 // was a false statement there).
@@ -485,10 +514,24 @@ check("#hint-copy each kind of hint says what actually happened", () => {
   // W305: the two new answers say what actually happened too.
   assert.equal(j(hintCopy({ kind: "same", reps: 7, min: 8, max: 12, rir: 3, band: "1-3", target_reps: 8 }, { setNo: 1, fromW: "100 kg", toW: "100 kg" })),
     "Set 1: 7 reps at 100 kg — under the 8–12 range, with about 3 left in the tank. Try 100 kg again and aim for 8 — you had the reps.");
-  assert.equal(j(hintCopy({ kind: "lighter", reps: 9, min: 8, max: 12, rir: 0, band: "1-3" }, { setNo: 1, fromW: "100 kg", toW: "92.5 kg" })),
-    "Set 1: 9 reps at 100 kg — in the range, but with about 0 left in the tank (the plan says 1–3). Try 92.5 kg for this one: after a set that hard, the same weight would fall short.");
+  // (Burst 8 review #4/#28/#45, deliberate: W305's in-range "lighter" — and its "after a set that hard" copy — is gone.)
   assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),
     "Set 1: 10 reps at 40 kg — in the range, but with about 5 left in the tank (the plan says 1–3). Try 45 kg for this one.");
+});
+// Burst 8 review #28: a set OVER the range was called "in the range" and told to go lighter. Through the real hint and
+// its copy: a 'lighter' only ever follows a set under the range, and says so.
+check("#hint-copy (Burst 8 review #28) a 'lighter' hint only ever follows a set UNDER the range — and says so", () => {
+  let seen = 0;
+  for (const [rep_range, min, max] of [["6-10", 6, 10], ["8-12", 8, 12], ["10-15", 10, 15]]) for (const rir of ["0-1", "1-2", "2-3"]) for (let reps = 1; reps <= max + 1; reps++) for (const r of [null, 0, 1, 2, 3]) {
+    for (const nextAim of [null, min - 1, min + 1, max]) {
+      const h = sessionCore.nextSetHint({ exercise: "x", set_type: "work", weight_kg: 60, reps, ...(r != null ? { rir: r } : {}) }, { rep_range, rir, inc_kg: 2.5 }, { nextAim });
+      if (h?.kind !== "lighter") continue;
+      seen++;
+      assert.ok(h.reps < min, `${reps} reps @${r} on ${rep_range} (${rir}), next aim ${nextAim}: lighter`);
+      assert.match(hintCopy(h, { setNo: 1, fromW: "60 kg", toW: `${h.kg} kg` }).why, /^under the /);
+    }
+  }
+  assert.ok(seen > 50, `lighter hints exercised: ${seen}`);
 });
 
 // One plain-English muscle vocabulary for every screen (W282): the server's read-out and
@@ -601,12 +644,33 @@ check("player: every stepper starts on the plate-aware suggestion (single lift A
   assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const rh = rest\.kind === "set" \? setHintFor\(e\) : null;/, "the rest screen, where the plates get changed");
   assert.match(fnBody(appJs, "function renderSupersetStation(L, P) {", 6000), /const lh = setHintFor\(m\);/, "each superset leg");
 });
+check("player (Burst 8 review #8) a 'same' hint, and every hint's lead, name the weight BANKED at the precision typed", () => {
+  const body = fnBody(appJs, "function setHintFor(e) {", 2500);
+  assert.match(body, /hintInUnit\(rawHint, \(kg\) => dispWeightFor\(kg, e\.exercise\), wIncFor\(e\.exercise\), unitFor\(e\.exercise\)\)/, "the unit, so 'same' keeps 22.5 lb");
+  assert.match(body, /fromW: `\$\{\+editDisplay\(hint\.from_kg, unitFor\(e\.exercise\)\)\} \$\{unitLabelFor\(e\.exercise\)\}`/, "'Set 1: 7 reps at 22.5 lb' — never the 25-lb plate");
+});
+check("player (Burst 8 review #7/#25/#34) the held weight's alternative: ONE offer (altOffer) for the note, the button and the tap", () => {
+  assert.match(appJs, /const altFor = \(e\) => altOffer\(e, \{ toDisp: \(kg\) => dispWeightFor\(kg, e\.exercise\), toKg: \(v\) => toKgFor\(v, e\.exercise\), step: wIncFor\(e\.exercise\), served: startWeightDisp\(e\), unit: unitFor\(e\.exercise\) \}\);/);
+  const why = fnBody(appJs, "const whyLine = (e, idx = sess?.i) => {", 900);
+  assert.match(why, /const alt = altFor\(e\);/);
+  assert.match(why, /noteInUnit\(e\.suggestion_note, e, unitFor\(e\.exercise\), \(kg\) => dispWeightFor\(kg, e\.exercise\), startWeightDisp\(e\), alt\?\.w \?\? null\)/, "#7: the note names what the button offers, or nothing");
+  assert.match(why, /const altBtn = alt && Number\(sess\?\.weights\?\.\[idx\]\) === startWeightDisp\(e\)/);
+  assert.match(why, /Use \$\{alt\.w\} \$\{unitLabelFor\(e\.exercise\)\}/);
+  assert.doesNotMatch(why, /dispWeightFor\(e\.alt_kg/, "#7: never the plain plate-rounding (it collapses onto the served plate)");
+  const wire = fnBody(appJs, "function wireAltWeight(rerender) {", 600);
+  assert.match(wire, /const idx = \+b\.dataset\.altWeight, e = sess\.ex\[idx\], a = altFor\(e\);/);
+  assert.match(wire, /sess\.weights\[idx\] = a\.w;/);
+  assert.match(wire, /sess\.reps\[idx\] = a\.reps;/, "#34: the reps the model predicts there");
+  assert.doesNotMatch(wire, /rep_range/, "#34: never the range's bottom");
+});
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
   assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
     "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
-  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim, nextAim: aims\?\.\[done\] \?\? null \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1), and an in-range 'lighter' against the NEXT set's aim (W305)");
-  assert.match(appJs, /const prevAim = prevWork && aims && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? aims\[Math\.min\(done - 1, aims\.length - 1\)\] \?\? null : null;/,
+  // Burst 8 review #23: today's aims belong to the SERVED load — the set's own aim AND the next set's apply only while the
+  // judged set was banked at it (as repSeed's atServed), never to a weight the lifter moved to.
+  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim, nextAim: atServed \? aims\[done\] \?\? null : null \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1), and the next set against ITS aim (W305) — both only at the served load (Burst 8 review #23)");
+  assert.match(appJs, /const atServed = !!prevWork && !!aims && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\);\n\s*const prevAim = atServed \? aims\[Math\.min\(done - 1, aims\.length - 1\)\] \?\? null : null;/,
     "the aim applies by the weight the judged set was BANKED at, not what the stepper holds now (fix verification R1)");
   assert.match(appJs, /const stepFor = \(e\) => servedStep\(unitFor\(e\.exercise\), e\.inc_kg\);/, "the lift's own step (fix verification R4)");
   assert.doesNotMatch(appJs, /phone locked|phone is locked|iPhone's Settings/, "device-neutral notification copy (fix verification R6/R7)");

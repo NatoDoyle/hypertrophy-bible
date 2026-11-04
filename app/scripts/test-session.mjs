@@ -725,6 +725,17 @@ check("#tired easeKg: about 10% off on the lift's own KG step, at least one step
     const bw = easeSlot(mkT({ exercise: "dip", name: "Dip", sets: 4, rep_range: "6-10", rir: "1-3", suggested_kg: 0, last_kg: 0, last_reps: [10, 9], equipment: "bodyweight" }), 1, { expect: "dip", stepKg: 2.5 }).sess.ex[1];
     assert.deepStrictEqual([bw.sets, bw.suggested_kg, bw.eased], [2, 0, true]);
   });
+  // Burst 8 review #25 (R7): the held weight's lighter alternative belongs to the SERVED weight — a tired ease drops it, or
+  // 'Use 92.5 kg' sat under a tired 90 kg and undid the ease in one tap.
+  check("#tired (Burst 8 review #25) a tired ease drops the held weight's alternative; nothing offers one on a tired row", () => {
+    const held = { ...bss, suggested_kg: 100, last_kg: 100, alt_kg: 92.5, alt_reps: 9, suggestion_note: "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 92.5 kg if it felt like too much. If it happens again, I'll lighten it." };
+    const out = easeSlot(mkT(held), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
+    assert.equal(out.suggested_kg, 90, "precondition: eased");
+    assert.ok(!("alt_kg" in out) && !("alt_reps" in out), JSON.stringify([out.alt_kg, out.alt_reps]));
+    assert.ok(!("alt_kg" in tiredSwapRow(held)), "a tired swap's row too");
+    const k = (x) => Math.round(x * 4) / 4;
+    assert.strictEqual(playerCore.altOffer({ ...held, tired: true, eased: true }, { toDisp: k, toKg: (v) => v, step: 2.5, served: 90, unit: "kg" }), null, "a tired row never offers one, whatever it carries");
+  });
   check("#tired (review) a skip already taken is never undone: the tired dose is the smaller of the two", () => {
     const r = easeSlot(mkT({ ...bss, sets: 1 }), 1, { expect: "bss", stepKg: 2.5 }).sess.ex[1];
     assert.deepStrictEqual([r.sets, r.planned_sets], [1, 1], "skipped to 1 set, then tired: still 1, never 2");
@@ -1059,11 +1070,75 @@ check("#next-set (W305 a) under the range WITH reps left: the same weight, aim f
 check("#next-set (W305 a) …and lighter when it isn't: 6 @ RIR 3 reaches only 7 after the set's cost", () => {
   assert.equal(nextSetHint(w(100, 6, { rir: 3 }), row812).kind, "lighter");
 });
-check("#next-set (W305 b) in the range but past the band: lighter only when the next set would miss its aim", () => {
-  assert.equal(nextSetHint(w(100, 9, { rir: 0 }), row812).kind, "lighter", "9·0.8 = 7.2 → 6.2 at RIR 1, under 8");
-  assert.equal(nextSetHint(w(100, 9, { rir: 0 }), row812, { nextAim: 6 }), null, "an aim that already expects the drop is met: no back-off");
-  assert.equal(nextSetHint(w(100, 12, { rir: 0 }), row812), null, "12·0.8 = 9.6 → 8.6: still in the range");
+// (Burst 8 review #4/#28/#45, deliberate: W305's in-range "lighter" is gone. Following it made back-off sets the engine
+// misreads — next session's aims became [12,12,12] (#4), one set earned the load bump (#45) — and it fired OVER the range
+// too (#28). A set in or over the range taken past the band gets no hint, exactly as before W305.)
+check("#next-set (Burst 8 review #4/#28/#45) a set IN or just over the range, past the band, gets no hint — never a back-off", () => {
+  const b812 = { rep_range: "8-12", rir: "1-2", inc_kg: 2.5 };
+  assert.strictEqual(nextSetHint(w(100, 11, { rir: 0 }), b812), null, "#4: 100×11 @0 — following 97.5 kg taught next session [12,12,12]");
+  assert.strictEqual(nextSetHint(w(50, 11, { rir: 0 }), { rep_range: "6-10", rir: "1-2", inc_kg: 2.5 }, { aim: 10, nextAim: 9 }), null, "#28: 11 on 6-10 is OVER the range, never 'in the range — go lighter'");
+  assert.strictEqual(nextSetHint(w(60, 13, { rir: 0 }), b812, { aim: 12, nextAim: 11 }), null, "#45: one set at 60 must not earn next session's bump");
+  assert.strictEqual(nextSetHint(w(100, 9, { rir: 0 }), row812), null, "in the range at failure: no hint (as before W305)");
 });
+// --- Burst 8 review #22: under the range with reps left is judged against the NEXT set's served aim (W289 aims can sit
+// under the range), else the range's bottom — 150×5 @2 against aims [6,5,6] can still do 5 at 150: the same weight.
+check("#next-set (Burst 8 review #22) under the range with reps left: judged against the next set's own aim", () => {
+  const row = { rep_range: "6-10", rir: "1-2", inc_kg: 2.5, suggested_kg: 150, rep_targets: [6, 5, 6] };
+  assert.deepStrictEqual(pickHint(nextSetHint(w(150, 5, { rir: 2 }), row, { aim: 6, nextAim: 5 })), { kind: "same", kg: 150, target_reps: 5 }, "(5 + 2)·0.9 − 1 = 5.3 ≥ the next aim of 5 — never 'Try 145 kg'");
+  assert.equal(nextSetHint(w(150, 5, { rir: 2 }), row, { aim: 6 }).kind, "lighter", "no next aim (off the served weight): the range's bottom, 6");
+  assert.equal(nextSetHint(w(150, 4, { rir: 2 }), row, { aim: 6, nextAim: 5 }).kind, "lighter", "(4 + 2)·0.9 − 1 = 4.4: under even that aim");
+});
+// --- Burst 8 review #8: a 'same' hint names EXACTLY the weight banked, at the precision typed — a typed 22.5 lb dumbbell
+// is never "25 lb again" (heavier, after a set that fell short).
+check("#next-set (Burst 8 review #8) a 'same' hint keeps the weight as typed: 22.5 lb stays 22.5 lb", () => {
+  const lbPlate = (kg) => Math.round((kg * 2.2046226) / 5) * 5;
+  const kg = Math.round((22.5 / 2.2046226) * 100) / 100; // what bankKg stores: 10.21
+  const h = nextSetHint(w(kg, 7, { rir: 3 }), row812);
+  assert.equal(h.kind, "same", "precondition: (7 + 3)·0.9 − 1 = 8 reaches the range");
+  assert.strictEqual(hintInUnit(h, lbPlate, 5, "lb"), 22.5);
+  assert.strictEqual(hintInUnit(h, (k) => Math.round(k * 4) / 4, 2.5, "kg"), 10.21, "in kg too: the banked figure, not the plate");
+});
+// --- Burst 8 review #40 (R5): a barbell 'lighter' never goes under the empty bar; at the bar, nothing lighter exists.
+check("#next-set (Burst 8 review #40) a barbell 'lighter' is floored at the empty bar — and at the bar there is none", () => {
+  const bar = { rep_range: "8-12", rir: "1-2", inc_kg: 2.5, equipment: "barbell" };
+  assert.strictEqual(nextSetHint(w(20, 6, { rir: 0 }), bar), null, "20 kg is the bar: never 'Try 17.5 kg'");
+  assert.strictEqual(nextSetHint(w(22.5, 5, { rir: 0 }), bar).kg, 20, "17.5 → the bar");
+  assert.strictEqual(nextSetHint(w(20, 6, { rir: 0 }), { ...bar, equipment: "dumbbell" }).kg, 17.5, "control: a dumbbell isn't floored");
+  const lbPlate = (kg) => Math.round((kg * 2.2046226) / 5) * 5;
+  const h = nextSetHint(w(20.41, 6, { rir: 0 }), bar); // a 45-lb bar banked in pounds; 20 kg rounds back onto 45 lb
+  assert.strictEqual(hintInUnit(h, lbPlate, 5, "lb"), null, "never nudged to a 40-lb 'bar'");
+});
+// --- Burst 8 review #7/#34/#37 (R5/R6/R8): the held weight's lighter alternative as the player OFFERS it — a real step under
+// the served weight in the lift's own unit, never under the empty bar, never more than ~20% down; filled with the reps
+// the model predicts there (never the range's bottom). Null when none: then the note names none either.
+{
+  const lbPlate = (kg) => Math.round((kg * 2.2046226) / 5) * 5, lbToKg = (v) => Math.round((v / 2.2046226) * 100) / 100;
+  const kgPlate = (kg) => Math.round(kg * 4) / 4;
+  const inLb = (served) => ({ toDisp: lbPlate, toKg: lbToKg, step: 5, served, unit: "lb" });
+  const inKg = (served) => ({ toDisp: kgPlate, toKg: (v) => v, step: 2.5, served, unit: "kg" });
+  check("#alt-offer (Burst 8 review #7) in pounds, a real step below the served plate — none when that is over ~20% down", () => {
+    const lat = { exercise: "dumbbell-lateral-raise", equipment: "dumbbell", rep_range: "8-12", rir: "1-2", suggested_kg: 9.07, last_kg: 9.07, alt_kg: 8, alt_reps: 9 };
+    assert.strictEqual(playerCore.altOffer(lat, inLb(20)), null, "8 kg rounds onto the served 20 lb; the real step, 15 lb, is 25% down");
+    assert.deepStrictEqual(playerCore.altOffer(lat, inKg(9)), { w: 8, reps: 9 }, "in kg: 8 kg, at the server's own reps");
+    const lat30 = { ...lat, suggested_kg: 13.61, last_kg: 13.61, alt_kg: 12, alt_reps: 9 };
+    assert.equal(playerCore.altOffer(lat30, inLb(30)).w, 25, "12 kg → 26.5 → 25 lb: a real plate down, within 20%");
+    assert.equal(playerCore.altOffer({ ...lat, suggested_kg: 22.68, last_kg: 22.68, alt_kg: 21.68 }, inLb(50)).w, 45, "21.68 kg rounds back onto 50 lb: the next plate down, 45 lb, is offered");
+    const bench = { exercise: "barbell-bench-press", equipment: "barbell", rep_range: "8-12", rir: "1-2", suggested_kg: 100, last_kg: 100, alt_kg: 92.5, alt_reps: 9 };
+    assert.equal(playerCore.altOffer(bench, inLb(220)).w, 205);
+  });
+  check("#alt-offer (Burst 8 review #37) never under the empty bar: 45 lb / 20 kg is as light as a barbell goes", () => {
+    const bar = { exercise: "barbell-overhead-press", equipment: "barbell", rep_range: "8-12", rir: "1-2", suggested_kg: 20.41, last_kg: 20.41, alt_kg: 20, alt_reps: 8 };
+    assert.strictEqual(playerCore.altOffer(bar, inLb(45)), null, "20 kg is 45 lb — the next plate down, 40 lb, is under the bar");
+    assert.strictEqual(playerCore.altOffer({ ...bar, suggested_kg: 20, last_kg: 20, alt_kg: 17.5 }, inKg(20)), null, "an old row's 17.5 kg on a 20 kg bar");
+    assert.equal(playerCore.altOffer({ ...bar, suggested_kg: 22.68, last_kg: 22.68, alt_kg: 20 }, inLb(50)).w, 45, "50 lb → the 45-lb bar");
+  });
+  check("#alt-offer (Burst 8 review #34) 'Use X' fills the reps the model predicts at the offered weight, not the range's bottom", () => {
+    const legExt = { exercise: "leg-extension", equipment: "machine", rep_range: "10-15", rir: "1-2", suggested_kg: 20, last_kg: 20, alt_kg: 17.5, alt_reps: 14 };
+    assert.deepStrictEqual(playerCore.altOffer(legExt, inKg(20)), { w: 17.5, reps: 14 }, "20×9 @0 → about 13.6 at 17.5 kg, never 10");
+    assert.equal(playerCore.altOffer(legExt, inLb(45)).reps, 12, "in pounds the offered 40 lb (18.14 kg) is a little heavier: the same model, carried there (30·(26/18.14 − 1) − 1 ≈ 12)");
+    assert.equal(playerCore.altOffer({ ...legExt, alt_reps: undefined }, inKg(20)).reps, 10, "an older row without the model's reps: the range's bottom, as before");
+  });
+}
 check("#next-set (W305) a 'same' hint stays on the plate it was on (no forced move)", () => {
   assert.strictEqual(hintInUnit({ kind: "same", kg: 100, from_kg: 100 }, (k) => k, 2.5), 100);
   assert.strictEqual(hintInUnit({ kind: "same", kg: 20, from_kg: 20 }, (k) => Math.round(k * 2.2046226 / 5) * 5, 5), 45, "in pounds: the plate shown");

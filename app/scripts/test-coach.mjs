@@ -2131,6 +2131,42 @@ check("#alt a first one-rep miss holds the weight AND offers the lighter one, as
   const met = aim("barbell-bench-press", "8-12", "1-2", 3, [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 9), brSet(100, 8), brSet(100, 8))]);
   assert.equal(met.alt_kg ?? null, null, "a set in the range offers no alternative");
 });
+// --- Burst 8 review (#37/#40): the alternative — and the two-rep ease — never go under the empty bar, and the OFFERED
+// alternative is never more than ~20% under the held weight; no real one → the plain hold, no "or use X".
+const anySet = (exercise, w, reps, extra = {}) => ({ exercise, set_type: "work", weight_kg: w, reps, ...extra });
+const missed = (exercise, rep_range, rir, w, ...reps) => [withTargets([{ exercise, sets: reps.length, rep_range, rir }], ...reps.map((r) => anySet(exercise, w, r, { rir: 0 })))];
+check("#alt (Burst 8 review #37/#40) never under the empty bar, never more than ~20% down — else the plain hold", () => {
+  const ohp = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20, 7, 6, 6));
+  assert.equal(ohp.suggested_kg, 20);
+  assert.equal(ohp.alt_kg ?? null, null, "17.5 kg is under the 20 kg bar");
+  assert.equal(ohp.suggestion_note, "Just under the range last time (7; it starts at 8) — keep the weight. If it happens again, I'll lighten it.");
+  const arnold = aim("arnold-press", "8-12", "1-2", 3, missed("arnold-press", "8-12", "1-2", 5, 7, 6, 6));
+  assert.equal(arnold.alt_kg ?? null, null, "5 → 2.5 kg is half the load, not an alternative");
+  assert.doesNotMatch(arnold.suggestion_note, /or use/);
+  assert.equal(aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 22.5, 7, 6, 6)).alt_kg, 20, "control: a real step, at the bar");
+});
+check("#alt (Burst 8 review #37) the two-rep ease never goes under the empty bar either; at the bar nothing lighter exists", () => {
+  const at = suggestWeight(missed("barbell-overhead-press", "8-12", "1-2", 20, 6, 5, 5), "barbell-overhead-press", "8-12", undefined, null, "1-2");
+  assert.equal(at.suggested_kg, 20);
+  assert.doesNotMatch(at.note, /lightened/);
+  assert.equal(suggestWeight(missed("barbell-overhead-press", "8-12", "1-2", 22.5, 4, 4, 4), "barbell-overhead-press", "8-12", undefined, null, "1-2").suggested_kg, 20, "17.5 → the bar");
+  assert.equal(suggestWeight(missed("dumbbell-bench-press", "8-12", "1-2", 20, 6, 5, 5), "dumbbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 17.5, "control: a dumbbell isn't floored");
+});
+// --- Burst 8 review #34 (R8): the alternative carries the reps the model predicts AT it — 'Use 17.5 kg' filled 10 (the
+// range's bottom), ~5 from failure on a leg extension.
+check("#alt (Burst 8 review #34) the alternative carries the model's reps there, never the range's bottom", () => {
+  const s = aim("leg-extension", "10-15", "1-2", 3, missed("leg-extension", "10-15", "1-2", 20, 9, 8, 8));
+  assert.equal(s.alt_kg, 17.5);
+  assert.equal(s.alt_reps, 14, "20×9 at failure: e1RM 26; at 17.5 kg, 30·(26/17.5 − 1) − 1 ≈ 13.6");
+});
+// --- Burst 8 review #5 (R9): a band shift lowers today's aims under the held note's "aim for 8" — the ask is dropped (the
+// fact and the alternative kept), as every other hold's ask is.
+check("#alt (Burst 8 review #5) when the band lowers today's aims, the held note drops its 'aim for 8' and keeps the rest", () => {
+  const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "0-1" }], brSet(100, 7, { rir: 0 }), brSet(100, 6, { rir: 0 }), brSet(100, 6, { rir: 0 }))];
+  const s = aim("barbell-bench-press", "8-12", "1-2", 3, hist);
+  assert.ok(s.rep_targets[0] < 8 && s.alt_kg > 0, `precondition: the aims fall under 8 (${s.rep_targets}) and the alternative stands`);
+  assert.equal(s.suggestion_note, `Just under the range last time (7; it starts at 8) — keep the weight, or use ${s.alt_kg} kg if it felt like too much. If it happens again, I'll lighten it. This week asks for 1–2 reps in reserve, 1 more than last time. The rep aim allows for that.`);
+});
 
 // --- Round 2 (N3/N4): a held weight keeps its OWN reason (W279's warning, W280's "get all 3 to the top", "you hit
 // failure"); the band and the position are added as their own sentences, never replacing it.
@@ -2141,7 +2177,9 @@ check("#notes a held weight's own reason survives; the band and the position are
   assert.equal(warned.suggestion_note, "Just under the range last time (5; it starts at 6) — keep the weight and aim for 6, or use 29.5 kg if it felt like too much. If it happens again, I'll lighten it. This time it comes after 2 sets that also work your chest (last time it came first). The rep aim allows for that.");
   const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 7), brSet(100, 6), brSet(100, 6))];
   const wk1 = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { block: { week: 1, setScale: 0.7 } });
-  assert.match(wk1.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight and aim for 8, or use [\d.]+ kg if it felt like too much\. If it happens again, I'll lighten it\. This week asks for 2–3 reps in reserve, 1 more than last time\. The rep aim allows for that\.$/);
+  // (Burst 8 review #5, deliberate: the band lowers today's aims under 8, so the held note drops its "aim for 8" and keeps
+  // the fact and the alternative.)
+  assert.match(wk1.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight, or use [\d.]+ kg if it felt like too much\. If it happens again, I'll lighten it\. This week asks for 2–3 reps in reserve, 1 more than last time\. The rep aim allows for that\.$/);
 });
 // --- Round 2 (N2/N5): when the band and the position both shape a held weight's aim, both are named — no sentence
 // claims a direction the other cancels.

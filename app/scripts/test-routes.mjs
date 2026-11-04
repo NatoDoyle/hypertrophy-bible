@@ -2136,6 +2136,35 @@ try {
     const row = rows[0];
     ok("#alt Today's row for a first one-rep miss: the same weight held, and a lighter alternative beside it",
       row?.suggested_kg === 60 && row.alt_kg > 0 && row.alt_kg < 60 && /or use [\d.]+ kg if it felt like too much/.test(row.suggestion_note ?? ""), JSON.stringify(row && [row.suggested_kg, row.alt_kg, row.suggestion_note]));
+    // Burst 8 review #34: the row carries the reps the model predicts at the alternative ('Use X' fills them, never the
+    // range's bottom) — set 1's capacity (lo − 1 at failure) carried to alt_kg by Epley, at the band's near edge.
+    const hi = +/-(\d+)/.exec(first.rep_range)[1], near = +/^(\d+)/.exec(row?.rir ?? "1")[1];
+    const want = Math.max(lo, Math.min(hi, Math.round(30 * (60 * (1 + (lo - 1) / 30) / row?.alt_kg - 1) - near)));
+    ok("#alt (Burst 8 review #34) Today's row carries the model's reps at the alternative, through the client's door",
+      Number.isInteger(row?.alt_reps) && row.alt_reps === want, JSON.stringify(row && [row.alt_kg, row.alt_reps, want]));
+  }
+  // Burst 8 review #37: a barbell lift held at the empty bar offers no 'Use 17.5 kg' — through the door the client reads.
+  {
+    const bu = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const prog = (await store.getUser(bu)).program;
+    const todayRows = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": bu } })).json()).session.exercises;
+    let bar = null;
+    for (let k = 0; k <= prog.sessions.length && !bar; k++) {
+      bar = (await todayRows()).find((x) => x.equipment === "barbell") ?? null;
+      if (!bar) await json("POST", "/api/today/skip", { user_id: bu });
+    }
+    const lo = +/(\d+)-/.exec(bar?.rep_range ?? "8-12")[1];
+    await json("POST", "/api/session", { user_id: bu, session_id: "bar-1", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: prog.sessions.find((s) => s.exercises.some((x) => x.exercise === bar?.exercise))?.name,
+      sets: [lo - 1, lo - 2, lo - 2].map((reps) => ({ exercise: bar?.exercise, set_type: "work", weight_kg: 20, reps, rir: 0, completed_at: dAgo(2) })),
+      targets: [{ exercise: bar?.exercise, sets: 3, rep_range: bar?.rep_range, rir: bar?.rir }] });
+    let held = null;
+    for (let k = 0; k <= prog.sessions.length && !held; k++) {
+      held = (await todayRows()).find((x) => x.exercise === bar?.exercise) ?? null;
+      if (!held) await json("POST", "/api/today/skip", { user_id: bu });
+    }
+    ok("#alt (Burst 8 review #37) a barbell lift held at the empty bar: no lighter alternative, and the note names none",
+      !!bar && held?.suggested_kg === 20 && held.alt_kg == null && !/or use/.test(held.suggestion_note ?? ""), JSON.stringify(held && [held.exercise, held.suggested_kg, held.alt_kg, held.suggestion_note]));
   }
   // W304 (considerations iteration, Burst 8): the three ways back, through the client's door — made honest by W305c
   // (Burst 8 review #13 #14 #16 #18 #26 #38 #39). Measured from the plan the user HAS when Today asks (a swap, a legacy
