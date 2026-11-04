@@ -1033,7 +1033,9 @@ check("#next-set a set well OVER the range, or far easier than the band → a he
 });
 check("#next-set no hint when on target, stopped early, a warm-up, planned-easy, or at bodyweight", () => {
   assert.strictEqual(nextSetHint(w(100, 9), row812), null);
-  assert.strictEqual(nextSetHint(w(100, 6, { rir: 3 }), row812), null, "stopped with 3 in the tank: not too heavy");
+  // (W305, deliberate: "stopped with 3 in the tank" was silent. The capacity model now judges it — (6 + 3)·0.9 = 8.1 → 7.1
+  // at the band's near edge, under 8 — so it says lighter; see the #next-set (W305) checks below.)
+  assert.strictEqual(nextSetHint(w(100, 6, { rir: 3 }), row812).kind, "lighter");
   assert.strictEqual(nextSetHint({ ...w(40, 4), set_type: "warmup" }, row812), null);
   assert.strictEqual(nextSetHint(w(100, 6, { deload: true }), row812), null, "deload sets are planned easy");
   assert.strictEqual(nextSetHint(w(0, 4), row812), null);
@@ -1042,6 +1044,32 @@ check("#next-set no hint when on target, stopped early, a warm-up, planned-easy,
 check("#next-set a dumbbell isolation moves in its own 1 kg steps, capped at ±20%", () => {
   assert.strictEqual(nextSetHint(w(10, 8), { rep_range: "12-20", rir: "1-3", inc_kg: 1 }).kg, 8);
   assert.strictEqual(nextSetHint(w(100, 1), row812).kg, 80, "a far miss is capped at −20%");
+});
+
+// --- W305 (considerations iteration, Burst 8 — owner: "I didn't achieve the recommended reps and intensity and it didn't
+// suggest a more appropriate weight"). Every miss the model can judge now gets an answer: under the range with reps
+// left is decided by the capacity model (same weight, aim for N — or lighter when that can't reach the range), and a set
+// in the range but past the band hints lighter only when the next set would miss ITS aim (never turning straight sets
+// into back-offs when the aims already expect the drop).
+const pickHint = (h) => h && { kind: h.kind, kg: h.kg, target_reps: h.target_reps };
+check("#next-set (W305 a) under the range WITH reps left: the same weight, aim for N, when the capacity is there", () => {
+  assert.deepStrictEqual(pickHint(nextSetHint(w(100, 7, { rir: 3 }), row812)), { kind: "same", kg: 100, target_reps: 8 }, "(7 + 3)·0.9 = 9 → 8 at RIR 1");
+  assert.deepStrictEqual(pickHint(nextSetHint(w(60, 5, { rir: 5 }), row812)), { kind: "same", kg: 60, target_reps: 9 }, "(5 + 5) → 9 at RIR 1");
+});
+check("#next-set (W305 a) …and lighter when it isn't: 6 @ RIR 3 reaches only 7 after the set's cost", () => {
+  assert.equal(nextSetHint(w(100, 6, { rir: 3 }), row812).kind, "lighter");
+});
+check("#next-set (W305 b) in the range but past the band: lighter only when the next set would miss its aim", () => {
+  assert.equal(nextSetHint(w(100, 9, { rir: 0 }), row812).kind, "lighter", "9·0.8 = 7.2 → 6.2 at RIR 1, under 8");
+  assert.equal(nextSetHint(w(100, 9, { rir: 0 }), row812, { nextAim: 6 }), null, "an aim that already expects the drop is met: no back-off");
+  assert.equal(nextSetHint(w(100, 12, { rir: 0 }), row812), null, "12·0.8 = 9.6 → 8.6: still in the range");
+});
+check("#next-set (W305) a 'same' hint stays on the plate it was on (no forced move)", () => {
+  assert.strictEqual(hintInUnit({ kind: "same", kg: 100, from_kg: 100 }, (k) => k, 2.5), 100);
+  assert.strictEqual(hintInUnit({ kind: "same", kg: 20, from_kg: 20 }, (k) => Math.round(k * 2.2046226 / 5) * 5, 5), 45, "in pounds: the plate shown");
+});
+check("#next-set (W305) the owner's case — under the range at RIR 0 — says lighter", () => {
+  assert.equal(nextSetHint(w(100, 6, { rir: 0 }), row812).kind, "lighter");
 });
 
 // --- Burst 5 review (C1): an aim below the range is still an aim. 150×5,4,5 held at 150 aims 6 · 5 · 6 on a
@@ -1288,7 +1316,9 @@ check("#next-set-review the band is READ: a '2-3' band eases further, and RIR 4 
 check("#next-set-review the clamps: at least one step down; at most +20% up; a set stopped early UNDER the range never hints heavier", () => {
   assert.strictEqual(nextSetHint(w(60, 5, { rir: 1 }), { rep_range: "6-10", rir: "0-1", inc_kg: 2.5 }).kg, 57.5, "raw 58 (60·(1 + 4.8/30)/(1 + 6/30)) → one step down");
   assert.strictEqual(nextSetHint(w(40, 30), row812).kg, 47.5, "uncapped it would be 50");
-  assert.strictEqual(nextSetHint(w(60, 5, { rir: 5 }), row812), null, "under the range AND stopped early: no hint either way");
+  // (W305, deliberate: was "no hint either way". 5 in reserve is capacity enough — (5 + 5) → 9 at the near edge — so: the
+  // same weight, aim for 9.)
+  assert.strictEqual(nextSetHint(w(60, 5, { rir: 5 }), row812).kind, "same");
 });
 check("#next-set-review in pounds the hint always MOVES: a 1 kg step that rounds to the same plate becomes the next 5 lb plate", () => {
   const lb = (kg) => Math.round((kg * 2.2046226) / 5) * 5; // the player's plate-rounded display

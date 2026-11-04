@@ -2119,15 +2119,29 @@ check("#rep-aim a back-off or a failed last top set reads the set before it, not
   assert.deepEqual(aim("barbell-bench-press", "6-10", "1-2", 4, [brDay(1, brSet(100, 8), brSet(100, 7), brSet(100, 6), brSet(80, 12))]).rep_targets, [9, 8, 7, 7]);
   assert.deepEqual(aim("barbell-bench-press", "8-12", "1-3", 3, [brDay(1, brSet(80, 12), brSet(90, 10), brSet(100, 8))]).rep_targets, [9, 9, 9], "a leading ramp still reads the first set that counts");
 });
+// --- W305 (considerations iteration, Burst 8 — owner: "I didn't achieve the recommended reps and intensity and it didn't
+// suggest a more appropriate weight"): a first one-rep miss on set 1 still holds the weight once (one set is noise,
+// W279) — but the lighter weight is now OFFERED beside it, as a choice, never silently withheld.
+check("#alt a first one-rep miss holds the weight AND offers the lighter one, as a choice", () => {
+  const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 7), brSet(100, 6), brSet(100, 6))];
+  const s = aim("barbell-bench-press", "8-12", "1-2", 3, hist);
+  assert.equal(s.suggested_kg, 100, "the weight holds once (W279)");
+  assert.ok(s.alt_kg > 0 && s.alt_kg < 100 && s.alt_kg >= 80, `a lighter alternative, at most 20% down (${s.alt_kg})`);
+  assert.match(s.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight and aim for 8, or use [\d.]+ kg if it felt like too much\. If it happens again, I'll lighten it\./);
+  const met = aim("barbell-bench-press", "8-12", "1-2", 3, [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 9), brSet(100, 8), brSet(100, 8))]);
+  assert.equal(met.alt_kg ?? null, null, "a set in the range offers no alternative");
+});
+
 // --- Round 2 (N3/N4): a held weight keeps its OWN reason (W279's warning, W280's "get all 3 to the top", "you hit
 // failure"); the band and the position are added as their own sentences, never replacing it.
 check("#notes a held weight's own reason survives; the band and the position are added to it", () => {
   const p = ordP([{ name: "A", exercises: [incE] }, { name: "B2", exercises: [{ exercise: "barbell-bench-press", sets: 2, rep_range: "6-10", rir: "1-3" }, incE] }]);
   const warned = ordServed("B2", [onDay("A", 1, inc(32, 5), inc(32, 5), inc(32, 5))], {}, null, p);
-  assert.equal(warned.suggestion_note, "Just under the range last time (5; it starts at 6) — keep the weight. If it happens again, I'll lighten it. This time it comes after 2 sets that also work your chest (last time it came first). The rep aim allows for that.");
+  // (W305, deliberate: the held weight now carries its lighter alternative as a choice.)
+  assert.equal(warned.suggestion_note, "Just under the range last time (5; it starts at 6) — keep the weight and aim for 6, or use 29.5 kg if it felt like too much. If it happens again, I'll lighten it. This time it comes after 2 sets that also work your chest (last time it came first). The rep aim allows for that.");
   const hist = [withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], brSet(100, 7), brSet(100, 6), brSet(100, 6))];
   const wk1 = aim("barbell-bench-press", "8-12", "1-2", 3, hist, { block: { week: 1, setScale: 0.7 } });
-  assert.match(wk1.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight\. If it happens again, I'll lighten it\. This week asks for 2–3 reps in reserve, 1 more than last time\. The rep aim allows for that\.$/);
+  assert.match(wk1.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight and aim for 8, or use [\d.]+ kg if it felt like too much\. If it happens again, I'll lighten it\. This week asks for 2–3 reps in reserve, 1 more than last time\. The rep aim allows for that\.$/);
 });
 // --- Round 2 (N2/N5): when the band and the position both shape a held weight's aim, both are named — no sentence
 // claims a direction the other cancels.

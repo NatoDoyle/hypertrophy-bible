@@ -374,9 +374,12 @@ export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, p
 export function hintCopy(hint, { setNo, fromW, toW }) {
   const range = `${hint.min}–${hint.max}`;
   const lead = `Set ${setNo}: ${hint.reps} reps at ${fromW}`;
+  const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
+  // W305: under the range with reps left, and in the range but past the band — the two answers that used to be silence.
+  if (hint.kind === "same") return { lead, why: `under the ${range} range, with about ${hint.rir} left in the tank`, tryW: toW, tail: `again and aim for ${hint.target_reps} — you had the reps.` };
+  if (hint.kind === "lighter" && hint.reps >= hint.min) return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one: after a set that hard, the same weight would fall short." };
   if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it, allowing for the rep or so each hard set costs." };
   if (hint.reps > hint.max) return { lead, why: `over the ${range} range`, tryW: toW, tail: "for this one to land in it." };
-  const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
   return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };
 }
 

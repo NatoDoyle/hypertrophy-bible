@@ -482,6 +482,11 @@ check("#hint-copy each kind of hint says what actually happened", () => {
     "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it, allowing for the rep or so each hard set costs.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 15, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 2, fromW: "40 kg", toW: "42.5 kg" })),
     "Set 2: 15 reps at 40 kg — over the 8–12 range. Try 42.5 kg for this one to land in it.");
+  // W305: the two new answers say what actually happened too.
+  assert.equal(j(hintCopy({ kind: "same", reps: 7, min: 8, max: 12, rir: 3, band: "1-3", target_reps: 8 }, { setNo: 1, fromW: "100 kg", toW: "100 kg" })),
+    "Set 1: 7 reps at 100 kg — under the 8–12 range, with about 3 left in the tank. Try 100 kg again and aim for 8 — you had the reps.");
+  assert.equal(j(hintCopy({ kind: "lighter", reps: 9, min: 8, max: 12, rir: 0, band: "1-3" }, { setNo: 1, fromW: "100 kg", toW: "92.5 kg" })),
+    "Set 1: 9 reps at 100 kg — in the range, but with about 0 left in the tank (the plan says 1–3). Try 92.5 kg for this one: after a set that hard, the same weight would fall short.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),
     "Set 1: 10 reps at 40 kg — in the range, but with about 5 left in the tank (the plan says 1–3). Try 45 kg for this one.");
 });
@@ -585,19 +590,23 @@ check("player: a workout stamps each lift's PLANNED count at start, and finish s
 });
 check("player: the reason for the pre-filled weight is on screen (single lift and superset station)", () => {
   assert.match(appJs, /\$\{sess\.set === 0 && !firstEver \? whyLine\(e\) : ""\}/);
-  assert.match(appJs, /\$\{round === 0 \? whyLine\(m\) : ""\}/);
+  assert.match(appJs, /\$\{round === 0 \? whyLine\(m, idx\) : ""\}/, "(W305: the station passes its leg, for the held weight's alternative)");
 });
 check("player: every stepper starts on the plate-aware suggestion (single lift AND station), and the hint speaks through hintCopy", () => {
   assert.doesNotMatch(appJs, /sess\.weights\[[^\]]+\] = dispWeightFor\(startWeightDefault\(/, "a pre-fill site still rounds the raw suggestion");
   assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
-  assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
+  // W305: ONE hint computation (setHintFor) speaks for the set screen, the rest screen and each superset leg.
+  assert.match(fnBody(appJs, "function setHintFor(e) {", 2500), /hintCopy\(hint, \{ setNo: done,/);
+  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const \{ hint, hintW, hc \} = setHintFor\(e\);/, "the set screen");
+  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const rh = rest\.kind === "set" \? setHintFor\(e\) : null;/, "the rest screen, where the plates get changed");
+  assert.match(fnBody(appJs, "function renderSupersetStation(L, P) {", 6000), /const lh = setHintFor\(m\);/, "each superset leg");
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
   assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
     "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
-  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1)");
-  assert.match(appJs, /const prevAim = prevWork && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/,
+  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim, nextAim: aims\?\.\[done\] \?\? null \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1), and an in-range 'lighter' against the NEXT set's aim (W305)");
+  assert.match(appJs, /const prevAim = prevWork && aims && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? aims\[Math\.min\(done - 1, aims\.length - 1\)\] \?\? null : null;/,
     "the aim applies by the weight the judged set was BANKED at, not what the stepper holds now (fix verification R1)");
   assert.match(appJs, /const stepFor = \(e\) => servedStep\(unitFor\(e\.exercise\), e\.inc_kg\);/, "the lift's own step (fix verification R4)");
   assert.doesNotMatch(appJs, /phone locked|phone is locked|iPhone's Settings/, "device-neutral notification copy (fix verification R6/R7)");
@@ -605,7 +614,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "function normalizeSessUnits() {", 1200), /servedIn: \(k, u\) => \{ const x = sess\.ex\[k\]; return x\?\.suggested_kg != null \? prefillInUnit\(x, \(kg\) => dispW\(kg, u\), wIncIn\(u\)\) : null; \},/, "a unit toggle re-stamps the served pre-fill (round 2 N10)");
   assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
-  assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
+  assert.match(fnBody(appJs, "function applyHint(idx, e, hint, hintW) {", 600), /sess\.reps\[idx\] = hint\.target_reps/, "Use X kg also sets the reps it aims at (W305: one applyHint for every screen)");
   // Burst 6: every typo-guard door reads today's banked sets through ONE binder; the cue names what the guard
   // judged against; the editor leaves out the entry being edited; one rep ceiling.
   assert.match(appJs, /const setLooksLikeTypo = \(idx\) => isImplausibleSet\(bankKg\(idx\), sess\.reps\[idx\], typoOpts\(idx\)\);/);

@@ -2114,6 +2114,28 @@ try {
     && fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
     && Date.parse(fitU.plan_meta.block_start) > Date.parse(fitPre.plan_meta.block_start) + 9 * 86400000
     && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+  // W305 (considerations iteration, Burst 8 — owner: "I didn't achieve the recommended reps and intensity and it didn't
+  // suggest a more appropriate weight"): a first one-rep miss holds the weight, and Today's row now carries the lighter
+  // one beside it, through the door the client reads.
+  {
+    const au = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const first = (await (await app.request("/api/today", { headers: { "X-HB-User": au } })).json()).session.exercises.find((r) => r.equipment !== "bodyweight");
+    const lo = +/(\d+)-/.exec(first.rep_range)[1];
+    await json("POST", "/api/session", { user_id: au, session_id: "alt-1", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: (await store.getUser(au)).program.sessions[0].name,
+      sets: [lo - 1, lo - 2, lo - 2].map((reps) => ({ exercise: first.exercise, set_type: "work", weight_kg: 60, reps, completed_at: dAgo(2) })),
+      targets: [{ exercise: first.exercise, sets: 3, rep_range: first.rep_range, rir: first.rir }] });
+    const rows = [];
+    for (let k = 0; k < 4 && !rows.length; k++) {
+      const t = await (await app.request("/api/today", { headers: { "X-HB-User": au } })).json();
+      const r = t.session.exercises.find((x) => x.exercise === first.exercise);
+      if (r) rows.push(r);
+      else await json("POST", "/api/today/skip", { user_id: au }); // walk the rotation back round to that day
+    }
+    const row = rows[0];
+    ok("#alt Today's row for a first one-rep miss: the same weight held, and a lighter alternative beside it",
+      row?.suggested_kg === 60 && row.alt_kg > 0 && row.alt_kg < 60 && /or use [\d.]+ kg if it felt like too much/.test(row.suggestion_note ?? ""), JSON.stringify(row && [row.suggested_kg, row.alt_kg, row.suggestion_note]));
+  }
   // W304 (considerations iteration, Burst 8): the three ways back, through the client's door. Offered when the plan
   // can't hold its necessary volume, said once, kept server-side (every device agrees, and a block rotation — which
   // rebuilds plan_meta — can't bring it back), and re-asked only when the schedule itself changes.

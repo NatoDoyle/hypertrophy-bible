@@ -389,7 +389,13 @@ export function nextSetCapacity(reps, rir) {
 // what the next set loses (nextSetCapacity) — 70×5 at failure on 6-10 gives 62.5, not 65.
 // Advice only: the player offers it, the user decides. Planned-easy (deload/eased), warm-up
 // and bodyweight sets never hint. `target_reps` is the rep count the weight aims at.
-export function nextSetHint(set, row, { aim = null } = {}) {
+// W305 (considerations iteration — owner: "I didn't achieve the recommended reps and intensity and it didn't suggest a
+// more appropriate weight"): every miss the capacity model can judge gets an answer. Under the range WITH reps left
+// (RIR ≥ 2) is no longer silent: if the set's capacity, less what the next set costs, still reaches the range at the
+// band's near edge, "same" — the same weight, aim for that many; if not, lighter. A set IN the range but closer to
+// failure than the band hints lighter only when the next set would miss ITS aim (`nextAim`, else the range's bottom) —
+// aims that already expect the drop are met, so straight sets never turn into back-offs.
+export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
   if (!range) return null;
@@ -403,10 +409,19 @@ export function nextSetHint(set, row, { aim = null } = {}) {
   // weight is the served one.
   // …at the effort the aim assumed: met at failure under a wider band (an aim of 7 at 2-3 in reserve), it is
   // still a miss (fix verification).
-  const under = set.reps < min && (rir == null || rir <= 1) && !(Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near));
-  const over = !under && (set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min));
-  if (!under && !over) return null;
-  const floored = Math.floor(loadForReps(w, nextSetCapacity(set.reps, rir), 0, under ? min : max, near) / inc + 1e-9) * inc;
+  const metAim = Number.isInteger(aim) && set.reps >= aim && (rir == null || rir >= near);
+  const cap = nextSetCapacity(set.reps, rir), reach = cap - near; // the next set's reps at the near edge, same weight
+  const aimNext = Number.isInteger(nextAim) ? Math.max(min, Math.min(max, nextAim)) : min;
+  const short = set.reps < min && !metAim;
+  const kind = short && (rir == null || rir <= 1) ? "lighter"
+    : short && rir >= 2 ? (reach >= min ? "same" : "lighter")
+    : set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min) ? "heavier"
+    : rir != null && rir < near && set.reps >= min && reach < (Number.isInteger(nextAim) ? nextAim : min) ? "lighter"
+    : null;
+  if (!kind) return null;
+  if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(min, Math.min(max, Math.floor(reach + 1e-9))) };
+  const under = kind === "lighter";
+  const floored = Math.floor(loadForReps(w, cap, 0, under ? (set.reps < min ? min : aimNext) : max, near) / inc + 1e-9) * inc;
   const kg = under
     ? Math.min(w - inc, Math.max(Math.ceil((w * 0.8) / inc - 1e-9) * inc, floored))
     : Math.max(w + inc, Math.min(Math.floor((w * 1.2) / inc + 1e-9) * inc, floored));
@@ -420,6 +435,7 @@ export function nextSetHint(set, row, { aim = null } = {}) {
 // edge it was moved toward, as before.
 export function finalizeHint(hint, set, row, offeredKg) {
   if (!hint) return null;
+  if (hint.kind === "same") return hint; // the weight stays; its aim is already the model's (W305)
   if (row?.equipment === "bodyweight") return { ...hint, target_reps: hint.kind === "lighter" ? hint.min : hint.max };
   const band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
   const near = band ? +band[1] : 1;
@@ -497,6 +513,7 @@ export function buildTargets(sess) {
 // would reach zero.
 export function hintInUnit(hint, toDisp, step) {
   if (!hint) return null;
+  if (hint.kind === "same") { const at = toDisp(hint.kg); return at > 0 ? at : null; } // W305: the weight stays where it is
   const from = toDisp(hint.from_kg), to = toDisp(hint.kg);
   if (to !== from) return to > 0 ? to : null;
   const nudged = from + (hint.kind === "lighter" ? -step : step);

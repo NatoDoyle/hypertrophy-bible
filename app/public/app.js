@@ -2118,11 +2118,25 @@ const lastTimeLine = (e) => {
 // it); a brand-new lift has its own find-your-weight card instead.
 // The engine writes it in kg; noteInUnit puts every figure in the lift's own unit (or drops a
 // line that would contradict the stepper).
-const whyLine = (e) => {
+// …and a held weight's lighter alternative (W305), one tap — offered only while the stepper still holds the served weight.
+const whyLine = (e, idx = sess?.i) => {
   if (!e.suggestion_note || e.suggested_kg == null) return "";
   const note = noteInUnit(e.suggestion_note, e, unitFor(e.exercise), (kg) => dispWeightFor(kg, e.exercise), startWeightDisp(e));
-  return note ? `<p class="muted" id="why-weight" style="font-size:.85rem;margin:0 0 6px">📈 ${esc(note)}</p>` : "";
+  const alt = e.alt_kg > 0 ? dispWeightFor(e.alt_kg, e.exercise) : null;
+  const altBtn = alt != null && alt !== startWeightDisp(e) && Number(sess?.weights?.[idx]) === startWeightDisp(e)
+    ? `<br><button class="btn ghost inline" data-alt-weight="${idx}" style="margin:4px 0 0">Use ${alt} ${unitLabelFor(e.exercise)}</button>` : "";
+  return note ? `<p class="muted" id="why-weight" style="font-size:.85rem;margin:0 0 6px">📈 ${esc(note)}${altBtn}</p>` : "";
 };
+// The lighter alternative's tap: the weight, and the bottom of the range it aims at.
+function wireAltWeight(rerender) {
+  app.querySelectorAll("[data-alt-weight]").forEach((b) => b.onclick = () => {
+    const idx = +b.dataset.altWeight, e = sess.ex[idx];
+    sess.weights[idx] = dispWeightFor(e.alt_kg, e.exercise); sess.wUnits[idx] = unitFor(e.exercise);
+    const lo = /(\d+)\s*-/.exec(e.rep_range ?? "");
+    if (lo) sess.reps[idx] = +lo[1];
+    saveSess(); rerender();
+  });
+}
 // The value between the − / + nudge buttons is a REAL input (typed entry is the
 // fast path for a big jump — 20→80 kg was 24 taps). The unit beside it is a
 // button: tapping flips THIS exercise between kg and lb (the mixed-unit gym),
@@ -2535,6 +2549,39 @@ function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
   $("#rest-plus").onclick = () => nudge(REST_STEP_S);
 }
 
+// THE NEXT SET'S HINT (W279b; W305 — owner: "I didn't achieve the recommended reps and intensity and it didn't suggest a
+// more appropriate weight"): from the last WORK set of this lift banked this session — derived, never stored, so a
+// resume shows the same advice. ONE computation for the set screen, the rest screen (where the plates get changed) and
+// each superset leg. Judged against that set's own aim while the weight was the served one (Burst 5 review), and the
+// NEXT set's aim gates an in-range "lighter" (W305: aims that already expect the drop are met). Planned-easy days never
+// hint. In the lift's display unit, always a real move except "same" (pounds round to 5-lb plates); judged at the
+// OFFERED weight (a pounds user's next plate can be heavier than the kg it rounds from).
+function setHintFor(e) {
+  const done = loggedSetCount(e.exercise);
+  const prevWork = done > 0 && !sess.deload && !e.eased
+    ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
+  const aims = validAim(e);
+  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
+  const prevAim = prevWork && aims && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? aims[Math.min(done - 1, aims.length - 1)] ?? null : null;
+  const rawHint = nextSetHint(prevWork, e, { aim: prevAim, nextAim: aims?.[done] ?? null });
+  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
+  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
+  const hintW = hint ? rawW : null;
+  const hc = hint && hintW != null ? hintCopy(hint, { setNo: done, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
+  return { hint: hc ? hint : null, hintW: hc ? hintW : null, hc };
+}
+const hintIcon = (hint) => (hint?.kind === "heavier" ? "⬆️" : hint?.kind === "same" ? "💪" : "🎯");
+// The hint's one tap: "Use X" moves the weight (and the reps it aims at); "Aim for N" sets only the reps. Hidden once
+// the steppers already say it.
+function hintButton(hint, hintW, w, reps, e, id) {
+  if (!hint) return "";
+  if (hint.kind === "same") return Number(reps) !== hint.target_reps ? `<br><button class="btn ghost inline" id="${id}" style="margin:6px 0 0">Aim for ${hint.target_reps}</button>` : "";
+  return Number(w) !== hintW ? `<br><button class="btn ghost inline" id="${id}" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : "";
+}
+function applyHint(idx, e, hint, hintW) {
+  if (hint.kind !== "same") { sess.weights[idx] = hintW; sess.wUnits[idx] = unitFor(e.exercise); }
+  sess.reps[idx] = hint.target_reps ?? sess.reps[idx]; // the reps that weight aims at (W288)
+}
 function renderPlayer() {
   stopRestTimer();
   setEditor = null;
@@ -2579,9 +2626,16 @@ function renderPlayer() {
   const rest = activeRest(sess, Date.now());
   if (rest) {
     quitPending = false;
-    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}`, e, () => renderPlayer(0),
+    // The next set's hint, ON the rest screen (W305 — owner: "it didn't suggest a more appropriate weight"): the rest is
+    // when the plates get changed, and the set screen only came after it.
+    const rh = rest.kind === "set" ? setHintFor(e) : null;
+    const restHint = rh?.hc ? `<span class="cue" id="rest-hint" role="status" style="display:block;margin-top:8px;text-align:left">${hintIcon(rh.hint)} ${rh.hint.kind === "same"
+      ? `Next set: ${rh.hintW} ${unitLabelFor(e.exercise)} again — aim for ${rh.hint.target_reps}. You had the reps.`
+      : `Next set: try <b>${rh.hintW} ${unitLabelFor(e.exercise)}</b> — ${esc(rh.hc.why)}.`} ${hintButton(rh.hint, rh.hintW, w, reps, e, "rest-use-hint")}</span>` : "";
+    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}${restHint}`, e, () => renderPlayer(0),
       `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`,
       `${e.name} — set ${sess.set + 1} of ${e.sets}`);
+    if ($("#rest-use-hint")) $("#rest-use-hint").onclick = () => { applyHint(sess.i, e, rh.hint, rh.hintW); saveSess(); renderPlayer(0); };
     return;
   }
 
@@ -2592,23 +2646,10 @@ function renderPlayer() {
   // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
   const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
-  // the last WORK set of this lift banked this session — nothing stored, so a resume shows
-  // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
-  const prevWork = sess.set > 0 && !sess.deload && !e.eased
-    ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
-  // …judged against that set's own aim while the weight is still the served one (Burst 5 review): a set that
-  // met an aim under the range is on plan, not a miss.
-  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
-  const prevAim = prevWork && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
-  const rawHint = nextSetHint(prevWork, e, { aim: prevAim });
-  // In the lift's display unit, always a real move (pounds round to 5-lb plates)…
-  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
-  // …and judged at that OFFERED weight: a pounds user's next plate can be heavier than the kg it rounds from.
-  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
-  const hintW = hint ? rawW : null;
-  const hc = hint && hintW != null ? hintCopy(hint, { setNo: sess.set, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
-  const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hint.kind === "lighter" ? "🎯" : "⬆️"} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
-      ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
+  // the last WORK set of this lift banked this session — the same advice the rest screen gave (setHintFor).
+  const { hint, hintW, hc } = setHintFor(e);
+  const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hintIcon(hint)} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
+      ${hintButton(hint, hintW, w, reps, e, "use-hint")}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
@@ -2713,10 +2754,10 @@ function renderPlayer() {
     if (skipWouldFinish(sess) && !skipPending) { skipPending = true; quitPending = false; return renderPlayer(0); }
     applySkip(skipSet(sess), () => renderPlayer(0));
   };
+  wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderPlayer(0); });
   if ($("#use-hint")) $("#use-hint").onclick = () => {
     clearSetConfirm(); quitPending = false; // a new weight: the typo guard judges it afresh, like any stepper touch
-    sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
-    sess.reps[sess.i] = hint.target_reps ?? sess.reps[sess.i]; // the reps that weight aims at (W288)
+    applyHint(sess.i, e, hint, hintW);
     saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
@@ -2803,9 +2844,10 @@ function renderSupersetStation(L, P) {
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
+      ${(() => { const lh = setHintFor(m); return lh.hc ? `<div class="cue" role="status">${hintIcon(lh.hint)} <b>${lh.hc.lead}</b> — ${lh.hc.why}. Try <b>${lh.hc.tryW}</b> ${lh.hc.tail} ${hintButton(lh.hint, lh.hintW, w, reps, m, `leg-hint-${idx}`)}</div>` : ""; })()}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
-      ${round === 0 ? whyLine(m) : ""}
+      ${round === 0 ? whyLine(m, idx) : ""}
       ${repsStepper(reps, idx)}
       ${effChips(idx)}
       ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
@@ -2857,6 +2899,12 @@ function renderSupersetStation(L, P) {
     if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
     applySkip(skipRound(sess, L, P), () => renderPlayer(0));
   };
+  wireAltWeight(() => renderSupersetStation(L, P));
+  // Each leg's next-round hint (W305): the same advice a straight set gets, one tap fills that leg's steppers.
+  for (const idx of [L, P]) {
+    const b = $(`#leg-hint-${idx}`);
+    if (b) b.onclick = () => { const m = sess.ex[idx], lh = setHintFor(m); if (lh.hint) applyHint(idx, m, lh.hint, lh.hintW); saveSess(); renderSupersetStation(L, P); };
+  }
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
     skipPending = false;
