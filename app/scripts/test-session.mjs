@@ -1573,5 +1573,136 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   assert.strictEqual(step({ chimeReliable: true }), "disarm", "control: a reliable chime takes over");
 });
 
+// --- W306 (considerations iteration, Burst 9 — owner: "when I start a workout, I can look at all the exercises… if I pick
+// 'Do this later' or 'Skip this,' can you give me an option to pick what I want to do next?"). ONE pure permutation
+// (permuteSess) under both "Do this next" (moveToCurrent) and "Do this later" (deferToEnd): the index-keyed caches
+// travel with their lifts, a superset pair moves as a block, the chosen lift lands AT the cursor so every unfinished
+// lift stays at or after it (the straight bank only scans forward), a running rest and a pending skip-undo (and the
+// one a swap stashed) retire, and nothing the plan prescribes moves — weights keep their planned-position basis (W290).
+{
+  const { permuteSess, moveToCurrent, deferToEnd, workoutList } = playerCore;
+  const row = (exercise, sets = 3, extra = {}) => ({ exercise, name: exercise, sets, planned_sets: sets, rep_range: "8-12", rir: "1-2", suggested_kg: 50, ...extra });
+  const mk = (rows, over = {}) => ({ ex: rows, i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {}, ...over });
+  const work = (exercise, n) => Array.from({ length: n }, () => ({ exercise, set_type: "work", weight_kg: 50, reps: 10, completed_at: "2026-11-01T10:00:00.000Z" }));
+  const tag = (s) => { const t = {}; s.ex.forEach((x, k) => { t[k] = x.exercise; }); return { weights: { ...t }, reps: { ...t }, eff: { ...t }, wUnits: { ...t } }; };
+  const cachesFollow = (s) => ["weights", "reps", "eff", "wUnits"].every((c) => Object.entries(s[c]).every(([k, v]) => s.ex[+k].exercise === v));
+  // The player's own advance, exactly: a straight lift's last set scans FORWARD only (none → complete); a finished
+  // station scans from the start (app.js bank handlers). Returns the banked counts.
+  const play = (s0) => {
+    let s = JSON.parse(JSON.stringify(s0)), guard = 0;
+    while (!s.complete) {
+      if (++guard > 500) throw new Error("no termination");
+      const e = s.ex[s.i];
+      const pIdx = e.superset_with ? s.ex.findIndex((x) => x.exercise === e.superset_with) : -1;
+      if (pIdx >= 0 && !stationProgress(s.logged, s.ex, Math.min(s.i, pIdx), Math.max(s.i, pIdx)).done) {
+        const L = Math.min(s.i, pIdx), P = Math.max(s.i, pIdx);
+        s.logged.push(...work(s.ex[L].exercise, 1), ...work(s.ex[P].exercise, 1));
+        if (stationProgress(s.logged, s.ex, L, P).done) { const nx = nextUnfinishedIndex(s.logged, s.ex, -1); if (nx < 0) s.complete = true; else s.i = nx; }
+        continue;
+      }
+      if (loggedWorkSets(s.logged, e.exercise) >= e.sets) { const nx = nextUnfinishedIndex(s.logged, s.ex, -1); if (nx < 0) s.complete = true; else s.i = nx; continue; } // renderPlayer's self-heal
+      s.logged.push(...work(e.exercise, 1));
+      if (loggedWorkSets(s.logged, e.exercise) >= e.sets) { const nx = nextUnfinishedIndex(s.logged, s.ex, s.i); if (nx < 0) s.complete = true; else s.i = nx; }
+    }
+    return Object.fromEntries(s.ex.map((x) => [x.exercise, loggedWorkSets(s.logged, x.exercise)]));
+  };
+  check("#move permuteSess reorders the lifts and moves every index-keyed cache WITH its lift; the input is untouched", () => {
+    const s = mk([row("a"), row("b"), row("c"), row("d")]); Object.assign(s, tag(s));
+    const before = JSON.stringify(s);
+    const out = permuteSess(s, [2, 0, 3, 1]);
+    assert.deepStrictEqual(out.ex.map((x) => x.exercise), ["c", "a", "d", "b"]);
+    assert.ok(cachesFollow(out), JSON.stringify(out.weights));
+    assert.equal(JSON.stringify(s), before, "pure");
+    assert.equal(permuteSess(s, [0, 0, 1, 2]), null, "not a permutation: refused");
+  });
+  check("#move every (cursor, target) on a 5-lift day: the chosen lift is next, every lift still trains in full, caches follow", () => {
+    const names = ["a", "b", "c", "d", "e"];
+    let cases = 0;
+    for (let cur = 0; cur < 5; cur++) for (let k = 0; k < 5; k++) {
+      const s = mk(names.map((n) => row(n)), { i: cur, logged: names.slice(0, cur).flatMap((n) => work(n, 3)) });
+      Object.assign(s, tag(s));
+      const r = moveToCurrent(s, k);
+      if (k < cur) { assert.equal(r.ok, false, `${cur}->${k}: a finished lift`); assert.equal(r.reason, "done"); continue; }
+      if (k === cur) { assert.equal(r.ok, false); assert.equal(r.reason, "current"); continue; }
+      cases++;
+      assert.ok(r.ok, `${cur}->${k}`);
+      assert.equal(r.sess.ex[r.sess.i].exercise, names[k], "the chosen lift is now");
+      assert.equal(r.sess.set, 0);
+      assert.ok(r.sess.ex.slice(0, r.sess.i).every((x) => loggedWorkSets(r.sess.logged, x.exercise) >= x.sets), "nothing unfinished before the cursor");
+      assert.ok(cachesFollow(r.sess), `${cur}->${k} caches`);
+      assert.equal(r.sess.ex[r.sess.i].moved, true);
+      const done = play(r.sess);
+      for (const n of names) assert.equal(done[n], 3, `${cur}->${k}: ${n} trained in full`);
+    }
+    assert.ok(cases >= 10);
+  });
+  check("#move a superset pair moves as a block, leader first, and a cursor on a station inserts before its leader", () => {
+    const pairDay = () => mk([row("a"), row("b", 3, { superset_with: "c" }), row("c", 3, { superset_with: "b" }), row("d"), row("e")]);
+    const r1 = moveToCurrent(pairDay(), 2); // pick the partner c: b+c go first, together
+    assert.deepStrictEqual(r1.sess.ex.map((x) => x.exercise), ["b", "c", "a", "d", "e"]);
+    assert.equal(r1.sess.i, 0);
+    assert.ok(r1.sess.ex[0].moved && r1.sess.ex[1].moved);
+    const onPair = pairDay(); onPair.i = 2; onPair.logged = work("a", 3); // cursor on the station's partner
+    const r2 = moveToCurrent(onPair, 4);
+    assert.deepStrictEqual(r2.sess.ex.map((x) => x.exercise), ["a", "e", "b", "c", "d"], "e lands before the station's leader, the pair stays adjacent");
+    assert.equal(r2.sess.i, 1);
+    for (const r of [r1, r2]) { const done = play(r.sess); for (const n of ["a", "b", "c", "d", "e"]) assert.equal(done[n], 3, n); }
+    const mid = pairDay(); mid.logged = [...work("b", 1), ...work("c", 1)]; mid.i = 1; // a station mid-way: its block is current
+    assert.equal(moveToCurrent(mid, 2).reason, "current", "the station's other member is part of now");
+  });
+  check("#move a running rest, a pending skip-undo and the one a swap stashed all retire; the plan's prescription never moves", () => {
+    const s = mk([row("a", 3, { rep_targets: [10, 9, 8], slot_of: "z" }), row("b"), row("c")], { logged: work("a", 1), set: 1,
+      rest: { kind: "set", ex: "a", length: 120, logged: 1, start: 1, until: 2 }, lastSkip: { ids: ["a"], loggedLen: 1, order: "a|b|c", prevI: 0, prevSet: 0 },
+      swapUndo: { to: "a", from: "z", lastSkip: { ids: ["a"], loggedLen: 1, order: "a|b|c", prevI: 0, prevSet: 0 } } });
+    const r = moveToCurrent(s, 2);
+    assert.ok(r.ok);
+    assert.equal(r.sess.rest, undefined); assert.equal(r.sess.lastSkip, undefined); assert.equal(r.sess.swapUndo.lastSkip, null);
+    const a = r.sess.ex.find((x) => x.exercise === "a");
+    assert.deepStrictEqual([a.sets, a.planned_sets, a.suggested_kg, a.rep_targets, a.slot_of], [3, 3, 50, [10, 9, 8], "z"]);
+    assert.equal(r.sess.ex.findIndex((x) => x.exercise === "a") > r.sess.i, true, "a half-done lift waits after the cursor");
+    assert.equal(play(r.sess).a, 3, "…and resumes from its banked count");
+  });
+  check("#move refusals: a finished or skipped-out lift, a completed workout, a slot that isn't there", () => {
+    const s = mk([row("a"), row("b", 2, { planned_sets: 3 }), row("c")], { logged: work("b", 2) });
+    assert.equal(moveToCurrent(s, 1).reason, "done", "skipped down to what it banked: nothing left");
+    assert.equal(moveToCurrent({ ...s, complete: true }, 2).reason, "complete");
+    assert.equal(moveToCurrent(s, 9).reason, "no-slot");
+    assert.equal(moveToCurrent(null, 0).ok, false);
+  });
+  check("#move survives the localStorage mirror: a JSON round trip mid-move resumes on the same lift", () => {
+    const r = moveToCurrent(mk([row("a"), row("b"), row("c")], { logged: work("a", 1), set: 1 }), 2);
+    const back = JSON.parse(JSON.stringify(r.sess));
+    assert.deepStrictEqual(back, r.sess);
+    assert.equal(back.ex[back.i].exercise, "c");
+    const done = play(back); for (const n of ["a", "b", "c"]) assert.equal(done[n], 3, n);
+  });
+  check("#defer 'Do this later' is the same permutation: the lift goes to the end, the cursor stays (now on the next), caches follow", () => {
+    const s = mk([row("a"), row("b"), row("c")]); Object.assign(s, tag(s));
+    const r = deferToEnd(s);
+    assert.ok(r.ok);
+    assert.deepStrictEqual(r.sess.ex.map((x) => x.exercise), ["b", "c", "a"]);
+    assert.equal(r.sess.i, 0); assert.ok(cachesFollow(r.sess)); assert.equal(r.sess.ex[2].moved, true);
+    assert.equal(deferToEnd({ ...s, i: 2 }).reason, "last", "nothing to move it ahead of");
+    assert.equal(deferToEnd(mk([row("a", 3, { superset_with: "b" }), row("b", 3, { superset_with: "a" }), row("c")])).reason, "pair");
+    assert.equal(deferToEnd({ ...s, logged: work("a", 1), set: 1 }).reason, "started");
+    const done = play(r.sess); for (const n of ["a", "b", "c"]) assert.equal(done[n], 3, n);
+  });
+  check("#list workoutList: every lift as done / now / later / skipped, a station's pair as one 'now', only later lifts movable", () => {
+    const s = mk([row("a"), row("b", 2, { planned_sets: 3 }), row("c", 3, { superset_with: "d" }), row("d", 3, { superset_with: "c" }), row("e"), row("f", 1, { planned_sets: 3 })],
+      { i: 2, logged: [...work("a", 3), ...work("b", 2), ...work("c", 1), ...work("d", 1), ...work("f", 1)] });
+    const L = workoutList(s);
+    assert.deepStrictEqual(L.map((r) => [r.exercise, r.status, r.done, r.sets, r.skipped, r.movable]), [
+      ["a", "done", 3, 3, 0, false], ["b", "skipped", 2, 3, 1, false], ["c", "now", 1, 3, 0, false], ["d", "now", 1, 3, 0, false], ["e", "later", 0, 3, 0, true], ["f", "skipped", 1, 3, 2, false]]);
+    assert.equal(L.filter((r) => r.status === "done" || r.status === "skipped").length, 3, "the header's 'done' count");
+    assert.deepStrictEqual(workoutList(mk([row("a"), row("b")])).map((r) => r.status), ["now", "later"]);
+  });
+  check("#move the workout reports which lifts the user moved (targets.moved) — the seed for later learning, nothing else changes", () => {
+    const r = moveToCurrent(mk([row("a"), row("b"), row("c")]), 2);
+    const t = buildTargets(r.sess);
+    assert.deepStrictEqual(t.map((x) => [x.exercise, x.moved ?? false]), [["c", true], ["a", false], ["b", false]]);
+    assert.deepStrictEqual(buildTargets(mk([row("a")])), [{ exercise: "a", sets: 3, rep_range: "8-12", rir: "1-2", suggested_kg: 50 }], "an unmoved lift's target is as before");
+  });
+}
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -802,6 +802,35 @@ check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cle
   assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
   assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected");
 });
+// W306 (Burst 9 — owner note 2): the workout list. Opened from the header on the set screen AND the station (the top of
+// the screen — never below the fold); each later lift can be done next; "Do this later" is the same pure permutation;
+// after a defer or a lift-ending skip the player offers "Pick a different one"; a moved lift says its weight was
+// planned for its usual place (no direction claimed — lesson 60).
+check("player (W306) the workout list: a header button on both screens, the list from workoutList, Do this next through moveToCurrent", () => {
+  const set = fnBody(appJs, "function renderPlayer() {", 9000), st = fnBody(appJs, "function renderSupersetStation(L, P) {", 9000);
+  for (const [name, body] of [["set screen", set], ["station", st]]) assert.match(body, /\$\{exListBtn\(\)\}/, `${name}: the list button sits in the header`);
+  assert.doesNotMatch(set, /<span class="num">\$\{sess\.i \+ 1\}\/\$\{total\}<\/span>/, "the position counter (wrong after a move) is gone");
+  assert.match(st, /<h1 tabindex="-1" id="ex-head">🔗 Superset<\/h1>/, "the station gets a focus target");
+  assert.match(st, /wireListDoors\(\);\s*\$\("#ex-head"\)\?\.focus\(\);/, "…and focus lands on it, as on the set screen");
+  const list = fnBody(appJs, "function renderWorkoutList() {", 4000);
+  assert.match(list, /const rows = workoutList\(sess\)/);
+  assert.match(list, /data-move="\$\{r\.idx\}"/);
+  assert.match(list, /const r = moveToCurrent\(sess, \+b\.dataset\.move\);/);
+  assert.match(list, /confirmSet\.clear\(\); skipPending = false; quitPending = false;/, "a move judges the next set afresh, like a skip");
+  assert.match(list, /if \(had\) syncRestAlert\(\);/, "a dropped rest disarms its alarm (lesson 91)");
+  assert.match(list, /\$\("#list-head"\)\?\.focus\(\);/);
+});
+check("player (W306) 'Do this later' is the pure deferToEnd; after it or a lift-ending skip, 'Pick a different one'; a moved lift says so", () => {
+  const later = fnBody(appJs, "function deferCurrentExercise() {", 1200);
+  assert.match(later, /const r = deferToEnd\(sess\);/);
+  assert.doesNotMatch(later, /const remap = /, "one permutation, in session-core");
+  assert.match(later, /offerPick: \{ kind: "later", name: moved\.name \}/);
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 800), /offerPick: \{ kind: "skip", name: prev\.name \}/, "a skip that ends a lift offers the pick too");
+  const set = fnBody(appJs, "function renderPlayer() {", 9000);
+  assert.match(set, /\$\{pickCue\(\)\}/);
+  assert.match(set, /sess\.set === 0 && e\.moved \? `<div class="cue" id="moved-cue">📍 You moved this one — today's weight was set for its usual place in the workout; after set 1 the hint adjusts if it needs to\.<\/div>` : ""/);
+  for (const h of ["$(\"#done\").onclick = () => {", "$(\"#doner\").onclick = () => {"]) assert.match(fnBody(appJs, h, 2500), /delete sess\.offerPick;/, `${h}: a banked set answers the offer`);
+});
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
   assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,

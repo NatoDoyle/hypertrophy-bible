@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -1998,10 +1998,60 @@ function skipUndoStrip() {
 }
 // Apply a skip (W281): the pure session-core result becomes the session, saved before
 // anything else; a skip that completes the workout saves it (the player asked first).
+// THE WORKOUT LIST (W306, owner note 2: "when I start a workout, I can look at all the exercises… give me an option to pick
+// what I want to do next"). Opened from the header — the top of the set screen and the station, never below the fold
+// (memory: verify UI reachability). Its counter is lifts DONE: a position (the old "3/6") changes meaning after a move.
+const exListBtn = () => {
+  const rows = workoutList(sess), done = rows.filter((r) => r.status === "done" || r.status === "skipped").length;
+  return `<button class="btn ghost inline num" id="ex-list" aria-label="Workout list — ${done} of ${rows.length} lifts done">☰ ${done}/${rows.length}</button>`;
+};
+// After "Do this later" or a skip that ends a lift, the next lift offers a different pick (auto-advance stays the
+// zero-tap default). Persisted with the session; a banked set or a move answers it.
+const pickCue = () => sess.offerPick && sess.set === 0 ? `<div class="cue" id="pick-cue">⤵️ ${sess.offerPick.kind === "later" ? `Moved ${esc(sess.offerPick.name)} to the end.` : `Skipped the rest of ${esc(sess.offerPick.name)}.`} <button class="btn ghost inline" id="pick-other">Pick a different one</button></div>` : "";
+function wireListDoors() {
+  if ($("#ex-list")) $("#ex-list").onclick = () => renderWorkoutList();
+  if ($("#pick-other")) $("#pick-other").onclick = () => renderWorkoutList();
+}
+function renderWorkoutList() {
+  stopRestTimer();
+  cantDoGen++; // a late Can't-do answer must not paint over the list
+  if (sess.offerPick) { delete sess.offerPick; saveSess(); } // seen: the list is the answer to the offer
+  const rows = workoutList(sess), cur = sess.ex[sess.i];
+  const mark = { done: "✓", now: "▶", later: "", skipped: "⏭" };
+  const label = (r) => r.status === "done" ? `${r.done}/${r.sets} sets · done` : r.status === "skipped" ? `${r.done}/${r.sets} sets · ${r.skipped} skipped`
+    : r.status === "now" ? `${r.done}/${r.sets} sets · now` : `${r.done}/${r.sets} sets`;
+  const pairName = (r) => r.pair ? sess.ex.find((x) => x.exercise === r.pair)?.name ?? r.pair : null;
+  // A station's pair is picked once — the button sits on the first member of the pair that can move, and moves both.
+  const shown = new Set();
+  app.innerHTML = `<h1 tabindex="-1" id="list-head">Today's workout</h1>
+    <p class="muted">Pick what you do next — each lift keeps the weight planned for it.</p>
+    <div class="card">${rows.map((r) => {
+      const btn = r.movable && !(r.pair && shown.has(r.pair)) ? `<button class="btn secondary inline" data-move="${r.idx}" aria-label="Do ${esc(r.name)} next">Do this next</button>` : "";
+      if (r.movable) shown.add(r.exercise);
+      return `<div class="row"><div><b>${mark[r.status] ? `${mark[r.status]} ` : ""}${esc(r.name)}</b>${r.pair ? ` <span class="muted">🔗 with ${esc(pairName(r))}</span>` : ""}<br><span class="muted">${label(r)}</span></div>${btn}</div>`;
+    }).join("")}</div>
+    <button class="btn" id="list-back">Back to ${esc(cur?.name ?? "the workout")}</button>`;
+  $("#list-head")?.focus();
+  $("#list-back").onclick = () => renderPlayer(0);
+  app.querySelectorAll("[data-move]").forEach((b) => b.onclick = () => {
+    const r = moveToCurrent(sess, +b.dataset.move);
+    if (!r.ok) return renderPlayer(0);
+    const had = !!sess.rest;
+    confirmSet.clear(); skipPending = false; quitPending = false;
+    sess = r.sess; saveSess();
+    if (had) syncRestAlert();
+    say(`${sess.ex[sess.i].name} is next.`);
+    renderPlayer(0);
+  });
+}
 function applySkip(r, redraw) {
   skipPending = false; quitPending = false; confirmSet.clear();
   if (!r.ok) return redraw();
-  sess = r.sess; saveSess();
+  const prev = sess.ex[sess.i];
+  sess = r.sess;
+  // A skip that ENDS a lift moves on to the next one — which may not be the one you want now (W306).
+  if (!sess.complete && sess.ex[sess.i]?.exercise !== prev?.exercise) sess = { ...sess, offerPick: { kind: "skip", name: prev.name } };
+  saveSess();
   if (sess.complete) { say("Skipped — that was the last one. Saving your workout."); return finish(); }
   say("Skipped. That set is off today's count.");
   redraw();
@@ -2705,11 +2755,13 @@ function renderPlayer() {
   const { hint, hintW, hc } = setHintFor(e);
   const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hintIcon(hint)} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
       ${hintButton(hint, hintW, w, reps, e, "use-hint")}</div>` : "";
-  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
+  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1>${exListBtn()}</div>
+    ${pickCue()}
     ${swapUndoCard(e)}
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
+    ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">📍 You moved this one — today's weight was set for its usual place in the workout; after set 1 the hint adjusts if it needs to.</div>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
@@ -2756,6 +2808,7 @@ function renderPlayer() {
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
+  wireListDoors();
   // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
   // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
   // derivation (loggedWorkSets/isHardSet/countsForE1RM all gate on "work"), so it
@@ -2826,6 +2879,7 @@ function renderPlayer() {
     // update in place without re-rendering, so the consts can be stale.
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
+    delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
     sess.set++;
@@ -2913,7 +2967,8 @@ function renderSupersetStation(L, P) {
     </div>`;
   };
 
-  app.innerHTML = `<div class="exhead"><h1>🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span></div>
+  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span>${exListBtn()}</div>
+    ${pickCue()}
     <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${skipUndoStrip()}
@@ -2959,6 +3014,8 @@ function renderSupersetStation(L, P) {
   };
   // A new weight disarms "End workout early" and is judged afresh by the typo guard, as on the straight player (Burst 8 review #10).
   wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderSupersetStation(L, P); });
+  wireListDoors();
+  $("#ex-head")?.focus(); // the station's own heading (W306): a banked round no longer drops focus to <body>
   // Each leg's next-round hint (W305): the same advice a straight set gets, one tap fills that leg's steppers.
   for (const idx of [L, P]) {
     const b = $(`#leg-hint-${idx}`);
@@ -2977,6 +3034,7 @@ function renderSupersetStation(L, P) {
     const suspects = stationNeedsConfirm([L, P]);
     if (suspects.length) { for (const i of suspects) confirmSet.add(sess.ex[i].exercise); return renderSupersetStation(L, P, 0); }
     confirmSet.clear();
+    delete sess.offerPick; // a banked round answers "Pick a different one" (W306)
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
@@ -3319,29 +3377,13 @@ async function renderCantDo() {
 // sess.weights/reps/eff are keyed by ARRAY INDEX, so moving an item must REMAP those
 // caches or the steppers would show the wrong defaults. Logged sets are keyed by
 // exercise id, so they stay valid — no data is ever at risk here.
+// "Do this later": the pure deferToEnd (session-core — the same permutation "Do this next" uses, so the index-keyed caches
+// can't drift between two hand-written remaps). The cursor stays put, now on what was next; the list is one tap away.
 function deferCurrentExercise() {
-  const i = sess.i, last = sess.ex.length - 1;
-  if (i >= last) return; // nothing to move it ahead of
-  const [moved] = sess.ex.splice(i, 1);
-  sess.ex.push(moved);
-  // Shift index-keyed caches to follow their exercises: keys < i unchanged, key i
-  // moves to the new last slot, keys > i shift down by one.
-  const remap = (cache) => {
-    const out = {};
-    for (const [k, v] of Object.entries(cache || {})) {
-      const idx = +k;
-      if (idx < i) out[idx] = v;
-      else if (idx === i) out[last] = v;
-      else out[idx - 1] = v;
-    }
-    return out;
-  };
-  sess.weights = remap(sess.weights); sess.reps = remap(sess.reps); sess.eff = remap(sess.eff); sess.wUnits = remap(sess.wUnits);
-  // sess.i stays put — it now points at the exercise that was next; the deferred lift
-  // waits at the end. Resume its cursor from however many of its sets are already
-  // banked (0 in the normal unstarted case), matching how advancing resolves the set
-  // pointer everywhere else — never blindly reset a partially-logged lift to set 0.
-  sess.set = loggedSetCount(sess.ex[sess.i].exercise);
+  const moved = sess.ex[sess.i];
+  const r = deferToEnd(sess);
+  if (!r.ok) return renderPlayer(0);
+  sess = { ...r.sess, offerPick: { kind: "later", name: moved.name } };
   saveSess();
   say(`Moved ${moved.name} to the end — you'll come back to it.`);
   renderPlayer(0);

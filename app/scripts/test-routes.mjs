@@ -1664,15 +1664,16 @@ try {
     const top = +tgX.rep_range.split("-")[1];
     const work = (n) => Array.from({ length: n }, () => ({ exercise: tgX.exercise, set_type: "work", weight_kg: 50, reps: top }));
     await json("POST", "/api/session", { user_id: tgU, session_id: "tg-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: tgT0.session.name, sets: work(2), targets: [
-      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x" },
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x", moved: true },
       { exercise: tgX.exercise, sets: 5 },                                    // a duplicate: dropped
       { exercise: "../evil", sets: 3 },                                       // not an id: dropped
       { exercise: "leg-press", sets: 999 },                                   // out of bounds: dropped
-      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes" }, // kept, junk nulled
+      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes", moved: "yes" }, // kept, junk nulled
     ] });
     const tgStored = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
-    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled)", JSON.stringify(tgStored?.targets) === JSON.stringify([
-      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50 },
+    // W306: a lift the user moved ("Do this next" / "Do this later") says so — only a real `true` survives.
+    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled; moved kept only as true)", JSON.stringify(tgStored?.targets) === JSON.stringify([
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, moved: true },
       { exercise: "lat-pulldown", sets: 3, rep_range: null, rir: null, suggested_kg: null },
     ]), JSON.stringify(tgStored?.targets));
     await json("POST", "/api/session", { user_id: tgU, session_id: "tg-many", date: dAgo(9), local_date: dAgo(9).slice(0, 10), sets: work(1),

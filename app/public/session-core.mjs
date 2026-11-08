@@ -215,6 +215,81 @@ export function undoSkip(sess) {
   return { ok: true, sess: out };
 }
 
+// THE WORKOUT LIST'S ONE REORDER (W306, considerations iteration — owner: "when I start a workout, I can look at all the
+// exercises… if I pick 'Do this later' or 'Skip this,' can you give me an option to pick what I want to do next?").
+// permuteSess: ex[j] = old ex[order[j]], and the four INDEX-keyed caches (weights, reps, eff, wUnits — wUnits always
+// travels with weights, or a weight banks in the wrong unit) follow their lifts by the same permutation. Everything else
+// in the session is keyed by exercise id or by a position in `logged`, which a reorder never touches. Null on anything
+// but a permutation. Pure.
+export function permuteSess(sess, order) {
+  const n = sess?.ex?.length ?? 0;
+  if (!Array.isArray(order) || order.length !== n || new Set(order).size !== n || order.some((k) => !Number.isInteger(k) || k < 0 || k >= n)) return null;
+  const to = new Map(order.map((old, j) => [old, j]));
+  const remap = (cache) => { const out = {}; for (const [k, v] of Object.entries(cache ?? {})) { const j = to.get(+k); if (j != null) out[j] = v; } return out; };
+  return { ...sess, ex: order.map((k) => sess.ex[k]), weights: remap(sess.weights), reps: remap(sess.reps), eff: remap(sess.eff), wUnits: remap(sess.wUnits) };
+}
+// The live block at slot k: the lift, plus its superset partner while their paired rounds aren't done (a station).
+function liveBlock(sess, k) {
+  const e = sess.ex[k];
+  const p = e?.superset_with ? sess.ex.findIndex((x) => x.exercise === e.superset_with) : -1;
+  return p < 0 || stationProgress(sess.logged, sess.ex, Math.min(k, p), Math.max(k, p)).done ? [k] : [Math.min(k, p), Math.max(k, p)];
+}
+// A reorder retires what was keyed to the old order: a running rest (its "Next: set N" named another lift — a skip
+// earns no rest either) and a pending skip-undo, including the copy a tired swap stashed (lesson 47). The binder
+// disarms the server rest alarm (syncRestAlert). `moved` marks a lift the user moved, for its set-0 cue.
+function afterReorder(out, movedFrom, movedTo) {
+  out.ex = out.ex.map((x, j) => (j >= movedFrom && j < movedTo ? { ...x, moved: true } : x));
+  out.set = loggedWorkSets(out.logged, out.ex[out.i].exercise);
+  delete out.rest; delete out.lastSkip;
+  if (out.swapUndo?.lastSkip) out.swapUndo = { ...out.swapUndo, lastSkip: null };
+  return out;
+}
+// "Do this next" (W306): the chosen lift — its superset partner with it, leader first — lands AT the cursor (the start of
+// the current block, so a station is never split), and everything from there shifts back one block. Every unfinished
+// lift therefore stays at or after the new cursor: the straight bank handler only looks FORWARD for the next lift, so a
+// swap of two positions could strand one and end the workout early. Nothing the plan prescribes moves (sets, aims,
+// suggested_kg, slot_of): today's weights keep their planned-position basis (W290); the next-set hint corrects after set 1.
+export function moveToCurrent(sess, k) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  if (!sess?.ex?.length) return refuse("no-slot");
+  if (sess.complete) return refuse("complete");
+  if (!Number.isInteger(k) || !sess.ex[k]) return refuse("no-slot");
+  if (loggedWorkSets(sess.logged, sess.ex[k].exercise) >= sess.ex[k].sets) return refuse("done");
+  const cur = liveBlock(sess, sess.i);
+  if (cur.includes(k)) return refuse("current");
+  const K = liveBlock(sess, k), p = cur[0], idx = [...sess.ex.keys()];
+  const order = [...idx.filter((j) => j < p && !K.includes(j)), ...K, ...idx.filter((j) => j >= p && !K.includes(j))];
+  const out = permuteSess(sess, order);
+  out.i = order.indexOf(K[0]);
+  return { ok: true, sess: afterReorder(out, out.i, out.i + K.length) };
+}
+// The workout list (W306): every lift, in the order it will be done — "now" (the cursor's lift, with its station partner),
+// "done", "skipped" (a skip shrank today's count; `skipped` says by how many), or "later" (still owed — the only ones
+// "Do this next" can pick). Derived from the banked log every time, never stored.
+export function workoutList(sess) {
+  if (!sess?.ex?.length) return [];
+  const now = liveBlock(sess, sess.i);
+  return sess.ex.map((x, idx) => {
+    const done = loggedWorkSets(sess.logged, x.exercise), planned = Number.isInteger(x.planned_sets) ? x.planned_sets : x.sets;
+    const skipped = Math.max(0, planned - x.sets);
+    const status = now.includes(idx) ? "now" : done >= x.sets ? (skipped > 0 ? "skipped" : "done") : "later";
+    return { idx, exercise: x.exercise, name: x.name ?? x.exercise, status, done, sets: planned, skipped, movable: status === "later",
+      ...(x.superset_with && sess.ex.some((y) => y.exercise === x.superset_with) ? { pair: x.superset_with } : {}) };
+  });
+}
+// "Do this later": the lift at the cursor goes to the end, and the cursor stays put — now on what was next. Only an
+// unstarted single lift with something after it (the button's own gate).
+export function deferToEnd(sess) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const cur = sess?.ex?.[sess?.i];
+  if (!cur || sess.complete) return refuse("no-slot");
+  if (sess.i >= sess.ex.length - 1) return refuse("last");
+  if (cur.superset_with && sess.ex.some((x) => x.exercise === cur.superset_with)) return refuse("pair");
+  if (loggedWorkSets(sess.logged, cur.exercise) > 0) return refuse("started");
+  const order = [...[...sess.ex.keys()].filter((j) => j !== sess.i), sess.i];
+  return { ok: true, sess: afterReorder(permuteSess(sess, order), sess.ex.length - 1, sess.ex.length) };
+}
+
 // Remove exactly the offline-queue item that was just delivered, BY IDENTITY.
 // Position-based removal (queue.slice(1)) drops the WRONG item when two tabs flush
 // concurrently on reconnect — a second tab can shift the head between this tab's
@@ -513,6 +588,9 @@ export function buildTargets(sess) {
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list
     // longer than the planned sets whole).
     ...(validAim(x) ? { rep_targets: validAim(x).slice(0, x.planned_sets ?? x.sets) } : {}),
+    // A lift the user moved ("Do this next" / "Do this later", W306): recorded for later learning (a lift put off again
+    // and again), nothing reads it yet. The order the lifts were done in is already in the log.
+    ...(x.moved ? { moved: true } : {}),
   }));
 }
 

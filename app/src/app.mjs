@@ -203,6 +203,8 @@ const normalizeTargets = (list) => {
       // dropped whole — half an aim list would misjudge every set after the gap.
       ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets
         && t.rep_targets.every((r) => Number.isInteger(r) && r >= 1 && r <= 50) ? { rep_targets: t.rep_targets.slice() } : {}),
+      // A lift the user moved in the workout list (W306) — only a real `true`.
+      ...(t.moved === true ? { moved: true } : {}),
     });
   }
   return out.length ? out : null;
