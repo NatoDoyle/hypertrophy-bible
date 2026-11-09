@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -410,6 +410,18 @@ export function createApp(store, config = {}) {
     return c.json({ ok: true, kept: updated.time_fit_kept });
   });
 
+  // "Not now" to the learned session ceiling (W315c): remembered on the server (every device agrees) — only a ceiling 2+
+  // sets lower asks again. A yes goes through the Settings door (/api/plan/regenerate, profile.session_cap).
+  app.post("/api/plan/session-cap", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const cap = sanitizeSessionCap(b.cap);
+    if (b.choice !== "not_now" || cap == null) return c.json({ error: "choice must be not_now, with the cap offered" }, 400);
+    const updated = await store.updateUser(b.user_id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), session_cap_declined: cap }; return u; })
+      .catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+    return updated ? c.json({ ok: true }) : c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+  });
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
@@ -1146,6 +1158,8 @@ export function createApp(store, config = {}) {
     // question at a time is the client's call (review #18): the days card's keep lives on the device (fix C14).
     const fitNow = !user.paused && !user.program?.custom && !session?.taper
       ? userTimeFit(user, { stalledExercises: swapStalls(user, sessions, nowISO) }) : null;
+    // The lifter's own session ceiling, offered once (W315c) — the learned one, never applied without their yes.
+    daily.session_cap_offer = sessionCapOffer(user, sessions);
     daily.plan_time_fit = fitNow && !keepCovers(user, fitNow) ? { ...fitNow, key: timeFitKey(user, fitNow) } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and

@@ -2175,6 +2175,22 @@ try {
     const obu = await store.getUser(ob);
     ok("#cap (W315b) onboarding can't plant an absurd ceiling (1 set a day): junk is nothing",
       obu.profile.session_cap === null && Math.max(...obu.program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0))) > 10, JSON.stringify(obu.profile.session_cap));
+    // W315c closed loop (lesson 79): workouts logged through the client's door with fade marks → Today offers the ceiling;
+    // "not now" through its route → Today stops asking.
+    {
+      const fu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      for (let i = 0; i < 8; i++) {
+        await json("POST", "/api/session", { user_id: fu, session_id: `fade-${i}`, date: dAgo(17 - i * 2), local_date: dAgo(17 - i * 2).slice(0, 10), session_name: "Day",
+          sets: Array.from({ length: 18 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 })), ...(i % 2 ? { fade_marks: [{ kind: "skip", at: 13, of: 18 }] } : {}) });
+      }
+      const offer = (await (await app.request("/api/today", { headers: { "X-HB-User": fu } })).json()).daily?.session_cap_offer;
+      const bad = await json("POST", "/api/plan/session-cap", { user_id: fu, choice: "later", cap: 13 });
+      const nn = await json("POST", "/api/plan/session-cap", { user_id: fu, choice: "not_now", cap: 13 });
+      const after = (await (await app.request("/api/today", { headers: { "X-HB-User": fu } })).json()).daily?.session_cap_offer;
+      ok("#cap-offer (W315c) logged fades → Today offers the ceiling; 'not now' through its route → it stops asking",
+        JSON.stringify(offer) === JSON.stringify({ cap: 13, fades: 4, of: 8, current: 16 }) && bad.status === 400 && nn.status === 200 && after === null,
+        JSON.stringify({ offer, bad: bad.status, nn: nn.status, after }));
+    }
     ok("#cap (W315b) the Settings door stores the ceiling and the plan keeps under it; junk is nothing; null takes it off",
       r13.status === 200 && stored13 === 13 && at13 <= 13 && before > 13 && junk === null && off === null && after > 13, JSON.stringify({ before, at13, stored13, junk, off, after }));
   }

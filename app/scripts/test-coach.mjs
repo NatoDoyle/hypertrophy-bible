@@ -5,7 +5,7 @@ import { isSpecializing } from "../src/planner.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext  } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext  , sessionCapOffer } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 import { servedLift, lastRegular } from "../src/coach.mjs";
 import * as deriveCore from "../../tools/derive-core.mjs";
@@ -847,6 +847,25 @@ check("#announce (W313) 'your plan retunes itself' is said only where the tune r
   assert.equal(progressReport({ ...base, profile: { ...base.profile, training_status: "beginner" } }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "a beginner: no blocks");
   assert.equal(progressReport({ ...base, program: { ...prog, custom: true } }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "a hand-edited plan isn't retuned");
   assert.equal(progressReport({ ...base, plan_meta: {} }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "no block started");
+});
+// --- W315c (Burst 10 — owner note 7): the learned ceiling is OFFERED, once, on Today — never applied silently. Offered when
+// the lifter's own fades put it under the ceiling they have now (the KB's, or one they took); "not now" is remembered, and
+// only a ceiling 2+ sets lower asks again. Never while paused or over a hand-edited plan.
+check("#cap-offer (W315c) fades in 4 of the last 8 at set 13: offered once, with the evidence; taken or declined, it waits", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const day = (n) => new Date(Date.UTC(2026, 9, 1) + n * 86400000).toISOString();
+  const log = (at) => Array.from({ length: 8 }, (_, i) => ({ session_id: `s${i}`, date: day(i * 2), sets: Array.from({ length: 18 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 })),
+    ...(i % 2 ? { fade_marks: [{ kind: "skip", at, of: at + 5 }] } : {}) })); // a skip in the last third of the planned sets
+  const u = (extra = {}) => ({ profile: { training_status: "intermediate", days_per_week: 4, ...(extra.profile ?? {}) }, program: extra.program ?? prog, plan_meta: extra.plan_meta ?? {}, ...(extra.paused ? { paused: extra.paused } : {}) });
+  assert.deepEqual(sessionCapOffer(u(), log(13)), { cap: 13, fades: 4, of: 8, current: 16 });
+  assert.equal(sessionCapOffer(u({ plan_meta: { session_cap_declined: 13 } }), log(13)), null, "declined: not asked again");
+  assert.equal(sessionCapOffer(u({ plan_meta: { session_cap_declined: 13 } }), log(12)), null, "one set lower isn't news");
+  assert.deepEqual(sessionCapOffer(u({ plan_meta: { session_cap_declined: 13 } }), log(11))?.cap, 11, "two lower is");
+  assert.equal(sessionCapOffer(u({ profile: { session_cap: 13 } }), log(13)), null, "taken: the plan already holds it");
+  assert.deepEqual(sessionCapOffer(u({ profile: { session_cap: 13 } }), log(11)), { cap: 11, fades: 4, of: 8, current: 13 }, "still fading under it: lower again, asked");
+  assert.equal(sessionCapOffer(u({ paused: { from: "2026-10-01" } }), log(13)), null, "paused");
+  assert.equal(sessionCapOffer(u({ program: { ...prog, custom: true } }), log(13)), null, "a hand-edited plan isn't rebuilt");
+  assert.deepEqual(sessionCapOffer(u({ profile: { training_status: "beginner" } }), log(11)), { cap: 11, fades: 4, of: 8, current: 12, blocks: false }, "a beginner's ceiling starts at 12 — and there are no blocks to name");
 });
 check("#completion the new-block note says why a stalled muscle's sets didn't move — kindly, with the lever", () => {
   const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };

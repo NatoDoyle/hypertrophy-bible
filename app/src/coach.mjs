@@ -7,6 +7,8 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
+import { qualityCapFor } from "../../tools/plan-core.mjs";
+import { sessionTolerance } from "../../tools/response-core.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
@@ -705,6 +707,22 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
     : W < La && kg < La ? " — the lighter weight your last session called for, adjusted for the order" : "";
   // "This time … (last time …)" reads right on Today AND in the read-out's "next time" (Burst 5 review).
   return { fromLoss, toLoss, kg, note: `${clause.slice(0, -1)}, so I've made it ${kg} kg${earned}.` };
+}
+
+// THE SESSION CEILING, OFFERED (W315c — owner note 7: "I really start to struggle once I get past 12 sets… The app should
+// be able to learn this from my data"): when the lifter's own fades (response-core sessionTolerance) put a ceiling under
+// the one they have now — the KB's for their training age, or one they took — Today asks, once. "Not now" is remembered
+// (plan_meta.session_cap_declined) and only a ceiling 2+ sets lower asks again; a yes goes through the Settings door.
+// Never while paused, never over a hand-edited plan (a yes rebuilds it). A beginner's carries blocks:false (no blocks to name).
+export function sessionCapOffer(user, sessions) {
+  if (user?.paused || user?.program?.custom) return null;
+  const status = user?.profile?.training_status ?? "intermediate";
+  const current = qualityCapFor(status, user?.profile?.session_cap ?? null);
+  const t = sessionTolerance(sessions, { prior: current, comebackDays: COMEBACK_GAP_DAYS });
+  if (!t) return null;
+  const declined = user?.plan_meta?.session_cap_declined;
+  if (Number.isInteger(declined) && t.cap > declined - 2) return null;
+  return { cap: t.cap, fades: t.fades, of: t.eligible, current, ...(status === "beginner" ? { blocks: false } : {}) };
 }
 
 // Every "last time" (and "your last session") in a reason, renamed for the session it means when an easier one came after it:

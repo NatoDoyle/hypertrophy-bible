@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -725,14 +725,23 @@ async function renderTrainingSettings() {
     // The goal-event row mirrors the wizard step's own gate (non-beginners only).
     ...(p.training_status !== "beginner" ? [["goal_event_date", "Goal event date", p.goal_event_date || "None"]] : []),
   ];
+  // The learned session ceiling, when the lifter took one (W315c) — never a wizard question, so it has its own way off.
+  const capRow = Number.isInteger(p.session_cap) ? `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Workout cap</span><br><b>${p.session_cap} sets — learned from how your workouts have been going</b></div><button class="btn ghost inline" id="ts-uncap" style="margin:0">Remove</button></div>` : "";
   app.innerHTML = `<h1>Training settings</h1>
     <p class="muted">Change any answer on its own — your plan rebuilds around it. Your logged workouts are never touched.</p>
-    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}</div>
+    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}${capRow}</div>
     <button class="btn secondary inline" id="ts-full">Re-answer everything &amp; rebuild</button>
     <button class="btn ghost inline" id="ts-back">‹ Back</button>`;
   app.querySelectorAll("[data-solo]").forEach((b) => b.onclick = () => renderSettings(b.dataset.solo));
   $("#ts-full").onclick = () => renderSettings();
   $("#ts-back").onclick = () => { tab = "me"; render(); };
+  if ($("#ts-uncap")) $("#ts-uncap").onclick = async () => {
+    $("#ts-uncap").disabled = true;
+    let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { session_cap: null } }) }); } catch { r = null; }
+    if (!r?.program) { $("#ts-uncap").disabled = false; alertBar("📴 Couldn't change your plan — nothing changed. Try again in a moment."); return; }
+    say("Cap removed — your plan has been rebuilt without it.");
+    renderTrainingSettings();
+  };
 }
 
 // Open the wizard as a pre-filled settings editor for an existing user. With
@@ -1696,7 +1705,14 @@ async function renderToday() {
   // ranking; each choice says what it wins or costs; "Keep" is answered once, on the server (every device agrees).
   // One schedule question at a time (review #18): it waits while the days card is up — decided HERE, where that card's
   // own "Keep" lives (on the device; a server-side gate silenced both for good — fix C14).
-  const tfit = planFitVisible(fit, fitKey) ? null : timeFitCopy(dy.plan_time_fit);
+  // The lifter's OWN session ceiling, learned from their fades and offered once (W315c, owner note 7). One plan question at a
+  // time: after the days card, ahead of the time-fit card (a ceiling changes what fits).
+  const capOffer = planFitVisible(fit, fitKey) ? null : sessionCapCopy(dy.session_cap_offer);
+  const capCard = capOffer ? `<div class="card" id="cap-offer"><b>🧭 ${esc(capOffer.title)}</b>
+      <p class="muted" style="margin:4px 0 8px">${esc(capOffer.body)}</p>
+      <button class="btn secondary inline" id="cap-yes" style="margin:0 6px 0 0">${esc(capOffer.yes)}</button>
+      <button class="btn ghost inline" id="cap-no" style="margin:0">${esc(capOffer.no)}</button></div>` : "";
+  const tfit = planFitVisible(fit, fitKey) || capOffer ? null : timeFitCopy(dy.plan_time_fit);
   const timeCard = tfit ? `<div class="card" id="time-fit"><b>⏱️ ${esc(tfit.title)}</b>
       <p class="muted" style="margin:4px 0 8px">${esc(tfit.body)}</p>
       ${tfit.options.map((o, i) => `<button class="btn ${i === 0 ? "secondary" : "ghost"}" data-tfit="${i}" style="margin:0 0 6px;text-align:left"><b>${esc(o.label)}</b><br><span class="muted" style="font-size:.85rem;font-weight:400">${esc(o.detail)}</span></button>`).join("")}
@@ -1713,7 +1729,7 @@ async function renderToday() {
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
   // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
   const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${timeCard}${firstTimer}${swapCard}${gapCard}${announceCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${capCard}${timeCard}${firstTimer}${swapCard}${gapCard}${announceCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -1737,6 +1753,23 @@ async function renderToday() {
     // A newer workout has moved things on: what happened still stands, said with the reason.
     if (r.past) { renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: null, names: p.names, beginner: p.beginner }) + `<p class="muted">You've logged a newer workout since this one synced — what it means for your next sessions is on that one's read-out.</p>`, back }); return; }
     renderReadoutView({ title: p.name || "Last workout", card: readoutCardHtml({ local: localReadout(p.targets, p.sets), ro: r.readout, names: p.names, beginner: p.beginner }), back });
+  };
+  // The ceiling's yes goes through the Settings door (a fresh block, said on the card); "Not now" is remembered on the server.
+  const capLock = (on) => ["#cap-yes", "#cap-no"].forEach((sel) => { if ($(sel)) $(sel).disabled = on; });
+  if ($("#cap-yes")) $("#cap-yes").onclick = async () => {
+    capLock(true);
+    let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, profile: { session_cap: dy.session_cap_offer.cap } }) }); } catch { r = null; }
+    if (!r?.program) { capLock(false); if (!stale()) alertBar("📴 Couldn't change your plan — nothing changed. Try again in a moment."); return; }
+    try { localStorage.setItem("hb_program", r.program.name); } catch { /* storage off: the name is only a convenience */ }
+    pendingNotice = capOffer.notice;
+    refreshToday();
+  };
+  if ($("#cap-no")) $("#cap-no").onclick = async () => {
+    capLock(true);
+    let r; try { r = await api("/api/plan/session-cap", { method: "POST", body: JSON.stringify({ user_id: uid, choice: "not_now", cap: dy.session_cap_offer.cap }) }); } catch { r = null; }
+    if (!r?.ok) { capLock(false); if (!stale()) alertBar("📴 Couldn't save that — try again in a moment."); return; }
+    pendingNotice = "OK — I won't ask again unless it changes.";
+    refreshToday();
   };
   if ($("#fit-rebuild")) $("#fit-rebuild").onclick = async () => {
     // One rebuild per tap (a second would be a second fresh block), and no "Keep" racing it
