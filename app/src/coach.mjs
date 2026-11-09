@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -95,6 +95,14 @@ function lastAnyDateForExercise(sessions, exId, { stoodIn = false } = {}) {
 // (10 vs 12 days) and the app promised eased weights while prescribing heavier.
 export const COMEBACK_GAP_DAYS = 12;
 const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels easy
+// The empty bar a barbell lift is DONE on (W305h/W305i): the lifter's own bar (45 lb = 20.41 kg for a pounds lift) when
+// the weight reaches it, else the 20 kg bar when it reaches THAT (a lift banked on it before a switch to pounds), else
+// none (an EZ or fixed bar under 20 kg eases like any lift). Every path that lightens a barbell lift stops here.
+// W305j (I3): a weight that IS an empty bar names that bar whatever today's unit — a lift done on the empty 45-lb bar is
+// never "lightened" to 20 kg after a switch to kg (nor a 20 kg-bar lift floored at 45 lb after a switch to pounds).
+const barFloor = (exId, w, barKg, byId) => byId.get(exId)?.equipment !== "barbell" ? 0
+  : Math.abs(w - EMPTY_BAR_LB_KG) <= 0.02 ? EMPTY_BAR_LB_KG : Math.abs(w - EMPTY_BAR_KG) <= 0.02 ? EMPTY_BAR_KG
+  : w >= barKg - 0.02 ? barKg : w >= EMPTY_BAR_KG - 0.02 ? EMPTY_BAR_KG : 0;
 
 // Rough BODY-SCALED starting guess for a lift the user has never logged, so a
 // non-beginner sees a plausible number to confirm/adjust instead of an empty bar
@@ -166,7 +174,7 @@ function swapNoteFor(swaps, name) {
 // is" — chasing a PR into an event contradicts the freshness the taper exists to
 // buy. The layoff-comeback ease still overrides (safety first; buildToday makes
 // the taper copy honest about it), and the failure/hold paths are unchanged.
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false) {
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false, { barKg = EMPTY_BAR_KG } = {}) {
   const last = lastSetsForExercise(sessions, exId);
   const { min, max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -197,7 +205,9 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const lastAny = lastAnyDateForExercise(sessions, exId, { stoodIn: true });
   const layoffDays = now && lastAny ? Math.round((+new Date(now) - +new Date(lastAny)) / 86400000) : 0;
   if (layoffDays >= COMEBACK_GAP_DAYS) {
-    const eased = Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4;
+    const floor = barFloor(exId, lastWeight, barKg, byId);
+    const eased = Math.max(floor, Math.round(lastWeight * COMEBACK_DELOAD * 4) / 4);
+    if (floor > 0 && !(eased < lastWeight)) return { suggested_kg: lastWeight, note: `It's been ${layoffDays} days — start on the empty bar and ramp back in as it feels easy.`, layoff_days: layoffDays, ...base };
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
   }
   const band = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); // TODAY's band: rule 3's target, and what the next session is judged against
@@ -244,18 +254,38 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     const prev = recentWorkSets(sessions, exId, 2)[1];
     const prevA = prev ? anchorOf(prev.sets, ownMin(prev, repRange)) : null;
     const prevUnder = !!prevA && prevA.weight >= lastWeight && prevA.first.reps < ownMin(prev, repRange);
+    const inc = loadIncrement(exId, byId);
+    const near = band ? +band[1] : 1;
+    const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
+    const floored = Math.floor(raw / inc + 1e-9) * inc;
+    const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
+    // Never under the empty bar for a barbell lift (Burst 8 review #37/#40) — the LIFTER's bar (45 lb = 20.41 kg for a
+    // pounds lift, fix C3), and only for a lift done ON it: an EZ-bar skullcrusher at 15 kg is no bar-floor case (fix C4).
+    // At the bar nothing lighter exists — said, never promised (fix C4).
+    const bar = barFloor(exId, lastWeight, barKg, byId);
+    const eased = Math.max(bar, Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4);
+    const atBar = bar > 0 && !(eased < lastWeight);
     if (min - s1.reps >= 2 || prevUnder) {
-      const inc = loadIncrement(exId, byId);
-      const near = band ? +band[1] : 1;
-      const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
-      const floored = Math.floor(raw / inc + 1e-9) * inc;
-      const lowest = Math.ceil((lastWeight * 0.8) / inc - 1e-9) * inc;
-      const eased = Math.round(Math.min(lastWeight - inc, Math.max(lowest, floored)) * 4) / 4;
+      if (atBar) return { suggested_kg: lastWeight, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — but the empty bar is as light as it goes, so build the reps here.`, ...base };
       // The model aims the FIRST set at the range's bottom, so that is all the copy promises —
       // and when the ~20% cap binds, not even that.
       const tail = floored < lowest ? " (as far as I'll drop it in one go)." : " — your first set should land in the range.";
-      if (eased > 0) return { suggested_kg: eased, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg${tail}`, ...base };
+      if (eased > 0 && eased < lastWeight) return { suggested_kg: eased, note: `Your first set at ${lastWeight} kg came in at ${s1.reps} — under the ${min}–${max} range — so I've lightened this to ${eased} kg${tail}`, ...base };
     } else {
+      // W305 (owner: "it didn't suggest a more appropriate weight"): one set is noise, so the weight still holds once —
+      // but the lighter one is OFFERED beside it, the choice the lifter's own feel should make. Only a real one: lighter,
+      // and at most ~20% down (Burst 8 review #37: 5 → 2.5 kg is half the load). Its reps are the model's at it (#34) —
+      // set 1's capacity carried there by Epley, as the in-session hint fills them; added load on a bodyweight lift isn't
+      // the whole load, so the range's bottom there.
+      if (atBar) return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight: the empty bar is as light as it goes, so build the reps here.`, ...base };
+      if (eased > 0 && eased < lastWeight && eased >= lastWeight * 0.8 - 1e-9) {
+        // …with set 1's Epley e1RM, so the player predicts the reps at whatever plate it OFFERS (a pounds plate can round
+        // up from alt_kg — fix C6), clamped there as here.
+        const bw = byId.get(exId)?.equipment === "bodyweight";
+        const alt_e1rm = Math.round(lastWeight * (1 + (s1.reps + (s1Rir ?? 0)) / 30) * 100) / 100;
+        const alt_reps = bw ? min : Math.max(min, Math.min(max, Math.round(30 * (alt_e1rm / eased - 1) - near)));
+        return { suggested_kg: lastWeight, alt_kg: eased, alt_reps, ...(bw ? {} : { alt_e1rm }), note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight and aim for ${min}, or use ${eased} kg if it felt like too much. If it happens again, I'll lighten it.`, ...base };
+      }
       return { suggested_kg: lastWeight, note: `Just under the range last time (${s1.reps}; it starts at ${min}) — keep the weight. If it happens again, I'll lighten it.`, ...base };
     }
   }
@@ -286,6 +316,8 @@ const heldLead = (note, taper) => note === GENERIC_HOLD_NOTE ? (taper ? "Taper �
   : /^You hit failure last time/.test(note) ? "You hit failure last time — same weight."
   : /^You hit the top of the range last time, but/.test(note) ? note.replace(/ until you get there with \d+ in reserve\.$/, ".")
   : /^You did \d+ of \d+ sets last time/.test(note) ? note.replace(/ — get all .*$/, " — same weight.")
+  : / the empty bar is as light as it goes, so build the reps here\.$/.test(note) ? note.replace(/, so build the reps here\.$/, ".") // a hold at the bar (W305i, H5)
+  : /^Just under the range last time/.test(note) ? note.replace(/ — keep the weight and aim for \d+, or use /, " — keep the weight, or use ") // W305's held note (Burst 8 review #5)
   : note;
 
 // Which program session is due today (simple rotation by sessions completed).
@@ -607,7 +639,7 @@ export function trainingContext(user, sessions, now = null) {
 // when the weight moved, its reason.
 const musclesFor = (byId) => (id) => { const e = byId.get(id); return e ? { primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] } : null; };
 const setsWord = (n) => `${n} set${n === 1 ? "" : "s"}`;
-function orderShift(ex, last, sug, slot, byId, anchorNear) {
+function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG) {
   if (!slot?.program?.sessions || !last?.name || byId.get(ex.exercise)?.equipment === "bodyweight") return null;
   const today = slot.session?.exercises ?? [], anchorDay = slot.program.sessions.find((s) => s.name === last.name)?.exercises ?? [];
   const ti = today.findIndex((e) => e.exercise === ex.exercise), ai = anchorDay.findIndex((e) => e.exercise === ex.exercise);
@@ -639,7 +671,7 @@ function orderShift(ex, last, sug, slot, byId, anchorNear) {
   const stays = () => ({ fromLoss, toLoss, kg: W, note: null, clause });
   if (steps === 0) return stays(); // under half a step: the weight stays exactly as it was
   let kg = Math.round((W + steps * inc) * 100) / 100;
-  if (byId.get(ex.exercise)?.equipment === "barbell") kg = Math.max(kg, Math.min(W, EMPTY_BAR_KG));
+  kg = Math.max(kg, Math.min(W, barFloor(ex.exercise, La, barKg, byId))); // never under the bar it's DONE on (H2) — read from the weight done, not the bump (I2)
   if (!(kg > 0) || kg === W) return stays();
   const earned = W > La && kg <= La ? " — you'd earned a step up, but this position cancels it"
     : W > La ? " — the step up you'd earned, adjusted for the order"
@@ -669,7 +701,9 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     : block?.phase === "deload" ? "3-4"
     : block ? waveRir(ex.rir ?? "1-3", block.week)
     : ex.rir ?? "1-3";
-  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper);
+  // The lifter's own bar for this lift (fix C3): a pounds lift's is the 45-lb one.
+  const barKg = (ctx.exerciseUnits?.[ex.exercise] ?? ctx.units) === "imperial" ? EMPTY_BAR_LB_KG : EMPTY_BAR_KG;
+  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper, { barKg });
   // Apply the mesocycle wave: sets scale with the block week — but never below 2
   // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
   // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
@@ -686,7 +720,7 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   const nearOf = (b) => { const m = /(\d+)\s*-\s*(\d+)/.exec(b ?? ""); return m ? +m[1] : 1; };
   const anchorNear = nearOf(last?.target?.rir ?? ex.rir);
   // The exercise-order rule (W290) moves the history weight first; never during a taper or a comeback.
-  const order = last && !taper && sug.layoff_days == null ? orderShift(ex, last, sug, slot, byId, anchorNear) : null;
+  const order = last && !taper && sug.layoff_days == null ? orderShift(ex, last, sug, slot, byId, anchorNear, barKg) : null;
   const base = order ? order.kg : sug.suggested_kg;
   // Deload load must ease from last week's ACTUAL weight, not the progressed
   // suggestion — otherwise the +load bump (or an RIR-in-the-tank double bump) can
@@ -696,7 +730,8 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // the prior real week and never undoes a lighter ease (a layoff comeback at
   // 0.88× stays at 0.88×, not bumped back up to 0.9×). Never during a taper — a
   // taper's whole point is holding the load while sets come down.
-  const deloadKg = !taper && block?.phase === "deload" && sug.suggested_kg != null ? Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4 : null;
+  const deloadKg = !taper && block?.phase === "deload" && sug.suggested_kg != null
+    ? Math.max(barFloor(ex.exercise, sug.last_kg ?? sug.suggested_kg, barKg, byId), Math.round((sug.last_kg ?? sug.suggested_kg) * 0.9 * 4) / 4) : null; // …never under the bar (H3)
   const suggested_kg = deloadKg != null ? Math.min(base, deloadKg) : base;
   // The reason travels to the set screen (Burst 1 review), so it must describe the weight
   // actually served: when the deload ease lowered it, the progression's note ("add 2.5 kg")
@@ -732,8 +767,13 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     || (Number.isInteger(plannedSets) && sets < plannedSets && /^You did \d+ of \d+ sets/.test(sug.note));
   const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
     : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
+  // At the bar the deload can't take its 10% (W305j, I1): it says what it serves — last time's weight, or the bar.
+  const lastKgD = sug.last_kg ?? sug.suggested_kg;
+  const deloadBar = deloadLowered && deloadKg > Math.round(lastKgD * 0.9 * 4) / 4;
   const composed = deloadLowered
-    ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
+    ? (deloadBar && deloadKg >= lastKgD - 0.02 ? `Deload week — the empty bar is as light as it goes, so it stays at ${suggested_kg} kg (no step up this week). Your progression picks up again after this week.`
+      : deloadBar ? `Deload week — down to the empty bar (${suggested_kg} kg), as light as it goes. Your progression picks up again after this week.`
+      : `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`)
     : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
   // After an easier session of this lift (a tired ease, a deload) — sets that never anchor — "last time" in the reason is the
   // last FULL session, two workouts back: say so (Burst 6 review round 3: the read-out put "Last time you hit the top of the
@@ -741,7 +781,12 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   const lastAny = last ? lastAnyDateForExercise(sessions, ex.exercise) : null;
   const last_easy = !!(last?.date && lastAny && +new Date(lastAny) > +new Date(last.date));
   const suggestion_note = last_easy && composed ? lastRegular(composed) : composed;
-  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy };
+  // The held weight's lighter alternative (W305) travels only while the weight IS the held one — once position, taper or
+  // a comeback moved it, the alternative no longer describes it.
+  const alt_kg = sug.alt_kg != null && suggested_kg === sug.suggested_kg ? sug.alt_kg : null;
+  const alt_reps = alt_kg != null ? sug.alt_reps ?? null : null; // the reps the model predicts there (Burst 8 review #34)
+  const alt_e1rm = alt_kg != null ? sug.alt_e1rm ?? null : null; // …and its e1RM, for any plate the player offers (fix C6)
+  return { rirBand, sets, sug, suggested_kg, suggestion_note, rep_targets, last_easy, alt_kg, alt_reps, alt_e1rm };
 }
 
 // The day a live workout is on, by the name the player carries (Burst 6, N7): the rotation's own day
@@ -949,7 +994,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // the read-out's "next time" also uses (servedLift).
     // The anchor's day is looked up in the STORED plan: a today-swap's patched copy (substituteRow) moves
     // the swapped-in lift out of its own day, where its anchor lives (Burst 5 review).
-    const served = servedLift(ex, sessions, { block, taper }, byId, now, { program: user.stored_program ?? program, session: templateSession });
+    const served = servedLift(ex, sessions, { block, taper, units: user.profile?.units, exerciseUnits: user.profile?.exercise_units }, byId, now, { program: user.stored_program ?? program, session: templateSession });
     const { rirBand, sets, sug } = served;
     let { suggested_kg, suggestion_note } = served;
     // No history for this lift: a non-beginner gets a body-scaled starting guess
@@ -992,6 +1037,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       movement_pattern: e?.movement_pattern ?? null, // → the inline line-art demo on the set screen
       suggested_kg,
       suggestion_note,
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, ...(served.alt_e1rm ? { alt_e1rm: served.alt_e1rm } : {}) } : {}), // → "Use X kg" beside a held weight's note (W305), at the model's reps
       // The reason's "last time" is the last REGULAR session (an easier one came since) — the set screen labels it so (round 3).
       ...(served.last_easy ? { last_easy: true } : {}),
       // Tried only on an easier day (no anchor, but sets in History): never "New lift" on the set screen (round 5).
@@ -1048,7 +1094,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // own signal, carried explicitly so no consumer re-derives it from the filter.
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, coach_note, gap_note, swap_note,
+  // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
+  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId);
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1219,9 +1267,12 @@ export function sessionReadout(user, sessions, session, ctx = {}) {
     if (!hit) continue; // a session-only substitute: not in the plan, so no promise to make
     const thisWeek = hit.j < slotsLeft;
     if (!thisWeek && rollingNextWeek) continue; // the new block's plan sets that weight
-    const served = servedLift(hit.ex, sessions, thisWeek ? nextCtx : nextWeekCtx, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
+    const served = servedLift(hit.ex, sessions, { ...(thisWeek ? nextCtx : nextWeekCtx), units: user.profile?.units, exerciseUnits: user.profile?.exercise_units }, byId, thisWeek ? now : nextWeekNow, { program, session: program.sessions[hit.idx] });
     if (served.suggested_kg == null) continue;
-    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week" });
+    next.push({ exercise: id, name: name(id), kg: served.suggested_kg, last_kg: served.sug.last_kg ?? null, note: served.suggestion_note, session: program.sessions[hit.idx].name, when: thisWeek ? "this-week" : "next-week",
+      // The held weight's alternative, with what the player's ONE offer (altOffer) needs to say it in the lift's unit or
+      // drop it — the set screen's note and this line name the same weight (Burst 8 review #7).
+      ...(served.alt_kg ? { alt_kg: served.alt_kg, alt_reps: served.alt_reps, ...(served.alt_e1rm ? { alt_e1rm: served.alt_e1rm } : {}), rep_range: hit.ex.rep_range, rir: served.rirBand, equipment: byId.get(id)?.equipment ?? null } : {}) });
   }
 
   const block = [];

@@ -1,12 +1,33 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
 export function generateUserPlan(profile, opts = {}) {
   return generatePlan(profile, KB, opts);
+}
+
+// THE THREE WAYS BACK, measured when Today asks (W305c, Burst 8 review #13 #14 #26 #39) — once stored at build time,
+// which left a legacy plan with none, a swapped plan with the old plan's numbers, and a later block's card unseen. From
+// the plan the user HAS, against alternatives built exactly as the button's rebuild builds them (rebuildPlan for a
+// schedule change: block 0, the per-muscle tune kept, a finished specialization block stays finished, today's stalls).
+// Two generatePlan runs (~0.35 ms each); deterministic for the same stored plan.
+export function userTimeFit(user, { stalledExercises = [] } = {}) {
+  if (!user?.program?.sessions?.length || user.program.custom) return null;
+  const tune = { volumeAdjust: user.plan_meta?.volume_adjust ?? {}, stalledExercises,
+    specSpent: !!user.plan_meta?.spec_spent || (user.plan_meta?.block_index ?? 0) >= SPEC_MAX_BLOCKS };
+  // A schedule change rebuilds at block 0; a REFIT (a plan from an older engine, no change asked) rebuilds at the
+  // CURRENT block — rebuildPlan's cosmetic path (W305h, fix C2).
+  return timeFitOptions(user.profile ?? {}, KB, { program: user.program, rationale: user.plan_rationale ?? null, meta: user.plan_meta ?? null },
+    planOptsFor(user, { blockIndex: 0, ...tune }), { customExercises: user.custom_exercises || [], refitOpts: planOptsFor(user, { blockIndex: user.plan_meta?.block_index ?? 0, ...tune }) });
+}
+// The question alone — the plan as it is, no alternatives — for the keep door and the explanation (W305h, C0/C10, K0).
+export function userTimeFitQuestion(user) {
+  if (!user?.program?.sessions?.length || user.program.custom) return null;
+  return timeFitQuestion(user.profile ?? {}, KB, { program: user.program, rationale: user.plan_rationale ?? null, meta: user.plan_meta ?? null },
+    { customExercises: user.custom_exercises || [] });
 }
 
 // The user-derived generatePlan opts every door shares (W301, considerations iteration — Burst 7). One place, so a
@@ -58,14 +79,14 @@ export function isSpecializing(profile, blockIndex, spent = false) {
 
 // "What your answers changed" — read straight off the plan the engine just built, so
 // the explanation and the program can never disagree about what was done.
-export function explainUserPlan(profile, rationale, program) {
-  return explainPersonalization(profile, rationale, program);
+export function explainUserPlan(profile, rationale, program, live = null) {
+  return explainPersonalization(profile, rationale, program, live);
 }
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus

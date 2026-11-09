@@ -3,13 +3,15 @@
 // anything with real logic lives here, red-first.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
+import { groupSessionsByWeek, mondayOf, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarDrift, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitRequest, noteInUnit, hintCopy, readoutLists, MUSCLE_LABEL, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS } from "../public/ui-helpers.mjs";
 import * as uiHelpers from "../public/ui-helpers.mjs"; // Burst 5's new exports, read so a missing one fails its own check
 import { suggestWeight, MUSCLE_PLAIN, servedLift } from "../src/coach.mjs";
 import { prefillInUnit } from "../public/session-core.mjs";
+import * as sessionCore from "../public/session-core.mjs"; // Burst 8 review: the hint/alternative helpers, read so a missing one fails its own check
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
+const checkAsync = async (name, fn) => { try { await fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
 
 check("mondayOf: any day maps to its week's Monday, across month/year edges", () => {
   assert.equal(mondayOf("2026-08-19"), "2026-08-17"); // Wed → Mon
@@ -220,11 +222,102 @@ check("nextSessionLine: the next workout by day — tomorrow, a weekday, or (no 
 
 // --- W278 (the owner's option 1): the plan's size vs the days actually committed. The copy
 // says what the mismatch costs, what a rebuild changes, and that it starts a fresh block.
+// W304 (considerations iteration, Burst 8): the three ways back, worded. Ranked as the owner ranked them; every option
+// says what it wins or costs (measured by the engine, never promised); keep says what stays short.
+// W305c (Burst 8 review #6 #15 #17 #19 #21 #27 #29 #30 #41 #49): every option says what it wins AND what it newly
+// leaves short; keep says only what it forgoes (and any day it leaves long); a landmark is "the usual starting point for
+// growth (an estimate)", never "the minimum that builds muscle"; no verb has to agree with a muscle's name; the minutes
+// compared are like for like (longest workout, now vs then); a beginner has no block to restart; days still past their
+// minutes are said even when sets were cut — and even when no option helps (keep alone, to acknowledge).
+const FIT_SHORT = { days: 4, minutes: 60, blocks: true, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 4.5, mev_short: ["chest", "side-delts", "calves"], max_minutes: 49.4, key: "k1",
+  options: [
+    { kind: "add_day", days: 5, minutes: 60, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 1, mev_short: ["calves", "abs"], max_minutes: 50.7, lifted: ["chest", "side-delts"], newly: ["abs"] },
+    { kind: "longer", days: 4, minutes: 75, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 2, mev_short: ["calves"], max_minutes: 61.1, lifted: ["chest", "side-delts"], newly: [] },
+    { kind: "keep", days: 4, minutes: 60, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 4.5, mev_short: ["chest", "side-delts", "calves"], max_minutes: 49.4, lifted: [], newly: [], forgoes: ["chest", "side-delts"] }] };
+check("timeFitCopy: what's short is 'below the usual starting point for growth (an estimate)' — never 'the minimum that builds muscle' (#6 #19)", () => {
+  const c = timeFitCopy(FIT_SHORT);
+  assert.equal(c.title, "4 workouts of 60 min leave some muscles short");
+  assert.equal(c.body, "Below the usual starting point for growth (an estimate): chest, shoulders (side) and calves.");
+  for (const o of c.options) assert.doesNotMatch(`${c.body} ${o.detail}`, /minimum that builds|builds muscle|stays? under the minimum/);
+});
+check("timeFitCopy: an option says what it lifts AND what it newly leaves short; keep names only what it forgoes (#15 #17)", () => {
+  const c = timeFitCopy(FIT_SHORT);
+  assert.deepEqual(c.options.map((o) => o.kind), ["add_day", "longer", "keep"]);
+  assert.equal(c.options[0].label, "Train 5 days a week");
+  assert.match(c.options[0].detail, /^brings chest and shoulders \(side\) up to it · leaves abs below it · /);
+  assert.doesNotMatch(c.options[1].detail, /leaves/, "nothing newly short → nothing said about it");
+  assert.equal(c.options[2].label, "Keep 4 × 60 min");
+  assert.equal(c.options[2].detail, "leaves chest and shoulders (side) below it", "calves are short whatever you pick — not keep's cost");
+});
+check("timeFitCopy: no verb has to agree with a muscle's name — calves, abs, hamstrings read right alone (#30)", () => {
+  const one = { ...FIT_SHORT, mev_short: ["calves"], options: [{ ...FIT_SHORT.options[0], lifted: ["calves"], newly: [], mev_short: [] }, { ...FIT_SHORT.options[2], mev_short: ["calves"], forgoes: ["calves"] }] };
+  const c = timeFitCopy(one);
+  assert.doesNotMatch(`${c.body} ${c.options.map((o) => o.detail).join(" ")}`, /\b(gets|reaches its|stays)\b/);
+  assert.match(c.body, /: calves\.$/);
+  assert.match(c.options[0].detail, /^brings calves up to it/);
+});
+check("timeFitCopy: minutes are compared like for like — the longest workout, then and now (#29 #41)", () => {
+  const c = timeFitCopy(FIT_SHORT);
+  assert.match(c.options[0].detail, /longest workout about 51 min \(now 49\)/);
+  assert.match(c.options[1].detail, /longest workout about 61 min \(now 49\)/, "'Make workouts 75 min' shows what the days would really take");
+  assert.doesNotMatch(c.options[0].detail, /min a day/);
+});
+check("timeFitCopy: a block restart is said only where there are blocks — a beginner has none (#27)", () => {
+  assert.match(timeFitCopy(FIT_SHORT).options[0].detail, /starts a fresh 6-week block$/);
+  const beg = timeFitCopy({ ...FIT_SHORT, blocks: false });
+  for (const o of beg.options) assert.doesNotMatch(o.detail, /block/);
+});
+check("timeFitCopy: days still past their minutes are said even when sets were cut — never 'to fit', and keep names the overrun (#49)", () => {
+  const fit = { days: 4, minutes: 30, blocks: true, trimmed_sets: 5, unfit_days: 2, over: [{ session: "Lower A", minutes: 35.7 }, { session: "Upper A", minutes: 31.2 }],
+    mev_deficit: 0, mev_short: [], max_minutes: 35.7, key: "k2",
+    options: [{ kind: "longer", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 0, mev_short: [], max_minutes: 41, lifted: [], newly: [] },
+      { kind: "keep", days: 4, minutes: 30, trimmed_sets: 5, unfit_days: 2, over: [{ session: "Lower A", minutes: 35.7 }, { session: "Upper A", minutes: 31.2 }], mev_deficit: 0, mev_short: [], max_minutes: 35.7, lifted: [], newly: [], forgoes: [] }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.title, "2 workouts run past 30 minutes");
+  assert.match(c.body, /^Lower A takes about 36 min, the longest of 2\. 5 sets already came out to save time\.$/);
+  assert.doesNotMatch(c.body, /To fit/);
+  assert.match(c.options[0].detail, /^every workout fits · longest workout about 41 min \(now 36\)/);
+  assert.equal(c.options[1].detail, "Lower A stays about 36 min, and 1 more past 30");
+});
+check("timeFitCopy: a day past its minutes that no option fixes is still said — keep alone, to acknowledge (#21)", () => {
+  const fit = { days: 2, minutes: 30, blocks: true, trimmed_sets: 0, unfit_days: 1, over: [{ session: "Full Body A", minutes: 36.3 }], mev_deficit: 0, mev_short: [], max_minutes: 36.3, key: "k3",
+    options: [{ kind: "keep", days: 2, minutes: 30, trimmed_sets: 0, unfit_days: 1, over: [{ session: "Full Body A", minutes: 36.3 }], mev_deficit: 0, mev_short: [], max_minutes: 36.3, lifted: [], newly: [], forgoes: [] }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.title, "Full Body A runs past 30 minutes");
+  assert.match(c.body, /^Full Body A takes about 36 min\. What's left is your main lifts and the sets your muscles need\.$/);
+  assert.deepEqual(c.options.map((o) => [o.kind, o.label, o.detail]), [["keep", "Keep 2 × 30 min", "Full Body A stays about 36 min"]]);
+});
+// W305h (fix C2): a plan from an older engine is said to be one — never "what's left is what your muscles need" about a
+// day nothing was ever trimmed from — and its REFIT keeps the days, the minutes and the block.
+check("timeFitCopy: a plan from an older engine says so, and its refit keeps the days and the block (fix C2)", () => {
+  const over = [{ session: "Upper B", minutes: 47.2 }];
+  const fit = { days: 4, minutes: 45, blocks: true, fitted: false, trimmed_sets: 0, unfit_days: 1, over, mev_deficit: 0, mev_short: [], max_minutes: 47.2, key: "k4",
+    options: [{ kind: "refit", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 0, over: [], mev_deficit: 0, mev_short: [], max_minutes: 44, lifted: [], newly: [] },
+      { kind: "keep", days: 4, minutes: 45, trimmed_sets: 0, unfit_days: 1, over, mev_deficit: 0, mev_short: [], max_minutes: 47.2, lifted: [], newly: [], forgoes: [], fitted: false }] };
+  const c = timeFitCopy(fit);
+  assert.equal(c.body, "Upper B takes about 47 min. Your plan was built before workouts were sized to your minutes.");
+  assert.doesNotMatch(c.body, /What's left/);
+  assert.equal(c.options[0].label, "Refit to 45 min");
+  assert.equal(c.options[0].detail, "every workout fits · same days, same block · longest workout about 44 min (now 47)");
+  assert.doesNotMatch(c.options[0].detail, /fresh 6-week block/);
+  assert.equal(timeFitCopy({ ...fit, blocks: false }).options[0].detail, "every workout fits · same days · longest workout about 44 min (now 47)", "a beginner has no block to keep");
+  assert.deepEqual(timeFitRequest({ kind: "refit", days: 4, minutes: 45 }), { profile: {} }, "a refit asks for no change: the Settings door rebuilds at the same block");
+});
+check("timeFitCopy: nothing to say → no card", () => {
+  assert.equal(timeFitCopy(null), null);
+  assert.equal(timeFitCopy({ unfit_days: 0, options: [{ kind: "keep" }] }), null, "keep alone, with nothing over its minutes, is no question");
+});
+check("timeFitRequest: more days or minutes go through the Settings door; keep has no rebuild", () => {
+  assert.deepEqual(timeFitRequest({ kind: "add_day", days: 5 }), { profile: { days_per_week: 5 } });
+  assert.deepEqual(timeFitRequest({ kind: "longer", minutes: 60 }), { profile: { session_length_min: 60 } });
+  assert.equal(timeFitRequest({ kind: "keep" }), null);
+});
 check("planFitCopy: fewer days than workouts — they roll into next week, your muscles get less; the rebuild fits the week", () => {
   assert.deepEqual(planFitCopy({ plan_days: 4, committed_days: 3 }), {
     title: "Fit your plan to your 3 days?",
     body: "You've been picking 3 days a week, but your plan has 4 workouts — so workouts keep rolling into the next week, and your muscles get less than the plan was built for. Rebuilt for 3 days, every workout fits your week. It starts a fresh training block.",
     rebuild: "Rebuild for 3 days", keep: "Keep my 4-day plan", key: "4:3", days: 3,
+    notice: "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.", // W305j (J2): the tap's notice, here
   });
 });
 check("planFitCopy: more days than workouts — they repeat, your muscles get more; no offer without a mismatch", () => {
@@ -435,6 +528,34 @@ check("#why-unit (W290) the order note reaches a pounds user in pounds, never kg
   }
   assert.ok(seen >= 2, `order notes exercised: ${seen}`);
 });
+// --- Burst 8 review #7/#25 (R6/R7): the held note's "or use X" and the 'Use X' button always agree — the note names
+// exactly what the player offers (altOffer), in the lift's unit, or names nothing when nothing is offered.
+check("#why-unit (Burst 8 review #7) the held note's alternative is the one offered — or none, in kg as in pounds", () => {
+  const n = "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 8 kg if it felt like too much. If it happens again, I'll lighten it.";
+  const row = { suggested_kg: 9.07, last_kg: 9.07, alt_kg: 8 };
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20, null), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8. If it happens again, I'll lighten it.");
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20, 15), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 15 lb if it felt like too much. If it happens again, I'll lighten it.");
+  assert.equal(noteInUnit(n, row, "kg", (k) => k, 9, null), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8. If it happens again, I'll lighten it.", "a tired row in kg: no alternative named");
+  assert.equal(noteInUnit(n, row, "kg", (k) => k, 9, 8), n);
+  assert.equal(noteInUnit(n, row, "lb", lbD, 20), "Just under the range last time (7; it starts at 8) — keep the weight and aim for 8, or use 20 lb if it felt like too much. If it happens again, I'll lighten it.", "no offer given (another caller): as before");
+});
+check("#why-unit (Burst 8 review #7) the real engine → the player: a pounds user at 20 lb gets no same-plate 'or use 20 lb' — and no button", () => {
+  const sets = [7, 6, 6].map((reps) => ({ exercise: "dumbbell-lateral-raise", set_type: "work", weight_kg: 9.07, reps, rir: 0 }));
+  const s = servedLift({ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }, [{ date: "2026-06-01T18:00:00Z", sets, targets: [{ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }] }], {}, undefined, null);
+  assert.deepEqual([s.suggested_kg, s.alt_kg], [9.07, 8], "precondition: held at 9.07 kg with 8 kg beside it");
+  const lbK = (v) => Math.round((v / 2.2046226) * 100) / 100;
+  for (const [kg, unit, toDisp, step] of [[9.07, "lb", lbD, 5], [13.61, "lb", lbD, 5], [9.07, "kg", (k) => Math.round(k * 4) / 4, 2.5]]) {
+    const hist = [{ date: "2026-06-01T18:00:00Z", sets: sets.map((x) => ({ ...x, weight_kg: kg })), targets: [{ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }] }];
+    const sv = servedLift({ exercise: "dumbbell-lateral-raise", sets: 3, rep_range: "8-12", rir: "1-2" }, hist, {}, undefined, null);
+    const row = { equipment: "dumbbell", rep_range: "8-12", rir: "1-2", suggested_kg: sv.suggested_kg, last_kg: sv.sug.last_kg, alt_kg: sv.alt_kg, alt_reps: sv.alt_reps };
+    const served = prefillInUnit(row, toDisp, step);
+    const offer = sessionCore.altOffer(row, { toDisp, toKg: unit === "lb" ? lbK : (v) => v, step, served, unit });
+    const note = noteInUnit(sv.suggestion_note, row, unit, toDisp, served, offer?.w ?? null);
+    const named = /or use ([\d.]+) (?:lb|kg)/.exec(note)?.[1];
+    assert.equal(named == null ? null : +named, offer?.w ?? null, `${kg} kg in ${unit}: the note names ${named}, the button ${offer?.w} — ${note}`);
+    if (offer) assert.ok(offer.w < served, `a real step under the served ${served}: ${offer.w}`);
+  }
+});
 // The next-set hint says what actually happened: reps under, reps over — or reps IN the range
 // with far more left in the tank than planned (that hint fires on effort; "over the range"
 // was a false statement there).
@@ -444,8 +565,27 @@ check("#hint-copy each kind of hint says what actually happened", () => {
     "Set 1: 6 reps at 60 kg — under the 8–12 range. Try 55 kg for this one to land in it, allowing for the rep or so each hard set costs.");
   assert.equal(j(hintCopy({ kind: "heavier", reps: 15, min: 8, max: 12, rir: null, band: "1-3" }, { setNo: 2, fromW: "40 kg", toW: "42.5 kg" })),
     "Set 2: 15 reps at 40 kg — over the 8–12 range. Try 42.5 kg for this one to land in it.");
+  // W305: the two new answers say what actually happened too.
+  assert.equal(j(hintCopy({ kind: "same", reps: 7, min: 8, max: 12, rir: 3, band: "1-3", target_reps: 8 }, { setNo: 1, fromW: "100 kg", toW: "100 kg" })),
+    "Set 1: 7 reps at 100 kg — under the 8–12 range, with about 3 left in the tank. Try 100 kg again and aim for 8 — you had the reps.");
+  // (Burst 8 review #4/#28/#45, deliberate: W305's in-range "lighter" — and its "after a set that hard" copy — is gone.)
   assert.equal(j(hintCopy({ kind: "heavier", reps: 10, min: 8, max: 12, rir: 5, band: "1-3" }, { setNo: 1, fromW: "40 kg", toW: "45 kg" })),
     "Set 1: 10 reps at 40 kg — in the range, but with about 5 left in the tank (the plan says 1–3). Try 45 kg for this one.");
+});
+// Burst 8 review #28: a set OVER the range was called "in the range" and told to go lighter. Through the real hint and
+// its copy: a 'lighter' only ever follows a set under the range, and says so.
+check("#hint-copy (Burst 8 review #28) a 'lighter' hint only ever follows a set UNDER the range — and says so", () => {
+  let seen = 0;
+  for (const [rep_range, min, max] of [["6-10", 6, 10], ["8-12", 8, 12], ["10-15", 10, 15]]) for (const rir of ["0-1", "1-2", "2-3"]) for (let reps = 1; reps <= max + 1; reps++) for (const r of [null, 0, 1, 2, 3]) {
+    for (const nextAim of [null, min - 1, min + 1, max]) {
+      const h = sessionCore.nextSetHint({ exercise: "x", set_type: "work", weight_kg: 60, reps, ...(r != null ? { rir: r } : {}) }, { rep_range, rir, inc_kg: 2.5 }, { nextAim });
+      if (h?.kind !== "lighter") continue;
+      seen++;
+      assert.ok(h.reps < min, `${reps} reps @${r} on ${rep_range} (${rir}), next aim ${nextAim}: lighter`);
+      assert.match(hintCopy(h, { setNo: 1, fromW: "60 kg", toW: `${h.kg} kg` }).why, /^under the /);
+    }
+  }
+  assert.ok(seen > 50, `lighter hints exercised: ${seen}`);
 });
 
 // One plain-English muscle vocabulary for every screen (W282): the server's read-out and
@@ -547,19 +687,129 @@ check("player: a workout stamps each lift's PLANNED count at start, and finish s
 });
 check("player: the reason for the pre-filled weight is on screen (single lift and superset station)", () => {
   assert.match(appJs, /\$\{sess\.set === 0 && !firstEver \? whyLine\(e\) : ""\}/);
-  assert.match(appJs, /\$\{round === 0 \? whyLine\(m\) : ""\}/);
+  assert.match(appJs, /\$\{round === 0 \? whyLine\(m, idx\) : ""\}/, "(W305: the station passes its leg, for the held weight's alternative)");
 });
 check("player: every stepper starts on the plate-aware suggestion (single lift AND station), and the hint speaks through hintCopy", () => {
   assert.doesNotMatch(appJs, /sess\.weights\[[^\]]+\] = dispWeightFor\(startWeightDefault\(/, "a pre-fill site still rounds the raw suggestion");
   assert.equal((appJs.match(/= startWeightDisp\((e|m)\);/g) ?? []).length, 2);
-  assert.match(appJs, /hintCopy\(hint, \{ setNo: sess\.set,/);
+  // W305: ONE hint computation (setHintFor) speaks for the set screen, the rest screen and each superset leg.
+  assert.match(fnBody(appJs, "function setHintFor(e) {", 2500), /hintCopy\(hint, \{ setNo: done,/);
+  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const \{ hint, hintW, hc \} = setHintFor\(e\);/, "the set screen");
+  assert.match(fnBody(appJs, "function renderPlayer() {", 9000), /const rh = rest\.kind === "set" \|\| rest\.kind === "remainder" \? setHintFor\(e\) : null;/, "the rest screen, where the plates get changed");
+  assert.match(fnBody(appJs, "function renderSupersetStation(L, P) {", 6000), /const lh = setHintFor\(m\);/, "each superset leg");
+});
+check("player (Burst 8 review #8) a 'same' hint, and every hint's lead, name the weight BANKED at the precision typed", () => {
+  const body = fnBody(appJs, "function setHintFor(e) {", 2500);
+  assert.match(body, /hintInUnit\(rawHint, \(kg\) => dispWeightFor\(kg, e\.exercise\), wIncFor\(e\.exercise\), unitFor\(e\.exercise\)\)/, "the unit, so 'same' keeps 22.5 lb");
+  assert.match(body, /fromW: `\$\{\+editDisplay\(hint\.from_kg, unitFor\(e\.exercise\)\)\} \$\{unitLabelFor\(e\.exercise\)\}`/, "'Set 1: 7 reps at 22.5 lb' — never the 25-lb plate");
+});
+check("read-out (Burst 8 review #7) the next-time line names the alternative the player OFFERS — the same altOffer, or none", () => {
+  const ro = fnBody(appJs, "function readoutCardHtml(", 3000);
+  assert.match(ro, /const alt = n\.alt_kg \? altOffer\(\{ \.\.\.n, suggested_kg: n\.kg \}, \{ toDisp, toKg: \(v\) => toKgFor\(v, n\.exercise\), step: wIncFor\(n\.exercise\), served: disp, unit: unitFor\(n\.exercise\) \}\) : undefined;/);
+  assert.match(ro, /noteInUnit\(n\.note, row, unitFor\(n\.exercise\), toDisp, disp, alt === undefined \? undefined : alt\?\.w \?\? null\)/, "an alternative the player can't offer is dropped from the note");
+});
+check("player (Burst 8 review #7/#25/#34) the held weight's alternative: ONE offer (altOffer) for the note, the button and the tap", () => {
+  assert.match(appJs, /const altFor = \(e\) => altOffer\(e, \{ toDisp: \(kg\) => dispWeightFor\(kg, e\.exercise\), toKg: \(v\) => toKgFor\(v, e\.exercise\), step: wIncFor\(e\.exercise\), served: startWeightDisp\(e\), unit: unitFor\(e\.exercise\) \}\);/);
+  const why = fnBody(appJs, "const whyLine = (e, idx = sess?.i) => {", 900);
+  assert.match(why, /const alt = altFor\(e\);/);
+  assert.match(why, /noteInUnit\(e\.suggestion_note, e, unitFor\(e\.exercise\), \(kg\) => dispWeightFor\(kg, e\.exercise\), startWeightDisp\(e\), alt\?\.w \?\? null\)/, "#7: the note names what the button offers, or nothing");
+  assert.match(why, /const altBtn = alt && Number\(sess\?\.weights\?\.\[idx\]\) === startWeightDisp\(e\)/);
+  assert.match(why, /Use \$\{alt\.w\} \$\{unitLabelFor\(e\.exercise\)\}/);
+  assert.doesNotMatch(why, /dispWeightFor\(e\.alt_kg/, "#7: never the plain plate-rounding (it collapses onto the served plate)");
+  const wire = fnBody(appJs, "function wireAltWeight(rerender) {", 600);
+  assert.match(wire, /const idx = \+b\.dataset\.altWeight, e = sess\.ex\[idx\], a = altFor\(e\);/);
+  assert.match(wire, /sess\.weights\[idx\] = a\.w;/);
+  assert.match(wire, /sess\.reps\[idx\] = a\.reps;/, "#34: the reps the model predicts there");
+  assert.doesNotMatch(wire, /rep_range/, "#34: never the range's bottom");
+});
+
+// --- Burst 8 review (W305f): the rest screen's hint and the station's leg hints. app.js can't run under Node, so these
+// pin the wiring by its exact text (the rest of this file's convention); a real-browser walkthrough backs them.
+const between = (src, head, end) => { const a = src.indexOf(head); assert.ok(a >= 0, `missing: ${head}`); const b = src.indexOf(end, a + head.length); assert.ok(b > a, `missing after ${head}: ${end}`); return src.slice(a, b); };
+const stationRest = () => between(appJs, "function renderSupersetStation(L, P) {", "const memberBlock = (idx) => {");
+const playerRest = () => between(appJs, "const rest = activeRest(sess, Date.now());\n  if (rest) {\n    quitPending = false;\n    // The next set's hint", "const firstEver =");
+const restHintWire = () => between(appJs, "function wireRestHint(idx, shown, named) {", "\n}\n");
+check("#10 station: a leg hint's or the alt weight's tap disarms 'End workout early' and judges the typo guard afresh, like the straight player", () => {
+  const st = fnBody(appJs, "function renderSupersetStation(L, P) {", 12000);
+  assert.match(st, /wireAltWeight\(\(\) => \{ clearSetConfirm\(\); quitPending = false; renderSupersetStation\(L, P\); \}\);/, "the station's alt weight");
+  assert.match(between(st, "const b = $(`#leg-hint-${idx}`);", "$(\"#doner\").onclick"), /if \(b\) b\.onclick = \(\) => \{\s*clearSetConfirm\(\); quitPending = false;/, "each leg's hint button");
+});
+check("#11 rest hint: a superset's remainder rest and every round rest carry the hint (per leg, with its own button)", () => {
+  assert.match(playerRest(), /rest\.kind === "remainder"/, "the remainder rest is between sets of the same lift");
+  const sr = stationRest();
+  assert.match(sr, /const legs = \[L, P\]\.map\(\(idx\) => \[idx, setHintFor\(sess\.ex\[idx\]\)\]\);/, "each leg's hint on the round rest");
+  assert.match(sr, /legs\.map\(\(\[idx, rh\]\) => restHintHtml\(idx, sess\.ex\[idx\], rh, true\)\)\.join\(""\)/);
+  assert.match(sr, /for \(const \[idx, rh\] of legs\) if \(rh\.hc\) wireRestHint\(idx, rh, true\);/);
+  assert.match(playerRest(), /restHintHtml\(sess\.i, e, rh, false\)/);
+  assert.match(playerRest(), /if \(rh\?\.hc\) wireRestHint\(sess\.i, rh, false\);/);
+});
+check("#12 rest hint: 'Use X' re-judges the advice at the tap — a set fixed during the rest never pushes the stale weight", () => {
+  const w = restHintWire();
+  assert.match(w, /const m = sess\.ex\[idx\], rh = setHintFor\(m\), line = \$\(`#rest-hint-\$\{idx\}`\);/, "recomputed at click time");
+  assert.match(w, /rh\.hint && rh\.hint\.kind === shown\.hint\.kind && rh\.hintW === shown\.hintW && rh\.hint\.target_reps === shown\.hint\.target_reps/, "applied only when it is still what the button said");
+  assert.ok(w.indexOf("applyHint(") > w.indexOf("const still ="), "applyHint is gated on the fresh judgement");
+  assert.match(w, /else if \(rh\.hc\) \{ line\.innerHTML = restHintBody\(idx, m, rh, named\); wireRestHint\(idx, rh, named\); \}\s*else line\.remove\(\);/, "otherwise only the line is repainted");
+  assert.doesNotMatch(playerRest(), /applyHint\(/, "no render-time closure applies a hint any more");
+});
+check("#35 rest hint: the tap repaints ONLY its line — no redraw to wipe the readiness ticks, an open fix or re-announce the rest", () => {
+  const w = restHintWire();
+  assert.doesNotMatch(w, /renderPlayer|renderSupersetStation|showRest|innerHTML = `<div|app\.innerHTML|say\(/);
+  assert.match(w, /applyHint\(idx, m, rh\.hint, rh\.hintW\); saveSess\(\);\s*line\.innerHTML = `✓ /, "a short confirmation in place");
+  // (fix C9 then sends it on to the next leg's waiting hint before "I'm ready")
+  assert.match(w, /if \(had\) \(\$\(`#rest-use-hint-\$\{idx\}`\) \?\? app\.querySelector\('\[id\^="rest-use-hint-"\]'\) \?\? \$\("#skip"\)\)\?\.focus\(\);/, "focus never drops to the page when the tapped button goes");
+});
+check("#36 rest hint: the rest's one announcement carries each hint (focus lands on 'I'm ready', after it)", () => {
+  assert.match(playerRest(), /, \$\{e\.name\}\.\$\{restHintSay\(e, rh, false\)\}`/);
+  assert.match(stationRest(), /with \$\{B\.name\}\.\$\{legs\.map\(\(\[idx, rh\]\) => restHintSay\(sess\.ex\[idx\], rh, true\)\)\.join\(""\)\}`/);
+  assert.match(fnBody(appJs, "function showRest(", 2000), /say\(announce\);\n\s*\$\("#skip"\)\.focus\(\);/, "said once, at render");
+});
+check("#47 typing after a typo prompt removes ONLY the confirm cue — the set hint and each leg's hint (and their buttons) stay", () => {
+  const dismiss = fnBody(appJs, "function dismissConfirmCueInPlace() {", 400);
+  assert.match(dismiss, /app\.querySelectorAll\("\[data-confirm-cue\]"\)\.forEach\(\(el\) => el\.remove\(\)\);/);
+  assert.doesNotMatch(dismiss, /role="status"/);
+  assert.equal((appJs.match(/<div class="cue" role="status" data-confirm-cue>\$\{setConfirmCue\((sess\.i|idx)\)\}<\/div>/g) ?? []).length, 2, "both confirm cues carry the marker");
+  assert.equal((appJs.match(/setConfirmCue\(/g) ?? []).length, 2, "…and there is no third, unmarked one");
+  // The hints the dismissal must spare, as rendered: none carries the marker.
+  const setHint = between(appJs, 'const hintHtml = hc ? `<div class="cue" id="set-hint"', "</div>`");
+  const legHint = between(appJs, "const lh = setHintFor(m); return lh.hc ?", "</div>`");
+  for (const h of [setHint, legHint, restHintWire(), between(appJs, "const restHintHtml =", ";\n")]) assert.doesNotMatch(h, /data-confirm-cue/);
+});
+check("time-fit card (Burst 8 review #9 #16 #18 #46 #48 #51): keep names its question; the extra-day picker asks for EVERY day the plan needs — in a labelled, spoken group with a confirm — and a failed days save is said", () => {
+  const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
+  assert.match(tf, /JSON\.stringify\(\{ user_id: uid, choice: "keep", key: tfit\.key \}\)/, "#16 the keep names the question it answers");
+  assert.match(tf, /if \(r\?\.stale\) \{ refreshToday\(\); return; \}/, "#16 a stale card shows the question asked now");
+  assert.match(tf, /need = o\.days - usual\.length;/, "#18 every day the new plan needs, not one");
+  assert.match(tf, /<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q"/, "#48 a labelled group");
+  assert.match(tf, /say\(q\);/, "#48 its question is spoken");
+  assert.match(tf, /aria-pressed="false" aria-label="\$\{DAY_LONG\[d\]\}"/, "#51 full day names, toggled");
+  assert.match(tf, /<button class="btn secondary" id="tfit-go" disabled/, "#51 a confirm — one stray tap never rebuilds");
+  assert.match(tf, /\$\("#tfit-go"\)\.disabled = picked\(\)\.length !== need;/);
+  // W305i (H6, deliberate): the requests and notices moved into timeFitApply (behaviour-tested in #fit-apply) — days
+  // first, then the rebuild; the card hands it the usual days and this week's, and says whatever it returns.
+  assert.match(tf, /const res = await timeFitApply\(\{ o, days, cleared, usual, thisWeek: adh\.commitment\?\.days \?\? \[\], blocks: dy\.plan_time_fit\?\.blocks !== false, uid,/, "#46 the new day joins the usual ones");
+  assert.match(tf, /if \(!res\.refresh\) \{ lockFit\(false\); if \(!stale\(\)\) alertBar\(res\.notice\); return; \}/, "#9 a failure is said, never swallowed");
+  assert.doesNotMatch(tf, /catch \{\}/, "#9 no silent catch");
+});
+check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cleared week, the confirm guarded after a failure, focus to the next hint, one card at a time, a failed save said after the refresh", () => {
+  const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
+  assert.match(tf, /const cleared = \(adh\.commitment_resume_days\?\.length \?\? 0\) > 0;/, "C7: a clear in force — one-off days or not");
+  assert.match(tf, /const usual = cleared \? adh\.commitment_resume_days : \(adh\.commitment\?\.days \?\? \[\]\);/, "C7: the usual days, never this week's one-off");
+  assert.match(tf, /timeFitApply\(\{ o, days, cleared, usual, thisWeek: adh\.commitment\?\.days \?\? \[\]/, "C7: this week stays as it is (the cleared form: #fit-apply, W305i)");
+  assert.match(tf, /const lockFit = \(on\) => \{[^}]*\$\("#tfit-go"\)[^}]*picked/, "C8: the confirm comes back only with the days picked");
+  assert.match(tf, /pendingNotice = res\.notice;/, "#9: the notice rides the refresh, never wiped by it (W305i)");
+  assert.doesNotMatch(tf, /alertBar\("📴 Your plan was rebuilt/, "#9: no alert the refresh erases");
+  const rest = fnBody(appJs, "function wireRestHint(idx, shown, named) {", 2000);
+  assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
+  assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected");
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
   assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
     "single lift AND station seed through repSeed, 'at the served weight' within half a display step (Burst 5 review C2/C18)");
-  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1)");
-  assert.match(appJs, /const prevAim = prevWork && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\) \? validAim\(e\)\?\.\[Math\.min\(loggedSetCount\(e\.exercise\) - 1, validAim\(e\)\.length - 1\)\] \?\? null : null;/,
+  // Burst 8 review #23: today's aims belong to the SERVED load — the set's own aim AND the next set's apply only while the
+  // judged set was banked at it (as repSeed's atServed), never to a weight the lifter moved to.
+  assert.match(appJs, /const rawHint = nextSetHint\(prevWork, e, \{ aim: prevAim, nextAim: atServed \? aims\[done\] \?\? null : null \}\);/, "the hint judges the banked set against ITS aim (Burst 5 review C1), and the next set against ITS aim (W305) — both only at the served load (Burst 8 review #23)");
+  assert.match(appJs, /const atServed = !!prevWork && !!aims && sameLoad\(dispWeightFor\(prevWork\.weight_kg, e\.exercise\), startWeightDisp\(e\), stepFor\(e\)\);\n\s*const prevAim = atServed \? aims\[Math\.min\(done - 1, aims\.length - 1\)\] \?\? null : null;/,
     "the aim applies by the weight the judged set was BANKED at, not what the stepper holds now (fix verification R1)");
   assert.match(appJs, /const stepFor = \(e\) => servedStep\(unitFor\(e\.exercise\), e\.inc_kg\);/, "the lift's own step (fix verification R4)");
   assert.doesNotMatch(appJs, /phone locked|phone is locked|iPhone's Settings/, "device-neutral notification copy (fix verification R6/R7)");
@@ -567,7 +817,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "function normalizeSessUnits() {", 1200), /servedIn: \(k, u\) => \{ const x = sess\.ex\[k\]; return x\?\.suggested_kg != null \? prefillInUnit\(x, \(kg\) => dispW\(kg, u\), wIncIn\(u\)\) : null; \},/, "a unit toggle re-stamps the served pre-fill (round 2 N10)");
   assert.match(fnBody(appJs, '$("#done").onclick = () => {', 3000), /delete sess\.eff\[sess\.i\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[sess\.i\];/, "the single lift's bank re-derives the next set's aim");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /delete sess\.eff\[idx\]; \/\/ each set is its own call[^\n]*\n\s*delete sess\.reps\[idx\];/, "the station's bank too");
-  assert.match(appJs, /sess\.reps\[sess\.i\] = hint\.target_reps/, "Use X kg also sets the reps it aims at");
+  assert.match(fnBody(appJs, "function applyHint(idx, e, hint, hintW) {", 600), /sess\.reps\[idx\] = hint\.target_reps/, "Use X kg also sets the reps it aims at (W305: one applyHint for every screen)");
   // Burst 6: every typo-guard door reads today's banked sets through ONE binder; the cue names what the guard
   // judged against; the editor leaves out the entry being edited; one rep ceiling.
   assert.match(appJs, /const setLooksLikeTypo = \(idx\) => isImplausibleSet\(bankKg\(idx\), sess\.reps\[idx\], typoOpts\(idx\)\);/);
@@ -745,6 +995,101 @@ check("trainingDaysHint (W285): the person's own days in week order — or what 
   assert.equal(trainingDaysHint(["fri", "mon", "wed"]), "On Mon, Wed and Fri, if you haven't trained yet.");
   assert.equal(trainingDaysHint(["sun"]), "On Sun, if you haven't trained yet.");
   for (const none of [[], null, undefined]) assert.match(trainingDaysHint(none), /^Pick your training days on Today.*a nudge after two days off\.$/);
+});
+
+// --- W305i (the W305h check — H6/H7/H8): a way back that adds a day saves the DAYS first, then rebuilds. A failed days
+// save changes nothing (said so); a failed rebuild after saved days leaves the plan-fit card offering the rebuild FORWARD
+// (to the committed days) — never a state whose only door is the undo. Block wording only where there are blocks; the
+// add-a-day question never calls a week "free" when it keeps a day picked for it.
+{
+  const { timeFitApply, timeFitDayQuestion } = uiHelpers;
+  const fake = (fails = []) => { const calls = []; return { calls, post: async (path, body) => { calls.push([path, body]); if (fails.includes(path)) throw new Error("offline"); return path === "/api/commitment" ? { commitment: { days: body.days } } : { program: { name: "P" } }; } }; };
+  const add = { kind: "add_day", days: 5, minutes: 45 };
+  await checkAsync("#fit-apply (H6) days first: a failed days save never rebuilds, and says nothing changed", async () => {
+    const f = fake(["/api/commitment"]);
+    const r = await timeFitApply({ o: add, days: ["wed"], cleared: true, usual: ["mon", "tue", "thu", "fri"], thisWeek: [], uid: "u", post: f.post });
+    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment"], "no rebuild after a failed days save");
+    assert.deepStrictEqual(f.calls[0][1], { user_id: "u", days: [], resume_days: ["mon", "tue", "thu", "fri", "wed"] }, "a cleared week: the usual days take the new one");
+    assert.equal(r.refresh, false);
+    assert.match(r.notice, /^📴 Couldn't save your days — nothing changed\./);
+  });
+  // W305j (J0, deliberate): a failed rebuild after saved days now puts the days back — "nothing changed" is true, and the
+  // partial state (said, refreshed) is left only when that put-back fails too (the W305j checks).
+  await checkAsync("#fit-apply (H6) saved days, failed rebuild: the days go back as they were, and that's said — never the days card", async () => {
+    const f = fake(["/api/plan/regenerate"]);
+    const r = await timeFitApply({ o: add, days: ["wed"], usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: f.post });
+    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/commitment"]);
+    assert.deepStrictEqual(f.calls[0][1], { user_id: "u", days: ["mon", "tue", "thu", "fri", "wed"] });
+    assert.deepStrictEqual(f.calls[2][1], { user_id: "u", days: ["mon", "tue", "thu", "fri"] });
+    assert.equal(r.refresh, false);
+    assert.match(r.notice, /^📴 Couldn't rebuild your plan — nothing changed\./);
+    assert.doesNotMatch(r.notice, /days card/, "never points at a door that can't set the usual days");
+  });
+  await checkAsync("#fit-apply (H8) block wording only where there are blocks: a beginner's notices never mention one", async () => {
+    for (const [o, days] of [[add, ["wed"]], [{ kind: "longer", days: 4, minutes: 60 }, []], [{ kind: "refit", days: 4, minutes: 45 }, []]]) {
+      const yes = await timeFitApply({ o, days, usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: fake().post, blocks: true });
+      const no = await timeFitApply({ o, days, usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: fake().post, blocks: false });
+      assert.equal(yes.refresh && no.refresh, true);
+      assert.match(yes.notice, /block/, `${o.kind}: blocks named for a lifter who has them`);
+      assert.doesNotMatch(no.notice, /block/, `${o.kind}: ${no.notice}`);
+    }
+    const f = fake(["/api/plan/regenerate"]);
+    const r = await timeFitApply({ o: { kind: "refit", days: 4, minutes: 45 }, uid: "u", post: f.post });
+    assert.deepStrictEqual([r.refresh, f.calls.length], [false, 1], "no days to save: a failed rebuild changes nothing");
+    assert.match(r.notice, /^📴 Couldn't rebuild your plan — nothing changed\./);
+  });
+  check("#fit-question (H7) the week is 'free' only when it is — a cleared week that keeps a picked day isn't", () => {
+    assert.equal(timeFitDayQuestion(1, { cleared: true, thisWeek: [] }), "Which day will you add? It starts next week — this week stays free.");
+    assert.equal(timeFitDayQuestion(2, { cleared: true, thisWeek: ["sun"] }), "Which 2 days will you add? They start next week.");
+    assert.equal(timeFitDayQuestion(1, { cleared: false, thisWeek: ["mon"] }), "Which day will you add?");
+  });
+}
+
+// --- W305j (the W305i check — J0/J1/J2): a rebuild that failed after the days saved is CHECKED, not assumed — one that
+// happened (its answer lost) is said as done (J1); one that didn't puts the days back, so "nothing changed" is true and a
+// later Keep keeps what it says (J0); only if that also fails is the partial state said. The plan-fit card — the other
+// forward door — names a block only where there are blocks (J2).
+{
+  const { timeFitApply } = uiHelpers;
+  const add = { kind: "add_day", days: 5, minutes: 45 };
+  const four = ["mon", "tue", "thu", "fri"];
+  const run = async ({ regen = "throw", sessions = 4, rollback = "ok", getFails = false, cleared = false, thisWeek = four } = {}) => {
+    const calls = [];
+    const post = async (path, body) => {
+      calls.push([path, body]);
+      if (path === "/api/plan/regenerate") { if (regen === "throw") throw new Error("lost"); return { program: { name: "P" } }; }
+      if (calls.filter((c) => c[0] === "/api/commitment").length > 1 && rollback === "fail") throw new Error("offline");
+      return { commitment: { days: body.days } };
+    };
+    const get = async (path) => { calls.push([path]); if (getFails) throw new Error("offline"); return { program: { name: "P", sessions: Array.from({ length: sessions }, (_, i) => ({ name: `D${i}` })) } }; };
+    const r = await timeFitApply({ o: add, days: ["wed"], cleared, usual: four, thisWeek, uid: "u", post, get });
+    return { r, calls };
+  };
+  await checkAsync("#fit-apply (W305j J1) a rebuild whose answer was lost but which happened: said as done, and refreshed", async () => {
+    const { r, calls } = await run({ sessions: 5 });
+    assert.deepStrictEqual(calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/plan/explain"]);
+    assert.deepStrictEqual([r.refresh, /^🗓️ Rebuilt for 5 days a week/.test(r.notice)], [true, true], r.notice);
+  });
+  await checkAsync("#fit-apply (W305j J0) a rebuild that truly failed puts the days back — 'nothing changed' is then true", async () => {
+    const { r, calls } = await run({ sessions: 4 });
+    assert.deepStrictEqual(calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/plan/explain", "/api/commitment"]);
+    assert.deepStrictEqual(calls[3][1], { user_id: "u", days: four }, "the days as they were");
+    assert.deepStrictEqual([r.refresh, r.notice], [false, "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."]);
+    const cl = await run({ sessions: 4, cleared: true, thisWeek: [] });
+    assert.deepStrictEqual(cl.calls[3][1], { user_id: "u", days: [], resume_days: four }, "a cleared week: the usual days go back as they were, this week's stay");
+    const unknown = await run({ getFails: true });
+    assert.deepStrictEqual(unknown.calls.map((c) => c[0]).at(-1), "/api/commitment", "the check itself offline: treated as failed, the days put back");
+  });
+  await checkAsync("#fit-apply (W305j J0) only when the put-back fails too is the partial state said — and refreshed so the card shows it", async () => {
+    const { r } = await run({ sessions: 4, rollback: "fail" });
+    assert.deepStrictEqual([r.refresh, /^📴 Your days saved, but the plan couldn't rebuild/.test(r.notice)], [true, true], r.notice);
+  });
+}
+check("#plan-fit (W305j J2) the plan-fit card and its notice name a block only where there are blocks", () => {
+  const b = planFitCopy({ plan_days: 2, committed_days: 3, blocks: false });
+  assert.doesNotMatch(b.body + b.notice, /block/, JSON.stringify(b));
+  assert.equal(b.notice, "🗓️ Rebuilt for 3 days a week — your new plan starts with your next workout.");
+  assert.equal(planFitCopy({ plan_days: 4, committed_days: 3 }).notice, "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.");
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

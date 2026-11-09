@@ -15,7 +15,8 @@ import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } 
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 import { planFitCopy, planFitRequest, readoutLists } from "../public/ui-helpers.mjs";
 import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout, easeSlot } from "../public/session-core.mjs";
-import { generateUserPlan } from "../src/planner.mjs";
+import { generateUserPlan, userTimeFit, planOptsFor } from "../src/planner.mjs";
+import { timeFitOptions, SPEC_MAX_BLOCKS as SPEC_MAX_T } from "../../tools/plan-core.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail) => { cond ? (pass++, console.log("  ✓ " + name)) : (fail++, console.log("  ✗ " + name + (detail ? `\n      ${String(detail).slice(0, 300)}` : ""))); };
@@ -780,6 +781,8 @@ try {
     ok("#pace the owner's stats carry a pace aggregate: the workout counts once, its two 150 s gaps land in the isolation tier",
       after?.sessions === before?.sessions + 1 && after.between_sets_s.isolation.n === before.between_sets_s.isolation.n + 2
       && after.duration_min.n === before.duration_min.n + 1, JSON.stringify({ before, after }));
+    ok("#session-time the owner's stats carry the time model's check against real durations: this workout is one more case",
+      after.model_check?.n === (before.model_check?.n ?? 0) + 1 && Number.isFinite(after.model_check.median_abs_error_pct), JSON.stringify(after.model_check));
   }
   // W301b (review): pace is read inline, so its failure must never take down the owner's stats (prod-smoke needs the 200).
   {
@@ -1165,6 +1168,28 @@ try {
   await json("POST", "/api/commitment", { user_id: cUser, days: [] });
   ok("#commitment …and clearing again keeps the usual days, not the one-off pick",
     JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri"]));
+  // Burst 8 review #46: a day ADDED to the usual days in a cleared week (the time-fit card's "Train N+1 days") joins them
+  // from next week — this week stays free, as the user said; nothing but valid weekdays is stored.
+  const addUsual = await json("POST", "/api/commitment", { user_id: cUser, days: [], resume_days: ["mon", "fri", "wed", "funday"] });
+  const addAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a cleared week can take new usual days (resume_days) — this week stays free (review #46)",
+    addUsual.status === 200 && addAdh.commitment === null && JSON.stringify(addAdh.commitment_resume_days) === JSON.stringify(["mon", "fri", "wed"])
+    && JSON.stringify((await store.getUser(cUser)).profile.commitment.resume_days) === JSON.stringify(["mon", "fri", "wed"]), JSON.stringify(addAdh.commitment_resume_days));
+  // …and while that clear is in force, a one-off day picked for THIS week doesn't stop new usual days (fix C7/C11): this
+  // week's one-off stays, and the usual days come back with the added one.
+  const oneOff = await json("POST", "/api/commitment", { user_id: cUser, days: ["sun"], resume_days: ["mon", "fri", "wed", "tue"] });
+  const oneOffAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
+  ok("#commitment a cleared week with a one-off day still takes new usual days; the one-off stays this week's (fix C7/C11)",
+    oneOff.status === 200 && JSON.stringify(oneOffAdh.commitment?.days) === JSON.stringify(["sun"]) && JSON.stringify(oneOffAdh.commitment_resume_days) === JSON.stringify(["mon", "fri", "wed", "tue"]),
+    JSON.stringify([oneOffAdh.commitment?.days, oneOffAdh.commitment_resume_days]));
+  await json("POST", "/api/commitment", { user_id: cUser, days: [], resume_days: ["mon", "fri"] });
+  {
+    const nUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+    await json("POST", "/api/commitment", { user_id: nUser, days: ["mon", "fri"] });
+    await json("POST", "/api/commitment", { user_id: nUser, days: ["mon", "wed", "fri"], resume_days: ["tue"] });
+    ok("#commitment …but with no clear in force, resume_days names nothing: the week's days are the usual ones",
+      (await store.getUser(nUser)).profile.commitment.resume_days == null && JSON.stringify((await store.getUser(nUser)).profile.commitment.days) === JSON.stringify(["mon", "wed", "fri"]));
+  }
   await store.updateUser(cUser, (u) => { u.profile.commitment = { week: "2020-W01", days: [], resume_days: ["tue"], set_on: "2020-01-01" }; return u; });
   const resumedAdh = await (await app.request("/api/adherence", { headers: { "X-HB-User": cUser } })).json();
   ok("#commitment days back after a cleared week are marked resumed (the card must not say 'same as last week')",
@@ -2090,6 +2115,8 @@ try {
   ok("#plan-fit a legacy stamp (no set_on) counts from its week's Monday", JSON.stringify(await fitOn(legacy, "2026-10-14")) === JSON.stringify({ plan_days: 4, committed_days: 3 })
     && (await fitOn(legacy, "2026-10-09")) === null);
   ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
+  ok("#plan-fit (W305j J2) a beginner's offer says there are no blocks (its card never names one)",
+    JSON.stringify(await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.training_status = "beginner"; } }))) === JSON.stringify({ plan_days: 4, committed_days: 3, blocks: false }));
   ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",
     (await fitOf(await fitUser({ days: ["mon"] }))) === null && (await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }))) === null);
   ok("#plan-fit no offer for a hand-edited plan (a rebuild would discard the edits) or a paused user (rail #1)",
@@ -2112,6 +2139,188 @@ try {
     && fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
     && Date.parse(fitU.plan_meta.block_start) > Date.parse(fitPre.plan_meta.block_start) + 9 * 86400000
     && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+  // W305 (considerations iteration, Burst 8 — owner: "I didn't achieve the recommended reps and intensity and it didn't
+  // suggest a more appropriate weight"): a first one-rep miss holds the weight, and Today's row now carries the lighter
+  // one beside it, through the door the client reads.
+  {
+    const au = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const first = (await (await app.request("/api/today", { headers: { "X-HB-User": au } })).json()).session.exercises.find((r) => r.equipment !== "bodyweight");
+    const lo = +/(\d+)-/.exec(first.rep_range)[1];
+    await json("POST", "/api/session", { user_id: au, session_id: "alt-1", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: (await store.getUser(au)).program.sessions[0].name,
+      sets: [lo - 1, lo - 2, lo - 2].map((reps) => ({ exercise: first.exercise, set_type: "work", weight_kg: 60, reps, completed_at: dAgo(2) })),
+      targets: [{ exercise: first.exercise, sets: 3, rep_range: first.rep_range, rir: first.rir }] });
+    const rows = [];
+    for (let k = 0; k < 4 && !rows.length; k++) {
+      const t = await (await app.request("/api/today", { headers: { "X-HB-User": au } })).json();
+      const r = t.session.exercises.find((x) => x.exercise === first.exercise);
+      if (r) rows.push(r);
+      else await json("POST", "/api/today/skip", { user_id: au }); // walk the rotation back round to that day
+    }
+    const row = rows[0];
+    ok("#alt Today's row for a first one-rep miss: the same weight held, and a lighter alternative beside it",
+      row?.suggested_kg === 60 && row.alt_kg > 0 && row.alt_kg < 60 && /or use [\d.]+ kg if it felt like too much/.test(row.suggestion_note ?? ""), JSON.stringify(row && [row.suggested_kg, row.alt_kg, row.suggestion_note]));
+    // Burst 8 review #34: the row carries the reps the model predicts at the alternative ('Use X' fills them, never the
+    // range's bottom) — set 1's capacity (lo − 1 at failure) carried to alt_kg by Epley, at the band's near edge.
+    const hi = +/-(\d+)/.exec(first.rep_range)[1], near = +/^(\d+)/.exec(row?.rir ?? "1")[1];
+    const want = Math.max(lo, Math.min(hi, Math.round(30 * (60 * (1 + (lo - 1) / 30) / row?.alt_kg - 1) - near)));
+    ok("#alt (Burst 8 review #34) Today's row carries the model's reps at the alternative, through the client's door",
+      Number.isInteger(row?.alt_reps) && row.alt_reps === want, JSON.stringify(row && [row.alt_kg, row.alt_reps, want]));
+    // The read-out's "next time" line names the same alternative as the note on the set screen — so it carries what the
+    // player's ONE offer (altOffer) needs to say it in the lift's unit, or drop it (Burst 8 review #7, the read-out door).
+    const ro = (await json("POST", "/api/session/recap", { user_id: au, session_id: "alt-1" })).data?.readout;
+    const nx = ro?.next?.find((n) => n.exercise === first.exercise);
+    ok("#alt the read-out's next-time line carries the alternative the set screen offers (weight, reps, range, band, equipment)",
+      !nx || !/or use/.test(nx.note ?? "") || (nx.alt_kg === row.alt_kg && nx.alt_reps === row.alt_reps && nx.rep_range === row.rep_range && nx.rir === row.rir && nx.equipment === row.equipment),
+      JSON.stringify(nx && [nx.alt_kg, nx.alt_reps, nx.rep_range, nx.rir, nx.equipment, row.rir]));
+    ok("#alt …and the read-out reached that lift with the held note (not vacuous)", !!nx && /or use/.test(nx.note ?? ""), JSON.stringify(nx));
+  }
+  // Burst 8 review #37: a barbell lift held at the empty bar offers no 'Use 17.5 kg' — through the door the client reads.
+  {
+    const bu = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const prog = (await store.getUser(bu)).program;
+    const todayRows = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": bu } })).json()).session.exercises;
+    let bar = null;
+    for (let k = 0; k <= prog.sessions.length && !bar; k++) {
+      bar = (await todayRows()).find((x) => x.equipment === "barbell") ?? null;
+      if (!bar) await json("POST", "/api/today/skip", { user_id: bu });
+    }
+    const lo = +/(\d+)-/.exec(bar?.rep_range ?? "8-12")[1];
+    await json("POST", "/api/session", { user_id: bu, session_id: "bar-1", date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: prog.sessions.find((s) => s.exercises.some((x) => x.exercise === bar?.exercise))?.name,
+      sets: [lo - 1, lo - 2, lo - 2].map((reps) => ({ exercise: bar?.exercise, set_type: "work", weight_kg: 20, reps, rir: 0, completed_at: dAgo(2) })),
+      targets: [{ exercise: bar?.exercise, sets: 3, rep_range: bar?.rep_range, rir: bar?.rir }] });
+    let held = null;
+    for (let k = 0; k <= prog.sessions.length && !held; k++) {
+      held = (await todayRows()).find((x) => x.exercise === bar?.exercise) ?? null;
+      if (!held) await json("POST", "/api/today/skip", { user_id: bu });
+    }
+    ok("#alt (Burst 8 review #37) a barbell lift held at the empty bar: no lighter alternative, and the note names none",
+      !!bar && held?.suggested_kg === 20 && held.alt_kg == null && !/or use/.test(held.suggestion_note ?? ""), JSON.stringify(held && [held.exercise, held.suggested_kg, held.alt_kg, held.suggestion_note]));
+  }
+  // W304 (considerations iteration, Burst 8): the three ways back, through the client's door — made honest by W305c
+  // (Burst 8 review #13 #14 #16 #18 #26 #38 #39). Measured from the plan the user HAS when Today asks (a swap, a legacy
+  // plan, a rotation all count), offered unless a "keep" already covers it — a keep covers exactly what it was asked
+  // about (the schedule, the muscles short, the days over), so only something NEW re-asks — and the keep must name the
+  // question it answers (a stale card can't answer a newer one). Never during an event taper, never beside the plan-fit
+  // card (one schedule question at a time).
+  {
+    const FULLQ = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const tf = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 4, session_length_min: 60, available_equipment: FULLQ } })).data.user_id;
+    const today = async (id = tf) => (await app.request("/api/today", { headers: { "X-HB-User": id } })).json();
+    const strip = (f) => (f ? { ...f, key: undefined } : null);
+    // A day made long in the STORED program (a legacy plan or a hand of extra sets) — what the user has is what's measured.
+    await store.updateUser(tf, (u) => { u.program.sessions[0].exercises.forEach((e) => { e.sets += 2; }); delete u.plan_meta.time_trim; return u; });
+    const t1 = await today(), u1 = await store.getUser(tf);
+    const day1 = u1.program.sessions[0].name;
+    ok("#time-fit Today measures the plan the user HAS: a stored day past its minutes is said, keep last (review #13)",
+      t1.daily?.plan_time_fit?.over?.[0]?.session === day1 && t1.daily.plan_time_fit.options.at(-1).kind === "keep" && typeof t1.daily.plan_time_fit.key === "string",
+      JSON.stringify(t1.daily?.plan_time_fit)?.slice(0, 300));
+    ok("#time-fit …exactly what the engine measures for that stored plan, alternatives built as the rebuild builds them",
+      JSON.stringify(strip(t1.daily?.plan_time_fit)) === JSON.stringify(userTimeFit(u1)), JSON.stringify([strip(t1.daily?.plan_time_fit)?.options?.map((o) => o.kind), userTimeFit(u1)?.options?.map((o) => o.kind)]));
+    ok("#time-fit Today says how long the workout takes (about N min, the session-time model)",
+      Number.isFinite(t1.session?.minutes_estimate) && t1.session.minutes_estimate > 10, String(t1.session?.minutes_estimate));
+    const stale = await json("POST", "/api/plan/time-fit", { user_id: tf, choice: "keep", key: "4:60:intermediate:16||0" });
+    ok("#time-fit a keep must name the question it answers: a stale card's key is refused (409), nothing stored (review #16)",
+      stale.status === 409 && (await store.getUser(tf)).time_fit_kept == null, String(stale.status));
+    ok("#time-fit an unknown choice is refused, never stored", (await json("POST", "/api/plan/time-fit", { user_id: tf, choice: "lol", key: t1.daily.plan_time_fit.key })).status === 400);
+    const kept = await json("POST", "/api/plan/time-fit", { user_id: tf, choice: "keep", key: t1.daily.plan_time_fit.key });
+    const t2 = await today(), u2 = await store.getUser(tf);
+    ok("#time-fit 'Keep' is asked once: gone on every device, stored outside plan_meta (a block rotation can't revive it)",
+      kept.status === 200 && t2.daily?.plan_time_fit == null && u2.time_fit_kept && typeof u2.time_fit_kept === "object" && !("time_fit_kept" in (u2.plan_meta ?? {})),
+      JSON.stringify([kept.status, u2.time_fit_kept]));
+    // Something NEW re-asks (review #39): a second day running long is a new answer to give.
+    await store.updateUser(tf, (u) => { u.program.sessions[1].exercises.forEach((e) => { e.sets += 2; }); return u; });
+    const t3 = await today();
+    ok("#time-fit …but a keep covers only what it was asked about: a NEW day over its minutes re-asks (review #39)",
+      t3.daily?.plan_time_fit?.unfit_days === 2, JSON.stringify(t3.daily?.plan_time_fit?.over));
+    await store.updateUser(tf, (u) => { u.program.sessions[1].exercises.forEach((e) => { e.sets -= 2; }); return u; });
+    ok("#time-fit …and once it's gone again, the old keep still covers the old question", (await today()).daily?.plan_time_fit == null);
+    // A permanent swap changes what the plan IS — the card reads the swapped plan, never a build-time snapshot (review #26).
+    await store.updateUser(tf, (u) => { u.time_fit_kept = null; return u; });
+    const uS = await store.getUser(tf);
+    const sx = uS.program.sessions[2].exercises[0].exercise;
+    const swap = await json("POST", "/api/exercise/cant-do", { user_id: tf, exercise: sx, scope: "always", session: uS.program.sessions[2].name });
+    const uS2 = await store.getUser(tf), tS = await today();
+    ok("#time-fit after a permanent swap the card is measured on the SWAPPED plan (review #26)",
+      swap.status === 200 && JSON.stringify(uS2.program) !== JSON.stringify(uS.program)
+      && JSON.stringify(strip(tS.daily?.plan_time_fit)) === JSON.stringify(userTimeFit(uS2)),
+      JSON.stringify([swap.status, swap.data?.error]));
+    // A new schedule is a new question.
+    await json("POST", "/api/plan/regenerate", { user_id: tf, profile: { days_per_week: 5 } });
+    const u4 = await store.getUser(tf), t4 = await today();
+    ok("#time-fit a new schedule is a new question: the old keep never hides the new plan's offer",
+      JSON.stringify(strip(t4.daily?.plan_time_fit)) === JSON.stringify(userTimeFit(u4)), JSON.stringify([t4.daily?.plan_time_fit?.key, u4.time_fit_kept]));
+    // Options are measured the way the button builds (review #14): block 0, the tune kept, a finished block stays finished.
+    // A plan at block 1 whose alternatives differ between block 0 and block 1, so the check can tell them apart.
+    const kbm = await import("../src/kb-data.mjs");
+    const KBT = { exercises: kbm.exercises, muscles: kbm.muscles, contraindications: kbm.contraindications, guidelines: kbm.guidelines };
+    const bp = { user_id: "blk-intermediate-2-60-0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60, available_equipment: FULLQ };
+    // A tune big enough to move this plan's alternatives, so the check can tell a dropped tune too.
+    const tune = { chest: -2, lats: -2, quadriceps: -2, "upper-back": -2, triceps: -2, biceps: -2 };
+    const bg = generateUserPlan(bp, { blockIndex: 1, specSpent: true, volumeAdjust: tune });
+    const blk = { profile: bp, program: bg.program, plan_rationale: bg.rationale, plan_meta: { ...bg.meta, block_index: 1, volume_adjust: tune } };
+    const atBlock = (i, va = tune) => timeFitOptions(bp, KBT, { program: bg.program, rationale: bg.rationale, meta: bg.meta },
+      planOptsFor(blk, { blockIndex: i, volumeAdjust: va, stalledExercises: [], specSpent: 1 >= SPEC_MAX_T }));
+    ok("#time-fit at block 1 the alternatives are built at block 0 with the rebuild door's opts — the tune kept (review #14)",
+      JSON.stringify(userTimeFit(blk)) === JSON.stringify(atBlock(0)) && JSON.stringify(atBlock(0)) !== JSON.stringify(atBlock(1))
+      && JSON.stringify(atBlock(0)) !== JSON.stringify(atBlock(0, {})));
+    // Never during an event taper (review #38).
+    const tp = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 4, session_length_min: 60, available_equipment: FULLQ, goal_event_date: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } })).data.user_id;
+    await store.updateUser(tp, (u) => { u.program.sessions[0].exercises.forEach((e) => { e.sets += 2; }); return u; });
+    const tT = await today(tp);
+    ok("#time-fit no schedule question during the final pre-event taper (review #38)", !!tT.session?.taper && tT.daily?.plan_time_fit == null,
+      JSON.stringify([tT.session?.taper, !!tT.daily?.plan_time_fit]));
+  }
+  // One schedule question at a time (review #18) is the CLIENT's call (W305h, fix verification C14): the plan-fit card's
+  // "Keep my N-day plan" lives on the device, so a server that withheld the time-fit card whenever plan_fit was set
+  // silenced both for good. The server sends both; the player shows the time-fit card only when the days card isn't up.
+  {
+    const both = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.program.sessions[0].exercises.forEach((e) => { e.sets += 3; }); } });
+    const tb = await (await app.request("/api/today?d=2026-10-14", { headers: { "X-HB-User": both } })).json();
+    ok("#time-fit the server sends both schedule questions; the client shows one at a time (review #18, fix C14)",
+      !!tb.daily?.plan_fit && !!tb.daily?.plan_time_fit, JSON.stringify([tb.daily?.plan_fit, !!tb.daily?.plan_time_fit]));
+  }
+  // Keep works while a lift is stalled (fix verification C0/C10): the keep door checks the question the card ASKED (the
+  // plan as it is: the schedule, the muscles short, the days over) — never a re-measure whose alternatives depend on
+  // today's stalls. Fixture: a seed whose card exists only WITH the stall (lat-pulldown) — the exact failing case.
+  {
+    const ks = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id;
+    await store.updateUser(ks, (u) => { u.profile.user_id = "ks-beginner-3-45-chest-0"; const g = generateUserPlan(u.profile); u.program = g.program; u.plan_rationale = g.rationale; u.plan_meta = { ...u.plan_meta, ...g.meta, block_index: 0 }; return u; });
+    for (let w = 0; w < 6; w++) await json("POST", "/api/session", { user_id: ks, session_id: `ks-${w}`, date: dAgo(36 - w * 7), local_date: dAgo(36 - w * 7).slice(0, 10),
+      sets: Array.from({ length: 3 }, () => ({ exercise: "lat-pulldown", set_type: "work", weight_kg: 40, reps: 10, completed_at: dAgo(36 - w * 7) })) });
+    const uk = await store.getUser(ks);
+    const tk = await (await app.request("/api/today", { headers: { "X-HB-User": ks } })).json();
+    ok("#time-fit (C0) precondition: the card exists only with today's stall", !userTimeFit(uk) && !!tk.daily?.plan_time_fit, JSON.stringify([!!userTimeFit(uk), !!tk.daily?.plan_time_fit]));
+    const kk = await json("POST", "/api/plan/time-fit", { user_id: ks, choice: "keep", key: tk.daily?.plan_time_fit?.key });
+    const tk2 = await (await app.request("/api/today", { headers: { "X-HB-User": ks } })).json();
+    ok("#time-fit Keep works while a lift is stalled: stored, and the card is gone (fix C0/C10)",
+      kk.status === 200 && tk2.daily?.plan_time_fit == null && !!(await store.getUser(ks)).time_fit_kept, JSON.stringify([kk.status, kk.data]));
+  }
+  // A plan from an older engine (no meta.time_trim) whose day runs over is offered a REFIT through the route the button
+  // uses — the same days and minutes, the SAME block — and the explanation says the overrun too (fix C2/K0).
+  {
+    const lg = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 4, session_length_min: 45, available_equipment: ["dumbbell", "bodyweight"] } })).data.user_id;
+    const exIso = new Set((await import("../src/kb-data.mjs")).exercises.filter((e) => e.mechanic === "isolation").map((e) => e.id));
+    await store.updateUser(lg, (u) => { delete u.plan_meta.time_trim; u.plan_meta.block_start = dAgo(9); // index stays 0: no trained weeks, so Today won't rotate it
+      u.program.sessions.forEach((s) => s.exercises.forEach((e) => { delete e.superset_with; if (exIso.has(e.exercise)) e.sets += 1; })); return u; });
+    const tl = await (await app.request("/api/today", { headers: { "X-HB-User": lg } })).json();
+    const fit = tl.daily?.plan_time_fit, refit = fit?.options?.find((o) => o.kind === "refit");
+    ok("#time-fit a plan from an older engine whose day runs over says so (fitted:false) and is offered a refit at the same days (fix C2)",
+      fit?.fitted === false && fit.unfit_days > 0 && !!refit && refit.days === 4 && refit.minutes === 45, JSON.stringify(fit && { fitted: fit.fitted, kinds: fit.options.map((o) => o.kind) }));
+    const ex = (await (await app.request("/api/plan/explain", { headers: { "X-HB-User": lg } })).json()).personalization?.find((x) => x.input === "session_length_min")?.effect ?? "";
+    ok("#time-fit …and 'What your answers changed' says the overrun the card says — never 'long enough to do the work' (fix K0)", /past them/.test(ex) && !/long enough/.test(ex), ex);
+    const before = await store.getUser(lg);
+    const rr = await json("POST", "/api/plan/regenerate", { user_id: lg, profile: {} });
+    const after = await store.getUser(lg), ta = await (await app.request("/api/today", { headers: { "X-HB-User": lg } })).json();
+    ok("#time-fit tapping Refit rebuilds through the Settings door at the SAME block (index and start kept) and the days now fit",
+      rr.status === 200 && (after.plan_meta.block_index ?? 0) === (before.plan_meta.block_index ?? 0) && after.plan_meta.block_start === before.plan_meta.block_start
+      && !!after.plan_meta.time_trim && (ta.daily?.plan_time_fit?.unfit_days ?? 0) < fit.unfit_days, JSON.stringify([rr.status, after.plan_meta.block_index, ta.daily?.plan_time_fit?.unfit_days]));
+  }
   // …and a specialization block that already RAN stays run (W278 review: block_index resets
   // on any training change, so the offer re-armed it). Only new priorities start another.
   const specFit = await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.priority_muscles = ["side-delts"]; } });
@@ -4022,6 +4231,14 @@ try {
       const seedProfile = { user_id: "al-beginner-4-bw-hypertrophy", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["bodyweight"] };
       const bnU = (await json("POST", "/api/onboard", { profile: { ...prof, ...seedProfile, user_id: undefined } })).data.user_id;
       const fixed = generateUserPlan(seedProfile);
+      // W303: the generator no longer pairs this 60-minute bodyweight day (the rescue now fires only when minutes bind the
+      // set budget), but plans built before it are still STORED with such a pair until their next rebuild — so the pair
+      // is placed exactly as the 4c rescue placed it, and the route's handling of it is what this proves.
+      const ubFix = fixed.program.sessions.find((x) => x.name === "Upper B");
+      ubFix.exercises.find((e) => e.exercise === "bench-dip").superset_with = "prone-reverse-fly";
+      ubFix.exercises.push({ exercise: "prone-reverse-fly", sets: 2, rep_range: "10-15", rir: "0-1", superset_with: "bench-dip" });
+      fixed.rationale.exercise_choices.push({ exercise: "prone-reverse-fly", for_muscle: "rear-delts", session: "Upper B", sets: 2, rep_range: "10-15", rir: "0-1",
+        why: ["superset — fits extra volume into your session length", "paired with bench-dip"], difficulty: "beginner", citations: [] });
       await store.updateUser(bnU, (u) => { u.profile = { ...u.profile, user_id: seedProfile.user_id }; u.program = fixed.program; u.plan_rationale = fixed.rationale; return u; });
       const bn0 = await store.getUser(bnU);
       const r = await json("POST", "/api/exercise/cant-do", { user_id: bnU, exercise: "bench-dip", scope: "always", session: "Upper B" });

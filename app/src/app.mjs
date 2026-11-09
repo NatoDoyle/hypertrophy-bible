@@ -3,10 +3,10 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
-import { SPEC_MAX_BLOCKS } from "../../tools/plan-core.mjs";
+import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { SPEC_MAX_BLOCKS, SESSION_QUALITY_CAP } from "../../tools/plan-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
@@ -148,6 +148,17 @@ export function sanitizeInjuries(injuries) {
 // both filter on it, and the whitelist silently dropping it once made the entire
 // deload-aware pipeline inert in production while unit tests (which bypass this
 // route) stayed green.
+// What a "keep" for the three ways back is ABOUT (W304): the schedule and the ceiling the plan was built under — and
+// (W305c, Burst 8 review #39) what was short and how many days ran over when it was asked. A keep covers exactly that:
+// a new schedule, a muscle newly short or another day over is a NEW question; the same question in a later block is not.
+const timeFitSched = (u) => `${u?.program?.sessions?.length ?? 0}:${u?.profile?.session_length_min ?? 60}:${u?.profile?.training_status ?? "intermediate"}:${SESSION_QUALITY_CAP[u?.profile?.training_status ?? "intermediate"] ?? 16}`;
+const timeFitKey = (u, fit) => `${timeFitSched(u)}|${(fit?.mev_short ?? []).join(",")}|${fit?.unfit_days ?? 0}`;
+const keepCovers = (u, fit) => {
+  const k = u?.time_fit_kept;
+  return !!k && typeof k === "object" && k.sched === timeFitSched(u)
+    && (fit?.mev_short ?? []).every((m) => (k.short ?? []).includes(m)) && (fit?.unfit_days ?? 0) <= (k.unfit ?? 0);
+};
+
 const normalizeSet = (s) => ({
   exercise: s.exercise,
   set_type: s.set_type ?? "work",
@@ -251,7 +262,12 @@ export function createApp(store, config = {}) {
     // Medians and counts only; a lift the KB doesn't know (a custom one) has no rest tier and stays out of the tiers.
     // A pace failure is reported as null, never a failed stats call (W301b review: prod-smoke needs this 200).
     let pace = null;
-    try { pace = paceAggregate(await store.paceSamples(now), (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; }); }
+    // …and the session-time model's standing check against how long those workouts really took (W302).
+    try {
+      const samples = await store.paceSamples(now);
+      pace = { ...paceAggregate(samples, (id) => { const e = exerciseById.get(id); return e ? restTier(e) : null; }),
+        model_check: paceModelCheck(samples, (id) => exerciseById.get(id) ?? null) };
+    }
     catch (e) { console.error("stats: pace failed", e?.message ?? e); }
     return c.json({ ...(await store.stats(now)), pace });
   });
@@ -327,8 +343,10 @@ export function createApp(store, config = {}) {
     // program. Null when the plan is user-customised (its rationale is cleared then,
     // and inventing an explanation for a plan the engine didn't build is the lie this
     // card exists to prevent).
+    // …reading the same live measure as Today's card (fix K0: a plan from an older engine records no overrun itself).
+    const asked = user.plan_rationale ? userTimeFitQuestion(user) : null;
     const personalization = user.plan_rationale
-      ? explainUserPlan(user.profile, user.plan_rationale, user.program) : null;
+      ? explainUserPlan(user.profile, user.plan_rationale, user.program, asked ? { over: asked.over.map((d) => d.session), trimmed_sets: asked.trimmed_sets } : null) : null;
     // "Not available at your gym" (W272): the lifts the user said they can't do, by
     // name, each with its "Bring back" door — resolved here so the client never has to
     // look up a lift the filtered exercise list deliberately no longer carries.
@@ -343,6 +361,30 @@ export function createApp(store, config = {}) {
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
+  // "Keep my plan" for the three ways back (W304). Stored at the top of the user doc, never in plan_meta: a block
+  // rotation rebuilds plan_meta, and a kept answer must not come back every six weeks. Choosing more days or longer
+  // sessions goes through /api/plan/regenerate (the Settings door) — the only door that rebuilds a plan.
+  // The answer names its question (W305c, Burst 8 review #16): the card's key must match the question the plan poses NOW
+  // — checked inside the write — or a stale Today (another device changed the schedule) would answer a newer one unseen.
+  app.post("/api/plan/time-fit", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, b);
+    if (error) return error;
+    if (b.choice !== "keep") return c.json({ error: "unknown choice" }, 400);
+    // The QUESTION the card asked (the plan as it is) — never a re-measure of the alternatives, which today's stalls
+    // shape (fix verification C0/C10: a stalled lift made every keep a 409).
+    let stale = false;
+    const updated = await store.updateUser(id, (u) => {
+      const q = userTimeFitQuestion(u);
+      stale = !q || timeFitKey(u, q) !== b.key;
+      if (!stale) u.time_fit_kept = { sched: timeFitSched(u), short: q.mev_short, unfit: q.unfit_days };
+      return u;
+    });
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    if (stale) return c.json({ error: "stale", stale: true }, 409);
+    return c.json({ ok: true, kept: updated.time_fit_kept });
+  });
+
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
@@ -458,7 +500,7 @@ export function createApp(store, config = {}) {
     // The app's own untouched output is critiqued in CAVEAT framing (constraints
     // and levers, no "worth fixing"); a hand-edited plan keeps the full guard rail.
     const critProgram = b.program || user.program;
-    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null));
+    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null, critProgram?.custom ? null : user.plan_meta?.time_trim?.by_muscle ?? null));
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -508,7 +550,7 @@ export function createApp(store, config = {}) {
     const injuryFlags = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]
       .map((exId) => ({ exId, region: injuryRegionFor(updated.profile, exId) })).filter((x) => x.region)
       .map((x) => ({ severity: "warn", msg: `${exerciseById.get(x.exId)?.name ?? x.exId}: you reported a ${x.region.replace(/-/g, " ")} issue — it's one of the lifts the plan keeps away from it.` }));
-    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null);
+    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null, program.custom ? null : updated.plan_meta?.time_trim?.by_muscle ?? null);
     return c.json({ ok: true, critique: { ...critique, findings: [...(critique?.findings ?? []), ...injuryFlags] } });
   });
 
@@ -1069,7 +1111,15 @@ export function createApp(store, config = {}) {
     // hand-edited plan (a rebuild would discard the edits), never while paused (rail #1).
     const planDays = user.program?.sessions?.length ?? 0, keptDays = plan?.days?.length ?? 0;
     daily.plan_fit = plan?.carried && commitmentStood(user.profile?.commitment, clientDay) && !user.paused && !user.program?.custom && planDays && keptDays >= 2 && keptDays <= 6 && keptDays !== planDays
-      ? { plan_days: planDays, committed_days: keptDays } : null;
+      ? { plan_days: planDays, committed_days: keptDays, ...(user.profile?.training_status === "beginner" ? { blocks: false } : {}) } : null; // no blocks to name (W305j, J2)
+    // The three ways back (W304): offered when the plan the user HAS can't hold its necessary volume or runs past its
+    // minutes — measured now, from the stored plan (W305c: a swap, a rotation, a plan built before the fit-to-time pass) —
+    // unless a server-side "keep" already covers this very question, so every device agrees and only something new
+    // re-asks. Never while paused, over a hand-edited plan, or in the final pre-event taper (review #38). One schedule
+    // question at a time is the client's call (review #18): the days card's keep lives on the device (fix C14).
+    const fitNow = !user.paused && !user.program?.custom && !session?.taper
+      ? userTimeFit(user, { stalledExercises: swapStalls(user, sessions, nowISO) }) : null;
+    daily.plan_time_fit = fitNow && !keepCovers(user, fitNow) ? { ...fitNow, key: timeFitKey(user, fitNow) } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
@@ -1273,7 +1323,11 @@ export function createApp(store, config = {}) {
       const week = isoWeekKeyLocal(Date.now(), tzNow);
       const stored = u.profile?.commitment;
       const pending = (stored?.week ?? "") >= week && Array.isArray(stored?.resume_days) && stored.resume_days.length ? stored.resume_days : null;
-      const resume = pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
+      // New USUAL days for a cleared week (Burst 8 review #46 — the time-fit card's extra day): they come back from next
+      // week, and this week stays free. Only on a clear: a week with days picked keeps the days it promised.
+      // …and while a clear is in force, a one-off day picked for this week doesn't stop them (fix C7/C11).
+      const usual = (!days.length || pending) && Array.isArray(b.resume_days) ? [...new Set(b.resume_days.filter((d) => WEEK_DAY_KEYS.includes(d)))] : null;
+      const resume = (usual?.length ? usual : null) ?? pending ?? (days.length ? null : (commitmentForDay(stored, today)?.days ?? null));
       u.profile = { ...(u.profile ?? {}), commitment: { week, days, set_on: today, ...(resume?.length ? { resume_days: resume } : {}) } };
       return u;
     });

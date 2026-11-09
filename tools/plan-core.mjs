@@ -6,7 +6,7 @@
 // Currency is EFFECTIVE weekly hard sets (primary muscle = 1.0/set, secondary =
 // 0.5/set) — the exact same model as derive-core's perMuscleWeeklyVolume, which
 // we reuse for a closed-loop self-check so plan-time and log-time volume agree.
-import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, repScheme } from "./derive-core.mjs";
+import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, repScheme, sessionMinutes as dayMinutes } from "./derive-core.mjs";
 
 // --- session archetypes: which muscles a session may train ---
 const ARCH = {
@@ -43,7 +43,10 @@ export const SECONDARY_SERVED = new Set(["forearms", "spinal-erectors"]);
 // Per-session hard-set ceiling by training age (see the step-4 comment in
 // generatePlan for the reasoning). Module-scope because the lever helper below
 // must know when the CLOCK stops being the binding constraint.
-const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+export const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+// A day is OVER its minutes only past this grace (Burst 8 review #24): the time model is medians, so a day it puts at
+// 45.3 min is "about 45" — flagging it told a lifter their plan didn't fit, and offered a block restart, for 18 seconds.
+export const FIT_GRACE_MIN = 1;
 
 // The volume LEVERS that actually bind for this profile, named honestly. The
 // caveat's whole job is telling the user what would buy more — and two cohorts
@@ -53,14 +56,102 @@ const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
 // to add. A lever that does nothing when pulled costs exactly the trust the
 // caveat exists to build. Shared by the generator's self-check warnings and the
 // critique's caveats, so the two surfaces can never disagree about what helps.
-export const volumeLevers = ({ days, sessionMin, experience } = {}) => {
-  const timeBinds = Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < (SESSION_QUALITY_CAP[experience] ?? 16);
+// `timeBound` (W303): the caller that KNOWS whether the clock bound the plan says so — the generator when its fit-to-time
+// pass cut sets, the critique when a day runs over its minutes; otherwise the set-budget rule decides as before.
+export const volumeLevers = ({ days, sessionMin, experience, timeBound } = {}) => {
+  const timeBinds = typeof timeBound === "boolean" ? timeBound : Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < (SESSION_QUALITY_CAP[experience] ?? 16);
   const dayBinds = (days ?? 2) < 6;
   if (dayBinds && timeBinds) return "an extra training day, or longer sessions, would let the plan give it more";
   if (dayBinds) return "an extra training day would let the plan give it more (extra session time would not help — each session already holds as much quality work as pays off)";
   if (timeBinds) return "longer sessions would let the plan give it more";
   return "six days already hold as much quality work as pays off per session — this closes as your work capacity grows, or by making the muscle a priority";
 };
+
+// THE THREE WAYS BACK (W304, considerations iteration — owner: "If the necessary amount of volume can't fit within the
+// chosen workout length preference please suggest to the user 3 options in order of best to worst: increase no. of
+// workouts per week, increase workout length or decrease volume"). Made HONEST by W305c (Burst 8 review):
+// - measured from the plan the user HAS (`current`: the stored program, rationale and meta) — a swap, a block rotation or
+//   a plan built before the fit-to-time pass is measured as it is, never as the engine would build it today (#13 #26);
+// - against alternatives built the way the button builds them (`altOpts`: the rebuild door's opts — block 0) (#14);
+// - "short" is a growth muscle the split trains whose week is under MEV — under 60% of it for a beginner, the critique's
+//   own bar (a beginner is built near MEV by design, #19) — and a muscle given ZERO sets is short, not "no data" (#20);
+//   listed priority muscles first, then the biggest shortfall (#50);
+// - an alternative is offered only when it is no worse on any measure (days over the minutes, muscles short, the summed
+//   shortfall) and NAMEABLY better — a day fitted, or more muscles lifted than newly left short — and what it newly
+//   leaves short is carried with it, never hidden (#1 #3 #15). "Longer" is always tried: whether a longer session helps
+//   is measured, not assumed (#31);
+// - a day past its minutes is ALWAYS said, even when no option helps (keep-only) (#21); trimmed sets alone, with every
+//   day fitting and nothing short, are no question at all (#29).
+// Ranked as the owner ranked them; "keep" is always last and names what it forgoes (what some option would lift — not
+// what every option leaves short, #17). Pure and deterministic: each alternative is this engine run on the same inputs.
+function fitKit(profile, kb, customExercises = []) {
+  const all = [...(kb.exercises ?? []), ...customExercises];
+  const exById = new Map(all.map((e) => [e.id, e]));
+  const exIx = new Map(all.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
+  const mevOf = new Map((kb.muscles ?? []).map((m) => [m.id, m.landmarks?.mev?.min ?? null]));
+  const minutes = clamp(profile.session_length_min ?? 60, 30, 120);
+  const experience = profile.training_status ?? "intermediate";
+  const priority = new Set(profile.priority_muscles ?? []);
+  const bar = experience === "beginner" ? 0.6 : 1;
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const measure = ({ program, rationale, meta }, limit) => {
+    const sets = program.sessions.flatMap((s) => s.exercises.flatMap((e) => Array.from({ length: e.sets }, () => ({ exercise: e.exercise, set_type: "work" }))));
+    const wk = perMuscleWeeklyVolume([{ date: "2026-01-05", sets }], exIx);
+    const week = wk[Object.keys(wk)[0]] ?? {};
+    const short = Object.entries(rationale?.volume_by_muscle ?? {})
+      .filter(([m, r]) => r && r.target_sets > 0 && (r.frequency ?? rationale?.frequency_by_muscle?.[m] ?? 0) > 0
+        && !r.maintenance && !r.eased && !r.secondary_served && mevOf.get(m) > 0 && (week[m] ?? 0) < mevOf.get(m) * bar)
+      .map(([m]) => ({ m, gap: mevOf.get(m) - (week[m] ?? 0) }))
+      .sort((a, b) => (priority.has(b.m) - priority.has(a.m)) || (b.gap - a.gap) || a.m.localeCompare(b.m));
+    const mins = program.sessions.map((s) => ({ session: s.name, minutes: dayMinutes(s.exercises, exById) }));
+    const over = mins.filter((d) => d.minutes > limit + FIT_GRACE_MIN).sort((a, b) => b.minutes - a.minutes);
+    return {
+      trimmed_sets: meta?.time_trim?.removed_sets ?? 0, unfit_days: over.length, over,
+      mev_short: short.map((x) => x.m), mev_deficit: r1(short.reduce((a, x) => a + x.gap, 0)),
+      max_minutes: Math.max(0, ...mins.map((d) => d.minutes)),
+    };
+  };
+  return { minutes, experience, measure };
+}
+// THE QUESTION the card asks — the plan as it is, no alternatives (W305h, fix verification C0/C10): what a "keep" answers
+// and what the explanation reads. Independent of today's stalls, which only shape the alternatives.
+export function timeFitQuestion(profile, kb, current, { customExercises = [] } = {}) {
+  const days = current?.program?.sessions?.length ?? 0;
+  if (!days) return null;
+  const { minutes, experience, measure } = fitKit(profile, kb, customExercises);
+  return { days, minutes, blocks: experience !== "beginner", ...measure(current, minutes), fitted: !!current?.meta?.time_trim };
+}
+export function timeFitOptions(profile, kb, current, altOpts = {}, { customExercises = [], refitOpts = null } = {}) {
+  const asked = timeFitQuestion(profile, kb, current, { customExercises });
+  if (!asked) return null;
+  const { days, minutes, blocks, ...now } = asked;
+  const { measure } = fitKit(profile, kb, customExercises);
+  const vs = (m, ref) => ({ lifted: ref.mev_short.filter((x) => !m.mev_short.includes(x)), newly: m.mev_short.filter((x) => !ref.mev_short.includes(x)) });
+  const better = (m, ref) => { const d = vs(m, ref); return m.unfit_days <= ref.unfit_days && m.mev_short.length <= ref.mev_short.length
+    && m.mev_deficit <= ref.mev_deficit && (m.unfit_days < ref.unfit_days || d.lifted.length > d.newly.length); };
+  // The schedule's own effect (W305h, fix verification C12): a rebuild at the SAME schedule, built the same way (block 0,
+  // today's stalls). An option must beat it too — a gain a plain rebuild brings (a stall swap the next block boundary
+  // makes anyway) is no reason to add a day or minutes.
+  const same = measure(generatePlan(profile, kb, altOpts), minutes);
+  const alts = [];
+  if (days < 6) alts.push({ kind: "add_day", days: days + 1, minutes, plan: generatePlan({ ...profile, days_per_week: days + 1 }, kb, altOpts) });
+  if (minutes < 120) alts.push({ kind: "longer", days, minutes: Math.min(120, minutes + 15), plan: generatePlan({ ...profile, session_length_min: Math.min(120, minutes + 15) }, kb, altOpts) });
+  const options = alts.map(({ plan, ...o }) => {
+    const m = measure(plan, o.minutes); // each option against ITS OWN minutes
+    return { ...o, ...m, ...vs(m, now), beats_same: better(m, same) };
+  }).filter((o) => better(o, now) && o.beats_same).map(({ beats_same, ...o }) => o);
+  // A plan built BEFORE the fit-to-time pass (no meta.time_trim — every plan from an older engine) whose day runs over is
+  // offered a REFIT: the same days and minutes rebuilt by today's engine at the CURRENT block (`refitOpts`, the cosmetic
+  // rebuild's own opts) — when it fits a day. What it newly leaves short is carried, as for every option (C2).
+  if (!now.fitted && now.unfit_days > 0 && refitOpts) {
+    const m = measure(generatePlan(profile, kb, refitOpts), minutes);
+    if (m.unfit_days < now.unfit_days) options.push({ kind: "refit", days, minutes, ...m, ...vs(m, now) });
+  }
+  if (!options.length && !now.unfit_days) return null;
+  const forgoes = now.mev_short.filter((m) => options.some((o) => o.lifted.includes(m)));
+  return { days, minutes, blocks, ...now,
+    options: [...options, { kind: "keep", days, minutes, ...now, lifted: [], newly: [], forgoes }] };
+}
 
 // split by days_per_week × training_status → ordered list of archetypes
 const SPLIT_TABLE = {
@@ -835,6 +926,9 @@ export function generatePlan(profile, kb, opts = {}) {
   const weekServed = new Set(); // muscles with a direct exercise ANYWHERE this week
   const weekUseCount = {};      // exercise id → sessions used this week (variety: cap at 2)
   let weekKneeFlexion = false;  // has ANY session placed knee-flexion hamstring work yet?
+  // What the fit-to-time pass (5a) may shed first (W303): the 4c rescue's bonus lift and the residual top-up sets, by
+  // "session|exercise". Side tables, so the program itself stays clean.
+  const rescued = new Set(), topped = new Map();
   const outSessions = sessionSpecs.map((spec, sIdx) => {
     const mset = ARCH[spec.arch];
     // This day's rep/intensity band: the base scheme, or (auto/opt-in DUP) a
@@ -1171,6 +1265,7 @@ export function generatePlan(profile, kb, opts = {}) {
           const grow = Math.min(round(residual), cap - it.sets, setBudget - setsUsed, ...(x.primary_muscles ?? []).map((mm) => perSessionCap - (direct[mm] ?? 0)));
           if (grow < 1) continue;
           it.sets += grow; setsUsed += grow;
+          topped.set(`${spec.name}|${it.exercise}`, (topped.get(`${spec.name}|${it.exercise}`) ?? 0) + grow);
           for (const mm of x.primary_muscles ?? []) { credited[mm] = (credited[mm] ?? 0) + grow; direct[mm] = (direct[mm] ?? 0) + grow; if (mech === "isolation") isoCredited[mm] = (isoCredited[mm] ?? 0) + grow; }
           for (const mm of x.secondary_muscles ?? []) credited[mm] = (credited[mm] ?? 0) + grow * 0.5;
           const ch = exerciseChoices.find((c) => c.session === spec.name && c.exercise === it.exercise);
@@ -1224,7 +1319,10 @@ export function generatePlan(profile, kb, opts = {}) {
     // non-competing isolations costs roughly half the rest, so two paired sets
     // add ~2 minutes, not ~6 — honest time math for the lifter whose session
     // length is the binding constraint.
-    if (setsUsed >= setBudget && items.length < EX_BUDGET) { // the rescue is a bonus exercise — still honour the per-session exercise cap
+    // W303: only when MINUTES bound the set budget (round(min/3) < the quality cap) — a quality-capped day has no time to
+    // buy back — and its two sets count against that cap (they were never billed, so 39% of generated days ran past it).
+    const qualityCap = SESSION_QUALITY_CAP[experience] ?? 16;
+    if (setsUsed >= setBudget && items.length < EX_BUDGET && Math.round(sessionMin / 3) < qualityCap && setsUsed + 2 <= qualityCap) { // the rescue is a bonus exercise — still honour the per-session exercise cap
       const isoItems = items.filter((it) => exById.get(it.exercise)?.mechanic === "isolation" && !it.superset_with);
       outer: for (const m of order) {
         if ((credited[m] ?? 0) >= perTarget(m) || !isoPool[m].length) continue;
@@ -1241,7 +1339,7 @@ export function generatePlan(profile, kb, opts = {}) {
           if (!partner) continue;
           rot[m] += t + 1;
           const sN = 2;
-          placed.add(cand.id); // NOTE: deliberately not counted in setsUsed — the pairing pays the time
+          placed.add(cand.id); setsUsed += 2; rescued.add(`${spec.name}|${cand.id}`); // counted against the quality cap (W303)
           weekUseCount[cand.id] = (weekUseCount[cand.id] ?? 0) + 1; // rescue placements count toward the weekly-variety cap too
           const sch = priority.has(m) ? sessScheme.priorityIso : PUMP_MUSCLES.has(m) ? sessScheme.pumpIso : sessScheme.isolation; // same band logic as add() — undulates with the day
           items.push({ exercise: cand.id, sets: sN, rep_range: sch[0], rir: sch[1], superset_with: partner.exercise });
@@ -1299,6 +1397,74 @@ export function generatePlan(profile, kb, opts = {}) {
     if (!trimmed) break;
   }
 
+  // 5a) FIT TO TIME (W303, considerations iteration — owner: "My leg day has 22 sets … 88 mins, not the 60 per workout
+  // I chose"). The set budget above is a COUNT; the clock is sessionMinutes at the pace real workouts were measured at
+  // (derive-core). A day more than FIT_GRACE_MIN over its minutes first PAIRS two non-competing isolations (Burst 8
+  // review #44: the 4c partner rule, at most one pair a session — KB rest-periods "superset smartly": the time comes
+  // back and every set stays). Only then does it shed, in order: the 4c rescue's bonus lift, then the residual top-up
+  // sets, then isolation sets — shaving to 2 sets before dropping a lift whole. EVERY tier keeps every guard (review
+  // #0: the first two tiers once took a muscle's whole week for 0.4 min): never a set that credits a priority muscle,
+  // directly or as a secondary; every growth muscle the lift credits (secondary at half, as the tracker counts it —
+  // review #43) stays at or above MEV for the week; never the week's last direct lift for a muscle or its knee-flexion
+  // staple. Compounds' own doses are never cut here. What the clock took is RECORDED lift by lift (time_trim), so the
+  // plan can say it and offer the ways back; a day nothing more can come off is flagged as unfit, never silently long.
+  const timeTrim = { removed_sets: 0, by_muscle: {}, taken: [], paired: [], unfit: [] };
+  {
+    const prim = (id) => exById.get(id)?.primary_muscles ?? [];
+    const credits = (id) => [...prim(id).map((m) => [m, 1]), ...(exById.get(id)?.secondary_muscles ?? []).map((m) => [m, 0.5])];
+    const isKneeFlexion = (it) => exById.get(it.exercise)?.movement_pattern === "isolation-knee-flexion";
+    const directLifts = (m) => outSessions.reduce((n, s) => n + s.exercises.filter((x) => prim(x.exercise).includes(m)).length, 0);
+    const kneeFlexion = () => outSessions.reduce((n, s) => n + s.exercises.filter(isKneeFlexion).length, 0);
+    const growth = (m) => { const r = volumeRationale[m]; return !!r && r.target_sets > 0 && !r.maintenance && !r.eased && !r.secondary_served; };
+    const over = (s) => dayMinutes(s.exercises, exById) > sessionMin + FIT_GRACE_MIN;
+    const take = (s, it, n) => {
+      for (const m of prim(it.exercise)) timeTrim.by_muscle[m] = (timeTrim.by_muscle[m] ?? 0) + n;
+      timeTrim.removed_sets += n;
+      timeTrim.taken.push({ session: s.name, exercise: it.exercise, sets: n, dropped: n >= it.sets });
+      if (n >= it.sets) {
+        s.exercises.splice(s.exercises.indexOf(it), 1);
+        // a dropped lift takes its pairing with it — the day is pair-free again, so the pairing can be re-tried (C1/C13)
+        const mate = it.superset_with ? s.exercises.find((x) => x.exercise === it.superset_with) : null;
+        if (mate) delete mate.superset_with;
+      } else it.sets -= n;
+    };
+    for (const s of outSessions) {
+      const key = (it) => `${s.name}|${it.exercise}`;
+      // Pair before cutting — and again whenever a shed leaves the day pair-free (the rescue pair's bonus gone, C1/C13).
+      const tryPair = () => {
+        if (!over(s) || s.exercises.some((it) => it.superset_with)) return false;
+        const isos = s.exercises.filter((it) => exById.get(it.exercise)?.mechanic === "isolation");
+        for (let i = 0; i < isos.length; i++) for (let j = i + 1; j < isos.length; j++) {
+          const mine = new Set(credits(isos[i].exercise).map(([m]) => m));
+          if (credits(isos[j].exercise).some(([m]) => mine.has(m))) continue;
+          isos[i].superset_with = isos[j].exercise; isos[j].superset_with = isos[i].exercise;
+          if (!timeTrim.paired.includes(s.name)) timeTrim.paired.push(s.name);
+          for (const [a, b] of [[isos[i], isos[j]], [isos[j], isos[i]]]) exerciseChoices.find((c) => c.session === s.name && c.exercise === a.exercise)?.why?.push("paired with " + b.exercise);
+          return true;
+        }
+        return false;
+      };
+      tryPair();
+      for (let guard = 0; guard < 60 && over(s); guard++) {
+        if (tryPair()) continue;
+        const week = projectWeek();
+        // …and never the PARTNER of a rescue bonus the guards kept: the bonus's time is paid only by its pairing (Wave 276).
+        const sheddable = (it, n) => credits(it.exercise).every(([m, w]) => !priority.has(m)
+          && (!growth(m) || (week[m] ?? 0) - n * w >= (muscleById.get(m)?.landmarks?.mev?.min ?? 0)))
+          && (n < it.sets || (prim(it.exercise).every((m) => directLifts(m) > 1) && !(isKneeFlexion(it) && kneeFlexion() <= 1)
+            && !(it.superset_with && rescued.has(`${s.name}|${it.superset_with}`))));
+        const rescue = s.exercises.find((it) => rescued.has(key(it)) && sheddable(it, it.sets));
+        if (rescue) { rescued.delete(key(rescue)); take(s, rescue, rescue.sets); continue; }
+        const grown = [...s.exercises].reverse().find((it) => (topped.get(key(it)) ?? 0) > 0 && it.sets > 2 && sheddable(it, 1));
+        if (grown) { topped.set(key(grown), topped.get(key(grown)) - 1); take(s, grown, 1); continue; }
+        const iso = [...s.exercises].reverse().find((it) => exById.get(it.exercise)?.mechanic === "isolation" && sheddable(it, it.sets > 2 ? 1 : it.sets));
+        if (!iso) break;
+        take(s, iso, iso.sets > 2 ? 1 : iso.sets);
+      }
+      if (over(s)) timeTrim.unfit.push(s.name);
+    }
+  }
+
   // 5b) reconcile the rationale with the TRIMMED plan. exerciseChoices was built
   // while filling sessions, i.e. BEFORE the trim above mutated them — left alone it
   // reports set counts the plan no longer prescribes (and cites exercises the trim
@@ -1331,9 +1497,12 @@ export function generatePlan(profile, kb, opts = {}) {
   const weekVol = projectWeek();
   const vsLm = volumeVsLandmarks(weekVol, muscleIndex);
   // Only the levers that actually bind for THIS profile appear in any message
-  // below — see volumeLevers for why a dead lever is worse than none.
-  const levers = volumeLevers({ days: sessionSpecs.length, sessionMin, experience });
+  // below — see volumeLevers for why a dead lever is worse than none. PER MUSCLE (Burst 8 review #2): longer sessions
+  // help a muscle the clock cut, or any muscle when the minutes bound the set budget — never every muscle because one
+  // set came off one day.
+  const leversFor = (m) => volumeLevers({ days: sessionSpecs.length, sessionMin, experience, timeBound: (timeTrim.by_muscle[m] ?? 0) > 0 ? true : undefined });
   for (const [m, r] of Object.entries(volumeRationale)) {
+    const levers = leversFor(m);
     const proj = weekVol[m] ?? 0;
     const f = freq[m] ?? 0;
     r.projected_sets = proj;
@@ -1517,7 +1686,7 @@ export function generatePlan(profile, kb, opts = {}) {
       // built to prove the plan is honest. The engine was right and the explanation
       // was wrong, so the explanation moved.
       session_budget: { hard_sets: Math.max(setBudget, ...outSessions.map((sn) => sn.exercises.reduce((a, e) => a + e.sets, 0))),
-        budget: setBudget, minutes: sessionMin,
+        budget: setBudget, minutes: sessionMin, time_cut: timeTrim.removed_sets, over: [...timeTrim.unfit],
         reason: `Up to ${Math.max(setBudget, ...outSessions.map((sn) => sn.exercises.reduce((a, e) => a + e.sets, 0)))} hard sets on your biggest session — per-set effort drops off well before time runs out, and spreading volume across sessions beats cramming it (see frequency).` },
     },
     volume_by_muscle: volumeRationale,
@@ -1525,7 +1694,7 @@ export function generatePlan(profile, kb, opts = {}) {
     exercise_choices: exerciseChoices,
     warnings,
   };
-  return { program, rationale, meta: { engine_version: "1.1.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries } } };
+  return { program, rationale, meta: { engine_version: "1.1.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries }, time_trim: timeTrim } };
 }
 
 // ---------------------------------------------------------------------------------
@@ -1788,7 +1957,7 @@ function reprojectVolumes(program, rationale, kb, lookup) {
 // Every line below is READ OUT OF the plan and its rationale — never re-derived, never
 // asserted. If the engine stops doing a thing, the line describing it disappears with
 // it, so this can't become the "we do X" comment that outlives X (lesson 11/15).
-export function explainPersonalization(profile, rationale, program) {
+export function explainPersonalization(profile, rationale, program, live = null) {
   const out = [];
   const say = (input, answer, effect) => out.push({ input, answer, effect });
   const p = profile ?? {}, r = rationale ?? {};
@@ -1800,8 +1969,15 @@ export function explainPersonalization(profile, rationale, program) {
     // contains. The quality ceiling that shaped it is `budget.budget`, and where
     // the two differ it is because a superset pairing bought the extra sets their
     // time back — so quoting the cap here contradicted the session list below it.
-    say("session_length_min", `${budget.minutes ?? p.session_length_min}-minute sessions`,
-      `up to ${budget.hard_sets} hard sets on your biggest session — long enough to do the work, short enough that the last sets still count.`);
+    // What the minutes COST, when they did (Burst 8 review #33 #42): a plan whose days run past them, or that lost sets
+    // to them, never hears they're "long enough to do the work".
+    // …read from the SAME live measure as Today's card when the binder has one (a plan from an older engine carries
+    // neither field — fix verification K0), else from what the generator recorded.
+    const over = live?.over ?? budget.over ?? [], cut = live ? (live.trimmed_sets ?? 0) : (budget.time_cut ?? 0);
+    const costs = [cut ? `${cut} set${cut === 1 ? "" : "s"} came out of your week to fit them` : "", over.length ? `${over.length === 1 ? over[0] : `${over.length} days`} still run${over.length === 1 ? "s" : ""} past them at a typical pace` : ""].filter(Boolean);
+    say("session_length_min", `${budget.minutes ?? p.session_length_min}-minute sessions`, costs.length
+      ? `up to ${budget.hard_sets} hard sets on your biggest session — ${costs.join(", and ")}.`
+      : `up to ${budget.hard_sets} hard sets on your biggest session — long enough to do the work, short enough that the last sets still count.`);
   }
   const scheme = r.goal_prescription?.rep_scheme;
   if (scheme?.compound) {
@@ -1914,13 +2090,16 @@ const MUSCLE_LABEL = {
 // guard rail it was built to be. Structurally, a generated plan can't trip the
 // other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
 // run at generation), so "generated" only re-frames the volume findings.
-export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null } = {}) {
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null } = {}) {
   const prioritySet = new Set(priority);
   // Caveats must offer only levers that BIND for this user (volumeLevers) — the
   // binder passes sessionMinutes from the profile; without it the default-60
   // assumption still beats the old always-both wording.
-  const levers = volumeLevers({ days: program?.days_per_week, sessionMin: sessionMinutes ?? undefined, experience });
   const { exercises, muscles } = kb;
+  // Per muscle, from what the generator's clock cut (`trimmed`, its meta.time_trim.by_muscle) — Burst 8 review #32: a day
+  // running over adds no set to a ceiling-bound muscle, so it no longer turns every caveat into "or longer sessions".
+  const leversFor = (m) => volumeLevers({ days: program?.days_per_week, sessionMin: sessionMinutes ?? undefined, experience,
+    timeBound: (trimmed?.[m] ?? 0) > 0 ? true : undefined });
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
   const muscleById = new Map(muscles.map((m) => [m.id, m]));
@@ -1962,6 +2141,7 @@ export function critiquePlan(program, kb, { experience = "intermediate", priorit
       if (generated) {
         // A caveat, not a verdict: the plan already is the best fit to the stated
         // constraints, so name the trade and the lever — never "fix your plan".
+        const levers = leversFor(m);
         add("info", `${name(m)}: ~${r.sets} sets/wk is what fits your ${program.days_per_week ?? "current"}-day setup — the ideal range starts around ${lm.mev.min}. ${levers[0].toUpperCase()}${levers.slice(1)}${prioritySet.has(m) ? "" : "; marking it a priority muscle would tilt the current budget its way"}. [Grade ${grade}]`, { muscle: m, citations: lm.citations ?? [] });
         continue;
       }

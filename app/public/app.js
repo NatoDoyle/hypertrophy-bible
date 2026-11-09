@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1690,6 +1690,15 @@ async function renderToday() {
       <p class="muted" style="margin:4px 0 8px">${esc(fit.body)}</p>
       <button class="btn secondary inline" id="fit-rebuild" style="margin:0 6px 0 0">${esc(fit.rebuild)}</button>
       <button class="btn ghost inline" id="fit-keep" style="margin:0">${esc(fit.keep)}</button></div>` : "";
+  // The three ways back (W304): offered by the server when the plan can't hold its necessary volume, in the owner's
+  // ranking; each choice says what it wins or costs; "Keep" is answered once, on the server (every device agrees).
+  // One schedule question at a time (review #18): it waits while the days card is up — decided HERE, where that card's
+  // own "Keep" lives (on the device; a server-side gate silenced both for good — fix C14).
+  const tfit = planFitVisible(fit, fitKey) ? null : timeFitCopy(dy.plan_time_fit);
+  const timeCard = tfit ? `<div class="card" id="time-fit"><b>⏱️ ${esc(tfit.title)}</b>
+      <p class="muted" style="margin:4px 0 8px">${esc(tfit.body)}</p>
+      ${tfit.options.map((o, i) => `<button class="btn ${i === 0 ? "secondary" : "ghost"}" data-tfit="${i}" style="margin:0 0 6px;text-align:left"><b>${esc(o.label)}</b><br><span class="muted" style="font-size:.85rem;font-weight:400">${esc(o.detail)}</span></button>`).join("")}
+      <div id="tfit-day" hidden></div></div>` : "";
 
   // A workout saved offline has synced: its read-out is ready (W282, the offline door).
   const pendingRo = getPendingReadout();
@@ -1702,12 +1711,12 @@ async function renderToday() {
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
   // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
   const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${timeCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
-      : `<h2>What you'll do ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}
     ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;
@@ -1735,9 +1744,64 @@ async function renderToday() {
     let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...planFitRequest(fit) }) }); } catch { r = null; }
     if (!r?.program) { lock(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
     try { localStorage.setItem("hb_program", r.program.name); } catch {}
-    pendingNotice = `🗓️ Rebuilt for ${fit.days} days a week — a fresh training block starts with your next workout.`;
+    pendingNotice = fit.notice; // planFitCopy's own words: a block only where there are blocks (W305j, J2)
     refreshToday(); // the notice waits for the next Today if the user has moved on
   };
+  // The three ways back (W304). More days or minutes rebuild through the Settings door (a fresh block, said on the
+  // card). W305d (Burst 8 review #9 #16 #18 #46 #48 #51): an extra day for someone who keeps a weekly schedule asks for
+  // EVERY day the new plan needs beyond the days kept — a cleared week's usual days count, and that week stays free —
+  // in a labelled group whose question is spoken, with a confirm (one stray tap never rebuilds); a days save that fails
+  // after the rebuild is said, never swallowed (the days card would then offer to rebuild back). Keep names the
+  // question it answers: a card gone stale (the schedule changed elsewhere) refreshes to the question asked now.
+  if (tfit) {
+    // A clear in force (fix C7/C11) — with or without a one-off day picked for this week: the USUAL days are the ones
+    // that come back, so they're what an extra day joins (this week's own days stay as they are).
+    const cleared = (adh.commitment_resume_days?.length ?? 0) > 0;
+    const usual = cleared ? adh.commitment_resume_days : (adh.commitment?.days ?? []);
+    let picked = () => [], need = 0;
+    // The confirm comes back only with the days picked — a failed Keep must not arm a day-less rebuild (fix C8).
+    const lockFit = (on) => { app.querySelectorAll("[data-tfit], [data-tfit-day]").forEach((x) => (x.disabled = on)); const go = $("#tfit-go"); if (go) go.disabled = on || picked().length !== need; };
+    // Days first, then the rebuild (W305i, H6) — timeFitApply says which notice, and whether Today refreshes.
+    const rebuildFit = async (o, days = []) => {
+      lockFit(true);
+      const res = await timeFitApply({ o, days, cleared, usual, thisWeek: adh.commitment?.days ?? [], blocks: dy.plan_time_fit?.blocks !== false, uid,
+        post: (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }), get: (path) => api(path) });
+      if (!res.refresh) { lockFit(false); if (!stale()) alertBar(res.notice); return; }
+      if (res.program) { try { localStorage.setItem("hb_program", res.program.name); } catch { /* storage off: the name is only a convenience */ } }
+      pendingNotice = res.notice; // the notice rides the refresh (#9: an alert drawn here was wiped by it)
+      refreshToday();
+    };
+    app.querySelectorAll("[data-tfit]").forEach((b) => b.onclick = async () => {
+      const { kind, option: o, label } = tfit.options[+b.dataset.tfit];
+      if (kind === "keep") {
+        lockFit(true);
+        let r; try { r = await api("/api/plan/time-fit", { method: "POST", body: JSON.stringify({ user_id: uid, choice: "keep", key: tfit.key }) }); } catch { r = null; }
+        if (r?.stale) { refreshToday(); return; }
+        if (!r?.ok) { lockFit(false); if (!stale()) alertBar("📴 Couldn't save that — try again in a moment."); return; }
+        $("#time-fit")?.remove(); say(`${label.replace(/^Keep /, "Kept ")}.`); return;
+      }
+      if (kind === "add_day" && usual.length && usual.length < o.days) {
+        need = o.days - usual.length;
+        const host = $("#tfit-day");
+        const q = timeFitDayQuestion(need, { cleared, thisWeek: adh.commitment?.days ?? [] });
+        host.innerHTML = `<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q" style="margin:6px 0">${esc(q)}</p>`
+          + Object.keys(DAY_LONG).filter((d) => !usual.includes(d))
+            .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" aria-pressed="false" aria-label="${DAY_LONG[d]}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("")
+          + `<button class="btn secondary" id="tfit-go" disabled style="margin-top:4px">Rebuild for ${o.days} days</button></div>`;
+        host.hidden = false;
+        picked = () => [...host.querySelectorAll('[data-tfit-day][aria-pressed="true"]')].map((x) => x.dataset.tfitDay);
+        host.querySelectorAll("[data-tfit-day]").forEach((x) => x.onclick = () => {
+          x.setAttribute("aria-pressed", x.getAttribute("aria-pressed") === "true" ? "false" : "true");
+          $("#tfit-go").disabled = picked().length !== need;
+        });
+        $("#tfit-go").onclick = () => rebuildFit(o, picked());
+        say(q);
+        host.querySelector("[data-tfit-day]")?.focus();
+        return;
+      }
+      await rebuildFit(o);
+    });
+  }
   if ($("#fit-keep")) $("#fit-keep").onclick = () => {
     try { localStorage.setItem("hb_fit_kept", fit.key); } catch {}
     $("#plan-fit")?.remove();
@@ -2075,11 +2139,28 @@ const lastTimeLine = (e) => {
 // it); a brand-new lift has its own find-your-weight card instead.
 // The engine writes it in kg; noteInUnit puts every figure in the lift's own unit (or drops a
 // line that would contradict the stepper).
-const whyLine = (e) => {
+// …and a held weight's lighter alternative (W305), one tap — offered only while the stepper still holds the served weight.
+// ONE offer (altOffer) for the note, the button and the tap (Burst 8 review #7/#25/#34/#37): a real step in the lift's unit,
+// never under the bar or ~20% down, never on a tired row, at the model's reps — and the note names it, or nothing.
+const altFor = (e) => altOffer(e, { toDisp: (kg) => dispWeightFor(kg, e.exercise), toKg: (v) => toKgFor(v, e.exercise), step: wIncFor(e.exercise), served: startWeightDisp(e), unit: unitFor(e.exercise) });
+const whyLine = (e, idx = sess?.i) => {
   if (!e.suggestion_note || e.suggested_kg == null) return "";
-  const note = noteInUnit(e.suggestion_note, e, unitFor(e.exercise), (kg) => dispWeightFor(kg, e.exercise), startWeightDisp(e));
-  return note ? `<p class="muted" id="why-weight" style="font-size:.85rem;margin:0 0 6px">📈 ${esc(note)}</p>` : "";
+  const alt = altFor(e);
+  const note = noteInUnit(e.suggestion_note, e, unitFor(e.exercise), (kg) => dispWeightFor(kg, e.exercise), startWeightDisp(e), alt?.w ?? null);
+  const altBtn = alt && Number(sess?.weights?.[idx]) === startWeightDisp(e)
+    ? `<br><button class="btn ghost inline" data-alt-weight="${idx}" style="margin:4px 0 0">Use ${alt.w} ${unitLabelFor(e.exercise)}</button>` : "";
+  return note ? `<p class="muted" id="why-weight" style="font-size:.85rem;margin:0 0 6px">📈 ${esc(note)}${altBtn}</p>` : "";
 };
+// The lighter alternative's tap: the weight, and the reps the model predicts there (Burst 8 review #34 — was the range's bottom).
+function wireAltWeight(rerender) {
+  app.querySelectorAll("[data-alt-weight]").forEach((b) => b.onclick = () => {
+    const idx = +b.dataset.altWeight, e = sess.ex[idx], a = altFor(e);
+    if (!a) return;
+    sess.weights[idx] = a.w; sess.wUnits[idx] = unitFor(e.exercise);
+    if (Number.isInteger(a.reps)) sess.reps[idx] = a.reps;
+    saveSess(); rerender();
+  });
+}
 // The value between the − / + nudge buttons is a REAL input (typed entry is the
 // fast path for a big jump — 20→80 kg was 24 taps). The unit beside it is a
 // button: tapping flips THIS exercise between kg and lb (the mixed-unit gym),
@@ -2173,12 +2254,13 @@ const setConfirmCue = (idx) => {
 // Clearing a pending typo-confirm from a TYPED edit must NOT repaint — the focused
 // input dies with the screen, so one keystroke after the cue's own "fix it above"
 // advice would eject the user from the field. Instead: reset the flag, remove the
-// cue line(s) (only confirm cues carry role="status" inside the player card), and
+// cue line(s) — by their own marker, data-confirm-cue: the set hint and each superset
+// leg's hint are role="status" cues too, and must survive (Burst 8 review #47) — and
 // restore the Done button's idle label stashed at render time. The stepper − / +
 // buttons keep their existing repaint-on-clear path — they hold no text focus.
 function dismissConfirmCueInPlace() {
   if (!clearSetConfirm()) return;
-  app.querySelectorAll('.cue[role="status"]').forEach((el) => el.remove());
+  app.querySelectorAll("[data-confirm-cue]").forEach((el) => el.remove());
   const btn = app.querySelector("#done, #doner");
   if (btn?.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
 }
@@ -2492,6 +2574,71 @@ function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
   $("#rest-plus").onclick = () => nudge(REST_STEP_S);
 }
 
+// THE NEXT SET'S HINT (W279b; W305 — owner: "I didn't achieve the recommended reps and intensity and it didn't suggest a
+// more appropriate weight"): from the last WORK set of this lift banked this session — derived, never stored, so a
+// resume shows the same advice. ONE computation for the set screen, the rest screen (where the plates get changed) and
+// each superset leg. Judged against that set's own aim while the weight was the served one (Burst 5 review), and the
+// NEXT set's aim gates an in-range "lighter" (W305: aims that already expect the drop are met). Planned-easy days never
+// hint. In the lift's display unit, always a real move except "same" (pounds round to 5-lb plates); judged at the
+// OFFERED weight (a pounds user's next plate can be heavier than the kg it rounds from).
+function setHintFor(e) {
+  const done = loggedSetCount(e.exercise);
+  const prevWork = done > 0 && !sess.deload && !e.eased
+    ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
+  const aims = validAim(e);
+  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss. Today's aims
+  // belong to the SERVED load: the next set's too (Burst 8 review #23 — as repSeed's atServed).
+  const atServed = !!prevWork && !!aims && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e));
+  const prevAim = atServed ? aims[Math.min(done - 1, aims.length - 1)] ?? null : null;
+  const rawHint = nextSetHint(prevWork, e, { aim: prevAim, nextAim: atServed ? aims[done] ?? null : null });
+  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise), unitFor(e.exercise)) : null;
+  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
+  const hintW = hint ? rawW : null;
+  // The lead names the weight BANKED, as typed (Burst 8 review #8: a typed 22.5 lb read "7 reps at 25 lb").
+  const hc = hint && hintW != null ? hintCopy(hint, { setNo: done, fromW: `${+editDisplay(hint.from_kg, unitFor(e.exercise))} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
+  return { hint: hc ? hint : null, hintW: hc ? hintW : null, hc };
+}
+const hintIcon = (hint) => (hint?.kind === "heavier" ? "⬆️" : hint?.kind === "same" ? "💪" : "🎯");
+// The hint's one tap: "Use X" moves the weight (and the reps it aims at); "Aim for N" sets only the reps. Hidden once
+// the steppers already say it.
+function hintButton(hint, hintW, w, reps, e, id) {
+  if (!hint) return "";
+  if (hint.kind === "same") return Number(reps) !== hint.target_reps ? `<br><button class="btn ghost inline" id="${id}" style="margin:6px 0 0">Aim for ${hint.target_reps}</button>` : "";
+  return Number(w) !== hintW ? `<br><button class="btn ghost inline" id="${id}" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : "";
+}
+function applyHint(idx, e, hint, hintW) {
+  if (hint.kind !== "same") { sess.weights[idx] = hintW; sess.wUnits[idx] = unitFor(e.exercise); }
+  sess.reps[idx] = hint.target_reps ?? sess.reps[idx]; // the reps that weight aims at (W288)
+}
+// The hint ON the rest screen, for slot `idx` (W305; Burst 8 review #11/#12/#35/#36): "Next set" on a straight rest, the
+// leg's name on a superset round rest (`named`). Derived from banked sets like every hint, so a reload mid-rest repaints it.
+const restHintBody = (idx, m, rh, named) => `${hintIcon(rh.hint)} ${named ? `<b>${esc(m.name)}</b>` : "Next set"}: ${rh.hint.kind === "same"
+  ? `${rh.hintW} ${unitLabelFor(m.exercise)} again — aim for ${rh.hint.target_reps}. You had the reps.`
+  : `try <b>${rh.hintW} ${unitLabelFor(m.exercise)}</b> — ${esc(rh.hc.why)}.`} ${hintButton(rh.hint, rh.hintW, sess.weights[idx], sess.reps[idx], m, `rest-use-hint-${idx}`)}`;
+const restHintHtml = (idx, m, rh, named) => rh?.hc ? `<span class="cue" id="rest-hint-${idx}" role="status" style="display:block;margin-top:8px;text-align:left">${restHintBody(idx, m, rh, named)}</span>` : "";
+// …and in the rest's one announcement (#36): focus goes to "I'm ready", AFTER the hint, so its words travel with the announcement.
+const restHintSay = (m, rh, named) => !rh?.hc ? "" : ` ${named ? m.name : "Next set"}: ${rh.hint.kind === "same"
+  ? `${rh.hintW} ${unitLabelFor(m.exercise)} again, aim for ${rh.hint.target_reps}.` : `try ${rh.hintW} ${unitLabelFor(m.exercise)} — ${rh.hc.why}.`}`;
+// Its one tap. Re-judged AT THE TAP (#12): a set fixed in the editor during the rest can change or retire the advice, and
+// then the line shows what's true now instead of pushing the stale weight. A tap that applies repaints ONLY this line (#35):
+// a redraw would clear the readiness ticks, close an open fix and announce the rest again. The timer reads sess.rest.until.
+function wireRestHint(idx, shown, named) {
+  const b = $(`#rest-use-hint-${idx}`);
+  if (!b) return;
+  b.onclick = () => {
+    const had = document.activeElement === b;
+    const m = sess.ex[idx], rh = setHintFor(m), line = $(`#rest-hint-${idx}`);
+    const still = rh.hint && rh.hint.kind === shown.hint.kind && rh.hintW === shown.hintW && rh.hint.target_reps === shown.hint.target_reps;
+    if (still) {
+      applyHint(idx, m, rh.hint, rh.hintW); saveSess();
+      line.innerHTML = `✓ ${named ? `${esc(m.name)}: ` : ""}${rh.hint.kind === "same" ? `Aim for ${rh.hint.target_reps}`
+        : `${rh.hintW} ${unitLabelFor(m.exercise)}${rh.hint.target_reps ? `, aiming for ${rh.hint.target_reps},` : ""}`} is set for your next ${named ? "round" : "set"}.`;
+    } else if (rh.hc) { line.innerHTML = restHintBody(idx, m, rh, named); wireRestHint(idx, rh, named); }
+    else line.remove();
+    // …to the next leg's hint still waiting, never past it to "I'm ready" (fix C9).
+    if (had) ($(`#rest-use-hint-${idx}`) ?? app.querySelector('[id^="rest-use-hint-"]') ?? $("#skip"))?.focus();
+  };
+}
 function renderPlayer() {
   stopRestTimer();
   setEditor = null;
@@ -2536,9 +2683,14 @@ function renderPlayer() {
   const rest = activeRest(sess, Date.now());
   if (rest) {
     quitPending = false;
-    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}`, e, () => renderPlayer(0),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.`,
+    // The next set's hint, ON the rest screen (W305 — owner: "it didn't suggest a more appropriate weight"): the rest is
+    // when the plates get changed, and the set screen only came after it. A superset's remainder rest is between sets of
+    // the same lift too (Burst 8 review #11).
+    const rh = rest.kind === "set" || rest.kind === "remainder" ? setHintFor(e) : null;
+    showRest(rest, `Next: set ${sess.set + 1} of ${e.sets} — ${esc(e.name)}${restHintHtml(sess.i, e, rh, false)}`, e, () => renderPlayer(0),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — start your next set when your breath is back, your heart rate settles, and you're ready. Set ${sess.set + 1} of ${e.sets}, ${e.name}.${restHintSay(e, rh, false)}`,
       `${e.name} — set ${sess.set + 1} of ${e.sets}`);
+    if (rh?.hc) wireRestHint(sess.i, rh, false);
     return;
   }
 
@@ -2549,23 +2701,10 @@ function renderPlayer() {
   // The whole lift's aim at a glance on its first set (W289): why set 2 may start on fewer reps.
   const aim = sess.set === 0 ? validAim(e) : null;
   // "A more appropriate weight" for THIS set (W279b, owner consideration #3): derived from
-  // the last WORK set of this lift banked this session — nothing stored, so a resume shows
-  // the same advice. Advice only; one tap fills the stepper. Planned-easy days never hint.
-  const prevWork = sess.set > 0 && !sess.deload && !e.eased
-    ? [...sess.logged].reverse().find((l) => l.exercise === e.exercise && l.set_type === "work") : null;
-  // …judged against that set's own aim while the weight is still the served one (Burst 5 review): a set that
-  // met an aim under the range is on plan, not a miss.
-  // By the weight that set was BANKED at — moving the stepper afterwards must not turn a met aim into a miss.
-  const prevAim = prevWork && sameLoad(dispWeightFor(prevWork.weight_kg, e.exercise), startWeightDisp(e), stepFor(e)) ? validAim(e)?.[Math.min(loggedSetCount(e.exercise) - 1, validAim(e).length - 1)] ?? null : null;
-  const rawHint = nextSetHint(prevWork, e, { aim: prevAim });
-  // In the lift's display unit, always a real move (pounds round to 5-lb plates)…
-  const rawW = rawHint ? hintInUnit(rawHint, (kg) => dispWeightFor(kg, e.exercise), wIncFor(e.exercise)) : null;
-  // …and judged at that OFFERED weight: a pounds user's next plate can be heavier than the kg it rounds from.
-  const hint = rawHint && rawW != null ? finalizeHint(rawHint, prevWork, e, toKgFor(rawW, e.exercise)) : null;
-  const hintW = hint ? rawW : null;
-  const hc = hint && hintW != null ? hintCopy(hint, { setNo: sess.set, fromW: `${dispWeightFor(hint.from_kg, e.exercise)} ${unitLabelFor(e.exercise)}`, toW: `${hintW} ${unitLabelFor(e.exercise)}` }) : null;
-  const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hint.kind === "lighter" ? "🎯" : "⬆️"} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
-      ${Number(w) !== hintW ? `<br><button class="btn ghost inline" id="use-hint" style="margin:6px 0 0">Use ${hintW} ${unitLabelFor(e.exercise)}</button>` : ""}</div>` : "";
+  // the last WORK set of this lift banked this session — the same advice the rest screen gave (setHintFor).
+  const { hint, hintW, hc } = setHintFor(e);
+  const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hintIcon(hint)} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
+      ${hintButton(hint, hintW, w, reps, e, "use-hint")}</div>` : "";
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><span class="num">${sess.i + 1}/${total}</span></div>
     ${swapUndoCard(e)}
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
@@ -2597,7 +2736,7 @@ function renderPlayer() {
       ${sess.set === 0 && !firstEver ? whyLine(e) : ""}
       ${repsStepper(reps, null)}
       ${effChips(sess.i)}
-      ${confirmSet.has(e.exercise) ? `<div class="cue" role="status">${setConfirmCue(sess.i)}</div>` : ""}
+      ${confirmSet.has(e.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
@@ -2670,10 +2809,10 @@ function renderPlayer() {
     if (skipWouldFinish(sess) && !skipPending) { skipPending = true; quitPending = false; return renderPlayer(0); }
     applySkip(skipSet(sess), () => renderPlayer(0));
   };
+  wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderPlayer(0); });
   if ($("#use-hint")) $("#use-hint").onclick = () => {
     clearSetConfirm(); quitPending = false; // a new weight: the typo guard judges it afresh, like any stepper touch
-    sess.weights[sess.i] = hintW; sess.wUnits[sess.i] = unitFor(e.exercise);
-    sess.reps[sess.i] = hint.target_reps ?? sess.reps[sess.i]; // the reps that weight aims at (W288)
+    applyHint(sess.i, e, hint, hintW);
     saveSess(); renderPlayer(0);
   };
   $("#done").onclick = () => {
@@ -2740,9 +2879,12 @@ function renderSupersetStation(L, P) {
   const rest = activeRest(sess, Date.now());
   if (rest) {
     quitPending = false;
-    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}`, null, () => renderSupersetStation(L, P),
-      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.`,
+    // Each leg's hint on the round rest too — the plates get changed here (Burst 8 review #11).
+    const legs = [L, P].map((idx) => [idx, setHintFor(sess.ex[idx])]);
+    showRest(rest, `Next: round ${round + 1} of ${paired} — ${esc(A.name)} + ${esc(B.name)}${legs.map(([idx, rh]) => restHintHtml(idx, sess.ex[idx], rh, true)).join("")}`, null, () => renderSupersetStation(L, P),
+      `Resting about ${formatRest(restRemaining(rest.until, Date.now()))} — go again when your breath is back and you're ready. Round ${round + 1} of ${paired}, ${A.name} with ${B.name}.${legs.map(([idx, rh]) => restHintSay(sess.ex[idx], rh, true)).join("")}`,
       `${A.name} + ${B.name} — round ${round + 1} of ${paired}`);
+    for (const [idx, rh] of legs) if (rh.hc) wireRestHint(idx, rh, true);
     return;
   }
 
@@ -2760,12 +2902,13 @@ function renderSupersetStation(L, P) {
       ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
       ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
+      ${(() => { const lh = setHintFor(m); return lh.hc ? `<div class="cue" role="status">${hintIcon(lh.hint)} <b>${lh.hc.lead}</b> — ${lh.hc.why}. Try <b>${lh.hc.tryW}</b> ${lh.hc.tail} ${hintButton(lh.hint, lh.hintW, w, reps, m, `leg-hint-${idx}`)}</div>` : ""; })()}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
-      ${round === 0 ? whyLine(m) : ""}
+      ${round === 0 ? whyLine(m, idx) : ""}
       ${repsStepper(reps, idx)}
       ${effChips(idx)}
-      ${confirmSet.has(m.exercise) ? `<div class="cue" role="status">${setConfirmCue(idx)}</div>` : ""}
+      ${confirmSet.has(m.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
   };
@@ -2814,6 +2957,16 @@ function renderSupersetStation(L, P) {
     if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
     applySkip(skipRound(sess, L, P), () => renderPlayer(0));
   };
+  // A new weight disarms "End workout early" and is judged afresh by the typo guard, as on the straight player (Burst 8 review #10).
+  wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderSupersetStation(L, P); });
+  // Each leg's next-round hint (W305): the same advice a straight set gets, one tap fills that leg's steppers.
+  for (const idx of [L, P]) {
+    const b = $(`#leg-hint-${idx}`);
+    if (b) b.onclick = () => {
+      clearSetConfirm(); quitPending = false;
+      const m = sess.ex[idx], lh = setHintFor(m); if (lh.hint) applyHint(idx, m, lh.hint, lh.hintW); saveSess(); renderSupersetStation(L, P);
+    };
+  }
   $("#doner").onclick = () => {
     quitPending = false; // a logged round is an unambiguous "I'm continuing"
     skipPending = false;
@@ -3261,7 +3414,9 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     const row = { suggested_kg: n.kg, last_kg: n.last_kg };
     const disp = prefillInUnit(row, toDisp, wIncFor(n.exercise)) ?? toDisp(n.kg);
     const moved = n.last_kg > 0 && disp !== toDisp(n.last_kg);
-    const note = noteInUnit(n.note, row, unitFor(n.exercise), toDisp, disp);
+    // The held weight's alternative as the player will OFFER it — the same altOffer — or none (Burst 8 review #7).
+    const alt = n.alt_kg ? altOffer({ ...n, suggested_kg: n.kg }, { toDisp, toKg: (v) => toKgFor(v, n.exercise), step: wIncFor(n.exercise), served: disp, unit: unitFor(n.exercise) }) : undefined;
+    const note = noteInUnit(n.note, row, unitFor(n.exercise), toDisp, disp, alt === undefined ? undefined : alt?.w ?? null);
     return { moved, disp, html: `<b>${esc(n.name)}</b> — ${disp} ${unitLabelFor(n.exercise)}${note ? `. ${esc(note)}` : ""}` };
   };
   const nexts = (ro?.next ?? []).map((n) => ({ ...nextOf(n), exercise: n.exercise }));

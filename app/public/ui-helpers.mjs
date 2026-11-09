@@ -259,10 +259,13 @@ export function planFitCopy(fit) {
     ? "so workouts keep rolling into the next week, and your muscles get less than the plan was built for"
     : "so workouts repeat within the week, and your muscles get more than the plan was built for";
   const gain = c < n ? "every workout fits your week" : "each day gets its own workout";
+  // A block only where there are blocks (W305j, J2 — a beginner's plan has none); the tap's notice lives here too.
+  const blocks = fit.blocks !== false;
   return {
     title: `Fit your plan to your ${c} days?`,
-    body: `You've been picking ${c} days a week, but your plan has ${n} workouts — ${cost}. Rebuilt for ${c} days, ${gain}. It starts a fresh training block.`,
+    body: `You've been picking ${c} days a week, but your plan has ${n} workouts — ${cost}. Rebuilt for ${c} days, ${gain}.${blocks ? " It starts a fresh training block." : ""}`,
     rebuild: `Rebuild for ${c} days`, keep: `Keep my ${n}-day plan`, key: `${n}:${c}`, days: c,
+    notice: `🗓️ Rebuilt for ${c} days a week — ${blocks ? "a fresh training block starts" : "your new plan starts"} with your next workout.`,
   };
 }
 // The card's two decisions, here so they're tested rather than wired by hand (W278 review):
@@ -270,6 +273,95 @@ export function planFitCopy(fit) {
 // COMMITTED count — and whether the card shows at all ("Keep" hides that one pair).
 export const planFitRequest = (fit) => (fit?.days ? { profile: { days_per_week: fit.days } } : null);
 export const planFitVisible = (fit, keptKey) => !!fit && keptKey !== fit.key;
+
+// The three ways back (W304, considerations iteration — owner: "If the necessary amount of volume can't fit within the
+// chosen workout length preference please suggest to the user 3 options in order of best to worst"). Worded from the
+// engine's own measurements (daily.plan_time_fit), in the engine's ranking. W305c (Burst 8 review): every option says
+// what it wins AND what it newly leaves short (#15); keep says only what it forgoes — what some option would lift — and
+// any day it leaves long (#17 #49); a landmark is "the usual starting point for growth (an estimate)", never "the minimum
+// that builds muscle" (#6 #19 — the KB's MEV is an estimate where a growth block starts); no verb has to agree with a
+// muscle's name (#30); minutes compare like for like, the longest workout then and now (#29 #41); a block restart only
+// where there are blocks (#27); a day past its minutes is said even when no option helps — keep alone acknowledges it
+// (#21). Null when there's nothing to say.
+export function timeFitCopy(fit) {
+  const opts = (fit?.options ?? []).filter((o) => o?.kind);
+  const over = fit?.over ?? [], unfit = fit?.unfit_days ?? over.length;
+  if (!opts.length || (opts.every((o) => o.kind === "keep") && !(unfit > 0 && over.length))) return null;
+  const names = (ms) => friendlyList((ms ?? []).map(friendlyMuscle));
+  const mins = (x) => Math.round(x ?? 0);
+  const s = (n) => (n === 1 ? "" : "s");
+  const body = [];
+  if (unfit > 0 && over.length) {
+    body.push(`${over[0].session} takes about ${mins(over[0].minutes)} min${unfit > 1 ? `, the longest of ${unfit}` : ""}.`);
+    // A plan from an older engine was never sized to the minutes: said so, never "what's left is what you need" (fix C2).
+    body.push(fit.trimmed_sets > 0 ? `${fit.trimmed_sets} set${s(fit.trimmed_sets)} already came out to save time.`
+      : fit.fitted === false ? "Your plan was built before workouts were sized to your minutes." : "What's left is your main lifts and the sets your muscles need.");
+  } else if (fit.trimmed_sets > 0) body.push(`To fit ${fit.minutes} minutes, ${fit.trimmed_sets} set${s(fit.trimmed_sets)} came out of your week.`);
+  if (fit.mev_short?.length) body.push(`Below the usual starting point for growth (an estimate): ${names(fit.mev_short)}.`);
+  const now = mins(fit.max_minutes);
+  const options = opts.map((o) => {
+    if (o.kind === "keep") {
+      const parts = [unfit > 0 && over.length ? `${over[0].session} stays about ${mins(over[0].minutes)} min${unfit > 1 ? `, and ${unfit - 1} more past ${fit.minutes}` : ""}` : "",
+        o.forgoes?.length ? `leaves ${names(o.forgoes)} below it` : ""].filter(Boolean);
+      return { kind: o.kind, option: o, label: `Keep ${o.days} × ${o.minutes} min`, detail: parts.join(" · ") || "nothing changes" };
+    }
+    const fitted = unfit - (o.unfit_days ?? 0);
+    const parts = [
+      o.lifted?.length ? `brings ${names(o.lifted)} up to it` : "",
+      fitted > 0 ? (o.unfit_days ? `${fitted} more workout${s(fitted)} fit${fitted === 1 ? "s" : ""}` : "every workout fits") : "",
+      o.newly?.length ? `leaves ${names(o.newly)} below it` : "",
+      o.kind === "refit" ? (fit.blocks === false ? "same days" : "same days, same block") : "",
+      `longest workout about ${mins(o.max_minutes)} min (now ${now})`,
+      o.kind === "refit" || fit.blocks === false ? "" : "starts a fresh 6-week block",
+    ].filter(Boolean);
+    return { kind: o.kind, option: o, label: o.kind === "add_day" ? `Train ${o.days} days a week` : o.kind === "refit" ? `Refit to ${o.minutes} min` : `Make workouts ${o.minutes} min`, detail: parts.join(" · ") };
+  });
+  const title = unfit > 0 && over.length ? (unfit === 1 ? `${over[0].session} runs past ${fit.minutes} minutes` : `${unfit} workouts run past ${fit.minutes} minutes`)
+    : `${fit.days} workouts of ${fit.minutes} min leave some muscles short`;
+  return { title, body: body.join(" "), options, key: fit.key };
+}
+// The request each choice sends: a schedule change goes through the Settings door (the only one that rebuilds a plan).
+export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_per_week: o.days } }
+  : o?.kind === "longer" ? { profile: { session_length_min: o.minutes } }
+  : o?.kind === "refit" ? { profile: {} } : null); // a refit asks for no change: the same block, today's engine (fix C2)
+// W305i (the W305h check — H6/H7/H8). A way back that adds a day saves the DAYS first, then rebuilds: a failed days save
+// changes nothing, and a failed rebuild after saved days leaves a plan the plan-fit card rebuilds FORWARD to the committed
+// days (the old order — rebuild, then days — left a failed days save with only the undo on offer, and in a cleared week
+// no door that could set the usual days). Block wording only where there are blocks (a beginner's card never names one).
+// `post(path, body)` is the app's own POST; the result says whether Today refreshes (with the notice) or stays (an alert).
+// W305j (J0/J1): a rebuild with no answer is CHECKED, not assumed — an added day shows in the plan's own count (`get`), so
+// one that happened with its answer lost is said as done; one that didn't puts the days back as they were, so "nothing
+// changed" is true and a later Keep keeps what it says. Only if that also fails is the partial state said (and Today
+// refreshed, so the card shows it).
+export async function timeFitApply({ o, days = [], cleared = false, usual = [], thisWeek = [], blocks = true, uid, post, get = null }) {
+  const daysBody = (list) => (cleared ? { user_id: uid, days: thisWeek, resume_days: list } : { user_id: uid, days: list });
+  const nothing = { refresh: false, notice: "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment." };
+  if (days.length) {
+    let c; try { c = await post("/api/commitment", daysBody([...usual, ...days])); } catch { c = null; }
+    if (!c?.commitment) return { refresh: false, notice: "📴 Couldn't save your days — nothing changed. Try again in a moment." };
+  }
+  const fresh = blocks ? "a fresh training block starts with your next workout" : "your new plan starts with your next workout";
+  const notice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — ${fresh}.`
+    : o.kind === "refit" ? `⏱️ Refit to ${o.minutes}-minute workouts — same days${blocks ? ", same block" : ""}.`
+    : `⏱️ Rebuilt for ${o.minutes}-minute workouts — ${fresh}.`;
+  let r; try { r = await post("/api/plan/regenerate", { user_id: uid, ...timeFitRequest(o) }); } catch { r = null; }
+  if (r?.program) return { refresh: true, program: r.program, notice };
+  if (o.kind === "add_day" && get) {
+    let p; try { p = await get("/api/plan/explain"); } catch { p = null; }
+    if (p?.program?.sessions?.length === o.days) return { refresh: true, program: p.program, notice };
+  }
+  if (!days.length) return nothing;
+  let back; try { back = await post("/api/commitment", daysBody(usual)); } catch { back = null; }
+  return back?.commitment ? nothing
+    : { refresh: true, notice: "📴 Your days saved, but the plan couldn't rebuild — nothing else changed. Try the rebuild again in a moment." };
+}
+// The add-a-day question. In a cleared week the new day joins the USUAL days, from next week; this week is "free" only
+// when no day was picked for it (H7: a one-off day this week stays).
+export function timeFitDayQuestion(need, { cleared = false, thisWeek = [] } = {}) {
+  const q = need === 1 ? "Which day will you add?" : `Which ${need} days will you add?`;
+  if (!cleared) return q;
+  return `${q} ${need === 1 ? "It starts" : "They start"} next week${thisWeek.length ? "." : " — this week stays free."}`;
+}
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;
@@ -318,7 +410,11 @@ export function swapUndoCopy({ revertedLive, permanent, from, to, same = false }
 // a weight as the stepper shows it (`preDisp` is the pre-filled value), a step ("add N kg")
 // as the plates actually moved. A reason that would still contradict the screen — an "add"
 // while the stepper shows last time's weight — is dropped (null), never shown.
-export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, preDisp) {
+// A held weight's "or use X kg" (W305) names exactly what the player OFFERS — `alt`, already in the lift's unit — and
+// nothing when it offers nothing (null), so the note and the 'Use X' button always agree (Burst 8 review #7/#25: a
+// pounds user read "or use 20 lb" with the stepper on 20 lb). Left as written when no offer is passed.
+export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, preDisp, alt) {
+  if (note && alt !== undefined) note = note.replace(/, or use \d+(?:\.\d+)? kg( if it felt like too much)/, alt == null ? "" : `, or use ${alt} ${unit}$1`);
   if (!note || unit !== "lb") return note ?? null;
   const lastDisp = last_kg > 0 ? toDisp(last_kg) : null;
   let contradicts = false;
@@ -341,9 +437,12 @@ export function noteInUnit(note, { suggested_kg, last_kg } = {}, unit, toDisp, p
 export function hintCopy(hint, { setNo, fromW, toW }) {
   const range = `${hint.min}–${hint.max}`;
   const lead = `Set ${setNo}: ${hint.reps} reps at ${fromW}`;
+  const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
+  // W305: under the range with reps left — the answer that used to be silence. (Its in-range "lighter" is gone: Burst 8
+  // review #4/#28/#45 — a 'lighter' only ever follows a set under the range.)
+  if (hint.kind === "same") return { lead, why: `under the ${range} range, with about ${hint.rir} left in the tank`, tryW: toW, tail: `again and aim for ${hint.target_reps} — you had the reps.` };
   if (hint.kind === "lighter") return { lead, why: `under the ${range} range`, tryW: toW, tail: "for this one to land in it, allowing for the rep or so each hard set costs." };
   if (hint.reps > hint.max) return { lead, why: `over the ${range} range`, tryW: toW, tail: "for this one to land in it." };
-  const band = hint.band ? ` (the plan says ${hint.band.replace("-", "–")})` : "";
   return { lead, why: `in the range, but with about ${hint.rir} left in the tank${band}`, tryW: toW, tail: "for this one." };
 }
 
