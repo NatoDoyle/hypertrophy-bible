@@ -1,7 +1,7 @@
 // RESPONSE CORE — what the app learns about how ONE lifter responds (considerations iteration, Burst 10: "it learns
 // you"). Pure, fs-free, Date.now/Math.random-free, like every engine here: the binder (app/src/coach.mjs) passes the
 // priors in — the KB's session ceiling for the lifter's training age, the comeback gap — so it imports nothing.
-import { repsEstimated, paceAggregate } from "./derive-core.mjs";
+import { repsEstimated, paceAggregate, restSeconds, restTier } from "./derive-core.mjs";
 
 // THE SESSION CEILING (W315 — owner note 7: "I really start to struggle once I get past 12 sets in one workout and once
 // I get to 16 sets I'm pretty empty. The app should be able to learn this from my data. Other users will be different.").
@@ -62,4 +62,49 @@ export function paceProfile(sessions, restTierOf, { minN = PACE_MIN_N, minLeads 
   take("transition", a.transition_s, minN, 30, 900);
   take("lead", a.start_to_first_set_s, minLeads, 0, 1800);
   return Object.keys(out).length ? out : null;
+}
+
+
+// REST THAT ADAPTS (W317 — owner note 1: "track the time between logged sets… use that data to maybe suggest longer or
+// shorter rest times"). ONE step (30 s) from the KB's default for the lift's tier (derive-core restSeconds), never out of
+// the KB's band (rest-periods.md: heavy multi-joint 2–3 min "sometimes more", moderate 1.5–2.5, isolation 1–2), always
+// with its reason:
+//   - LONGER [B — "rest until you can hit your target reps at the target effort"]: a set in the range, then the next one
+//     under it, after a rest no longer than the timer that workout RAN (targets.rest_s, else the default) plus 30 s — in
+//     `need` of the lift's last `window` workouts. A rest that ran longer and still fell short says rest isn't the lever.
+//   - SHORTER [C — "shorter rests only to save time on lower-stakes accessory work"]: an isolation lift whose sets all held
+//     the range in its last `window` workouts, while the workouts run past their minutes (`timeBinds`).
+// Estimated counts and planned-easy sets are no evidence. Null when the KB's default stands. Pure.
+export const REST_STEP_S = 30;
+export const REST_BAND = { heavy: [120, 240], moderate: [90, 150], isolation: [60, 120] };
+const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+export function restAdapt(ex, sessions, { timeBinds = false, window = 3, need = 2 } = {}) {
+  if (!ex?.id) return null;
+  const tier = restTier(ex), base = restSeconds(ex), [lo, hi] = REST_BAND[tier] ?? [base, base];
+  const real = (s) => (s?.sets ?? []).filter((x) => x?.exercise === ex.id && (x.set_type ?? "work") === "work" && !x.deload && !repsEstimated(x) && Number.isFinite(Date.parse(x.completed_at ?? "")));
+  const recent = (sessions ?? []).filter((s) => s?.date && real(s).length).sort((a, b) => Date.parse(a.date) - Date.parse(b.date)).slice(-window);
+  if (recent.length < window) return null;
+  let shows = 0, ranAt = base, held = true;
+  for (const s of recent) {
+    const t = (s.targets ?? []).find((x) => x?.exercise === ex.id);
+    const m = /(\d+)\s*-\s*(\d+)/.exec(t?.rep_range ?? ""), min = m ? +m[1] : null;
+    const timer = Number.isInteger(t?.rest_s) ? t.rest_s : base;
+    const sets = real(s);
+    if (min == null || sets.some((x) => x.reps < min)) held = false;
+    let missed = false;
+    for (let k = 1; k < sets.length; k++) {
+      const gap = (Date.parse(sets[k].completed_at) - Date.parse(sets[k - 1].completed_at)) / 1000;
+      if (min != null && sets[k - 1].reps >= min && sets[k].reps < min && gap > 0 && gap <= timer + REST_STEP_S) missed = true;
+    }
+    if (missed) { shows++; ranAt = timer; }
+  }
+  if (shows >= need && base + REST_STEP_S <= hi) {
+    const r = base + REST_STEP_S;
+    return { rest_s: r, reason: `Rest ${clock(r)} — your next set kept falling under the range after a ${clock(ranAt)} rest (${shows} of your last ${recent.length} workouts).` };
+  }
+  if (timeBinds && tier === "isolation" && held && base - REST_STEP_S >= lo) {
+    const r = base - REST_STEP_S;
+    return { rest_s: r, reason: `Rest ${clock(r)} — your sets held at ${clock(base)}, and your workouts run past your minutes.` };
+  }
+  return null;
 }

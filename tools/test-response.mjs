@@ -2,7 +2,7 @@
 // 12 sets in one workout and once I get to 16 sets I'm pretty empty. The app should be able to learn this from my data.
 // Other users will be different."). The learners are pure and deterministic: the binder passes the priors in.
 import assert from "node:assert/strict";
-import { sessionTolerance, paceProfile } from "./response-core.mjs";
+import { sessionTolerance, paceProfile, restAdapt } from "./response-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -82,6 +82,40 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
   });
   check("#pace (W316) an absurd median (a phone left on the bench) is no pace", () => {
     assert.equal(paceProfile(Array.from({ length: 12 }, (_, d) => sess(d * 2, 20, { lead: 2000 })), tierOf)?.heavy, undefined, "20 s between heavy sets: not a real gap");
+  });
+}
+
+// --- W317 (considerations iteration, Burst 10 — owner note 1: "track the time between logged sets… use that data to maybe
+// suggest longer or shorter rest times"): a lift's timer moves ONE step (30 s) from the KB's default for its tier, never out
+// of the KB's band (rest-periods.md: heavy 2–3 min, moderate 1.5–2.5, isolation 1–2), with its reason. Longer [B] when the
+// next set kept falling under the range after a rest no longer than the timer, in 2 of the lift's last 3 workouts; shorter
+// [C — accessories only, to save time] when the workout runs past its minutes and the sets held.
+{
+  const ex = { heavy: { id: "bench", mechanic: "compound", equipment: "barbell" }, iso: { id: "curl", mechanic: "isolation", equipment: "dumbbell", cns_cost: "low" } };
+  const at = (d, sec) => new Date(Date.UTC(2026, 9, 1) + d * 86400000 + sec * 1000).toISOString();
+  // A workout of `reps` sets, `gap` seconds apart, the target's range and timer recorded (W280/W308).
+  const w = (d, id, reps, gap, { rest = null, range = "8-12", extra = {} } = {}) => ({ session_id: `${id}${d}`, date: at(d, 0),
+    sets: reps.map((r, k) => ({ exercise: id, set_type: "work", weight_kg: 60, reps: r, completed_at: at(d, 300 + k * gap), ...extra })),
+    targets: [{ exercise: id, sets: reps.length, rep_range: range, ...(rest ? { rest_s: rest } : {}) }] });
+  check("#rest (W317) the next set fell under the range after a full-timer rest, in 2 of the last 3: 30 s longer, said why", () => {
+    const log = [w(0, "bench", [10, 7, 7], 180), w(2, "bench", [10, 10, 9], 180), w(4, "bench", [9, 6, 6], 185)];
+    assert.deepStrictEqual(restAdapt(ex.heavy, log, {}), { rest_s: 210, reason: "Rest 3:30 — your next set kept falling under the range after a 3:00 rest (2 of your last 3 workouts)." });
+  });
+  check("#rest (W317) not when the rest ran longer than the timer, nor on one workout, nor on estimates", () => {
+    assert.equal(restAdapt(ex.heavy, [w(0, "bench", [10, 7], 300), w(2, "bench", [10, 7], 300), w(4, "bench", [10, 7], 300)], {}), null, "5 minutes and still short: more rest isn't the lever");
+    assert.equal(restAdapt(ex.heavy, [w(0, "bench", [10, 10], 180), w(2, "bench", [10, 10], 180), w(4, "bench", [10, 7], 180)], {}), null, "once in three");
+    assert.equal(restAdapt(ex.heavy, [w(0, "bench", [10, 7], 180, { extra: { est: ["reps"] } }), w(2, "bench", [10, 7], 180, { extra: { est: ["reps"] } }), w(4, "bench", [10, 10], 180)], {}), null, "guessed counts");
+  });
+  check("#rest (W317) an accessory whose sets held, in workouts that run long: 30 s shorter — never under the band's 60 s", () => {
+    const held = [w(0, "curl", [12, 12, 11], 90), w(2, "curl", [12, 11, 11], 90), w(4, "curl", [12, 12, 12], 90)];
+    assert.deepStrictEqual(restAdapt(ex.iso, held, { timeBinds: true }), { rest_s: 60, reason: "Rest 1:00 — your sets held at 1:30, and your workouts run past your minutes." });
+    assert.equal(restAdapt(ex.iso, held, { timeBinds: false }), null, "time to spare: the KB's default stands");
+    assert.equal(restAdapt(ex.heavy, [w(0, "bench", [10, 10], 180), w(2, "bench", [10, 10], 180), w(4, "bench", [10, 10], 180)], { timeBinds: true }), null, "never a big lift: shorter rests cost it reps");
+    assert.equal(restAdapt(ex.iso, [w(0, "curl", [12, 7], 90), ...held.slice(1)], { timeBinds: true }), null, "a set under the range: not holding");
+  });
+  check("#rest (W317) the timer judged is the one the workout RAN (targets.rest_s), so a lengthened timer that now works holds", () => {
+    const log = [w(0, "bench", [10, 7], 235, { rest: 210 }), w(2, "bench", [10, 7], 235, { rest: 210 }), w(4, "bench", [10, 10], 235, { rest: 210 })];
+    assert.deepStrictEqual(restAdapt(ex.heavy, log, {})?.rest_s, 210, "3:55 is within the 3:30 timer it ran (+30 s), not within the 3:00 default: judged by what ran — and one step, never more");
   });
 }
 

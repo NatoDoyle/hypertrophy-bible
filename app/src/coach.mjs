@@ -8,7 +8,7 @@ import {
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { qualityCapFor } from "../../tools/plan-core.mjs";
-import { sessionTolerance } from "../../tools/response-core.mjs";
+import { sessionTolerance, restAdapt } from "../../tools/response-core.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
@@ -1037,6 +1037,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // The player banks a day planned-easy exactly when the response says deload week or comeback (app.js: block.phase ===
   // "deload" || comeback), and a taper drops the block (below) — so a deload week inside a taper banks regular (round 7).
   const plannedEasy = (!taper && block?.phase === "deload") || layoffDays >= COMEBACK_GAP_DAYS;
+  // Whether this day runs past the lifter's minutes at their pace (W317): only then may an accessory's timer shorten.
+  const dayRunsLong = sessionMinutes(templateExercises.map((ex) => ({ exercise: ex.exercise, sets: ex.sets, superset_with: ex.superset_with ?? null })), byId, user.plan_meta?.pace ?? null)
+    > (user.profile?.session_length_min ?? 60) + 1;
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     // The band, the wave-scaled sets and the weight with its reason — through the one door
@@ -1078,7 +1081,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       alternating: !!e?.alternating,             // → the side cue says "alternate every rep", never "all sets left first" (walking lunge)
-      rest_s: restSeconds(e),                    // → the player's rest timer: the KB table for THIS lift (W273), adjustable in the player
+      // …moved one step within the KB's band when the lifter's own sets say so, with the reason (W317, response-core restAdapt).
+      ...(() => { const ra = restAdapt(e, sessions, { timeBinds: dayRunsLong }); return ra ? { rest_s: ra.rest_s, rest_reason: ra.reason } : { rest_s: restSeconds(e) }; })(),                    // → the player's rest timer: the KB table for THIS lift (W273), adjustable in the player
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,

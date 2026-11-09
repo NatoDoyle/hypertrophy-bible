@@ -2686,6 +2686,7 @@ const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } syncRe
 function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
   restAlertLabel = alertLabel;
   app.innerHTML = `<div class="center"><p class="muted">Rest</p><div class="timer" id="t">${formatRest(restRemaining(rest.until, Date.now()))}</div>
+    ${rest.kind === "set" && row?.rest_reason ? `<p class="muted" id="rest-why" style="font-size:.85rem;margin:4px 0">⏱️ ${esc(row.rest_reason)}</p>` : ""}
     <div class="row" style="justify-content:center;gap:10px;border:0;padding:0">
       <button class="btn ghost inline" id="rest-minus" aria-label="Rest 30 seconds less" style="margin:0">−30s</button>
       <button class="btn ghost inline" id="rest-plus" aria-label="Rest 30 seconds more" style="margin:0">+30s</button></div>

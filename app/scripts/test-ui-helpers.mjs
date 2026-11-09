@@ -1213,5 +1213,9 @@ check("#cap-offer (W315c) the card says what it saw and what a yes does — bloc
   assert.match(appJs, /api\("\/api\/plan\/regenerate", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, profile: \{ session_cap: null \} \}\) \}\)/, "Training settings: Remove");
 });
 
+check("#rest (W317) the rest screen says why a lift's timer moved", () => {
+  assert.match(fnBody(appJs, "function showRest(rest, nextLine, row, onDone, announce, alertLabel = \"\") {", 2400), /\$\{rest\.kind === "set" && row\?\.rest_reason \? `<p class="muted" id="rest-why" style="font-size:\.85rem;margin:4px 0">⏱️ \$\{esc\(row\.rest_reason\)\}<\/p>` : ""\}/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

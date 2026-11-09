@@ -2207,6 +2207,21 @@ try {
       ok("#pace (W316) logged workouts teach the lifter's pace (heavy gaps of 120 s), and Today's estimate follows it",
         pace?.heavy === 120 && Number.isFinite(before) && after < before, JSON.stringify({ pace, before, after }));
     }
+    // W317 closed loop: workouts logged through the client's door — the next set falling under the range after a full-timer
+    // rest, in 2 of the last 3 — give that lift's row on Today a timer 30 s longer, with its reason.
+    {
+      const ru = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: ru, program: { sessions: [{ name: "Day", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+      for (const [i, reps] of [[0, [10, 7, 7]], [1, [10, 10, 9]], [2, [9, 6, 6]]]) {
+        const t0 = Date.now() - (9 - i * 3) * 86400000, iso = (sec) => new Date(t0 + sec * 1000).toISOString();
+        await json("POST", "/api/session", { user_id: ru, session_id: `rest-${i}`, date: iso(0), local_date: iso(0).slice(0, 10), session_name: "Day",
+          sets: reps.map((r, k) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: r, completed_at: iso(300 + k * 180) })),
+          targets: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2", rest_s: 180 }] });
+      }
+      const row = (await (await app.request("/api/today", { headers: { "X-HB-User": ru } })).json()).session?.exercises?.find((x) => x.exercise === "barbell-bench-press");
+      ok("#rest (W317) the next set kept falling under the range after a full 3:00 rest: Today's timer is 3:30, and says why",
+        row?.rest_s === 210 && /^Rest 3:30 — your next set kept falling under the range after a 3:00 rest \(2 of your last 3 workouts\)\.$/.test(row?.rest_reason ?? ""), JSON.stringify([row?.rest_s, row?.rest_reason]));
+    }
     ok("#cap (W315b) the Settings door stores the ceiling and the plan keeps under it; junk is nothing; null takes it off",
       r13.status === 200 && stored13 === 13 && at13 <= 13 && before > 13 && junk === null && off === null && after > 13, JSON.stringify({ before, at13, stored13, junk, off, after }));
   }
