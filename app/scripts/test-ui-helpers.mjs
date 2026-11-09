@@ -802,6 +802,36 @@ check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cle
   assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
   assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected");
 });
+// W306 (Burst 9 — owner note 2): the workout list. Opened from the header on the set screen AND the station (the top of
+// the screen — never below the fold); each later lift can be done next; "Do this later" is the same pure permutation;
+// after a defer or a lift-ending skip the player offers "Pick a different one"; a moved lift says its weight was
+// planned for its usual place (no direction claimed — lesson 60).
+check("player (W306) the workout list: a header button on both screens, the list from workoutList, Do this next through moveToCurrent", () => {
+  const set = fnBody(appJs, "function renderPlayer() {", 9000), st = fnBody(appJs, "function renderSupersetStation(L, P) {", 9000);
+  for (const [name, body] of [["set screen", set], ["station", st]]) assert.match(body, /\$\{exListBtn\(\)\}/, `${name}: the list button sits in the header`);
+  assert.doesNotMatch(set, /<span class="num">\$\{sess\.i \+ 1\}\/\$\{total\}<\/span>/, "the position counter (wrong after a move) is gone");
+  assert.match(st, /<h1 tabindex="-1" id="ex-head">🔗 Superset<\/h1>/, "the station gets a focus target");
+  assert.match(st, /wireListDoors\(\);\s*\$\("#ex-head"\)\?\.focus\(\);/, "…and focus lands on it, as on the set screen");
+  const list = fnBody(appJs, "function renderWorkoutList() {", 4000);
+  assert.match(list, /const rows = workoutList\(sess\)/);
+  assert.match(list, /data-move="\$\{r\.idx\}"/);
+  assert.match(list, /const r = moveToCurrent\(sess, \+b\.dataset\.move\);/);
+  assert.match(list, /confirmSet\.clear\(\); skipPending = false; quitPending = false;/, "a move judges the next set afresh, like a skip");
+  assert.match(list, /if \(had\) syncRestAlert\(\);/, "a dropped rest disarms its alarm (lesson 91)");
+  assert.match(list, /\$\("#list-head"\)\?\.focus\(\);/);
+});
+check("player (W306) 'Do this later' is the pure deferToEnd; after it or a lift-ending skip, 'Pick a different one'; a moved lift says so", () => {
+  const later = fnBody(appJs, "function deferCurrentExercise() {", 1200);
+  assert.match(later, /const r = deferToEnd\(sess\);/);
+  assert.doesNotMatch(later, /const remap = /, "one permutation, in session-core");
+  assert.match(later, /offerPick: \{ kind: "later", name: moved\.name \}/);
+  // (W307: the window widened deliberately — applySkip now first drops a skipped lift's pending estimate.)
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /offerPick: \{ kind: "skip", name: prev\.name \}/, "a skip that ends a lift offers the pick too");
+  const set = fnBody(appJs, "function renderPlayer() {", 9000);
+  assert.match(set, /\$\{pickCue\(\)\}/);
+  assert.match(set, /sess\.set === 0 && e\.moved \? `<div class="cue" id="moved-cue">\$\{movedCue\(e, \{ deload: sess\.deload \}\)\}<\/div>` : ""/, "the cue's words: movedCue (Burst 9 review copy#3)");
+  for (const h of ["$(\"#done\").onclick = () => {", "$(\"#doner\").onclick = () => {"]) assert.match(fnBody(appJs, h, 2500), /delete sess\.offerPick;/, `${h}: a banked set answers the offer`);
+});
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
   assert.doesNotMatch(appJs, /topReps\((e|m)\.rep_range\)/, "a seed site still starts on the range's top");
   assert.equal((appJs.match(/= repSeed\((e|m), loggedSetCount\((e|m)\.exercise\), \{ lastReps: lastWorkReps\(sess\.logged, (e|m)\.exercise\), atServed: sameLoad\(sess\.weights\[(sess\.i|idx)\], startWeightDisp\((e|m)\), stepFor\((e|m)\)\) \}\);/g) ?? []).length, 2,
@@ -1090,6 +1120,64 @@ check("#plan-fit (W305j J2) the plan-fit card and its notice name a block only w
   assert.doesNotMatch(b.body + b.notice, /block/, JSON.stringify(b));
   assert.equal(b.notice, "🗓️ Rebuilt for 3 days a week — your new plan starts with your next workout.");
   assert.equal(planFitCopy({ plan_days: 4, committed_days: 3 }).notice, "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.");
+});
+
+// --- W307: "Last time" groups each weight's reps, an estimated count shown with a ~ (last_sets [kg, reps, true]).
+check("#est lastTimeGroups: every set as done, an estimate with a ~; an older payload (no last_sets) still reads", () => {
+  const { lastTimeGroups } = uiHelpers;
+  assert.deepStrictEqual(lastTimeGroups({ last_sets: [[100, 10], [100, 9, true], [95, 8]] }), [{ kg: 100, reps: ["10", "~9"] }, { kg: 95, reps: ["8"] }]);
+  assert.deepStrictEqual(lastTimeGroups({ last_sets: [[60, 12, true], [60, 11, true]], last_reps: [], last_kg: 60 }), [{ kg: 60, reps: ["~12", "~11"] }], "all estimated: still shown, never hidden");
+  assert.deepStrictEqual(lastTimeGroups({ last_reps: [10, 9], last_kg: 100 }), [{ kg: 100, reps: ["10", "9"] }]);
+  assert.deepStrictEqual(lastTimeGroups({}), []);
+});
+check("#est the read-out never grades a lift on estimates: all-estimated is said as such — never 'in its range', never 'easy day'", () => {
+  const t = [{ exercise: "bench", sets: 2, rep_range: "8-12", rir: "1-2" }];
+  const E = (reps) => ({ exercise: "bench", set_type: "work", weight_kg: 100, reps, est: ["reps"] });
+  const all = readoutLists(sessionCore.localReadout(t, [E(10), E(10)]), { nameOf: () => "Bench press" });
+  assert.equal(all.headline, "Every set done — logged as estimates, so next time keeps the weight.");
+  const mixT = [...t, { exercise: "row", sets: 1, rep_range: "8-12", rir: "1-2" }];
+  const nameOf = (id) => (id === "bench" ? "Bench press" : "Row");
+  const mix = readoutLists(sessionCore.localReadout(mixT, [E(10), E(10), { exercise: "row", set_type: "work", weight_kg: 60, reps: 10, rir: 1 }]), { nameOf });
+  assert.equal(mix.headline, "Every set done — Bench press logged as estimates, and every other lift in its range: a session that moves you forward.");
+  const part = readoutLists(sessionCore.localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 10, rir: 1 }, E(9)]), { nameOf });
+  assert.ok(part.watch.includes("Bench press: 1 set logged as an estimate — only real sets move your weights."), JSON.stringify(part.watch));
+  assert.equal(readoutLists(sessionCore.localReadout(t, [E(10), E(10)]), { nameOf, beginner: true }).headline, "Every set done — logged as estimates, so next time keeps the weight.", "a beginner gets the same honest headline");
+});
+check("#est player wiring: both bank handlers bank the estimate per field, and a PR never celebrates an estimated count", () => {
+  assert.equal((appJs.match(/const ef = estimatedFields\(sess\.estPending\?\.\[(e|m)\.exercise\], \{ setNo: loggedSetCount\((e|m)\.exercise\), reps: sess\.reps\[(sess\.i|idx)\], eff: sess\.eff\[(sess\.i|idx)\] \}\);/g) ?? []).length, 2);
+  assert.equal((appJs.match(/\.\.\.\(ef\.rir != null \? \{ rir: ef\.rir \} : \{\}\), \.\.\.\(ef\.estReps \? \{ est: \["reps"\] \} : \{\}\), \.\.\.\(ef\.rir_est != null \? \{ rir_est: ef\.rir_est \} : \{\}\)/g) ?? []).length, 2);
+  assert.equal((appJs.match(/checkAndCelebratePR\((e|m), loggedSet\.weight_kg, loggedSet\.reps, loggedSet\.deload, repsEstimated\(loggedSet\)\)/g) ?? []).length, 2);
+  assert.match(appJs, /function checkAndCelebratePR\(exObj, weightKg, reps, deload, estReps = false\) \{/);
+});
+
+check("#rest-read player wiring (W308): every rest records the timer it ran — a superset round for both legs — and Every lift shows the time between sets", () => {
+  assert.match(appJs, /const startRest = \(kind, length, ex, legs = ex \? \[ex\] : \[\]\) => \{ sess\.rest = newRest\(\{ kind, length, ex, logged: sess\.logged\.length \}, Date\.now\(\)\); sess\.restUsed = \{ \.\.\.\(sess\.restUsed \?\? \{\}\), \.\.\.Object\.fromEntries\(legs\.map\(\(id\) => \[id, length\]\)\) \};/);
+  assert.match(appJs, /startRest\("round", 60, null, \[sess\.ex\[L\]\.exercise, sess\.ex\[P\]\.exercise\]\)/);
+  assert.match(appJs, /l\.gap_s \? ` · ≈\$\{formatRest\(l\.gap_s\)\} between sets\$\{l\.rest_s \? ` \(timer \$\{formatRest\(l\.rest_s\)\}\)` : ""\}` : ""/);
+  assert.match(appJs, /\$\{\(l\.reps_shown \?\? l\.reps\)\.join\(", "\)\} reps at/);
+});
+
+check("#est (review D3) History's workout detail shows an estimate as one: ~reps, and an estimated RIR as @~N", () => {
+  assert.match(appJs, /const setText = \(s\) => `\$\{dispWeightFor\(s\.weight_kg, s\.exercise\)\} × \$\{repsShown\(s\)\}\$\{typeof s\.rir === "number" \? ` @\$\{s\.rir\}` : typeof s\.rir_est === "number" \? ` @~\$\{s\.rir_est\}` : ""\}/);
+});
+
+check("#moved (review copy#3/#4) the moved cue promises a hint only where one can fire; the estimate note says 'either' only when both were filled", () => {
+  const { movedCue } = sessionCore;
+  assert.match(movedCue({ equipment: "barbell", suggested_kg: 60 }, {}), /after set 1 the hint adjusts/);
+  assert.doesNotMatch(movedCue({ equipment: "bodyweight", suggested_kg: 0 }, {}), /hint/, "a bodyweight lift has no next-set hint");
+  assert.doesNotMatch(movedCue({ equipment: "barbell", suggested_kg: 60, eased: true }, {}), /hint/, "a tired-eased lift has none");
+  assert.doesNotMatch(movedCue({ equipment: "barbell", suggested_kg: 60 }, { deload: true }), /hint/, "nor a deload week");
+  assert.match(appJs, /change \$\{p\?\.rirChip != null \? "either" : "it"\} if you remember/);
+});
+
+check("#w310 wiring: a skip drops the skipped lift's guessed numbers (dropSkipped); the editor edits from what it opened with (base)", () => {
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /sess = dropSkipped\(before, r\.sess\);/);
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /redraw\(\);\n\s*sess = noteSeeded\(sess\); saveSess\(\); \/\/ what the screen seeded/, "the seeded snapshot follows the redraw (W312)");
+  // (W311, the fix check player#0: the keystroke write carries the base; "Forgot" applies to the entry as it stands now —
+  // a weight or RIR typed just before it stays.)
+  assert.equal((appJs.match(/editLoggedSet\(sess\.logged, ed\.idx, patch, \{ exercise: ed\.exercise, completed_at: ed\.completed_at, base: entry0 \}\)/g) ?? []).length, 1, "the keystroke write carries the base");
+  assert.match(appJs, /editLoggedSet\(sess\.logged, idx, \{ estimate: \{ reps: est\.reps, rir: est\.rir \} \}, \{ exercise: entry0\.exercise, completed_at: entry0\.completed_at \?\? null \}\);/, "Forgot: on the entry as it stands");
+  assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /const at = new Date\(\)\.toISOString\(\); \/\/ ONE stamp per round/, "a round banks with one stamp (fix check player#2)");
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

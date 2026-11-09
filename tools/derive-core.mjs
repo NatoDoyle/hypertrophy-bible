@@ -21,8 +21,12 @@ export function estimate1RM(weightKg, reps) {
 // strength (PRs, progression trends) MUST filter through countsForE1RM so the
 // surfaces can never disagree — this constant is the single source of truth.
 export const RELIABLE_1RM_REPS = 12;
+// An ESTIMATED rep count (W307 — "Forgot the numbers?": est: ["reps"]) is a set done, never strength evidence: every
+// e1RM / PR / load-trend / drop-off / aim reader passes over it through this one predicate. (An estimated RIR is never
+// stored in `rir` — it rides as rir_est — so no RIR reader needs a guard.) The player carries a byte-identical copy.
+export const repsEstimated = (set) => Array.isArray(set?.est) && set.est.includes("reps");
 export const countsForE1RM = (set) =>
-  (set.set_type ?? "work") !== "warmup" &&
+  (set.set_type ?? "work") !== "warmup" && !repsEstimated(set) &&
   typeof set.reps === "number" && set.reps > 0 && set.reps <= RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
@@ -31,7 +35,7 @@ export const countsForE1RM = (set) =>
 // detectPersonalRecords) so priorPersonalBests and detectPersonalRecords can never
 // apply different rules for what counts as "load" work.
 const isLoadSet = (set) =>
-  (set.set_type ?? "work") !== "warmup" &&
+  (set.set_type ?? "work") !== "warmup" && !repsEstimated(set) &&
   typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS &&
   typeof set.weight_kg === "number" && set.weight_kg > 0;
 
@@ -1036,7 +1040,7 @@ export function progressionByExercise(sessions, exIndex) {
         const { e1rm } = estimate1RM(set.weight_kg, set.reps);
         byEx[set.exercise] ??= {};
         byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
-      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+      } else if (isLoadSet(set)) { // the ONE load-path predicate (W307: three inline copies would each have needed the est guard)
         // Without this path, a lifter's laterals/calves (the plan's own 12-20
         // band) never chart at all — "Your lifts" showed only the heavy work.
         byExLoad[set.exercise] ??= {};
@@ -1101,7 +1105,7 @@ function weeklyBestsByExercise(sessions) {
         const { e1rm } = estimate1RM(set.weight_kg, set.reps);
         byEx[set.exercise] ??= {};
         byEx[set.exercise][wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
-      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+      } else if (isLoadSet(set)) { // the ONE load-path predicate (W307: three inline copies would each have needed the est guard)
         // The plan itself prescribes 12-20 (pump band) — without this path a
         // lateral-raise plateau was invisible to every progression surface.
         byExLoad[set.exercise] ??= {};
@@ -1230,7 +1234,7 @@ export function progressionCadence(sessions, exIndex, { noisePct = 2.5, minGaps 
       if (countsForE1RM(set)) {
         const { e1rm } = estimate1RM(set.weight_kg, set.reps);
         (byEx[set.exercise] ??= {})[wk] = Math.max(byEx[set.exercise][wk] ?? 0, e1rm);
-      } else if ((set.set_type ?? "work") !== "warmup" && typeof set.reps === "number" && set.reps > RELIABLE_1RM_REPS && typeof set.weight_kg === "number" && set.weight_kg > 0) {
+      } else if (isLoadSet(set)) { // the ONE load-path predicate (W307: three inline copies would each have needed the est guard)
         (byExLoad[set.exercise] ??= {})[wk] = Math.max(byExLoad[set.exercise][wk] ?? 0, set.weight_kg);
       }
     }
@@ -1297,7 +1301,7 @@ export function restTimes(session) {
 export function proximityFromRepDropoff(session) {
   const byExLoad = {};
   for (const set of session.sets ?? []) {
-    if ((set.set_type ?? "work") !== "work") continue;
+    if ((set.set_type ?? "work") !== "work" || repsEstimated(set)) continue; // an estimate is no drop (W307)
     const key = `${set.exercise}@${set.weight_kg}`;
     (byExLoad[key] ??= []).push(set.reps);
   }
@@ -1386,8 +1390,10 @@ export function repTargets(lastSets, { sets, weightKg, min, max, near, anchorNea
   // A set that's no evidence at today's load (a ramp set under the floor, a back-off, or a heavier set that
   // failed the range) is read as the nearest EARLIER set that is — the first one for a leading ramp — keeping
   // set k aligned with last time's set k, and never letting a later aim climb back to the freshest set's.
-  const evidence = (s) => { const w = s.weight_kg ?? 0; return !(floorKg > 0) || (w >= floorKg && (!(ceilKg > 0) || w <= ceilKg || s.reps >= min)); };
+  // …and an ESTIMATED rep count is never evidence (W307); when nothing real is left, there are no aims to serve.
+  const evidence = (s) => { const w = s.weight_kg ?? 0; return !repsEstimated(s) && (!(floorKg > 0) || (w >= floorKg && (!(ceilKg > 0) || w <= ceilKg || s.reps >= min))); };
   const firstEvidence = all.find(evidence);
+  if (!firstEvidence && all.some(repsEstimated)) return null;
   let lastEvidence = null;
   const src = firstEvidence ? all.map((s) => (evidence(s) ? (lastEvidence = s) : (lastEvidence ?? firstEvidence))) : all;
   if (!src.length || !(sets > 0) || !(max > 0) || typeof weightKg !== "number") return null;

@@ -56,6 +56,16 @@ try {
   const stored = await store.listSessions(uid);
   const deloadSet = stored.find((s) => s.session_id === "rt-2")?.sets?.[0];
   ok("deload flag survives the /api/session whitelist", deloadSet?.deload === true);
+  // W307: an estimate's flags survive the same door — est names ONLY reps (and only on a numeric count), rir_est only
+  // where no real RIR was logged (an estimate never stands beside, or in for, a logged one).
+  const estPost = await json("POST", "/api/session", { user_id: uid, session_id: "rt-est", date: dAgo(9), sets: [
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 9, est: ["reps", "reps", "rir", "x"], rir_est: 2 },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 8, rir: 1, rir_est: 3, est: "reps" },
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 7, rir_est: 99 } ] });
+  const estStored = (await store.listSessions(uid)).find((s) => s.session_id === "rt-est")?.sets ?? [];
+  ok("#est the session door keeps est (reps only, deduped) and rir_est (0-10, only without a real rir); junk dropped",
+    estPost.status === 200 && JSON.stringify(estStored.map((x) => [x.est ?? null, x.rir ?? null, x.rir_est ?? null])) === JSON.stringify([[["reps"], null, 2], [null, 1, null], [null, null, 10]]),
+    JSON.stringify(estStored.map((x) => [x.est, x.rir, x.rir_est])));
 
   // And the coach, reading THROUGH the store, must anchor past the deload:
   // 100x10 hit the top of 6-10 -> progress to 102.5, never "hold at 90".
@@ -1623,6 +1633,14 @@ try {
     const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
     ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
       JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
+    // W308: the timer each lift ran survives the door — whole seconds within the timer's own bounds (30-600), or nothing.
+    await json("POST", "/api/session", { user_id: junkU, session_id: "w4r", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+      sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],
+      targets: [{ exercise: "leg-extension", sets: 3, rest_s: 180 }, { exercise: "leg-press", sets: 2, rest_s: 5 }, { exercise: "leg-curl", sets: 2, rest_s: 90.5 },
+        { exercise: "calf-raise", sets: 2, rest_s: "120" }, { exercise: "hack-squat", sets: 2, rest_s: 601 }] });
+    const rests = (await store.listSessions(junkU)).find((x) => x.session_id === "w4r")?.targets ?? [];
+    ok("#rest-read a target keeps the timer it ran (30-600 whole seconds); anything else is dropped",
+      rests[0]?.rest_s === 180 && rests.length === 5 && rests.slice(1).every((t) => !("rest_s" in t)), JSON.stringify(rests));
     // W301b (review): a tired lift's trimmed dose sends only the aims it served, so the door keeps them (it drops a
     // list longer than the planned sets whole).
     {
@@ -1664,15 +1682,16 @@ try {
     const top = +tgX.rep_range.split("-")[1];
     const work = (n) => Array.from({ length: n }, () => ({ exercise: tgX.exercise, set_type: "work", weight_kg: 50, reps: top }));
     await json("POST", "/api/session", { user_id: tgU, session_id: "tg-1", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: tgT0.session.name, sets: work(2), targets: [
-      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x" },
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, junk: "x", moved: true },
       { exercise: tgX.exercise, sets: 5 },                                    // a duplicate: dropped
       { exercise: "../evil", sets: 3 },                                       // not an id: dropped
       { exercise: "leg-press", sets: 999 },                                   // out of bounds: dropped
-      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes" }, // kept, junk nulled
+      { exercise: "lat-pulldown", sets: 3, rep_range: "12-8", rir: "abc", suggested_kg: -5, deload: "yes", moved: "yes" }, // kept, junk nulled
     ] });
     const tgStored = (await store.listSessions(tgU)).find((s) => s.session_id === "tg-1");
-    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled)", JSON.stringify(tgStored?.targets) === JSON.stringify([
-      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50 },
+    // W306: a lift the user moved ("Do this next" / "Do this later") says so — only a real `true` survives.
+    ok("#targets stored whitelisted and bounded (duplicates, non-ids, out-of-bounds dropped; junk fields nulled; moved kept only as true)", JSON.stringify(tgStored?.targets) === JSON.stringify([
+      { exercise: tgX.exercise, sets: 3, rep_range: tgX.rep_range, rir: "1-3", suggested_kg: 50, moved: true },
       { exercise: "lat-pulldown", sets: 3, rep_range: null, rir: null, suggested_kg: null },
     ]), JSON.stringify(tgStored?.targets));
     await json("POST", "/api/session", { user_id: tgU, session_id: "tg-many", date: dAgo(9), local_date: dAgo(9).slice(0, 10), sets: work(1),
@@ -2139,6 +2158,22 @@ try {
     && fitRe.status === 200 && fitU.program.sessions.length === 3 && fitU.profile.days_per_week === 3 && fitU.plan_meta.block_index === 0
     && Date.parse(fitU.plan_meta.block_start) > Date.parse(fitPre.plan_meta.block_start) + 9 * 86400000
     && fitAfter.session.name === fitU.program.sessions[0].name && fitAfter.daily.plan_fit === null);
+  // W307 closed loop (lesson 79): a workout whose set 1 was ESTIMATED ("Forgot the numbers?"), logged through the door the
+  // client uses, never moves next time's weight — the same sets at the top, real, would have earned the bump.
+  {
+    const eu = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const first = (await (await app.request("/api/today", { headers: { "X-HB-User": eu } })).json()).session.exercises.find((r) => r.equipment !== "bodyweight");
+    const top = +/-(\d+)/.exec(first.rep_range)[1];
+    const log = async (sid, est) => json("POST", "/api/session", { user_id: eu, session_id: sid, date: dAgo(2), local_date: dAgo(2).slice(0, 10), session_name: (await store.getUser(eu)).program.sessions[0].name,
+      sets: [0, 1, 2].map((k) => ({ exercise: first.exercise, set_type: "work", weight_kg: 60, reps: top, ...(k === 0 && est ? { est: ["reps"] } : {}), completed_at: dAgo(2) })),
+      targets: [{ exercise: first.exercise, sets: 3, rep_range: first.rep_range, rir: first.rir }] });
+    await log("est-1", true);
+    const rowOf = async () => { for (let k = 0; k < 4; k++) { const t = await (await app.request("/api/today", { headers: { "X-HB-User": eu } })).json(); const r = t.session.exercises.find((x) => x.exercise === first.exercise); if (r) return r; await json("POST", "/api/today/skip", { user_id: eu }); } return null; };
+    const r1 = await rowOf();
+    ok("#est closed loop: set 1 estimated → next time the weight holds, and the note says why", r1?.suggested_kg === 60 && /estimate/.test(r1.suggestion_note ?? ""), JSON.stringify(r1 && [r1.suggested_kg, r1.suggestion_note]));
+    ok("#est …and Today's row marks the estimated set in last_sets (the player shows it with a ~, its estimator skips it)", JSON.stringify(r1?.last_sets) === JSON.stringify([[60, top, true], [60, top], [60, top]]), JSON.stringify(r1?.last_sets));
+  }
   // W305 (considerations iteration, Burst 8 — owner: "I didn't achieve the recommended reps and intensity and it didn't
   // suggest a more appropriate weight"): a first one-rep miss holds the weight, and Today's row now carries the lighter
   // one beside it, through the door the client reads.
@@ -3065,6 +3100,9 @@ try {
   const histEdited = ((await (await app.request("/api/sessions", histHdr)).json()).sessions ?? []).find((x) => x.session_id === "hist-bad");
   ok("#history an EDIT is bounded by the same ceiling as the original log (no back door)", histEdited.sets[0].weight_kg === 1000);
   ok("#history and the edit path preserves `deload`, the flag a whitelist once silently dropped", histEdited.sets[0].deload === true);
+  await json("POST", "/api/session/update", { user_id: histId, session_id: "hist-bad", sets: [{ exercise: histEx, weight_kg: 60, reps: 8, est: ["reps"], rir_est: 2 }] });
+  const histEst = ((await (await app.request("/api/sessions", histHdr)).json()).sessions ?? []).find((x) => x.session_id === "hist-bad");
+  ok("#est …and the edit door keeps them too (W307 — the same normalizer)", JSON.stringify(histEst?.sets?.[0]?.est) === JSON.stringify(["reps"]) && histEst.sets[0].rir_est === 2);
 
   // Emptying a session is a void, not an empty husk that still scores as a
   // trained day for the streak.

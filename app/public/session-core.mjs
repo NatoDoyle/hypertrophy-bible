@@ -210,9 +210,120 @@ export function undoSkip(sess) {
   // and the cursor is DERIVED from banked sets, never the stored one (Burst 1 review).
   if (sess.ex.some((x) => u.ids.includes(x.exercise) && Number.isInteger(x.planned_sets) && x.sets >= x.planned_sets)) return { ok: false, sess };
   const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
-  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise) };
+  // …and what the skip cleared comes back (W311 — Skip then Undo changes nothing) — but only to a slot nobody touched
+  // since the skip (W312, the W311 check): numbers typed after it are the lifter's, never overwritten by the skipped set's
+  // or a stale estimate's. "Untouched" = still what the screen seeded right after the skip (noteSeeded), else still empty.
+  const k = u.kept, seen = u.seeded;
+  const untouched = (i) => (seen ? (sess.reps?.[i] ?? null) === (seen.reps?.[i] ?? null) && (sess.eff?.[i] ?? null) === (seen.eff?.[i] ?? null)
+    : sess.reps?.[i] == null && sess.eff?.[i] == null);
+  const back = (live, kept) => ({ ...(live ?? {}), ...Object.fromEntries(Object.entries(kept ?? {}).filter(([i]) => untouched(i))) });
+  const slotOf = (id) => String(ex.findIndex((x) => x.exercise === id));
+  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise),
+    ...(k ? { reps: back(sess.reps, k.reps), eff: back(sess.eff, k.eff),
+      estPending: { ...(sess.estPending ?? {}), ...Object.fromEntries(Object.entries(k.estPending ?? {}).filter(([id]) => untouched(slotOf(id)))) } } : {}) };
   delete out.lastSkip;
+  delete out.offerPick; // the skip's "Pick a different one" goes with it (Burst 9 review copy#1)
   return { ok: true, sess: out };
+}
+// What the screen seeded for a skip's cleared slots right after its redraw (W312): undoSkip restores a slot only while it
+// still holds exactly this. The same session back when the skip kept nothing.
+export function noteSeeded(sess) {
+  const k = sess?.lastSkip?.kept;
+  if (!k) return sess;
+  const slots = [...new Set([...Object.keys(k.reps ?? {}), ...Object.keys(k.eff ?? {}),
+    ...Object.keys(k.estPending ?? {}).map((id) => String((sess.ex ?? []).findIndex((x) => x.exercise === id)))])].filter((i) => i !== "-1");
+  const at = (m) => Object.fromEntries(slots.map((i) => [i, m?.[i] ?? null]));
+  return { ...sess, lastSkip: { ...sess.lastSkip, seeded: { reps: at(sess.reps), eff: at(sess.eff) } } };
+}
+// A skipped set takes its guessed numbers with it (Burst 9 review crash#1): every lift whose sets the skip shrank loses its
+// steppers' reps and effort (its next set starts on its own aim, as after a bank) and any pending "Forgot the numbers?"
+// estimate — they'd otherwise bank as real on the next set, or after an Undo. The same session back when nothing shrank.
+export function dropSkipped(before, after) {
+  const shrunk = (after?.ex ?? []).map((x, k) => (x.sets < (before?.ex?.[k]?.sets ?? x.sets) ? k : -1)).filter((k) => k >= 0);
+  if (!shrunk.length) return after;
+  const ids = new Set(shrunk.map((k) => after.ex[k].exercise));
+  const pick = (m, keep) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => keep(k)));
+  const at = (k) => shrunk.includes(+k);
+  const kept = { reps: pick(after.reps, at), eff: pick(after.eff, at), estPending: pick(after.estPending, (id) => ids.has(id)) };
+  return { ...after, reps: pick(after.reps, (k) => !at(k)), eff: pick(after.eff, (k) => !at(k)),
+    ...(after.estPending ? { estPending: pick(after.estPending, (id) => !ids.has(id)) } : {}),
+    // …kept on the skip itself, so its Undo gives them back (W311).
+    ...(after.lastSkip ? { lastSkip: { ...after.lastSkip, kept } } : {}) };
+}
+
+// THE WORKOUT LIST'S ONE REORDER (W306, considerations iteration — owner: "when I start a workout, I can look at all the
+// exercises… if I pick 'Do this later' or 'Skip this,' can you give me an option to pick what I want to do next?").
+// permuteSess: ex[j] = old ex[order[j]], and the four INDEX-keyed caches (weights, reps, eff, wUnits — wUnits always
+// travels with weights, or a weight banks in the wrong unit) follow their lifts by the same permutation. Everything else
+// in the session is keyed by exercise id or by a position in `logged`, which a reorder never touches. Null on anything
+// but a permutation. Pure.
+export function permuteSess(sess, order) {
+  const n = sess?.ex?.length ?? 0;
+  if (!Array.isArray(order) || order.length !== n || new Set(order).size !== n || order.some((k) => !Number.isInteger(k) || k < 0 || k >= n)) return null;
+  const to = new Map(order.map((old, j) => [old, j]));
+  const remap = (cache) => { const out = {}; for (const [k, v] of Object.entries(cache ?? {})) { const j = to.get(+k); if (j != null) out[j] = v; } return out; };
+  return { ...sess, ex: order.map((k) => sess.ex[k]), weights: remap(sess.weights), reps: remap(sess.reps), eff: remap(sess.eff), wUnits: remap(sess.wUnits) };
+}
+// The live block at slot k: the lift, plus its superset partner while their paired rounds aren't done (a station).
+function liveBlock(sess, k) {
+  const e = sess.ex[k];
+  const p = e?.superset_with ? sess.ex.findIndex((x) => x.exercise === e.superset_with) : -1;
+  return p < 0 || stationProgress(sess.logged, sess.ex, Math.min(k, p), Math.max(k, p)).done ? [k] : [Math.min(k, p), Math.max(k, p)];
+}
+// A reorder retires what was keyed to the old order: a running rest (its "Next: set N" named another lift — a skip
+// earns no rest either) and a pending skip-undo, including the copy a tired swap stashed (lesson 47). The binder
+// disarms the server rest alarm (syncRestAlert). `moved` marks a lift the user moved, for its set-0 cue.
+function afterReorder(out, movedFrom, movedTo) {
+  out.ex = out.ex.map((x, j) => (j >= movedFrom && j < movedTo ? { ...x, moved: true } : x));
+  out.set = loggedWorkSets(out.logged, out.ex[out.i].exercise);
+  delete out.rest; delete out.lastSkip;
+  if (out.swapUndo?.lastSkip) out.swapUndo = { ...out.swapUndo, lastSkip: null };
+  return out;
+}
+// "Do this next" (W306): the chosen lift — its superset partner with it, leader first — lands AT the cursor (the start of
+// the current block, so a station is never split), and everything from there shifts back one block. Every unfinished
+// lift therefore stays at or after the new cursor: the straight bank handler only looks FORWARD for the next lift, so a
+// swap of two positions could strand one and end the workout early. Nothing the plan prescribes moves (sets, aims,
+// suggested_kg, slot_of): today's weights keep their planned-position basis (W290); the next-set hint corrects after set 1.
+export function moveToCurrent(sess, k) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  if (!sess?.ex?.length) return refuse("no-slot");
+  if (sess.complete) return refuse("complete");
+  if (!Number.isInteger(k) || !sess.ex[k]) return refuse("no-slot");
+  if (loggedWorkSets(sess.logged, sess.ex[k].exercise) >= sess.ex[k].sets) return refuse("done");
+  const cur = liveBlock(sess, sess.i);
+  if (cur.includes(k)) return refuse("current");
+  const K = liveBlock(sess, k), p = cur[0], idx = [...sess.ex.keys()];
+  const order = [...idx.filter((j) => j < p && !K.includes(j)), ...K, ...idx.filter((j) => j >= p && !K.includes(j))];
+  const out = permuteSess(sess, order);
+  out.i = order.indexOf(K[0]);
+  return { ok: true, sess: afterReorder(out, out.i, out.i + K.length) };
+}
+// The workout list (W306): every lift, in the order it will be done — "now" (the cursor's lift, with its station partner),
+// "done", "skipped" (a skip shrank today's count; `skipped` says by how many), or "later" (still owed — the only ones
+// "Do this next" can pick). Derived from the banked log every time, never stored.
+export function workoutList(sess) {
+  if (!sess?.ex?.length) return [];
+  const now = liveBlock(sess, sess.i);
+  return sess.ex.map((x, idx) => {
+    const done = loggedWorkSets(sess.logged, x.exercise), planned = Number.isInteger(x.planned_sets) ? x.planned_sets : x.sets;
+    const skipped = Math.max(0, planned - x.sets);
+    const status = now.includes(idx) ? "now" : done >= x.sets ? (skipped > 0 ? "skipped" : "done") : "later";
+    return { idx, exercise: x.exercise, name: x.name ?? x.exercise, status, done, sets: planned, skipped, movable: status === "later",
+      ...(x.superset_with && sess.ex.some((y) => y.exercise === x.superset_with) ? { pair: x.superset_with } : {}) };
+  });
+}
+// "Do this later": the lift at the cursor goes to the end, and the cursor stays put — now on what was next. Only an
+// unstarted single lift with something after it (the button's own gate).
+export function deferToEnd(sess) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const cur = sess?.ex?.[sess?.i];
+  if (!cur || sess.complete) return refuse("no-slot");
+  if (sess.i >= sess.ex.length - 1) return refuse("last");
+  if (cur.superset_with && sess.ex.some((x) => x.exercise === cur.superset_with)) return refuse("pair");
+  if (loggedWorkSets(sess.logged, cur.exercise) > 0) return refuse("started");
+  const order = [...[...sess.ex.keys()].filter((j) => j !== sess.i), sess.i];
+  return { ok: true, sess: afterReorder(permuteSess(sess, order), sess.ex.length - 1, sess.ex.length) };
 }
 
 // Remove exactly the offline-queue item that was just delivered, BY IDENTITY.
@@ -242,8 +353,10 @@ export const dropDelivered = (queue, id) => queue.filter((x) => x.id !== id);
 // a planned-easy set is light on WEIGHT only, so Epley's rep-reward can still out-score a
 // true heavy best — never a real record.
 const RELIABLE_1RM_REPS = 12;
-export function checkSetPR(exercise, weightKg, reps, setType, priorBests, deload) {
-  if (deload) return null;
+// An ESTIMATED rep count (W307 "Forgot the numbers?") never celebrates — byte-identical to derive-core's predicate.
+export const repsEstimated = (set) => Array.isArray(set?.est) && set.est.includes("reps");
+export function checkSetPR(exercise, weightKg, reps, setType, priorBests, deload, estReps = false) {
+  if (deload || estReps) return null;
   if ((setType ?? "work") === "warmup") return null;
   if (!(typeof reps === "number" && reps > 0 && typeof weightKg === "number" && weightKg > 0)) return null;
   if (reps <= RELIABLE_1RM_REPS) {
@@ -296,7 +409,7 @@ export function todayTopSet(logged, exercise, exceptIdx = -1) {
   (logged ?? []).forEach((l, k) => {
     if (k === exceptIdx || l?.exercise !== exercise || (l.set_type ?? "work") !== "work") return;
     if (typeof l.weight_kg === "number" && Number.isFinite(l.weight_kg) && l.weight_kg > 0 && (kg == null || l.weight_kg > kg)) kg = l.weight_kg;
-    if (Number.isInteger(l.reps) && (reps == null || l.reps > reps)) reps = l.reps;
+    if (Number.isInteger(l.reps) && !repsEstimated(l) && (reps == null || l.reps > reps)) reps = l.reps; // an estimate vouches for nothing (W307)
   });
   return { kg, reps };
 }
@@ -401,7 +514,7 @@ export function nextSetCapacity(reps, rir) {
 // taken past the band gets no hint (Burst 8 review #4/#28/#45: following that back-off taught the engine wrong aims and
 // earned a bump on one set). A barbell's lighter weight never goes under the empty bar; at the bar there is none (#40).
 export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
-  if (!set || (set.set_type ?? "work") !== "work" || set.deload || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null;
+  if (!set || (set.set_type ?? "work") !== "work" || set.deload || repsEstimated(set) || !(set.weight_kg > 0) || !Number.isFinite(set.reps)) return null; // no advice from a guess (W307)
   const range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? "");
   if (!range) return null;
   const min = +range[1], max = +range[2];
@@ -487,7 +600,7 @@ export function sameLoad(a, b, step) {
 export function lastWorkReps(logged, exercise) {
   for (let i = (logged ?? []).length - 1; i >= 0; i--) {
     const l = logged[i];
-    if (l?.exercise === exercise && (l.set_type ?? "work") === "work") return typeof l.reps === "number" ? l.reps : null;
+    if (l?.exercise === exercise && (l.set_type ?? "work") === "work" && !repsEstimated(l)) return typeof l.reps === "number" ? l.reps : null; // the last REAL count (W307)
   }
   return null;
 }
@@ -513,6 +626,11 @@ export function buildTargets(sess) {
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list
     // longer than the planned sets whole).
     ...(validAim(x) ? { rep_targets: validAim(x).slice(0, x.planned_sets ?? x.sets) } : {}),
+    // A lift the user moved ("Do this next" / "Do this later", W306): recorded for later learning (a lift put off again
+    // and again), nothing reads it yet. The order the lifts were done in is already in the log.
+    ...(x.moved ? { moved: true } : {}),
+    // The timer this lift's rests ran (W308): stamped at each rest's start (sess.restUsed), only where one ran.
+    ...(Number.isInteger(sess.restUsed?.[x.exercise]) ? { rest_s: sess.restUsed[x.exercise] } : {}),
   }));
 }
 
@@ -539,8 +657,41 @@ export function hintInUnit(hint, toDisp, step, unit = null) {
 // sets; "far easier" is the next-set hint's own test, band top + 2). A planned-easy lift
 // (deload week, comeback ease) is never graded. A workout from before targets existed still
 // reads — no plan, no grades. Pure.
+// The time between a lift's work sets (W308 — the read-out half of owner note 1, "rest tracking"): the median gap
+// between its consecutive stamped work sets, from the completed_at every set already carries (a superset round's legs
+// share one stamp, so each leg's gap is round to round). A gap past 15 minutes is a pause, not a rest; warm-ups and
+// unstamped sets are out. It runs set END to set END — the rest plus the next set — so it's said as "between sets",
+// never as rest. Pure.
+export const GAP_MAX_S = 15 * 60, ROUND_SKEW_MS = 2000;
+export function liftGaps(logged) {
+  const work = (logged ?? []).filter((s) => s?.exercise && (s.set_type ?? "work") === "work");
+  const stamp = (s) => Date.parse(s?.completed_at ?? "");
+  const last = {}, by = {};
+  work.forEach((s, k) => {
+    const t = stamp(s);
+    if (!Number.isFinite(t)) return;
+    const p = last[s.exercise];
+    // Between ITS sets only (Burst 9 review engine#3): a gap with another lift's set inside it — a lift moved in between
+    // (W306) — isn't time between sets; a superset partner banked in the same round shares a stamp, and isn't "inside".
+    if (p) {
+      // (…within ROUND_SKEW_MS: a round's two members can be stamped a millisecond apart — W311, the fix check player#2.)
+      const inside = work.slice(p.k + 1, k).some((o) => o.exercise !== s.exercise && Math.abs(stamp(o) - p.t) > ROUND_SKEW_MS && Math.abs(stamp(o) - t) > ROUND_SKEW_MS);
+      const g = (t - p.t) / 1000;
+      if (!inside && g > 0 && g <= GAP_MAX_S) (by[s.exercise] ??= []).push(g);
+    }
+    last[s.exercise] = { t, k };
+  });
+  const out = {};
+  for (const [id, gaps] of Object.entries(by)) {
+    gaps.sort((a, b) => a - b);
+    const h = gaps.length >> 1, m = gaps.length % 2 ? gaps[h] : (gaps[h - 1] + gaps[h]) / 2;
+    out[id] = { median_s: Math.round(m), n: gaps.length };
+  }
+  return out;
+}
 export function localReadout(targets, logged) {
   const work = (logged ?? []).filter((s) => s && (s.set_type ?? "work") === "work");
+  const gaps = liftGaps(logged);
   const tgs = (targets ?? []).filter((t) => t?.exercise);
   const ids = [...new Set([...tgs.map((t) => t.exercise), ...work.map((s) => s.exercise)])];
   const lifts = ids.map((id) => {
@@ -552,24 +703,32 @@ export function localReadout(targets, logged) {
     const easyDay = !!t?.deload || sets.some((s) => s.deload);
     // Effort and the top are graded over the ANCHOR sets — the ones the engine judges (Burst 6 review): a lighter
     // back-off set is a different load, never evidence, so it can't flip a line against the next weight.
+    // …and an ESTIMATED rep count (W307) is a set done, never evidence — as the engine judges it (Burst 9 review D1/D2):
+    // its weight is real, so it anchors; any estimate at that weight means no "top"; effort and misses read real sets.
+    const real = sets.filter((s) => !repsEstimated(s));
     const judged = sets.length && min != null ? anchorSets(sets, min).judged : sets;
-    const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
-    const rated = !easyDay && !!band && judged.length > 0 && rirs.length >= Math.ceil(judged.length / 2);
+    const realJ = judged.filter((s) => !repsEstimated(s)), estAt = judged.length - realJ.length;
+    const rirs = realJ.map((s) => s.rir).filter((r) => typeof r === "number");
+    const rated = !easyDay && !!band && realJ.length > 0 && rirs.length >= Math.ceil(realJ.length / 2);
     const avg = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
     // The top of the range AT THE PLAN'S EFFORT (Burst 6), as the engine judges it — against the band this workout
     // was served. Reached only by going past the band, it is its own flag: worth a look, never "time to go up".
     const near = band ? +band[1] : 0;
-    const graded = !easyDay && max != null && judged.length > 0;
-    const top = graded && judged.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
+    const graded = !easyDay && max != null && realJ.length > 0;
+    const top = graded && !estAt && judged.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
     return {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
-      top, past_band: graded && !top && judged.every((s) => s.reps >= max),
+      reps_shown: sets.map(repsShown), // an estimated count with its ~ (W307)
+      // The time between its sets, and the timer it ran (W308) — null where there's nothing to say.
+      gap_s: gaps[id]?.median_s ?? null, rest_s: Number.isInteger(t?.rest_s) ? t.rest_s : null,
+      top, past_band: graded && !top && !estAt && judged.every((s) => s.reps >= max),
       // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
       // range sat beside it otherwise).
       graded_all: judged.length === sets.length,
       anchor_kg: judged.length ? judged[0].weight_kg ?? 0 : null, // the weight the grade is for (Nerd Mode names it — round 3)
-      under: easyDay || min == null ? 0 : sets.filter((s) => s.reps < min).length,
+      under: easyDay || min == null ? 0 : real.filter((s) => s.reps < min).length,
+      est: sets.length - real.length, // how many of its counts were estimates ("Forgot the numbers?")
       easy: rated && avg >= +band[2] + 2,
       failure: rated && +band[1] >= 1 && avg < 0.5,
       // The logged effort averaged inside the band ("Effort right" says so only then); null when too little was logged.
@@ -803,21 +962,127 @@ export function adjustRest(rest, delta, row) {
 // counted within one lift's sets would edit the OTHER lift's set.
 export function sessionChips(logged, exId) {
   return (logged ?? []).flatMap((l, idx) => (l.exercise === exId
-    ? [{ idx, weight_kg: l.weight_kg, reps: l.reps, set_type: l.set_type ?? "work", completed_at: l.completed_at ?? null }] : []));
+    ? [{ idx, weight_kg: l.weight_kg, reps: l.reps, set_type: l.set_type ?? "work", completed_at: l.completed_at ?? null,
+      est: repsEstimated(l), rir: typeof l.rir === "number" ? l.rir : null, rir_est: typeof l.rir_est === "number" ? l.rir_est : null }] : []));
 }
 // Only the fields present in `patch` (weight_kg, reps) change, and only to sane values —
 // a cleared input or junk is ignored, never written. Refuses (the SAME array back)
 // unless the entry at idx is still the one the editor opened: same lift AND same
 // completed_at. Pure.
-export function editLoggedSet(logged, idx, patch, { exercise, completed_at } = {}) {
+// W307: RIR is editable on a banked set (0-10, the server's clamp), and "Forgot the numbers?" writes an `estimate`
+// ({reps, rir}) — reps marked est: ["reps"], an RIR only as rir_est and only where none was logged (an estimate never
+// replaces a real one). A REAL new number clears only its own flag: a reps entry that differs drops `est`, an RIR entry
+// drops `rir_est` (an untouched field comes back as the same value — resolveEdit — and clears nothing).
+// …and edits are made FROM the entry the editor OPENED with (`base` — Burst 9 review crash#0): every keystroke re-applies
+// to it, so a value typed and typed back is the original, flags and all — never the intermediate an earlier keystroke left.
+export function editLoggedSet(logged, idx, patch, { exercise, completed_at, base = null } = {}) {
   const cur = logged?.[idx];
   if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return logged;
-  const changes = {};
-  const w = patch?.weight_kg, r = patch?.reps;
+  const from = base ?? cur;
+  const changes = {}, drop = [];
+  const w = patch?.weight_kg, r = patch?.reps, q = patch?.rir, est = patch?.estimate;
   if (typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1000) changes.weight_kg = w;
-  if (Number.isInteger(r) && r >= 0 && r <= 100) changes.reps = r;
+  if (Number.isInteger(r) && r >= 0 && r <= 100) { changes.reps = r; if (r !== from.reps) drop.push("est"); }
+  if (Number.isInteger(q) && q >= 0 && q <= 10) { changes.rir = q; drop.push("rir_est"); }
+  if (est && Number.isInteger(est.reps) && est.reps >= 1 && est.reps <= 100) {
+    changes.reps = est.reps; changes.est = ["reps"];
+    if (typeof from.rir !== "number" && Number.isInteger(est.rir) && est.rir >= 0 && est.rir <= 10) changes.rir_est = est.rir;
+  }
   if (!Object.keys(changes).length) return logged;
-  return logged.map((l, k) => (k === idx ? { ...l, ...changes } : l));
+  return logged.map((l, k) => {
+    if (k !== idx) return l;
+    const next = { ...l };
+    if (base) for (const f of ["weight_kg", "reps", "rir", "rir_est", "est"]) { if (f in base) next[f] = base[f]; else delete next[f]; }
+    Object.assign(next, changes);
+    for (const f of drop) if (!(f in changes)) delete next[f];
+    return next;
+  });
+}
+// The moved lift's cue (W306): today's weight was set for its usual place — and the next-set hint corrects after set 1,
+// said only where that hint can fire (Burst 9 review copy#3): never a load-less bodyweight lift, a tired-eased one or a deload.
+export function movedCue(row, { deload = false } = {}) {
+  const hint = !deload && !row?.eased && !(row?.equipment === "bodyweight" && !(row?.suggested_kg > 0));
+  return `📍 You moved this one — today's weight was set for its usual place in the workout${hint ? "; after set 1 the hint adjusts if it needs to" : ""}.`;
+}
+// A set as the History editor sends it back (W274 + W307): an untouched field keeps its stored value byte for byte (the
+// display is exact, but a re-parse could still round); a CHANGED, valid reps count is a real number and drops `est`; junk
+// keeps what was stored, flag and all. The display-only `name` never goes back.
+export function historyEditSet(set, { wText, rText, unit }) {
+  const { name, ...rest } = set;
+  const w = String(wText ?? "").trim(), r = String(rText ?? "").trim();
+  const kg = w === editDisplay(rest.weight_kg, unit) ? rest.weight_kg : parseEdit(w, unit);
+  const reps = r === String(rest.reps) ? rest.reps : (/^\d{1,3}$/.test(r) ? Number(r) : rest.reps);
+  const out = { ...rest, weight_kg: kg ?? rest.weight_kg, reps };
+  if (reps !== rest.reps) delete out.est;
+  return out;
+}
+// "FORGOT THE NUMBERS?" (W307 — owner: "if a user forgets what reps and rir they did… autofill it based off what they got
+// for the other sets that workout… guesses should get more accurate based off… general trends"). In order of what it
+// trusts: the lift's REAL sets this session at this weight — the nearest earlier one carried forward by the drop
+// between sets (each set in between costs it again), else the nearest later one, which the earlier did at least
+// (plus the drop); the drop is the lifter's OWN when two real sets in a row at this weight show it, else the model's
+// (nextSetCapacity). Then last session's same set at this weight (row.last_sets); then the e1RM the real sets give
+// (today's, else last time's), at the band's near edge. RIR: the nearest real neighbour's, else the band's near edge —
+// none for a beginner (never asked). An estimate never feeds another. Null when nothing real exists to go on.
+// What banks as an estimate, PER FIELD (W307): the reps while they still show the estimate the lifter accepted for THIS
+// set (`pending` = {setNo, reps, rirChip, rir}, stamped when "Forgot the numbers?" filled them); the RIR while its chip is
+// still the estimate's — then stored as rir_est (the estimate's own number: a "4+" chip keeps a 6), never as a real rir.
+// A field the lifter changed is real; a pending estimate for another set is stale and estimates nothing.
+export function estimatedFields(pending, { setNo, reps, eff }) {
+  const live = !!pending && pending.setNo === setNo;
+  const estReps = live && pending.reps === reps;
+  const rirEst = live && pending.rirChip != null && eff === pending.rirChip;
+  return { estReps, rir: rirEst || eff == null ? null : eff, rir_est: rirEst ? pending.rir : null };
+}
+// A rep count as shown: "~9" when it's an estimate (a log entry's est, or a chip's est flag).
+export const repsShown = (entry) => `${entry?.est === true || repsEstimated(entry) ? "~" : ""}${entry?.reps}`;
+export function estimateSet({ logged, at, weightKg, row, beginner = false, setNo = null }) {
+  const ex = row?.exercise, range = /(\d+)\s*-\s*(\d+)/.exec(row?.rep_range ?? ""), band = /(\d+)\s*-\s*(\d+)/.exec(row?.rir ?? "");
+  if (!ex || !range || !(weightKg >= 0)) return null; // a bodyweight lift (0 kg) estimates from its reps too
+  const max = +range[2], near = band ? +band[1] : 1;
+  const mine = (logged ?? []).map((l, k) => ({ l, k })).filter(({ l }) => l?.exercise === ex && (l.set_type ?? "work") === "work");
+  const pos = mine.filter(({ k }) => k < at).length; // the target's place among the lift's sets
+  // The set being estimated is never its own evidence (in the editor its banked numbers ARE the forgotten ones).
+  const real = mine.filter(({ l, k }) => k !== at && !repsEstimated(l) && typeof l.reps === "number" && l.weight_kg === weightKg);
+  // Unlogged effort reads as the band's near edge — the engine's own convention — in the capacity AND the guess (Burst 9
+  // review engine#2: it was 0 in one and `near` in the other, a double count that guessed every beginner ~`near` low).
+  const rirOf = (l) => (typeof l?.rir === "number" ? l.rir : near);
+  const cap = (l) => l.reps + rirOf(l);
+  const lossAt = (r) => (100 - (r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0)) / 100; // nextSetCapacity's drop
+  // The lifter's own set-to-set drop: the latest pair of CONSECUTIVE real sets at this weight (never one with the target).
+  let ratio = null;
+  for (let j = mine.length - 1; j > 0 && ratio == null; j--) {
+    const a = mine[j - 1], b = mine[j];
+    if (a.k !== at && b.k !== at && ![a.l, b.l].some(repsEstimated) && a.l.weight_kg === weightKg && b.l.weight_kg === weightKg && cap(a.l) > 0) ratio = Math.max(0.5, Math.min(1, cap(b.l) / cap(a.l)));
+  }
+  const done = (reps, rir, source) => ({ reps: Math.max(1, Math.min(max + 5, Math.round(reps))), rir: beginner ? null : rir, source });
+  const before = real.filter(({ k }) => k < at).at(-1), after = real.find(({ k }) => k > at);
+  if (before && after) {
+    // Both real neighbours (W311 — the fix check engine#2): the set between them is interpolated between them, capacity
+    // and effort alike — never above both (the earlier set's effort once read the later set's capacity as reps).
+    const pos = (k) => mine.findIndex((x) => x.k === k), pb = pos(before.k), pa = pos(after.k), pt = mine.filter(({ k }) => k < at).length;
+    const f = pa > pb ? (pt - pb) / (pa - pb) : 0.5;
+    const r = Math.round(rirOf(before.l) + (rirOf(after.l) - rirOf(before.l)) * f);
+    return done(cap(before.l) + (cap(after.l) - cap(before.l)) * f - r, r, "session");
+  }
+  if (before) {
+    const r = rirOf(before.l), steps = mine.filter(({ k }) => k > before.k && k < at).length;
+    let c = cap(before.l) * (ratio ?? lossAt(r));
+    for (let n = 0; n < steps; n++) c *= ratio ?? lossAt(r);
+    return done(c - r, r, "session");
+  }
+  if (after) {
+    const r = rirOf(after.l);
+    return done(cap(after.l) / (ratio ?? lossAt(r)) - r, r, "session");
+  }
+  const n = Number.isInteger(setNo) ? setNo : pos;
+  const last = Array.isArray(row?.last_sets) ? row.last_sets : [];
+  if (last[n] && !last[n][2] && last[n][0] === weightKg && Number.isFinite(last[n][1])) return done(last[n][1], near, "last"); // [kg, reps, true]: an estimate
+  if (!(weightKg > 0)) return null; // no e1RM for bodyweight reps
+  const e1 = Math.max(0, ...mine.filter(({ l, k }) => k !== at && !repsEstimated(l) && l.weight_kg > 0 && typeof l.reps === "number").map(({ l }) => l.weight_kg * (1 + cap(l) / 30)),
+    ...last.filter((x) => !x[2] && x[0] > 0 && Number.isFinite(x[1])).map((x) => x[0] * (1 + (x[1] + near) / 30))); // last time's effort: unlogged, so the near edge
+  if (!(e1 > 0)) return null;
+  return done(30 * (e1 / weightKg - 1) - near, near, "e1rm");
 }
 // The editor shows a banked weight EXACTLY (kg to 0.01, lb to 0.1) and reads it back in
 // the SAME unit it was shown in. The plate-rounded display (lb to 5) re-saved 22.5 lb as
@@ -846,13 +1111,16 @@ export const editConfirmKey = (entry, idx) => `edit:${entry?.exercise ?? ""}:${e
 // Only what CHANGED is judged (Burst 6): an untouched number already passed the guard (or was
 // confirmed) when it banked — re-judging it refused a reps-only fix on a confirmed big jump —
 // and against today's other banked sets (`todayKg`/`todayReps`, the edited entry left out).
-export function resolveEdit({ entry0, wText, rText, shownW, shownR, unit, lastKg = null, priorBests = null, todayKg = null, todayReps = null, confirmed = false }) {
-  const w = String(wText ?? "").trim(), r = String(rText ?? "").trim();
+// W307: the RIR is editable too (`qText`/`shownQ`) — a changed, valid 0-10 entry is a real RIR (editLoggedSet then drops an
+// estimated one); untouched or junk text changes nothing. It never takes part in the typo guard.
+export function resolveEdit({ entry0, wText, rText, qText = null, shownW, shownR, shownQ = null, unit, lastKg = null, priorBests = null, todayKg = null, todayReps = null, confirmed = false }) {
+  const w = String(wText ?? "").trim(), r = String(rText ?? "").trim(), q = String(qText ?? "").trim();
   const kg = w === shownW ? entry0.weight_kg : parseEdit(w, unit);
   const reps = r === shownR ? entry0.reps : (/^\d{1,3}$/.test(r) ? Number(r) : null);
   const patch = {};
   if (kg != null) patch.weight_kg = kg;
   if (reps != null) patch.reps = reps;
+  if (qText != null && q !== String(shownQ ?? "").trim() && /^\d{1,2}$/.test(q) && Number(q) <= 10) patch.rir = Number(q);
   const cand = { ...entry0, ...patch };
   const flagged = (cand.set_type ?? "work") === "work" && !confirmed
     // …and the set's OWN banked value vouches for it (it passed the guard, or was confirmed, when it banked — review K8:
@@ -872,7 +1140,7 @@ export const nextPrLatch = (was, logged, exId, prWatch) => !!was && recomputePrL
 export function recomputePrLatch(logged, exId, prWatch) {
   if (!prWatch) return false;
   return (logged ?? []).some((l) => l.exercise === exId && (l.set_type ?? "work") === "work"
-    && !!checkSetPR(exId, l.weight_kg, l.reps, "work", prWatch, l.deload === true));
+    && !!checkSetPR(exId, l.weight_kg, l.reps, "work", prWatch, l.deload === true, repsEstimated(l)));
 }
 
 // The player's live Undo for a "Can't do this one?" swap belongs to ONE session: stamped

@@ -1669,4 +1669,49 @@ check("#session-time paceModelCheck: the model's minutes for each real workout's
   assert.deepEqual(paceModelCheck([{ date: null, sets: exact.sets }], (id) => exById.get(id)), { median_abs_error_pct: null, n: 0 }, "no start, no check");
 });
 
+// --- W307 (considerations iteration, Burst 9 — owner: "if a user forgets what reps and rir they did… autofill it based
+// off what they got for the other sets that workout"). An ESTIMATED rep count (est: ["reps"]) still counts as a set done —
+// volume, completion, the hard-set count — but never as strength evidence: e1RM, PRs, load trends, stalls, the drop-off
+// read and next session's aims all pass over it. One predicate (repsEstimated), every reader. An estimated RIR is never
+// stored in `rir` at all (rir_est), so no RIR reader can mistake it for a logged one.
+{
+  const D = await import("./derive-core.mjs");
+  const ix = new Map([["bench", { name: "Bench", primary: ["chest"], secondary: [] }], ["lat-raise", { name: "Lateral raise", primary: ["side-delts"], secondary: [] }]]);
+  const est = { est: ["reps"] };
+  check("#est repsEstimated: only an est list naming reps", () => {
+    assert.equal(D.repsEstimated({ est: ["reps"] }), true);
+    assert.equal(D.repsEstimated({ est: [] }), false);
+    assert.equal(D.repsEstimated({ rir_est: 2 }), false);
+    assert.equal(D.repsEstimated({}), false);
+  });
+  check("#est an estimated rep count is never strength evidence: no e1RM, no load set, no PR", () => {
+    const real = { exercise: "bench", set_type: "work", weight_kg: 100, reps: 8 };
+    assert.equal(D.countsForE1RM(real), true);
+    assert.equal(D.countsForE1RM({ ...real, ...est }), false);
+    const prior = [{ date: "2026-10-01", sets: [{ ...real, reps: 5 }] }];
+    const today = { date: "2026-10-08", sets: [{ ...real, reps: 12, ...est }] };
+    assert.equal(D.detectPersonalRecords(today, prior).length, 0, "an estimated 12 never beats a real 5");
+    assert.equal(D.detectPersonalRecords({ ...today, sets: [{ ...real, reps: 12 }] }, prior).length > 0, true, "control: a real 12 does");
+    assert.equal(D.checkSetPR({ ...real, reps: 12, ...est }, D.priorPersonalBests(prior)), null, "the live PR check skips it too");
+  });
+  check("#est …nor a load trend, a stall or a cadence point — the three high-rep paths read the ONE predicate (isLoadSet)", () => {
+    const hi = (date, reps, extra = {}) => ({ date, sets: [{ exercise: "lat-raise", set_type: "work", weight_kg: 10, reps, ...extra }] });
+    const p = D.progressionByExercise([hi("2026-09-01", 15, est), hi("2026-09-08", 15, est)], ix);
+    assert.equal(p.find((x) => x.exercise === "lat-raise"), undefined, "estimated high-rep sets chart nothing");
+    const real = D.progressionByExercise([hi("2026-09-01", 15), hi("2026-09-08", 15)], ix);
+    assert.ok(real.find((x) => x.exercise === "lat-raise"), "control: real ones chart");
+  });
+  check("#est the drop-off read and next session's aims pass over an estimated set (it's no evidence)", () => {
+    const sess = { sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 10 }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 6, ...est }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 8 }] };
+    assert.deepEqual(D.proximityFromRepDropoff(sess)["bench@100"].reps, [10, 8], "the estimated 6 isn't a drop");
+    const aims = D.repTargets(sess.sets, { sets: 3, weightKg: 100, min: 8, max: 12, near: 1 });
+    assert.deepEqual(aims, [11, 11, 9], "set 2's aim reads set 1 (the nearest earlier evidence), set 3 its own");
+    assert.equal(D.repTargets(sess.sets.map((x) => ({ ...x, ...est })), { sets: 3, weightKg: 100, min: 8, max: 12, near: 1 }), null, "all estimated: no aims at all");
+  });
+  check("#est an estimated set still counts as a set done: weekly hard-set volume includes it (completion counts include estimated sets)", () => {
+    const v = D.perMuscleWeeklyVolume([{ date: "2026-10-06", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 8, ...est, rir_est: 2 }] }], ix);
+    assert.equal(Object.values(v)[0].chest, 1);
+  });
+}
+
 console.log(`\n${passed} test(s) passed.`);

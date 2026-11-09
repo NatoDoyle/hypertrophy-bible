@@ -5,7 +5,7 @@ import { isSpecializing } from "../src/planner.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext  } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 import { servedLift, lastRegular } from "../src/coach.mjs";
 import * as deriveCore from "../../tools/derive-core.mjs";
@@ -2154,6 +2154,118 @@ check("#alt (Burst 8 review #37) the two-rep ease never goes under the empty bar
   assert.doesNotMatch(at.note, /lightened/);
   assert.equal(suggestWeight(missed("barbell-overhead-press", "8-12", "1-2", 22.5, 4, 4, 4), "barbell-overhead-press", "8-12", undefined, null, "1-2").suggested_kg, 20, "17.5 → the bar");
   assert.equal(suggestWeight(missed("dumbbell-bench-press", "8-12", "1-2", 20, 6, 5, 5), "dumbbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 17.5, "control: a dumbbell isn't floored");
+});
+// --- W307 (considerations iteration, Burst 9 — owner: "if a user forgets what reps and rir they did… autofill it"):
+// an ESTIMATED rep count (est: ["reps"]) never moves the load. Set 1 estimated (the freshest, most telling set) — or
+// nothing real left — holds the weight, ahead of every bump and ease (after the layoff ease, which is safety); the
+// other estimated sets are judged out (no bump earned by a guess, none blocked by one); no order move reads one.
+check("#est set 1 estimated: the weight holds and says why — no bump, no ease, no alternative", () => {
+  const e = { est: ["reps"] };
+  const hi = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(hi.suggested_kg, 100, "would have been a bump");
+  assert.match(hi.note, /estimate/);
+  const lo = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 6, { ...e, rir: 0 }), anySet("barbell-bench-press", 100, 6, { rir: 0 }), anySet("barbell-bench-press", 100, 6, { rir: 0 }))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(lo.suggested_kg, 100, "would have been an ease");
+  assert.equal(lo.alt_kg ?? null, null);
+  const all = suggestWeight([withTargets(null, anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12, e))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(all.suggested_kg, 100, "nothing real: holds");
+});
+// Burst 9 review (D2, deliberate): a forgotten set is MISSING evidence — a bump needs every set at the weight real and at
+// the top, so an estimated one blocks it (the old "nor blocks it" let forgetting the weaker sets earn a bump).
+check("#est a later estimated set blocks the bump (missing evidence) — and never earns one", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const up = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 9, e), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(up.suggested_kg, 100, "two real sets at the top, one forgotten: no bump on two-thirds of the evidence");
+  const top = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(top.suggested_kg, 100, "even an estimate AT the top earns nothing");
+  assert.equal(top.note, "One of last time's sets at 100 kg was an estimate — same weight until a real set shows where you are.");
+  const no = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 11), anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 11))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(no.suggested_kg, 100, "an estimated 12 can't make the top for the real 11s");
+});
+check("#est last_sets marks an estimated set ([kg, reps, true]) — the player's estimator skips it, 'last time' shows a ~", () => {
+  const s = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 10), anySet("barbell-bench-press", 100, 9, { est: ["reps"] }), anySet("barbell-bench-press", 100, 9))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.deepEqual(s.last_sets, [[100, 10], [100, 9, true], [100, 9]]);
+});
+// --- Burst 9 review (D1/D2): an estimated set's WEIGHT is real — only its reps are a guess. The anchor (which weight the
+// session was AT) counts it; a bump needs every set at that weight real; an ease still comes from a real set 1.
+check("#est (review D1) set 1 estimated at the top weight, real back-offs lighter: next time holds the TOP weight — never the back-off's", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 7, e), anySet("hack-squat", 45, 10, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "Last time's first set at 60 kg was an estimate — same weight until a real set shows where you are."]);
+  const typed = suggestWeight([withTargets(t, anySet("hack-squat", 60, 7, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.equal(typed.suggested_kg, 60, "control: the same numbers typed anchor at 60 too");
+});
+check("#est (review D1) a real ramp before estimated work sets: the work weight holds — the ramp never becomes the anchor", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 40, 10, { rir: 1 }), anySet("hack-squat", 60, 7, e), anySet("hack-squat", 60, 7, e))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "Last time's sets at 60 kg were estimates — same weight until a real set shows where you are."]);
+});
+check("#est (review D2) forgetting the later, weaker sets never earns a bump the real numbers wouldn't", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 1 }), anySet("hack-squat", 60, 8, e), anySet("hack-squat", 60, 6, e))], "hack-squat", "6-10", undefined, null, "1-2");
+  const typed = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 1 }), anySet("hack-squat", 60, 8, { rir: 1 }), anySet("hack-squat", 60, 6, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, typed.suggested_kg], [60, 60], "both hold");
+});
+check("#est (review D2) the reserve bump needs every set at the weight real too", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const S = (reps, extra) => anySet("barbell-bench-press", 100, reps, extra);
+  assert.equal(suggestWeight([withTargets(t, S(10, { rir: 3 }), S(10, { rir: 3 }), S(10, { rir: 3 }))], "barbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 102.5, "control: ~3 in reserve bumps");
+  const s = suggestWeight([withTargets(t, S(10, { rir: 3 }), S(10, e), S(10, { rir: 3 }))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [100, "One of last time's sets at 100 kg was an estimate — same weight until a real set shows where you are."]);
+});
+check("#est (review D1) a guessed miss is no strike: an estimated set 1 under the range last-but-one time doesn't turn a one-rep miss into an ease", () => {
+  const prev = { date: "2026-05-25T18:00:00Z", sets: [anySet("hack-squat", 60, 6, { est: ["reps"] })], targets: [{ exercise: "hack-squat", sets: 1, rep_range: "8-12", rir: "1-2" }] };
+  const last = { date: "2026-06-01T18:00:00Z", sets: [anySet("hack-squat", 60, 7, { rir: 1 })], targets: [{ exercise: "hack-squat", sets: 1, rep_range: "8-12", rir: "1-2" }] };
+  const s = suggestWeight([prev, last], "hack-squat", "8-12", undefined, null, "1-2");
+  assert.equal(s.suggested_kg, 60, "held once — " + s.note);
+  const realPrev = { ...prev, sets: [anySet("hack-squat", 60, 6, { rir: 1 })] };
+  assert.ok(suggestWeight([realPrev, last], "hack-squat", "8-12", undefined, null, "1-2").suggested_kg < 60, "control: a REAL miss last-but-one time is a strike, and it eases");
+});
+check("#est (review D1) an ease still comes from a REAL set 1 well under the range — a forgotten later set doesn't stop it", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 5, { rir: 0 }), anySet("hack-squat", 60, 9, e), anySet("hack-squat", 60, 4, { rir: 0 }))], "hack-squat", "8-12", undefined, null, "1-2");
+  assert.ok(s.suggested_kg < 60 && /lightened/.test(s.note), JSON.stringify([s.suggested_kg, s.note]));
+});
+// --- Burst 9 review (doors#0): a workout the lifter REORDERED (W306 targets.moved) was done in its performed order — its
+// anchor position comes from that, so a lift moved to the front isn't judged next time as if it had come third.
+check("#order (review doors#0) a lift moved to the front last time: next time's position is measured against where it was DONE", () => {
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3", moved: true }];
+  const moved = { ...onDay("B", 1, inc(30, 10, { rir: 1 }), inc(30, 10, { rir: 1 }), inc(30, 10, { rir: 1 }),
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }, { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }, { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }), targets: t };
+  const s = ordServed("B", [moved]);
+  const asPlanned = ordServed("B", [{ ...moved, targets: t.map(({ moved: _m, ...x }) => x) }]);
+  assert.doesNotMatch(asPlanned.suggestion_note, /came first/, "control: judged in its planned slot, no position to adjust for");
+  // 3 overlapping sets cost under half a dumbbell step here, so the order rule does what it does for any small shift: the
+  // weight stays and the position lowers the aims (a bigger shift moves the weight — the #order tests above).
+  assert.match(s.suggestion_note, /This time it comes after 3 sets that also work your chest \(last time it came first\)/);
+  const sum = (r) => (r.rep_targets ?? []).reduce((a, b) => a + b, 0);
+  assert.ok(sum(s) < sum(asPlanned), `done first, served second: lower aims (${s.rep_targets} vs ${asPlanned.rep_targets})`);
+});
+// --- W311 (the W309+W310 check): the past-band hold defers to the estimate's (lesson 98 with the read-out), and the
+// "last regular session" rename reads right on the estimate notes.
+check("#est (fix check engine#0) a top reached only with a guessed set: the estimate's hold, never 'closer to failure'", () => {
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 0 }), anySet("hack-squat", 60, 10, { rir: 2 }), anySet("hack-squat", 60, 10, { est: ["reps"] }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "One of last time's sets at 60 kg was an estimate — same weight until a real set shows where you are."]);
+  const real = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 0 }), anySet("hack-squat", 60, 10, { rir: 2 }), anySet("hack-squat", 60, 10, { rir: 2 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.match(real.note, /closer to failure/, "control: typed, the past-band hold says why");
+});
+check("#est (fix check engine#1) after an easier session, the estimate notes still read: 'your last regular session's'", () => {
+  assert.equal(lastRegular("One of last time's sets at 60 kg was an estimate — same weight until a real set shows where you are."),
+    "One of your last regular session's sets at 60 kg was an estimate — same weight until a real set shows where you are.");
+  assert.equal(lastRegular("Last time's first set at 60 kg was an estimate — same weight until a real set shows where you are."),
+    "Your last regular session's first set at 60 kg was an estimate — same weight until a real set shows where you are.");
+  assert.equal(lastRegular("Last time you hit the top of the range — add 2.5 kg."), "In your last regular session you hit the top of the range — add 2.5 kg.", "control: unchanged");
+});
+check("#est no order move reads an estimated set 1 (W290 converts real capacity only)", () => {
+  const s = ordServed("B", [onDay("A", 1, inc(30, 9, { est: ["reps"] }), inc(30, 9), inc(30, 8))]);
+  assert.equal(s.suggested_kg, 30, "held — the order rule would have moved it to 27.5 from a real set 1");
 });
 // --- W305h (fix verification C3/C4/C6): the bar floor is the lifter's OWN bar — 45 lb (20.41 kg) for a pounds lift — and
 // it binds only a lift done ON the full bar: an EZ-bar skullcrusher at 15 kg still eases. At the bar, nothing lighter
