@@ -1172,7 +1172,11 @@ check("#moved (review copy#3/#4) the moved cue promises a hint only where one ca
 
 check("#w310 wiring: a skip drops the skipped lift's guessed numbers (dropSkipped); the editor edits from what it opened with (base)", () => {
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /sess = dropSkipped\(before, r\.sess\);/);
-  assert.equal((appJs.match(/editLoggedSet\(sess\.logged, (ed\.)?idx, [^;]*base: entry0 \}\)/g) ?? []).length, 2, "both editor writes carry the base");
+  // (W311, the fix check player#0: the keystroke write carries the base; "Forgot" applies to the entry as it stands now —
+  // a weight or RIR typed just before it stays.)
+  assert.equal((appJs.match(/editLoggedSet\(sess\.logged, ed\.idx, patch, \{ exercise: ed\.exercise, completed_at: ed\.completed_at, base: entry0 \}\)/g) ?? []).length, 1, "the keystroke write carries the base");
+  assert.match(appJs, /editLoggedSet\(sess\.logged, idx, \{ estimate: \{ reps: est\.reps, rir: est\.rir \} \}, \{ exercise: entry0\.exercise, completed_at: entry0\.completed_at \?\? null \}\);/, "Forgot: on the entry as it stands");
+  assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /const at = new Date\(\)\.toISOString\(\); \/\/ ONE stamp per round/, "a round banks with one stamp (fix check player#2)");
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

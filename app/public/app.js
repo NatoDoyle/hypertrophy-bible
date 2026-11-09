@@ -2626,7 +2626,8 @@ function openSetEditor(idx, host, rerender) {
   if ($("#fix-est")) $("#fix-est").onclick = () => {
     const est = editorEstimate();
     if (!est || !setEditor) return;
-    const next = editLoggedSet(sess.logged, idx, { estimate: { reps: est.reps, rir: est.rir } }, { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, base: entry0 });
+    // On the entry as it stands NOW (W311 — the fix check player#0): a weight or RIR typed just before "Forgot" stays.
+    const next = editLoggedSet(sess.logged, idx, { estimate: { reps: est.reps, rir: est.rir } }, { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null });
     if (next === sess.logged) return;
     sess.logged = next;
     // An estimate never celebrates — it can only clear a latch a real number set.
@@ -3108,10 +3109,11 @@ function renderSupersetStation(L, P) {
     confirmSet.clear();
     delete sess.offerPick; // a banked round answers "Pick a different one" (W306)
     const roundSets = []; // both members of the round, banked together
+    const at = new Date().toISOString(); // ONE stamp per round (W311): time between sets reads a round as one moment
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
       const ef = estimatedFields(sess.estPending?.[m.exercise], { setNo: loggedSetCount(m.exercise), reps: sess.reps[idx], eff: sess.eff[idx] });
-      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: at };
       if (sess.estPending) delete sess.estPending[m.exercise];
       sess.logged.push(loggedSet);
       delete sess.eff[idx]; // each set is its own call — an answer never carries over

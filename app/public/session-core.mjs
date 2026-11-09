@@ -210,7 +210,10 @@ export function undoSkip(sess) {
   // and the cursor is DERIVED from banked sets, never the stored one (Burst 1 review).
   if (sess.ex.some((x) => u.ids.includes(x.exercise) && Number.isInteger(x.planned_sets) && x.sets >= x.planned_sets)) return { ok: false, sess };
   const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
-  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise) };
+  // …and what the skip cleared comes back (W311 — the fix check player#1: Skip then Undo changes nothing).
+  const k = u.kept;
+  const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise),
+    ...(k ? { reps: { ...(sess.reps ?? {}), ...k.reps }, eff: { ...(sess.eff ?? {}), ...k.eff }, estPending: { ...(sess.estPending ?? {}), ...k.estPending } } : {}) };
   delete out.lastSkip;
   delete out.offerPick; // the skip's "Pick a different one" goes with it (Burst 9 review copy#1)
   return { ok: true, sess: out };
@@ -222,8 +225,13 @@ export function dropSkipped(before, after) {
   const shrunk = (after?.ex ?? []).map((x, k) => (x.sets < (before?.ex?.[k]?.sets ?? x.sets) ? k : -1)).filter((k) => k >= 0);
   if (!shrunk.length) return after;
   const ids = new Set(shrunk.map((k) => after.ex[k].exercise));
-  const omit = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => !shrunk.includes(+k)));
-  return { ...after, reps: omit(after.reps), eff: omit(after.eff), ...(after.estPending ? { estPending: Object.fromEntries(Object.entries(after.estPending).filter(([id]) => !ids.has(id))) } : {}) };
+  const pick = (m, keep) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => keep(k)));
+  const at = (k) => shrunk.includes(+k);
+  const kept = { reps: pick(after.reps, at), eff: pick(after.eff, at), estPending: pick(after.estPending, (id) => ids.has(id)) };
+  return { ...after, reps: pick(after.reps, (k) => !at(k)), eff: pick(after.eff, (k) => !at(k)),
+    ...(after.estPending ? { estPending: pick(after.estPending, (id) => !ids.has(id)) } : {}),
+    // …kept on the skip itself, so its Undo gives them back (W311).
+    ...(after.lastSkip ? { lastSkip: { ...after.lastSkip, kept } } : {}) };
 }
 
 // THE WORKOUT LIST'S ONE REORDER (W306, considerations iteration — owner: "when I start a workout, I can look at all the
@@ -637,7 +645,7 @@ export function hintInUnit(hint, toDisp, step, unit = null) {
 // share one stamp, so each leg's gap is round to round). A gap past 15 minutes is a pause, not a rest; warm-ups and
 // unstamped sets are out. It runs set END to set END — the rest plus the next set — so it's said as "between sets",
 // never as rest. Pure.
-export const GAP_MAX_S = 15 * 60;
+export const GAP_MAX_S = 15 * 60, ROUND_SKEW_MS = 2000;
 export function liftGaps(logged) {
   const work = (logged ?? []).filter((s) => s?.exercise && (s.set_type ?? "work") === "work");
   const stamp = (s) => Date.parse(s?.completed_at ?? "");
@@ -649,7 +657,8 @@ export function liftGaps(logged) {
     // Between ITS sets only (Burst 9 review engine#3): a gap with another lift's set inside it — a lift moved in between
     // (W306) — isn't time between sets; a superset partner banked in the same round shares a stamp, and isn't "inside".
     if (p) {
-      const inside = work.slice(p.k + 1, k).some((o) => o.exercise !== s.exercise && stamp(o) !== p.t && stamp(o) !== t);
+      // (…within ROUND_SKEW_MS: a round's two members can be stamped a millisecond apart — W311, the fix check player#2.)
+      const inside = work.slice(p.k + 1, k).some((o) => o.exercise !== s.exercise && Math.abs(stamp(o) - p.t) > ROUND_SKEW_MS && Math.abs(stamp(o) - t) > ROUND_SKEW_MS);
       const g = (t - p.t) / 1000;
       if (!inside && g > 0 && g <= GAP_MAX_S) (by[s.exercise] ??= []).push(g);
     }
@@ -1031,13 +1040,18 @@ export function estimateSet({ logged, at, weightKg, row, beginner = false, setNo
   }
   const done = (reps, rir, source) => ({ reps: Math.max(1, Math.min(max + 5, Math.round(reps))), rir: beginner ? null : rir, source });
   const before = real.filter(({ k }) => k < at).at(-1), after = real.find(({ k }) => k > at);
+  if (before && after) {
+    // Both real neighbours (W311 — the fix check engine#2): the set between them is interpolated between them, capacity
+    // and effort alike — never above both (the earlier set's effort once read the later set's capacity as reps).
+    const pos = (k) => mine.findIndex((x) => x.k === k), pb = pos(before.k), pa = pos(after.k), pt = mine.filter(({ k }) => k < at).length;
+    const f = pa > pb ? (pt - pb) / (pa - pb) : 0.5;
+    const r = Math.round(rirOf(before.l) + (rirOf(after.l) - rirOf(before.l)) * f);
+    return done(cap(before.l) + (cap(after.l) - cap(before.l)) * f - r, r, "session");
+  }
   if (before) {
     const r = rirOf(before.l), steps = mine.filter(({ k }) => k > before.k && k < at).length;
     let c = cap(before.l) * (ratio ?? lossAt(r));
     for (let n = 0; n < steps; n++) c *= ratio ?? lossAt(r);
-    // …and a real set AFTER it bounds it too (review engine#2): the target did at least what the later set did — fatigue
-    // only takes away — and no more than the earlier one.
-    if (after) { const lo = cap(after.l); c = Math.min(Math.max(c, lo), Math.max(lo, cap(before.l))); }
     return done(c - r, r, "session");
   }
   if (after) {

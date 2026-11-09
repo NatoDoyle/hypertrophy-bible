@@ -233,6 +233,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // Its ask names TODAY's band's near edge — never a band the card no longer shows; inside a taper (the load holds
   // anyway) it asks for nothing (review K3).
   const todayNear = band ? +band[1] : judgeNear;
+  if (estN && rawTop && !allHitTop) return { suggested_kg: lastWeight, note: estHold(), ...base }; // a top reached with a guess claims nothing (W311; the read-out agrees)
   if (rawTop && !allHitTop) return { suggested_kg: lastWeight, note: `You hit the top of the range last time, but closer to failure than the plan's ${judgeBand[1]}–${judgeBand[2]} reps in reserve — same weight${holdLoad ? "" : ` until you get there with ${todayNear} in reserve`}.`, ...base };
   // RIR autoregulation (only when effort was logged): MORE left in the tank than
   // the prescription asked for -> go up. The threshold is relative to the
@@ -709,6 +710,7 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
 // Every "last time" (and "your last session") in a reason, renamed for the session it means when an easier one came after it:
 // "your last REGULAR session" — not "full", which read as "complete" beside "You did 2 of 3 sets" (Burst 6 review round 4).
 export const lastRegular = (note) => note
+  .replace(/\bLast time's\b/g, "Your last regular session's").replace(/\blast time's\b/g, "your last regular session's") // the estimate notes (W311)
   .replace(/\bLast time\b/g, "In your last regular session").replace(/\blast time\b/g, "in your last regular session")
   .replace(/\byour last session\b/g, "your last regular session");
 

@@ -1810,8 +1810,8 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   check("#estimate in the editor the set being estimated never informs its own estimate (its banked numbers are the forgotten ones)", () => {
     const W2 = (reps, rir, kg = 100) => ({ exercise: "bench", set_type: "work", weight_kg: kg, reps, rir, completed_at: "t" });
     const row = { exercise: "bench", rep_range: "8-12", rir: "1-2" };
-    assert.deepStrictEqual(estimateSet({ logged: [W2(10, 2), W2(15, 0), W2(9, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 2, source: "session" },
-      "the model's drop from set 1 — never a 'drop' read off the bogus 15 (it would say 7)");
+    assert.deepStrictEqual(estimateSet({ logged: [W2(10, 2), W2(15, 0), W2(9, 2)], at: 1, weightKg: 100, row }), { reps: 10, rir: 2, source: "session" },
+      "between its real neighbours (W311) — never a 'drop' read off the bogus 15");
     assert.deepStrictEqual(estimateSet({ logged: [W2(15, 0)], at: 0, weightKg: 100, row: { ...row, last_sets: [[100, 10]] } }), { reps: 10, rir: 1, source: "last" }, "its own 15 is no e1RM");
   });
   check("#estimate a bodyweight lift (0 kg) estimates from the same session's reps too", () => {
@@ -1897,7 +1897,10 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
     const B = (reps, rir = null) => ({ exercise: "bench", set_type: "work", weight_kg: 100, reps, ...(rir != null ? { rir } : {}), completed_at: "t" });
     const row = { exercise: "bench", rep_range: "8-12", rir: "1-2" };
     assert.deepStrictEqual(estimateSet({ logged: [B(12), B(12, null), B(12)], at: 1, weightKg: 100, row, beginner: true }), { reps: 12, rir: null, source: "session" });
-    assert.deepStrictEqual(estimateSet({ logged: [B(10, 2), B(0), B(9, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 2, source: "session" }, "10@2 then 9@2: set 2 between them");
+    // (W311, the fix check engine#2: both neighbours → interpolated between them, reps AND effort.)
+    assert.deepStrictEqual(estimateSet({ logged: [B(10, 2), B(0), B(9, 2)], at: 1, weightKg: 100, row }), { reps: 10, rir: 2, source: "session" }, "10@2 then 9@2: capacity 11.5 at 2 → 9.5");
+    assert.deepStrictEqual(estimateSet({ logged: [B(10, 1), B(0), B(10, 3)], at: 1, weightKg: 100, row }), { reps: 10, rir: 2, source: "session" }, "never above both real neighbours (it guessed 12)");
+    assert.deepStrictEqual(estimateSet({ logged: [B(8, 0), B(0), B(10, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 1, source: "session" });
   });
   check("#gaps (review engine#3) a gap with ANOTHER lift's sets inside it isn't time between sets — a superset partner's shared stamp is", () => {
     const at = (sec) => new Date(Date.UTC(2026, 10, 9, 10, 0, 0) + sec * 1000).toISOString();
@@ -1935,6 +1938,26 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
     const step2 = (q) => { const { patch } = resolveEdit({ entry0: real, wText: "30", rText: "10", qText: q, shownW: "30", shownR: "10", shownQ: "2", unit: "kg" }); log2 = editLoggedSet(log2, 0, patch, { exercise: "bench", completed_at: "u", base: real }); };
     step2("3"); step2("2");
     assert.equal(log2[0].rir, 2, "RIR 3 then back to 2: 2");
+  });
+}
+
+// --- W311 (the W309+W310 check): Skip then Undo changes nothing; a round's stamps a millisecond apart are one round.
+{
+  const { dropSkipped, liftGaps } = playerCore;
+  check("#skip (fix check player#1) Skip then Undo gives back the dialed reps, effort and any pending estimate", () => {
+    const sess = { session_id: "s", ex: [{ exercise: "bench", sets: 3, planned_sets: 3, rep_range: "8-12" }, { exercise: "row", sets: 2, planned_sets: 2, rep_range: "8-12" }],
+      logged: [{ exercise: "bench", set_type: "work", weight_kg: 50, reps: 8 }], i: 0, set: 1, weights: {}, reps: { 0: 12 }, eff: { 0: 3 }, wUnits: {}, estPending: { bench: { setNo: 1, reps: 9, rirChip: 2, rir: 2 } } };
+    const skipped = dropSkipped(sess, skipSet(sess).sess);
+    assert.deepStrictEqual([skipped.reps, skipped.eff, skipped.estPending], [{}, {}, {}], "the skip clears them");
+    const u = undoSkip(skipped);
+    assert.equal(u.ok, true);
+    assert.deepStrictEqual([u.sess.reps, u.sess.eff, u.sess.estPending], [{ 0: 12 }, { 0: 3 }, { bench: { setNo: 1, reps: 9, rirChip: 2, rir: 2 } }], "the undo restores them");
+  });
+  check("#gaps (fix check player#2) a round's two stamps a millisecond apart are still one round", () => {
+    const at = (ms) => new Date(Date.UTC(2026, 10, 9, 10, 0, 0) + ms).toISOString();
+    const W = (ex, ms) => ({ exercise: ex, set_type: "work", weight_kg: 20, reps: 10, completed_at: at(ms) });
+    const g = liftGaps([W("curl", 0), W("tri", 1), W("curl", 150000), W("tri", 150001), W("curl", 300001), W("tri", 300002)]);
+    assert.deepStrictEqual([g.curl?.n, g.tri?.n], [2, 2], JSON.stringify(g));
   });
 }
 

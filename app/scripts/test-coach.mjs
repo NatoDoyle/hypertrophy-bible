@@ -5,7 +5,7 @@ import { isSpecializing } from "../src/planner.mjs";
 import { generateUserPlan, userApplySubstitution } from "../src/planner.mjs";
 import { applySubstitution } from "../../tools/plan-core.mjs";
 import { exercises as kbExercises, muscles as kbMuscles, contraindications as kbContra, guidelines as kbGuidelines } from "../src/kb-data.mjs";
-import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext } from "../src/coach.mjs";
+import { buildToday, todayCard, suggestWeight, estimateStartingWeight, sessionRecap, progressReport, nextSessionIndex, rotationState, upcomingSessions, gentleGapDays, dailyReadiness, computeVolumeAdjust, waveRir, taperPhase, taperRir, reactiveDeloadDue, sessionReadout, blockTuneDecision, swapStalls, stalledExerciseIds, nerdReport, trainingContext  } from "../src/coach.mjs";
 import { isLuckySet, LUCKY_SET_XP, bodyweightTrend, isoWeekKey, isoWeekKeyLocal } from "../../tools/derive-core.mjs";
 import { servedLift, lastRegular } from "../src/coach.mjs";
 import * as deriveCore from "../../tools/derive-core.mjs";
@@ -2246,6 +2246,22 @@ check("#order (review doors#0) a lift moved to the front last time: next time's 
   assert.match(s.suggestion_note, /This time it comes after 3 sets that also work your chest \(last time it came first\)/);
   const sum = (r) => (r.rep_targets ?? []).reduce((a, b) => a + b, 0);
   assert.ok(sum(s) < sum(asPlanned), `done first, served second: lower aims (${s.rep_targets} vs ${asPlanned.rep_targets})`);
+});
+// --- W311 (the W309+W310 check): the past-band hold defers to the estimate's (lesson 98 with the read-out), and the
+// "last regular session" rename reads right on the estimate notes.
+check("#est (fix check engine#0) a top reached only with a guessed set: the estimate's hold, never 'closer to failure'", () => {
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 0 }), anySet("hack-squat", 60, 10, { rir: 2 }), anySet("hack-squat", 60, 10, { est: ["reps"] }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "One of last time's sets at 60 kg was an estimate — same weight until a real set shows where you are."]);
+  const real = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 0 }), anySet("hack-squat", 60, 10, { rir: 2 }), anySet("hack-squat", 60, 10, { rir: 2 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.match(real.note, /closer to failure/, "control: typed, the past-band hold says why");
+});
+check("#est (fix check engine#1) after an easier session, the estimate notes still read: 'your last regular session's'", () => {
+  assert.equal(lastRegular("One of last time's sets at 60 kg was an estimate — same weight until a real set shows where you are."),
+    "One of your last regular session's sets at 60 kg was an estimate — same weight until a real set shows where you are.");
+  assert.equal(lastRegular("Last time's first set at 60 kg was an estimate — same weight until a real set shows where you are."),
+    "Your last regular session's first set at 60 kg was an estimate — same weight until a real set shows where you are.");
+  assert.equal(lastRegular("Last time you hit the top of the range — add 2.5 kg."), "In your last regular session you hit the top of the range — add 2.5 kg.", "control: unchanged");
 });
 check("#est no order move reads an estimated set 1 (W290 converts real capacity only)", () => {
   const s = ordServed("B", [onDay("A", 1, inc(30, 9, { est: ["reps"] }), inc(30, 9), inc(30, 8))]);
