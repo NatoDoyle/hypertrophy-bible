@@ -2191,6 +2191,22 @@ try {
         JSON.stringify(offer) === JSON.stringify({ cap: 13, fades: 4, of: 8, current: 16 }) && bad.status === 400 && nn.status === 200 && after === null,
         JSON.stringify({ offer, bad: bad.status, nn: nn.status, after }));
     }
+    // W316 closed loop: workouts logged through the client's door teach the lifter's pace, and Today's "about N min" uses it.
+    {
+      const pu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: pu, program: { sessions: [{ name: "Day", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10", rir: "1-2" }, { exercise: "barbell-row", sets: 4, rep_range: "6-10", rir: "1-2" }] }] } });
+      const eta = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": pu } })).json()).session?.minutes_estimate;
+      const before = await eta();
+      for (let i = 0; i < 12; i++) {
+        const t0 = Date.now() - (30 - i * 2) * 86400000, iso = (sec) => new Date(t0 + sec * 1000).toISOString();
+        await json("POST", "/api/session", { user_id: pu, session_id: `pace-${i}`, date: iso(0), local_date: iso(0).slice(0, 10), session_name: "Day",
+          sets: [0, 1, 2].map((k) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8, completed_at: iso(240 + k * 120) })) });
+      }
+      const pace = (await store.getUser(pu)).plan_meta?.pace, after = await eta();
+      ok("#pace (W316) every plan door builds at the lifter's pace (planOptsFor)", JSON.stringify(planOptsFor(await store.getUser(pu)).pace) === JSON.stringify((await store.getUser(pu)).plan_meta?.pace) && !!(await store.getUser(pu)).plan_meta?.pace);
+      ok("#pace (W316) logged workouts teach the lifter's pace (heavy gaps of 120 s), and Today's estimate follows it",
+        pace?.heavy === 120 && Number.isFinite(before) && after < before, JSON.stringify({ pace, before, after }));
+    }
     ok("#cap (W315b) the Settings door stores the ceiling and the plan keeps under it; junk is nothing; null takes it off",
       r13.status === 200 && stored13 === 13 && at13 <= 13 && before > 13 && junk === null && off === null && after > 13, JSON.stringify({ before, at13, stored13, junk, off, after }));
   }

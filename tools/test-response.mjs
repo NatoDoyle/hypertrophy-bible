@@ -2,7 +2,7 @@
 // 12 sets in one workout and once I get to 16 sets I'm pretty empty. The app should be able to learn this from my data.
 // Other users will be different."). The learners are pure and deterministic: the binder passes the priors in.
 import assert from "node:assert/strict";
-import { sessionTolerance } from "./response-core.mjs";
+import { sessionTolerance, paceProfile } from "./response-core.mjs";
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
@@ -62,6 +62,28 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
   const a = sessionTolerance(s, { prior: 16 }), b = sessionTolerance([...s].reverse(), { prior: 16 });
   assert.deepStrictEqual(a, b);
 });
+
+// --- W316 (considerations iteration, Burst 10 — note 5's "60 minutes means 60 minutes", at the lifter's OWN pace): the
+// time between their sets per rest tier, their lift changes and their start, from the stamps every set carries — a tier
+// only once it has enough samples (the defaults stand in until then); null with nothing to say.
+{
+  const tierOf = (id) => ({ bench: "heavy", row: "moderate", curl: "isolation" })[id] ?? null;
+  const at = (d, sec) => new Date(Date.UTC(2026, 9, 1) + d * 86400000 + sec * 1000).toISOString();
+  const sess = (d, gapH, { lead = 300 } = {}) => ({ session_id: `p${d}`, date: at(d, 0), sets: [
+    { exercise: "bench", set_type: "work", weight_kg: 80, reps: 6, completed_at: at(d, lead) },
+    { exercise: "bench", set_type: "work", weight_kg: 80, reps: 6, completed_at: at(d, lead + gapH) },
+    { exercise: "curl", set_type: "work", weight_kg: 15, reps: 12, completed_at: at(d, lead + gapH + 120) }] });
+  check("#pace (W316) twelve workouts' heavy gaps (150 s) and starts: the lifter's own heavy tier, lift change and lead", () => {
+    assert.deepStrictEqual(paceProfile(Array.from({ length: 12 }, (_, d) => sess(d * 2, 150)), tierOf), { heavy: 150, transition: 120, lead: 300 });
+  });
+  check("#pace (W316) too few samples: nothing replaces the defaults", () => {
+    assert.equal(paceProfile(Array.from({ length: 5 }, (_, d) => sess(d * 2, 150)), tierOf), null);
+    assert.equal(paceProfile([], tierOf), null);
+  });
+  check("#pace (W316) an absurd median (a phone left on the bench) is no pace", () => {
+    assert.equal(paceProfile(Array.from({ length: 12 }, (_, d) => sess(d * 2, 20, { lead: 2000 })), tierOf)?.heavy, undefined, "20 s between heavy sets: not a real gap");
+  });
+}
 
 console.log(`\n${pass} response test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

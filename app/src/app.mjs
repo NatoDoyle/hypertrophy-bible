@@ -7,6 +7,7 @@ import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed,
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor } from "../../tools/plan-core.mjs";
+import { paceProfile } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
@@ -1974,6 +1975,15 @@ export function createApp(store, config = {}) {
         });
       }
     } catch { /* the echo is optional; the logged session is not */ }
+    // The lifter's own pace (W316): re-learned from their logged sets each time a workout lands — every plan door and
+    // Today's "about N min" size the day by it (planOptsFor). Stored only when it changed; best-effort like the echo above
+    // (a failed write never fails the save — the next workout recomputes).
+    try {
+      const pace = paceProfile(all, (exId) => { const e = exerciseById.get(exId); return e ? restTier(e) : null; });
+      if (JSON.stringify(pace) !== JSON.stringify(user.plan_meta?.pace ?? null)) {
+        await store.updateUser(id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), pace }; return u; }).catch(() => null);
+      }
+    } catch { /* the pace is a cache; the logged session is not */ }
     // The coaching read-out (W282) is NOT computed here: it costs as much again as the save, a
     // CPU-limit kill can't be caught, and a replayed offline save would pay it again for a body
     // nobody reads. The client asks /api/session/recap once the save has landed (W282 review).

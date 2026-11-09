@@ -1,7 +1,7 @@
 // RESPONSE CORE — what the app learns about how ONE lifter responds (considerations iteration, Burst 10: "it learns
 // you"). Pure, fs-free, Date.now/Math.random-free, like every engine here: the binder (app/src/coach.mjs) passes the
 // priors in — the KB's session ceiling for the lifter's training age, the comeback gap — so it imports nothing.
-import { repsEstimated } from "./derive-core.mjs";
+import { repsEstimated, paceAggregate } from "./derive-core.mjs";
 
 // THE SESSION CEILING (W315 — owner note 7: "I really start to struggle once I get past 12 sets in one workout and once
 // I get to 16 sets I'm pretty empty. The app should be able to learn this from my data. Other users will be different.").
@@ -47,4 +47,19 @@ export function sessionTolerance(sessions, { prior, comebackDays = 12, window = 
   const median = sorted.length % 2 ? sorted[h] : (sorted[h - 1] + sorted[h]) / 2;
   const cap = Math.max(floor, Math.round(median));
   return cap < prior ? { cap, fades: points.length, eligible: eligible.length, points } : null;
+}
+
+// THE LIFTER'S OWN PACE (W316 — note 5's "60 minutes means 60 minutes", at THEIR pace): the time between their sets per
+// rest tier, their lift changes and the time from start to first set, from the stamps every banked set carries
+// (derive-core paceAggregate — the owner-only stats' own reader — on ONE lifter's log). A tier counts only once it has
+// `minN` samples and a median a real workout has (a phone left on the bench is no pace); the KB-calibrated defaults
+// (derive-core SESSION_PACE_DEFAULTS) stand in for the rest. Null with nothing to say. Rounded to whole seconds.
+export const PACE_MIN_N = 12, PACE_MIN_LEADS = 6;
+export function paceProfile(sessions, restTierOf, { minN = PACE_MIN_N, minLeads = PACE_MIN_LEADS } = {}) {
+  const a = paceAggregate(sessions, restTierOf), out = {};
+  const take = (key, x, n, lo, hi) => { if (x?.n >= n && x.median >= lo && x.median <= hi) out[key] = Math.round(x.median); };
+  for (const t of ["heavy", "moderate", "isolation"]) take(t, a.between_sets_s?.[t], minN, 45, 600);
+  take("transition", a.transition_s, minN, 30, 900);
+  take("lead", a.start_to_first_set_s, minLeads, 0, 1800);
+  return Object.keys(out).length ? out : null;
 }

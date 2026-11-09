@@ -1144,7 +1144,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
-  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId);
+  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId, user.plan_meta?.pace ?? null); // at the lifter's pace (W316)
   return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, announcement, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an

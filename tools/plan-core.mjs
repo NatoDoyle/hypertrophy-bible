@@ -89,7 +89,7 @@ export const volumeLevers = ({ days, sessionMin, experience, timeBound, sessionC
 //   day fitting and nothing short, are no question at all (#29).
 // Ranked as the owner ranked them; "keep" is always last and names what it forgoes (what some option would lift — not
 // what every option leaves short, #17). Pure and deterministic: each alternative is this engine run on the same inputs.
-function fitKit(profile, kb, customExercises = []) {
+function fitKit(profile, kb, customExercises = [], pace = null) {
   const all = [...(kb.exercises ?? []), ...customExercises];
   const exById = new Map(all.map((e) => [e.id, e]));
   const exIx = new Map(all.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
@@ -108,7 +108,7 @@ function fitKit(profile, kb, customExercises = []) {
         && !r.maintenance && !r.eased && !r.secondary_served && mevOf.get(m) > 0 && (week[m] ?? 0) < mevOf.get(m) * bar)
       .map(([m]) => ({ m, gap: mevOf.get(m) - (week[m] ?? 0) }))
       .sort((a, b) => (priority.has(b.m) - priority.has(a.m)) || (b.gap - a.gap) || a.m.localeCompare(b.m));
-    const mins = program.sessions.map((s) => ({ session: s.name, minutes: dayMinutes(s.exercises, exById) }));
+    const mins = program.sessions.map((s) => ({ session: s.name, minutes: dayMinutes(s.exercises, exById, pace) })); // the lifter's pace (W316)
     const over = mins.filter((d) => d.minutes > limit + FIT_GRACE_MIN).sort((a, b) => b.minutes - a.minutes);
     return {
       trimmed_sets: meta?.time_trim?.removed_sets ?? 0, unfit_days: over.length, over,
@@ -120,17 +120,17 @@ function fitKit(profile, kb, customExercises = []) {
 }
 // THE QUESTION the card asks — the plan as it is, no alternatives (W305h, fix verification C0/C10): what a "keep" answers
 // and what the explanation reads. Independent of today's stalls, which only shape the alternatives.
-export function timeFitQuestion(profile, kb, current, { customExercises = [] } = {}) {
+export function timeFitQuestion(profile, kb, current, { customExercises = [], pace = null } = {}) {
   const days = current?.program?.sessions?.length ?? 0;
   if (!days) return null;
-  const { minutes, experience, measure } = fitKit(profile, kb, customExercises);
+  const { minutes, experience, measure } = fitKit(profile, kb, customExercises, pace);
   return { days, minutes, blocks: experience !== "beginner", ...measure(current, minutes), fitted: !!current?.meta?.time_trim };
 }
-export function timeFitOptions(profile, kb, current, altOpts = {}, { customExercises = [], refitOpts = null } = {}) {
-  const asked = timeFitQuestion(profile, kb, current, { customExercises });
+export function timeFitOptions(profile, kb, current, altOpts = {}, { customExercises = [], refitOpts = null, pace = null } = {}) {
+  const asked = timeFitQuestion(profile, kb, current, { customExercises, pace });
   if (!asked) return null;
   const { days, minutes, blocks, ...now } = asked;
-  const { measure } = fitKit(profile, kb, customExercises);
+  const { measure } = fitKit(profile, kb, customExercises, pace);
   const vs = (m, ref) => ({ lifted: ref.mev_short.filter((x) => !m.mev_short.includes(x)), newly: m.mev_short.filter((x) => !ref.mev_short.includes(x)) });
   const better = (m, ref) => { const d = vs(m, ref); return m.unfit_days <= ref.unfit_days && m.mev_short.length <= ref.mev_short.length
     && m.mev_deficit <= ref.mev_deficit && (m.unfit_days < ref.unfit_days || d.lifted.length > d.newly.length); };
@@ -767,6 +767,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // pass measures its slack); step 4 documents why it exists and how it's sized.
   const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
   const sessionCap = Number.isInteger(opts.sessionCap) ? opts.sessionCap : null; // the lifter's own ceiling (W315b)
+  const pace = opts.pace && typeof opts.pace === "object" ? opts.pace : null; // the lifter's own pace (W316): sizes the day
   const setBudget = Math.min(Math.round(sessionMin / 3), qualityCapFor(experience, sessionCap)); // ~3 min/set incl. rest, capped for quality
 
   // 2) weekly target per muscle
@@ -1422,7 +1423,7 @@ export function generatePlan(profile, kb, opts = {}) {
     const directLifts = (m) => outSessions.reduce((n, s) => n + s.exercises.filter((x) => prim(x.exercise).includes(m)).length, 0);
     const kneeFlexion = () => outSessions.reduce((n, s) => n + s.exercises.filter(isKneeFlexion).length, 0);
     const growth = (m) => { const r = volumeRationale[m]; return !!r && r.target_sets > 0 && !r.maintenance && !r.eased && !r.secondary_served; };
-    const over = (s) => dayMinutes(s.exercises, exById) > sessionMin + FIT_GRACE_MIN;
+    const over = (s) => dayMinutes(s.exercises, exById, pace) > sessionMin + FIT_GRACE_MIN;
     const take = (s, it, n) => {
       for (const m of prim(it.exercise)) timeTrim.by_muscle[m] = (timeTrim.by_muscle[m] ?? 0) + n;
       timeTrim.removed_sets += n;
