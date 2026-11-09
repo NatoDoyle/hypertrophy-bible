@@ -677,12 +677,13 @@ check("#A2 deload never prescribes >= the prior real week (eases from last load,
   const u = { profile: { training_status: "advanced", days_per_week: 3 }, plan_meta: { block_start: start },
     program: { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10" }] }] } };
   // Last week hit the TOP of the range at a LIGHT load → suggestWeight ADDS load.
-  // The old deload multiplied that bumped target by 0.9 and came out HEAVIER than 20.
-  const last = [...weeklyLog(start, 5, "goblet-squat"), { date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 20, reps: 10 }] }];
+  // The old deload multiplied that bumped target by 0.9 and came out HEAVIER than the peak week.
+  // (W305i: 40 kg, not 20 — a 20 kg bench IS the empty bar, where no deload can go lighter; the H3 test pins that case.)
+  const last = [...weeklyLog(start, 5, "goblet-squat"), { date: "2026-02-08T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 10 }] }];
   const deloadDay = new Date(+new Date(start) + 36 * 86400000).toISOString();
   const t = buildToday(u, last, null, [], deloadDay);
   assert.equal(t.block.phase, "deload");
-  assert.ok(t.exercises[0].suggested_kg < 20, `deload ${t.exercises[0].suggested_kg} must be lighter than the 20kg peak week`);
+  assert.ok(t.exercises[0].suggested_kg < 40, `deload ${t.exercises[0].suggested_kg} must be lighter than the 40kg peak week`);
 });
 
 check("#A1 a low check-in on an already-short session is eased honestly, never told 'normal range'", () => {
@@ -2178,6 +2179,43 @@ check("#alt (fix C6) the alternative carries the model's e1RM, so the reps at AN
   assert.equal(le.alt_kg, 10);
   assert.equal(le.alt_e1rm, Math.round(12.5 * (1 + 7 / 30) * 100) / 100, "set 1's Epley e1RM (7 at failure)");
   assert.equal(le.alt_reps, 12, "the kg fill stays clamped to the range");
+});
+// --- W305i (the W305h check — H1-H5): the floor is the bar the lift was DONE on — a 20 kg bar after a switch to
+// pounds (H1/H4), the 45-lb bar for a pounds lift — and EVERY path that lightens a barbell lift keeps it: the order rule
+// (H2), the layoff comeback and the deload week (H3). And a hold at the bar drops its ask when today's aims are lowered (H5).
+const ohp = (w, reps, extra = {}) => ({ exercise: "barbell-overhead-press", set_type: "work", weight_kg: w, reps, ...extra });
+check("#bar (H1/H4) a lift done on the 20 kg bar, then a switch to pounds: never eased under the bar it's done on", () => {
+  const s = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20, 6, 5, 5), { units: "imperial" });
+  assert.equal(s.suggested_kg, 20, "the 20 kg bar is the floor, whatever today's unit");
+  assert.match(s.suggestion_note, /empty bar is as light as it goes/);
+});
+check("#bar (H2) the exercise-order rule never takes a pounds lift under the 45-lb bar", () => {
+  // The finder's own shape: OHP first on Day A, after 8 front-delt sets on Day B.
+  const p = { id: "ob", name: "OrderBar", sessions: [
+    { name: "A", exercises: [{ exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "1-2" }] },
+    { name: "B", exercises: [{ exercise: "seated-dumbbell-shoulder-press", sets: 4, rep_range: "8-12", rir: "1-2" }, { exercise: "machine-shoulder-press", sets: 4, rep_range: "8-12", rir: "1-2" },
+      { exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] };
+  const onB = (hist, ctx) => servedLift(p.sessions[1].exercises[2], hist, ctx, undefined, null, { program: p, session: p.sessions[1] });
+  const kg = onB([onDay("A", 1, ohp(25, 9, { rir: 1 }), ohp(25, 9, { rir: 1 }), ohp(25, 9, { rir: 1 }))], {});
+  assert.ok(kg.suggested_kg < 25 && kg.suggested_kg >= 20, `control: the position moves a kg lifter's 25 down, never under the bar (served ${kg.suggested_kg})`);
+  const s = onB([onDay("A", 1, ohp(20.41, 9, { rir: 1 }), ohp(20.41, 9, { rir: 1 }), ohp(20.41, 9, { rir: 1 }))], { units: "imperial" });
+  assert.equal(s.suggested_kg, 20.41, `held at the 45-lb bar (served ${s.suggested_kg}; 20 kg reads as 40 lb)`);
+  assert.doesNotMatch(s.suggestion_note ?? "", /I've made it/, "the order note never claims a lighter load the bar can't make");
+});
+check("#bar (H3) a layoff comeback and a deload week never serve a barbell lift under the bar", () => {
+  const now = new Date().toISOString(), long = new Date(Date.now() - 30 * 86400000).toISOString();
+  const back = suggestWeight([{ date: long, sets: [ohp(20, 8), ohp(20, 8)] }], "barbell-overhead-press", "8-12", undefined, now, "1-2");
+  assert.equal(back.suggested_kg, 20, "the comeback starts on the bar, not 17.5");
+  assert.match(back.note, /empty bar/);
+  const dl = aim("barbell-overhead-press", "8-12", "1-2", 3, [brDay(1, ohp(20, 10), ohp(20, 10), ohp(20, 9))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.equal(dl.suggested_kg, 20, "a deload's 10% off stops at the bar (18 kg can't be loaded)");
+});
+check("#bar (H5) a hold at the bar drops its 'build the reps here' when today's aims are lowered — the fact stays", () => {
+  const hist = [withTargets([{ exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "0-1" }], ohp(20, 7, { rir: 0 }), ohp(20, 6, { rir: 0 }), ohp(20, 6, { rir: 0 }))];
+  const s = aim("barbell-overhead-press", "8-12", "1-2", 3, hist);
+  assert.ok(s.rep_targets[0] < 8, `precondition: aims lowered (${s.rep_targets})`);
+  assert.doesNotMatch(s.suggestion_note, /build the reps here/);
+  assert.match(s.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight: the empty bar is as light as it goes\./);
 });
 // --- Burst 8 review #34 (R8): the alternative carries the reps the model predicts AT it — 'Use 17.5 kg' filled 10 (the
 // range's bottom), ~5 from failure on a leg extension.

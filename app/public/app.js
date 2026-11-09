@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitRequest, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1761,18 +1761,14 @@ async function renderToday() {
     let picked = () => [], need = 0;
     // The confirm comes back only with the days picked — a failed Keep must not arm a day-less rebuild (fix C8).
     const lockFit = (on) => { app.querySelectorAll("[data-tfit], [data-tfit-day]").forEach((x) => (x.disabled = on)); const go = $("#tfit-go"); if (go) go.disabled = on || picked().length !== need; };
+    // Days first, then the rebuild (W305i, H6) — timeFitApply says which notice, and whether Today refreshes.
     const rebuildFit = async (o, days = []) => {
       lockFit(true);
-      let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...timeFitRequest(o) }) }); } catch { r = null; }
-      if (!r?.program) { lockFit(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
-      let c;
-      if (days.length) { try { c = await api("/api/commitment", { method: "POST", body: JSON.stringify(cleared ? { user_id: uid, days: adh.commitment?.days ?? [], resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] }) }); } catch { c = null; } }
-      try { localStorage.setItem("hb_program", r.program.name); } catch { /* storage off: the name is only a convenience */ }
-      // The notice rides the refresh (#9: an alert drawn here was wiped by it, so a failed days save went unsaid).
-      pendingNotice = c === null || (c && !c.commitment) ? `📴 Rebuilt for ${o.days} days a week, but your days didn't save — set them on the days card.`
-        : o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — a fresh training block starts with your next workout.`
-        : o.kind === "refit" ? `⏱️ Refit to ${o.minutes}-minute workouts — same days, same block.`
-        : `⏱️ Rebuilt for ${o.minutes}-minute workouts — a fresh training block starts with your next workout.`;
+      const res = await timeFitApply({ o, days, cleared, usual, thisWeek: adh.commitment?.days ?? [], blocks: dy.plan_time_fit?.blocks !== false, uid,
+        post: (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }) });
+      if (!res.refresh) { lockFit(false); if (!stale()) alertBar(res.notice); return; }
+      if (res.program) { try { localStorage.setItem("hb_program", res.program.name); } catch { /* storage off: the name is only a convenience */ } }
+      pendingNotice = res.notice; // the notice rides the refresh (#9: an alert drawn here was wiped by it)
       refreshToday();
     };
     app.querySelectorAll("[data-tfit]").forEach((b) => b.onclick = async () => {
@@ -1787,7 +1783,7 @@ async function renderToday() {
       if (kind === "add_day" && usual.length && usual.length < o.days) {
         need = o.days - usual.length;
         const host = $("#tfit-day");
-        const q = `${need === 1 ? "Which day will you add?" : `Which ${need} days will you add?`}${cleared ? ` ${need === 1 ? "It starts" : "They start"} next week — this week stays free.` : ""}`;
+        const q = timeFitDayQuestion(need, { cleared, thisWeek: adh.commitment?.days ?? [] });
         host.innerHTML = `<div role="group" aria-labelledby="tfit-q"><p class="muted" id="tfit-q" style="margin:6px 0">${esc(q)}</p>`
           + Object.keys(DAY_LONG).filter((d) => !usual.includes(d))
             .map((d) => `<button class="btn ghost inline" data-tfit-day="${d}" aria-pressed="false" aria-label="${DAY_LONG[d]}" style="margin:0 6px 6px 0">${DAY_LONG[d].slice(0, 3)}</button>`).join("")

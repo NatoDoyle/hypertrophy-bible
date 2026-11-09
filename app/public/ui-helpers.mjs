@@ -321,6 +321,34 @@ export function timeFitCopy(fit) {
 export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_per_week: o.days } }
   : o?.kind === "longer" ? { profile: { session_length_min: o.minutes } }
   : o?.kind === "refit" ? { profile: {} } : null); // a refit asks for no change: the same block, today's engine (fix C2)
+// W305i (the W305h check — H6/H7/H8). A way back that adds a day saves the DAYS first, then rebuilds: a failed days save
+// changes nothing, and a failed rebuild after saved days leaves a plan the plan-fit card rebuilds FORWARD to the committed
+// days (the old order — rebuild, then days — left a failed days save with only the undo on offer, and in a cleared week
+// no door that could set the usual days). Block wording only where there are blocks (a beginner's card never names one).
+// `post(path, body)` is the app's own POST; the result says whether Today refreshes (with the notice) or stays (an alert).
+export async function timeFitApply({ o, days = [], cleared = false, usual = [], thisWeek = [], blocks = true, uid, post }) {
+  if (days.length) {
+    const body = cleared ? { user_id: uid, days: thisWeek, resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] };
+    let c; try { c = await post("/api/commitment", body); } catch { c = null; }
+    if (!c?.commitment) return { refresh: false, notice: "📴 Couldn't save your days — nothing changed. Try again in a moment." };
+  }
+  let r; try { r = await post("/api/plan/regenerate", { user_id: uid, ...timeFitRequest(o) }); } catch { r = null; }
+  if (!r?.program) return days.length
+    ? { refresh: true, notice: "📴 Your days saved, but the plan couldn't rebuild — nothing else changed. Try the rebuild again in a moment." }
+    : { refresh: false, notice: "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment." };
+  const fresh = blocks ? "a fresh training block starts with your next workout" : "your new plan starts with your next workout";
+  const notice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — ${fresh}.`
+    : o.kind === "refit" ? `⏱️ Refit to ${o.minutes}-minute workouts — same days${blocks ? ", same block" : ""}.`
+    : `⏱️ Rebuilt for ${o.minutes}-minute workouts — ${fresh}.`;
+  return { refresh: true, program: r.program, notice };
+}
+// The add-a-day question. In a cleared week the new day joins the USUAL days, from next week; this week is "free" only
+// when no day was picked for it (H7: a one-off day this week stays).
+export function timeFitDayQuestion(need, { cleared = false, thisWeek = [] } = {}) {
+  const q = need === 1 ? "Which day will you add?" : `Which ${need} days will you add?`;
+  if (!cleared) return q;
+  return `${q} ${need === 1 ? "It starts" : "They start"} next week${thisWeek.length ? "." : " — this week stays free."}`;
+}
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;

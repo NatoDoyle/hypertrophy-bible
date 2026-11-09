@@ -11,6 +11,7 @@ import * as sessionCore from "../public/session-core.mjs"; // Burst 8 review: th
 
 let pass = 0, fail = 0;
 const check = (name, fn) => { try { fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
+const checkAsync = async (name, fn) => { try { await fn(); pass++; console.log("  ✓ " + name); } catch (e) { fail++; console.log("  ✗ " + name + " — " + e.message); } };
 
 check("mondayOf: any day maps to its week's Monday, across month/year edges", () => {
   assert.equal(mondayOf("2026-08-19"), "2026-08-17"); // Wed → Mon
@@ -782,17 +783,19 @@ check("time-fit card (Burst 8 review #9 #16 #18 #46 #48 #51): keep names its que
   assert.match(tf, /aria-pressed="false" aria-label="\$\{DAY_LONG\[d\]\}"/, "#51 full day names, toggled");
   assert.match(tf, /<button class="btn secondary" id="tfit-go" disabled/, "#51 a confirm — one stray tap never rebuilds");
   assert.match(tf, /\$\("#tfit-go"\)\.disabled = picked\(\)\.length !== need;/);
-  assert.match(tf, /: \{ user_id: uid, days: \[\.\.\.usual, \.\.\.days\] \}/, "#46 the new day joins the usual ones (the cleared week's form is pinned by the fix-verification check)");
-  assert.match(tf, /but your days didn't save — set them on the days card/, "#9 a failed days save is said, never swallowed");
+  // W305i (H6, deliberate): the requests and notices moved into timeFitApply (behaviour-tested in #fit-apply) — days
+  // first, then the rebuild; the card hands it the usual days and this week's, and says whatever it returns.
+  assert.match(tf, /const res = await timeFitApply\(\{ o, days, cleared, usual, thisWeek: adh\.commitment\?\.days \?\? \[\], blocks: dy\.plan_time_fit\?\.blocks !== false, uid,/, "#46 the new day joins the usual ones");
+  assert.match(tf, /if \(!res\.refresh\) \{ lockFit\(false\); if \(!stale\(\)\) alertBar\(res\.notice\); return; \}/, "#9 a failure is said, never swallowed");
   assert.doesNotMatch(tf, /catch \{\}/, "#9 no silent catch");
 });
 check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cleared week, the confirm guarded after a failure, focus to the next hint, one card at a time, a failed save said after the refresh", () => {
   const tf = between(appJs, "  if (tfit) {", "  if ($(\"#fit-keep\"))");
   assert.match(tf, /const cleared = \(adh\.commitment_resume_days\?\.length \?\? 0\) > 0;/, "C7: a clear in force — one-off days or not");
   assert.match(tf, /const usual = cleared \? adh\.commitment_resume_days : \(adh\.commitment\?\.days \?\? \[\]\);/, "C7: the usual days, never this week's one-off");
-  assert.match(tf, /cleared \? \{ user_id: uid, days: adh\.commitment\?\.days \?\? \[\], resume_days: \[\.\.\.usual, \.\.\.days\] \}/, "C7: this week stays as it is");
+  assert.match(tf, /timeFitApply\(\{ o, days, cleared, usual, thisWeek: adh\.commitment\?\.days \?\? \[\]/, "C7: this week stays as it is (the cleared form: #fit-apply, W305i)");
   assert.match(tf, /const lockFit = \(on\) => \{[^}]*\$\("#tfit-go"\)[^}]*picked/, "C8: the confirm comes back only with the days picked");
-  assert.match(tf, /pendingNotice = c === null \|\| \(c && !c\.commitment\) \? /, "#9: the failure rides the refresh, never wiped by it");
+  assert.match(tf, /pendingNotice = res\.notice;/, "#9: the notice rides the refresh, never wiped by it (W305i)");
   assert.doesNotMatch(tf, /alertBar\("📴 Your plan was rebuilt/, "#9: no alert the refresh erases");
   const rest = fnBody(appJs, "function wireRestHint(idx, shown, named) {", 2000);
   assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
@@ -992,6 +995,51 @@ check("trainingDaysHint (W285): the person's own days in week order — or what 
   assert.equal(trainingDaysHint(["sun"]), "On Sun, if you haven't trained yet.");
   for (const none of [[], null, undefined]) assert.match(trainingDaysHint(none), /^Pick your training days on Today.*a nudge after two days off\.$/);
 });
+
+// --- W305i (the W305h check — H6/H7/H8): a way back that adds a day saves the DAYS first, then rebuilds. A failed days
+// save changes nothing (said so); a failed rebuild after saved days leaves the plan-fit card offering the rebuild FORWARD
+// (to the committed days) — never a state whose only door is the undo. Block wording only where there are blocks; the
+// add-a-day question never calls a week "free" when it keeps a day picked for it.
+{
+  const { timeFitApply, timeFitDayQuestion } = uiHelpers;
+  const fake = (fails = []) => { const calls = []; return { calls, post: async (path, body) => { calls.push([path, body]); if (fails.includes(path)) throw new Error("offline"); return path === "/api/commitment" ? { commitment: { days: body.days } } : { program: { name: "P" } }; } }; };
+  const add = { kind: "add_day", days: 5, minutes: 45 };
+  await checkAsync("#fit-apply (H6) days first: a failed days save never rebuilds, and says nothing changed", async () => {
+    const f = fake(["/api/commitment"]);
+    const r = await timeFitApply({ o: add, days: ["wed"], cleared: true, usual: ["mon", "tue", "thu", "fri"], thisWeek: [], uid: "u", post: f.post });
+    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment"], "no rebuild after a failed days save");
+    assert.deepStrictEqual(f.calls[0][1], { user_id: "u", days: [], resume_days: ["mon", "tue", "thu", "fri", "wed"] }, "a cleared week: the usual days take the new one");
+    assert.equal(r.refresh, false);
+    assert.match(r.notice, /^📴 Couldn't save your days — nothing changed\./);
+  });
+  await checkAsync("#fit-apply (H6) saved days, failed rebuild: refreshed (the plan-fit card then rebuilds FORWARD), and said", async () => {
+    const f = fake(["/api/plan/regenerate"]);
+    const r = await timeFitApply({ o: add, days: ["wed"], usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: f.post });
+    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate"]);
+    assert.deepStrictEqual(f.calls[0][1], { user_id: "u", days: ["mon", "tue", "thu", "fri", "wed"] });
+    assert.equal(r.refresh, true);
+    assert.match(r.notice, /^📴 Your days saved, but the plan couldn't rebuild/);
+    assert.doesNotMatch(r.notice, /days card/, "never points at a door that can't set the usual days");
+  });
+  await checkAsync("#fit-apply (H8) block wording only where there are blocks: a beginner's notices never mention one", async () => {
+    for (const [o, days] of [[add, ["wed"]], [{ kind: "longer", days: 4, minutes: 60 }, []], [{ kind: "refit", days: 4, minutes: 45 }, []]]) {
+      const yes = await timeFitApply({ o, days, usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: fake().post, blocks: true });
+      const no = await timeFitApply({ o, days, usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: fake().post, blocks: false });
+      assert.equal(yes.refresh && no.refresh, true);
+      assert.match(yes.notice, /block/, `${o.kind}: blocks named for a lifter who has them`);
+      assert.doesNotMatch(no.notice, /block/, `${o.kind}: ${no.notice}`);
+    }
+    const f = fake(["/api/plan/regenerate"]);
+    const r = await timeFitApply({ o: { kind: "refit", days: 4, minutes: 45 }, uid: "u", post: f.post });
+    assert.deepStrictEqual([r.refresh, f.calls.length], [false, 1], "no days to save: a failed rebuild changes nothing");
+    assert.match(r.notice, /^📴 Couldn't rebuild your plan — nothing changed\./);
+  });
+  check("#fit-question (H7) the week is 'free' only when it is — a cleared week that keeps a picked day isn't", () => {
+    assert.equal(timeFitDayQuestion(1, { cleared: true, thisWeek: [] }), "Which day will you add? It starts next week — this week stays free.");
+    assert.equal(timeFitDayQuestion(2, { cleared: true, thisWeek: ["sun"] }), "Which 2 days will you add? They start next week.");
+    assert.equal(timeFitDayQuestion(1, { cleared: false, thisWeek: ["mon"] }), "Which day will you add?");
+  });
+}
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
