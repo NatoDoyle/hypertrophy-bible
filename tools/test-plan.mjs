@@ -1924,5 +1924,19 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     /past them/.test(line) && !/long enough to do the work/.test(line));
 }
 
+// --- W315b (Burst 10 — owner note 7): a lifter's own session ceiling (opts.sessionCap — learned from their fade signals,
+// accepted on Today) caps every day's sets under the KB's, the superset rescue included; at or over the KB's it changes
+// nothing, and absent the plan is byte-identical (the golden digest above).
+{
+  const dayMax = (plan) => Math.max(...plan.program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0)));
+  for (const [status, days, min] of [["advanced", 4, 90], ["intermediate", 3, 75], ["advanced", 6, 120]]) {
+    const pr = { ...profile, training_status: status, days_per_week: days, session_length_min: min };
+    const free = generatePlan(pr, kb), capped = generatePlan(pr, kb, { sessionCap: 13 });
+    ok(`#cap (W315b) ${status} ${days}d/${min} min: no day past the lifter's own 13 (uncapped: ${dayMax(free)}, capped: ${dayMax(capped)})`, dayMax(capped) <= 13 && dayMax(free) > 13);
+  }
+  ok("#cap (W315b) a cap at or over the KB's changes nothing", JSON.stringify(generatePlan(profile, kb, { sessionCap: 30 }).program) === JSON.stringify(generatePlan(profile, kb).program));
+  ok("#cap (W315b) the levers judge 'longer sessions' against the lifter's own ceiling (45 min holds 15 sets — past a cap of 13)",
+    volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", sessionCap: 13 }) === volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", timeBound: false }));
+}
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

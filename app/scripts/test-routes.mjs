@@ -2155,6 +2155,29 @@ try {
   ok("#plan-fit a legacy stamp (no set_on) counts from its week's Monday", JSON.stringify(await fitOn(legacy, "2026-10-14")) === JSON.stringify({ plan_days: 4, committed_days: 3 })
     && (await fitOn(legacy, "2026-10-09")) === null);
   ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
+  // W315b: the lifter's own session ceiling, through the Settings door — a whole 10-20 or nothing; null takes it off.
+  {
+    const cu = (await json("POST", "/api/onboard", { profile: { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const dayMax = async () => Math.max(...(await store.getUser(cu)).program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0)));
+    const before = await dayMax();
+    await store.updateUser(cu, (u) => { u.plan_meta = { ...u.plan_meta, block_index: 2, block_start: dAgo(30) }; return u; });
+    const r13 = await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: 13 } });
+    const pm13 = (await store.getUser(cu)).plan_meta;
+    ok("#cap (W315b) a new ceiling is a training change: a fresh block, as the card says (like a new session length)",
+      (pm13.block_index ?? 0) === 0 && Date.parse(pm13.block_start) > Date.now() - 86400000, JSON.stringify([pm13.block_index, pm13.block_start]));
+    const at13 = await dayMax(), stored13 = (await store.getUser(cu)).profile.session_cap;
+    await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: 5 } });
+    const junk = (await store.getUser(cu)).profile.session_cap;
+    await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: null } });
+    const off = (await store.getUser(cu)).profile.session_cap, after = await dayMax();
+    // …and the other wholesale profile door (lesson 27): a ceiling sent at onboarding is sanitized the same way.
+    const ob = (await json("POST", "/api/onboard", { profile: { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_cap: 1 } })).data.user_id;
+    const obu = await store.getUser(ob);
+    ok("#cap (W315b) onboarding can't plant an absurd ceiling (1 set a day): junk is nothing",
+      obu.profile.session_cap === null && Math.max(...obu.program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0))) > 10, JSON.stringify(obu.profile.session_cap));
+    ok("#cap (W315b) the Settings door stores the ceiling and the plan keeps under it; junk is nothing; null takes it off",
+      r13.status === 200 && stored13 === 13 && at13 <= 13 && before > 13 && junk === null && off === null && after > 13, JSON.stringify({ before, at13, stored13, junk, off, after }));
+  }
   ok("#plan-fit (W305j J2) a beginner's offer says there are no blocks (its card never names one)",
     JSON.stringify(await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.training_status = "beginner"; } }))) === JSON.stringify({ plan_days: 4, committed_days: 3, blocks: false }));
   ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",

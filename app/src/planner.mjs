@@ -37,7 +37,9 @@ export function userTimeFitQuestion(user) {
 // per-user inputs (the learned session cap, preference scores) join here, so every door — and every forecast of
 // the next plan — sees them at once.
 export function planOptsFor(user, extra = {}) {
-  return { ...(user?.plan_meta?.spec_spent === true ? { specSpent: true } : {}), ...extra };
+  return { ...(user?.plan_meta?.spec_spent === true ? { specSpent: true } : {}),
+    // The lifter's own session ceiling (W315b) — every door builds under it.
+    ...(Number.isInteger(user?.profile?.session_cap) ? { sessionCap: user.profile.session_cap } : {}), ...extra };
 }
 
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
@@ -85,8 +87,8 @@ export function explainUserPlan(profile, rationale, program, live = null) {
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed, sessionCap });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus

@@ -44,6 +44,9 @@ export const SECONDARY_SERVED = new Set(["forearms", "spinal-erectors"]);
 // generatePlan for the reasoning). Module-scope because the lever helper below
 // must know when the CLOCK stops being the binding constraint.
 export const SESSION_QUALITY_CAP = { beginner: 12, intermediate: 16, advanced: 20 };
+// The ceiling a day is held to (W315b): the KB's for the lifter's training age, or their OWN when lower — learned from their
+// fade signals (tools/response-core.mjs) and accepted by them (profile.session_cap). Never raised past the KB's.
+export const qualityCapFor = (experience, sessionCap = null) => Math.min(SESSION_QUALITY_CAP[experience] ?? 16, Number.isInteger(sessionCap) && sessionCap > 0 ? sessionCap : Infinity);
 // A day is OVER its minutes only past this grace (Burst 8 review #24): the time model is medians, so a day it puts at
 // 45.3 min is "about 45" — flagging it told a lifter their plan didn't fit, and offered a block restart, for 18 seconds.
 export const FIT_GRACE_MIN = 1;
@@ -58,8 +61,10 @@ export const FIT_GRACE_MIN = 1;
 // critique's caveats, so the two surfaces can never disagree about what helps.
 // `timeBound` (W303): the caller that KNOWS whether the clock bound the plan says so — the generator when its fit-to-time
 // pass cut sets, the critique when a day runs over its minutes; otherwise the set-budget rule decides as before.
-export const volumeLevers = ({ days, sessionMin, experience, timeBound } = {}) => {
-  const timeBinds = typeof timeBound === "boolean" ? timeBound : Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < (SESSION_QUALITY_CAP[experience] ?? 16);
+// `sessionCap` (W315b): the lifter's OWN ceiling, learned from their fade signals and accepted — "longer sessions" helps only
+// while the minutes, not that ceiling, bind.
+export const volumeLevers = ({ days, sessionMin, experience, timeBound, sessionCap = null } = {}) => {
+  const timeBinds = typeof timeBound === "boolean" ? timeBound : Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < qualityCapFor(experience, sessionCap);
   const dayBinds = (days ?? 2) < 6;
   if (dayBinds && timeBinds) return "an extra training day, or longer sessions, would let the plan give it more";
   if (dayBinds) return "an extra training day would let the plan give it more (extra session time would not help — each session already holds as much quality work as pays off)";
@@ -761,7 +766,8 @@ export function generatePlan(profile, kb, opts = {}) {
   // The per-day set budget, needed from step 2 onward (the ease-to-MEV funding
   // pass measures its slack); step 4 documents why it exists and how it's sized.
   const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
-  const setBudget = Math.min(Math.round(sessionMin / 3), SESSION_QUALITY_CAP[experience] ?? 16); // ~3 min/set incl. rest, capped for quality
+  const sessionCap = Number.isInteger(opts.sessionCap) ? opts.sessionCap : null; // the lifter's own ceiling (W315b)
+  const setBudget = Math.min(Math.round(sessionMin / 3), qualityCapFor(experience, sessionCap)); // ~3 min/set incl. rest, capped for quality
 
   // 2) weekly target per muscle
   // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
@@ -1321,7 +1327,7 @@ export function generatePlan(profile, kb, opts = {}) {
     // length is the binding constraint.
     // W303: only when MINUTES bound the set budget (round(min/3) < the quality cap) — a quality-capped day has no time to
     // buy back — and its two sets count against that cap (they were never billed, so 39% of generated days ran past it).
-    const qualityCap = SESSION_QUALITY_CAP[experience] ?? 16;
+    const qualityCap = qualityCapFor(experience, sessionCap);
     if (setsUsed >= setBudget && items.length < EX_BUDGET && Math.round(sessionMin / 3) < qualityCap && setsUsed + 2 <= qualityCap) { // the rescue is a bonus exercise — still honour the per-session exercise cap
       const isoItems = items.filter((it) => exById.get(it.exercise)?.mechanic === "isolation" && !it.superset_with);
       outer: for (const m of order) {
@@ -1500,7 +1506,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // below — see volumeLevers for why a dead lever is worse than none. PER MUSCLE (Burst 8 review #2): longer sessions
   // help a muscle the clock cut, or any muscle when the minutes bound the set budget — never every muscle because one
   // set came off one day.
-  const leversFor = (m) => volumeLevers({ days: sessionSpecs.length, sessionMin, experience, timeBound: (timeTrim.by_muscle[m] ?? 0) > 0 ? true : undefined });
+  const leversFor = (m) => volumeLevers({ days: sessionSpecs.length, sessionMin, experience, sessionCap, timeBound: (timeTrim.by_muscle[m] ?? 0) > 0 ? true : undefined });
   for (const [m, r] of Object.entries(volumeRationale)) {
     const levers = leversFor(m);
     const proj = weekVol[m] ?? 0;
@@ -2090,7 +2096,7 @@ const MUSCLE_LABEL = {
 // guard rail it was built to be. Structurally, a generated plan can't trip the
 // other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
 // run at generation), so "generated" only re-frames the volume findings.
-export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null } = {}) {
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null } = {}) {
   const prioritySet = new Set(priority);
   // Caveats must offer only levers that BIND for this user (volumeLevers) — the
   // binder passes sessionMinutes from the profile; without it the default-60
@@ -2098,7 +2104,7 @@ export function critiquePlan(program, kb, { experience = "intermediate", priorit
   const { exercises, muscles } = kb;
   // Per muscle, from what the generator's clock cut (`trimmed`, its meta.time_trim.by_muscle) — Burst 8 review #32: a day
   // running over adds no set to a ceiling-bound muscle, so it no longer turns every caveat into "or longer sessions".
-  const leversFor = (m) => volumeLevers({ days: program?.days_per_week, sessionMin: sessionMinutes ?? undefined, experience,
+  const leversFor = (m) => volumeLevers({ days: program?.days_per_week, sessionMin: sessionMinutes ?? undefined, experience, sessionCap,
     timeBound: (trimmed?.[m] ?? 0) > 0 ? true : undefined });
   const exIndex = new Map(exercises.map((e) => [e.id, { name: e.name, primary: e.primary_muscles ?? [], secondary: e.secondary_muscles ?? [] }]));
   const muscleIndex = new Map(muscles.map((m) => [m.id, m.landmarks ?? null]));
