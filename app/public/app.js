@@ -1557,6 +1557,8 @@ async function renderToday() {
   // check-in can't tune anything anyway).
   // The check-in offer now lives in the daily-flow hub above; here we only surface
   // the coach's readiness note once a check-in exists (so it's not shown twice).
+  // The new block, a graduation, a welcome back (W313): announced in their own card — never behind the check-in.
+  const announceCard = s.announcement ? `<div class="card" id="announcement"><p>📣 ${esc(s.announcement)}</p></div>` : "";
   const readinessCard = s.readiness != null && s.coach_note ? `<div class="card"><p>🧭 ${esc(s.coach_note)}</p></div>` : "";
   // A brand-new lifter's very first session gets a reassuring walkthrough up top.
   // `first_session` is set by buildToday when a true beginner's day one has been
@@ -1711,7 +1713,7 @@ async function renderToday() {
   const gapCard = s.gap_note ? `<div class="card"><p>🌿 ${esc(s.gap_note)}</p></div>` : "";
   // The stored-plan screen's word (W283 review): a lift that no longer fits was swapped — said once.
   const swapCard = s.swap_note ? `<div class="card" id="swap-note"><p>🔁 ${esc(s.swap_note)}</p></div>` : "";
-  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${timeCard}${firstTimer}${swapCard}${gapCard}${blockCard}${readinessCard}
+  app.innerHTML = `<h1>Today</h1>${pendingCodeCard()}${header}${dailyHub}${readoutReadyCard}${commitment}${fitCard}${timeCard}${firstTimer}${swapCard}${gapCard}${announceCard}${blockCard}${readinessCard}
     ${workoutDone ? "" : unplanned
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
@@ -3760,7 +3762,7 @@ async function renderProgress() {
   // logged data (volume ± per muscle, bounded to your recoverable range) — you
   // don't act on suggestions, the algorithm just does it and tells you at the
   // start of the new block. A quiet one-liner here so you know it's happening.
-  const autoAdaptNote = p.sessions_logged >= 4
+  const autoAdaptNote = p.tunes && p.sessions_logged >= 4 // said only where the tune runs (W313)
     ? `<p class="muted" style="font-size:.85rem;text-align:center">📈 Your plan retunes itself each block from all of this — you don't have to adjust anything.</p>`
     : "";
   // Every number on this screen is derived from the log, so the log has to be

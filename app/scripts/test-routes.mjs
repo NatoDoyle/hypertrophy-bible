@@ -563,7 +563,7 @@ try {
     (rgAfter.plan_meta?.tuned_this_block?.held ?? []).some((h) => h.muscle === "chest" && h.reason === "recovery"));
   const rgToday = await (await app.request("/api/today", { headers: { "X-HB-User": rgUser } })).json();
   ok("#A the new-block note tells the user their stalled muscle was held for recovery",
-    /stalled with room to grow/.test(rgToday?.session?.coach_note ?? ""));
+    /stalled with room to grow/.test(rgToday?.session?.announcement ?? "")); // W313: the announcement's own field
 
   // Wave 69 (audit A/B): the recovery gate reads only the CURRENT block, not the whole
   // history. The same stall, but the only low check-ins are a long-ago rough patch
@@ -3154,7 +3154,7 @@ try {
   ok("#grad the promotion fires on /api/today once the training age is there",
     afterGrad.session.beginner === false);
   ok("#grad and it's ANNOUNCED as a win, not left to be discovered",
-    /not a beginner any more/i.test(afterGrad.session.coach_note || ""));
+    /not a beginner any more/i.test(afterGrad.session.announcement || "")); // W313: shown with or without a check-in
   // The gates the status actually controls:
   ok("#grad the mesocycle now exists — so a deload will finally happen", afterGrad.session.block != null);
   ok("#grad the promotion starts a FRESH block, so the higher target ramps in via week 1 rather than landing whole",

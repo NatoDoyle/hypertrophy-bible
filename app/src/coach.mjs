@@ -847,6 +847,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;
   let coach_note = null;
+  // The new block, a graduation, a welcome back are ANNOUNCEMENTS — their own field, shown with or without a check-in
+  // (W313: folded into coach_note, which the client renders only beside a check-in, they reached only check-in days).
+  let announcement = null;
   if (readiness?.level === "low") {
     // Branch on the LEVEL, never on whether we can trim. A low day always earns an
     // honest easing note — trimming is just the primary lever when the session is
@@ -919,7 +922,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
       : "";
     const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}`;
-    coach_note = coach_note ? `${msg} ${coach_note}` : msg;
+    announcement = announcement ? `${msg} ${announcement}` : msg;
   }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just
   // stepped up. Announce it as the win it is (Goal 4) rather than letting a bigger,
@@ -931,7 +934,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const win = graduatedTo === "advanced"
       ? `🎓 You've trained long enough to be programmed as an ADVANCED lifter. Your volume targets step up, your hardest sessions get bigger, and your rep ranges now vary day to day. This is years of showing up, paying off.`
       : `🎓 You're not a beginner any more — and I've stopped programming you like one. From today your volume steps up, your weeks build toward a peak and then deload, and your accessories refresh each block. You earned this by showing up.`;
-    coach_note = coach_note ? `${win} ${coach_note}` : win;
+    announcement = announcement ? `${win} ${announcement}` : win;
   }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
   // Coach's "welcome back — I eased your weights" claim matches what's on the card.
@@ -939,7 +942,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const layoffDays = now && lastSessionMs ? Math.round((+new Date(now) - lastSessionMs) / 86400000) : 0;
   if (layoffDays >= COMEBACK_GAP_DAYS) {
     const welcome = `Welcome back — it's been ${layoffDays} days, so I eased today's weights to ramp you in safely. They'll climb again fast.`;
-    coach_note = coach_note ? `${welcome} ${coach_note}` : welcome;
+    announcement = announcement ? `${welcome} ${announcement}` : welcome;
     // A comeback INSIDE a taper window: the load ease is correct (safety first),
     // but the taper card's stock "the weight stays where it is / stays real" line
     // would sit right next to per-exercise "I eased this to X kg" notes. Lesson 12:
@@ -1124,7 +1127,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
   const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId);
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, gap_note, swap_note,
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, announcement, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1854,7 +1857,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     recovery,
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length,
+    // Whether the per-block tune runs for this lifter (W313) — the block boundary's own gate: blocks started, not a
+    // beginner, a generated plan. "Your plan retunes itself each block" is said only then.
+    tunes: !!user.plan_meta?.block_start && user.profile?.training_status !== "beginner" && !user.program?.custom, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
     // The raw weigh-in series the client DRAWS spans the full log (owner #3 —
     // "see my progress" means all of it), while `bodyweight_trend` above keeps its
     // 42-day window: the drawn history and the adaptive read are different

@@ -1180,5 +1180,11 @@ check("#w310 wiring: a skip drops the skipped lift's guessed numbers (dropSkippe
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /const at = new Date\(\)\.toISOString\(\); \/\/ ONE stamp per round/, "a round banks with one stamp (fix check player#2)");
 });
 
+check("#announce (W313) Today shows an announcement in its own card, never behind the check-in; Progress says 'retunes itself' only where it does", () => {
+  assert.match(appJs, /const announceCard = s\.announcement \? `<div class="card" id="announcement"><p>📣 \$\{esc\(s\.announcement\)\}<\/p><\/div>` : "";/);
+  assert.match(appJs, /const readinessCard = s\.readiness != null && s\.coach_note \?/, "the readiness note keeps its own gate");
+  assert.match(appJs, /const autoAdaptNote = p\.tunes && p\.sessions_logged >= 4/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

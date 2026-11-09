@@ -825,11 +825,34 @@ check("#completion the Progress card agrees with the tune: 'finish the planned s
   const custom = { ...user, program: { ...user.program, custom: true } };
   assert.notEqual(progressReport(custom, halfDone, [], [], now).adaptive.find((x) => x.muscle === "chest")?.signal, "complete", "a hand-built plan: permissive");
 });
+// --- W313 (considerations iteration, Burst 10 — the item-4 trace: "its announcements show only on days you checked in"):
+// the new block, a graduation and a welcome back are ANNOUNCEMENTS — their own field, shown whether or not the lifter
+// checked in (coach_note is the readiness note, rendered only beside a check-in). The Progress screen's "your plan retunes
+// itself each block" is said only to lifters the tune runs for (tunes: not a beginner, a generated plan with blocks).
+check("#announce (W313) a new block is announced without a check-in — and beside one, each in its own field", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const u = { profile: { training_status: "intermediate", days_per_week: 4 }, program: prog,
+    plan_meta: { block_start: "2026-01-01T00:00:00Z", rotated_at: "2026-06-01T00:00:00Z", tuned_this_block: { bumped: ["chest"], eased: [], held: [] } } };
+  const quiet = buildToday(u, [], null, [], "2026-06-02T09:00:00Z");
+  assert.match(quiet.announcement ?? "", /^New block —/);
+  assert.equal(quiet.coach_note, null, "no check-in: no readiness note — and the announcement doesn't need one");
+  const checked = buildToday(u, [], { sleep: 4, energy: 4, soreness: 2, motivation: 4 }, [], "2026-06-02T09:00:00Z");
+  assert.match(checked.announcement ?? "", /^New block —/);
+  assert.doesNotMatch(checked.coach_note ?? "", /New block/, "the readiness note is only the readiness note");
+});
+check("#announce (W313) 'your plan retunes itself' is said only where the tune runs", () => {
+  const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
+  const base = { profile: { training_status: "intermediate", days_per_week: 4 }, program: prog, plan_meta: { block_start: "2026-01-01T00:00:00Z" } };
+  assert.equal(progressReport(base, [], [], [], "2026-06-02T09:00:00Z").tunes, true);
+  assert.equal(progressReport({ ...base, profile: { ...base.profile, training_status: "beginner" } }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "a beginner: no blocks");
+  assert.equal(progressReport({ ...base, program: { ...prog, custom: true } }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "a hand-edited plan isn't retuned");
+  assert.equal(progressReport({ ...base, plan_meta: {} }, [], [], [], "2026-06-02T09:00:00Z").tunes, false, "no block started");
+});
 check("#completion the new-block note says why a stalled muscle's sets didn't move — kindly, with the lever", () => {
   const prog = { id: "p", name: "P", sessions: [{ name: "D", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }] }] };
   const u = { profile: { training_status: "intermediate", days_per_week: 4 }, program: prog,
     plan_meta: { block_start: "2026-01-01T00:00:00Z", rotated_at: "2026-06-01T00:00:00Z", tuned_this_block: { bumped: [], eased: [], held: [{ muscle: "chest", reason: "completion", realized: 6, planned: 12 }] } } };
-  const note = buildToday(u, [], null, [], "2026-06-02T09:00:00Z").coach_note;
+  const note = buildToday(u, [], null, [], "2026-06-02T09:00:00Z").announcement; // W313 (deliberate): its own field now
   assert.match(note, /Chest/i);
   assert.match(note, /about 6 of its ~12 planned sets/);
   assert.match(note, /held/);
@@ -961,7 +984,7 @@ check("buildToday: comeback copy is TRUE — weights are actually eased on a lay
     { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10" }] }] } };
   const last = [{ date: "2026-06-01T18:00:00Z", sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 100, reps: 10 }] }];
   const card = buildToday(u, last, null, [], "2026-06-25T18:00:00Z"); // 24-day gap
-  assert.ok(/welcome back/i.test(card.coach_note));                 // says it eased
+  assert.ok(/welcome back/i.test(card.announcement));               // says it eased (W313: its own field, shown without a check-in)
   assert.ok(card.exercises[0].suggested_kg < 100);                  // and actually did
 });
 
