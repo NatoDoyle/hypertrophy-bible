@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { computeVolumeAdjust } from "../src/coach.mjs";
 import { progressionCadence, adaptiveStallWindow, stallDetect, regressionDetect } from "../../tools/derive-core.mjs";
 import { exIndex } from "../src/kb.mjs";
+import { sessionTolerance } from "../../tools/response-core.mjs";
 
 const REPS = 8;
 const BLOCK = 6;                        // weeks per mesocycle block (matches /api/today)
@@ -147,5 +148,34 @@ const dec24 = declining.find((r) => r.throughWeek === 24);
 ok("declining responder's volume is never ratcheted UP while strength is falling", dec24.chestAdjustForNext <= 0);
 ok("...and the decline is genuinely visible to the engine, not merely unnoticed",
   regressionDetect(declining.sessionsForCheck, exIndex).some((r) => r.exercise === "barbell-bench-press"));
+
+// SESSION CEILING (W315 — owner note 7: "I really start to struggle once I get past 12 sets in one workout and once I get
+// to 16 sets I'm pretty empty… Other users will be different"). Three faders — at 12, 16 and 20 hard sets — and a lifter
+// who never fades train the same FIXED exercise order every workout (the confound a miss-rate learner can't separate from
+// fatigue: the same lifts always come late). Workout sizes swing with the block wave and the day (deterministic). A fader
+// signals past their ceiling the way a real one would, in turn: a late skip, an early end, a too-tired tap, "fading" in
+// the read-out. The learner (tools/response-core.mjs sessionTolerance — the real one) must land within ±2 of each
+// ceiling by 12 eligible workouts, and never move the lifter who doesn't fade. The prior is set above each ceiling (the
+// KB's own is 12/16/20 by training age; a fader AT it has nothing to learn), so the estimate itself is what's tested.
+{
+  const day = (n) => new Date(Date.UTC(2026, 0, 5) + n * 86400000).toISOString();
+  const sizeOf = (k, L) => L - 3 + ((k * 7) % 10); // L−3 … L+6 over a ten-workout cycle
+  const workoutFor = (k, L, fades) => {
+    const n = sizeOf(k, L);
+    const base = { session_id: `w${k}`, date: day(k * 2), sets: Array.from({ length: n }, (_, j) => ({ exercise: ["barbell-bench-press", "incline-dumbbell-press", "cable-fly", "triceps-pushdown"][Math.min(3, Math.floor(j / 5))], set_type: "work", weight_kg: 60, reps: 8 })) };
+    if (!fades || n <= L) return base;
+    const kind = ["skip", "early", "tired", "feel"][k % 4];
+    return kind === "feel" ? { ...base, feel: "fading" } : { ...base, sets: kind === "early" ? base.sets.slice(0, L) : base.sets, fade_marks: [{ kind, at: L, of: n }] };
+  };
+  const learn = (L, fades, upTo) => sessionTolerance(Array.from({ length: upTo }, (_, k) => workoutFor(k, L, fades)), { prior: L + 6 });
+  const rows = [];
+  for (const L of [12, 16, 20]) {
+    const at12 = learn(L, true, 12);
+    rows.push(`  fader at ${L}: learned ${at12?.cap ?? "—"} from ${at12?.fades ?? 0} fades in ${at12?.eligible ?? 0} workouts`);
+    ok(`fader at ${L} hard sets: the learned ceiling is within ±2 by 12 eligible workouts`, at12 && Math.abs(at12.cap - L) <= 2);
+  }
+  for (const upTo of [4, 8, 12, 16]) ok(`a lifter who never fades never moves (${upTo} workouts)`, learn(16, false, upTo) === null);
+  console.log("\nSESSION CEILING (W315)\n" + rows.join("\n"));
+}
 
 console.log(`\n${checks} simulation assertion(s) passed.`);

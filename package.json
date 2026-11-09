@@ -14,7 +14,7 @@
     "derive": "node tools/derive-metrics.mjs",
     "test-derive": "node tools/test-derive.mjs",
     "test-graph": "node tools/test-graph.mjs",
-    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/test-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs && node tools/test-plan.mjs && node tools/test-nutrition.mjs && node tools/test-graph.mjs && node tools/test-movements.mjs",
+    "test": "node tools/validate.mjs && node tools/check-citations.mjs && node tools/test-citations.mjs && node tools/check-data-refs.mjs && node tools/test-derive.mjs && node tools/test-plan.mjs && node tools/test-response.mjs && node tools/test-nutrition.mjs && node tools/test-graph.mjs && node tools/test-movements.mjs",
     "depth": "node tools/check-depth.mjs"
   },
   "devDependencies": {
