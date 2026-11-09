@@ -209,6 +209,8 @@ const normalizeTargets = (list) => {
         && t.rep_targets.every((r) => Number.isInteger(r) && r >= 1 && r <= 50) ? { rep_targets: t.rep_targets.slice() } : {}),
       // A lift the user moved in the workout list (W306) — only a real `true`.
       ...(t.moved === true ? { moved: true } : {}),
+      // The timer this lift's rests ran (W308): whole seconds within the timer's own bounds, or nothing.
+      ...(Number.isInteger(t.rest_s) && t.rest_s >= 30 && t.rest_s <= 600 ? { rest_s: t.rest_s } : {}),
     });
   }
   return out.length ? out : null;

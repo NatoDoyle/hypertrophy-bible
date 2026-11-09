@@ -1841,5 +1841,36 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   });
 }
 
+// --- W308 (Burst 9 — the read-out half of owner note 1, "rest tracking"): each lift's median time between its work sets,
+// from the completed_at stamps every set already carries (a superset round's legs share one), beside the timer it ran.
+{
+  const { liftGaps } = playerCore;
+  const at = (sec) => new Date(Date.UTC(2026, 10, 9, 10, 0, 0) + sec * 1000).toISOString();
+  const W = (ex, sec, extra = {}) => ({ exercise: ex, set_type: "work", weight_kg: 100, reps: 8, completed_at: at(sec), ...extra });
+  check("#gaps liftGaps: the median gap between a lift's work sets — warm-ups, a pause past 15 min and unstamped sets left out", () => {
+    const log = [W("bench", 0, { set_type: "warmup" }), W("bench", 60), W("bench", 280), W("bench", 500), W("bench", 760), W("row", 900), W("row", 900 + 16 * 60),
+      W("curl", 2000), { exercise: "curl", set_type: "work", reps: 8 }];
+    const g = liftGaps(log);
+    assert.deepStrictEqual(g.bench, { median_s: 220, n: 3 }, "220, 220, 260 → 220");
+    assert.equal(g.row, undefined, "its only gap was a 16-minute pause");
+    assert.equal(g.curl, undefined, "one stamped set: no gap");
+  });
+  check("#gaps a superset's legs share each round's stamp: each leg's gap is the round-to-round time", () => {
+    const log = [W("curl", 100), W("tri", 100), W("curl", 250), W("tri", 250), W("curl", 410), W("tri", 410)];
+    assert.deepStrictEqual(liftGaps(log), { curl: { median_s: 155, n: 2 }, tri: { median_s: 155, n: 2 } }, "150, 160 → 155");
+  });
+  check("#gaps the read-out carries each lift's gap and the timer it ran (targets.rest_s) — and an estimate's ~ for Nerd Mode", () => {
+    const t = [{ exercise: "bench", sets: 3, rep_range: "8-12", rir: "1-2", rest_s: 180 }];
+    const l = localReadout(t, [W("bench", 0), W("bench", 220, { est: ["reps"] }), W("bench", 450)]).lifts[0];
+    assert.deepStrictEqual([l.gap_s, l.rest_s, l.reps_shown], [225, 180, ["8", "~8", "8"]]);
+    const none = localReadout([{ exercise: "bench", sets: 1, rep_range: "8-12" }], [W("bench", 0)]).lifts[0];
+    assert.deepStrictEqual([none.gap_s, none.rest_s], [null, null]);
+  });
+  check("#gaps buildTargets stamps the timer each lift actually ran (sess.restUsed), only where one ran", () => {
+    const t = buildTargets({ ex: [{ exercise: "bench", sets: 3 }, { exercise: "row", sets: 3 }], restUsed: { bench: 210 } });
+    assert.deepStrictEqual([t[0].rest_s, "rest_s" in t[1]], [210, false]);
+  });
+}
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

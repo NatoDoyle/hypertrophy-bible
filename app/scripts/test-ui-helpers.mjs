@@ -1150,5 +1150,12 @@ check("#est player wiring: both bank handlers bank the estimate per field, and a
   assert.match(appJs, /function checkAndCelebratePR\(exObj, weightKg, reps, deload, estReps = false\) \{/);
 });
 
+check("#rest-read player wiring (W308): every rest records the timer it ran — a superset round for both legs — and Every lift shows the time between sets", () => {
+  assert.match(appJs, /const startRest = \(kind, length, ex, legs = ex \? \[ex\] : \[\]\) => \{ sess\.rest = newRest\(\{ kind, length, ex, logged: sess\.logged\.length \}, Date\.now\(\)\); sess\.restUsed = \{ \.\.\.\(sess\.restUsed \?\? \{\}\), \.\.\.Object\.fromEntries\(legs\.map\(\(id\) => \[id, length\]\)\) \};/);
+  assert.match(appJs, /startRest\("round", 60, null, \[sess\.ex\[L\]\.exercise, sess\.ex\[P\]\.exercise\]\)/);
+  assert.match(appJs, /l\.gap_s \? ` · ≈\$\{formatRest\(l\.gap_s\)\} between sets\$\{l\.rest_s \? ` \(timer \$\{formatRest\(l\.rest_s\)\}\)` : ""\}` : ""/);
+  assert.match(appJs, /\$\{\(l\.reps_shown \?\? l\.reps\)\.join\(", "\)\} reps at/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -1633,6 +1633,14 @@ try {
     const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
     ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
       JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
+    // W308: the timer each lift ran survives the door — whole seconds within the timer's own bounds (30-600), or nothing.
+    await json("POST", "/api/session", { user_id: junkU, session_id: "w4r", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+      sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],
+      targets: [{ exercise: "leg-extension", sets: 3, rest_s: 180 }, { exercise: "leg-press", sets: 2, rest_s: 5 }, { exercise: "leg-curl", sets: 2, rest_s: 90.5 },
+        { exercise: "calf-raise", sets: 2, rest_s: "120" }, { exercise: "hack-squat", sets: 2, rest_s: 601 }] });
+    const rests = (await store.listSessions(junkU)).find((x) => x.session_id === "w4r")?.targets ?? [];
+    ok("#rest-read a target keeps the timer it ran (30-600 whole seconds); anything else is dropped",
+      rests[0]?.rest_s === 180 && rests.length === 5 && rests.slice(1).every((t) => !("rest_s" in t)), JSON.stringify(rests));
     // W301b (review): a tired lift's trimmed dose sends only the aims it served, so the door keeps them (it drops a
     // list longer than the planned sets whole).
     {

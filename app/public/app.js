@@ -2642,7 +2642,9 @@ function openSetEditor(idx, host, rerender) {
   $("#fix-done").onclick = () => { setEditor = null; rerender(); };
   $("#fix-w").focus();
 }
-const startRest = (kind, length, ex) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); saveSess(); unlockChime(); };
+// Each rest records the timer it ran per lift (W308 — the read-out says "≈3:40 between sets (timer 3:00)"); a superset
+// round's shared rest is both legs'.
+const startRest = (kind, length, ex, legs = ex ? [ex] : []) => { sess.rest = newRest({ kind, length, ex, logged: sess.logged.length }, Date.now()); sess.restUsed = { ...(sess.restUsed ?? {}), ...Object.fromEntries(legs.map((id) => [id, length])) }; saveSess(); unlockChime(); };
 const endRest = () => { if (sess?.rest) { delete sess.rest; saveSess(); } syncRestAlert(); };
 function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
   restAlertLabel = alertLabel;
@@ -3119,7 +3121,7 @@ function renderSupersetStation(L, P) {
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
     for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload, repsEstimated(loggedSet)));
-    if (!stationProgress(sess.logged, sess.ex, L, P).done) { startRest("round", 60, null); return renderSupersetStation(L, P); } // alternating already rests each muscle: a short shared rest
+    if (!stationProgress(sess.logged, sess.ex, L, P).done) { startRest("round", 60, null, [sess.ex[L].exercise, sess.ex[P].exercise]); return renderSupersetStation(L, P); } // alternating already rests each muscle: a short shared rest
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of
     // the longer paired move (it's the earliest unfinished, so it's picked and the
@@ -3548,7 +3550,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     // ramps weren't graded; a planned-easy lift isn't graded, so its average covers every set.
     const avg = l.easyDay ? (l.rir_all ?? l.rir) : l.rir;
     const at = !l.easyDay && l.graded_all === false && l.anchor_kg > 0 ? ` at ${dispWeightFor(l.anchor_kg, l.exercise)} ${u}` : "";
-    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${l.reps.join(", ")} reps at ${kgs} ${u}` : ""}${nerdOn() && avg != null ? ` · avg ${avg} RIR${at}${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
+    return `<li><b>${esc(nameOf(l.exercise))}</b> — ${l.done}${l.planned != null ? ` of ${l.planned}` : ""} set${(l.planned ?? l.done) === 1 ? "" : "s"}${l.done ? ` · ${(l.reps_shown ?? l.reps).join(", ")} reps at ${kgs} ${u}` : ""}${l.gap_s ? ` · ≈${formatRest(l.gap_s)} between sets${l.rest_s ? ` (timer ${formatRest(l.rest_s)})` : ""}` : ""}${nerdOn() && avg != null ? ` · avg ${avg} RIR${at}${l.band ? ` (plan ${esc(String(l.band).replace("-", "–"))})` : ""}` : ""}${nx ? ` · next ${nx.disp} ${u}` : ""}</li>`;
   }).join("")}</ul></details>` : "";
   return `<div class="card readout" id="readout" data-session="${esc(sessionId ?? "")}"><b>${esc(lists.headline)}</b>
     ${ro?.objective ? `<p class="muted" style="margin:6px 0 0">🎯 Today's aim: ${esc(ro.objective)}</p>` : ""}

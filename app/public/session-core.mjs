@@ -593,6 +593,8 @@ export function buildTargets(sess) {
     // A lift the user moved ("Do this next" / "Do this later", W306): recorded for later learning (a lift put off again
     // and again), nothing reads it yet. The order the lifts were done in is already in the log.
     ...(x.moved ? { moved: true } : {}),
+    // The timer this lift's rests ran (W308): stamped at each rest's start (sess.restUsed), only where one ran.
+    ...(Number.isInteger(sess.restUsed?.[x.exercise]) ? { rest_s: sess.restUsed[x.exercise] } : {}),
   }));
 }
 
@@ -619,8 +621,34 @@ export function hintInUnit(hint, toDisp, step, unit = null) {
 // sets; "far easier" is the next-set hint's own test, band top + 2). A planned-easy lift
 // (deload week, comeback ease) is never graded. A workout from before targets existed still
 // reads — no plan, no grades. Pure.
+// The time between a lift's work sets (W308 — the read-out half of owner note 1, "rest tracking"): the median gap
+// between its consecutive stamped work sets, from the completed_at every set already carries (a superset round's legs
+// share one stamp, so each leg's gap is round to round). A gap past 15 minutes is a pause, not a rest; warm-ups and
+// unstamped sets are out. It runs set END to set END — the rest plus the next set — so it's said as "between sets",
+// never as rest. Pure.
+export const GAP_MAX_S = 15 * 60;
+export function liftGaps(logged) {
+  const by = {};
+  for (const s of logged ?? []) {
+    if (!s?.exercise || (s.set_type ?? "work") !== "work") continue;
+    const t = Date.parse(s.completed_at ?? "");
+    if (Number.isFinite(t)) (by[s.exercise] ??= []).push(t);
+  }
+  const out = {};
+  for (const [id, ts] of Object.entries(by)) {
+    ts.sort((a, b) => a - b);
+    const gaps = [];
+    for (let k = 1; k < ts.length; k++) { const g = (ts[k] - ts[k - 1]) / 1000; if (g > 0 && g <= GAP_MAX_S) gaps.push(g); }
+    if (!gaps.length) continue;
+    gaps.sort((a, b) => a - b);
+    const h = gaps.length >> 1, m = gaps.length % 2 ? gaps[h] : (gaps[h - 1] + gaps[h]) / 2;
+    out[id] = { median_s: Math.round(m), n: gaps.length };
+  }
+  return out;
+}
 export function localReadout(targets, logged) {
   const work = (logged ?? []).filter((s) => s && (s.set_type ?? "work") === "work");
+  const gaps = liftGaps(logged);
   const tgs = (targets ?? []).filter((t) => t?.exercise);
   const ids = [...new Set([...tgs.map((t) => t.exercise), ...work.map((s) => s.exercise)])];
   const lifts = ids.map((id) => {
@@ -646,6 +674,9 @@ export function localReadout(targets, logged) {
     return {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
+      reps_shown: sets.map(repsShown), // an estimated count with its ~ (W307)
+      // The time between its sets, and the timer it ran (W308) — null where there's nothing to say.
+      gap_s: gaps[id]?.median_s ?? null, rest_s: Number.isInteger(t?.rest_s) ? t.rest_s : null,
       top, past_band: graded && !top && judged.every((s) => s.reps >= max),
       // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
       // range sat beside it otherwise).
