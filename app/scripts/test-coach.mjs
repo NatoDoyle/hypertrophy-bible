@@ -2217,6 +2217,43 @@ check("#bar (H5) a hold at the bar drops its 'build the reps here' when today's 
   assert.doesNotMatch(s.suggestion_note, /build the reps here/);
   assert.match(s.suggestion_note, /^Just under the range last time \(7; it starts at 8\) — keep the weight: the empty bar is as light as it goes\./);
 });
+// --- W305j (the W305i check — I1-I3): the bar is the one the lift was DONE on — an empty 45-lb bar stays one after a switch
+// to kg (I3), and the order rule reads the weight done, not the bump it would have earned (I2) — and a deload at the bar
+// says what it serves: last time's weight, not "10% lighter" (I1).
+check("#bar (W305j I3) a lift done on the empty 45-lb bar, then a switch to kg: held there, never 'lightened' or 'eased' to 20 kg", () => {
+  const s = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 20.41, 6, 5, 5), {});
+  assert.equal(s.suggested_kg, 20.41, `held at the 45-lb bar (served ${s.suggested_kg})`);
+  assert.match(s.suggestion_note, /empty bar is as light as it goes/);
+  const now = new Date().toISOString(), long = new Date(Date.now() - 30 * 86400000).toISOString();
+  const back = suggestWeight([{ date: long, sets: [ohp(20.41, 8), ohp(20.41, 8)] }], "barbell-overhead-press", "8-12", undefined, now, "1-2");
+  assert.deepEqual([back.suggested_kg, /empty bar/.test(back.note)], [20.41, true], back.note);
+  const kg = aim("barbell-overhead-press", "8-12", "1-2", 3, missed("barbell-overhead-press", "8-12", "1-2", 22.5, 6, 5, 5), {});
+  assert.equal(kg.suggested_kg, 20, "control: a kg lift above the bar still eases down to the 20 kg bar");
+});
+check("#bar (W305j I2) the order rule picks the bar from the weight DONE, not the bump: a 20 kg-bar lift after a switch to pounds stays at 20", () => {
+  const p = { id: "ob2", name: "OrderBar2", sessions: [
+    { name: "A", exercises: [{ exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "1-2" }] },
+    { name: "B", exercises: [{ exercise: "seated-dumbbell-shoulder-press", sets: 4, rep_range: "8-12", rir: "1-2" }, { exercise: "machine-shoulder-press", sets: 4, rep_range: "8-12", rir: "1-2" },
+      { exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] };
+  const onB = (hist, ctx) => servedLift(p.sessions[1].exercises[2], hist, ctx, undefined, null, { program: p, session: p.sessions[1] });
+  const hist = [onDay("A", 1, ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }))];
+  assert.equal(onB(hist, {}).suggested_kg, 20, "precondition: in kg the position cancels the earned step");
+  const lb = onB(hist, { units: "imperial" });
+  assert.equal(lb.suggested_kg, 20, `the 20 kg bar it was done on (served ${lb.suggested_kg}; 20.41 pre-fills as the bumped 50 lb)`);
+  assert.doesNotMatch(lb.suggestion_note ?? "", /step up you'd earned, adjusted/);
+});
+check("#bar (W305j I1) a deload at the bar after an earned step: last time's weight, said as such — never '10% lighter'", () => {
+  const t = [{ exercise: "barbell-overhead-press", sets: 3, rep_range: "8-12", rir: "1-2" }]; // judged against its own band: the step is earned
+  const dl = aim("barbell-overhead-press", "8-12", "1-2", 3, [withTargets(t, ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.equal(aim("barbell-overhead-press", "8-12", "1-2", 3, [withTargets(t, ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }), ohp(20, 12, { rir: 1 }))]).suggested_kg, 22.5, "precondition: a normal week bumps");
+  assert.equal(dl.suggested_kg, 20);
+  assert.doesNotMatch(dl.suggestion_note, /10% lighter/);
+  assert.match(dl.suggestion_note, /^Deload week — the empty bar is as light as it goes, so it stays at 20 kg \(no step up this week\)\. Your progression picks up again after this week\.$/);
+  const off = aim("barbell-overhead-press", "8-12", "1-2", 3, [withTargets(t, ohp(40, 12, { rir: 1 }), ohp(40, 12, { rir: 1 }), ohp(40, 12, { rir: 1 }))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.match(off.suggestion_note, /^Deload week — about 10% lighter than last time on purpose \(36 kg\)/, "control: above the bar the deload is lighter, and says so");
+  const mid = aim("barbell-overhead-press", "8-12", "1-2", 3, [withTargets(t, ohp(21, 12, { rir: 1 }), ohp(21, 12, { rir: 1 }), ohp(21, 12, { rir: 1 }))], { block: { phase: "deload", week: 6, setScale: 0.5 } });
+  assert.match(mid.suggestion_note, /^Deload week — down to the empty bar \(20 kg\), as light as it goes\./, "21 kg: lighter, but the bar stops it short of 10%");
+});
 // --- Burst 8 review #34 (R8): the alternative carries the reps the model predicts AT it — 'Use 17.5 kg' filled 10 (the
 // range's bottom), ~5 from failure on a leg extension.
 check("#alt (Burst 8 review #34) the alternative carries the model's reps there, never the range's bottom", () => {

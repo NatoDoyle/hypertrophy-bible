@@ -317,6 +317,7 @@ check("planFitCopy: fewer days than workouts — they roll into next week, your 
     title: "Fit your plan to your 3 days?",
     body: "You've been picking 3 days a week, but your plan has 4 workouts — so workouts keep rolling into the next week, and your muscles get less than the plan was built for. Rebuilt for 3 days, every workout fits your week. It starts a fresh training block.",
     rebuild: "Rebuild for 3 days", keep: "Keep my 4-day plan", key: "4:3", days: 3,
+    notice: "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.", // W305j (J2): the tap's notice, here
   });
 });
 check("planFitCopy: more days than workouts — they repeat, your muscles get more; no offer without a mismatch", () => {
@@ -1012,13 +1013,16 @@ check("trainingDaysHint (W285): the person's own days in week order — or what 
     assert.equal(r.refresh, false);
     assert.match(r.notice, /^📴 Couldn't save your days — nothing changed\./);
   });
-  await checkAsync("#fit-apply (H6) saved days, failed rebuild: refreshed (the plan-fit card then rebuilds FORWARD), and said", async () => {
+  // W305j (J0, deliberate): a failed rebuild after saved days now puts the days back — "nothing changed" is true, and the
+  // partial state (said, refreshed) is left only when that put-back fails too (the W305j checks).
+  await checkAsync("#fit-apply (H6) saved days, failed rebuild: the days go back as they were, and that's said — never the days card", async () => {
     const f = fake(["/api/plan/regenerate"]);
     const r = await timeFitApply({ o: add, days: ["wed"], usual: ["mon", "tue", "thu", "fri"], thisWeek: ["mon", "tue", "thu", "fri"], uid: "u", post: f.post });
-    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate"]);
+    assert.deepStrictEqual(f.calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/commitment"]);
     assert.deepStrictEqual(f.calls[0][1], { user_id: "u", days: ["mon", "tue", "thu", "fri", "wed"] });
-    assert.equal(r.refresh, true);
-    assert.match(r.notice, /^📴 Your days saved, but the plan couldn't rebuild/);
+    assert.deepStrictEqual(f.calls[2][1], { user_id: "u", days: ["mon", "tue", "thu", "fri"] });
+    assert.equal(r.refresh, false);
+    assert.match(r.notice, /^📴 Couldn't rebuild your plan — nothing changed\./);
     assert.doesNotMatch(r.notice, /days card/, "never points at a door that can't set the usual days");
   });
   await checkAsync("#fit-apply (H8) block wording only where there are blocks: a beginner's notices never mention one", async () => {
@@ -1040,6 +1044,53 @@ check("trainingDaysHint (W285): the person's own days in week order — or what 
     assert.equal(timeFitDayQuestion(1, { cleared: false, thisWeek: ["mon"] }), "Which day will you add?");
   });
 }
+
+// --- W305j (the W305i check — J0/J1/J2): a rebuild that failed after the days saved is CHECKED, not assumed — one that
+// happened (its answer lost) is said as done (J1); one that didn't puts the days back, so "nothing changed" is true and a
+// later Keep keeps what it says (J0); only if that also fails is the partial state said. The plan-fit card — the other
+// forward door — names a block only where there are blocks (J2).
+{
+  const { timeFitApply } = uiHelpers;
+  const add = { kind: "add_day", days: 5, minutes: 45 };
+  const four = ["mon", "tue", "thu", "fri"];
+  const run = async ({ regen = "throw", sessions = 4, rollback = "ok", getFails = false, cleared = false, thisWeek = four } = {}) => {
+    const calls = [];
+    const post = async (path, body) => {
+      calls.push([path, body]);
+      if (path === "/api/plan/regenerate") { if (regen === "throw") throw new Error("lost"); return { program: { name: "P" } }; }
+      if (calls.filter((c) => c[0] === "/api/commitment").length > 1 && rollback === "fail") throw new Error("offline");
+      return { commitment: { days: body.days } };
+    };
+    const get = async (path) => { calls.push([path]); if (getFails) throw new Error("offline"); return { program: { name: "P", sessions: Array.from({ length: sessions }, (_, i) => ({ name: `D${i}` })) } }; };
+    const r = await timeFitApply({ o: add, days: ["wed"], cleared, usual: four, thisWeek, uid: "u", post, get });
+    return { r, calls };
+  };
+  await checkAsync("#fit-apply (W305j J1) a rebuild whose answer was lost but which happened: said as done, and refreshed", async () => {
+    const { r, calls } = await run({ sessions: 5 });
+    assert.deepStrictEqual(calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/plan/explain"]);
+    assert.deepStrictEqual([r.refresh, /^🗓️ Rebuilt for 5 days a week/.test(r.notice)], [true, true], r.notice);
+  });
+  await checkAsync("#fit-apply (W305j J0) a rebuild that truly failed puts the days back — 'nothing changed' is then true", async () => {
+    const { r, calls } = await run({ sessions: 4 });
+    assert.deepStrictEqual(calls.map((c) => c[0]), ["/api/commitment", "/api/plan/regenerate", "/api/plan/explain", "/api/commitment"]);
+    assert.deepStrictEqual(calls[3][1], { user_id: "u", days: four }, "the days as they were");
+    assert.deepStrictEqual([r.refresh, r.notice], [false, "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."]);
+    const cl = await run({ sessions: 4, cleared: true, thisWeek: [] });
+    assert.deepStrictEqual(cl.calls[3][1], { user_id: "u", days: [], resume_days: four }, "a cleared week: the usual days go back as they were, this week's stay");
+    const unknown = await run({ getFails: true });
+    assert.deepStrictEqual(unknown.calls.map((c) => c[0]).at(-1), "/api/commitment", "the check itself offline: treated as failed, the days put back");
+  });
+  await checkAsync("#fit-apply (W305j J0) only when the put-back fails too is the partial state said — and refreshed so the card shows it", async () => {
+    const { r } = await run({ sessions: 4, rollback: "fail" });
+    assert.deepStrictEqual([r.refresh, /^📴 Your days saved, but the plan couldn't rebuild/.test(r.notice)], [true, true], r.notice);
+  });
+}
+check("#plan-fit (W305j J2) the plan-fit card and its notice name a block only where there are blocks", () => {
+  const b = planFitCopy({ plan_days: 2, committed_days: 3, blocks: false });
+  assert.doesNotMatch(b.body + b.notice, /block/, JSON.stringify(b));
+  assert.equal(b.notice, "🗓️ Rebuilt for 3 days a week — your new plan starts with your next workout.");
+  assert.equal(planFitCopy({ plan_days: 4, committed_days: 3 }).notice, "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.");
+});
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

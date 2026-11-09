@@ -1111,7 +1111,7 @@ export function createApp(store, config = {}) {
     // hand-edited plan (a rebuild would discard the edits), never while paused (rail #1).
     const planDays = user.program?.sessions?.length ?? 0, keptDays = plan?.days?.length ?? 0;
     daily.plan_fit = plan?.carried && commitmentStood(user.profile?.commitment, clientDay) && !user.paused && !user.program?.custom && planDays && keptDays >= 2 && keptDays <= 6 && keptDays !== planDays
-      ? { plan_days: planDays, committed_days: keptDays } : null;
+      ? { plan_days: planDays, committed_days: keptDays, ...(user.profile?.training_status === "beginner" ? { blocks: false } : {}) } : null; // no blocks to name (W305j, J2)
     // The three ways back (W304): offered when the plan the user HAS can't hold its necessary volume or runs past its
     // minutes — measured now, from the stored plan (W305c: a swap, a rotation, a plan built before the fit-to-time pass) —
     // unless a server-side "keep" already covers this very question, so every device agrees and only something new

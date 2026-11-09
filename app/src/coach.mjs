@@ -98,7 +98,10 @@ const COMEBACK_DELOAD = 0.88; // ease ~12% and let it climb back as it feels eas
 // The empty bar a barbell lift is DONE on (W305h/W305i): the lifter's own bar (45 lb = 20.41 kg for a pounds lift) when
 // the weight reaches it, else the 20 kg bar when it reaches THAT (a lift banked on it before a switch to pounds), else
 // none (an EZ or fixed bar under 20 kg eases like any lift). Every path that lightens a barbell lift stops here.
+// W305j (I3): a weight that IS an empty bar names that bar whatever today's unit — a lift done on the empty 45-lb bar is
+// never "lightened" to 20 kg after a switch to kg (nor a 20 kg-bar lift floored at 45 lb after a switch to pounds).
 const barFloor = (exId, w, barKg, byId) => byId.get(exId)?.equipment !== "barbell" ? 0
+  : Math.abs(w - EMPTY_BAR_LB_KG) <= 0.02 ? EMPTY_BAR_LB_KG : Math.abs(w - EMPTY_BAR_KG) <= 0.02 ? EMPTY_BAR_KG
   : w >= barKg - 0.02 ? barKg : w >= EMPTY_BAR_KG - 0.02 ? EMPTY_BAR_KG : 0;
 
 // Rough BODY-SCALED starting guess for a lift the user has never logged, so a
@@ -668,7 +671,7 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
   const stays = () => ({ fromLoss, toLoss, kg: W, note: null, clause });
   if (steps === 0) return stays(); // under half a step: the weight stays exactly as it was
   let kg = Math.round((W + steps * inc) * 100) / 100;
-  kg = Math.max(kg, Math.min(W, barFloor(ex.exercise, W, barKg, byId))); // never under the bar it's done on (H2)
+  kg = Math.max(kg, Math.min(W, barFloor(ex.exercise, La, barKg, byId))); // never under the bar it's DONE on (H2) — read from the weight done, not the bump (I2)
   if (!(kg > 0) || kg === W) return stays();
   const earned = W > La && kg <= La ? " — you'd earned a step up, but this position cancels it"
     : W > La ? " — the step up you'd earned, adjusted for the order"
@@ -764,8 +767,13 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     || (Number.isInteger(plannedSets) && sets < plannedSets && /^You did \d+ of \d+ sets/.test(sug.note));
   const lead = order?.note ?? (lowers ? heldLead(sug.note, taper)
     : extra.length && sug.note === GENERIC_HOLD_NOTE ? (taper ? "Taper — same weight as last time." : "Same weight as last time.") : sug.note);
+  // At the bar the deload can't take its 10% (W305j, I1): it says what it serves — last time's weight, or the bar.
+  const lastKgD = sug.last_kg ?? sug.suggested_kg;
+  const deloadBar = deloadLowered && deloadKg > Math.round(lastKgD * 0.9 * 4) / 4;
   const composed = deloadLowered
-    ? `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`
+    ? (deloadBar && deloadKg >= lastKgD - 0.02 ? `Deload week — the empty bar is as light as it goes, so it stays at ${suggested_kg} kg (no step up this week). Your progression picks up again after this week.`
+      : deloadBar ? `Deload week — down to the empty bar (${suggested_kg} kg), as light as it goes. Your progression picks up again after this week.`
+      : `Deload week — about 10% lighter than last time on purpose (${suggested_kg} kg). Your progression picks up again after this week.`)
     : extra.length ? `${lead} ${extra.join(" ")} The rep aim allows for that.` : lead;
   // After an easier session of this lift (a tired ease, a deload) — sets that never anchor — "last time" in the reason is the
   // last FULL session, two workouts back: say so (Burst 6 review round 3: the read-out put "Last time you hit the top of the

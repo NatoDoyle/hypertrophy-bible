@@ -1744,7 +1744,7 @@ async function renderToday() {
     let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid, ...planFitRequest(fit) }) }); } catch { r = null; }
     if (!r?.program) { lock(false); if (!stale()) alertBar("📴 Couldn't rebuild your plan — nothing changed. Try again in a moment."); return; }
     try { localStorage.setItem("hb_program", r.program.name); } catch {}
-    pendingNotice = `🗓️ Rebuilt for ${fit.days} days a week — a fresh training block starts with your next workout.`;
+    pendingNotice = fit.notice; // planFitCopy's own words: a block only where there are blocks (W305j, J2)
     refreshToday(); // the notice waits for the next Today if the user has moved on
   };
   // The three ways back (W304). More days or minutes rebuild through the Settings door (a fresh block, said on the
@@ -1765,7 +1765,7 @@ async function renderToday() {
     const rebuildFit = async (o, days = []) => {
       lockFit(true);
       const res = await timeFitApply({ o, days, cleared, usual, thisWeek: adh.commitment?.days ?? [], blocks: dy.plan_time_fit?.blocks !== false, uid,
-        post: (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }) });
+        post: (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }), get: (path) => api(path) });
       if (!res.refresh) { lockFit(false); if (!stale()) alertBar(res.notice); return; }
       if (res.program) { try { localStorage.setItem("hb_program", res.program.name); } catch { /* storage off: the name is only a convenience */ } }
       pendingNotice = res.notice; // the notice rides the refresh (#9: an alert drawn here was wiped by it)

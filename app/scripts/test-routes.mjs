@@ -2115,6 +2115,8 @@ try {
   ok("#plan-fit a legacy stamp (no set_on) counts from its week's Monday", JSON.stringify(await fitOn(legacy, "2026-10-14")) === JSON.stringify({ plan_days: 4, committed_days: 3 })
     && (await fitOn(legacy, "2026-10-09")) === null);
   ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
+  ok("#plan-fit (W305j J2) a beginner's offer says there are no blocks (its card never names one)",
+    JSON.stringify(await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.training_status = "beginner"; } }))) === JSON.stringify({ plan_days: 4, committed_days: 3, blocks: false }));
   ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",
     (await fitOf(await fitUser({ days: ["mon"] }))) === null && (await fitOf(await fitUser({ days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }))) === null);
   ok("#plan-fit no offer for a hand-edited plan (a rebuild would discard the edits) or a paused user (rail #1)",

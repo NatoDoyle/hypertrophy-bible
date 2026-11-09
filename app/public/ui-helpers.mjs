@@ -259,10 +259,13 @@ export function planFitCopy(fit) {
     ? "so workouts keep rolling into the next week, and your muscles get less than the plan was built for"
     : "so workouts repeat within the week, and your muscles get more than the plan was built for";
   const gain = c < n ? "every workout fits your week" : "each day gets its own workout";
+  // A block only where there are blocks (W305j, J2 — a beginner's plan has none); the tap's notice lives here too.
+  const blocks = fit.blocks !== false;
   return {
     title: `Fit your plan to your ${c} days?`,
-    body: `You've been picking ${c} days a week, but your plan has ${n} workouts — ${cost}. Rebuilt for ${c} days, ${gain}. It starts a fresh training block.`,
+    body: `You've been picking ${c} days a week, but your plan has ${n} workouts — ${cost}. Rebuilt for ${c} days, ${gain}.${blocks ? " It starts a fresh training block." : ""}`,
     rebuild: `Rebuild for ${c} days`, keep: `Keep my ${n}-day plan`, key: `${n}:${c}`, days: c,
+    notice: `🗓️ Rebuilt for ${c} days a week — ${blocks ? "a fresh training block starts" : "your new plan starts"} with your next workout.`,
   };
 }
 // The card's two decisions, here so they're tested rather than wired by hand (W278 review):
@@ -326,21 +329,31 @@ export const timeFitRequest = (o) => (o?.kind === "add_day" ? { profile: { days_
 // days (the old order — rebuild, then days — left a failed days save with only the undo on offer, and in a cleared week
 // no door that could set the usual days). Block wording only where there are blocks (a beginner's card never names one).
 // `post(path, body)` is the app's own POST; the result says whether Today refreshes (with the notice) or stays (an alert).
-export async function timeFitApply({ o, days = [], cleared = false, usual = [], thisWeek = [], blocks = true, uid, post }) {
+// W305j (J0/J1): a rebuild with no answer is CHECKED, not assumed — an added day shows in the plan's own count (`get`), so
+// one that happened with its answer lost is said as done; one that didn't puts the days back as they were, so "nothing
+// changed" is true and a later Keep keeps what it says. Only if that also fails is the partial state said (and Today
+// refreshed, so the card shows it).
+export async function timeFitApply({ o, days = [], cleared = false, usual = [], thisWeek = [], blocks = true, uid, post, get = null }) {
+  const daysBody = (list) => (cleared ? { user_id: uid, days: thisWeek, resume_days: list } : { user_id: uid, days: list });
+  const nothing = { refresh: false, notice: "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment." };
   if (days.length) {
-    const body = cleared ? { user_id: uid, days: thisWeek, resume_days: [...usual, ...days] } : { user_id: uid, days: [...usual, ...days] };
-    let c; try { c = await post("/api/commitment", body); } catch { c = null; }
+    let c; try { c = await post("/api/commitment", daysBody([...usual, ...days])); } catch { c = null; }
     if (!c?.commitment) return { refresh: false, notice: "📴 Couldn't save your days — nothing changed. Try again in a moment." };
   }
-  let r; try { r = await post("/api/plan/regenerate", { user_id: uid, ...timeFitRequest(o) }); } catch { r = null; }
-  if (!r?.program) return days.length
-    ? { refresh: true, notice: "📴 Your days saved, but the plan couldn't rebuild — nothing else changed. Try the rebuild again in a moment." }
-    : { refresh: false, notice: "📴 Couldn't rebuild your plan — nothing changed. Try again in a moment." };
   const fresh = blocks ? "a fresh training block starts with your next workout" : "your new plan starts with your next workout";
   const notice = o.kind === "add_day" ? `🗓️ Rebuilt for ${o.days} days a week — ${fresh}.`
     : o.kind === "refit" ? `⏱️ Refit to ${o.minutes}-minute workouts — same days${blocks ? ", same block" : ""}.`
     : `⏱️ Rebuilt for ${o.minutes}-minute workouts — ${fresh}.`;
-  return { refresh: true, program: r.program, notice };
+  let r; try { r = await post("/api/plan/regenerate", { user_id: uid, ...timeFitRequest(o) }); } catch { r = null; }
+  if (r?.program) return { refresh: true, program: r.program, notice };
+  if (o.kind === "add_day" && get) {
+    let p; try { p = await get("/api/plan/explain"); } catch { p = null; }
+    if (p?.program?.sessions?.length === o.days) return { refresh: true, program: p.program, notice };
+  }
+  if (!days.length) return nothing;
+  let back; try { back = await post("/api/commitment", daysBody(usual)); } catch { back = null; }
+  return back?.commitment ? nothing
+    : { refresh: true, notice: "📴 Your days saved, but the plan couldn't rebuild — nothing else changed. Try the rebuild again in a moment." };
 }
 // The add-a-day question. In a cleared week the new day joins the USUAL days, from next week; this week is "free" only
 // when no day was picked for it (H7: a one-off day this week stays).
