@@ -1961,5 +1961,25 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
   });
 }
 
+// --- W312 (the W311 check): Undo gives back what the skip cleared only to a slot nobody touched since the skip — numbers
+// typed after it are the lifter's, never overwritten by the skipped set's (or a stale estimate's).
+{
+  const { dropSkipped, noteSeeded } = playerCore;
+  const base = () => ({ session_id: "s", ex: [{ exercise: "bench", sets: 3, planned_sets: 3, rep_range: "8-12" }, { exercise: "row", sets: 2, planned_sets: 2, rep_range: "8-12" }],
+    logged: [{ exercise: "bench", set_type: "work", weight_kg: 50, reps: 8 }], i: 0, set: 1, weights: {}, reps: { 0: 9 }, eff: { 0: 2 }, wUnits: {}, estPending: { bench: { setNo: 1, reps: 9, rirChip: 2, rir: 2 } } });
+  const skippedAndSeeded = () => { const b = base(); const a = dropSkipped(b, skipSet(b).sess); a.reps = { ...a.reps, 0: 10 }; return noteSeeded(a); }; // the screen seeds the aim (10)
+  check("#skip (W311 check) numbers typed after the skip survive its Undo — no stale estimate comes back", () => {
+    const s = skippedAndSeeded();
+    s.reps = { ...s.reps, 0: 12 }; s.eff = { ...s.eff, 0: 0 }; // the lifter types the set's real numbers
+    const u = undoSkip(s);
+    assert.equal(u.ok, true);
+    assert.deepStrictEqual([u.sess.reps[0], u.sess.eff[0], u.sess.estPending?.bench ?? null], [12, 0, null]);
+  });
+  check("#skip (W311 check) untouched since the skip, the Undo still gives everything back (the estimate too)", () => {
+    const u = undoSkip(skippedAndSeeded());
+    assert.deepStrictEqual([u.sess.reps[0], u.sess.eff[0], u.sess.estPending?.bench?.reps], [9, 2, 9]);
+  });
+}
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

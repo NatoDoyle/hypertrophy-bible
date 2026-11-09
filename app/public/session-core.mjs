@@ -210,13 +210,30 @@ export function undoSkip(sess) {
   // and the cursor is DERIVED from banked sets, never the stored one (Burst 1 review).
   if (sess.ex.some((x) => u.ids.includes(x.exercise) && Number.isInteger(x.planned_sets) && x.sets >= x.planned_sets)) return { ok: false, sess };
   const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
-  // …and what the skip cleared comes back (W311 — the fix check player#1: Skip then Undo changes nothing).
-  const k = u.kept;
+  // …and what the skip cleared comes back (W311 — Skip then Undo changes nothing) — but only to a slot nobody touched
+  // since the skip (W312, the W311 check): numbers typed after it are the lifter's, never overwritten by the skipped set's
+  // or a stale estimate's. "Untouched" = still what the screen seeded right after the skip (noteSeeded), else still empty.
+  const k = u.kept, seen = u.seeded;
+  const untouched = (i) => (seen ? (sess.reps?.[i] ?? null) === (seen.reps?.[i] ?? null) && (sess.eff?.[i] ?? null) === (seen.eff?.[i] ?? null)
+    : sess.reps?.[i] == null && sess.eff?.[i] == null);
+  const back = (live, kept) => ({ ...(live ?? {}), ...Object.fromEntries(Object.entries(kept ?? {}).filter(([i]) => untouched(i))) });
+  const slotOf = (id) => String(ex.findIndex((x) => x.exercise === id));
   const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise),
-    ...(k ? { reps: { ...(sess.reps ?? {}), ...k.reps }, eff: { ...(sess.eff ?? {}), ...k.eff }, estPending: { ...(sess.estPending ?? {}), ...k.estPending } } : {}) };
+    ...(k ? { reps: back(sess.reps, k.reps), eff: back(sess.eff, k.eff),
+      estPending: { ...(sess.estPending ?? {}), ...Object.fromEntries(Object.entries(k.estPending ?? {}).filter(([id]) => untouched(slotOf(id)))) } } : {}) };
   delete out.lastSkip;
   delete out.offerPick; // the skip's "Pick a different one" goes with it (Burst 9 review copy#1)
   return { ok: true, sess: out };
+}
+// What the screen seeded for a skip's cleared slots right after its redraw (W312): undoSkip restores a slot only while it
+// still holds exactly this. The same session back when the skip kept nothing.
+export function noteSeeded(sess) {
+  const k = sess?.lastSkip?.kept;
+  if (!k) return sess;
+  const slots = [...new Set([...Object.keys(k.reps ?? {}), ...Object.keys(k.eff ?? {}),
+    ...Object.keys(k.estPending ?? {}).map((id) => String((sess.ex ?? []).findIndex((x) => x.exercise === id)))])].filter((i) => i !== "-1");
+  const at = (m) => Object.fromEntries(slots.map((i) => [i, m?.[i] ?? null]));
+  return { ...sess, lastSkip: { ...sess.lastSkip, seeded: { reps: at(sess.reps), eff: at(sess.eff) } } };
 }
 // A skipped set takes its guessed numbers with it (Burst 9 review crash#1): every lift whose sets the skip shrank loses its
 // steppers' reps and effort (its next set starts on its own aim, as after a bank) and any pending "Forgot the numbers?"
