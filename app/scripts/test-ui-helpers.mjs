@@ -1186,5 +1186,14 @@ check("#announce (W313) Today shows an announcement in its own card, never behin
   assert.match(appJs, /const autoAdaptNote = p\.tunes && p\.sessions_logged >= 4/);
 });
 
+check("#fade (W314) the player marks a skip (an Undo takes it back) and an early end with work left; the workout carries the marks; the read-out asks how the last sets felt", () => {
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
+  assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
+  for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
+  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\) \}/);
+  assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
+  assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

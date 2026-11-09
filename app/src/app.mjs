@@ -184,6 +184,20 @@ const normalizeSet = (s) => ({
 // At most 24, one per lift; an entry without a real id and a 1-12 set count is dropped;
 // optional fields that fail their shape become null. Null when nothing survives.
 const MAX_TARGETS = 24;
+// The fade marks a workout carries (W314 — owner note 7, the learned ceiling's evidence): an early end, a skip, a
+// too-tired moment, each with the hard sets done then (`at`) and the planned total (`of`). Whole numbers in range or
+// dropped; at most 20.
+const FADE_KINDS = new Set(["early", "skip", "tired"]);
+const normalizeFadeMarks = (list) => {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  for (const m of list) {
+    if (out.length >= 20) break;
+    if (!FADE_KINDS.has(m?.kind) || !Number.isInteger(m.at) || m.at < 0 || m.at > 100) continue;
+    out.push({ kind: m.kind, at: m.at, ...(Number.isInteger(m.of) && m.of >= 1 && m.of <= 200 ? { of: m.of } : {}) });
+  }
+  return out.length ? out : null;
+};
 const normalizeTargets = (list) => {
   if (!Array.isArray(list)) return null;
   const seen = new Set(), out = [];
@@ -1874,6 +1888,16 @@ export function createApp(store, config = {}) {
     return sessionReadout(user, all, session, { now: new Date().toISOString(), tz: user.profile?.tz_offset_min ?? null, checkins, bodyweights, customEx: user.custom_exercises || [] });
   }
 
+  // The read-out's one-tap "how did your last few sets feel?" (W314): stored on the workout — the learned ceiling's own
+  // evidence (W315). Only the three answers, only the user's own workout (user_id in the body, never the URL).
+  app.post("/api/session/feel", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (!["strong", "fading", "empty"].includes(b.feel)) return c.json({ error: "feel must be strong, fading or empty" }, 400);
+    const updated = typeof b.session_id === "string" ? await store.updateSession(b.user_id, b.session_id, (s) => ({ ...s, feel: b.feel })) : null;
+    return updated ? c.json({ ok: true }) : c.json({ error: "unknown workout" }, 404);
+  });
   app.post("/api/session", async (c) => {
     const body = await c.req.json().catch(() => ({})); // empty/non-JSON body -> clean 404 below, not a 500
     const id = body.user_id;
@@ -1902,6 +1926,8 @@ export function createApp(store, config = {}) {
     };
     const targets = normalizeTargets(body.targets);
     if (targets) session.targets = targets;
+    const fade = normalizeFadeMarks(body.fade_marks);
+    if (fade) session.fade_marks = fade;
     // The store repeats the tombstone fence in its atomic write. A merge can land
     // after the read above; reporting a recap for a row that was safely refused
     // would be an optimistic lie, so surface the lost identity instead.

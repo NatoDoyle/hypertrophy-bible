@@ -1633,6 +1633,27 @@ try {
     const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
     ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
       JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
+    // W314: the fade marks a workout carries (an early end, a skip, a too-tired moment — each with the hard sets done
+    // then, and the planned total) survive the door, bounded; the read-out's one-tap feel is stored on the session, and
+    // the edit door keeps both.
+    {
+      const fm = [{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "bogus", at: 1 }, { kind: "tired", at: -1 }, { kind: "tired", at: 3.5 },
+        { kind: "tired", at: 9 }, ...Array.from({ length: 30 }, () => ({ kind: "skip", at: 15, of: 18 }))];
+      await json("POST", "/api/session", { user_id: junkU, session_id: "w4f", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+        sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: fm });
+      const marks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f")?.fade_marks ?? [];
+      ok("#fade the door keeps valid fade marks (kind, whole hard sets, the planned total), drops junk, keeps at most 20",
+        JSON.stringify(marks.slice(0, 3)) === JSON.stringify([{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "tired", at: 9 }]) && marks.length === 20, JSON.stringify(marks.slice(0, 4)));
+      const f1 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "fading" });
+      const f2 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "exhausted" });
+      const f3 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "nope", feel: "empty" });
+      const fs1 = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f");
+      ok("#fade the read-out's one-tap feel is stored on the session; junk is refused; an unknown workout is a 404",
+        f1.status === 200 && fs1?.feel === "fading" && f2.status === 400 && f3.status === 404, JSON.stringify([f1.status, fs1?.feel, f2.status, f3.status]));
+      await json("POST", "/api/session/update", { user_id: junkU, session_id: "w4f", sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 42.5, reps: 12 }] });
+      const fs2 = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f");
+      ok("#fade the edit door keeps the marks and the feel", fs2?.feel === "fading" && (fs2?.fade_marks ?? []).length === 20 && fs2?.sets?.[0]?.weight_kg === 42.5);
+    }
     // W308: the timer each lift ran survives the door — whole seconds within the timer's own bounds (30-600), or nothing.
     await json("POST", "/api/session", { user_id: junkU, session_id: "w4r", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
       sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],

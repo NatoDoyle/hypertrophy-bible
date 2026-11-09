@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2052,6 +2052,7 @@ function applySkip(r, redraw) {
   const prev = sess.ex[sess.i], before = sess;
   // A skipped set takes its guessed numbers with it — steppers and any pending estimate (dropSkipped, Burst 9 review).
   sess = dropSkipped(before, r.sess);
+  sess = withFade(sess, "skip"); // a fade mark (W314) — its Undo takes it back
   // A skip that ENDS a lift moves on to the next one — which may not be the one you want now (W306).
   if (!sess.complete && sess.ex[sess.i]?.exercise !== prev?.exercise) sess = { ...sess, offerPick: { kind: "skip", name: prev.name } };
   saveSess();
@@ -2063,7 +2064,7 @@ function applySkip(r, redraw) {
 function wireSkipUndo(redraw) {
   if ($("#undo-skip")) $("#undo-skip").onclick = () => {
     const u = undoSkip(sess);
-    if (u.ok) { sess = u.sess; saveSess(); say("Skip undone."); }
+    if (u.ok) { sess = dropLastFade(u.sess, "skip"); saveSess(); say("Skip undone."); }
     redraw();
   };
 }
@@ -2924,6 +2925,7 @@ function renderPlayer() {
     if (!quitPending) { quitPending = true; return renderPlayer(0); }
     quitPending = false;
     if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
+    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
     finish();
   };
   // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
@@ -3163,6 +3165,7 @@ function renderSupersetStation(L, P) {
     if (!quitPending) { quitPending = true; return renderSupersetStation(L, P, 0); }
     quitPending = false;
     if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
+    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
     finish();
   };
 }
@@ -3479,7 +3482,7 @@ async function finish() {
   // Tuesday session rescued on Thursday belongs to Tuesday's week.
   // targets (W280): what the plan asked of each lift today — so a skipped or unfinished set
   // holds that lift's next weight increase, and the read-out can say what was and wasn't done.
-  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess) };
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess), fade_marks: fadeMarksAtFinish(sess) };
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one
@@ -3569,6 +3572,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     ${breakdown}</div>`;
 }
 // The read-out on its own screen: the offline door (Today) and History (W282).
+const FEEL_MIN_SETS = 10; // the feel question only after a workout long enough to fade in (W314)
 function renderReadoutView({ title, card, back, backLabel = "Done" }) {
   app.innerHTML = `<h1>${esc(title)}</h1>${card}<button class="btn" id="ro-back">${esc(backLabel)}</button>`;
   $("#ro-back").onclick = back;
@@ -3614,16 +3618,28 @@ function renderRecap(recap) {
     ? `<div class="card"><p>🎉 That's about a month of training logged. This app is free and always will be — if it's been useful, you can chip in any amount. Totally optional.</p>
         <a class="btn secondary" style="text-align:center;text-decoration:none;display:block" href="${DONATE_URL}" target="_blank" rel="noopener">Support the project</a></div>`
     : "";
+  // "How did your last few sets feel?" (W314 — the learned ceiling's own evidence): optional, one tap, only after a long
+  // enough workout that's been saved (it's stored on the workout).
+  const feelRow = recap.session_id && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
+    ? `<div class="card" id="feel"><p>How did your last few sets feel? <span class="muted">Optional — it helps me learn how long your workouts should be.</span></p>
+      <div class="row" style="gap:8px;border:0;padding:0">${[["strong", "💪 Strong"], ["fading", "😮‍💨 Fading"], ["empty", "🪫 Empty"]].map(([k, l]) => `<button class="btn ghost inline" data-feel="${k}" style="margin:0">${l}</button>`).join("")}</div></div>` : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
   // A number banked wrong is fixable after the workout too (W274): straight into this
   // workout's editor — or, while it's still queued offline, a promise of where.
   const fixDoor = recap.session_id ? `<button class="btn ghost" id="fixnum">✏️ Fix a number</button>`
     : recap.queued ? `<p class="muted" style="text-align:center">Logged a number wrong? Once this workout syncs, fix any set from Progress → Workout history.</p>` : "";
-  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${readout}${wins}${notifyInviteHtml()}${nudge}${donate}
+  app.innerHTML = `<div class="center"><h1>${title}</h1></div>${prBanner}${readout}${feelRow}${wins}${notifyInviteHtml()}${nudge}${donate}
     ${fixDoor}
     <button class="btn" id="ok">Done</button>`;
   wireNotifyInvite();
   if ($("#fixnum")) $("#fixnum").onclick = () => { historyEdit = recap.session_id; tab = "history"; render(); };
+  app.querySelectorAll("[data-feel]").forEach((b) => b.onclick = async () => {
+    app.querySelectorAll("[data-feel]").forEach((x) => (x.disabled = true));
+    let r; try { r = await api("/api/session/feel", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: recap.session_id, feel: b.dataset.feel }) }); } catch { r = null; }
+    const host = $("#feel");
+    if (host) host.innerHTML = r?.ok ? `<p class="muted">✓ Noted — thanks.</p>` : `<p class="muted">📴 Couldn't save that — no matter, it's optional.</p>`;
+    say(r?.ok ? "Noted." : "Couldn't save that.");
+  });
   if (nudge) $("#backup").onclick = () => { tab = "me"; render(); };
   $("#ok").onclick = () => { tab = "today"; render(); };
 }
