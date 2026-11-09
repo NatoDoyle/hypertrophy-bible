@@ -362,6 +362,17 @@ export function timeFitDayQuestion(need, { cleared = false, thisWeek = [] } = {}
   if (!cleared) return q;
   return `${q} ${need === 1 ? "It starts" : "They start"} next week${thisWeek.length ? "." : " — this week stays free."}`;
 }
+// "Last time" (W307): each weight's reps in the order done, an estimated count with a ~ (last_sets [kg, reps, true]); a
+// payload from before last_sets reads from last_kg/last_reps. All-estimated sessions still show — never hidden.
+export function lastTimeGroups(e) {
+  const sets = Array.isArray(e?.last_sets) && e.last_sets.length ? e.last_sets
+    : Array.isArray(e?.last_reps) ? e.last_reps.map((r) => [e.last_kg ?? 0, r]) : [];
+  return sets.reduce((acc, [kg, r, est]) => {
+    const shown = `${est ? "~" : ""}${r}`, last = acc[acc.length - 1];
+    if (last && last.kg === kg) last.reps.push(shown); else acc.push({ kg, reps: [shown] });
+    return acc;
+  }, []);
+}
 export function offPlanPreview({ nextDay = null, name, crossesBlock = false } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
   return crossesBlock ? `Preview ${name} — what “Train anyway” starts today` : `Preview ${when}'s workout — ${name}`;
@@ -454,7 +465,11 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
   // A workout saved before plans travelled with it (or by an older client) has nothing to be
   // graded against: it counts what was done and claims nothing else (W282 review).
   if (local.hasPlan === false) return { headline: `${local.done} set${local.done === 1 ? "" : "s"} logged — every one of them counts.`, went_well: [], watch: [] };
-  const graded = local.lifts.filter((l) => !l.easyDay && l.done > 0 && l.min != null);
+  // An ESTIMATED count (W307 "Forgot the numbers?") is a set done, never graded: a lift with no real set isn't graded at
+  // all — never "in its range", never an "easy day" — and is named as estimated where "every lift" would claim it.
+  const real = (l) => l.done - (l.est ?? 0);
+  const graded = local.lifts.filter((l) => !l.easyDay && real(l) > 0 && l.min != null);
+  const estOnly = local.lifts.filter((l) => !l.easyDay && l.done > 0 && real(l) === 0 && l.min != null);
   const skipped = Math.max(0, local.planned - local.done);
   const underN = graded.filter((l) => l.under > 0).length;
   const tops = graded.filter((l) => l.top);
@@ -462,11 +477,13 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
   // A lift kept easy today (a tired ease or swap) isn't graded, so "every lift" claims only the others — and says so (Burst 6
   // review round 4: "every lift in its range" sat above the tired lift's 8, 7 on an 8–12).
   const keptEasy = local.lifts.filter((l) => l.easyDay && l.done > 0 && l.min != null);
-  const others = keptEasy.length ? `${friendlyList(keptEasy.map((l) => nameOf(l.exercise)))} kept easy, and every other lift` : null;
+  const others = keptEasy.length || estOnly.length ? `${[keptEasy.length ? `${friendlyList(keptEasy.map((l) => nameOf(l.exercise)))} kept easy` : "",
+    estOnly.length ? `${friendlyList(estOnly.map((l) => nameOf(l.exercise)))} logged as estimates` : ""].filter(Boolean).join(", ")}, and every other lift` : null;
   const headline = !local.done ? "Workout saved."
     // An easy day is one planned easy start to finish — a tired lift and the rest never started is a short day (round 5).
-    : !graded.length && skipped === 0 ? "Easy day done — recovery is part of the plan."
+    : !graded.length && !estOnly.length && skipped === 0 ? "Easy day done — recovery is part of the plan."
     : skipped > 0 ? `${local.done} of ${local.planned} planned sets done — every one of them counts.`
+    : !graded.length ? "Every set done — logged as estimates, so next time keeps the weight."
     : underN ? `Every set done — ${underN === 1 ? "1 lift" : `${underN} lifts`} came in under ${underN === 1 ? "its" : "their"} range, and next time is set up for that.`
     : others ? `Every set done — ${others} ${tops.length === graded.length ? "at the top of its range: time to go up." : tops.length ? `in its range: ${tops.length} at the top, ready to go up.` : "in its range: a session that moves you forward."}`
     : tops.length === graded.length ? "Every set done, and every lift at the top of its range — time to go up."
@@ -485,10 +502,11 @@ export function readoutLists(local, { nameOf = (id) => id, beginner = false } = 
     const n = nameOf(l.exercise);
     return [
       ...(l.planned != null && l.done < l.planned ? [`${n}: ${l.done} of ${l.planned} sets.`] : []),
-      ...(l.under ? [`${n}: ${l.under} of ${l.done} set${l.done === 1 ? "" : "s"} under the ${l.min}–${l.max} range.`] : []),
+      ...(l.under ? [`${n}: ${l.under} of ${real(l)} set${real(l) === 1 ? "" : "s"} under the ${l.min}–${l.max} range.`] : []),
       ...(l.easy ? [`${n}: about ${l.rir} reps left in the tank — the plan asked for ${band(l.band)}.`] : []),
       ...(l.failure ? [`${n}: taken to failure — the plan wanted ${band(l.band)} in reserve.`]
         : l.past_band ? [`${n}: top of the range, but closer to failure than the ${band(l.band)} in reserve the plan asked for.`] : []),
+      ...(l.est ? [`${n}: ${l.est} set${l.est === 1 ? "" : "s"} logged as ${l.est === 1 ? "an estimate" : "estimates"} — only real sets move your weights.`] : []),
     ];
   }).slice(0, 3);
   return { headline, went_well, watch };

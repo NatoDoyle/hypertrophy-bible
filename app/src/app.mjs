@@ -170,6 +170,10 @@ const normalizeSet = (s) => ({
   ...(s.rpe != null && Number.isFinite(Number(s.rpe)) ? { rpe: Math.max(0, Math.min(10, Number(s.rpe))) } : {}),
   ...(s.rir != null && Number.isFinite(Number(s.rir)) ? { rir: Math.max(0, Math.min(10, Math.round(Number(s.rir)))) } : {}),
   ...(s.deload ? { deload: true } : {}),
+  // An estimate's flags (W307 "Forgot the numbers?"): `est` names ONLY reps, on a real count — the engine judges such a
+  // set out of every strength read; `rir_est` (0-10) only where no real RIR was logged — an estimate never stands in for one.
+  ...(Array.isArray(s.est) && s.est.includes("reps") && Number.isFinite(Number(s.reps)) ? { est: ["reps"] } : {}),
+  ...(!(s.rir != null && Number.isFinite(Number(s.rir))) && s.rir_est != null && Number.isFinite(Number(s.rir_est)) ? { rir_est: Math.max(0, Math.min(10, Math.round(Number(s.rir_est)))) } : {}),
   completed_at: s.completed_at ?? new Date().toISOString(),
 });
 

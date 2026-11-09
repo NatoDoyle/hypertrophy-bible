@@ -2155,6 +2155,37 @@ check("#alt (Burst 8 review #37) the two-rep ease never goes under the empty bar
   assert.equal(suggestWeight(missed("barbell-overhead-press", "8-12", "1-2", 22.5, 4, 4, 4), "barbell-overhead-press", "8-12", undefined, null, "1-2").suggested_kg, 20, "17.5 → the bar");
   assert.equal(suggestWeight(missed("dumbbell-bench-press", "8-12", "1-2", 20, 6, 5, 5), "dumbbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 17.5, "control: a dumbbell isn't floored");
 });
+// --- W307 (considerations iteration, Burst 9 — owner: "if a user forgets what reps and rir they did… autofill it"):
+// an ESTIMATED rep count (est: ["reps"]) never moves the load. Set 1 estimated (the freshest, most telling set) — or
+// nothing real left — holds the weight, ahead of every bump and ease (after the layoff ease, which is safety); the
+// other estimated sets are judged out (no bump earned by a guess, none blocked by one); no order move reads one.
+check("#est set 1 estimated: the weight holds and says why — no bump, no ease, no alternative", () => {
+  const e = { est: ["reps"] };
+  const hi = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(hi.suggested_kg, 100, "would have been a bump");
+  assert.match(hi.note, /estimate/);
+  const lo = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 6, { ...e, rir: 0 }), anySet("barbell-bench-press", 100, 6, { rir: 0 }), anySet("barbell-bench-press", 100, 6, { rir: 0 }))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(lo.suggested_kg, 100, "would have been an ease");
+  assert.equal(lo.alt_kg ?? null, null);
+  const all = suggestWeight([withTargets(null, anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12, e))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(all.suggested_kg, 100, "nothing real: holds");
+});
+check("#est a later estimated set is judged out: it neither earns the bump nor blocks it", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const up = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 9, e), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(up.suggested_kg, 102.5, "the two real sets at the top earn it; the forgotten one doesn't block it");
+  const no = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 11), anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 11))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(no.suggested_kg, 100, "an estimated 12 can't make the top for the real 11s");
+});
+check("#est last_sets marks an estimated set ([kg, reps, true]) — the player's estimator skips it, 'last time' shows a ~", () => {
+  const s = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 10), anySet("barbell-bench-press", 100, 9, { est: ["reps"] }), anySet("barbell-bench-press", 100, 9))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.deepEqual(s.last_sets, [[100, 10], [100, 9, true], [100, 9]]);
+});
+check("#est no order move reads an estimated set 1 (W290 converts real capacity only)", () => {
+  const s = ordServed("B", [onDay("A", 1, inc(30, 9, { est: ["reps"] }), inc(30, 9), inc(30, 8))]);
+  assert.equal(s.suggested_kg, 30, "held — the order rule would have moved it to 27.5 from a real set 1");
+});
 // --- W305h (fix verification C3/C4/C6): the bar floor is the lifter's OWN bar — 45 lb (20.41 kg) for a pounds lift — and
 // it binds only a lift done ON the full bar: an EZ-bar skullcrusher at 15 kg still eases. At the bar, nothing lighter
 // exists, so no note promises one. The alternative carries the model's e1RM, so the player predicts reps exactly at

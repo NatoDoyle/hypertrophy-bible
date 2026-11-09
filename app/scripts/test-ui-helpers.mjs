@@ -825,7 +825,8 @@ check("player (W306) 'Do this later' is the pure deferToEnd; after it or a lift-
   assert.match(later, /const r = deferToEnd\(sess\);/);
   assert.doesNotMatch(later, /const remap = /, "one permutation, in session-core");
   assert.match(later, /offerPick: \{ kind: "later", name: moved\.name \}/);
-  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 800), /offerPick: \{ kind: "skip", name: prev\.name \}/, "a skip that ends a lift offers the pick too");
+  // (W307: the window widened deliberately — applySkip now first drops a skipped lift's pending estimate.)
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /offerPick: \{ kind: "skip", name: prev\.name \}/, "a skip that ends a lift offers the pick too");
   const set = fnBody(appJs, "function renderPlayer() {", 9000);
   assert.match(set, /\$\{pickCue\(\)\}/);
   assert.match(set, /sess\.set === 0 && e\.moved \? `<div class="cue" id="moved-cue">📍 You moved this one — today's weight was set for its usual place in the workout; after set 1 the hint adjusts if it needs to\.<\/div>` : ""/);
@@ -1119,6 +1120,34 @@ check("#plan-fit (W305j J2) the plan-fit card and its notice name a block only w
   assert.doesNotMatch(b.body + b.notice, /block/, JSON.stringify(b));
   assert.equal(b.notice, "🗓️ Rebuilt for 3 days a week — your new plan starts with your next workout.");
   assert.equal(planFitCopy({ plan_days: 4, committed_days: 3 }).notice, "🗓️ Rebuilt for 3 days a week — a fresh training block starts with your next workout.");
+});
+
+// --- W307: "Last time" groups each weight's reps, an estimated count shown with a ~ (last_sets [kg, reps, true]).
+check("#est lastTimeGroups: every set as done, an estimate with a ~; an older payload (no last_sets) still reads", () => {
+  const { lastTimeGroups } = uiHelpers;
+  assert.deepStrictEqual(lastTimeGroups({ last_sets: [[100, 10], [100, 9, true], [95, 8]] }), [{ kg: 100, reps: ["10", "~9"] }, { kg: 95, reps: ["8"] }]);
+  assert.deepStrictEqual(lastTimeGroups({ last_sets: [[60, 12, true], [60, 11, true]], last_reps: [], last_kg: 60 }), [{ kg: 60, reps: ["~12", "~11"] }], "all estimated: still shown, never hidden");
+  assert.deepStrictEqual(lastTimeGroups({ last_reps: [10, 9], last_kg: 100 }), [{ kg: 100, reps: ["10", "9"] }]);
+  assert.deepStrictEqual(lastTimeGroups({}), []);
+});
+check("#est the read-out never grades a lift on estimates: all-estimated is said as such — never 'in its range', never 'easy day'", () => {
+  const t = [{ exercise: "bench", sets: 2, rep_range: "8-12", rir: "1-2" }];
+  const E = (reps) => ({ exercise: "bench", set_type: "work", weight_kg: 100, reps, est: ["reps"] });
+  const all = readoutLists(sessionCore.localReadout(t, [E(10), E(10)]), { nameOf: () => "Bench press" });
+  assert.equal(all.headline, "Every set done — logged as estimates, so next time keeps the weight.");
+  const mixT = [...t, { exercise: "row", sets: 1, rep_range: "8-12", rir: "1-2" }];
+  const nameOf = (id) => (id === "bench" ? "Bench press" : "Row");
+  const mix = readoutLists(sessionCore.localReadout(mixT, [E(10), E(10), { exercise: "row", set_type: "work", weight_kg: 60, reps: 10, rir: 1 }]), { nameOf });
+  assert.equal(mix.headline, "Every set done — Bench press logged as estimates, and every other lift in its range: a session that moves you forward.");
+  const part = readoutLists(sessionCore.localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 10, rir: 1 }, E(9)]), { nameOf });
+  assert.ok(part.watch.includes("Bench press: 1 set logged as an estimate — only real sets move your weights."), JSON.stringify(part.watch));
+  assert.equal(readoutLists(sessionCore.localReadout(t, [E(10), E(10)]), { nameOf, beginner: true }).headline, "Every set done — logged as estimates, so next time keeps the weight.", "a beginner gets the same honest headline");
+});
+check("#est player wiring: both bank handlers bank the estimate per field, and a PR never celebrates an estimated count", () => {
+  assert.equal((appJs.match(/const ef = estimatedFields\(sess\.estPending\?\.\[(e|m)\.exercise\], \{ setNo: loggedSetCount\((e|m)\.exercise\), reps: sess\.reps\[(sess\.i|idx)\], eff: sess\.eff\[(sess\.i|idx)\] \}\);/g) ?? []).length, 2);
+  assert.equal((appJs.match(/\.\.\.\(ef\.rir != null \? \{ rir: ef\.rir \} : \{\}\), \.\.\.\(ef\.estReps \? \{ est: \["reps"\] \} : \{\}\), \.\.\.\(ef\.rir_est != null \? \{ rir_est: ef\.rir_est \} : \{\}\)/g) ?? []).length, 2);
+  assert.equal((appJs.match(/checkAndCelebratePR\((e|m), loggedSet\.weight_kg, loggedSet\.reps, loggedSet\.deload, repsEstimated\(loggedSet\)\)/g) ?? []).length, 2);
+  assert.match(appJs, /function checkAndCelebratePR\(exObj, weightKg, reps, deload, estReps = false\) \{/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

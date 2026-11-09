@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
@@ -45,6 +45,8 @@ function lastSetsForExercise(sessions, exId) {
 // `min` (proved in the range), else set 1's weight; `judged` = the sets AT that weight,
 // `first` = the freshest of them. See suggestWeight.
 const anchorOf = anchorSets; // derive-core's, shared with the read-out (Burst 6 review)
+// …over REAL rep counts only (W307: an estimated set is a set done, never evidence). Null when none is real.
+const realAnchor = (sets, min) => { const real = (sets ?? []).filter((s) => !repsEstimated(s)); return real.length ? anchorOf(real, min) : null; };
 // The bottom of the range a past session was DONE in — its stored target (W280) when it
 // has one, else today's range (older sessions).
 const ownMin = (entry, repRange) => parseRange(entry.target?.rep_range ?? repRange).min;
@@ -185,7 +187,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // 60 next time. A heavier set that FAILED the range (a one-off heavy single) never anchors,
   // and a lighter back-off is still a different load, never evidence (C14). Reps/RIR are
   // judged only over the sets AT the anchor weight. Straight sets are byte-identical.
-  const anchor = anchorOf(last.sets, ownMin(last, repRange));
+  const anchor = realAnchor(last.sets, ownMin(last, repRange)) ?? { weight: last.sets[0].weight_kg ?? 0, judged: [], first: null };
   const lastWeight = anchor.weight;
   const judged = anchor.judged;
   // THE TOP, AT THE PLAN'S EFFORT (Burst 6 — owner: "It says I need to pay attention to the rir because I hit
@@ -197,7 +199,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const judgeNear = judgeBand ? +judgeBand[1] : 0;
   const rawTop = judged.every((s) => s.reps >= max);
   const allHitTop = judged.every((s) => repsAtBand(s.reps, s.rir, judgeNear) >= max);
-  const base = { last_kg: lastWeight, last_reps: judged.map((s) => s.reps), last_sets: last.sets.map((s) => [s.weight_kg ?? 0, s.reps]) };
+  const base = { last_kg: lastWeight, last_reps: judged.map((s) => s.reps), last_sets: last.sets.map((s) => (repsEstimated(s) ? [s.weight_kg ?? 0, s.reps, true] : [s.weight_kg ?? 0, s.reps])) }; // [kg, reps, true]: an estimated count (W307)
   // Layoff deload: if it's been a while, ease the load and suppress the progression
   // bump — overrides everything below so a comeback never loads heavier than before.
   // Measured from the last time the exercise was trained AT ALL (comeback/deload
@@ -210,6 +212,9 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     if (floor > 0 && !(eased < lastWeight)) return { suggested_kg: lastWeight, note: `It's been ${layoffDays} days — start on the empty bar and ramp back in as it feels easy.`, layoff_days: layoffDays, ...base };
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
   }
+  // A FORGOTTEN number never moves the load (W307): set 1's reps estimated — the freshest, most telling set — or nothing
+  // real left to judge, and the weight holds, ahead of every bump and ease (the layoff ease above is safety, and stays).
+  if (repsEstimated(last.sets[0]) || !anchor.first) return { suggested_kg: lastWeight, note: `${anchor.first ? "Last time's first set was an estimate" : "Last time's numbers were estimates"} — same weight until a real set shows where you are.`, ...base };
   const band = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); // TODAY's band: rule 3's target, and what the next session is judged against
   // The top reached only by going PAST the band holds (Burst 6; the KB: "below target (too hard) -> hold"), and
   // says what earns the bump. Ahead of the RIR surplus, so one set at failure among easy ones is never averaged
@@ -252,7 +257,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const s1Rir = typeof s1.rir === "number" ? s1.rir : null;
   if (!holdLoad && lastWeight > 0 && judged.every((s) => s.reps < min) && (s1Rir == null || s1Rir <= 1)) {
     const prev = recentWorkSets(sessions, exId, 2)[1];
-    const prevA = prev ? anchorOf(prev.sets, ownMin(prev, repRange)) : null;
+    const prevA = prev ? realAnchor(prev.sets, ownMin(prev, repRange)) : null;
     const prevUnder = !!prevA && prevA.weight >= lastWeight && prevA.first.reps < ownMin(prev, repRange);
     const inc = loadIncrement(exId, byId);
     const near = band ? +band[1] : 1;
@@ -649,7 +654,10 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
   const fromLoss = orderLoss(then.sets), toLoss = orderLoss(now.sets);
   if (fromLoss === toLoss) return null; // both positions cost the same (e.g. both at the cap): nothing to move (Burst 5 review)
   const anchorMin = ownMin(last, ex.rep_range);
-  const anchor = anchorOf(last.sets, anchorMin), s1 = anchor.first;
+  // Real capacity only (W307): an estimated set 1 moves nothing.
+  const anchor = realAnchor(last.sets, anchorMin);
+  if (!anchor || repsEstimated(last.sets[0])) return null;
+  const s1 = anchor.first;
   const rho = typeof s1.rir === "number" ? s1.rir : s1.reps < anchorMin ? 0 : anchorNear;
   const W = sug.suggested_kg, La = anchor.weight;
   if (!(W > 0) || !(La > 0)) return null;
@@ -738,7 +746,7 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // would contradict the pre-filled number; when the order moved it, the order says why.
   // A band further from failure than the one the anchor was SERVED with (its stored target) aims lower.
   const bandShift = last?.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0;
-  const anchorKg = last ? anchorOf(last.sets, ownMin(last, ex.rep_range)).weight : null;
+  const anchorKg = last ? (realAnchor(last.sets, ownMin(last, ex.rep_range))?.weight ?? last.sets[0].weight_kg ?? null) : null;
   // The reason is COMPOSED (round 2 of the fix verification): the weight's own reason leads — a held weight's
   // W279 warning or W280 "get all 3 to the top" is never replaced — and the band and the position that shape
   // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"

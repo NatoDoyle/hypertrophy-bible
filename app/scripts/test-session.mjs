@@ -1704,5 +1704,142 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   });
 }
 
+// --- W307 (Burst 9): the player's copies judge an ESTIMATED rep count exactly as the engine does — a set done, never
+// evidence: no PR toast or latch, no next-set hint read from it, no seed or typo reference raised by it, no read-out
+// grade from it (it still counts as done). One predicate, byte-identical to derive-core's.
+{
+  const e = { est: ["reps"] };
+  check("#est parity: the player's repsEstimated is derive-core's, byte for byte", () => {
+    assert.equal(playerCore.repsEstimated.toString(), serverCore.repsEstimated.toString());
+    for (const x of [{ est: ["reps"] }, { est: [] }, {}, null, { est: "reps" }]) assert.equal(playerCore.repsEstimated(x), serverCore.repsEstimated(x));
+  });
+  check("#est the live PR check skips an estimated set — the same verdict as the engine's, on a grid", () => {
+    const prior = serverCore.priorPersonalBests([{ date: "2026-10-01", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 5 }, { exercise: "lat", set_type: "work", weight_kg: 10, reps: 15 }] }]);
+    for (const [ex, kg, reps] of [["bench", 100, 12], ["bench", 110, 6], ["lat", 12.5, 15]]) {
+      const pb = { e1rm_kg: prior.e1rm[ex] ?? null, load_kg: prior.load[ex] ?? null };
+      assert.equal(checkSetPR(ex, kg, reps, "work", pb, false, true), null, `${ex} ${kg}x${reps} estimated: no toast`);
+      assert.equal(!!checkSetPR(ex, kg, reps, "work", pb, false, false), !!serverCore.checkSetPR({ exercise: ex, set_type: "work", weight_kg: kg, reps }, prior), "control: real sets agree with the engine");
+      assert.equal(serverCore.checkSetPR({ exercise: ex, set_type: "work", weight_kg: kg, reps, ...e }, prior), null, "…and the engine skips the estimate too");
+    }
+    assert.equal(recomputePrLatch([{ exercise: "bench", set_type: "work", weight_kg: 110, reps: 6, ...e }], "bench", { e1rm_kg: prior.e1rm.bench }), false, "the latch never holds on an estimate");
+  });
+  check("#est no next-set hint from an estimated set; the rep seed and the typo reference skip it", () => {
+    assert.equal(nextSetHint({ exercise: "bench", set_type: "work", weight_kg: 100, reps: 4, rir: 0, ...e }, { rep_range: "8-12", rir: "1-2", inc_kg: 2.5 }), null);
+    const log = [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 9 }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 15, ...e }];
+    assert.equal(playerCore.lastWorkReps(log, "bench"), 9, "the seed reads the last REAL count");
+    assert.deepStrictEqual(todayTopSet(log, "bench"), { kg: 100, reps: 9 }, "an estimated 15 never raises the typo guard's reps");
+  });
+  check("#est the read-out counts an estimated set as done, grades only the real ones, and says how many were estimated", () => {
+    const t = [{ exercise: "bench", sets: 3, rep_range: "8-12", rir: "1-2" }];
+    const r = localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, rir: 1 }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, ...e }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, rir: 1 }]).lifts[0];
+    assert.deepStrictEqual([r.done, r.planned, r.top, r.graded_all, r.est], [3, 3, true, false, 1]);
+    const all = localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6, ...e }]).lifts[0];
+    assert.deepStrictEqual([all.done, all.top, all.under, all.anchor_kg], [1, false, 0, null], "nothing real: nothing graded, nothing 'under'");
+  });
+}
+
+// --- W307: "Forgot the numbers?" — the estimate, in order of what it trusts: the same lift's REAL sets this session at
+// the same weight (an earlier one carries forward by the drop between sets; a later one says the earlier did at least
+// that plus the drop), the lifter's OWN drop when two real sets in a row show it, else the model's; then last session's
+// same set at that weight; then the e1RM those sets give, at the band's near edge. RIR from the nearest real neighbour
+// (else the band's near edge) — never for a beginner (never asked). Null when nothing real exists to estimate from.
+{
+  const { estimateSet } = playerCore;
+  const W = (reps, rir, kg = 100, extra = {}) => ({ exercise: "bench", set_type: "work", weight_kg: kg, reps, ...(rir != null ? { rir } : {}), completed_at: "t", ...extra });
+  const row = { exercise: "bench", rep_range: "8-12", rir: "1-2" };
+  check("#estimate after a real set: carried forward by the drop (10 @2 → (12)·0.9 − 2 ≈ 9 @2)", () => {
+    assert.deepStrictEqual(estimateSet({ logged: [W(10, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 2, source: "session" });
+  });
+  check("#estimate before a real one: the later set bounds it — at least that, plus the drop (a later 8 @2 → 9 @2 before it)", () => {
+    const e = estimateSet({ logged: [W(9, 2, 100, { est: ["reps"] }), W(8, 2)], at: 0, weightKg: 100, row });
+    assert.deepStrictEqual(e, { reps: 9, rir: 2, source: "session" }, "(8 + 2)/0.9 − 2 = 9.1");
+  });
+  check("#estimate the lifter's own drop, when two real sets in a row show it (12 @1 then 8 @1: a third ≈ 5–6)", () => {
+    const own = estimateSet({ logged: [W(12, 1), W(8, 1)], at: 2, weightKg: 100, row });
+    assert.equal(own.reps, 5, "their drop (13 → 9, about 31%) carries to the third: 9·0.69 − 1 ≈ 5.2");
+    assert.notEqual(own.reps, estimateSet({ logged: [W(8, 1)], at: 1, weightKg: 100, row }).reps, "the model alone (20% at RIR 1) says 6");
+  });
+  check("#estimate no real set today: last session's same set at that weight, then the e1RM those sets give", () => {
+    const last = { ...row, last_sets: [[100, 10], [100, 9], [100, 8]] };
+    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 100, row: last, setNo: 1 }), { reps: 9, rir: 1, source: "last" }, "set 2 last time: 9");
+    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 90, row: last, setNo: 0 }), { reps: 13, rir: 1, source: "e1rm" }, "a new weight: 100·(1+10/30)=133.3 → at 90: 30·(133.3/90 − 1) − 1 ≈ 13.4");
+    assert.equal(estimateSet({ logged: [], at: 0, weightKg: 100, row }), null, "nothing real: no estimate");
+  });
+  check("#estimate an estimate never feeds another, and a beginner gets reps only (never asked RIR)", () => {
+    assert.equal(estimateSet({ logged: [W(10, 2, 100, { est: ["reps"] })], at: 1, weightKg: 100, row }), null, "only an estimated neighbour: nothing");
+    assert.deepStrictEqual(estimateSet({ logged: [W(10, null)], at: 1, weightKg: 100, row, beginner: true }), { reps: 7, rir: null, source: "session" }, "no RIR logged reads as near failure (the model's 20%): 10·0.8 − 1 = 7");
+  });
+  check("#estimate editLoggedSet: an estimate marks its fields; a REAL new number clears only its own flag", () => {
+    const log = [W(10, 2)];
+    const est = editLoggedSet(log, 0, { estimate: { reps: 9, rir: 2 } }, { exercise: "bench", completed_at: "t" });
+    assert.deepStrictEqual([est[0].reps, est[0].est, est[0].rir, est[0].rir_est], [9, ["reps"], 2, undefined], "a real RIR stays real — the estimate never replaces it");
+    const blank = editLoggedSet([W(10, null)], 0, { estimate: { reps: 9, rir: 2 } }, { exercise: "bench", completed_at: "t" });
+    assert.deepStrictEqual([blank[0].est, blank[0].rir, blank[0].rir_est], [["reps"], undefined, 2]);
+    const same = editLoggedSet(blank, 0, { reps: 9 }, { exercise: "bench", completed_at: "t" });
+    assert.deepStrictEqual(same[0].est, ["reps"], "the same number again isn't a real entry (an untouched field)");
+    const fixed = editLoggedSet(blank, 0, { reps: 8, rir: 1 }, { exercise: "bench", completed_at: "t" });
+    assert.deepStrictEqual([fixed[0].reps, fixed[0].est, fixed[0].rir, fixed[0].rir_est], [8, undefined, 1, undefined], "real numbers: both flags gone");
+    assert.equal(editLoggedSet(blank, 0, { rir: 11 }, { exercise: "bench", completed_at: "t" }), blank, "an RIR out of 0-10 is ignored");
+    assert.deepStrictEqual(sessionChips(blank, "bench")[0].est, true, "the chip knows it's an estimate");
+  });
+}
+
+// --- W307 UI half: what banks as an estimate, per field; RIR in the banked-set editor; the ~ on screen.
+{
+  const { estimatedFields, repsShown, estimateSet } = playerCore;
+  check("#est-bank estimatedFields: a field banks as an estimate only while it still shows the estimate — per field", () => {
+    const p = { setNo: 1, reps: 9, rirChip: 2, rir: 2 };
+    assert.deepStrictEqual(estimatedFields(p, { setNo: 1, reps: 9, eff: 2 }), { estReps: true, rir: null, rir_est: 2 });
+    assert.deepStrictEqual(estimatedFields(p, { setNo: 1, reps: 10, eff: 2 }), { estReps: false, rir: null, rir_est: 2 }, "reps typed: real; the untouched RIR stays an estimate");
+    assert.deepStrictEqual(estimatedFields(p, { setNo: 1, reps: 9, eff: 3 }), { estReps: true, rir: 3, rir_est: null }, "an RIR tapped: real");
+    assert.deepStrictEqual(estimatedFields(p, { setNo: 1, reps: 9, eff: undefined }), { estReps: true, rir: null, rir_est: null }, "the RIR chip cleared: no RIR at all");
+    assert.deepStrictEqual(estimatedFields(p, { setNo: 2, reps: 9, eff: 2 }), { estReps: false, rir: 2, rir_est: null }, "a pending estimate for ANOTHER set is stale");
+    assert.deepStrictEqual(estimatedFields(null, { setNo: 0, reps: 9, eff: null }), { estReps: false, rir: null, rir_est: null });
+    assert.deepStrictEqual(estimatedFields({ setNo: 0, reps: 7, rirChip: null, rir: null }, { setNo: 0, reps: 7, eff: null }), { estReps: true, rir: null, rir_est: null }, "a beginner: reps only");
+    assert.deepStrictEqual(estimatedFields({ setNo: 0, reps: 7, rirChip: 4, rir: 6 }, { setNo: 0, reps: 7, eff: 4 }), { estReps: true, rir: null, rir_est: 6 }, "'4+' shown, the estimate's 6 kept — never a real 4");
+  });
+  check("#est-bank the estimator skips last time's ESTIMATED sets (marked [kg, reps, true]) — for the same set and for the e1RM", () => {
+    const row = { exercise: "bench", rep_range: "8-12", rir: "1-2", last_sets: [[100, 10], [100, 14, true], [100, 8]] };
+    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 100, row, setNo: 1 }), { reps: 9, rir: 1, source: "e1rm" }, "not the guessed 14 (it would say 13)");
+  });
+  check("#estimate in the editor the set being estimated never informs its own estimate (its banked numbers are the forgotten ones)", () => {
+    const W2 = (reps, rir, kg = 100) => ({ exercise: "bench", set_type: "work", weight_kg: kg, reps, rir, completed_at: "t" });
+    const row = { exercise: "bench", rep_range: "8-12", rir: "1-2" };
+    assert.deepStrictEqual(estimateSet({ logged: [W2(10, 2), W2(15, 0), W2(9, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 2, source: "session" },
+      "the model's drop from set 1 — never a 'drop' read off the bogus 15 (it would say 7)");
+    assert.deepStrictEqual(estimateSet({ logged: [W2(15, 0)], at: 0, weightKg: 100, row: { ...row, last_sets: [[100, 10]] } }), { reps: 10, rir: 1, source: "last" }, "its own 15 is no e1RM");
+  });
+  check("#estimate a bodyweight lift (0 kg) estimates from the same session's reps too", () => {
+    const B = (reps, rir) => ({ exercise: "pull-up", set_type: "work", weight_kg: 0, reps, rir, completed_at: "t" });
+    assert.deepStrictEqual(estimateSet({ logged: [B(10, 2)], at: 1, weightKg: 0, row: { exercise: "pull-up", rep_range: "6-12", rir: "1-2" } }), { reps: 9, rir: 2, source: "session" });
+    assert.equal(estimateSet({ logged: [], at: 0, weightKg: 0, row: { exercise: "pull-up", rep_range: "6-12", rir: "1-2", last_sets: [[0, 10]] }, setNo: 0 }).source, "last");
+  });
+  check("#est-edit resolveEdit: an RIR the user changed is real (0-10); untouched or junk text changes nothing", () => {
+    const entry0 = { exercise: "bench", set_type: "work", weight_kg: 100, reps: 9, est: ["reps"], rir_est: 2, completed_at: "t" };
+    const base = { entry0, wText: "100", rText: "9", qText: "2", shownW: "100", shownR: "9", shownQ: "2", unit: "kg" };
+    assert.equal("rir" in resolveEdit(base).patch, false, "untouched");
+    assert.equal(resolveEdit({ ...base, qText: "1" }).patch.rir, 1);
+    for (const q of ["11", "x", "", "-1"]) assert.equal("rir" in resolveEdit({ ...base, qText: q }).patch, false, `'${q}' ignored`);
+    const after = editLoggedSet([entry0], 0, resolveEdit({ ...base, qText: "1" }).patch, { exercise: "bench", completed_at: "t" });
+    assert.deepStrictEqual([after[0].reps, after[0].est, after[0].rir, after[0].rir_est], [9, ["reps"], 1, undefined], "the RIR became real; the reps stay an estimate");
+  });
+  check("#est-history the History editor drops an estimate only when its reps text changed (and never sends the display name)", () => {
+    const { historyEditSet } = playerCore;
+    const set = { exercise: "bench", name: "Bench", set_type: "work", weight_kg: 100, reps: 9, est: ["reps"], rir_est: 2, completed_at: "t" };
+    const keep = { exercise: "bench", set_type: "work", weight_kg: 100, reps: 9, est: ["reps"], rir_est: 2, completed_at: "t" };
+    assert.deepStrictEqual(historyEditSet(set, { wText: "100", rText: "9", unit: "kg" }), keep, "untouched: the estimate stays");
+    const { est, ...real } = keep;
+    assert.deepStrictEqual(historyEditSet(set, { wText: "100", rText: "8", unit: "kg" }), { ...real, reps: 8 }, "a real count: est gone, the RIR estimate stays");
+    assert.deepStrictEqual(historyEditSet(set, { wText: "102.5", rText: "9", unit: "kg" }), { ...keep, weight_kg: 102.5 }, "a weight fix leaves the reps an estimate");
+    assert.deepStrictEqual(historyEditSet(set, { wText: "100", rText: "junk", unit: "kg" }), keep, "junk keeps the stored count — and its flag");
+    assert.equal(historyEditSet({ ...set, weight_kg: 10.21 }, { wText: "22.5", rText: "9", unit: "lb" }).weight_kg, 10.21, "an untouched lb display keeps the stored kg exactly (W274)");
+  });
+  check("#est-show repsShown: '~9' for an estimated count (a log entry or a chip), '9' otherwise", () => {
+    assert.equal(repsShown({ reps: 9, est: ["reps"] }), "~9");
+    assert.equal(repsShown({ reps: 9, est: true }), "~9");
+    assert.equal(repsShown({ reps: 9 }), "9");
+  });
+}
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

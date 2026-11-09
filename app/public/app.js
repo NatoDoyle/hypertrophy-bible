@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -2047,8 +2047,13 @@ function renderWorkoutList() {
 function applySkip(r, redraw) {
   skipPending = false; quitPending = false; confirmSet.clear();
   if (!r.ok) return redraw();
-  const prev = sess.ex[sess.i];
+  const prev = sess.ex[sess.i], before = sess;
   sess = r.sess;
+  // A skipped set takes its pending "Forgot the numbers?" estimate with it (W307) — only the lifts whose sets shrank.
+  if (sess.estPending) {
+    const shrunk = new Set(sess.ex.filter((x, k) => x.sets < (before.ex[k]?.sets ?? x.sets)).map((x) => x.exercise));
+    if (shrunk.size) sess = { ...sess, estPending: Object.fromEntries(Object.entries(sess.estPending).filter(([id]) => !shrunk.has(id))) };
+  }
   // A skip that ENDS a lift moves on to the next one — which may not be the one you want now (W306).
   if (!sess.complete && sess.ex[sess.i]?.exercise !== prev?.exercise) sess = { ...sess, offerPick: { kind: "skip", name: prev.name } };
   saveSess();
@@ -2097,7 +2102,37 @@ const effTap = (b, repaintFn) => {
   saveSess();
   if (repaint) return repaintFn();
   b.closest(".effrow").querySelectorAll("[data-eff]").forEach((c) => { const on = +c.dataset.eff === sess.eff[i]; c.classList.toggle("sel", on); c.setAttribute("aria-pressed", String(on)); });
+  syncEstNotes();
 };
+// "FORGOT THE NUMBERS?" (W307 — owner: "if a user forgets what reps and rir they did… autofill it based off what they got
+// for the other sets that workout"): fills this set's reps — and its RIR, where asked and not already answered — with an
+// estimate from the lift's other sets (estimateSet). Whatever still shows the estimate banks as one, per field
+// (estimatedFields); keyed by lift and set number (never by index, so a reorder can't move it). Offered only when
+// there's something real to estimate from.
+const estimateFor = (k) => { const x = sess.ex[k]; return x ? estimateSet({ logged: sess.logged, at: sess.logged.length, weightKg: bankKg(k), row: x, beginner: !rirOn(), setNo: loggedSetCount(x.exercise) }) : null; };
+const estLive = (k) => {
+  const x = sess.ex[k], p = sess.estPending?.[x?.exercise];
+  if (!p || p.setNo !== loggedSetCount(x.exercise)) return false;
+  const f = estimatedFields(p, { setNo: p.setNo, reps: sess.reps[k], eff: sess.eff[k] });
+  return f.estReps || f.rir_est != null;
+};
+const forgotHtml = (k) => estLive(k)
+  ? `<p class="muted" data-est-note="${k}" role="status" style="font-size:.9rem;margin:4px 0">~ Estimated from your other sets — change ${rirOn() ? "either" : "it"} if you remember.</p>`
+  : estimateFor(k) ? `<button class="btn ghost inline" data-forgot="${k}" style="margin:4px 0">Forgot the numbers?</button>` : "";
+// The note goes the moment nothing on screen is the estimate any more (the steppers and chips update in place).
+function syncEstNotes() { app.querySelectorAll("[data-est-note]").forEach((n) => { if (!estLive(+n.dataset.estNote)) n.remove(); }); }
+const wireForgot = (repaint) => app.querySelectorAll("[data-forgot]").forEach((b) => b.onclick = () => {
+  const k = +b.dataset.forgot, x = sess.ex[k], est = estimateFor(k);
+  if (!x || !est) return;
+  quitPending = false; clearSetConfirm();
+  sess.reps[k] = est.reps;
+  // An RIR already answered stays the lifter's own: an estimate never replaces a real one. "4+" shows a higher estimate.
+  const chip = rirOn() && est.rir != null && sess.eff[k] == null ? Math.min(4, est.rir) : null;
+  if (chip != null) sess.eff[k] = chip;
+  sess.estPending = { ...(sess.estPending ?? {}), [x.exercise]: { setNo: loggedSetCount(x.exercise), reps: est.reps, rirChip: chip, rir: chip == null ? null : est.rir } };
+  saveSess(); repaint();
+  say(`Estimated ${est.reps} reps${chip != null ? ` with ${est.rir} left in the tank` : ""}. Change ${chip != null ? "either" : "it"} if you remember.`);
+});
 function startSession(templateSession) {
   sess = {
     // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
@@ -2172,14 +2207,13 @@ const stepFor = (e) => servedStep(unitFor(e.exercise), e.inc_kg);
 // reps only (their weight field is hidden for the same reason).
 // "Last time": every set as it was done — when the weight changed between sets (the
 // next-set hint, a ramp) one weight × all the reps would misreport it (Burst 1 review).
+// W307: an estimated count shows with a ~ (lastTimeGroups), and a session of estimates still shows.
 const lastTimeLine = (e) => {
-  if (!Array.isArray(e.last_reps) || !e.last_reps.length) return "";
+  const groups = lastTimeGroups(e);
+  if (!groups.length) return "";
   const u = unitLabelFor(e.exercise);
-  const mixed = Array.isArray(e.last_sets) && new Set(e.last_sets.map(([kg]) => kg)).size > 1;
-  const body = e.equipment === "bodyweight" && !(e.last_kg > 0) ? `${e.last_reps.join(", ")} reps`
-    : mixed ? e.last_sets.reduce((acc, [kg, r]) => { const last = acc[acc.length - 1]; if (last && last.kg === kg) last.reps.push(r); else acc.push({ kg, reps: [r] }); return acc; }, [])
-        .map((g) => `${dispWeightFor(g.kg, e.exercise)} ${u} × ${g.reps.join(", ")}`).join(" · ")
-    : `${dispWeightFor(e.last_kg, e.exercise)} ${u} × ${e.last_reps.join(", ")}`;
+  const body = e.equipment === "bodyweight" && !(e.last_kg > 0) ? `${groups.flatMap((g) => g.reps).join(", ")} reps`
+    : groups.map((g) => `${dispWeightFor(g.kg, e.exercise)} ${u} × ${g.reps.join(", ")}`).join(" · ");
   // After an easier session (a tired ease, a deload) these sets are the last FULL session's (round 3).
   return `<p class="muted" style="font-size:.9rem;margin:2px 0 6px">${e.last_easy ? "Last regular session" : "Last time"}: ${body}</p>`;
 };
@@ -2332,6 +2366,7 @@ function wireValInputs(idxOf, repaintFn) {
       if (v == null) return;
       if (isW) sess.weights[i] = v; else sess.reps[i] = v;
       saveSess();
+      if (!isW) syncEstNotes();
     };
     inp.onblur = () => {
       const i = idxOf(inp);
@@ -2397,9 +2432,9 @@ function showPrToast(text) {
 // attached to this exercise, computed from the SAME history the server will use at
 // recap time — checkSetPR duplicates the server's rules, cross-tested in
 // scripts/test-session.mjs, so the two surfaces can never disagree).
-function checkAndCelebratePR(exObj, weightKg, reps, deload) {
+function checkAndCelebratePR(exObj, weightKg, reps, deload, estReps = false) {
   if (!exObj.pr_watch || sess.prCelebrated?.[exObj.exercise]) return false;
-  const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch, deload);
+  const pr = checkSetPR(exObj.exercise, weightKg, reps, "work", exObj.pr_watch, deload, estReps); // an estimate never celebrates (W307)
   if (!pr) return false;
   sess.prCelebrated = sess.prCelebrated || {};
   sess.prCelebrated[exObj.exercise] = true;
@@ -2514,20 +2549,23 @@ const rememberRestOffset = (id, offset) => {
 let setEditor = null;           // the open editor: { idx, exercise, completed_at, unit }
 const editConfirmed = new Set(); // edit typo-confirmations — their OWN key space (editConfirmKey)
 const nameInSess = (id) => sess?.ex?.find((x) => x.exercise === id)?.name ?? exName(id);
-const setText = (entry, id) => (entry.weight_kg > 0 || !(entry.reps >= 0)
-  ? `${editDisplay(entry.weight_kg, unitFor(id))} ${unitLabelFor(id)} × ${entry.reps}` : `${entry.reps} reps`);
+// An estimated count shows as "~9" (W307) — and is read out as "about 9" (a screen reader says "tilde").
+const setText = (entry, id, spoken = false) => {
+  const r = spoken && (entry.est === true || repsEstimated(entry)) ? `about ${entry.reps}` : repsShown(entry);
+  return entry.weight_kg > 0 || !(entry.reps >= 0) ? `${editDisplay(entry.weight_kg, unitFor(id))} ${unitLabelFor(id)} × ${r}` : `${r} reps`;
+};
 function setChipsHtml(ids) {
   const chips = ids.flatMap((id) => sessionChips(sess.logged, id).map((c) => ({ ...c, id })));
   if (!chips.length) return "";
   const named = ids.length > 1;
   return `<div class="muted" style="margin:4px 0 8px;font-size:.9rem">This session: ${chips.map((c) =>
-    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
+    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id, true))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
 }
 function justLoggedHtml(idxs) {
   const items = idxs.filter((i) => sess.logged[i]);
   if (!items.length) return "";
   return `<p class="muted" style="margin:6px 0">Just logged: ${items.map((i) => { const l = sess.logged[i];
-    return `<button class="chip" data-fix="${i}" aria-label="Fix ${esc(nameInSess(l.exercise))}: ${esc(setText(l, l.exercise))}">${esc(nameInSess(l.exercise))} ${esc(setText(l, l.exercise))} ✏️ fix</button>`; }).join(" ")}</p>`;
+    return `<button class="chip" data-fix="${i}" aria-label="Fix ${esc(nameInSess(l.exercise))}: ${esc(setText(l, l.exercise, true))}">${esc(nameInSess(l.exercise))} ${esc(setText(l, l.exercise))} ✏️ fix</button>`; }).join(" ")}</p>`;
 }
 function wireSetFixes(rerender) {
   app.querySelectorAll("[data-fix]").forEach((b) => b.onclick = () => openSetEditor(+b.dataset.fix, $("#fix-host"), rerender));
@@ -2538,13 +2576,23 @@ function openSetEditor(idx, host, rerender) {
   const unit = unitFor(entry0.exercise); // captured ONCE: shown and read back in the same unit
   setEditor = { idx, exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, unit };
   const shownW = editDisplay(entry0.weight_kg, unit), shownR = String(entry0.reps ?? "");
+  // W307: a work set's RIR is editable too (where it's asked), an estimated field says so (~), and "Forgot the numbers?"
+  // fills both from the lift's other sets — saved at once as an estimate, the editor's new baseline: an untouched field
+  // keeps the estimate, a changed one is real (editLoggedSet drops only that field's flag).
+  const work = (entry0.set_type ?? "work") === "work", askRir = work && rirOn();
+  const estR = repsEstimated(entry0), estQ = typeof entry0.rir !== "number" && typeof entry0.rir_est === "number";
+  const shownQ = typeof entry0.rir === "number" ? String(entry0.rir) : estQ ? String(entry0.rir_est) : "";
+  const row0 = sess.ex.find((x) => x.exercise === entry0.exercise);
+  const editorEstimate = () => { const cur = sess.logged[idx]; return work && row0 && cur ? estimateSet({ logged: sess.logged, at: idx, weightKg: cur.weight_kg, row: row0, beginner: !rirOn() }) : null; };
   const field = "background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem";
   host.innerHTML = `<div class="card" id="set-editor"><b>Fix ${esc(nameInSess(entry0.exercise))}${entry0.set_type === "warmup" ? " (warm-up)" : ""}</b>
     <div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0">
       <input id="fix-w" type="text" inputmode="decimal" value="${esc(shownW)}" aria-label="Weight in ${unit}" style="width:6rem;${field}">
       <span class="muted">${unit} ×</span>
-      <input id="fix-r" type="text" inputmode="numeric" value="${esc(shownR)}" aria-label="Reps" style="width:4.5rem;${field}">
-      <span class="muted">reps</span></div>
+      <input id="fix-r" type="text" inputmode="numeric" value="${esc(shownR)}" aria-label="Reps${estR ? ", estimated" : ""}" style="width:4.5rem;${field}">
+      <span class="muted">${estR ? "~ reps" : "reps"}</span></div>
+    ${askRir ? `<div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0"><input id="fix-q" type="text" inputmode="numeric" value="${esc(shownQ)}" aria-label="Reps left in the tank${estQ ? ", estimated" : ""}" style="width:3.5rem;${field}"><span class="muted">${estQ ? "~ " : ""}left in the tank</span></div>` : ""}
+    ${editorEstimate() ? `<button class="btn ghost inline" id="fix-est" style="margin:6px 0 0">Forgot the numbers?</button>` : ""}
     <p class="muted" id="fix-note" role="status" style="margin:6px 0 0"></p>
     <button class="btn secondary inline" id="fix-done" style="margin-top:8px">Done</button></div>`;
   const apply = () => {
@@ -2557,7 +2605,7 @@ function openSetEditor(idx, host, rerender) {
     const key = editConfirmKey(entry0, ed.idx);
     // …against the same reference the Done button uses: history raised by today's other banked sets (Burst 6).
     const { lastKg, priorBests, todayKg, todayReps } = typoOpts(sess.ex.findIndex((x) => x.exercise === ed.exercise), ed.idx);
-    const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, shownW, shownR, unit: ed.unit,
+    const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, qText: $("#fix-q") ? $("#fix-q").value : null, shownW, shownR, shownQ, unit: ed.unit,
       lastKg, priorBests, todayKg, todayReps, confirmed: editConfirmed.has(key) });
     const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
     if (next !== sess.logged) {
@@ -2575,6 +2623,22 @@ function openSetEditor(idx, host, rerender) {
   };
   $("#fix-w").oninput = apply;
   $("#fix-r").oninput = apply;
+  if ($("#fix-q")) $("#fix-q").oninput = apply;
+  if ($("#fix-est")) $("#fix-est").onclick = () => {
+    const est = editorEstimate();
+    if (!est || !setEditor) return;
+    const next = editLoggedSet(sess.logged, idx, { estimate: { reps: est.reps, rir: est.rir } }, { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null });
+    if (next === sess.logged) return;
+    sess.logged = next;
+    // An estimate never celebrates — it can only clear a latch a real number set.
+    if (row0) { sess.prCelebrated = { ...(sess.prCelebrated ?? {}) }; if (!nextPrLatch(sess.prCelebrated[entry0.exercise], sess.logged, entry0.exercise, row0.pr_watch)) delete sess.prCelebrated[entry0.exercise]; }
+    saveSess();
+    openSetEditor(idx, host, rerender); // the new baseline
+    const withRir = typeof sess.logged[idx]?.rir_est === "number" && typeof sess.logged[idx]?.rir !== "number";
+    const msg = `Estimated ${est.reps} reps${withRir ? ` with ${sess.logged[idx].rir_est} left in the tank` : ""} — change ${withRir ? "either" : "it"} if you remember.`;
+    if ($("#fix-note")) $("#fix-note").textContent = msg;
+    say(msg);
+  };
   $("#fix-done").onclick = () => { setEditor = null; rerender(); };
   $("#fix-w").focus();
 }
@@ -2788,6 +2852,7 @@ function renderPlayer() {
       ${sess.set === 0 && !firstEver ? whyLine(e) : ""}
       ${repsStepper(reps, null)}
       ${effChips(sess.i)}
+      ${forgotHtml(sess.i)}
       ${confirmSet.has(e.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
       ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
@@ -2839,10 +2904,11 @@ function renderPlayer() {
     setStepperVal(b, sess.weights[sess.i]);
     say(`${bw ? "+" : ""}${sess.weights[sess.i]} ${unitLabelFor(e.exercise)}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); say(`${sess.reps[sess.i]} reps`); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); sess.reps[sess.i] = Math.max(0, sess.reps[sess.i] + +b.dataset.r); saveSess(); if (repaint) return renderPlayer(); setStepperVal(b, sess.reps[sess.i]); syncEstNotes(); say(`${sess.reps[sess.i]} reps`); });
   wireValInputs(() => sess.i, () => renderPlayer(0));
   wireUnitToggles(() => sess.i, () => renderPlayer(0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderPlayer()));
+  wireForgot(() => renderPlayer());
   $("#how").onclick = async () => {
     let d = null;
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
@@ -2877,8 +2943,11 @@ function renderPlayer() {
     confirmSet.clear();
     // Read the CURRENT sess values, not the render-time consts — the steppers now
     // update in place without re-rendering, so the consts can be stale.
-    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(sess.eff[sess.i] != null ? { rir: sess.eff[sess.i] } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+    // "Forgot the numbers?" (W307): whatever still shows the estimate banks as one — per field (estimatedFields).
+    const ef = estimatedFields(sess.estPending?.[e.exercise], { setNo: loggedSetCount(e.exercise), reps: sess.reps[sess.i], eff: sess.eff[sess.i] });
+    const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
+    if (sess.estPending) delete sess.estPending[e.exercise];
     delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
@@ -2904,7 +2973,7 @@ function renderPlayer() {
     }
     saveSess(); // the set is banked before anything else can go wrong
     say(`Set logged — ${sess.logged.length} so far.`);
-    const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload); // overrides the say() above if it's a PR — the bigger news
+    const wasPR = checkAndCelebratePR(e, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload, repsEstimated(loggedSet)); // overrides the say() above if it's a PR — the bigger news
     checkAndCelebrateLucky(e, loggedSet, wasPR);
     if (sess.complete) return finish();
     // A rest between sets of the SAME lift (none between exercises): its own KB length
@@ -2962,6 +3031,7 @@ function renderSupersetStation(L, P) {
       ${round === 0 ? whyLine(m, idx) : ""}
       ${repsStepper(reps, idx)}
       ${effChips(idx)}
+      ${forgotHtml(idx)}
       ${confirmSet.has(m.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(idx)}</div>` : ""}
       <button class="btn ghost" data-how="${idx}">How do I do this?</button>
     </div>`;
@@ -2993,10 +3063,11 @@ function renderSupersetStation(L, P) {
     setStepperVal(b, sess.weights[i]);
     say(`${bw ? "+" : ""}${sess.weights[i]} ${unitLabelFor(sess.ex[i].exercise)}${bw ? " added" : ""}`);
   });
-  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); say(`${sess.reps[i]} reps`); });
+  app.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => { quitPending = false; const repaint = clearSetConfirm(); const i = +b.dataset.i; sess.reps[i] = Math.max(0, sess.reps[i] + +b.dataset.r); saveSess(); if (repaint) return renderSupersetStation(L, P, 0); setStepperVal(b, sess.reps[i]); syncEstNotes(); say(`${sess.reps[i]} reps`); });
   wireValInputs((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   wireUnitToggles((el) => +el.dataset.i, () => renderSupersetStation(L, P, 0));
   app.querySelectorAll("[data-eff]").forEach((b) => b.onclick = () => effTap(b, () => renderSupersetStation(L, P, 0)));
+  wireForgot(() => renderSupersetStation(L, P, 0));
   wireSetFixes(() => renderSupersetStation(L, P));
   app.querySelectorAll("[data-how]").forEach((b) => b.onclick = async () => {
     const m = sess.ex[+b.dataset.how];
@@ -3038,14 +3109,16 @@ function renderSupersetStation(L, P) {
     const roundSets = []; // both members of the round, banked together
     for (const idx of [L, P]) {
       const m = sess.ex[idx];
-      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(sess.eff[idx] != null ? { rir: sess.eff[idx] } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      const ef = estimatedFields(sess.estPending?.[m.exercise], { setNo: loggedSetCount(m.exercise), reps: sess.reps[idx], eff: sess.eff[idx] });
+      const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
+      if (sess.estPending) delete sess.estPending[m.exercise];
       sess.logged.push(loggedSet);
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
       delete sess.reps[idx]; // …and the next round starts on its aim (W289)
       roundSets.push([m, loggedSet]);
     }
     say(`Round logged — ${sess.logged.length} sets so far.`);
-    for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload));
+    for (const [m, loggedSet] of roundSets) checkAndCelebrateLucky(m, loggedSet, checkAndCelebratePR(m, loggedSet.weight_kg, loggedSet.reps, loggedSet.deload, repsEstimated(loggedSet)));
     if (!stationProgress(sess.logged, sess.ex, L, P).done) { startRest("round", 60, null); return renderSupersetStation(L, P); } // alternating already rests each muscle: a short shared rest
     // Paired rounds done. Advance to the FIRST still-unfinished exercise ANYWHERE
     // (scan from -1). This one rule covers every follow-on: a set-count remainder of
@@ -3966,8 +4039,9 @@ async function renderHistory() {
       <input data-w="${i}" type="text" inputmode="decimal" value="${esc(editDisplay(set.weight_kg, unitFor(set.exercise)))}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       <span class="muted">${unitLabelFor(set.exercise)} ×</span>
-      <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}"
+      <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}${repsEstimated(set) ? ", estimated" : ""}"
         style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
+      ${repsEstimated(set) ? `<span class="muted" aria-hidden="true" title="an estimate">~</span>` : ""}
     </div>`).join("");
     const quarantined = !!sess.time_quarantine;
     app.innerHTML = `<h1>Fix this workout</h1>
@@ -3985,14 +4059,9 @@ async function renderHistory() {
       // every set from a plate-rounded display, so fixing one set's reps rewrote every
       // weight in the workout (22.5 lb came back as 25 lb). The display is exact now, and
       // an untouched field keeps its stored value byte for byte.
-      const sets = (sess.sets ?? []).map((set, i) => {
-        const { name, ...rest } = set; // `name` is a display-only field this screen added
-        const wText = (app.querySelector(`[data-w="${i}"]`)?.value ?? "").trim();
-        const rText = (app.querySelector(`[data-reps="${i}"]`)?.value ?? "").trim();
-        const kg = wText === editDisplay(rest.weight_kg, unitFor(rest.exercise)) ? rest.weight_kg : parseEdit(wText, unitFor(rest.exercise));
-        const reps = rText === String(rest.reps) ? rest.reps : (/^\d{1,3}$/.test(rText) ? Number(rText) : rest.reps);
-        return { ...rest, weight_kg: kg ?? rest.weight_kg, reps };
-      });
+      // …and a CHANGED count is a real one: its estimate flag goes (historyEditSet, W307). `name` is display-only.
+      const sets = (sess.sets ?? []).map((set, i) => historyEditSet(set, { wText: app.querySelector(`[data-w="${i}"]`)?.value ?? "",
+        rText: app.querySelector(`[data-reps="${i}"]`)?.value ?? "", unit: unitFor(set.exercise) }));
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
       historyEdit = null;
