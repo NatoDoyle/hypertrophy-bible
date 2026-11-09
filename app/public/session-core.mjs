@@ -212,7 +212,18 @@ export function undoSkip(sess) {
   const ex = sess.ex.map((x) => (u.ids.includes(x.exercise) ? { ...x, sets: x.sets + 1 } : x));
   const out = { ...sess, ex, i: u.prevI, set: loggedWorkSets(sess.logged, ex[u.prevI].exercise) };
   delete out.lastSkip;
+  delete out.offerPick; // the skip's "Pick a different one" goes with it (Burst 9 review copy#1)
   return { ok: true, sess: out };
+}
+// A skipped set takes its guessed numbers with it (Burst 9 review crash#1): every lift whose sets the skip shrank loses its
+// steppers' reps and effort (its next set starts on its own aim, as after a bank) and any pending "Forgot the numbers?"
+// estimate — they'd otherwise bank as real on the next set, or after an Undo. The same session back when nothing shrank.
+export function dropSkipped(before, after) {
+  const shrunk = (after?.ex ?? []).map((x, k) => (x.sets < (before?.ex?.[k]?.sets ?? x.sets) ? k : -1)).filter((k) => k >= 0);
+  if (!shrunk.length) return after;
+  const ids = new Set(shrunk.map((k) => after.ex[k].exercise));
+  const omit = (m) => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => !shrunk.includes(+k)));
+  return { ...after, reps: omit(after.reps), eff: omit(after.eff), ...(after.estPending ? { estPending: Object.fromEntries(Object.entries(after.estPending).filter(([id]) => !ids.has(id))) } : {}) };
 }
 
 // THE WORKOUT LIST'S ONE REORDER (W306, considerations iteration — owner: "when I start a workout, I can look at all the
@@ -628,18 +639,24 @@ export function hintInUnit(hint, toDisp, step, unit = null) {
 // never as rest. Pure.
 export const GAP_MAX_S = 15 * 60;
 export function liftGaps(logged) {
-  const by = {};
-  for (const s of logged ?? []) {
-    if (!s?.exercise || (s.set_type ?? "work") !== "work") continue;
-    const t = Date.parse(s.completed_at ?? "");
-    if (Number.isFinite(t)) (by[s.exercise] ??= []).push(t);
-  }
+  const work = (logged ?? []).filter((s) => s?.exercise && (s.set_type ?? "work") === "work");
+  const stamp = (s) => Date.parse(s?.completed_at ?? "");
+  const last = {}, by = {};
+  work.forEach((s, k) => {
+    const t = stamp(s);
+    if (!Number.isFinite(t)) return;
+    const p = last[s.exercise];
+    // Between ITS sets only (Burst 9 review engine#3): a gap with another lift's set inside it — a lift moved in between
+    // (W306) — isn't time between sets; a superset partner banked in the same round shares a stamp, and isn't "inside".
+    if (p) {
+      const inside = work.slice(p.k + 1, k).some((o) => o.exercise !== s.exercise && stamp(o) !== p.t && stamp(o) !== t);
+      const g = (t - p.t) / 1000;
+      if (!inside && g > 0 && g <= GAP_MAX_S) (by[s.exercise] ??= []).push(g);
+    }
+    last[s.exercise] = { t, k };
+  });
   const out = {};
-  for (const [id, ts] of Object.entries(by)) {
-    ts.sort((a, b) => a - b);
-    const gaps = [];
-    for (let k = 1; k < ts.length; k++) { const g = (ts[k] - ts[k - 1]) / 1000; if (g > 0 && g <= GAP_MAX_S) gaps.push(g); }
-    if (!gaps.length) continue;
+  for (const [id, gaps] of Object.entries(by)) {
     gaps.sort((a, b) => a - b);
     const h = gaps.length >> 1, m = gaps.length % 2 ? gaps[h] : (gaps[h - 1] + gaps[h]) / 2;
     out[id] = { median_s: Math.round(m), n: gaps.length };
@@ -930,20 +947,36 @@ export function sessionChips(logged, exId) {
 // ({reps, rir}) — reps marked est: ["reps"], an RIR only as rir_est and only where none was logged (an estimate never
 // replaces a real one). A REAL new number clears only its own flag: a reps entry that differs drops `est`, an RIR entry
 // drops `rir_est` (an untouched field comes back as the same value — resolveEdit — and clears nothing).
-export function editLoggedSet(logged, idx, patch, { exercise, completed_at } = {}) {
+// …and edits are made FROM the entry the editor OPENED with (`base` — Burst 9 review crash#0): every keystroke re-applies
+// to it, so a value typed and typed back is the original, flags and all — never the intermediate an earlier keystroke left.
+export function editLoggedSet(logged, idx, patch, { exercise, completed_at, base = null } = {}) {
   const cur = logged?.[idx];
   if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return logged;
+  const from = base ?? cur;
   const changes = {}, drop = [];
   const w = patch?.weight_kg, r = patch?.reps, q = patch?.rir, est = patch?.estimate;
   if (typeof w === "number" && Number.isFinite(w) && w >= 0 && w <= 1000) changes.weight_kg = w;
-  if (Number.isInteger(r) && r >= 0 && r <= 100) { changes.reps = r; if (r !== cur.reps) drop.push("est"); }
+  if (Number.isInteger(r) && r >= 0 && r <= 100) { changes.reps = r; if (r !== from.reps) drop.push("est"); }
   if (Number.isInteger(q) && q >= 0 && q <= 10) { changes.rir = q; drop.push("rir_est"); }
   if (est && Number.isInteger(est.reps) && est.reps >= 1 && est.reps <= 100) {
     changes.reps = est.reps; changes.est = ["reps"];
-    if (typeof cur.rir !== "number" && Number.isInteger(est.rir) && est.rir >= 0 && est.rir <= 10) changes.rir_est = est.rir;
+    if (typeof from.rir !== "number" && Number.isInteger(est.rir) && est.rir >= 0 && est.rir <= 10) changes.rir_est = est.rir;
   }
   if (!Object.keys(changes).length) return logged;
-  return logged.map((l, k) => { if (k !== idx) return l; const next = { ...l, ...changes }; for (const f of drop) if (!(f in changes)) delete next[f]; return next; });
+  return logged.map((l, k) => {
+    if (k !== idx) return l;
+    const next = { ...l };
+    if (base) for (const f of ["weight_kg", "reps", "rir", "rir_est", "est"]) { if (f in base) next[f] = base[f]; else delete next[f]; }
+    Object.assign(next, changes);
+    for (const f of drop) if (!(f in changes)) delete next[f];
+    return next;
+  });
+}
+// The moved lift's cue (W306): today's weight was set for its usual place — and the next-set hint corrects after set 1,
+// said only where that hint can fire (Burst 9 review copy#3): never a load-less bodyweight lift, a tired-eased one or a deload.
+export function movedCue(row, { deload = false } = {}) {
+  const hint = !deload && !row?.eased && !(row?.equipment === "bodyweight" && !(row?.suggested_kg > 0));
+  return `📍 You moved this one — today's weight was set for its usual place in the workout${hint ? "; after set 1 the hint adjusts if it needs to" : ""}.`;
 }
 // A set as the History editor sends it back (W274 + W307): an untouched field keeps its stored value byte for byte (the
 // display is exact, but a re-parse could still round); a CHANGED, valid reps count is a real number and drops `est`; junk
@@ -985,33 +1018,38 @@ export function estimateSet({ logged, at, weightKg, row, beginner = false, setNo
   const pos = mine.filter(({ k }) => k < at).length; // the target's place among the lift's sets
   // The set being estimated is never its own evidence (in the editor its banked numbers ARE the forgotten ones).
   const real = mine.filter(({ l, k }) => k !== at && !repsEstimated(l) && typeof l.reps === "number" && l.weight_kg === weightKg);
-  const cap = (l) => l.reps + (typeof l.rir === "number" ? l.rir : 0);
+  // Unlogged effort reads as the band's near edge — the engine's own convention — in the capacity AND the guess (Burst 9
+  // review engine#2: it was 0 in one and `near` in the other, a double count that guessed every beginner ~`near` low).
+  const rirOf = (l) => (typeof l?.rir === "number" ? l.rir : near);
+  const cap = (l) => l.reps + rirOf(l);
+  const lossAt = (r) => (100 - (r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0)) / 100; // nextSetCapacity's drop
   // The lifter's own set-to-set drop: the latest pair of CONSECUTIVE real sets at this weight (never one with the target).
   let ratio = null;
   for (let j = mine.length - 1; j > 0 && ratio == null; j--) {
     const a = mine[j - 1], b = mine[j];
     if (a.k !== at && b.k !== at && ![a.l, b.l].some(repsEstimated) && a.l.weight_kg === weightKg && b.l.weight_kg === weightKg && cap(a.l) > 0) ratio = Math.max(0.5, Math.min(1, cap(b.l) / cap(a.l)));
   }
-  const q = (l) => (typeof l?.rir === "number" ? l.rir : near);
-  const fwd = (l) => (ratio != null ? cap(l) * ratio : nextSetCapacity(l.reps, typeof l.rir === "number" ? l.rir : null));
   const done = (reps, rir, source) => ({ reps: Math.max(1, Math.min(max + 5, Math.round(reps))), rir: beginner ? null : rir, source });
   const before = real.filter(({ k }) => k < at).at(-1), after = real.find(({ k }) => k > at);
   if (before) {
-    const r = q(before.l), steps = mine.filter(({ k }) => k > before.k && k < at).length;
-    let c = fwd(before.l);
-    for (let n = 0; n < steps; n++) c = ratio != null ? c * ratio : c * (100 - (r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0)) / 100;
+    const r = rirOf(before.l), steps = mine.filter(({ k }) => k > before.k && k < at).length;
+    let c = cap(before.l) * (ratio ?? lossAt(r));
+    for (let n = 0; n < steps; n++) c *= ratio ?? lossAt(r);
+    // …and a real set AFTER it bounds it too (review engine#2): the target did at least what the later set did — fatigue
+    // only takes away — and no more than the earlier one.
+    if (after) { const lo = cap(after.l); c = Math.min(Math.max(c, lo), Math.max(lo, cap(before.l))); }
     return done(c - r, r, "session");
   }
   if (after) {
-    const r = q(after.l), loss = ratio != null ? ratio : (100 - (r <= 1 ? SET_FATIGUE_PCT.near : r <= 3 ? SET_FATIGUE_PCT.mid : 0)) / 100;
-    return done(cap(after.l) / loss - r, r, "session");
+    const r = rirOf(after.l);
+    return done(cap(after.l) / (ratio ?? lossAt(r)) - r, r, "session");
   }
   const n = Number.isInteger(setNo) ? setNo : pos;
   const last = Array.isArray(row?.last_sets) ? row.last_sets : [];
   if (last[n] && !last[n][2] && last[n][0] === weightKg && Number.isFinite(last[n][1])) return done(last[n][1], near, "last"); // [kg, reps, true]: an estimate
   if (!(weightKg > 0)) return null; // no e1RM for bodyweight reps
   const e1 = Math.max(0, ...mine.filter(({ l, k }) => k !== at && !repsEstimated(l) && l.weight_kg > 0 && typeof l.reps === "number").map(({ l }) => l.weight_kg * (1 + cap(l) / 30)),
-    ...last.filter((x) => !x[2] && x[0] > 0 && Number.isFinite(x[1])).map((x) => x[0] * (1 + x[1] / 30)));
+    ...last.filter((x) => !x[2] && x[0] > 0 && Number.isFinite(x[1])).map((x) => x[0] * (1 + (x[1] + near) / 30))); // last time's effort: unlogged, so the near edge
   if (!(e1 > 0)) return null;
   return done(30 * (e1 / weightKg - 1) - near, near, "e1rm");
 }

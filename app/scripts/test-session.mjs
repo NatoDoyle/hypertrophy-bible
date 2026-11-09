@@ -1764,12 +1764,15 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   check("#estimate no real set today: last session's same set at that weight, then the e1RM those sets give", () => {
     const last = { ...row, last_sets: [[100, 10], [100, 9], [100, 8]] };
     assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 100, row: last, setNo: 1 }), { reps: 9, rir: 1, source: "last" }, "set 2 last time: 9");
-    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 90, row: last, setNo: 0 }), { reps: 13, rir: 1, source: "e1rm" }, "a new weight: 100·(1+10/30)=133.3 → at 90: 30·(133.3/90 − 1) − 1 ≈ 13.4");
+    // (Burst 9 review engine#2, deliberate: last time's unlogged effort reads as the near edge, as everywhere else.)
+    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 90, row: last, setNo: 0 }), { reps: 15, rir: 1, source: "e1rm" }, "a new weight: 100·(1+11/30)=136.7 → at 90: 30·(136.7/90 − 1) − 1 ≈ 14.6");
     assert.equal(estimateSet({ logged: [], at: 0, weightKg: 100, row }), null, "nothing real: no estimate");
   });
   check("#estimate an estimate never feeds another, and a beginner gets reps only (never asked RIR)", () => {
     assert.equal(estimateSet({ logged: [W(10, 2, 100, { est: ["reps"] })], at: 1, weightKg: 100, row }), null, "only an estimated neighbour: nothing");
-    assert.deepStrictEqual(estimateSet({ logged: [W(10, null)], at: 1, weightKg: 100, row, beginner: true }), { reps: 7, rir: null, source: "session" }, "no RIR logged reads as near failure (the model's 20%): 10·0.8 − 1 = 7");
+    // Burst 9 review (engine#2, deliberate): an unlogged RIR reads as the band's near edge in BOTH the capacity and the
+    // prediction (the engine's own convention) — it was 0 for one and `near` for the other, a double count: (10+1)·0.8 − 1.
+    assert.deepStrictEqual(estimateSet({ logged: [W(10, null)], at: 1, weightKg: 100, row, beginner: true }), { reps: 8, rir: null, source: "session" }, "(10 + 1)·0.8 − 1 = 7.8");
   });
   check("#estimate editLoggedSet: an estimate marks its fields; a REAL new number clears only its own flag", () => {
     const log = [W(10, 2)];
@@ -1802,7 +1805,7 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   });
   check("#est-bank the estimator skips last time's ESTIMATED sets (marked [kg, reps, true]) — for the same set and for the e1RM", () => {
     const row = { exercise: "bench", rep_range: "8-12", rir: "1-2", last_sets: [[100, 10], [100, 14, true], [100, 8]] };
-    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 100, row, setNo: 1 }), { reps: 9, rir: 1, source: "e1rm" }, "not the guessed 14 (it would say 13)");
+    assert.deepStrictEqual(estimateSet({ logged: [], at: 0, weightKg: 100, row, setNo: 1 }), { reps: 10, rir: 1, source: "e1rm" }, "not the guessed 14 (it would say 14): the real 10's (10+1)·… → 10");
   });
   check("#estimate in the editor the set being estimated never informs its own estimate (its banked numbers are the forgotten ones)", () => {
     const W2 = (reps, rir, kg = 100) => ({ exercise: "bench", set_type: "work", weight_kg: kg, reps, rir, completed_at: "t" });
@@ -1886,6 +1889,54 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
   const b = localReadout(t, [E(7), { exercise: "hack-squat", set_type: "work", weight_kg: 45, reps: 10, rir: 1 }, { exercise: "hack-squat", set_type: "work", weight_kg: 45, reps: 10, rir: 1 }]).lifts[0];
   assert.deepStrictEqual([b.anchor_kg, b.top, b.under], [60, false, 0], "(D1) the top set's weight anchors, even estimated");
 });
+
+// --- Burst 9 review (W310): the fixes' own tests.
+{
+  const { estimateSet, liftGaps, dropSkipped } = playerCore;
+  check("#estimate (review engine#2) both real neighbours bound the guess: 12, ?, 12 is ~12 (it was ~8), and a later set is never out-lifted", () => {
+    const B = (reps, rir = null) => ({ exercise: "bench", set_type: "work", weight_kg: 100, reps, ...(rir != null ? { rir } : {}), completed_at: "t" });
+    const row = { exercise: "bench", rep_range: "8-12", rir: "1-2" };
+    assert.deepStrictEqual(estimateSet({ logged: [B(12), B(12, null), B(12)], at: 1, weightKg: 100, row, beginner: true }), { reps: 12, rir: null, source: "session" });
+    assert.deepStrictEqual(estimateSet({ logged: [B(10, 2), B(0), B(9, 2)], at: 1, weightKg: 100, row }), { reps: 9, rir: 2, source: "session" }, "10@2 then 9@2: set 2 between them");
+  });
+  check("#gaps (review engine#3) a gap with ANOTHER lift's sets inside it isn't time between sets — a superset partner's shared stamp is", () => {
+    const at = (sec) => new Date(Date.UTC(2026, 10, 9, 10, 0, 0) + sec * 1000).toISOString();
+    const W = (ex, sec) => ({ exercise: ex, set_type: "work", weight_kg: 50, reps: 8, completed_at: at(sec) });
+    const g = liftGaps([W("bench", 0), W("row", 150), W("row", 300), W("bench", 400), W("bench", 600)]);
+    assert.deepStrictEqual(g.bench, { median_s: 200, n: 1 }, "only bench→bench with nothing between");
+    assert.deepStrictEqual(g.row, { median_s: 150, n: 1 });
+    assert.deepStrictEqual(liftGaps([W("curl", 0), W("tri", 0), W("curl", 150), W("tri", 150)]).curl, { median_s: 150, n: 1 }, "a round's partner shares the stamp");
+  });
+  check("#skip (review crash#1) a skipped set takes its guessed numbers with it: the shrunk lift's reps, effort and pending estimate go", () => {
+    const before = { ex: [{ exercise: "bench", sets: 3 }, { exercise: "row", sets: 3 }], reps: { 0: 9, 1: 10 }, eff: { 0: 2, 1: 1 }, estPending: { bench: { setNo: 1, reps: 9, rirChip: 2, rir: 2 } } };
+    const after = { ...before, ex: [{ exercise: "bench", sets: 2 }, { exercise: "row", sets: 3 }] };
+    const r = dropSkipped(before, after);
+    assert.deepStrictEqual([r.reps, r.eff, r.estPending], [{ 1: 10 }, { 1: 1 }, {}]);
+    assert.equal(dropSkipped(before, before), before, "nothing shrank: the same session back");
+  });
+  check("#skip (review copy#1) an undone skip takes its 'Pick a different one' offer with it", () => {
+    const sess = { session_id: "s", ex: [{ exercise: "bench", sets: 2, rep_range: "8-12" }, { exercise: "row", sets: 2, rep_range: "8-12" }], logged: [{ exercise: "bench", set_type: "work", weight_kg: 50, reps: 8 }], i: 0, set: 1, weights: {}, reps: {}, eff: {}, wUnits: {} };
+    const r = skipSet(sess);
+    const offered = { ...r.sess, offerPick: { kind: "skip", name: "Bench" } };
+    const u = undoSkip(offered);
+    assert.equal(u.ok, true);
+    assert.equal("offerPick" in u.sess, false);
+  });
+  check("#est-edit (review crash#0) the editor edits from the entry it OPENED with: a value typed and typed back is the original — flags and all", () => {
+    const base = { exercise: "bench", set_type: "work", weight_kg: 30, reps: 9, est: ["reps"], rir_est: 2, completed_at: "t" };
+    let log = [base];
+    const step = (r, q) => { const { patch } = resolveEdit({ entry0: base, wText: "30", rText: r, qText: q, shownW: "30", shownR: "9", shownQ: "2", unit: "kg" }); log = editLoggedSet(log, 0, patch, { exercise: "bench", completed_at: "t", base }); };
+    step("10", "3");
+    assert.deepStrictEqual([log[0].reps, log[0].rir, "est" in log[0], "rir_est" in log[0]], [10, 3, false, false], "typed: real");
+    step("9", "2");
+    assert.deepStrictEqual(log[0], base, "typed back: the estimate it was, untouched");
+    const real = { exercise: "bench", set_type: "work", weight_kg: 30, reps: 10, rir: 2, completed_at: "u" };
+    let log2 = [real];
+    const step2 = (q) => { const { patch } = resolveEdit({ entry0: real, wText: "30", rText: "10", qText: q, shownW: "30", shownR: "10", shownQ: "2", unit: "kg" }); log2 = editLoggedSet(log2, 0, patch, { exercise: "bench", completed_at: "u", base: real }); };
+    step2("3"); step2("2");
+    assert.equal(log2[0].rir, 2, "RIR 3 then back to 2: 2");
+  });
+}
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -2232,6 +2232,21 @@ check("#est (review D1) an ease still comes from a REAL set 1 well under the ran
   const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 5, { rir: 0 }), anySet("hack-squat", 60, 9, e), anySet("hack-squat", 60, 4, { rir: 0 }))], "hack-squat", "8-12", undefined, null, "1-2");
   assert.ok(s.suggested_kg < 60 && /lightened/.test(s.note), JSON.stringify([s.suggested_kg, s.note]));
 });
+// --- Burst 9 review (doors#0): a workout the lifter REORDERED (W306 targets.moved) was done in its performed order — its
+// anchor position comes from that, so a lift moved to the front isn't judged next time as if it had come third.
+check("#order (review doors#0) a lift moved to the front last time: next time's position is measured against where it was DONE", () => {
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-3" }, { exercise: "incline-dumbbell-press", sets: 3, rep_range: "6-10", rir: "1-3", moved: true }];
+  const moved = { ...onDay("B", 1, inc(30, 10, { rir: 1 }), inc(30, 10, { rir: 1 }), inc(30, 10, { rir: 1 }),
+    { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }, { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }, { exercise: "barbell-bench-press", set_type: "work", weight_kg: 80, reps: 8 }), targets: t };
+  const s = ordServed("B", [moved]);
+  const asPlanned = ordServed("B", [{ ...moved, targets: t.map(({ moved: _m, ...x }) => x) }]);
+  assert.doesNotMatch(asPlanned.suggestion_note, /came first/, "control: judged in its planned slot, no position to adjust for");
+  // 3 overlapping sets cost under half a dumbbell step here, so the order rule does what it does for any small shift: the
+  // weight stays and the position lowers the aims (a bigger shift moves the weight — the #order tests above).
+  assert.match(s.suggestion_note, /This time it comes after 3 sets that also work your chest \(last time it came first\)/);
+  const sum = (r) => (r.rep_targets ?? []).reduce((a, b) => a + b, 0);
+  assert.ok(sum(s) < sum(asPlanned), `done first, served second: lower aims (${s.rep_targets} vs ${asPlanned.rep_targets})`);
+});
 check("#est no order move reads an estimated set 1 (W290 converts real capacity only)", () => {
   const s = ordServed("B", [onDay("A", 1, inc(30, 9, { est: ["reps"] }), inc(30, 9), inc(30, 8))]);
   assert.equal(s.suggested_kg, 30, "held — the order rule would have moved it to 27.5 from a real set 1");

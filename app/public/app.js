@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2048,12 +2048,8 @@ function applySkip(r, redraw) {
   skipPending = false; quitPending = false; confirmSet.clear();
   if (!r.ok) return redraw();
   const prev = sess.ex[sess.i], before = sess;
-  sess = r.sess;
-  // A skipped set takes its pending "Forgot the numbers?" estimate with it (W307) — only the lifts whose sets shrank.
-  if (sess.estPending) {
-    const shrunk = new Set(sess.ex.filter((x, k) => x.sets < (before.ex[k]?.sets ?? x.sets)).map((x) => x.exercise));
-    if (shrunk.size) sess = { ...sess, estPending: Object.fromEntries(Object.entries(sess.estPending).filter(([id]) => !shrunk.has(id))) };
-  }
+  // A skipped set takes its guessed numbers with it — steppers and any pending estimate (dropSkipped, Burst 9 review).
+  sess = dropSkipped(before, r.sess);
   // A skip that ENDS a lift moves on to the next one — which may not be the one you want now (W306).
   if (!sess.complete && sess.ex[sess.i]?.exercise !== prev?.exercise) sess = { ...sess, offerPick: { kind: "skip", name: prev.name } };
   saveSess();
@@ -2116,9 +2112,12 @@ const estLive = (k) => {
   const f = estimatedFields(p, { setNo: p.setNo, reps: sess.reps[k], eff: sess.eff[k] });
   return f.estReps || f.rir_est != null;
 };
-const forgotHtml = (k) => estLive(k)
-  ? `<p class="muted" data-est-note="${k}" role="status" style="font-size:.9rem;margin:4px 0">~ Estimated from your other sets — change ${rirOn() ? "either" : "it"} if you remember.</p>`
-  : estimateFor(k) ? `<button class="btn ghost inline" data-forgot="${k}" style="margin:4px 0">Forgot the numbers?</button>` : "";
+const forgotHtml = (k) => {
+  const p = sess.estPending?.[sess.ex[k]?.exercise]; // "either" only when both were filled (Burst 9 review copy#4)
+  return estLive(k)
+    ? `<p class="muted" data-est-note="${k}" role="status" style="font-size:.9rem;margin:4px 0">~ Estimated from your other sets — change ${p?.rirChip != null ? "either" : "it"} if you remember.</p>`
+    : estimateFor(k) ? `<button class="btn ghost inline" data-forgot="${k}" style="margin:4px 0">Forgot the numbers?</button>` : "";
+};
 // The note goes the moment nothing on screen is the estimate any more (the steppers and chips update in place).
 function syncEstNotes() { app.querySelectorAll("[data-est-note]").forEach((n) => { if (!estLive(+n.dataset.estNote)) n.remove(); }); }
 const wireForgot = (repaint) => app.querySelectorAll("[data-forgot]").forEach((b) => b.onclick = () => {
@@ -2607,7 +2606,7 @@ function openSetEditor(idx, host, rerender) {
     const { lastKg, priorBests, todayKg, todayReps } = typoOpts(sess.ex.findIndex((x) => x.exercise === ed.exercise), ed.idx);
     const { patch, flagged } = resolveEdit({ entry0, wText: $("#fix-w").value, rText: $("#fix-r").value, qText: $("#fix-q") ? $("#fix-q").value : null, shownW, shownR, shownQ, unit: ed.unit,
       lastKg, priorBests, todayKg, todayReps, confirmed: editConfirmed.has(key) });
-    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at });
+    const next = editLoggedSet(sess.logged, ed.idx, patch, { exercise: ed.exercise, completed_at: ed.completed_at, base: entry0 }); // from what it opened with
     if (next !== sess.logged) {
       sess.logged = next;
       // The latch means "a PR was celebrated": an edit may clear it, never set it silently.
@@ -2627,7 +2626,7 @@ function openSetEditor(idx, host, rerender) {
   if ($("#fix-est")) $("#fix-est").onclick = () => {
     const est = editorEstimate();
     if (!est || !setEditor) return;
-    const next = editLoggedSet(sess.logged, idx, { estimate: { reps: est.reps, rir: est.rir } }, { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null });
+    const next = editLoggedSet(sess.logged, idx, { estimate: { reps: est.reps, rir: est.rir } }, { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, base: entry0 });
     if (next === sess.logged) return;
     sess.logged = next;
     // An estimate never celebrates — it can only clear a latch a real number set.
@@ -2827,7 +2826,7 @@ function renderPlayer() {
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
-    ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">📍 You moved this one — today's weight was set for its usual place in the workout; after set 1 the hint adjusts if it needs to.</div>` : ""}
+    ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}

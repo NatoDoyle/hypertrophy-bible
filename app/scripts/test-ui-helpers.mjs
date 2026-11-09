@@ -829,7 +829,7 @@ check("player (W306) 'Do this later' is the pure deferToEnd; after it or a lift-
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /offerPick: \{ kind: "skip", name: prev\.name \}/, "a skip that ends a lift offers the pick too");
   const set = fnBody(appJs, "function renderPlayer() {", 9000);
   assert.match(set, /\$\{pickCue\(\)\}/);
-  assert.match(set, /sess\.set === 0 && e\.moved \? `<div class="cue" id="moved-cue">📍 You moved this one — today's weight was set for its usual place in the workout; after set 1 the hint adjusts if it needs to\.<\/div>` : ""/);
+  assert.match(set, /sess\.set === 0 && e\.moved \? `<div class="cue" id="moved-cue">\$\{movedCue\(e, \{ deload: sess\.deload \}\)\}<\/div>` : ""/, "the cue's words: movedCue (Burst 9 review copy#3)");
   for (const h of ["$(\"#done\").onclick = () => {", "$(\"#doner\").onclick = () => {"]) assert.match(fnBody(appJs, h, 2500), /delete sess\.offerPick;/, `${h}: a banked set answers the offer`);
 });
 check("player (W289): both reps steppers start on the per-set aim (repSeed, from the BANKED count), both bank handlers drop the stale value, the hint fills its reps", () => {
@@ -1159,6 +1159,20 @@ check("#rest-read player wiring (W308): every rest records the timer it ran — 
 
 check("#est (review D3) History's workout detail shows an estimate as one: ~reps, and an estimated RIR as @~N", () => {
   assert.match(appJs, /const setText = \(s\) => `\$\{dispWeightFor\(s\.weight_kg, s\.exercise\)\} × \$\{repsShown\(s\)\}\$\{typeof s\.rir === "number" \? ` @\$\{s\.rir\}` : typeof s\.rir_est === "number" \? ` @~\$\{s\.rir_est\}` : ""\}/);
+});
+
+check("#moved (review copy#3/#4) the moved cue promises a hint only where one can fire; the estimate note says 'either' only when both were filled", () => {
+  const { movedCue } = sessionCore;
+  assert.match(movedCue({ equipment: "barbell", suggested_kg: 60 }, {}), /after set 1 the hint adjusts/);
+  assert.doesNotMatch(movedCue({ equipment: "bodyweight", suggested_kg: 0 }, {}), /hint/, "a bodyweight lift has no next-set hint");
+  assert.doesNotMatch(movedCue({ equipment: "barbell", suggested_kg: 60, eased: true }, {}), /hint/, "a tired-eased lift has none");
+  assert.doesNotMatch(movedCue({ equipment: "barbell", suggested_kg: 60 }, { deload: true }), /hint/, "nor a deload week");
+  assert.match(appJs, /change \$\{p\?\.rirChip != null \? "either" : "it"\} if you remember/);
+});
+
+check("#w310 wiring: a skip drops the skipped lift's guessed numbers (dropSkipped); the editor edits from what it opened with (base)", () => {
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1600), /sess = dropSkipped\(before, r\.sess\);/);
+  assert.equal((appJs.match(/editLoggedSet\(sess\.logged, (ed\.)?idx, [^;]*base: entry0 \}\)/g) ?? []).length, 2, "both editor writes carry the base");
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -57,11 +57,19 @@ function recentWorkSets(sessions, exId, k) {
     // Deload sets are planned-easy — anchoring double progression to them would
     // leave every next block permanently one increment behind. Skip them.
     const sets = (sessions[i].sets ?? []).filter((s) => s.exercise === exId && (s.set_type ?? "work") === "work" && !s.deload);
-    if (sets.length) out.push({ sets, date: sessions[i].date ?? null, target: (sessions[i].targets ?? []).find((t) => t.exercise === exId) ?? null, name: sessions[i].session_name ?? null });
+    if (sets.length) out.push({ sets, date: sessions[i].date ?? null, target: (sessions[i].targets ?? []).find((t) => t.exercise === exId) ?? null, name: sessions[i].session_name ?? null,
+      // The order the workout was DONE in — each lift with its work sets — and whether the lifter reordered it (W306: a
+      // target marked moved); the order rule reads a reordered workout's positions from it (Burst 9 review doors#0).
+      performed: performedOrder(sessions[i].sets), moved: (sessions[i].targets ?? []).some((t) => t?.moved === true) });
   }
   return out;
 }
 
+const performedOrder = (sets) => {
+  const n = new Map();
+  for (const s of sets ?? []) if (s?.exercise && (s.set_type ?? "work") === "work") n.set(s.exercise, (n.get(s.exercise) ?? 0) + 1);
+  return [...n];
+};
 // The most recent date this exercise was trained AT ALL — deload/comeback
 // sessions included, because a comeback session is still training. Layoff
 // detection must anchor here: anchoring on the last NON-deload session made the
@@ -651,7 +659,12 @@ const musclesFor = (byId) => (id) => { const e = byId.get(id); return e ? { prim
 const setsWord = (n) => `${n} set${n === 1 ? "" : "s"}`;
 function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG) {
   if (!slot?.program?.sessions || !last?.name || byId.get(ex.exercise)?.equipment === "bodyweight") return null;
-  const today = slot.session?.exercises ?? [], anchorDay = slot.program.sessions.find((s) => s.name === last.name)?.exercises ?? [];
+  const today = slot.session?.exercises ?? [], anchorPlan = slot.program.sessions.find((s) => s.name === last.name)?.exercises ?? [];
+  // A workout the lifter REORDERED (W306 "Do this next" / "Do this later") was done in its performed order: its anchor
+  // position comes from that — each lift at its planned (unscaled) sets where the plan has it (Burst 9 review doors#0) —
+  // so a lift moved to the front isn't judged next time as if it had come third.
+  const anchorDay = last.moved && last.performed?.length && anchorPlan.length
+    ? last.performed.map(([id, n]) => anchorPlan.find((e) => e.exercise === id) ?? { exercise: id, sets: n }) : anchorPlan;
   const ti = today.findIndex((e) => e.exercise === ex.exercise), ai = anchorDay.findIndex((e) => e.exercise === ex.exercise);
   if (ti < 0 || ai < 0) return null;
   const now = priorOverlapSets(today, ti, musclesFor(byId)), then = priorOverlapSets(anchorDay, ai, musclesFor(byId));
