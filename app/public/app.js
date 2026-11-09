@@ -4085,7 +4085,7 @@ async function renderHistory() {
       if (!byEx.has(set.exercise)) { byEx.set(set.exercise, { name: set.name || set.exercise, sets: [] }); order.push(set.exercise); }
       byEx.get(set.exercise).sets.push(set);
     }
-    const setText = (s) => `${dispWeightFor(s.weight_kg, s.exercise)} × ${s.reps}${typeof s.rir === "number" ? ` @${s.rir}` : ""}${(s.set_type ?? "work") === "warmup" ? " ᵂ" : ""}${s.deload ? " ᴰ" : ""}`;
+    const setText = (s) => `${dispWeightFor(s.weight_kg, s.exercise)} × ${repsShown(s)}${typeof s.rir === "number" ? ` @${s.rir}` : typeof s.rir_est === "number" ? ` @~${s.rir_est}` : ""}${(s.set_type ?? "work") === "warmup" ? " ᵂ" : ""}${s.deload ? " ᴰ" : ""}`;
     const exRows = order.map((k) => {
       const g = byEx.get(k);
       return `<div class="row"><div style="flex:1"><b>${esc(g.name)}</b>

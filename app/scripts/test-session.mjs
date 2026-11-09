@@ -1732,9 +1732,11 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
   check("#est the read-out counts an estimated set as done, grades only the real ones, and says how many were estimated", () => {
     const t = [{ exercise: "bench", sets: 3, rep_range: "8-12", rir: "1-2" }];
     const r = localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, rir: 1 }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, ...e }, { exercise: "bench", set_type: "work", weight_kg: 100, reps: 12, rir: 1 }]).lifts[0];
-    assert.deepStrictEqual([r.done, r.planned, r.top, r.graded_all, r.est], [3, 3, true, false, 1]);
+    // Burst 9 review (D2, deliberate): an estimate at the weight means no "top" (the engine won't bump on it either), and
+    // the estimated set is among the sets at the anchor weight (D1: its weight is real).
+    assert.deepStrictEqual([r.done, r.planned, r.top, r.graded_all, r.est], [3, 3, false, true, 1]);
     const all = localReadout(t, [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 6, ...e }]).lifts[0];
-    assert.deepStrictEqual([all.done, all.top, all.under, all.anchor_kg], [1, false, 0, null], "nothing real: nothing graded, nothing 'under'");
+    assert.deepStrictEqual([all.done, all.top, all.under, all.anchor_kg], [1, false, 0, 100], "nothing real: nothing graded, nothing 'under' — the weight it was at is still the weight it was at");
   });
 }
 
@@ -1871,6 +1873,19 @@ check("restAlertStep (W286 review): never hands over to a chime that can't be tr
     assert.deepStrictEqual([t[0].rest_s, "rest_s" in t[1]], [210, false]);
   });
 }
+
+// --- Burst 9 review (D1/D2, lesson 98): the read-out grades as the engine judges — an estimated set's weight anchors, a
+// lift with any estimate at that weight is never "at the top", and the anchor weight is the one the session worked at.
+check("#est (review D2) the read-out never calls a lift 'at the top' with an estimate at the weight — as the engine never bumps", () => {
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const R = (reps, extra = {}) => ({ exercise: "hack-squat", set_type: "work", weight_kg: 60, reps, rir: 1, ...extra });
+  const E = (reps) => ({ exercise: "hack-squat", set_type: "work", weight_kg: 60, reps, est: ["reps"] });
+  assert.equal(localReadout(t, [R(10), E(8), E(6)]).lifts[0].top, false, "forgotten weaker sets: not the top");
+  assert.equal(localReadout(t, [R(10), E(10), R(10)]).lifts[0].top, false, "an estimate at the top: still not the top");
+  assert.equal(localReadout(t, [R(10), R(10), R(10)]).lifts[0].top, true, "control");
+  const b = localReadout(t, [E(7), { exercise: "hack-squat", set_type: "work", weight_kg: 45, reps: 10, rir: 1 }, { exercise: "hack-squat", set_type: "work", weight_kg: 45, reps: 10, rir: 1 }]).lifts[0];
+  assert.deepStrictEqual([b.anchor_kg, b.top, b.under], [60, false, 0], "(D1) the top set's weight anchors, even estimated");
+});
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

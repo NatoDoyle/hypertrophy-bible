@@ -1157,5 +1157,9 @@ check("#rest-read player wiring (W308): every rest records the timer it ran — 
   assert.match(appJs, /\$\{\(l\.reps_shown \?\? l\.reps\)\.join\(", "\)\} reps at/);
 });
 
+check("#est (review D3) History's workout detail shows an estimate as one: ~reps, and an estimated RIR as @~N", () => {
+  assert.match(appJs, /const setText = \(s\) => `\$\{dispWeightFor\(s\.weight_kg, s\.exercise\)\} × \$\{repsShown\(s\)\}\$\{typeof s\.rir === "number" \? ` @\$\{s\.rir\}` : typeof s\.rir_est === "number" \? ` @~\$\{s\.rir_est\}` : ""\}/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

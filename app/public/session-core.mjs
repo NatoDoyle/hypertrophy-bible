@@ -660,24 +660,26 @@ export function localReadout(targets, logged) {
     const easyDay = !!t?.deload || sets.some((s) => s.deload);
     // Effort and the top are graded over the ANCHOR sets — the ones the engine judges (Burst 6 review): a lighter
     // back-off set is a different load, never evidence, so it can't flip a line against the next weight.
-    // …and an ESTIMATED rep count (W307) is a set done, never graded: the anchor and the grade read the real ones.
+    // …and an ESTIMATED rep count (W307) is a set done, never evidence — as the engine judges it (Burst 9 review D1/D2):
+    // its weight is real, so it anchors; any estimate at that weight means no "top"; effort and misses read real sets.
     const real = sets.filter((s) => !repsEstimated(s));
-    const judged = real.length && min != null ? anchorSets(real, min).judged : real;
-    const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
-    const rated = !easyDay && !!band && judged.length > 0 && rirs.length >= Math.ceil(judged.length / 2);
+    const judged = sets.length && min != null ? anchorSets(sets, min).judged : sets;
+    const realJ = judged.filter((s) => !repsEstimated(s)), estAt = judged.length - realJ.length;
+    const rirs = realJ.map((s) => s.rir).filter((r) => typeof r === "number");
+    const rated = !easyDay && !!band && realJ.length > 0 && rirs.length >= Math.ceil(realJ.length / 2);
     const avg = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
     // The top of the range AT THE PLAN'S EFFORT (Burst 6), as the engine judges it — against the band this workout
     // was served. Reached only by going past the band, it is its own flag: worth a look, never "time to go up".
     const near = band ? +band[1] : 0;
-    const graded = !easyDay && max != null && judged.length > 0;
-    const top = graded && judged.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
+    const graded = !easyDay && max != null && realJ.length > 0;
+    const top = graded && !estAt && judged.every((s) => repsAtBand(s.reps, s.rir, near) >= max);
     return {
       exercise: id, planned: Number.isInteger(t?.sets) ? t.sets : null, done: sets.length, min, max,
       reps: sets.map((s) => s.reps), kg: sets.map((s) => s.weight_kg ?? 0),
       reps_shown: sets.map(repsShown), // an estimated count with its ~ (W307)
       // The time between its sets, and the timer it ran (W308) — null where there's nothing to say.
       gap_s: gaps[id]?.median_s ?? null, rest_s: Number.isInteger(t?.rest_s) ? t.rest_s : null,
-      top, past_band: graded && !top && judged.every((s) => s.reps >= max),
+      top, past_band: graded && !top && !estAt && judged.every((s) => s.reps >= max),
       // Whether every set was graded — "top of the range on every set" says so only then (round 2: a ramp set under the
       // range sat beside it otherwise).
       graded_all: judged.length === sets.length,

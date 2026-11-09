@@ -2170,17 +2170,67 @@ check("#est set 1 estimated: the weight holds and says why — no bump, no ease,
   const all = suggestWeight([withTargets(null, anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12, e))], "barbell-bench-press", "8-12", undefined, null, "1-2");
   assert.equal(all.suggested_kg, 100, "nothing real: holds");
 });
-check("#est a later estimated set is judged out: it neither earns the bump nor blocks it", () => {
+// Burst 9 review (D2, deliberate): a forgotten set is MISSING evidence — a bump needs every set at the weight real and at
+// the top, so an estimated one blocks it (the old "nor blocks it" let forgetting the weaker sets earn a bump).
+check("#est a later estimated set blocks the bump (missing evidence) — and never earns one", () => {
   const e = { est: ["reps"] };
   const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }];
   const up = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 9, e), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
-  assert.equal(up.suggested_kg, 102.5, "the two real sets at the top earn it; the forgotten one doesn't block it");
+  assert.equal(up.suggested_kg, 100, "two real sets at the top, one forgotten: no bump on two-thirds of the evidence");
+  const top = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 12), anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 12))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.equal(top.suggested_kg, 100, "even an estimate AT the top earns nothing");
+  assert.equal(top.note, "One of last time's sets at 100 kg was an estimate — same weight until a real set shows where you are.");
   const no = suggestWeight([withTargets(t, anySet("barbell-bench-press", 100, 11), anySet("barbell-bench-press", 100, 12, e), anySet("barbell-bench-press", 100, 11))], "barbell-bench-press", "8-12", undefined, null, "1-2");
   assert.equal(no.suggested_kg, 100, "an estimated 12 can't make the top for the real 11s");
 });
 check("#est last_sets marks an estimated set ([kg, reps, true]) — the player's estimator skips it, 'last time' shows a ~", () => {
   const s = suggestWeight([withTargets([{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }], anySet("barbell-bench-press", 100, 10), anySet("barbell-bench-press", 100, 9, { est: ["reps"] }), anySet("barbell-bench-press", 100, 9))], "barbell-bench-press", "8-12", undefined, null, "1-2");
   assert.deepEqual(s.last_sets, [[100, 10], [100, 9, true], [100, 9]]);
+});
+// --- Burst 9 review (D1/D2): an estimated set's WEIGHT is real — only its reps are a guess. The anchor (which weight the
+// session was AT) counts it; a bump needs every set at that weight real; an ease still comes from a real set 1.
+check("#est (review D1) set 1 estimated at the top weight, real back-offs lighter: next time holds the TOP weight — never the back-off's", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 7, e), anySet("hack-squat", 45, 10, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "Last time's first set at 60 kg was an estimate — same weight until a real set shows where you are."]);
+  const typed = suggestWeight([withTargets(t, anySet("hack-squat", 60, 7, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }), anySet("hack-squat", 45, 10, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.equal(typed.suggested_kg, 60, "control: the same numbers typed anchor at 60 too");
+});
+check("#est (review D1) a real ramp before estimated work sets: the work weight holds — the ramp never becomes the anchor", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 40, 10, { rir: 1 }), anySet("hack-squat", 60, 7, e), anySet("hack-squat", 60, 7, e))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [60, "Last time's sets at 60 kg were estimates — same weight until a real set shows where you are."]);
+});
+check("#est (review D2) forgetting the later, weaker sets never earns a bump the real numbers wouldn't", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "6-10", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 1 }), anySet("hack-squat", 60, 8, e), anySet("hack-squat", 60, 6, e))], "hack-squat", "6-10", undefined, null, "1-2");
+  const typed = suggestWeight([withTargets(t, anySet("hack-squat", 60, 10, { rir: 1 }), anySet("hack-squat", 60, 8, { rir: 1 }), anySet("hack-squat", 60, 6, { rir: 1 }))], "hack-squat", "6-10", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, typed.suggested_kg], [60, 60], "both hold");
+});
+check("#est (review D2) the reserve bump needs every set at the weight real too", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const S = (reps, extra) => anySet("barbell-bench-press", 100, reps, extra);
+  assert.equal(suggestWeight([withTargets(t, S(10, { rir: 3 }), S(10, { rir: 3 }), S(10, { rir: 3 }))], "barbell-bench-press", "8-12", undefined, null, "1-2").suggested_kg, 102.5, "control: ~3 in reserve bumps");
+  const s = suggestWeight([withTargets(t, S(10, { rir: 3 }), S(10, e), S(10, { rir: 3 }))], "barbell-bench-press", "8-12", undefined, null, "1-2");
+  assert.deepEqual([s.suggested_kg, s.note], [100, "One of last time's sets at 100 kg was an estimate — same weight until a real set shows where you are."]);
+});
+check("#est (review D1) a guessed miss is no strike: an estimated set 1 under the range last-but-one time doesn't turn a one-rep miss into an ease", () => {
+  const prev = { date: "2026-05-25T18:00:00Z", sets: [anySet("hack-squat", 60, 6, { est: ["reps"] })], targets: [{ exercise: "hack-squat", sets: 1, rep_range: "8-12", rir: "1-2" }] };
+  const last = { date: "2026-06-01T18:00:00Z", sets: [anySet("hack-squat", 60, 7, { rir: 1 })], targets: [{ exercise: "hack-squat", sets: 1, rep_range: "8-12", rir: "1-2" }] };
+  const s = suggestWeight([prev, last], "hack-squat", "8-12", undefined, null, "1-2");
+  assert.equal(s.suggested_kg, 60, "held once — " + s.note);
+  const realPrev = { ...prev, sets: [anySet("hack-squat", 60, 6, { rir: 1 })] };
+  assert.ok(suggestWeight([realPrev, last], "hack-squat", "8-12", undefined, null, "1-2").suggested_kg < 60, "control: a REAL miss last-but-one time is a strike, and it eases");
+});
+check("#est (review D1) an ease still comes from a REAL set 1 well under the range — a forgotten later set doesn't stop it", () => {
+  const e = { est: ["reps"] };
+  const t = [{ exercise: "hack-squat", sets: 3, rep_range: "8-12", rir: "1-2" }];
+  const s = suggestWeight([withTargets(t, anySet("hack-squat", 60, 5, { rir: 0 }), anySet("hack-squat", 60, 9, e), anySet("hack-squat", 60, 4, { rir: 0 }))], "hack-squat", "8-12", undefined, null, "1-2");
+  assert.ok(s.suggested_kg < 60 && /lightened/.test(s.note), JSON.stringify([s.suggested_kg, s.note]));
 });
 check("#est no order move reads an estimated set 1 (W290 converts real capacity only)", () => {
   const s = ordServed("B", [onDay("A", 1, inc(30, 9, { est: ["reps"] }), inc(30, 9), inc(30, 8))]);

@@ -45,8 +45,6 @@ function lastSetsForExercise(sessions, exId) {
 // `min` (proved in the range), else set 1's weight; `judged` = the sets AT that weight,
 // `first` = the freshest of them. See suggestWeight.
 const anchorOf = anchorSets; // derive-core's, shared with the read-out (Burst 6 review)
-// …over REAL rep counts only (W307: an estimated set is a set done, never evidence). Null when none is real.
-const realAnchor = (sets, min) => { const real = (sets ?? []).filter((s) => !repsEstimated(s)); return real.length ? anchorOf(real, min) : null; };
 // The bottom of the range a past session was DONE in — its stored target (W280) when it
 // has one, else today's range (older sessions).
 const ownMin = (entry, repRange) => parseRange(entry.target?.rep_range ?? repRange).min;
@@ -187,9 +185,14 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // 60 next time. A heavier set that FAILED the range (a one-off heavy single) never anchors,
   // and a lighter back-off is still a different load, never evidence (C14). Reps/RIR are
   // judged only over the sets AT the anchor weight. Straight sets are byte-identical.
-  const anchor = realAnchor(last.sets, ownMin(last, repRange)) ?? { weight: last.sets[0].weight_kg ?? 0, judged: [], first: null };
+  // An ESTIMATED set's weight is real — only its reps are a guess (W307; Burst 9 review D1): the anchor counts it, so a
+  // forgotten top set never hands the anchor to a lighter back-off or ramp. What it can't do is move the load: below,
+  // the freshest set at the weight estimated holds it, any estimate there blocks a bump, and an ease reads real sets.
+  const anchor = anchorOf(last.sets, ownMin(last, repRange));
   const lastWeight = anchor.weight;
   const judged = anchor.judged;
+  const realJudged = judged.filter((s) => !repsEstimated(s)), estN = judged.length - realJudged.length;
+  const estHold = () => `${estN === 1 ? "One" : estN} of last time's sets at ${lastWeight} kg ${estN === 1 ? "was an estimate" : "were estimates"} — same weight until a real set shows where you are.`;
   // THE TOP, AT THE PLAN'S EFFORT (Burst 6 — owner: "It says I need to pay attention to the rir because I hit
   // failure… but then told me to increase the weight"). The KB's trigger is "all sets reach the top of the rep
   // range at target RIR" (double-progression.json): a set's reps at the band's near edge (repsAtBand; unlogged
@@ -212,9 +215,9 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
     if (floor > 0 && !(eased < lastWeight)) return { suggested_kg: lastWeight, note: `It's been ${layoffDays} days — start on the empty bar and ramp back in as it feels easy.`, layoff_days: layoffDays, ...base };
     return { suggested_kg: eased, note: `It's been ${layoffDays} days — I eased this to ${eased} kg so you ramp back in safely. Add load as it feels easy.`, layoff_days: layoffDays, ...base };
   }
-  // A FORGOTTEN number never moves the load (W307): set 1's reps estimated — the freshest, most telling set — or nothing
-  // real left to judge, and the weight holds, ahead of every bump and ease (the layoff ease above is safety, and stays).
-  if (repsEstimated(last.sets[0]) || !anchor.first) return { suggested_kg: lastWeight, note: `${anchor.first ? "Last time's first set was an estimate" : "Last time's numbers were estimates"} — same weight until a real set shows where you are.`, ...base };
+  // A FORGOTTEN number never moves the load (W307): the freshest set at the weight estimated — the most telling one — and
+  // the weight holds, ahead of every bump and ease (the layoff ease above is safety, and stays).
+  if (repsEstimated(anchor.first)) return { suggested_kg: lastWeight, note: `${!realJudged.length && judged.length > 1 ? `Last time's sets at ${lastWeight} kg were estimates` : `Last time's first set at ${lastWeight} kg was an estimate`} — same weight until a real set shows where you are.`, ...base };
   const band = /(\d+)\s*-\s*(\d+)/.exec(prescribedRir ?? ""); // TODAY's band: rule 3's target, and what the next session is judged against
   // The top reached only by going PAST the band holds (Burst 6; the KB: "below target (too hard) -> hold"), and
   // says what earns the bump. Ahead of the RIR surplus, so one set at failure among easy ones is never averaged
@@ -230,11 +233,12 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // wave, not sandbagging — bumping their load would undo the easy week.
   // Never for a set that came in UNDER the range (Burst 6): it stopped early, it wasn't light — the next-set hint
   // never says "heavier" for one either (lesson 98), and the read-out's "under the range" sat beside "add 2.5 kg".
-  const rirs = judged.map((s) => s.rir).filter((r) => typeof r === "number");
+  const rirs = realJudged.map((s) => s.rir).filter((r) => typeof r === "number"); // a guessed count's effort is no evidence either
   const avgRir = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
   if (rirs.length) {
     const bandTop = judgeBand ? +judgeBand[2] : 2;
     if (!holdLoad && avgRir >= bandTop + 1 && judged.every((s) => s.reps >= min)) {
+      if (estN) return { suggested_kg: lastWeight, note: estHold(), ...base }; // a bump needs every set at the weight real (review D2)
       const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
       return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
     }
@@ -255,10 +259,10 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // set that met its own range is never a strike (Burst 1 review).
   const s1 = anchor.first;
   const s1Rir = typeof s1.rir === "number" ? s1.rir : null;
-  if (!holdLoad && lastWeight > 0 && judged.every((s) => s.reps < min) && (s1Rir == null || s1Rir <= 1)) {
+  if (!holdLoad && lastWeight > 0 && realJudged.every((s) => s.reps < min) && (s1Rir == null || s1Rir <= 1)) { // real evidence eases
     const prev = recentWorkSets(sessions, exId, 2)[1];
-    const prevA = prev ? realAnchor(prev.sets, ownMin(prev, repRange)) : null;
-    const prevUnder = !!prevA && prevA.weight >= lastWeight && prevA.first.reps < ownMin(prev, repRange);
+    const prevA = prev ? anchorOf(prev.sets, ownMin(prev, repRange)) : null;
+    const prevUnder = !!prevA && prevA.weight >= lastWeight && !repsEstimated(prevA.first) && prevA.first.reps < ownMin(prev, repRange); // a guessed miss is no strike
     const inc = loadIncrement(exId, byId);
     const near = band ? +band[1] : 1;
     const raw = loadForReps(lastWeight, s1.reps, s1Rir ?? 0, min, near);
@@ -298,6 +302,7 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   // two") — and only where failure was off the plan: inside a 0-1 week it is the plan, not a warning.
   if (rirs.length && avgRir < 0.5 && judgeNear >= 1 && !allHitTop) return { suggested_kg: lastWeight, note: "You hit failure last time — keep the weight and build reps first.", ...base };
   if (allHitTop) {
+    if (estN) return { suggested_kg: lastWeight, note: estHold(), ...base }; // the top on a guess earns nothing (review D2)
     if (holdLoad) return { suggested_kg: lastWeight, note: "Taper — hold this weight. You'd normally add load here; save that push for after the event.", ...base };
     // Every PRESCRIBED set at the top earns the bump (W280, the owner's call: "hold until
     // every set is done") — a skipped set or a workout ended early didn't show it. Read from
@@ -655,8 +660,8 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
   if (fromLoss === toLoss) return null; // both positions cost the same (e.g. both at the cap): nothing to move (Burst 5 review)
   const anchorMin = ownMin(last, ex.rep_range);
   // Real capacity only (W307): an estimated set 1 moves nothing.
-  const anchor = realAnchor(last.sets, anchorMin);
-  if (!anchor || repsEstimated(last.sets[0])) return null;
+  const anchor = anchorOf(last.sets, anchorMin);
+  if (!anchor.first || repsEstimated(anchor.first)) return null; // real capacity only (W307)
   const s1 = anchor.first;
   const rho = typeof s1.rir === "number" ? s1.rir : s1.reps < anchorMin ? 0 : anchorNear;
   const W = sug.suggested_kg, La = anchor.weight;
@@ -746,7 +751,7 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
   // would contradict the pre-filled number; when the order moved it, the order says why.
   // A band further from failure than the one the anchor was SERVED with (its stored target) aims lower.
   const bandShift = last?.target?.rir ? nearOf(rirBand) - nearOf(last.target.rir) : 0;
-  const anchorKg = last ? (realAnchor(last.sets, ownMin(last, ex.rep_range))?.weight ?? last.sets[0].weight_kg ?? null) : null;
+  const anchorKg = last ? anchorOf(last.sets, ownMin(last, ex.rep_range)).weight : null; // an estimated set's weight is real (review D1)
   // The reason is COMPOSED (round 2 of the fix verification): the weight's own reason leads — a held weight's
   // W279 warning or W280 "get all 3 to the top" is never replaced — and the band and the position that shape
   // today's aim are added as their own sentences, each naming only its own fact. The generic "add a rep or two"
