@@ -48,6 +48,11 @@ At each boundary, `blockTuneDecision` (`coach.mjs`) reads the block you just fin
 | Stalled at the ceiling mid-block (week ≥3) | **A deload week brought forward** (`reactiveDeloadStampDue`) | Once per block. |
 | Accessories | **Rotate** one step among the top-ranked options per muscle (variety, not learning) | Every boundary. |
 
+**Beginners get a refit at the same 6-trained-week clock (W319).** A beginner runs no mesocycle (no wave, deload,
+accessory rotation or volume tune; those arrive at graduation). But their flat lifts are swapped and the plan is rebuilt
+at their learned pace, announced only if something changed. It has its own counter (`plan_meta.refit_index`), so the
+beginner is never treated as mid-block.
+
 Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a boundary (`recoverySignal`,
 `classifyEnergyBalance`). They never add volume.
 
@@ -62,9 +67,10 @@ Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a bou
 
 These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; this section is updated as they land).
 
-1. **Beginners get no block-boundary learning.** Until graduation (26 trained weeks and 40 sessions), a
-   beginner's plan never swaps a stalled lift on its own and never refits to their pace. Their learning is
-   weights, rest, and today's readiness trim.
+1. ~~**Beginners get no block-boundary learning.**~~ **Fixed in W319:** beginners get a refit every 6 trained
+   weeks (flat lifts swapped, the plan rebuilt at their pace). The volume tune still waits for graduation.
+   W319 also fixed a quieter loss: the block boundary, graduation and Settings saves rebuilt `plan_meta` whole
+   and dropped your learned pace and a declined session ceiling (`learnedMeta`, `app/src/planner.mjs`).
 2. **A hand-edited plan stops plan learning for good, without saying so.** Any edit in the plan editor
    marks the plan `custom`. From then on the boundary tune, stall swaps, accessory rotation, the session
    ceiling offer and fit-to-time are all off.

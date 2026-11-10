@@ -939,7 +939,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const swapNote = swapped.length
       ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
       : "";
-    const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}`;
+    // A beginner's boundary is a REFIT (W319), not a block: no rotation, no tune — say only what it did.
+    const refit = (user.profile?.training_status ?? "beginner") === "beginner";
+    const refitWhat = swapNote || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
+    const msg = refit
+      ? `Six more weeks of training logged, so I've checked how every lift is moving.${refitWhat}`
+      : `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}`;
     announcement = announcement ? `${msg} ${announcement}` : msg;
   }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just

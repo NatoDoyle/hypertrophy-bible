@@ -416,6 +416,85 @@ try {
   ok("#C3 a re-picked lift is never stamped as swapped",
     !(po.plan_meta.swapped_this_block ?? []).includes("machine-chest-press"));
 
+  // W319 (owner: "I'm convinced the system isn't learning"): a BEGINNER reaches a learning boundary every 6 trained
+  // weeks too — a refit, not a block. A lift gone flat is swapped and the plan re-fits to their pace; the volume tune,
+  // the accessory rotation and the mesocycle (block_index) stay off until graduation. Counted on its own clock
+  // (plan_meta.refit_index) so no rebuild door ever reads a beginner as "in block 1".
+  {
+    const { exercises: kbEx } = await import("../src/kb-data.mjs");
+    const exById = new Map(kbEx.map((e) => [e.id, e]));
+    const bgU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const bg0 = await store.getUser(bgU);
+    const bgIds0 = bg0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+    // Lats, not chest: this beginner's chest pool is exactly the three presses the plan needs, so a flat chest press is
+    // honestly re-picked (#C3's pool-of-one rule) — a muscle with alternatives is what shows the swap.
+    const bgLift = bgIds0.includes("lat-pulldown") ? "lat-pulldown" : null;
+    const bgN = await plannedWeekSets(bgU, "lats");
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: bgU, session_id: `bg-${w}`, date: dayAgo(49 - w * 7),
+      sets: flatSets(bgLift, 40, bgN) });
+    await store.updateUser(bgU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56) }; return u; });
+    const bgToday = await (await app.request("/api/today", { headers: { "X-HB-User": bgU } })).json();
+    const bg1 = await store.getUser(bgU);
+    const bgIds1 = bg1.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+    ok("#W319 fixture: the beginner's lat pulldown is in the plan and the user is still a beginner",
+      !!bgLift && bg1.profile.training_status === "beginner", JSON.stringify({ bgLift, st: bg1.profile.training_status }));
+    ok("#W319 a beginner crossing 6 trained weeks gets a refit (refit_index 1), not a block (block_index stays 0)",
+      bg1.plan_meta.refit_index === 1 && (bg1.plan_meta.block_index ?? 0) === 0, JSON.stringify({ r: bg1.plan_meta.refit_index, b: bg1.plan_meta.block_index }));
+    ok("#W319 the beginner's flat lift is swapped out and named as swapped",
+      !bgIds1.includes(bgLift) && (bg1.plan_meta.swapped_this_block ?? []).includes(bgLift), JSON.stringify({ swapped: bg1.plan_meta.swapped_this_block }));
+    ok("#W319 no volume tune for a beginner (novice progress is load-driven)",
+      Object.values(bg1.plan_meta.volume_adjust ?? {}).every((v) => v === 0));
+    const bgAnn = bgToday.session?.announcement ?? "";
+    ok("#W319 the refit is announced — the swap named — and never claims an accessory rotation",
+      /gone flat/.test(bgAnn) && !/rotated your accessory/.test(bgAnn), bgAnn);
+    // A cosmetic Settings save inside the refit window must not re-trigger it, nor drop the refit clock.
+    await json("POST", "/api/plan/regenerate", { user_id: bgU, profile: { session_length_min: 60 } });
+    const bgSaved = await store.getUser(bgU); // read BEFORE Today: a dropped clock would be silently re-run there
+    await app.request("/api/today", { headers: { "X-HB-User": bgU } });
+    const bg2 = await store.getUser(bgU);
+    ok("#W319 a cosmetic Settings rebuild keeps the refit clock (no second refit)",
+      bgSaved.plan_meta.refit_index === 1 && bg2.plan_meta.refit_index === 1 && bg2.plan_meta.rotated_at === bg1.plan_meta.rotated_at,
+      JSON.stringify({ saved: bgSaved.plan_meta.refit_index, after: bg2.plan_meta.refit_index }));
+  }
+
+  // W319 (found building it): what the app LEARNED about the lifter lives in plan_meta (pace W316, the declined ceiling
+  // W315c), and every whole-meta rebuild — the block boundary, graduation, a Settings save — rebuilt plan_meta from the
+  // generator's meta and dropped them: Today lost the lifter's pace until the next workout, and a "Not now" was asked
+  // again after every boundary. Learned facts survive every plan door.
+  {
+    const lmU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const lmN = await plannedWeekSets(lmU, "chest");
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: lmU, session_id: `lm-${w}`, date: dayAgo(49 - w * 7), sets: flatSets("barbell-bench-press", 100, lmN) });
+    const lmPace = { per_set: { heavy: 200, moderate: 150, isolation: 110 }, lead_s: 90, n: 40 };
+    const seed = (u) => { u.plan_meta = { ...u.plan_meta, pace: lmPace, session_cap_declined: 12 }; return u; };
+    await store.updateUser(lmU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return seed(u); });
+    await app.request("/api/today", { headers: { "X-HB-User": lmU } });
+    const lm1 = await store.getUser(lmU);
+    ok("#W319 the block boundary keeps the lifter's learned pace and declined ceiling",
+      (lm1.plan_meta.block_index ?? 0) >= 1 && JSON.stringify(lm1.plan_meta.pace) === JSON.stringify(lmPace) && lm1.plan_meta.session_cap_declined === 12,
+      JSON.stringify({ b: lm1.plan_meta.block_index, pace: lm1.plan_meta.pace, d: lm1.plan_meta.session_cap_declined }));
+    await json("POST", "/api/plan/regenerate", { user_id: lmU, profile: { days_per_week: 4 } });
+    const lm2 = await store.getUser(lmU);
+    ok("#W319 a training change in Settings keeps them too",
+      JSON.stringify(lm2.plan_meta.pace) === JSON.stringify(lmPace) && lm2.plan_meta.session_cap_declined === 12);
+    // Graduation rebuilds the plan whole as well.
+    const gdU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 2, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    for (let w = 0; w < GRADUATION.intermediate.weeks; w++) for (let k = 0; k < 2; k++)
+      await store.addSession(gdU, { session_id: `gd-${w}-${k}`, date: dayAgo(GRADUATION.intermediate.weeks * 7 - w * 7 - k), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40 + w, reps: 8 }] });
+    await store.updateUser(gdU, seed);
+    await app.request("/api/today", { headers: { "X-HB-User": gdU } });
+    const gd = await store.getUser(gdU);
+    ok("#W319 graduation keeps the learned pace and declined ceiling",
+      gd.profile.training_status === "intermediate" && JSON.stringify(gd.plan_meta.pace) === JSON.stringify(lmPace) && gd.plan_meta.session_cap_declined === 12,
+      JSON.stringify({ st: gd.profile.training_status, pace: gd.plan_meta.pace, d: gd.plan_meta.session_cap_declined }));
+  }
+
   // C5: /api/plan/regenerate backs the Settings screen, and its plan_meta rebuild
   // kept only four fields — a cosmetic save was amnesia for every mid-block stamp
   // (the lesson-59 record listed the harms when the units door reached this route;

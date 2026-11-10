@@ -44,6 +44,15 @@ export function planOptsFor(user, extra = {}) {
     ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}), ...extra };
 }
 
+// What the app LEARNED about the lifter that rides in plan_meta (W319): their pace (W316) and a declined session ceiling
+// (W315c). Every door that rebuilds plan_meta whole — the block boundary, graduation, a Settings save — carries these, or
+// Today loses the lifter's pace until their next workout and a "Not now" is asked again after every boundary. One list,
+// so a door can't forget one.
+export function learnedMeta(planMeta) {
+  return { ...(planMeta?.pace && typeof planMeta.pace === "object" ? { pace: planMeta.pace } : {}),
+    ...(Number.isInteger(planMeta?.session_cap_declined) ? { session_cap_declined: planMeta.session_cap_declined } : {}) };
+}
+
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
 // swap — bound to the bundled KB and the user's OWN profile, plan, rationale, custom
 // lifts and block (specialization ordering depends on where they are in it).

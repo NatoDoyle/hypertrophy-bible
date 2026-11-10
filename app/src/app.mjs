@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, learnedMeta, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor } from "../../tools/plan-core.mjs";
 import { paceProfile } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -505,7 +505,7 @@ export function createApp(store, config = {}) {
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index"]
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -516,6 +516,7 @@ export function createApp(store, config = {}) {
       u.program = program; u.plan_rationale = rationale;
       u.plan_meta = {
         ...meta,
+        ...learnedMeta(u.plan_meta), // pace + a declined ceiling are the lifter's, not the block's: kept on every save (W319)
         ...keptStamps,
         ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
@@ -975,6 +976,7 @@ export function createApp(store, config = {}) {
         u.program = program; u.plan_rationale = rationale;
         u.plan_meta = {
           ...meta,
+          ...learnedMeta(u.plan_meta), // the lifter's pace and declined ceiling survive the promotion (W319)
           block_start: nowISO,
           block_index: 0,
           rotation_base: sessions.filter((x) => !x.program_ref || x.program_ref === program.id).length,
@@ -1028,6 +1030,7 @@ export function createApp(store, config = {}) {
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
+            ...learnedMeta(u.plan_meta), // what the app learned about the lifter outlives the block (W319)
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
             swapped_this_block: swappedOut, // what ACTUALLY changed, for the coach note
             block_index: blockIndex,
@@ -1042,6 +1045,34 @@ export function createApp(store, config = {}) {
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
         if (updated) user = updated;
+      }
+    }
+    // THE BEGINNER REFIT (W319 — owner: "I'm convinced the system isn't learning"). A beginner runs no mesocycle (no
+    // wave, no deload, no accessory rotation, no volume tune — novice progress is load-driven, and graduation is where
+    // those arrive), but every 6 trained weeks the plan still learns from them: a lift gone flat for their own stall
+    // window is swapped for a different angle, and the plan is rebuilt at their learned pace. Its own clock
+    // (refit_index), so block_index stays 0 and no rebuild door ever reads a beginner as mid-mesocycle. Announced only
+    // when the plan actually changed — the same once-until-a-session-is-logged window as a new block.
+    if (blockStart && user.profile?.training_status === "beginner" && !user.program?.custom) {
+      const refitIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, tz) / BLOCK_WEEKS);
+      if (refitIndex !== (user.plan_meta.refit_index ?? 0)) {
+        const refit = await store.updateUser(id, (u) => {
+          // Re-check on the FRESH read (lesson 21): a concurrent save may have made it custom, graduated, or refit it.
+          if (u.program?.custom || u.profile?.training_status !== "beginner" || refitIndex === (u.plan_meta?.refit_index ?? 0)) return u;
+          const stalledExercises = swapStalls(u, sessions, nowISO, { fresh: true });
+          const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises }));
+          const swappedOut = stalledExercises.filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+          const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
+          u.program = program; u.plan_rationale = rationale;
+          u.plan_meta = {
+            ...u.plan_meta, ...meta,
+            refit_index: refitIndex,
+            swapped_this_block: swappedOut,
+            ...(changed ? { rotated_at: nowISO } : {}), // announced once, the new-block window
+          };
+          return u;
+        }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+        if (refit) user = refit;
       }
     }
     // REACTIVE DELOAD (considerations #2, finding 2B — the KB's third plateau lever,
