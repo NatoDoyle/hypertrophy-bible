@@ -1022,6 +1022,39 @@ try {
     && typeof statsBody.push_subscriptions === "number" && typeof statsBody.push_delivered_7d === "number"
     && "retention_wow" in statsBody);
   ok("#210 the aggregates carry no per-user data (no ids, no emails)", !/user_id|email|@|[0-9a-f]{8}-[0-9a-f]{4}/.test(JSON.stringify(statsBody)));
+  // W327 (adherence playbook — activation is the binding constraint: 13 of the recent 20 reached Today and never trained,
+  // and nothing said where they stopped). The first-workout funnel: first-timestamps per user, written only before their
+  // first workout, aggregated counts only.
+  {
+    const statsOf = async () => (await (await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } })).json());
+    const b0 = await statsOf();
+    const fu = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+    await app.request("/api/today", { headers: { "X-HB-User": fu } });
+    const seen1 = (await store.getUser(fu)).funnel?.today_seen;
+    await app.request("/api/today", { headers: { "X-HB-User": fu } });
+    ok("#W327 a never-trained user's first Today view is stamped once", typeof seen1 === "string" && (await store.getUser(fu)).funnel.today_seen === seen1);
+    const bad = await json("POST", "/api/funnel", { user_id: fu, step: "bought" });
+    ok("#W327 only the funnel's own steps are accepted", bad.status === 400);
+    const st1 = await json("POST", "/api/funnel", { user_id: fu, step: "started" });
+    const stA = (await store.getUser(fu)).funnel?.started;
+    await json("POST", "/api/funnel", { user_id: fu, step: "started" });
+    ok("#W327 'started' is stamped once (a retry or a second start keeps the first)", st1.status === 200 && typeof stA === "string" && (await store.getUser(fu)).funnel.started === stA);
+    await json("POST", "/api/funnel", { user_id: fu, step: "first_set" });
+    const mid = await statsOf();
+    ok("#W327 /api/stats counts each step (seen, started, first set) — counts only",
+      mid.funnel_today_seen - b0.funnel_today_seen === 1 && mid.funnel_started - b0.funnel_started === 1 && mid.funnel_first_set - b0.funnel_first_set === 1 && mid.funnel_finished === b0.funnel_finished,
+      JSON.stringify({ b0: [b0.funnel_today_seen, b0.funnel_started, b0.funnel_first_set, b0.funnel_finished], mid: [mid.funnel_today_seen, mid.funnel_started, mid.funnel_first_set, mid.funnel_finished] }));
+    await json("POST", "/api/session", { user_id: fu, session_id: "fu-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    ok("#W327 the first logged workout stamps 'finished'", typeof (await store.getUser(fu)).funnel?.finished === "string" && (await statsOf()).funnel_finished - b0.funnel_finished === 1);
+    // An established lifter is never instrumented: no stamp on Today, none on the funnel door.
+    const est = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+    await json("POST", "/api/session", { user_id: est, session_id: "est-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await app.request("/api/today", { headers: { "X-HB-User": est } });
+    await json("POST", "/api/funnel", { user_id: est, step: "started" });
+    const estF = (await store.getUser(est)).funnel ?? {};
+    ok("#W327 once a lifter has trained, Today and the funnel door stamp nothing (only their first workout's 'finished')",
+      JSON.stringify(Object.keys(estF)) === JSON.stringify(["finished"]), JSON.stringify(estF));
+  }
   // W299 (considerations iteration, Burst 7 — measure first): real pace rides the same owner-only door — medians and
   // counts only. A workout posted through the client's door lands once, its 150 s gaps in its lift's rest tier.
   {

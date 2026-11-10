@@ -217,6 +217,18 @@ export function activationFunnel({ liveCount, smokeCount, usersWithSession, smok
 export const TZ_WRITER_SINCE = "2026-08-04";      // X-HB-TZ shipped (commit e12a220)
 export const ONBOARD_MARKERS_SINCE = "2026-07-22"; // the onboard throttle shipped (commit 50cc9d6)
 
+// THE FIRST-WORKOUT FUNNEL (W327 — adherence playbook: activation is the binding constraint, and nothing said where a
+// never-trained user stops). Per user, the FIRST time each step happened, written only before their first workout:
+// today_seen (Today served) → started (the player opened) → first_set (a set banked) → finished (the first workout saved).
+// Counts only, never ids; our own smoke rows excluded. `users`: [{ smoke, funnel }] — live rows.
+export const FUNNEL_STEPS = ["today_seen", "started", "first_set", "finished"];
+export const FUNNEL_SINCE = "2026-11-10"; // W327 shipped — users before it carry no stamps (not reclassified)
+export function firstWorkoutFunnel(users) {
+  const real = (users ?? []).filter((u) => !u.smoke);
+  const has = (u, k) => typeof u.funnel?.[k] === "string";
+  return { funnel_since: FUNNEL_SINCE, ...Object.fromEntries(FUNNEL_STEPS.map((k) => [`funnel_${k}`, real.filter((u) => has(u, k)).length])) };
+}
+
 export function reachCohort({ users, sessionUserIds, since = TZ_WRITER_SINCE }) {
   // `users`: [{ id, created_at, tz_offset_min, smoke }] — live rows only.
   const inCohort = users.filter((u) => typeof u.created_at === "string" && u.created_at.slice(0, 10) >= since && !u.smoke);

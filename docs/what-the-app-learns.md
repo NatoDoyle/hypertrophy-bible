@@ -108,6 +108,7 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
 | Protein, carbs, fat logged on Fuel | Display against your targets only. |
 | `motivation` (check-in) | Only the block-boundary recovery gate; it does not affect today's readiness trim. |
 | Notification taps | Not recorded at all. |
+| First-workout funnel (W327): when you first saw Today, opened the player, banked a set, saved a workout | `user.funnel`, first time each, only before your first workout. Read only as counts in the owner's `/api/stats`, to find where new lifters stop. Never per user, never for anyone who has already trained. |
 
 ## Not built (things older docs describe as if they were)
 

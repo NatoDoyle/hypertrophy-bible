@@ -431,6 +431,18 @@ try {
     && stFile.push_subscriptions - stBefore.push_subscriptions === 2
     && stFile.push_delivered_7d - stBefore.push_delivered_7d === 1);
 
+  // W327: the first-workout funnel aggregates from the user blob — the same counts from both stores.
+  const fBefore = await file.stats(S_NOW);
+  for (const s of [file, d1]) {
+    await s.saveUser("fn1", { profile: {}, created_at: dIso(1), funnel: { today_seen: dIso(1), started: dIso(1), first_set: dIso(1) } });
+    await s.saveUser("fn2", { profile: {}, created_at: dIso(1), funnel: { today_seen: dIso(1) } });
+    await s.saveUser("fn3", { profile: { smoke: true }, created_at: dIso(1), funnel: { today_seen: dIso(1), started: dIso(1) } }); // our own smoke: never counted
+  }
+  const fFile = await file.stats(S_NOW);
+  same("stats (W327 funnel): byte-identical from both stores", fFile, await d1.stats(S_NOW));
+  ok("stats (W327 funnel): seen 2, started 1, first set 1 — smoke rows excluded",
+    fFile.funnel_today_seen - fBefore.funnel_today_seen === 2 && fFile.funnel_started - fBefore.funnel_started === 1 && fFile.funnel_first_set - fBefore.funnel_first_set === 1 && fFile.funnel_finished === fBefore.funnel_finished);
+
   // --- Wave 211 (BLOCKERS #6b): merge TOMBSTONES the from-row in both stores —
   // reads as absent everywhere, but the raw row survives with the audit marker.
   for (const s of [file, d1]) {

@@ -2267,8 +2267,15 @@ const wireForgot = (repaint) => app.querySelectorAll("[data-forgot]").forEach((b
   saveSess(); repaint();
   say(`Estimated ${est.reps} reps${chip != null ? ` with ${est.rir} left in the tank` : ""}. Change ${chip != null ? "either" : "it"} if you remember.`);
 });
+// The first-workout funnel (W327): fire-and-forget stamps, only on a never-trained user's first workout. A lost one (offline)
+// costs a measurement, never the workout — the server keeps the first stamp and ignores the rest.
+function funnelStep(step) {
+  if (!sess?.firstEver || !uid) return;
+  api("/api/funnel", { method: "POST", body: JSON.stringify({ user_id: uid, step }) }).catch(() => {});
+}
 function startSession(templateSession) {
   sess = {
+    firstEver: templateSession.never_trained === true, // W327: this is the funnel's workout
     // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
     // reports as its target, however a skip later shrinks today's `sets`.
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0,
@@ -2289,6 +2296,7 @@ function startSession(templateSession) {
     localDate: new Date().toLocaleDateString("en-CA"),
   };
   saveSess();
+  funnelStep("started");
   renderPlayer();
 }
 
@@ -3089,6 +3097,7 @@ function renderPlayer() {
     const ef = estimatedFields(sess.estPending?.[e.exercise], { setNo: loggedSetCount(e.exercise), reps: sess.reps[sess.i], eff: sess.eff[sess.i] });
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
+    if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
     if (sess.estPending) delete sess.estPending[e.exercise];
     delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
@@ -3256,6 +3265,7 @@ function renderSupersetStation(L, P) {
       const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: at };
       if (sess.estPending) delete sess.estPending[m.exercise];
       sess.logged.push(loggedSet);
+      if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
       delete sess.reps[idx]; // …and the next round starts on its aim (W289)
       roundSets.push([m, loggedSet]);

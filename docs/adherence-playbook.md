@@ -91,7 +91,7 @@ Rules for every row:
 | Usual training time and weekday (from `completed_at`) | Derivable, **not computed** | Reminders at the time they actually train; the planned-day default | 4 |
 | Weekday reliability (which committed days actually happen) | Derivable, **not computed** | Suggest moving a day that never happens | 4 |
 | Time from onboarding to first set; where the first session stops | **No: the biggest gap** | Activation: the binding constraint | 4 |
-| Today viewed / workout started / first set banked / finished | **No** | The activation funnel | 4 |
+| Today viewed / workout started / first set banked / finished | **Yes since W327** (first-timestamps, counts in `/api/stats` `funnel_*`) | The activation funnel | 4 |
 | Where in a session people abandon (lift index, minute) | Partly (the fade marks) | Session length and order | 2, 4 |
 | Session start latency after a reminder | **No** (0 subscribers) | Reminder value | 4 |
 | Notification taps | **No** (`sw.js` handles the click but records nothing) | Which reminders help vs nag | 4 |

@@ -981,9 +981,29 @@ export function createApp(store, config = {}) {
   };
   const buildTodayFor = (user, ctx, nowISO) => buildToday(user, ctx.sessions, ctx.readiness, user.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged);
 
+  // THE FIRST-WORKOUT FUNNEL (W327, merge-archive firstWorkoutFunnel): the first time each step happened, stamped once
+  // inside the CAS (a retry or a second start keeps the first), and only for a user who has never logged a workout — an
+  // established lifter is never instrumented. Counts reach /api/stats; nothing per-user leaves the store.
+  const stampFunnel = (id, step) => store.updateUser(id, (u) => {
+    if (typeof u.funnel?.[step] === "string") return u;
+    u.funnel = { ...(u.funnel ?? {}), [step]: new Date().toISOString() };
+    return u;
+  }).catch(() => null); // a measurement: never fails the request it rides on
+  app.post("/api/funnel", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!["started", "first_set"].includes(b.step)) return c.json({ error: "bad-step" }, 400);
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    const user = await store.getUser(b.user_id);
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (typeof user.funnel?.[b.step] === "string" || (await store.hasAnySession(b.user_id))) return c.json({ ok: true, recorded: false });
+    await stampFunnel(b.user_id, b.step);
+    return c.json({ ok: true, recorded: true });
+  });
   app.get("/api/today", async (c) => {
     let { id, user, tz, error } = await requireUser(c);
     if (error) return error;
+    // The first-workout funnel's first step (W327): stamped once, only before the user's first workout.
+    if (!user.funnel?.today_seen && !(await store.hasAnySession(id))) await stampFunnel(id, "today_seen");
     // Persist the device's clock, ONLY when it differs from what's stored. This is the
     // boot request, so it lands on first open and then only when DST shifts or the
     // user moves — never a write per read. The hourly push sweep has no request
@@ -2054,7 +2074,9 @@ export function createApp(store, config = {}) {
     // The store repeats the tombstone fence in its atomic write. A merge can land
     // after the read above; reporting a recap for a row that was safely refused
     // would be an optimistic lie, so surface the lost identity instead.
+    const firstEver = !(await store.hasAnySession(id)); // W327: the funnel's last step is this user's FIRST workout
     if (!(await store.addSession(id, session))) return c.json({ error: "unknown user" }, 404);
+    if (firstEver) await stampFunnel(id, "finished");
     const all = await store.listSessions(id);
     // Celebration marker (Tier-1 #3, Wave 201): the single most celebration-worthy
     // event this session caused, stamped here — the ONE door every session enters

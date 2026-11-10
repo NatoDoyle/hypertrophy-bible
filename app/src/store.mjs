@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue, paceSampleRows } from "./session-time.mjs";
-import { activationFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, firstWorkoutFunnel, onboardShape, reachCohort, archiveSnapshot, archiveSummary, clone, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 export function createFileStore(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -399,12 +399,14 @@ export function createFileStore(path) {
       // compares serialized aggregates, so a differently-ordered but identical
       // object reads as a divergence — a false alarm that costs a debugging round
       // every time someone adds a field.
+      const firstWorkout = firstWorkoutFunnel(live.map(([, u]) => ({ smoke: u.profile?.smoke === true, funnel: u.funnel ?? null }))); // W327
       return {
         users_total: live.length, // tombstones aren't users
         users_with_session,
         ...cohort,
         ...shape,
         ...funnel,
+        ...firstWorkout,
         active_7d: cur.size,
         active_prev_7d: prev.size,
         retention_wow: prev.size ? returned / prev.size : null,
