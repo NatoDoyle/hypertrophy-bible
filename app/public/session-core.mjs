@@ -474,7 +474,7 @@ export const unconfirmedFlagged = (indices, keyOf, isFlagged, confirmed) =>
 // identical verdicts, so a change to one without the other fails CI instead of
 // silently letting the live toast and the recap/XP total disagree.
 export const LUCKY_SET_XP = 15;
-const LUCKY_SET_ONE_IN = 8;
+export const LUCKY_SET_ONE_IN = 8; // printed on the toast (W325, Plain Sight test 1: the rule survives being shown)
 export function isLuckySet(sessionId, exercise, hardSetIndex) {
   if (!sessionId) return false;
   const key = `${sessionId}|${exercise}|${hardSetIndex}`;

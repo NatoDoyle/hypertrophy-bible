@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2591,7 +2591,8 @@ function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
   if (!checkLuckySet(sess.session_id, sess.logged, loggedSet)) return;
   sess.luckyXp = (sess.luckyXp || 0) + LUCKY_SET_XP;
   if (wasPR) return;
-  showPrToast(`🍀 <b>Lucky set!</b> <span style="color:var(--accent);font-weight:700">+${LUCKY_SET_XP} XP</span><br><span class="muted">${esc(exObj.name)}</span>`);
+  // The rule, where the bonus lands (W325, Plain Sight test 1 — a bonus whose schedule you can't see fails disclosure).
+  showPrToast(`🍀 <b>Lucky set!</b> <span style="color:var(--accent);font-weight:700">+${LUCKY_SET_XP} XP</span><br><span class="muted">${esc(exObj.name)} · about 1 hard set in ${LUCKY_SET_ONE_IN} is lucky, at random</span>`);
   say("Lucky set — bonus XP!");
 }
 
@@ -5339,7 +5340,7 @@ async function renderStory() {
       if (x.status === "pending" && x.role === "challenger") return `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`;
       if (x.status === "active") {
         const race = weeklyRaceStatus(x.my_count, x.opponent_count);
-        const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "😤 you're behind" : "🤝 tied";
+        const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "🏁 they're ahead this week" : "🤝 tied"; // the partner's lead, never a deficit of yours (W325)
         return `<div class="card"><b>⚔️ Challenge in progress</b><p class="muted" style="margin-top:8px">You ${x.my_count} – ${x.opponent_count} them · ${label} · decides at week's end</p></div>`;
       }
       if (x.status === "completed" && x.opponent_active !== false) {

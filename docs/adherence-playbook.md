@@ -130,7 +130,7 @@ Rules for every row:
 | **XP: +5 per hard set** | ⚠️ → **W325** | Fails **benefit flow (3)**: points grow when you do more than your plan. Fix: hard-set XP stops at the plan's own sets. |
 | **Milestone copy: "This is just who you are now"** | ⚠️ → **W325** | Identity framing turns a lapse into a statement about the person, which is the engine of the "I've blown it" spiral (Marlatt). Fix: a verifiable count only. |
 | **"Keep the chain alive"** | ⚠️ → **W325** | Loss-framed, aimed at the at-risk state (test 4). Fix: say what's left to do this week, gain-framed. |
-| **Weekly race / leaderboard, default on, "actual urgency"** | ⚠️ → **W325** | The opt-in should come first (test 5); comparison is on effort only. Fix: opt-in and calm copy. The one RCT favours the harsh version (Zhang 2016), which is exactly why the line is drawn here. |
+| **Partner board / weekly race / challenges** | ⚠️ → **W325** | Corrected on reading the code: the board is **already opt-in**. It shows only partners you followed by their share link, and it's effort-only and leavable. The failure was copy: a challenge said "😤 you're behind", Plain Sight's own dark-twin marker. Fix: "🏁 they're ahead this week". The one RCT favours the harsh version (Zhang 2016), which is exactly why the line is drawn here. |
 | 1v1 challenges, cheers, partner nudge | ✅ | Opt-in, people you know, leavable. |
 
 ### New ideas, brainstormed against the KB and Plain Sight

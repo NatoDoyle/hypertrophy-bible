@@ -1220,5 +1220,12 @@ check("#rest (W317) the rest screen says why a lift's timer moved", () => {
   assert.match(fnBody(appJs, "function showRest(rest, nextLine, row, onDone, announce, alertLabel = \"\") {", 2400), /\$\{rest\.kind === "set" && row\?\.rest_reason \? `<p class="muted" id="rest-why" style="font-size:\.85rem;margin:4px 0">⏱️ \$\{esc\(row\.rest_reason\)\}<\/p>` : ""\}/);
 });
 
+await checkAsync("#W325 the lucky set prints its rule where it lands, from the one constant the engine uses; no challenge says 'you're behind'", async () => {
+  const dc = await import("../../tools/derive-core.mjs"), sc = await import("../public/session-core.mjs");
+  assert.equal(dc.LUCKY_SET_ONE_IN, sc.LUCKY_SET_ONE_IN, "the player's copy and the engine's agree");
+  assert.match(appJs, /about 1 hard set in \$\{LUCKY_SET_ONE_IN\} is lucky, at random/);
+  assert.ok(!/you're behind/.test(appJs), "Plain Sight's dark-twin marker");
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
