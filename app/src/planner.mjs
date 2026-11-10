@@ -21,13 +21,13 @@ export function userTimeFit(user, { stalledExercises = [] } = {}) {
   // A schedule change rebuilds at block 0; a REFIT (a plan from an older engine, no change asked) rebuilds at the
   // CURRENT block — rebuildPlan's cosmetic path (W305h, fix C2).
   return timeFitOptions(user.profile ?? {}, KB, { program: user.program, rationale: user.plan_rationale ?? null, meta: user.plan_meta ?? null },
-    planOptsFor(user, { blockIndex: 0, ...tune }), { customExercises: user.custom_exercises || [], refitOpts: planOptsFor(user, { blockIndex: user.plan_meta?.block_index ?? 0, ...tune }) });
+    planOptsFor(user, { blockIndex: 0, ...tune }), { customExercises: user.custom_exercises || [], pace: user.plan_meta?.pace ?? null, refitOpts: planOptsFor(user, { blockIndex: user.plan_meta?.block_index ?? 0, ...tune }) });
 }
 // The question alone — the plan as it is, no alternatives — for the keep door and the explanation (W305h, C0/C10, K0).
 export function userTimeFitQuestion(user) {
   if (!user?.program?.sessions?.length || user.program.custom) return null;
   return timeFitQuestion(user.profile ?? {}, KB, { program: user.program, rationale: user.plan_rationale ?? null, meta: user.plan_meta ?? null },
-    { customExercises: user.custom_exercises || [] });
+    { customExercises: user.custom_exercises || [], pace: user.plan_meta?.pace ?? null });
 }
 
 // The user-derived generatePlan opts every door shares (W301, considerations iteration — Burst 7). One place, so a
@@ -37,7 +37,11 @@ export function userTimeFitQuestion(user) {
 // per-user inputs (the learned session cap, preference scores) join here, so every door — and every forecast of
 // the next plan — sees them at once.
 export function planOptsFor(user, extra = {}) {
-  return { ...(user?.plan_meta?.spec_spent === true ? { specSpent: true } : {}), ...extra };
+  return { ...(user?.plan_meta?.spec_spent === true ? { specSpent: true } : {}),
+    // The lifter's own session ceiling (W315b) — every door builds under it.
+    ...(Number.isInteger(user?.profile?.session_cap) ? { sessionCap: user.profile.session_cap } : {}),
+    // …and their own pace (W316), learned from their logged sets — every door sizes the day by it.
+    ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}), ...extra };
 }
 
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
@@ -85,8 +89,8 @@ export function explainUserPlan(profile, rationale, program, live = null) {
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed, sessionCap });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus

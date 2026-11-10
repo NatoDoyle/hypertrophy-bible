@@ -800,7 +800,7 @@ check("time-fit card (fix verification C7 C8 C9 C14 #9): the usual days in a cle
   assert.doesNotMatch(tf, /alertBar\("📴 Your plan was rebuilt/, "#9: no alert the refresh erases");
   const rest = fnBody(appJs, "function wireRestHint(idx, shown, named) {", 2000);
   assert.match(rest, /\[id\^="rest-use-hint-"\]/, "C9: focus moves on to the next leg's hint, not past it");
-  assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected");
+  assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \|\| capOffer \? null : timeFitCopy\(dy\.plan_time_fit\);/, "C14: one schedule question at a time, the device's own keep respected (W315c: the ceiling's card comes first)");
 });
 // W306 (Burst 9 — owner note 2): the workout list. Opened from the header on the set screen AND the station (the top of
 // the screen — never below the fold); each later lift can be done next; "Do this later" is the same pure permutation;
@@ -1178,6 +1178,43 @@ check("#w310 wiring: a skip drops the skipped lift's guessed numbers (dropSkippe
   assert.equal((appJs.match(/editLoggedSet\(sess\.logged, ed\.idx, patch, \{ exercise: ed\.exercise, completed_at: ed\.completed_at, base: entry0 \}\)/g) ?? []).length, 1, "the keystroke write carries the base");
   assert.match(appJs, /editLoggedSet\(sess\.logged, idx, \{ estimate: \{ reps: est\.reps, rir: est\.rir \} \}, \{ exercise: entry0\.exercise, completed_at: entry0\.completed_at \?\? null \}\);/, "Forgot: on the entry as it stands");
   assert.match(fnBody(appJs, '$("#doner").onclick = () => {', 3000), /const at = new Date\(\)\.toISOString\(\); \/\/ ONE stamp per round/, "a round banks with one stamp (fix check player#2)");
+});
+
+check("#announce (W313) Today shows an announcement in its own card, never behind the check-in; Progress says 'retunes itself' only where it does", () => {
+  assert.match(appJs, /const announceCard = s\.announcement \? `<div class="card" id="announcement"><p>📣 \$\{esc\(s\.announcement\)\}<\/p><\/div>` : "";/);
+  assert.match(appJs, /const readinessCard = s\.readiness != null && s\.coach_note \?/, "the readiness note keeps its own gate");
+  assert.match(appJs, /const autoAdaptNote = p\.tunes && p\.sessions_logged >= 4/);
+});
+
+check("#fade (W314) the player marks a skip (an Undo takes it back) and an early end with work left; the workout carries the marks; the read-out asks how the last sets felt", () => {
+  assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
+  assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
+  for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
+  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\) \}/);
+  assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
+  assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
+});
+
+check("#cap-offer (W315c) the card says what it saw and what a yes does — blocks only where there are blocks; the cap comes off in Training settings", () => {
+  const { sessionCapCopy } = uiHelpers;
+  const c = sessionCapCopy({ cap: 13, fades: 4, of: 8, current: 16 }, { blocks: true });
+  assert.deepStrictEqual(c, {
+    title: "You've faded around set 13 in 4 of your last 8 workouts",
+    body: "Cap your workouts at 13 sets? Your plan rebuilds to keep every day at 13 or fewer — a fresh 6-week block starts. You can take the cap off any time in Training settings.",
+    yes: "Cap at 13", no: "Not now", notice: "🧭 Capped at 13 sets a workout — a fresh training block starts with your next workout.",
+  });
+  const b = sessionCapCopy({ cap: 11, fades: 3, of: 8, current: 12 }, { blocks: false });
+  assert.doesNotMatch(b.body + b.notice, /block/);
+  assert.equal(sessionCapCopy(null), null);
+  assert.match(appJs, /const capOffer = planFitVisible\(fit, fitKey\) \? null : sessionCapCopy\(dy\.session_cap_offer\);/, "one plan question at a time: after the days card");
+  assert.match(appJs, /const tfit = planFitVisible\(fit, fitKey\) \|\| capOffer \? null : timeFitCopy\(dy\.plan_time_fit\);/, "…ahead of the time-fit card");
+  assert.match(appJs, /api\("\/api\/plan\/regenerate", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, profile: \{ session_cap: dy\.session_cap_offer\.cap \} \}\) \}\)/);
+  assert.match(appJs, /api\("\/api\/plan\/session-cap", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, choice: "not_now", cap: dy\.session_cap_offer\.cap \}\) \}\)/);
+  assert.match(appJs, /api\("\/api\/plan\/regenerate", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, profile: \{ session_cap: null \} \}\) \}\)/, "Training settings: Remove");
+});
+
+check("#rest (W317) the rest screen says why a lift's timer moved", () => {
+  assert.match(fnBody(appJs, "function showRest(rest, nextLine, row, onDone, announce, alertLabel = \"\") {", 2400), /\$\{rest\.kind === "set" && row\?\.rest_reason \? `<p class="muted" id="rest-why" style="font-size:\.85rem;margin:4px 0">⏱️ \$\{esc\(row\.rest_reason\)\}<\/p>` : ""\}/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

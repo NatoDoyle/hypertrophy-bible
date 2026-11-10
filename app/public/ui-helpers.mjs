@@ -355,6 +355,18 @@ export async function timeFitApply({ o, days = [], cleared = false, usual = [], 
   return back?.commitment ? nothing
     : { refresh: true, notice: "📴 Your days saved, but the plan couldn't rebuild — nothing else changed. Try the rebuild again in a moment." };
 }
+// The learned session ceiling's card (W315c — owner note 7): what it saw, in the lifter's own numbers, and what a yes does —
+// a block named only where there are blocks; the way to take it off said up front. Null with nothing offered.
+export function sessionCapCopy(offer, { blocks = offer?.blocks !== false } = {}) {
+  if (!offer?.cap) return null;
+  const { cap, fades, of } = offer;
+  return {
+    title: `You've faded around set ${cap} in ${fades} of your last ${of} workouts`,
+    body: `Cap your workouts at ${cap} sets? Your plan rebuilds to keep every day at ${cap} or fewer${blocks ? " — a fresh 6-week block starts" : ""}. You can take the cap off any time in Training settings.`,
+    yes: `Cap at ${cap}`, no: "Not now",
+    notice: `🧭 Capped at ${cap} sets a workout — ${blocks ? "a fresh training block starts" : "your new plan starts"} with your next workout.`,
+  };
+}
 // The add-a-day question. In a cleared week the new day joins the USUAL days, from next week; this week is "free" only
 // when no day was picked for it (H7: a one-off day this week stays).
 export function timeFitDayQuestion(need, { cleared = false, thisWeek = [] } = {}) {
