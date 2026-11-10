@@ -383,7 +383,7 @@ export function createApp(store, config = {}) {
     });
     // "Up next" (C16, W277): the rotation pointer itself — the session Today serves.
     const up_next = user.program?.sessions?.length ? rotationState(user.program, await store.listSessions(id), user.plan_meta).idx : null;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next });
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).

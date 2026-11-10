@@ -1098,8 +1098,14 @@ async function renderPlan() {
     <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
     ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
       <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
+  // W320 (owner: "I'm convinced the system isn't learning"): a hand-edited plan pauses plan learning. Say so where the
+  // plan is, with the one tap back — never a silent, permanent opt-out. Two taps: the second states what is replaced.
+  const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
+    <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.</p>
+    <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
+    ${pausedBlock}
     ${sessionCards}
     ${unavailableBlock}
     <button class="btn secondary inline" id="edit-plan">Edit plan</button>
@@ -1108,6 +1114,21 @@ async function renderPlan() {
     ${cardioBlock}`;
   wireLearnLinks();
   $("#edit-plan").onclick = renderPlanEdit;
+  const coachBack = $("#coach-back");
+  if (coachBack) coachBack.onclick = () => {
+    const card = $("#learning-paused");
+    card.innerHTML = `<b>Hand your plan back?</b>
+      <p class="muted" style="margin:2px 0 6px">I'll build a fresh plan from your answers and your history. Your edits to this plan are replaced; every workout you've logged stays.</p>
+      <button class="btn inline" id="coach-back-yes" style="margin:0 8px 0 0">Yes, rebuild it</button><button class="btn ghost inline" id="coach-back-no" style="margin:0">Keep my edits</button>`;
+    $("#coach-back-no").onclick = renderPlan;
+    $("#coach-back-yes").onclick = async () => {
+      let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid }) }); }
+      catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+      pendingNotice = r?.error ? (r.message || "Couldn't rebuild your plan — nothing changed. Try again.") : "✅ Your coach has the plan again: stalled lifts get swapped and your sets tune themselves each block.";
+      await renderPlan();
+      if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+    };
+  };
   app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
     let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
     catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }

@@ -71,9 +71,11 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
    weeks (flat lifts swapped, the plan rebuilt at their pace). The volume tune still waits for graduation.
    W319 also fixed a quieter loss: the block boundary, graduation and Settings saves rebuilt `plan_meta` whole
    and dropped your learned pace and a declined session ceiling (`learnedMeta`, `app/src/planner.mjs`).
-2. **A hand-edited plan stops plan learning for good, without saying so.** Any edit in the plan editor
-   marks the plan `custom`. From then on the boundary tune, stall swaps, accessory rotation, the session
-   ceiling offer and fit-to-time are all off.
+2. **A hand-edited plan pauses plan learning.** Any edit in the plan editor marks the plan `custom`. From then
+   on the boundary tune, stall swaps, accessory rotation, the brought-forward deload, graduation's step-up, the
+   session ceiling offer and fit-to-time are all off; weights, rest and the wave still run. **Since W320** the
+   Plan tab says so ("Plan learning is paused") with one tap back: "Let the coach take over again" rebuilds from
+   your answers and history (a bare `/api/plan/regenerate`), keeping every logged workout.
 3. **The plan changes only when something stalls.** A lifter whose lifts keep climbing sees the same plan
    block after block. That is deliberate (don't fix what works), but it looks like "not learning".
 4. **Today-only swaps teach nothing.** Swapping a lift away because the machine is busy, or picking your

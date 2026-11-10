@@ -459,6 +459,28 @@ try {
       JSON.stringify({ saved: bgSaved.plan_meta.refit_index, after: bg2.plan_meta.refit_index }));
   }
 
+  // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
+  // which needs the custom flag through /api/plan/explain's whitelist — and one tap hands the plan back to the coach:
+  // a bare regenerate (no profile change) rebuilds from the answers and clears the flag.
+  {
+    const cuU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ex0 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    ok("#W320 a generated plan reads as not custom on the Plan tab's door", ex0.program?.custom === false, JSON.stringify(ex0.program?.custom));
+    const edited = JSON.parse(JSON.stringify(ex0.program));
+    edited.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: cuU, program: edited });
+    const ex1 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    ok("#W320 a hand edit reaches the Plan tab as custom (learning paused)", ex1.program?.custom === true, JSON.stringify(ex1.program?.custom));
+    const back = await json("POST", "/api/plan/regenerate", { user_id: cuU });
+    const ex2 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    const cu2 = await store.getUser(cuU);
+    ok("#W320 'Let the coach take over again' (a bare regenerate) hands the plan back: generated, explained, learning on",
+      back.status === 200 && ex2.program?.custom === false && !cu2.program.custom && (ex2.personalization ?? []).length > 0 && !!cu2.plan_rationale?.volume_by_muscle,
+      JSON.stringify({ st: back.status, c: ex2.program?.custom, pz: (ex2.personalization ?? []).length }));
+  }
+
   // W319 (found building it): what the app LEARNED about the lifter lives in plan_meta (pace W316, the declined ceiling
   // W315c), and every whole-meta rebuild — the block boundary, graduation, a Settings save — rebuilt plan_meta from the
   // generator's meta and dropped them: Today lost the lifter's pace until the next workout, and a "Not now" was asked
