@@ -595,12 +595,49 @@ async function postOrQueue(path, bodyObj) {
 // copies would drift, and the engine's region keys must match on both paths.
 const INJURY_REGIONS = [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"], ["Neck", "neck"], ["Ankle", "ankle"]];
 
+// The preference screen's rows (W321). Styles and lift families show only where the answered equipment can use them —
+// a bodyweight-only lifter is never asked about barbell squats. Families map to the KB's real exercise ids.
+const PREF_STYLE_OPTS = [["Free weights", "free", ["barbell", "dumbbell", "kettlebell"]], ["Machines & cables", "machines", ["machine", "cable"]], ["Bodyweight", "bodyweight", ["bodyweight", "band"]]];
+const PREF_VARIETY_OPTS = [["Master the same lifts", "same"], ["Keep it fresh", "fresh"]];
+const AVOID_FAMILIES = [
+  { label: "Barbell squats", ids: ["barbell-back-squat", "front-squat"], eq: ["barbell"] },
+  { label: "Deadlifts", ids: ["conventional-deadlift", "romanian-deadlift"], eq: ["barbell"] },
+  { label: "Barbell bench press", ids: ["barbell-bench-press", "incline-barbell-bench-press", "close-grip-bench-press"], eq: ["barbell"] },
+  { label: "Overhead pressing", ids: ["barbell-overhead-press", "seated-dumbbell-shoulder-press", "kettlebell-overhead-press", "band-overhead-press", "machine-shoulder-press", "smith-machine-shoulder-press"], eq: ["barbell", "dumbbell", "kettlebell", "band", "machine"] },
+  { label: "Lunges & split squats", ids: ["walking-lunge", "bodyweight-lunge", "bulgarian-split-squat", "dumbbell-curtsy-lunge"], eq: ["dumbbell", "bodyweight"] },
+  { label: "Pull-ups", ids: ["pull-up", "chin-up"], eq: ["bodyweight"] },
+  { label: "Dips", ids: ["chest-dip", "bench-dip"], eq: ["bodyweight"] },
+  { label: "Push-ups", ids: ["push-up", "diamond-push-up", "pike-push-up"], eq: ["bodyweight"] },
+  { label: "Leg press", ids: ["leg-press"], eq: ["machine"] },
+];
+const PREF_CARDIO_OPTS = [["Walking", "walking"], ["Bike", "cycling"], ["Rower / elliptical", "rowing-elliptical"], ["Running", "running"], ["Intervals", "hiit"]];
+// The profile's training_prefs, as the screen edits it: always all four keys (empty when unset).
+const prefsOf = (tp) => ({ style: [...(tp?.style ?? [])], variety: tp?.variety ?? null, avoid: [...(tp?.avoid ?? [])], cardio: [...(tp?.cardio ?? [])] });
+// A family chip is on when all its ids are in the avoid list; toggling it adds or removes exactly its ids, so a lift
+// skipped elsewhere ("Just not for me", W323) is never touched by this screen.
+const familyOn = (tp, f) => f.ids.every((id) => tp.avoid.includes(id));
+function prefsSummary(tp) {
+  const p = prefsOf(tp);
+  const parts = [
+    p.style.map((v) => PREF_STYLE_OPTS.find((o) => o[1] === v)?.[0]).filter(Boolean).join(" + "),
+    PREF_VARIETY_OPTS.find((o) => o[1] === p.variety)?.[0] ?? "",
+    p.avoid.length ? `skipping ${p.avoid.length} lift${p.avoid.length === 1 ? "" : "s"}` : "",
+    p.cardio.length ? `cardio: ${p.cardio.map((v) => PREF_CARDIO_OPTS.find((o) => o[1] === v)?.[0] ?? v).join(", ").toLowerCase()}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "No preference";
+}
+
 const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
   { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
+  // W321 (owner: "ask the necessary questions to understand what exercise/workouts the user likes … to improve long term
+  // commitment, adherence and consistency"): ONE screen, every row optional. What they enjoy only ever reorders lifts
+  // that are equally good for the muscle (plan-core's bounded preference term) — the plan stays optimal and says when a
+  // preference couldn't be honoured. A lift to skip is swapped when an equal alternative exists, never banned.
+  { key: "training_prefs", q: "What do you enjoy?", prefs: true, optional: true, hint: "All optional. I'll favour what you enjoy whenever it's as good as the best option for the muscle, and tell you when it isn't." },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard while everything else eases back to a light dose to pay for it (most muscles keep slowly growing; a few drop to pure maintenance). Pick three or more and we'll just tilt volume their way." },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
@@ -721,6 +758,7 @@ async function renderTrainingSettings() {
     ["session_length_min", "Session length", `${p.session_length_min ?? "—"} min`],
     ["available_equipment", "Equipment", equipLabel()],
     ["priority_muscles", "Priority muscles", priLabel()],
+    ["training_prefs", "What you enjoy", prefsSummary(p.training_prefs)],
     ["injuries", "Training around", injLabel()],
     // The goal-event row mirrors the wizard step's own gate (non-beginners only).
     ...(p.training_status !== "beginner" ? [["goal_event_date", "Goal event date", p.goal_event_date || "None"]] : []),
@@ -777,6 +815,7 @@ async function renderSettings(soloKey = null) {
     // more day. (The injuries solo edit still re-asks and overwrites this.)
     injury_severity: (p.injuries || [])[0]?.severity ?? undefined,
     goal_event_date: p.goal_event_date || "",
+    training_prefs: prefsOf(p.training_prefs), // the whole object, so the screen's untouched rows (and W323's skips) survive
     // `sex` and `units` are no longer wizard steps, so prefilling them here would
     // populate answers nothing reads — and `units` in particular must NOT be sent
     // back by a settings save (see submitOnboarding): the Me-tab toggle owns it,
@@ -848,6 +887,18 @@ function renderOnboarding() {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
       + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
+  } else if (step.prefs) {
+    const tp = prefsOf(answers[step.key]);
+    const eq = new Set(answers.available_equipment || []);
+    const styles = PREF_STYLE_OPTS.filter(([, , need]) => need.some((x) => eq.has(x)));
+    const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
+    const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
+    const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
+    body = (styles.length > 1 ? group("I enjoy training with", styles.map(([l, v]) => chip("style", v, l, tp.style.includes(v))).join("")) : "")
+      + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
+      + (fams.length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")) : "")
+      + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
+      + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
     // A goal event can't be in the past — in the USER'S local calendar, not UTC's:
@@ -885,6 +936,21 @@ function renderOnboarding() {
       b.classList.toggle("sel");
       b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
       saveOnb();
+    });
+    $("#next").onclick = advance;
+  } else if (step.prefs) {
+    const eq = new Set(answers.available_equipment || []);
+    const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
+    answers[step.key] = prefsOf(answers[step.key]);
+    app.querySelectorAll(".chip.pick").forEach((b) => b.onclick = () => {
+      const tp = answers[step.key], g = b.dataset.g, v = b.dataset.v;
+      if (g === "variety") tp.variety = tp.variety === v ? null : v; // single choice; tap again to clear
+      else if (g === "avoid") {
+        const f = fams[+v], on = familyOn(tp, f);
+        tp.avoid = on ? tp.avoid.filter((id) => !f.ids.includes(id)) : [...new Set([...tp.avoid, ...f.ids])];
+      } else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
+      saveOnb();
+      renderOnboarding(); // re-render: variety is single-choice, so a sibling's state changes too
     });
     $("#next").onclick = advance;
   } else if (step.date) {
@@ -936,6 +1002,8 @@ async function submitOnboarding() {
     // spreading the new object over the old, so an omitted key would never clear.
     goal_event_date: answers.training_status !== "beginner" && answers.goal_event_date ? answers.goal_event_date : null,
     injuries,
+    // Always sent (the server sanitizes; an all-empty answer stores null = no preference), so Settings can clear it.
+    training_prefs: prefsOf(answers.training_prefs),
     // `sex` and `units` are deliberately ABSENT from this literal, and absence is
     // load-bearing: /api/plan/regenerate merges with `{ ...u.profile, ...patch }`,
     // so sending `sex: undefined` would OVERWRITE a stored value with undefined and

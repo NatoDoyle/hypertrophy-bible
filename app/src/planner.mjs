@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -42,6 +42,23 @@ export function planOptsFor(user, extra = {}) {
     ...(Number.isInteger(user?.profile?.session_cap) ? { sessionCap: user.profile.session_cap } : {}),
     // …and their own pace (W316), learned from their logged sets — every door sizes the day by it.
     ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}), ...extra };
+}
+
+// The lifter's training preferences (W321), at the trust boundary: enum styles and variety, REAL exercise ids (the KB's
+// or their own custom ones), the KB's own cardio modalities — deduped, nothing else kept. Empty lists are dropped and an
+// answer with nothing left is null (no preference), so "absent" has exactly one shape for the engine (byte-identical).
+const CARDIO_MODALITIES = new Set((guidelines.find((g) => g.id === "cardio-concurrent-training")?.modalities ?? []).map((m) => m.id));
+const EXERCISE_IDS = new Set(exercises.map((e) => e.id));
+export function sanitizeTrainingPrefs(raw, customExercises = []) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const custom = new Set((customExercises ?? []).map((x) => x?.id).filter(Boolean));
+  const pick = (v, ok) => Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" && ok(x)))] : [];
+  const style = pick(raw.style, (x) => PREF_STYLES.includes(x));
+  const avoid = pick(raw.avoid, (x) => EXERCISE_IDS.has(x) || custom.has(x)).slice(0, PREF_AVOID_MAX);
+  const cardio = pick(raw.cardio, (x) => CARDIO_MODALITIES.has(x));
+  const out = { ...(style.length ? { style } : {}), ...(PREF_VARIETY.includes(raw.variety) ? { variety: raw.variety } : {}),
+    ...(avoid.length ? { avoid } : {}), ...(cardio.length ? { cardio } : {}) };
+  return Object.keys(out).length ? out : null;
 }
 
 // What the app LEARNED about the lifter that rides in plan_meta (W319): their pace (W316) and a declined session ceiling

@@ -459,6 +459,36 @@ try {
       JSON.stringify({ saved: bgSaved.plan_meta.refit_index, after: bg2.plan_meta.refit_index }));
   }
 
+  // W321: the one-screen preference quiz — `training_prefs`, through both doors (onboard + Settings), sanitized to the
+  // engine's enums and the KB's real ids, clearable, never wiped by a save that omits it, and a real training change.
+  {
+    const { PREF_STYLES, PREF_VARIETY } = await import("../../tools/plan-core.mjs");
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const tpU = (await json("POST", "/api/onboard", { profile: { ...base,
+      training_prefs: { style: ["machines", "junk", "machines"], variety: "fresh", avoid: ["barbell-back-squat", "not-an-id", 7], cardio: ["cycling", "pogo"], extra: 1 } } })).data.user_id;
+    const tp0 = (await store.getUser(tpU)).profile.training_prefs;
+    ok("#W321 onboard stores training_prefs sanitized: enum styles (deduped), variety, real exercise ids, KB cardio modalities, nothing else",
+      JSON.stringify(tp0) === JSON.stringify({ style: ["machines"], variety: "fresh", avoid: ["barbell-back-squat"], cardio: ["cycling"] }), JSON.stringify(tp0));
+    const tpStart = (await store.getUser(tpU)).plan_meta.block_start;
+    await new Promise((r) => setTimeout(r, 5));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: { style: ["free"], variety: "same", avoid: [], cardio: [] } } });
+    const tp1 = await store.getUser(tpU);
+    ok("#W321 a Settings save replaces the prefs (empty lists dropped) and is a real training change (a fresh block)",
+      JSON.stringify(tp1.profile.training_prefs) === JSON.stringify({ style: ["free"], variety: "same" }) && tp1.plan_meta.block_start !== tpStart,
+      JSON.stringify(tp1.profile.training_prefs));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { days_per_week: 4 } });
+    ok("#W321 a save that omits training_prefs keeps them", JSON.stringify((await store.getUser(tpU)).profile.training_prefs) === JSON.stringify({ style: ["free"], variety: "same" }));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: "loads" } });
+    ok("#W321 junk collapses to no preference (null)", (await store.getUser(tpU)).profile.training_prefs === null);
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: { style: [], avoid: ["nope"] } } });
+    ok("#W321 an all-empty answer is no preference (null), not an empty object", (await store.getUser(tpU)).profile.training_prefs === null);
+    const tpSchema = JSON.parse(readFileSync(new URL("../../data/schemas/onboarding-profile.schema.json", import.meta.url), "utf8")).properties?.training_prefs;
+    ok("#W321 the profile schema describes training_prefs with the engine's own enums",
+      JSON.stringify(tpSchema?.properties?.style?.items?.enum) === JSON.stringify(PREF_STYLES) && JSON.stringify(tpSchema?.properties?.variety?.enum?.filter((x) => x !== null)) === JSON.stringify(PREF_VARIETY),
+      JSON.stringify(tpSchema));
+  }
+
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
   // which needs the custom flag through /api/plan/explain's whitelist — and one tap hands the plan back to the coach:
   // a bare regenerate (no profile change) rebuilds from the answers and clears the flag.

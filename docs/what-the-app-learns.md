@@ -81,8 +81,9 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
 4. **Today-only swaps teach nothing.** Swapping a lift away because the machine is busy, or picking your
    own, is recorded on the session (`targets[].stood_in_for`) but nothing reads it for planning. Swapping
    the same lift away every week does not move it out of your plan.
-5. **Nothing asks what you enjoy.** The plan picks the best lifts for the muscle; it has never known which
-   ones you like.
+5. **Nothing asked what you enjoy.** **Since W321** onboarding (and Settings → "What you enjoy") asks, on one
+   optional screen: equipment styles you enjoy, routine vs variety, lifts you'd rather skip, cardio you'd do.
+   Stored as `profile.training_prefs` (sanitized in `app/src/planner.mjs` `sanitizeTrainingPrefs`).
 
 ## Stored but not used for learning
 

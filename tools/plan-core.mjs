@@ -672,6 +672,18 @@ function buildCardio(guideline, goal, sessionSpecs) {
 // lesson 34, one wave after lesson 34 was written: a fix's reach is bounded by the
 // population of the field it reads, and no test can tell you, because the fixtures
 // supply the field.
+// THE LIFTER'S TRAINING PREFERENCES (W321/W322 — owner: "ask what exercise/workouts the user likes … then bridge the
+// gap between these preferences and optimal training"). One stored object, every key optional:
+//   style   — what they enjoy training with: "free" (barbell/dumbbell/kettlebell), "machines" (machine/cable/smith),
+//             "bodyweight" (bodyweight/band)
+//   variety — "same" (keep the lifts, master them) | "fresh" (rotate accessories more)
+//   avoid   — exercise ids they'd rather skip (a soft no, never an exclusion: a lift with no equal alternative stays)
+//   cardio  — the KB cardio modalities they'd actually do (data/guidelines cardio modality ids)
+export const PREF_STYLES = ["free", "machines", "bodyweight"];
+export const PREF_VARIETY = ["same", "fresh"];
+export const PREF_STYLE_EQUIPMENT = { free: ["barbell", "dumbbell", "kettlebell"], machines: ["machine", "cable", "smith-machine"], bodyweight: ["bodyweight", "band"] };
+export const PREF_AVOID_MAX = 40;
+
 export function deriveSpecialization(profile, muscles = []) {
   if (profile?.specialization === true) return true;
   const ids = profile?.priority_muscles ?? [];

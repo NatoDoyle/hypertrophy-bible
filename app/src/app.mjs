@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, learnedMeta, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor } from "../../tools/plan-core.mjs";
 import { paceProfile } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -315,6 +315,7 @@ export function createApp(store, config = {}) {
     if (profile.injuries != null) profile.injuries = sanitizeInjuries(profile.injuries);
     if (profile.tz_offset_min != null) profile.tz_offset_min = parseTzOffset(profile.tz_offset_min);
     if ("session_cap" in profile) profile.session_cap = sanitizeSessionCap(profile.session_cap); // a whole 10-20 or nothing (W315b)
+    if ("training_prefs" in profile) profile.training_prefs = sanitizeTrainingPrefs(profile.training_prefs); // enums + real ids, or null (W321)
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -426,7 +427,8 @@ export function createApp(store, config = {}) {
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
-    if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
+    const regenUser = id ? await store.getUser(id) : null;
+    if (!regenUser) return c.json({ error: "unknown user" }, 404);
     // A profile edit is a generic spread boundary, so make a private editable copy
     // BEFORE validating or merging it. This used to strip `disclaimer_ack` alone,
     // under a comment citing "guard the siblings" — the sixteen server-owned
@@ -452,6 +454,8 @@ export function createApp(store, config = {}) {
     if (profilePatch?.tz_offset_min != null) profilePatch.tz_offset_min = parseTzOffset(profilePatch.tz_offset_min);
     // The lifter's own session ceiling (W315b): a whole 10-20, or nothing (null takes it off).
     if (profilePatch && "session_cap" in profilePatch) profilePatch.session_cap = sanitizeSessionCap(profilePatch.session_cap);
+    // The lifter's training preferences (W321): sanitized to the engine's enums and real ids, or null (clears them).
+    if (profilePatch && "training_prefs" in profilePatch) profilePatch.training_prefs = sanitizeTrainingPrefs(profilePatch.training_prefs, regenUser.custom_exercises);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -460,7 +464,7 @@ export function createApp(store, config = {}) {
     // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
     // not a real change and must not restart the mesocycle.
     const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
-    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap"];
+    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap", "training_prefs"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;
