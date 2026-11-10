@@ -2964,6 +2964,7 @@ function renderPlayer() {
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
+    ${pickOffer(sess) ? `<button class="btn ghost inline" id="your-pick" style="margin:-2px 0 8px">⇄ Rather do ${esc(e.your_pick.name)} today?</button>` : ""}
     ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
@@ -3009,6 +3010,7 @@ function renderPlayer() {
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
   if ($("#tired")) $("#tired").onclick = () => tiredSwap();
+  if ($("#your-pick")) $("#your-pick").onclick = () => yourPickSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
@@ -3460,6 +3462,35 @@ function easeInPlace(cur, cause) {
   saveSess();
   say(w ? `Made ${cur.name} lighter for today — ${setsN(n)}.` : `${cur.name}: ${setsN(n)} today.`);
   renderPlayer(0);
+}
+// "YOUR PICK" (W326 — adherence playbook: autonomy; choices offered, "not today" accepted). The server names, per lift,
+// the best same-family alternative that fits today's workout; the player offers it once, before the lift's first set,
+// as one optional tap. Ignored, nothing changes. Taken, it goes through the Can't-do sheet's own pick door — today only,
+// recorded as a pick (swap_why), which teaches the plan what they like (W323).
+const pickOffer = (sess) => {
+  const cur = sess?.ex?.[sess.i];
+  return !!cur?.your_pick?.id && sess.set === 0 && !cur.superset_with && !cur.tired && typeof cur.slot_of !== "string"
+    && loggedWorkSets(sess.logged ?? [], cur.exercise) === 0 && !sess.ex.some((x) => x.exercise === cur.your_pick.id);
+};
+async function yourPickSwap() {
+  const gen = ++cantDoGen;
+  const cur = sess?.ex?.[sess.i];
+  if (!pickOffer(sess)) return;
+  const pick = cur.your_pick;
+  const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
+  app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
+  let r = null;
+  try {
+    r = await api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
+      exclude: sess.ruledOut ?? [], prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null,
+      scope: "today", live: sess.ex.map((x) => x.exercise), pick: pick.id }) });
+  } catch { r = null; }
+  if (!stillHere()) return;
+  if (!r?.ok) { alertBar(r == null ? "📴 Couldn't reach the server — keep going with this one." : `${pick.name} doesn't fit today after all — keep going with ${cur.name}.`); renderPlayer(0); return; }
+  const why = applyReplacement(cur.exercise, r.row ?? { exercise: pick.id, name: pick.name },
+    { to: pick.id, toName: pick.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true },
+    { said: `${pick.name} it is — just for today.` });
+  if (why) { alertBar(`Couldn't swap to ${pick.name} — keep going with ${cur.name}.`); renderPlayer(0); }
 }
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
 // so a slow or doubled response can tell it has been overtaken.

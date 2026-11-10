@@ -1253,6 +1253,22 @@ export function createApp(store, config = {}) {
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
     if (plan && session) session.gap_note = null;
+    // "YOUR PICK" (W326 — adherence playbook: choices offered, "not today" accepted; how a workout feels while you do it
+    // predicts coming back). Per lift, the best SAME-FAMILY alternative that fits today's workout, never stalled, never one
+    // they'd rather skip or their swaps learned against. The player offers it as one optional tap on the lift's first set;
+    // taking it goes through the Can't-do pick door, so it's recorded (swap_why "pick") and teaches the plan (W323).
+    if (session?.exercises?.length && !user.paused) {
+      const live = session.exercises.map((e) => e.exercise);
+      const stalledNow = swapStalls(user, sessions, nowISO);
+      const noPick = new Set([...stalledNow, ...(user.profile?.training_prefs?.avoid ?? []),
+        ...Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([, v]) => v > 0).map(([k]) => k)]);
+      for (const row of session.exercises) {
+        if (row.superset_with || session.exercises.some((o) => o.superset_with === row.exercise)) continue;
+        const alt = userSubstitutes(user, row.exercise, { sessionName: session.name, stalled: stalledNow, live, scope: "today" })
+          .find((x) => x.fits && x.tier === 1 && !noPick.has(x.id) && !live.includes(x.id));
+        if (alt) row.your_pick = { id: alt.id, name: alt.name };
+      }
+    }
     return c.json({ card: todayCard(user, sessions), session, daily, exercise_units: user.profile?.exercise_units ?? {} });
   });
 

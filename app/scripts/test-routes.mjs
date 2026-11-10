@@ -489,6 +489,50 @@ try {
       JSON.stringify(tpSchema));
   }
 
+  // W326 "Your pick" (adherence playbook: autonomy — choices offered, "not today" accepted): Today offers, per lift, the
+  // best same-family alternative that fits today's workout — one optional tap, through the Can't-do sheet's pick door,
+  // so the choice is recorded (swap_why "pick") and teaches the plan (W323). Never a lift they'd rather skip.
+  {
+    const { exercises: kbEx2 } = await import("../src/kb-data.mjs");
+    // plan-core's movement family (famOf), replicated: the pick must be the same KIND of lift, not just the same mechanic.
+    const famOfT = (p) => p === "squat" || p === "lunge" ? "knee" : p === "hinge" ? "hip" : /^(horizontal|vertical)-push$/.test(p) ? "push" : /^(horizontal|vertical)-pull$/.test(p) ? "pull" : p;
+    const exM = new Map(kbEx2.map((e) => [e.id, e]));
+    const ypU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ypT = await (await app.request("/api/today", { headers: { "X-HB-User": ypU } })).json();
+    const rows = ypT.session?.exercises ?? [], live = rows.map((r) => r.exercise);
+    const offered = rows.filter((r) => r.your_pick);
+    ok("#W326 Today offers a near-equal pick on some lifts — never one already in the workout, never on a superset member",
+      offered.length > 0 && offered.every((r) => !live.includes(r.your_pick.id) && !r.superset_with && typeof r.your_pick.name === "string"), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick])));
+    ok("#W326 …each the same kind of lift (same mechanic AND movement family)", offered.every((r) => exM.get(r.exercise)?.mechanic === exM.get(r.your_pick.id)?.mechanic
+      && famOfT(exM.get(r.exercise)?.movement_pattern) === famOfT(exM.get(r.your_pick.id)?.movement_pattern)), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick.id])));
+    const fitsToday = await Promise.all(offered.map(async (r) => (await (await app.request(`/api/exercise/${r.exercise}/alternatives?session=${encodeURIComponent(ypT.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives.some((a) => a.id === r.your_pick.id)));
+    ok("#W326 …and every pick is among today's fitting alternatives", fitsToday.every(Boolean), JSON.stringify(fitsToday));
+    const r0 = offered[0];
+    const took = r0 ? await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: r0.exercise, scope: "today", session: ypT.session.name, live, pick: r0.your_pick.id }) : null;
+    ok("#W326 taking the pick goes through the pick door (it fits, by construction)", took?.status === 200 && took.data.replaced_by === r0.your_pick.id, JSON.stringify(took?.data));
+    // …and never one that doesn't FIT today: a day already holding two other horizontal presses can't take a third (the
+    // per-session family cap), so the pick for its first press must come from elsewhere in the push family, or not at all.
+    const fcU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: fcU, program: { name: "Push", sessions: [{ name: "Push", exercises: [
+      { exercise: "dumbbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" },
+      { exercise: "machine-chest-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+    const fcT = await (await app.request("/api/today", { headers: { "X-HB-User": fcU } })).json();
+    const fcRow = (fcT.session?.exercises ?? []).find((r) => r.exercise === "dumbbell-bench-press");
+    ok("#W326 a pick never breaks today's workout (no third horizontal press on a day with two)", !!fcRow && (!fcRow.your_pick || exM.get(fcRow.your_pick.id)?.movement_pattern !== "horizontal-push"),
+      JSON.stringify(fcRow?.your_pick));
+
+    // A lift they'd rather skip is never offered — even where every same-family option is on the skip list (the ranking
+    // alone would still hand one back). Written straight to the profile, so the plan itself doesn't move.
+    const r1 = offered[1] ?? offered[0];
+    const fam1 = kbEx2.filter((e) => e.id !== r1.exercise && e.mechanic === exM.get(r1.exercise).mechanic && famOfT(e.movement_pattern) === famOfT(exM.get(r1.exercise).movement_pattern)).map((e) => e.id).slice(0, 40);
+    await store.updateUser(ypU, (u) => { u.profile = { ...u.profile, training_prefs: { avoid: fam1 } }; return u; });
+    const ypT2 = await (await app.request("/api/today", { headers: { "X-HB-User": ypU } })).json();
+    const row1 = (ypT2.session?.exercises ?? []).find((r) => r.exercise === r1.exercise);
+    ok("#W326 a lift on the skip list is never the pick — even when the whole family is skipped", !!row1 && !row1.your_pick, JSON.stringify(row1?.your_pick));
+  }
+
   // W323: quiet preference learning. "Just not for me" (one tap on the Can't-do sheet) is a SOFT, reversible no stored in
   // training_prefs.avoid — never "no machine"; and the swaps a lifter already makes teach the plan (busy/pick, never tired).
   {

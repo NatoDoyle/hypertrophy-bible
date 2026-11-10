@@ -82,7 +82,8 @@ export function learnedMeta(planMeta) {
 // lifts and block (specialization ordering depends on where they are in it).
 export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always", exclude = [] } = {}) {
   return bestSubstitutes(exId, { profile: user.profile, kb: KB, program: user.program, rationale: user.plan_rationale ?? null,
-    sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [] });
+    sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [],
+    prefScores: planOptsFor(user).prefScores ?? null }); // what their swaps taught the plan ranks replacements too (W323/W326)
 }
 // The fitting substitutes that are easier on a tired body (Burst 6), easiest first — the custom library bound in.
 export function userEasierSubstitutes(user, exId, fitting, known = []) {
