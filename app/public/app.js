@@ -3567,7 +3567,7 @@ async function renderCantDo() {
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
-    <button class="choice reason" id="cd-dislike">🙅 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
+    <button class="choice reason" id="cd-dislike">👎 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
     <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
     ${tail}`;
