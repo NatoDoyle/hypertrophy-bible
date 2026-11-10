@@ -84,6 +84,12 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
 5. **Nothing asked what you enjoy.** **Since W321** onboarding (and Settings → "What you enjoy") asks, on one
    optional screen: equipment styles you enjoy, routine vs variety, lifts you'd rather skip, cardio you'd do.
    Stored as `profile.training_prefs` (sanitized in `app/src/planner.mjs` `sanitizeTrainingPrefs`).
+   **W322 — how the plan uses it** (`tools/plan-core.mjs` `prefRankOpts` / `rankPool`), bounded so it only reorders
+   near-equals: an enjoyed style ranks at the top of the equipment ladder but never above the lengthened-bias signal;
+   a lift you'd skip is demoted below anything comparable but kept (and named on the plan card) when nothing else
+   appropriate trains that muscle; "master the same" rotates accessories every second block, "keep it fresh" every
+   block among the top four (main lifts never rotate); a liked cardio modality becomes the structured pick.
+   "What your answers changed" says what each preference did, including where the optimal choice won.
 
 ## Stored but not used for learning
 
