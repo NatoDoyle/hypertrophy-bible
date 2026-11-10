@@ -1,0 +1,98 @@
+# What the app learns from you, and when you'll see it
+
+This is the ground truth: every piece of data the app stores about you, what reads it back, and what
+changes for you as a result. It is written from the code, not from intentions. Where an older design
+doc promises more, this page wins. If the code changes, this page changes in the same commit.
+
+**The short version.**
+- **Your weights learn from every workout.** The next session's weight comes from what you just lifted.
+- **Your rest, your session length and your daily dose learn within weeks.** These are small, bounded steps.
+- **Your plan itself learns at block boundaries.** Sets per muscle and which lifts you do change every 6
+  *trained* weeks, and only where the data shows a problem (a lift gone flat). If everything keeps
+  progressing, the plan stays as it is on purpose: it's working.
+- **Some learning is offered, not applied.** The learned session ceiling is an example: you say yes first.
+
+So "it isn't learning" usually means one of three things:
+1. Everything is progressing, so there is nothing to change.
+2. You haven't reached a block boundary yet.
+3. You're in a case where plan learning doesn't run (see "Why you might not see it").
+
+## The ledger: datum → what reads it → what changes → when
+
+Refs are `file:line` at the time of writing; search for the function name if a line has moved.
+
+### Learns every workout
+
+| You give it | Stored as | Read back by | What changes for you | When / gate |
+|---|---|---|---|---|
+| Each set: weight, reps, reps-in-reserve (RIR) | `sessions[].sets` (`POST /api/session`, `app/src/app.mjs` normalizeSet) | `suggestWeight` (`app/src/coach.mjs`) | **Next session's weight.** All sets at the top of the range at the planned effort → up one step. Reps left over (RIR above the band) → up. Two or more reps under the range → eased. A shortfall holds. Each change comes with its reason. | Next session, every lift. RIR is asked only of non-beginners; beginners progress on reps alone (the KB's double progression). |
+| Exercise order you actually did (`targets[].moved`) | session targets | `orderShift` (`coach.mjs`) | A lift moved later after hard sets gets its weight adjusted for the fatigue, and says so. | Next time the same order happens. |
+| Time between your sets (set timestamps + `targets[].rest_s`) | `sets[].completed_at` | `restAdapt` (`tools/response-core.mjs`) | **Rest timer ±30 s, inside the KB's band.** Longer if your next set kept falling under the range after the current rest. Shorter for isolations whose sets held, on days that run past your minutes. | Needs the lift's last 3 workouts, with 2 showing it. |
+| Same timestamps | `plan_meta.pace` (`paceProfile`, `response-core.mjs`) | `planOptsFor` → the plan's fit-to-time (`tools/plan-core.mjs`) and Today's minutes | **How many sets fit your session length**, at your real pace instead of a textbook 3 min/set. | Learned after every workout once a rest tier has ≥12 samples. The plan picks it up at the next rebuild (block boundary, a Settings change, an injury report). |
+| Fade marks (stopped early, skipped the last lift, too tired) and "how did the last sets feel?" | `sessions[].fade_marks`, `/api/session/feel` | `sessionTolerance` → `sessionCapOffer` (`coach.mjs`) | **Your session ceiling** (for example "you fade past 12 sets"). Today offers it once; a yes rebuilds the plan under it. | ≥3 fades in your last 8 workouts. It is an **offer**: nothing changes until you accept. |
+| Check-in: sleep, energy, mood, stress | `checkins` (`POST /api/checkin`) | `dailyReadiness` (`coach.mjs`) | **Today only:** a low score drops the last accessory and says why. | Same day. |
+| Your history overall | sessions | `graduatedStatus` (`tools/derive-core.mjs`) | **You graduate** beginner → intermediate (26 trained weeks and 40 sessions) → advanced (130 and 250). Graduation rebuilds the plan with bigger targets and announces it once. | At those thresholds. |
+| A lift you can't do: "No machine for this" | `profile.unavailable_exercises` | `candidatePool` (`plan-core.mjs`) | That lift never comes back until you tap "Bring back". | Immediately, every rebuild. |
+| "It hurts" | `profile.injuries` | the injury filter, then a history-aware rebuild | Lifts that load that region are swapped out. | Immediately. |
+
+### Learns at the block boundary (every 6 trained weeks)
+
+At each boundary, `blockTuneDecision` (`coach.mjs`) reads the block you just finished. The trigger is in
+`app/src/app.mjs` (search "NEW MESOCYCLE").
+
+| Signal | What changes | Gate |
+|---|---|---|
+| A lift flat for your own stall window (`stallDetect` + `adaptiveStallWindow`, 4–10 weeks scaled to how often you train) | **That lift is swapped** for a different angle on the same muscle (if one exists in your equipment). The coach note names only lifts actually dropped. | The stall must be recent (trained in the last 21 days). |
+| A muscle stalled with room below its ceiling | **+2 weekly sets** for that muscle, clamped to its own MEV↔MRV span | Only if you're completing the sets already planned, recovered (check-ins), not in a deficit (bodyweight trend), not regressing, and not logging efforts clearly easier than prescribed. |
+| A muscle over its recoverable ceiling, or stalled at it | **−2 weekly sets** | — |
+| Stalled at the ceiling mid-block (week ≥3) | **A deload week brought forward** (`reactiveDeloadStampDue`) | Once per block. |
+| Accessories | **Rotate** one step among the top-ranked options per muscle (variety, not learning) | Every boundary. |
+
+Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a boundary (`recoverySignal`,
+`classifyEnergyBalance`). They never add volume.
+
+### Learns from what you eat (Fuel tab)
+
+| You give it | Read back by | What changes | Gate |
+|---|---|---|---|
+| Calories logged + bodyweight | `adaptiveTDEE` (`tools/nutrition-core.mjs`) | **Your maintenance estimate**, replacing the formula's guess with what your intake and weight change actually show | ≥10 logged days in the last 28, with weigh-ins on those same dates spanning ≥10 days. |
+| Tape measurements, height | `navyBodyFat`, Katch-McArdle | Your starting targets | Immediately. |
+
+## Why you might not see it
+
+These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; this section is updated as they land).
+
+1. **Beginners get no block-boundary learning.** Until graduation (26 trained weeks and 40 sessions), a
+   beginner's plan never swaps a stalled lift on its own and never refits to their pace. Their learning is
+   weights, rest, and today's readiness trim.
+2. **A hand-edited plan stops plan learning for good, without saying so.** Any edit in the plan editor
+   marks the plan `custom`. From then on the boundary tune, stall swaps, accessory rotation, the session
+   ceiling offer and fit-to-time are all off.
+3. **The plan changes only when something stalls.** A lifter whose lifts keep climbing sees the same plan
+   block after block. That is deliberate (don't fix what works), but it looks like "not learning".
+4. **Today-only swaps teach nothing.** Swapping a lift away because the machine is busy, or picking your
+   own, is recorded on the session (`targets[].stood_in_for`) but nothing reads it for planning. Swapping
+   the same lift away every week does not move it out of your plan.
+5. **Nothing asks what you enjoy.** The plan picks the best lifts for the muscle; it has never known which
+   ones you like.
+
+## Stored but not used for learning
+
+| Datum | Where it's used today |
+|---|---|
+| `rir_est` (an estimated RIR when you forgot) | History display only. Deliberately never treated as evidence. |
+| `rpe` | Accepted by the API, but the app never asks for it. |
+| Protein, carbs, fat logged on Fuel | Display against your targets only. |
+| `motivation` (check-in) | Only the block-boundary recovery gate; it does not affect today's readiness trim. |
+| Notification taps | Not recorded at all. |
+
+## Not built (things older docs describe as if they were)
+
+- A readiness index scored against your own baseline (z-scores of HRV, sleep, resting heart rate). The app
+  uses fixed thresholds.
+- Confidence-weighting of inputs by source, and learned per-user logging bias (for example a chronic RIR
+  under-call).
+- Learning your personal MEV/MRV. The landmarks stay the KB's; only a bounded ± sets offset is learned.
+- Population learning across users, and the KB upgrading its own estimates from user data.
+- Within-user experiments (n-of-1).
+- Wearable data (HRV, resting heart rate, sleep).

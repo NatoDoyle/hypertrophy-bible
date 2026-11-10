@@ -2,6 +2,10 @@
 
 The long-term north star for the coaching engine: **the plan adjusts itself to keep
 progress going, using every signal it has, and learns each individual over time.**
+This is the north star, not the current state: what is built today, and its gates, is in
+[`what-the-app-learns.md`](what-the-app-learns.md). In short, the plan learns at block boundaries, and only
+where a lift has gone flat; calories never reach the training engine; mood, sleep, stress and motivation only
+trim today's session or hold back a volume increase.
 The user's framing (considerations #1):
 
 > The algorithm should be looking at everything — sets, reps, RIR, exercises,
@@ -92,7 +96,7 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
 - **[done] Per-muscle volume auto-tune** — at each block boundary, stalled muscles with
   headroom gain sets, ceiling-bound ones ease; accumulates across blocks, clamped
   MEV↔MRV (`deriveVolumeAdjust` / `computeVolumeAdjust`). Advisory "what to adjust" card
-  removed (Wave 53) — the plan just does it.
+  removed (Wave 53) — the plan just does it, for non-beginners on a generated (not hand-edited) plan.
 - **[done · Increment A] Recovery- & energy-aware volume tune** — the tune won't *add*
   volume to a stalled muscle when the athlete is under-recovered (low block-average
   readiness) or in an energy deficit; it holds instead, because the stall is then a

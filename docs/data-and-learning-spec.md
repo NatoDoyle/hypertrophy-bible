@@ -1,6 +1,8 @@
 # Data & Learning Spec — Turning the KB into a Self-Learning System
 
-**Status:** Foundation built and tested (schemas + derive engine + fixtures + tests).
+**Status:** Foundation built and tested (schemas + derive engine + fixtures + tests). This is the original
+design. **What the app actually learns today, datum by datum, is in [`what-the-app-learns.md`](what-the-app-learns.md)**;
+where the two disagree, that page wins. Items below that were never built are marked **(Not built)**.
 **Scope:** the data contract and feature-derivation layer. The app UI, backend, and ML training
 pipelines are downstream of this and out of scope here.
 
@@ -50,7 +52,7 @@ readiness.
 **Optional, low-burden:** RPE/RIR (experienced users) · soreness · one daily mood/stress/energy tap ·
 protein "hit target? yes/roughly/no" · menstrual phase.
 
-**Noise — do NOT collect:** precise calorie counts · carbs/fat/micronutrients/water logging · daily
+**Noise — do NOT collect** (for training decisions; see the superseded note under the roadmap below): precise calorie counts · carbs/fat/micronutrients/water logging · daily
 bodyweight as a point value · steps · "pump"/subjective size ratings · anything computable from something else.
 
 ## Confidence tiers
@@ -62,6 +64,8 @@ bodyweight as a point value · steps · "pump"/subjective size ratings · anythi
 | **Low** | Self-reported calories/quality/mood | Weak prior only — never overrides High |
 
 Provenance is captured in `daily-checkin.source` and mapped by `confidenceTier()` in the engine.
+**(Not built in the app:** `confidenceTier()` exists in the derive engine, but nothing in the app calls it, and no
+input is confidence-weighted.)
 
 ## Derived metrics (implemented + unit-tested)
 
@@ -80,6 +84,7 @@ Provenance is captured in `daily-checkin.source` and mapped by `confidenceTier()
 - **`restTimes()`** — from set timestamps.
 - **`proximityFromRepDropoff()`** — infers effort objectively from rep decay at fixed load (bypasses unreliable RIR).
 - **`readinessIndex()`** — composite vs the user's **own baseline** (z-scores of HRV/sleep/RHR/stress), not absolute values.
+  **(Not used by the app:** today's readiness is `dailyReadiness` in `coach.mjs`, on fixed thresholds.)
 - **`buildFeatureReport()`** — the full feature object an autoregulator / ML model consumes.
 
 Run `npm run derive` for a worked demo over `examples/`.
@@ -89,7 +94,7 @@ Run `npm run derive` for a worked demo over `examples/`.
 - **Energy balance from the scale, not the food log** — removes the single most error-prone task in fitness apps.
 - **Objective proximity-to-failure** — velocity-based (camera/wearable) or rep-drop-off inference; reserve
   self-reported RIR for experienced users and rely on double-progression for novices.
-- **Learn and correct per-user logging bias** (chronic RIR under-call, scale-timing drift) once enough data exists.
+- **Learn and correct per-user logging bias** (chronic RIR under-call, scale-timing drift) once enough data exists. **(Not built.)**
 - **Confidence-tiered data fusion** — High > Moderate > Low; Low never overrides High.
 - **Input sanity-checks** — flag implausible loads, unit confusion, wearable-contradicted manual entries.
 - **Progressive onboarding, not a long upfront questionnaire** — collect the "extensive" data over the first weeks, in context, to avoid drop-off.
@@ -100,11 +105,13 @@ Run `npm run derive` for a worked demo over `examples/`.
    currently **Grade C estimates** — placeholders to be replaced by data.
 2. **Personalize (n-of-1).** As a user's data accrues, shrink from the population prior toward *their*
    response (Bayesian: strong prior early, individualized later) — learn their MEV/MRV, recovery rate, volume tolerance.
-3. **Aggregate (population learning).** Pool anonymized (input → outcome) data to build real dose-response
+   **(Partly built:** a bounded ±sets offset per muscle at block boundaries, the stall window scaled to training
+   frequency, and a learned session ceiling. The MEV/MRV landmarks themselves never change.)
+3. **Aggregate (population learning).** **(Not built.)** Pool anonymized (input → outcome) data to build real dose-response
    curves and discover what predicts high vs low response.
-4. **Feed back into the KB.** Population data **upgrades the KB's own graded estimates** — a C-grade
+4. **Feed back into the KB.** **(Not built.)** Population data **upgrades the KB's own graded estimates** — a C-grade
    landmark becomes a data-backed value. The knowledge base literally improves itself.
-5. **Active learning / n-of-1 experiments.** Don't just observe — probe. Run controlled within-user tests
+5. **Active learning / n-of-1 experiments.** **(Not built.)** Don't just observe — probe. Run controlled within-user tests
    (e.g., higher vs lower volume on matched muscles) that are both good for the user and maximally
    informative. Treat **adherence itself as a first-class predicted variable** and optimize for it.
 
@@ -115,6 +122,9 @@ Run `npm run derive` for a worked demo over `examples/`.
 - **High-value add-ons (opt-in):** wearable sleep/HRV, RPE (experienced), protein adherence, soreness.
 - **Later:** mood/stress check-in, measurements/photos + computer vision, menstrual phase, DEXA uploads.
 - **Never:** calorie counting, carbs/fat/water/micros, daily-weight-as-a-number.
+  **(Superseded:** the owner asked for a calorie/macro tracker, and the Fuel tab now collects calories and macros
+  as an opt-in. Training never depends on them; energy balance for training decisions still comes from the
+  bodyweight trend.)
 
 ## How this maps to the repo
 
