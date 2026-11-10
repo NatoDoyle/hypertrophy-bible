@@ -2033,11 +2033,14 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const top0 = tSub(null);
   ok("#prefs a skipped lift is never the first replacement offered", !!top0 && tSub({ avoid: [top0] }) !== top0);
   // Learned scores (W323) are bounded.
-  // A lift a +1 learned dislike KEEPS but that has an alternative (a skip removes it): unclamped, +100 would drop it.
-  const lid = [...placedIds(plan0)].find((id) => placedIds(generatePlan(base, kb, { prefScores: { [id]: 1 } })).has(id)
-    && !placedIds(generatePlan({ ...base, training_prefs: { avoid: [id] } }, kb)).has(id));
-  ok(`#prefs learned scores are clamped: ±100 acts as ±1 (${lid})`, !!lid && [100, -100].every((v) =>
-    JSON.stringify(generatePlan(base, kb, { prefScores: { [lid]: v } })) === JSON.stringify(generatePlan(base, kb, { prefScores: { [lid]: Math.sign(v) } }))));
+  // Learned scores are bounded: a learned dislike weighs like a skip, never like a stall. Read where the ranking is visible
+  // (the replacements list): with the top compound STALLED (+12) and the next one learned-against, +1 and +100 rank the
+  // list identically — the disliked lift stays above the stalled one (unclamped, +100 would sink it below).
+  const subsFor = (ps, stalled = []) => bestSubstitutes("dumbbell-bench-press", { profile: base, kb, program: plan0.program, rationale: plan0.rationale, prefScores: ps, stalled }).map((x) => x.id);
+  const [stl, lid] = subsFor(null).filter((id) => exMap.get(id)?.mechanic === "compound");
+  const at = (list, id) => list.indexOf(id);
+  ok(`#prefs learned scores are clamped: a +100 dislike ranks as +1 does — still above a stalled lift (${lid} vs ${stl})`, !!lid && !!stl
+    && JSON.stringify(subsFor({ [lid]: 100 }, [stl])) === JSON.stringify(subsFor({ [lid]: 1 }, [stl])) && at(subsFor({ [lid]: 1 }, [stl]), lid) < at(subsFor({ [lid]: 1 }, [stl]), stl));
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

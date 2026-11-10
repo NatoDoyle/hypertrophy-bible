@@ -33,6 +33,8 @@ Refs are `file:line` at the time of writing; search for the function name if a l
 | Check-in: sleep, energy, mood, stress | `checkins` (`POST /api/checkin`) | `dailyReadiness` (`coach.mjs`) | **Today only:** a low score drops the last accessory and says why. | Same day. |
 | Your history overall | sessions | `graduatedStatus` (`tools/derive-core.mjs`) | **You graduate** beginner → intermediate (26 trained weeks and 40 sessions) → advanced (130 and 250). Graduation rebuilds the plan with bigger targets and announces it once. | At those thresholds. |
 | A lift you can't do: "No machine for this" | `profile.unavailable_exercises` | `candidatePool` (`plan-core.mjs`) | That lift never comes back until you tap "Bring back". | Immediately, every rebuild. |
+| A lift you'd rather not do: "Just not for me", or the preference quiz | `profile.training_prefs.avoid` | `rankPool` (`plan-core.mjs`) | Swapped for one as good; kept (and said) where nothing appropriate replaces it. | Immediately, every rebuild. |
+| Why you swapped a lift today (busy / pick / tired) | `sessions[].targets[].swap_why` | `swapPreferences` → `plan_meta.pref_scores` → `planOptsFor` | A lift swapped away 3× in 8 weeks leaves at the next rebuild, named once. | Next block boundary or refit. Tired swaps never count. |
 | "It hurts" | `profile.injuries` | the injury filter, then a history-aware rebuild | Lifts that load that region are swapped out. | Immediately. |
 
 ### Learns at the block boundary (every 6 trained weeks)
@@ -78,9 +80,15 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
    your answers and history (a bare `/api/plan/regenerate`), keeping every logged workout.
 3. **The plan changes only when something stalls.** A lifter whose lifts keep climbing sees the same plan
    block after block. That is deliberate (don't fix what works), but it looks like "not learning".
-4. **Today-only swaps teach nothing.** Swapping a lift away because the machine is busy, or picking your
-   own, is recorded on the session (`targets[].stood_in_for`) but nothing reads it for planning. Swapping
-   the same lift away every week does not move it out of your plan.
+4. ~~**Today-only swaps teach nothing.**~~ **Since W323** every today-only swap records why
+   (`targets[].swap_why`: busy / pick / tired). A planned lift swapped away 3 times in 8 weeks (busy or picked,
+   never tired) is learned as a dislike; a lift you pick yourself twice, a small liking
+   (`tools/response-core.mjs` `swapPreferences`, re-learned after every workout into `plan_meta.pref_scores`).
+   It lands at the next rebuild (block boundary or refit): the lift is swapped for an equally good one, the
+   new-block note names it, and the Plan tab lists it with Bring back (which stops learning against it,
+   `plan_meta.pref_kept`). The Can't-do sheet also has "Just not for me": a soft, reversible skip
+   (`training_prefs.avoid`), swapped now where a rebuild would agree, kept and explained where nothing
+   appropriate replaces it.
 5. **Nothing asked what you enjoy.** **Since W321** onboarding (and Settings → "What you enjoy") asks, on one
    optional screen: equipment styles you enjoy, routine vs variety, lifts you'd rather skip, cardio you'd do.
    Stored as `profile.training_prefs` (sanitized in `app/src/planner.mjs` `sanitizeTrainingPrefs`).

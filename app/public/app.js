@@ -1171,11 +1171,20 @@ async function renderPlan() {
   const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
     <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.</p>
     <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
+  // W323: what they'd rather skip (the quiz + "Just not for me"), and what their own swaps moved out — each with Bring back.
+  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
+  const skippedBlock = (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
+    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "";
+  const learnedBlock = (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
+    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "";
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${pausedBlock}
     ${sessionCards}
     ${unavailableBlock}
+    ${skippedBlock}
+    ${learnedBlock}
     <button class="btn secondary inline" id="edit-plan">Edit plan</button>
     ${personalizationBlock}
     ${whyBlock}
@@ -3364,7 +3373,10 @@ function swapUndoCard(e) {
 function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) {
   const i = sess.ex.findIndex((x) => x.exercise === expect);
   // Every door off the Can't-do sheet comes through here, so a tired slot's substitute stays the tired day (round 8).
-  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], row), { expect, ...(sets ? { sets } : {}) });
+  // Why it stood in (W323), stamped on the row so the finished workout tells the plan: a tired swap is about the day;
+  // "Pick one myself" and "It's busy" may say something about the lift. A permanent swap is already recorded server-side.
+  const why = undo.reason === "tired" || sess.ex[i]?.tired ? "tired" : undo.permanent ? null : undo.picked ? "pick" : "busy";
+  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
@@ -3503,7 +3515,7 @@ async function renderCantDo() {
       if (!stillHere()) return; // a today-only swap wrote nothing: dropping a stale answer is safe
       if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
       const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
-        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true });
       if (why) note(refused(why, a.name));
     });
   };
@@ -3513,6 +3525,7 @@ async function renderCantDo() {
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
+    <button class="choice reason" id="cd-dislike">🙅 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
     <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
     ${tail}`;
@@ -3542,6 +3555,20 @@ async function renderCantDo() {
           : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
+    if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
+  };
+  // W323: a soft, reversible no — the plan swaps it for an equally good lift, or keeps it and says why.
+  $("#cd-dislike").onclick = async () => {
+    lock("Finding one as good…");
+    let r; try { r = await post({ scope: "always", reason: "dislike" }); } catch { return stillHere() ? offline() : undefined; }
+    const planLine = r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan` : `${cur.name} won't come back in your plan`;
+    if (!stillHere()) { if (!r.error && !r.kept) alertBar(`${planLine} — bring ${cur.name} back on the Plan tab if you didn't mean that.`); return; }
+    if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);
+    if (r.kept) return note(r.message);
+    if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
+      { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — you can bring ${cur.name} back on the Plan tab.` : `${planLine}. ${r.today.name} for today.` });
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
   };
   $("#cd-busy").onclick = async () => {

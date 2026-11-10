@@ -897,7 +897,10 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // Round 8: every door that replaces a slot from the Can't-do sheet (busy, pick, no machine — and the tired swap) goes
   // through applyReplacement, which keeps a tired slot's substitute the tired day (session-core swapInRow); only Undo
   // restores a saved row as it was.
-  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\) \}\);/);
+  // (W323: the row it swaps in carries why it stood in — the same row, stamped.)
+  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], why \? \{ \.\.\.row, swap_why: why \} : row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\) \}\);/);
+  // W323: a tired swap is stamped "tired" (never learned against), a pick "pick", any other today-only swap "busy".
+  assert.match(appJs, /const why = undo\.reason === "tired" \|\| sess\.ex\[i\]\?\.tired \? "tired" : undo\.permanent \? null : undo\.picked \? "pick" : "busy";/);
   assert.equal((appJs.match(/replaceSlot\(/g) ?? []).length, 2, "applyReplacement and undoSwap are the only slot writers in the player");
   assert.match(appJs, /\$\{easyToday \? "today's an easier day too, so your next regular session will\." : "today's sets will\."\}/);
   assert.match(appJs, /easyToday \? `<div class="card info"><b>New lift — keep it light today 🎯<\/b>/);

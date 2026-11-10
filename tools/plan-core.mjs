@@ -422,7 +422,9 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
         if (prefs.equip.has(e.equipment)) tier = goal === "strength" ? tier - PREF_STRENGTH_ENJOY : Math.min(...Object.values(equipTier)) - PREF_ENJOY_EDGE;
         if (prefs.avoid.has(e.id)) score += PREF_AVOID_DEMOTION;
         const l = prefs.learned?.[e.id];
-        if (Number.isFinite(l)) score += Math.max(-PREF_LEARNED_MAX, Math.min(PREF_LEARNED_MAX, l));
+        // Learned from their swaps (W323), in units of a skip: +1 = a lift swapped away again and again weighs like one
+        // they said they'd skip; a liking is a fraction of one.
+        if (Number.isFinite(l)) score += Math.max(-PREF_LEARNED_MAX, Math.min(PREF_LEARNED_MAX, l)) * PREF_AVOID_DEMOTION;
       }
       score += tier;
       if (fatigueAware) score += CNS_PENALTY[e.cns_cost] ?? 0;
@@ -700,7 +702,8 @@ export const PREF_AVOID_MAX = 40;
 //     (2), the difficulty gate, injuries, or the loadable rule. For strength, barbell specificity mostly holds (≤0.6).
 //   • a lift they'd rather skip is demoted by PREF_AVOID_DEMOTION: below anything comparable, but less than one difficulty
 //     step (3) and far less than a stall (12) — a soft no, so a muscle with no other appropriate lift still keeps it.
-//   • learned scores (W323, opts.prefScores) are clamped to ±PREF_LEARNED_MAX.
+//   • learned scores (W323, opts.prefScores) are clamped to ±PREF_LEARNED_MAX and weigh in units of a skip (×2.9): a lift
+//     swapped away again and again (+1) is treated like one they said they'd skip; a learned liking is a fraction.
 export const PREF_AVOID_DEMOTION = 2.9, PREF_LEARNED_MAX = 1, PREF_ENJOY_EDGE = 0.15, PREF_STRENGTH_ENJOY = 0.6;
 // null when there is nothing to apply — the absent path never enters rankPool's preference branch (byte-identical).
 export function prefRankOpts(profile, prefScores = null) {
@@ -966,7 +969,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // skipped RDL came back in the second lower day; so could a stalled lift). Every picker asks firstUsable: any
   // qualifying non-demoted candidate first, a demoted one only when nothing else qualifies (a soft no, never a ban).
   // Nothing demoted → the single pass the pickers always ran (byte-identical).
-  const demoted = new Set([...stalled, ...(prefs?.avoid ?? [])]);
+  const demoted = new Set([...stalled, ...(prefs?.avoid ?? []), ...Object.entries(prefs?.learned ?? {}).filter(([, v]) => v > 0).map(([id]) => id)]);
   const firstUsable = (pool, m, usable) => {
     for (const allowDemoted of demoted.size ? [false, true] : [true]) {
       for (let t = 0; t < pool.length; t++) {

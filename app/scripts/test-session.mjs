@@ -682,6 +682,16 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.equal(buildTargets(s1)[1].stood_in_for, "pushdown", "…naming the planned lift it stood in for (review G1: the comeback clock counts the slot as trained)");
     assert.ok(!("stood_in_for" in buildTargets(mk(exs()))[1]), "a lift in its own slot names nothing");
   });
+  check("#W323 a stand-in carries WHY it stood in (busy / pick / tired) to the workout — only beside stood_in_for, only from the enum", () => {
+    const via = (why) => buildTargets(replaceSlot(mk(exs()), 1, { ...row, ...(why ? { swap_why: why } : {}) }, { expect: "pushdown" }).sess)[1];
+    assert.equal(via("pick").swap_why, "pick");
+    assert.equal(via("busy").swap_why, "busy");
+    assert.equal(via("tired").swap_why, "tired");
+    assert.ok(!("swap_why" in via("hated")), "not from the enum: nothing");
+    assert.ok(!("swap_why" in via(null)), "no reason: nothing");
+    const own = mk(exs()); own.ex[1] = { ...own.ex[1], swap_why: "busy" };
+    assert.ok(!("swap_why" in buildTargets(own)[1]), "a lift in its own slot names no reason");
+  });
 }
 
 // --- #tired (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split squats. There is

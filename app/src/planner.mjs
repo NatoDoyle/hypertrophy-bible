@@ -41,7 +41,11 @@ export function planOptsFor(user, extra = {}) {
     // The lifter's own session ceiling (W315b) — every door builds under it.
     ...(Number.isInteger(user?.profile?.session_cap) ? { sessionCap: user.profile.session_cap } : {}),
     // …and their own pace (W316), learned from their logged sets — every door sizes the day by it.
-    ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}), ...extra };
+    ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}),
+    // …and what their swaps taught it (W323), minus the lifts they brought back — bounded to ±1 in the engine.
+    ...(() => { const kept = new Set(user?.plan_meta?.pref_kept ?? []);
+      const sc = Object.fromEntries(Object.entries(user?.plan_meta?.pref_scores ?? {}).filter(([k, v]) => !kept.has(k) && Number.isFinite(v) && v !== 0));
+      return Object.keys(sc).length ? { prefScores: sc } : {}; })(), ...extra };
 }
 
 // The lifter's training preferences (W321), at the trust boundary: enum styles and variety, REAL exercise ids (the KB's
@@ -67,7 +71,10 @@ export function sanitizeTrainingPrefs(raw, customExercises = []) {
 // so a door can't forget one.
 export function learnedMeta(planMeta) {
   return { ...(planMeta?.pace && typeof planMeta.pace === "object" ? { pace: planMeta.pace } : {}),
-    ...(Number.isInteger(planMeta?.session_cap_declined) ? { session_cap_declined: planMeta.session_cap_declined } : {}) };
+    ...(Number.isInteger(planMeta?.session_cap_declined) ? { session_cap_declined: planMeta.session_cap_declined } : {}),
+    // W323: the swaps it learned from, and the lifts they brought back from a learned swap-out.
+    ...(planMeta?.pref_scores && typeof planMeta.pref_scores === "object" ? { pref_scores: planMeta.pref_scores } : {}),
+    ...(Array.isArray(planMeta?.pref_kept) && planMeta.pref_kept.length ? { pref_kept: planMeta.pref_kept } : {}) };
 }
 
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent

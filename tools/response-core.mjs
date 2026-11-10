@@ -108,3 +108,31 @@ export function restAdapt(ex, sessions, { timeBinds = false, window = 3, need = 
   }
   return null;
 }
+
+// ---- What they keep swapping away, and what they pick (W323 — owner: "ask what exercise/workouts the user likes … to
+// improve long term commitment, adherence and consistency"). Read from swaps the lifter already makes, so it costs no
+// question: a planned lift swapped away (`targets[].stood_in_for`, why "busy" or "pick") SWAP_AWAY_MIN times in the last
+// `windowDays` is a learned dislike (+1, the plan engine's bounded learned-score scale); a lift they PICKED themselves
+// SWAP_PICK_MIN times is a small liking (−0.25, a quarter of a skip's weight). A tired swap is about the day, never the lift — it never counts; neither
+// does a swap with no recorded reason (sessions from before W323). Pure and deterministic; keys sorted.
+export const SWAP_AWAY_MIN = 3, SWAP_PICK_MIN = 2, SWAP_WINDOW_DAYS = 56;
+export function swapPreferences(sessions, nowISO, { windowDays = SWAP_WINDOW_DAYS, awayMin = SWAP_AWAY_MIN, pickMin = SWAP_PICK_MIN } = {}) {
+  const since = Date.parse(nowISO) - windowDays * 86400000;
+  const away = {}, picked = {};
+  for (const s of sessions ?? []) {
+    const t = Date.parse(s?.date ?? "");
+    if (!Number.isFinite(t) || t < since || t > Date.parse(nowISO)) continue;
+    for (const x of s.targets ?? []) {
+      if (typeof x?.stood_in_for !== "string" || !["busy", "pick"].includes(x.swap_why)) continue;
+      away[x.stood_in_for] = (away[x.stood_in_for] ?? 0) + 1;
+      if (x.swap_why === "pick" && typeof x.exercise === "string") picked[x.exercise] = (picked[x.exercise] ?? 0) + 1;
+    }
+  }
+  const scores = {};
+  for (const id of new Set([...Object.keys(away), ...Object.keys(picked)])) {
+    const v = ((away[id] ?? 0) >= awayMin ? 1 : 0) + ((picked[id] ?? 0) >= pickMin ? -0.25 : 0);
+    if (v !== 0) scores[id] = v;
+  }
+  const sorted = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+  return { scores: sorted(scores), away: sorted(away), picked: sorted(picked) };
+}

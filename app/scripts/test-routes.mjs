@@ -489,6 +489,75 @@ try {
       JSON.stringify(tpSchema));
   }
 
+  // W323: quiet preference learning. "Just not for me" (one tap on the Can't-do sheet) is a SOFT, reversible no stored in
+  // training_prefs.avoid — never "no machine"; and the swaps a lifter already makes teach the plan (busy/pick, never tired).
+  {
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const dlU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const dl0 = await store.getUser(dlU);
+    const holds = (u, id) => u.program.sessions.some((s) => s.exercises.some((e) => e.exercise === id));
+    // A lift the generator itself would swap away on a skip (the seed is the random user_id — never assume a slot).
+    const swappable = (u) => u.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !holds(generateUserPlan({ ...u.profile, training_prefs: { avoid: [id] } }, planOptsFor(u)), id));
+    const X = swappable(dl0), dlSess = dl0.program.sessions.find((s) => s.exercises.some((e) => e.exercise === X));
+    const nope = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "today", reason: "dislike", session: dlSess.name });
+    ok("#W323 'not for me' is a permanent answer only (today + dislike is refused)", nope.status === 400);
+    const dl = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "always", reason: "dislike", session: dlSess.name, live: dlSess.exercises.map((e) => e.exercise) });
+    const dl1 = await store.getUser(dlU);
+    ok("#W323 'Just not for me' swaps the lift out and records a soft no in training_prefs.avoid — not 'no machine'",
+      dl.status === 200 && dl.data.reason === "dislike" && !!dl.data.replaced_by && !holds(dl1, X) && (dl1.profile.training_prefs?.avoid ?? []).includes(X)
+      && !(dl1.profile.unavailable_exercises ?? []).some((r) => r.id === X), JSON.stringify({ st: dl.status, d: dl.data, tp: dl1.profile.training_prefs }));
+    const exDl = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": dlU } })).json();
+    ok("#W323 the Plan tab lists it under the lifts you'd rather skip, with its name", (exDl.skipped ?? []).some((x) => x.id === X && typeof x.name === "string" && x.name.length > 0), JSON.stringify(exDl.skipped));
+    // "No machine" on another lift must not throw away the dislike's exact undo (one snapshot store, both lists).
+    const zSess = dl1.program.sessions.find((s) => s.exercises.some((e) => e.exercise !== X)), Z = zSess.exercises.find((e) => e.exercise !== X).exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: Z, scope: "always", session: zSess.name });
+    const back = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "undo" });
+    const dl2 = await store.getUser(dlU);
+    ok("#W323 Bring back takes it off the skip list and puts it back in the plan",
+      back.status === 200 && !(dl2.profile.training_prefs?.avoid ?? []).includes(X) && holds(dl2, X), JSON.stringify(back.data));
+    // A soft no with nothing appropriate in its place: kept, and said.
+    const moU = (await json("POST", "/api/onboard", { profile: { ...base, available_equipment: ["machine"] } })).data.user_id;
+    const mo = await store.getUser(moU);
+    const moSess = mo.program.sessions.find((s) => s.exercises.some((e) => e.exercise === "machine-chest-press"));
+    const moR = moSess ? await json("POST", "/api/exercise/cant-do", { user_id: moU, exercise: "machine-chest-press", scope: "always", reason: "dislike", session: moSess.name }) : null;
+    const mo1 = await store.getUser(moU);
+    ok("#W323 'not for me' on a lift with no appropriate alternative keeps it, records the preference, and says so",
+      moR?.status === 200 && moR.data.kept === true && holds(mo1, "machine-chest-press") && (mo1.profile.training_prefs?.avoid ?? []).includes("machine-chest-press"), JSON.stringify(moR?.data));
+
+    // The swap's reason rides the workout (busy / pick / tired), only beside a stood_in_for, only from the enum.
+    const swU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const A = swappable(await store.getUser(swU));
+    const tgt = (why, extra = {}) => [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: why, ...extra }];
+    await json("POST", "/api/session", { user_id: swU, session_id: "sw-junk", date: dAgo(40), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }],
+      targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "hated" }, { exercise: "leg-press", sets: 3, swap_why: "busy" }] });
+    const junk = (await store.listSessions(swU)).find((x) => x.session_id === "sw-junk");
+    ok("#W323 swap_why is kept only from the enum and only beside stood_in_for", junk.targets.every((t) => !("swap_why" in t)), JSON.stringify(junk.targets));
+    for (const [i, why] of [["1", "tired"], ["2", "tired"], ["3", "busy"], ["4", "pick"]]) await json("POST", "/api/session", { user_id: swU, session_id: `sw-${i}`, date: dAgo(30 - 5 * +i),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt(why) });
+    const sw1 = await store.getUser(swU);
+    ok("#W323 tired swaps teach nothing; two real swaps aren't enough", !(sw1.plan_meta.pref_scores?.[A] > 0), JSON.stringify(sw1.plan_meta.pref_scores));
+    await json("POST", "/api/session", { user_id: swU, session_id: "sw-5", date: dAgo(3), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt("busy") });
+    const sw2 = await store.getUser(swU);
+    ok("#W323 the third real swap-away in 8 weeks is learned at the workout (plan_meta.pref_scores)", sw2.plan_meta.pref_scores?.[A] === 1, JSON.stringify(sw2.plan_meta.pref_scores));
+    // …and lands at the next block boundary: out of the plan, named once.
+    await store.updateUser(swU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: swU, session_id: `swb-${w}`, date: dayAgo(48 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60 + w * 2.5, reps: 8 }] });
+    const swToday = await (await app.request("/api/today", { headers: { "X-HB-User": swU } })).json();
+    const sw3 = await store.getUser(swU);
+    ok("#W323 at the boundary the learned dislike swaps it out and says why, once",
+      (sw3.plan_meta.block_index ?? 0) >= 1 && !holds(sw3, A) && (sw3.plan_meta.learned_out ?? []).includes(A) && /swapped .* out/i.test(swToday.session?.announcement ?? ""),
+      JSON.stringify({ b: sw3.plan_meta.block_index, lo: sw3.plan_meta.learned_out, ann: swToday.session?.announcement }));
+    const exSw = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": swU } })).json();
+    ok("#W323 the Plan tab lists the learned swap-out with a way back", (exSw.learned_out ?? []).some((x) => x.id === A), JSON.stringify(exSw.learned_out));
+    const keep = await json("POST", "/api/exercise/cant-do", { user_id: swU, exercise: A, scope: "undo" });
+    const sw4 = await store.getUser(swU);
+    ok("#W323 Bring back on a learned swap-out keeps it from now on (pref_kept), and it returns to the plan",
+      keep.status === 200 && (sw4.plan_meta.pref_kept ?? []).includes(A) && !(sw4.plan_meta.pref_scores?.[A] > 0) && holds(sw4, A) && !(sw4.plan_meta.learned_out ?? []).includes(A),
+      JSON.stringify({ st: keep.status, d: keep.data, kept: sw4.plan_meta.pref_kept, sc: sw4.plan_meta.pref_scores }));
+  }
+
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
   // which needs the custom flag through /api/plan/explain's whitelist — and one tap hands the plan back to the coach:
   // a bare regenerate (no profile change) rebuilds from the answers and clears the flag.
