@@ -222,7 +222,7 @@ const normalizeTargets = (list) => {
       ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
       // …and WHY it stood in (W323): busy / pick / tired, only beside a stood_in_for — what the plan learns preferences
       // from (a tired swap is about the day and never counts).
-      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
+      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
       // The per-set aims the player served (W298): whole reps 1-50, at most one per planned set. A malformed list is
       // dropped whole — half an aim list would misjudge every set after the gap.
       ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets

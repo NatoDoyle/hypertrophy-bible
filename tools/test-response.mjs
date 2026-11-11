@@ -141,6 +141,9 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
     assert.equal(swapPreferences(picks, now).scores["cable-curl"], -0.25);
     assert.deepStrictEqual(swapPreferences([{ date: day(50), sets: [W()], targets: [{ exercise: "y", sets: 3, stood_in_for: "x" }] }], now).scores, {});
   });
+  check("#swaps (round 9) a 'hurt' swap never counts — pain is about the body", () => {
+    assert.equal(swapPreferences([swapDay(10, "x", "y", "hurt"), swapDay(20, "x", "y", "hurt"), swapDay(30, "x", "y", "hurt")], now).scores.x, undefined);
+  });
   check("#swaps (round 3 #2) 'picked_over' (a pick, then the picked lift swapped busy) votes against the plan's lift, never for the stand-in", () => {
     const r = swapPreferences([swapDay(10, "x", "y", "picked_over"), swapDay(20, "x", "y", "picked_over"), swapDay(30, "x", "y", "pick")], now);
     assert.equal(r.scores.x, 1);

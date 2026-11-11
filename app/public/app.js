@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -3390,7 +3390,7 @@ function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) 
   // Why it stood in (W323), stamped on the row so the finished workout tells the plan: a tired swap is about the day;
   // "Pick one myself" and "It's busy" may say something about the lift. A permanent swap is already recorded server-side.
   const why = swapWhyFor(sess.ex[i], undo); // session-core: a pick over a busy stand-in stays busy (round 2 #2)
-  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}), ...(undo.rebased ? { rebase: true } : {}) });
+  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}), ...(undo.rebased ? { rebase: true } : {}), ...(undo.planLift ? { planLift: undo.planLift } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
@@ -3412,7 +3412,7 @@ async function undoSwap() {
   // leak anything; the same guards apply (a banked set of the substitute stays).
   // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
   // (and its plan: a skip taken before the tired tap stays taken — round 2).
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets, ...(u.rebased && typeof u.saved.slot_of !== "string" ? { rebase: true } : {}) });
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets, ...((u.rebased || u.planLift) && typeof u.saved.slot_of !== "string" ? { rebase: true } : {}) }); // the server's undo restores the plan's own lift
   sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from), ...(back.ok && u.lastSkip ? { lastSkip: u.lastSkip } : {}) };
   saveSess();
   renderPlayer(0);
@@ -3538,7 +3538,7 @@ async function renderCantDo() {
   const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
     : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
       : "The workout moved on — nothing was swapped.";
-  const pickList = async (lead = "") => {
+  const pickList = async (lead = "", { reason = null } = {}) => { // reason "hurt": the It-hurts door (round 9)
     app.innerHTML = `<h1>Pick a replacement</h1><p class="muted">Finding the best alternatives…</p>`;
     let d;
     try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}&exclude=${encodeURIComponent(exclude().join(","))}`); }
@@ -3558,7 +3558,7 @@ async function renderCantDo() {
       if (!stillHere()) return; // a today-only swap wrote nothing: dropping a stale answer is safe
       if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
       const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
-        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true });
+        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true, ...(reason ? { reason } : {}) });
       if (why) note(refused(why, a.name));
     });
   };
@@ -3593,6 +3593,7 @@ async function renderCantDo() {
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
         rebased: rebasesOnPermanent(cur, r), // today's lift IS the plan's new lift for this slot (review rounds 6-7)
+        planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
           ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
@@ -3613,6 +3614,7 @@ async function renderCantDo() {
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
         rebased: rebasesOnPermanent(cur, r), // today's lift IS the plan's new lift for this slot (review rounds 6-7)
+        planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — you can bring ${cur.name} back on the Plan tab.` : `${planLine}. ${r.today.name} for today.` });
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
   };
@@ -3643,7 +3645,7 @@ async function renderCantDo() {
       // has the newly ruled-out lifts swapped. A lift with no safe replacement is named, not hidden.
       const keptNames = (res.kept ?? []).map((k) => k.name);
       pickList(res.error ? "Couldn't save that — pick a replacement for today instead."
-        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`);
+        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`, { reason: "hurt" });
     });
   };
 }
