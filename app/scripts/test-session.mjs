@@ -694,6 +694,13 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, {}), "picked_over");
     assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, {}), "picked_over");
     assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, { picked: true }), "pick");
+    // Round 4: …through EVERY door, not only busy — a tired swap or a permanent one (No machine, Just not for me, It hurts)
+    // of the picked lift keeps the vote against the plan's lift.
+    const picked = { exercise: "leg-press", slot_of: "hack-squat", swap_why: "pick" };
+    assert.equal(swapWhyFor(picked, { reason: "tired" }), "picked_over", "tired swap of the picked lift");
+    assert.equal(swapWhyFor({ ...picked, tired: true }, {}), "picked_over", "a tired slot");
+    assert.equal(swapWhyFor(picked, { permanent: true }), "picked_over", "No machine / Just not for me / It hurts");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { permanent: true }), null, "a permanent swap of the plan's own lift is still server-side only");
     const r = replaceSlot(mk([{ exercise: "hack-squat", sets: 3 }, ex("curl", 3)]), 0, { exercise: "leg-press", swap_why: "picked_over" }, { expect: "hack-squat" });
     assert.equal(buildTargets(r.sess)[0].swap_why, "picked_over", "it rides the workout");
   });

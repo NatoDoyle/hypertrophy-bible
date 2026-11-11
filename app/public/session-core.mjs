@@ -146,12 +146,12 @@ export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
 // the table — picking over a busy or tired stand-in keeps the stand-in's reason (the lifter never chose against the plan's
 // lift). Anything else today-only is "busy".
 export function swapWhyFor(cur, { reason = null, permanent = false, picked = false } = {}) {
+  // An earlier pick against the plan's lift survives ANY later swap of the picked lift that isn't itself a pick — tired,
+  // busy or permanent (round 3 #2, round 4) — as "picked_over": the vote stands, the new stand-in isn't liked.
+  if (!picked && typeof cur?.slot_of === "string" && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return "picked_over";
   if (reason === "tired" || cur?.tired) return "tired";
   if (permanent) return null;
   if (typeof cur?.slot_of === "string" && (cur.swap_why === "busy" || cur.swap_why === "tired")) return cur.swap_why;
-  // A pick against the plan's lift survives a later non-pick swap of the picked lift (round 3 #2) — as "picked_over", which
-  // votes against the plan's lift but never credits the new stand-in as liked.
-  if (!picked && typeof cur?.slot_of === "string" && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return "picked_over";
   return picked ? "pick" : "busy";
 }
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
