@@ -34,7 +34,7 @@ Refs are `file:line` at the time of writing; search for the function name if a l
 | Your history overall | sessions | `graduatedStatus` (`tools/derive-core.mjs`) | **You graduate** beginner → intermediate (26 trained weeks and 40 sessions) → advanced (130 and 250). Graduation rebuilds the plan with bigger targets and announces it once. | At those thresholds. |
 | A lift you can't do: "No machine for this" | `profile.unavailable_exercises` | `candidatePool` (`plan-core.mjs`) | That lift never comes back until you tap "Bring back". | Immediately, every rebuild. |
 | A lift you'd rather not do: "Just not for me", or the preference quiz | `profile.training_prefs.avoid` | `rankPool` (`plan-core.mjs`) | Swapped for one as good; kept (and said) where nothing appropriate replaces it. | Immediately, every rebuild. |
-| Why you swapped a lift today (busy / pick / tired) | `sessions[].targets[].swap_why` | `swapPreferences` → `plan_meta.pref_scores` → `planOptsFor` | A lift swapped away 3× in 8 weeks leaves at the next rebuild, named once. | Next block boundary or refit. Tired swaps never count. |
+| Why you swapped a lift today (busy / pick / tired) | `sessions[].targets[].swap_why` | `swapPreferences` → `plan_meta.pref_scores` → `planOptsFor` | A lift you picked something else over 3× in 8 weeks leaves at the next rebuild, named once, and stays out until Bring back. | Next block boundary or refit. Busy and tired swaps never count. |
 | "It hurts" | `profile.injuries` | the injury filter, then a history-aware rebuild | Lifts that load that region are swapped out. | Immediately. |
 
 ### Learns at the block boundary (every 6 trained weeks)
@@ -81,12 +81,14 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
 3. **The plan changes only when something stalls.** A lifter whose lifts keep climbing sees the same plan
    block after block. That is deliberate (don't fix what works), but it looks like "not learning".
 4. ~~**Today-only swaps teach nothing.**~~ **Since W323** every today-only swap records why
-   (`targets[].swap_why`: busy / pick / tired). A planned lift swapped away 3 times in 8 weeks (busy or picked,
-   never tired) is learned as a dislike; a lift you pick yourself twice, a small liking
-   (`tools/response-core.mjs` `swapPreferences`, re-learned after every workout into `plan_meta.pref_scores`).
-   It lands at the next rebuild (block boundary or refit): the lift is swapped for an equally good one, the
-   new-block note names it, and the Plan tab lists it with Bring back (which stops learning against it,
-   `plan_meta.pref_kept`). The Can't-do sheet also has "Just not for me": a soft, reversible skip
+   (`targets[].swap_why`: busy / pick / tired). A planned lift you **picked something else over** 3 times in
+   8 weeks ("Pick one myself" or "Your pick") is learned as a dislike; a lift you pick yourself twice is a small
+   liking (`tools/response-core.mjs` `swapPreferences`, re-learned after every workout into
+   `plan_meta.pref_scores`). **Busy and tired swaps never count**: both are about the day, and their buttons say
+   "just for today". The pick screens say the learning out loud. It lands at the next rebuild (block boundary or
+   refit): the lift is swapped, the new-block note names it, and the Plan tab lists it with Bring back. A learned
+   dislike **sticks until Bring back** (`plan_meta.pref_kept`), even after its picks age past 8 weeks, so the
+   lift never sneaks back. The Can't-do sheet also has "Just not for me": a soft, reversible skip
    (`training_prefs.avoid`), swapped now where a rebuild would agree, kept and explained where nothing
    appropriate replaces it.
 5. **Nothing asked what you enjoy.** **Since W321** onboarding (and Settings → "What you enjoy") asks, on one

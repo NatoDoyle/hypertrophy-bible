@@ -123,9 +123,10 @@ export function swapPreferences(sessions, nowISO, { windowDays = SWAP_WINDOW_DAY
     const t = Date.parse(s?.date ?? "");
     if (!Number.isFinite(t) || t < since || t > Date.parse(nowISO)) continue;
     for (const x of s.targets ?? []) {
-      if (typeof x?.stood_in_for !== "string" || !["busy", "pick"].includes(x.swap_why)) continue;
+      // Only a PICK is a vote (review #14): "It's busy — swap it just for today" is about the day, like a tired swap.
+      if (typeof x?.stood_in_for !== "string" || x.swap_why !== "pick") continue;
       away[x.stood_in_for] = (away[x.stood_in_for] ?? 0) + 1;
-      if (x.swap_why === "pick" && typeof x.exercise === "string") picked[x.exercise] = (picked[x.exercise] ?? 0) + 1;
+      if (typeof x.exercise === "string") picked[x.exercise] = (picked[x.exercise] ?? 0) + 1;
     }
   }
   const scores = {};

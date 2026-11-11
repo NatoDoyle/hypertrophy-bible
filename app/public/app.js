@@ -3499,7 +3499,7 @@ async function yourPickSwap() {
   if (!r?.ok) { alertBar(r == null ? "📴 Couldn't reach the server — keep going with this one." : `${pick.name} doesn't fit today after all — keep going with ${cur.name}.`); renderPlayer(0); return; }
   const why = applyReplacement(cur.exercise, r.row ?? { exercise: pick.id, name: pick.name },
     { to: pick.id, toName: pick.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true },
-    { said: `${pick.name} it is — just for today.` });
+    { said: `${pick.name} it is — just for today. Pick it over ${cur.name} a few times and I'll make the swap in your plan.` }); // the learning, disclosed where it happens (review #14)
   if (why) { alertBar(`Couldn't swap to ${pick.name} — keep going with ${cur.name}.`); renderPlayer(0); }
 }
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
@@ -3546,7 +3546,7 @@ async function renderCantDo() {
     const alts = d?.alternatives ?? [];
     if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
     app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
-      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. Just for today; your plan doesn't change.</p>
+      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. Just for today — but if you keep picking something over ${esc(cur.name)}, I'll take the hint and swap it in your plan.</p>
       ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
       ${tail}`;
     wireTail();
@@ -3569,7 +3569,7 @@ async function renderCantDo() {
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-dislike">👎 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
-    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
+    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, for today — keep picking over it and I'll learn</span></button>
     ${tail}`;
   wireTail();
   if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)

@@ -578,13 +578,13 @@ try {
       targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "hated" }, { exercise: "leg-press", sets: 3, swap_why: "busy" }] });
     const junk = (await store.listSessions(swU)).find((x) => x.session_id === "sw-junk");
     ok("#W323 swap_why is kept only from the enum and only beside stood_in_for", junk.targets.every((t) => !("swap_why" in t)), JSON.stringify(junk.targets));
-    for (const [i, why] of [["1", "tired"], ["2", "tired"], ["3", "busy"], ["4", "pick"]]) await json("POST", "/api/session", { user_id: swU, session_id: `sw-${i}`, date: dAgo(30 - 5 * +i),
+    for (const [i, why] of [["1", "tired"], ["2", "busy"], ["3", "pick"], ["4", "pick"]]) await json("POST", "/api/session", { user_id: swU, session_id: `sw-${i}`, date: dAgo(30 - 5 * +i),
       sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt(why) });
     const sw1 = await store.getUser(swU);
-    ok("#W323 tired swaps teach nothing; two real swaps aren't enough", !(sw1.plan_meta.pref_scores?.[A] > 0), JSON.stringify(sw1.plan_meta.pref_scores));
-    await json("POST", "/api/session", { user_id: swU, session_id: "sw-5", date: dAgo(3), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt("busy") });
+    ok("#W323 tired and busy swaps teach nothing (review #14); two picks aren't enough", !(sw1.plan_meta.pref_scores?.[A] > 0), JSON.stringify(sw1.plan_meta.pref_scores));
+    await json("POST", "/api/session", { user_id: swU, session_id: "sw-5", date: dAgo(3), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt("pick") });
     const sw2 = await store.getUser(swU);
-    ok("#W323 the third real swap-away in 8 weeks is learned at the workout (plan_meta.pref_scores)", sw2.plan_meta.pref_scores?.[A] === 1, JSON.stringify(sw2.plan_meta.pref_scores));
+    ok("#W323 the third pick over it in 8 weeks is learned at the workout (plan_meta.pref_scores)", sw2.plan_meta.pref_scores?.[A] === 1, JSON.stringify(sw2.plan_meta.pref_scores));
     // …and lands at the next block boundary: out of the plan, named once.
     await store.updateUser(swU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
     for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: swU, session_id: `swb-${w}`, date: dayAgo(48 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60 + w * 2.5, reps: 8 }] });
@@ -600,6 +600,63 @@ try {
     ok("#W323 Bring back on a learned swap-out keeps it from now on (pref_kept), and it returns to the plan",
       keep.status === 200 && (sw4.plan_meta.pref_kept ?? []).includes(A) && !(sw4.plan_meta.pref_scores?.[A] > 0) && holds(sw4, A) && !(sw4.plan_meta.learned_out ?? []).includes(A),
       JSON.stringify({ st: keep.status, d: keep.data, kept: sw4.plan_meta.pref_kept, sc: sw4.plan_meta.pref_scores }));
+
+    // Review #1/#15: a learned dislike STICKS until Bring back. Once it's out of the plan it can't be swapped again, so
+    // the 8-week evidence window would empty and the lift would return unannounced at the next rebuild.
+    const stU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const S = swappable(await store.getUser(stU));
+    for (const [i, d] of [[1, 60], [2, 53], [3, 46]]) await json("POST", "/api/session", { user_id: stU, session_id: `st-${i}`, date: dAgo(d),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: S, swap_why: "pick" }] });
+    // Those picks are 46-60 days old (aged past the window); the dislike they taught was learned back then — seeded here as
+    // stored — and a rebuild (a cosmetic Settings save) took the lift out.
+    await store.updateUser(stU, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: stU, profile: { units: "metric" } });
+    const st1 = await store.getUser(stU);
+    await json("POST", "/api/session", { user_id: stU, session_id: "st-4", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await json("POST", "/api/plan/regenerate", { user_id: stU, profile: { units: "imperial" } });
+    const st2 = await store.getUser(stU);
+    ok("#rev-b11 a learned dislike sticks after its swaps age past 8 weeks: still learned, still out of the plan",
+      !holds(st1, S) && st2.plan_meta.pref_scores?.[S] === 1 && !holds(st2, S), JSON.stringify({ out1: !holds(st1, S), sc: st2.plan_meta.pref_scores, out2: !holds(st2, S) }));
+    // Review #7/#11: the learned list names only lifts the LEARNING took out — not a "No machine", not a skip, never on a hand-edited plan.
+    await json("POST", "/api/exercise/cant-do", { user_id: stU, exercise: S, scope: "always" }); // No machine, on a lift already out of the plan
+    const exSt = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    ok("#rev-b11 a lift that is also 'No machine' isn't listed as learned out (its Bring back would delete the exclusion)", !(exSt.learned_out ?? []).some((x) => x.id === S), JSON.stringify(exSt.learned_out));
+    await json("POST", "/api/exercise/cant-do", { user_id: stU, exercise: S, scope: "undo" });
+    const cuEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    const cut = cuEx.program.sessions[0].exercises.pop().exercise; // removed by hand…
+    await json("POST", "/api/plan/save", { user_id: stU, program: cuEx.program });
+    await store.updateUser(stU, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { ...(u.plan_meta.pref_scores ?? {}), [cut]: 1 } }; return u; }); // …and learned against too
+    const exCu = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    ok("#rev-b11 a hand-edited plan lists nothing as learned out (learning is paused)", exCu.program.custom === true && (exCu.learned_out ?? []).length === 0, JSON.stringify(exCu.learned_out));
+  }
+
+  // Burst 11 review (#5 #6 #13): a Settings save that changes nothing must never restart the block — not for a lifter who
+  // onboarded before training_prefs existed (missing vs the client's all-empty → null), and not after "Just not for me"
+  // stored the same preferences in a different key order.
+  {
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const midBlock = (u) => { u.plan_meta = { ...u.plan_meta, block_index: 2, block_start: dayAgo(30) }; return u; };
+    const legU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    await store.updateUser(legU, (u) => { delete u.profile.training_prefs; return midBlock(u); });
+    const lp = (await store.getUser(legU)).profile;
+    const legR = await json("POST", "/api/plan/regenerate", { user_id: legU, profile: { ...lp, training_prefs: { style: [], variety: null, avoid: [], cardio: [] } } });
+    const leg1 = await store.getUser(legU);
+    ok("#rev-b11 a pre-W321 lifter's unchanged Settings save keeps their block (missing prefs == no prefs)", legR.status === 200 && leg1.plan_meta.block_index === 2, JSON.stringify({ st: legR.status, b: leg1.plan_meta.block_index }));
+    // canon itself is key-order-blind (defense behind the sanitizer): prefs stored in a non-canonical order, resent canonically.
+    await store.updateUser(legU, (u) => { u.profile.training_prefs = { cardio: ["walking"], avoid: ["leg-press"] }; return midBlock(u); });
+    const ordR = await json("POST", "/api/plan/regenerate", { user_id: legU, profile: { training_prefs: { avoid: ["leg-press"], cardio: ["walking"] } } });
+    ok("#rev-b11 the same prefs in another key order are no training change", ordR.status === 200 && (await store.getUser(legU)).plan_meta.block_index === 2);
+    const koU = (await json("POST", "/api/onboard", { profile: { ...base, training_prefs: { cardio: ["walking"] } } })).data.user_id;
+    await store.updateUser(koU, midBlock);
+    const ko0 = await store.getUser(koU);
+    const koX = ko0.program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: koU, exercise: koX, scope: "always", reason: "dislike", session: ko0.program.sessions[0].name });
+    const kp = (await store.getUser(koU)).profile;
+    await json("POST", "/api/plan/regenerate", { user_id: koU, profile: { ...kp, training_prefs: { style: [], variety: null, avoid: kp.training_prefs.avoid, cardio: ["walking"] } } });
+    const ko1 = await store.getUser(koU);
+    ok("#rev-b11 after 'Just not for me', an unchanged Settings save keeps the block (key order never matters)", ko1.plan_meta.block_index === 2, JSON.stringify({ b: ko1.plan_meta.block_index, tp: kp.training_prefs }));
+    ok("#rev-b11 …and the stored prefs are in the sanitizer's canonical order", JSON.stringify(Object.keys(kp.training_prefs)) === JSON.stringify(["avoid", "cardio"]), JSON.stringify(kp.training_prefs));
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —

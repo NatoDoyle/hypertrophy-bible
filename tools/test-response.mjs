@@ -124,15 +124,16 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
 {
   const now = day(60);
   const swapDay = (d, from, to, why) => ({ session_id: `w${d}`, date: day(d), sets: [W({ exercise: to })], targets: [{ exercise: to, sets: 3, stood_in_for: from, swap_why: why }] });
-  check("#swaps (W323) swapped away 3 times in 8 weeks (busy or picked): a +1 learned dislike; fewer is nothing", () => {
-    const three = [swapDay(10, "hack-squat", "leg-press", "busy"), swapDay(30, "hack-squat", "goblet-squat", "pick"), swapDay(50, "hack-squat", "leg-press", "busy")];
+  check("#swaps (W323) picked something else over it 3 times in 8 weeks: a +1 learned dislike; fewer is nothing", () => {
+    const three = [swapDay(10, "hack-squat", "leg-press", "pick"), swapDay(30, "hack-squat", "goblet-squat", "pick"), swapDay(50, "hack-squat", "leg-press", "pick")];
     assert.equal(SWAP_AWAY_MIN, 3);
     assert.equal(swapPreferences(three, now).scores["hack-squat"], 1);
     assert.equal(swapPreferences(three.slice(1), now).scores["hack-squat"], undefined);
   });
-  check("#swaps (W323) tired swaps never count, and nothing older than 8 weeks does", () => {
+  check("#swaps (W323, review #14) tired and busy swaps never count — both are about the day, never the lift — and nothing older than 8 weeks does", () => {
     assert.equal(swapPreferences([swapDay(10, "x", "y", "tired"), swapDay(20, "x", "y", "tired"), swapDay(30, "x", "y", "tired")], now).scores.x, undefined);
-    assert.equal(swapPreferences([swapDay(0, "x", "y", "busy"), swapDay(20, "x", "y", "busy"), swapDay(30, "x", "y", "busy")], day(60)).scores.x, undefined, "day 0 is 60 days back");
+    assert.equal(swapPreferences([swapDay(10, "x", "y", "busy"), swapDay(20, "x", "y", "busy"), swapDay(30, "x", "y", "busy")], now).scores.x, undefined, "'It's busy — swap it just for today' says today");
+    assert.equal(swapPreferences([swapDay(0, "x", "y", "pick"), swapDay(20, "x", "y", "pick"), swapDay(30, "x", "y", "pick")], day(60)).scores.x, undefined, "day 0 is 60 days back");
   });
   check("#swaps (W323) a lift they PICK twice is a small learned liking (−0.25); a swap with no reason teaches nothing", () => {
     const picks = [swapDay(40, "a", "cable-curl", "pick"), swapDay(50, "b", "cable-curl", "pick")];
@@ -141,7 +142,7 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
     assert.deepStrictEqual(swapPreferences([{ date: day(50), sets: [W()], targets: [{ exercise: "y", sets: 3, stood_in_for: "x" }] }], now).scores, {});
   });
   check("#swaps (W323) deterministic and pure: same input, same output, keys sorted", () => {
-    const a = [swapDay(10, "z", "y", "busy"), swapDay(20, "z", "y", "busy"), swapDay(30, "z", "y", "busy"), swapDay(31, "a", "q", "busy"), swapDay(32, "a", "q", "busy"), swapDay(33, "a", "q", "busy")];
+    const a = [swapDay(10, "z", "y", "pick"), swapDay(20, "z", "w", "pick"), swapDay(30, "z", "v", "pick"), swapDay(31, "a", "q", "pick"), swapDay(32, "a", "r", "pick"), swapDay(33, "a", "s", "pick")];
     assert.deepStrictEqual(Object.keys(swapPreferences(a, now).scores), ["a", "z"]);
     assert.deepStrictEqual(swapPreferences(a, now), swapPreferences([...a].reverse(), now));
   });

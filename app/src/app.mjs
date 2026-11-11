@@ -391,8 +391,11 @@ export function createApp(store, config = {}) {
     // with Bring back (the cant-do undo door).
     const skipped = (user.profile?.training_prefs?.avoid ?? []).map((xid) => ({ id: xid, name: exerciseNameFor(user, xid) }));
     const keptBack = new Set(user.plan_meta?.pref_kept ?? []);
-    const learned_out = Object.entries(user.plan_meta?.pref_scores ?? {})
-      .filter(([xid, v]) => v > 0 && !keptBack.has(xid) && !planHolds(user.program, xid)).map(([xid]) => ({ id: xid, name: exerciseNameFor(user, xid) }));
+    // …only lifts the LEARNING took out (review #7 #11): not one that is also "No machine" or skipped (its own card owns it,
+    // and this Bring back would delete that answer too), and never over a hand-edited plan (learning is paused there).
+    const otherwiseOut = new Set([...(user.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(user.profile?.training_prefs?.avoid ?? [])]);
+    const learned_out = user.program?.custom ? [] : Object.entries(user.plan_meta?.pref_scores ?? {})
+      .filter(([xid, v]) => v > 0 && !keptBack.has(xid) && !otherwiseOut.has(xid) && !planHolds(user.program, xid)).map(([xid]) => ({ id: xid, name: exerciseNameFor(user, xid) }));
     return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out });
   });
 
@@ -472,7 +475,11 @@ export function createApp(store, config = {}) {
     // Compare arrays order-insensitively — a settings save that RE-ORDERS
     // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
     // not a real change and must not restart the mesocycle.
-    const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
+    // …and compare the VALUE, not its serialization (Burst 11 review #5 #6 #13): missing and null are the same answer (a
+    // lifter who onboarded before a field existed sends its empty form), object keys in any order are the same object,
+    // and every list here is a set.
+    const canon = (v) => v == null ? "null" : Array.isArray(v) ? `[${v.map(canon).sort().join(",")}]`
+      : typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}` : JSON.stringify(v);
     const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap", "training_prefs"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
@@ -710,7 +717,8 @@ export function createApp(store, config = {}) {
     const undoKeep = (u) => new Set([...(u.profile?.unavailable_exercises ?? []).map((x) => x.id), ...avoidOf(u)]);
     const recordDislike = (u) => {
       const avoid = [...avoidOf(u).filter((id) => id !== X), X].slice(-PREF_AVOID_MAX);
-      u.profile = { ...u.profile, training_prefs: { ...(u.profile?.training_prefs ?? {}), avoid } };
+      // Through the sanitizer, so the stored object is always in its canonical shape (review #6).
+      u.profile = { ...u.profile, training_prefs: sanitizeTrainingPrefs({ ...(u.profile?.training_prefs ?? {}), avoid }, u.custom_exercises) };
     };
     const sessionName = typeof b.session === "string" ? b.session.slice(0, 80) : null;
     const nowISO = new Date().toISOString();
@@ -727,9 +735,7 @@ export function createApp(store, config = {}) {
         const snap = u.substitution_undo?.[X];
         u.profile = { ...u.profile, unavailable_exercises: list.filter((r) => r.id !== X) };
         if (avoided) {
-          const tp = { ...(u.profile.training_prefs ?? {}), avoid: avoidOf(u).filter((id) => id !== X) };
-          if (!tp.avoid.length) delete tp.avoid;
-          u.profile.training_prefs = Object.keys(tp).length ? tp : null;
+          u.profile.training_prefs = sanitizeTrainingPrefs({ ...(u.profile.training_prefs ?? {}), avoid: avoidOf(u).filter((id) => id !== X) }, u.custom_exercises);
         }
         // Brought back from a learned swap-out: kept from now on — its swaps are never learned against again.
         if (learned) {
@@ -2114,7 +2120,13 @@ export function createApp(store, config = {}) {
     try {
       const all = await store.listSessions(id);
       const kept = new Set(user.plan_meta?.pref_kept ?? []);
-      const scores = Object.fromEntries(Object.entries(swapPreferences(all, new Date().toISOString()).scores).filter(([k]) => !kept.has(k)));
+      // A learned dislike STICKS until Bring back (review #1 #15): once a rebuild took the lift out it can't be picked over
+      // again, so its 8-week evidence would age out and the lift return unannounced. A positive score for a lift the plan
+      // no longer holds is carried; everything else is re-learned from the window.
+      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && !planHolds(user.program, k)));
+      const merged = { ...swapPreferences(all, new Date().toISOString()).scores };
+      for (const [k, v] of Object.entries(sticky)) merged[k] = Math.max(v, merged[k] ?? 0);
+      const scores = Object.fromEntries(Object.entries(merged).filter(([k]) => !kept.has(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
       if (JSON.stringify(scores) !== JSON.stringify(user.plan_meta?.pref_scores ?? {})) {
         await store.updateUser(id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), pref_scores: scores }; return u; }).catch(() => null);
       }
