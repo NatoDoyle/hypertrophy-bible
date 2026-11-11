@@ -396,7 +396,7 @@ export function createApp(store, config = {}) {
     const otherwiseOut = new Set([...(user.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(user.profile?.training_prefs?.avoid ?? [])]);
     const learned_out = user.program?.custom ? [] : Object.entries(user.plan_meta?.pref_scores ?? {})
       .filter(([xid, v]) => v > 0 && !keptBack.has(xid) && !otherwiseOut.has(xid) && !planHolds(user.program, xid)).map(([xid]) => ({ id: xid, name: exerciseNameFor(user, xid) }));
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out });
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out, beginner: (user.profile?.training_status ?? "beginner") === "beginner" });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).

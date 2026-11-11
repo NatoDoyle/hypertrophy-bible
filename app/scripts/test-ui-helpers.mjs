@@ -1227,5 +1227,38 @@ await checkAsync("#W325 the lucky set prints its rule where it lands, from the o
   assert.ok(!/you're behind/.test(appJs), "Plain Sight's dark-twin marker");
 });
 
+// --- Burst 11 review, group E: the preference screen and onboarding resume ---
+await checkAsync("#rev-b11 a lift-family chip reads ON when any of its lifts is skipped, and toggling it never silently drops a skip (#10)", async () => {
+  const { familyOn, toggleFamily } = await import("../public/ui-helpers.mjs");
+  const f = { ids: ["barbell-back-squat", "front-squat"] };
+  const tp = { avoid: ["barbell-back-squat"] };
+  assert.equal(familyOn(tp, f), true, "a 'Just not for me' on the back squat shows on the chip");
+  assert.deepStrictEqual(toggleFamily(tp, f).avoid, [], "turning a visibly-ON chip off is a deliberate answer");
+  assert.deepStrictEqual(toggleFamily({ avoid: ["leg-press"] }, f).avoid, ["leg-press", "barbell-back-squat", "front-squat"], "on adds the family, others untouched");
+  assert.deepStrictEqual(toggleFamily(toggleFamily({ avoid: ["leg-press"] }, f), f).avoid, ["leg-press"], "on then off is a no-op for everything else");
+});
+await checkAsync("#rev-b11 a stored style the current kit can't use still shows, so it can be cleared (#9)", async () => {
+  const { visibleStyles } = await import("../public/ui-helpers.mjs");
+  const OPTS = [["Free weights", "free", ["barbell", "dumbbell", "kettlebell"]], ["Machines & cables", "machines", ["machine", "cable"]], ["Bodyweight", "bodyweight", ["bodyweight", "band"]]];
+  const v = visibleStyles(OPTS, new Set(["dumbbell", "bodyweight"]), ["machines"]);
+  assert.deepStrictEqual(v.map((o) => o.value), ["free", "machines", "bodyweight"]);
+  assert.equal(v.find((o) => o.value === "machines").absent, true, "flagged: not in this kit");
+  assert.deepStrictEqual(visibleStyles(OPTS, new Set(["bodyweight"]), []).map((o) => o.value), ["bodyweight"], "nothing stored: only what the kit supports");
+});
+await checkAsync("#rev-b11 a saved onboarding position never lands on a question this run must not ask (#12)", async () => {
+  const { visibleStepFrom } = await import("../public/ui-helpers.mjs");
+  const steps = [{ key: "a" }, { key: "settings_only", showIf: () => false }, { key: "b" }, { key: "c", showIf: (x) => !!x.flag }];
+  assert.equal(visibleStepFrom(steps, 1, {}), 2, "a hidden step moves on to the next asked one");
+  assert.equal(visibleStepFrom(steps, 0, {}), 0);
+  assert.equal(visibleStepFrom(steps, 3, {}), 2, "past the last asked step: back to the last one asked");
+  assert.equal(visibleStepFrom(steps, 3, { flag: true }), 3);
+  assert.equal(visibleStepFrom(steps, 99, {}), 2, "an index from a longer old list is clamped");
+});
+check("#rev-b11 the paused card and its handback toast tell a beginner only what a beginner has (#18)", () => {
+  assert.match(appJs, /d\.beginner \? "I still set your weights and rest, but I've stopped swapping lifts that stall/);
+  assert.match(appJs, /d\.beginner \? "✅ Your coach has the plan again: lifts that go flat get swapped/);
+  assert.match(appJs, /visibleStepFrom\(STEPS, onbStep, answers\)/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

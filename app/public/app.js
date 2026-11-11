@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -613,9 +613,7 @@ const AVOID_FAMILIES = [
 const PREF_CARDIO_OPTS = [["Walking", "walking"], ["Bike", "cycling"], ["Rower / elliptical", "rowing-elliptical"], ["Running", "running"], ["Intervals", "hiit"]];
 // The profile's training_prefs, as the screen edits it: always all four keys (empty when unset).
 const prefsOf = (tp) => ({ style: [...(tp?.style ?? [])], variety: tp?.variety ?? null, avoid: [...(tp?.avoid ?? [])], cardio: [...(tp?.cardio ?? [])] });
-// A family chip is on when all its ids are in the avoid list; toggling it adds or removes exactly its ids, so a lift
-// skipped elsewhere ("Just not for me", W323) is never touched by this screen.
-const familyOn = (tp, f) => f.ids.every((id) => tp.avoid.includes(id));
+// familyOn / toggleFamily / visibleStyles live in ui-helpers.mjs (pure, unit-tested — review #9 #10).
 function prefsSummary(tp) {
   const p = prefsOf(tp);
   const parts = [
@@ -866,6 +864,9 @@ function renderOnboarding() {
     };
     return;
   }
+  // A saved position from an older build (a different question list) can point at a question this run must not ask
+  // (review #12: it landed a new user on the settings-only goal date) — render the nearest one it does ask.
+  onbStep = visibleStepFrom(STEPS, onbStep, answers);
   const step = STEPS[onbStep];
   // One dot per question this user will ACTUALLY be asked — the same `showIf` the
   // forward/back navigation uses, so the progress bar can't promise more steps than
@@ -890,11 +891,11 @@ function renderOnboarding() {
   } else if (step.prefs) {
     const tp = prefsOf(answers[step.key]);
     const eq = new Set(answers.available_equipment || []);
-    const styles = PREF_STYLE_OPTS.filter(([, , need]) => need.some((x) => eq.has(x)));
+    const styles = visibleStyles(PREF_STYLE_OPTS, eq, tp.style);
     const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
     const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
     const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
-    body = (styles.length > 1 ? group("I enjoy training with", styles.map(([l, v]) => chip("style", v, l, tp.style.includes(v))).join("")) : "")
+    body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
       + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
       + (fams.length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")) : "")
       + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
@@ -946,8 +947,7 @@ function renderOnboarding() {
       const tp = answers[step.key], g = b.dataset.g, v = b.dataset.v;
       if (g === "variety") tp.variety = tp.variety === v ? null : v; // single choice; tap again to clear
       else if (g === "avoid") {
-        const f = fams[+v], on = familyOn(tp, f);
-        tp.avoid = on ? tp.avoid.filter((id) => !f.ids.includes(id)) : [...new Set([...tp.avoid, ...f.ids])];
+        tp.avoid = toggleFamily(tp, fams[+v]).avoid;
       } else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
       saveOnb();
       renderOnboarding(); // re-render: variety is single-choice, so a sibling's state changes too
@@ -1169,7 +1169,7 @@ async function renderPlan() {
   // W320 (owner: "I'm convinced the system isn't learning"): a hand-edited plan pauses plan learning. Say so where the
   // plan is, with the one tap back — never a silent, permanent opt-out. Two taps: the second states what is replaced.
   const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
-    <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.</p>
+    <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: ${esc(d.beginner ? "I still set your weights and rest, but I've stopped swapping lifts that stall, re-fitting the plan to your pace, and stepping the plan up when you graduate." : "I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.")}</p>
     <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
   // W323: what they'd rather skip (the quiz + "Just not for me"), and what their own swaps moved out — each with Bring back.
   const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
@@ -1201,7 +1201,7 @@ async function renderPlan() {
     $("#coach-back-yes").onclick = async () => {
       let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid }) }); }
       catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
-      pendingNotice = r?.error ? (r.message || "Couldn't rebuild your plan — nothing changed. Try again.") : "✅ Your coach has the plan again: stalled lifts get swapped and your sets tune themselves each block.";
+      pendingNotice = r?.error ? (r.message || "Couldn't rebuild your plan — nothing changed. Try again.") : (d.beginner ? "✅ Your coach has the plan again: lifts that go flat get swapped, and the plan re-fits to how you train." : "✅ Your coach has the plan again: stalled lifts get swapped and your sets tune themselves each block.");
       await renderPlan();
       if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
     };

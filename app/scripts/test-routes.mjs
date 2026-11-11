@@ -671,6 +671,8 @@ try {
       days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
     const ex0 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
     ok("#W320 a generated plan reads as not custom on the Plan tab's door", ex0.program?.custom === false, JSON.stringify(ex0.program?.custom));
+    const bgEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"] } })).data.user_id } })).json();
+    ok("#rev-b11 the Plan tab's door says who is a beginner, so its copy promises only what they have (#18)", bgEx.beginner === true && ex0.beginner === false);
     const edited = JSON.parse(JSON.stringify(ex0.program));
     edited.sessions[0].exercises[0].sets += 1;
     await json("POST", "/api/plan/save", { user_id: cuU, program: edited });
