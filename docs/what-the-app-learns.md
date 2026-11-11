@@ -96,8 +96,9 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
    Stored as `profile.training_prefs` (sanitized in `app/src/planner.mjs` `sanitizeTrainingPrefs`).
    **W322 — how the plan uses it** (`tools/plan-core.mjs` `prefRankOpts` / `rankPool`), bounded so it only reorders
    near-equals: an enjoyed style ranks at the top of the equipment ladder but never above the lengthened-bias signal;
-   a lift you'd skip is demoted below anything comparable but kept (and named on the plan card) when nothing else
-   appropriate trains that muscle; "master the same" rotates accessories every second block, "keep it fresh" every
+   a lift you'd skip is demoted by a bounded 2.9: it yields to anything that still ranks above it (including an
+   isolation, when it was the muscle's only compound), but never to a clearly worse lift, and is kept (and named on
+   the plan card) when nothing appropriate ranks above it; "master the same" rotates accessories every second block, "keep it fresh" every
    block among the top four (main lifts never rotate); a liked cardio modality becomes the structured pick.
    "What your answers changed" says what each preference did, including where the optimal choice won.
 

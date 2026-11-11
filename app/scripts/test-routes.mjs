@@ -561,14 +561,17 @@ try {
     const dl2 = await store.getUser(dlU);
     ok("#W323 Bring back takes it off the skip list and puts it back in the plan",
       back.status === 200 && !(dl2.profile.training_prefs?.avoid ?? []).includes(X) && holds(dl2, X), JSON.stringify(back.data));
-    // A soft no with nothing appropriate in its place: kept, and said.
+    // A soft no with nothing appropriate in its place: kept, and said. Found, not assumed (the seed is the random user_id):
+    // a lift the generator keeps even with it on the skip list.
     const moU = (await json("POST", "/api/onboard", { profile: { ...base, available_equipment: ["machine"] } })).data.user_id;
     const mo = await store.getUser(moU);
-    const moSess = mo.program.sessions.find((s) => s.exercises.some((e) => e.exercise === "machine-chest-press"));
-    const moR = moSess ? await json("POST", "/api/exercise/cant-do", { user_id: moU, exercise: "machine-chest-press", scope: "always", reason: "dislike", session: moSess.name }) : null;
+    const moX = mo.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => holds(generateUserPlan({ ...mo.profile, training_prefs: { avoid: [id] } }, planOptsFor(mo)), id));
+    const moSess = moX && mo.program.sessions.find((s) => s.exercises.some((e) => e.exercise === moX));
+    const moR = moSess ? await json("POST", "/api/exercise/cant-do", { user_id: moU, exercise: moX, scope: "always", reason: "dislike", session: moSess.name }) : null;
     const mo1 = await store.getUser(moU);
-    ok("#W323 'not for me' on a lift with no appropriate alternative keeps it, records the preference, and says so",
-      moR?.status === 200 && moR.data.kept === true && holds(mo1, "machine-chest-press") && (mo1.profile.training_prefs?.avoid ?? []).includes("machine-chest-press"), JSON.stringify(moR?.data));
+    ok(`#W323 'not for me' on a lift with no appropriate alternative keeps it, records the preference, and says so (${moX})`,
+      moR?.status === 200 && moR.data.kept === true && holds(mo1, moX) && (mo1.profile.training_prefs?.avoid ?? []).includes(moX), JSON.stringify(moR?.data));
 
     // The swap's reason rides the workout (busy / pick / tired), only beside a stood_in_for, only from the enum.
     const swU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
