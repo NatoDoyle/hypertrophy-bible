@@ -148,6 +148,12 @@ export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
 // a permanent swap is recorded server-side (null); a pick is a vote against the PLAN's lift only when that lift was on
 // the table — picking over a busy or tired stand-in keeps the stand-in's reason (the lifter never chose against the plan's
 // lift). Anything else today-only is "busy".
+// Does a permanent swap ("No machine", "Just not for me") re-base the live slot (round 6)? Only when the slot holds the
+// PLAN's own lift and the server's replacement is today's lift (round 7): a stand-in's permanent replacement lands in
+// another day of the plan, and the plan's lift for THIS slot (slot_of) hasn't changed.
+export function rebasesOnPermanent(cur, r) {
+  return typeof cur?.slot_of !== "string" && !!r?.replaced_by && r.replaced_by === r?.today?.id;
+}
 export function swapWhyFor(cur, { reason = null, permanent = false, picked = false } = {}) {
   // `swap_why` on a stand-in describes how it relates to the PLAN's lift (slot_of). A vote ("pick"/"picked_over") is cast
   // only by a pick made against the plan's lift itself, on a day that isn't tired; once cast, every later door keeps it
