@@ -507,9 +507,15 @@ export function createApp(store, config = {}) {
       const handedBack = handBack ? u.program : null;
       out = rebuildPlan(u, { trainingChanged, prioritiesChanged, priorSessions, nowISO });
       // A hand-back applies dislikes learned before the plan was edited — name what they removed (review round 10 #3).
+      // "Learned out" means the learning took it out (round 11 #1): the plan these answers generate WITHOUT the learned scores
+      // would hold it, and the new plan doesn't — never a lift the same save's equipment/injury change removed. Its own
+      // once-only note (handed_back_at), never the new-block/refit copy (round 11 #0: no rotation, no six weeks happened).
       if (handedBack) {
-        const lo = learnedOutOf(u, handedBack, u.program, swapStalls(u, priorSessions, nowISO));
-        if (lo.length) u.plan_meta = { ...u.plan_meta, learned_out: lo, rotated_at: nowISO };
+        const scores = u.plan_meta?.pref_scores ?? {}, kept = new Set(u.plan_meta?.pref_kept ?? []);
+        const without = generateUserPlan(u.profile, planOptsFor({ ...u, plan_meta: { ...u.plan_meta, pref_scores: {} } },
+          { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, priorSessions, nowISO) }));
+        const lo = Object.entries(scores).filter(([id, v]) => v > 0 && !kept.has(id) && planHolds(without.program, id) && !planHolds(u.program, id)).map(([id]) => id).sort();
+        u.plan_meta = { ...u.plan_meta, handed_back_at: nowISO, ...(lo.length ? { learned_out: lo } : {}) };
       }
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
@@ -551,9 +557,13 @@ export function createApp(store, config = {}) {
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
+      // refit_diff describes the plan the refit made — kept only while a cosmetic rebuild leaves the lifts as they were
+      // (round 11 #2: after a Bring back the stale diff named the returned lift as having "made way").
+      const liftsOf = (p) => JSON.stringify((p?.sessions ?? []).map((x) => x.exercises.map((e) => e.exercise)));
+      const sameLifts = liftsOf(u.program) === liftsOf(program);
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
         ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "refit_diff"]
-          .filter((k) => u.plan_meta?.[k] != null)
+          .filter((k) => u.plan_meta?.[k] != null && (k !== "refit_diff" || sameLifts))
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
       // omits — a re-included lift must fall out of the claim (the same honesty rule
@@ -2114,7 +2124,9 @@ export function createApp(store, config = {}) {
     };
     const targets = normalizeTargets(body.targets);
     // While learning is paused (a hand-edited plan) a pick is today-only, as its copy says (review round 10 #3): no vote.
-    if (targets && user.program?.custom) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
+    // Decided by the WORKOUT, not by the plan's state when it syncs (round 11 #3): the player sends whether learning was
+    // paused when it started (an offline-queued workout can land after a hand-back, or after an edit).
+    if (targets && body.learning_paused === true) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
     if (targets) session.targets = targets;
     const fade = normalizeFadeMarks(body.fade_marks);
     if (fade) session.fade_marks = fade;

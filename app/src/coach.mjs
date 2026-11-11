@@ -959,6 +959,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       : `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}${learnedNote}`;
     announcement = announcement ? `${msg} ${announcement}` : msg;
   }
+  // HANDED BACK (round 11 #0): "Let the coach take over again" rebuilt the plan from the answers — said once, in its own
+  // words, naming any lift the learning (not the edit, not a Settings change) took out.
+  const handedBackAt = user.plan_meta?.handed_back_at;
+  if (handedBackAt && !sessions.some((s) => s.date && s.date > handedBackAt)) {
+    const lo = (user.plan_meta?.learned_out ?? []).map((id) => name(id));
+    const msg = `Back on the coach's plan — I rebuilt it from your answers.${lo.length ? ` You'd picked something else over ${lo.join(", ")} again and again, so I've given ${lo.length === 1 ? "its" : "their"} slot to another lift that trains the same muscle — bring ${lo.length === 1 ? "it" : "them"} back on the Plan tab any time.` : ""}`;
+    announcement = announcement ? `${msg} ${announcement}` : msg;
+  }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just
   // stepped up. Announce it as the win it is (Goal 4) rather than letting a bigger,
   // differently-structured program appear unexplained. Rides the same

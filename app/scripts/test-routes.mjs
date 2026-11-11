@@ -779,10 +779,17 @@ try {
     const Pz = pzEx.program.sessions[0].exercises[0].exercise;
     pzEx.program.sessions[0].exercises[0].sets += 1;
     await json("POST", "/api/plan/save", { user_id: pz, program: pzEx.program });
-    for (const [i, d] of [[1, 20], [2, 13], [3, 6]]) await json("POST", "/api/session", { user_id: pz, session_id: `pz-${i}`, date: dAgo(d),
+    for (const [i, d] of [[1, 20], [2, 13], [3, 6]]) await json("POST", "/api/session", { user_id: pz, session_id: `pz-${i}`, date: dAgo(d), learning_paused: true,
       sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Pz, swap_why: "pick" }] });
     const pzu = await store.getUser(pz);
     ok("#rev10-b11 picks made while learning is paused never become a learned dislike", !(pzu.plan_meta.pref_scores?.[Pz] > 0), JSON.stringify(pzu.plan_meta.pref_scores));
+    // Round 11 #3: decided by the workout (learning_paused it carries), not by the plan's state when it syncs.
+    const lp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id; // a generated plan…
+    const Lp = (await store.getUser(lp)).program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/session", { user_id: lp, session_id: "lp-1", date: dAgo(3), learning_paused: true, // …but the workout was done while paused
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Lp, swap_why: "pick" }] });
+    ok("#rev11-b11 a workout done while learning was paused carries no vote, whatever the plan is when it syncs",
+      !("swap_why" in ((await store.listSessions(lp)).find((x) => x.session_id === "lp-1")?.targets?.[0] ?? {})));
   }
   // Round 10 #3 (second half): a hand-back that applies dislikes learned BEFORE the plan was edited names what they removed.
   {
@@ -801,6 +808,19 @@ try {
     const hbName = kbExForTest.get(HX)?.name ?? HX;
     ok("#rev10-b11 the hand-back names a lift its learned dislikes removed", !!HX && (await store.getUser(hb)).plan_meta.learned_out?.includes(HX) && (hbT.session?.announcement ?? "").includes(hbName),
       JSON.stringify({ HX, lo: (await store.getUser(hb)).plan_meta.learned_out, ann: hbT.session?.announcement }));
+    // Round 11 #0: …in its OWN words — never the new-block or refit copy (no rotation happened, no six weeks were logged).
+    ok("#rev11-b11 the hand-back note says what happened, not 'New block'/'Six more weeks'/'Your main lifts stay'",
+      /Back on the coach's plan/.test(hbT.session?.announcement ?? "") && !/New block|Six more weeks|Your main lifts stay/.test(hbT.session?.announcement ?? ""), hbT.session?.announcement);
+    // Round 11 #1: a hand-back that also changes Settings credits the learning only for lifts the learning took out.
+    const hb2 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hb2u = await store.getUser(hb2);
+    const MX = hb2u.program.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)).find((id) => kbExForTest.get(id)?.equipment === "machine");
+    const hb2Ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb2 } })).json();
+    hb2Ex.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb2, program: hb2Ex.program });
+    await store.updateUser(hb2, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [MX]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb2, profile: { available_equipment: rp.available_equipment.filter((q) => q !== "machine") } });
+    ok("#rev11-b11 a lift the new equipment removed is never credited to the learning", !!MX && !((await store.getUser(hb2)).plan_meta.learned_out ?? []).includes(MX), JSON.stringify({ MX, lo: (await store.getUser(hb2)).plan_meta.learned_out }));
   }
   // Round 10 #1: a cosmetic save inside the refit window keeps what the refit said it changed.
   {
@@ -810,6 +830,10 @@ try {
     await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 1, rotated_at: new Date().toISOString(), refit_diff: { out: ["leg-press"], in: ["hack-squat"] } }; return u; });
     await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
     ok("#rev10-b11 a cosmetic save keeps refit_diff with rotated_at", JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff) === JSON.stringify({ out: ["leg-press"], in: ["hack-squat"] }));
+    // Round 11 #2: …but not when the rebuild itself changed the lifts (a Bring back) — the diff no longer describes the plan.
+    await store.updateUser(kd, (u) => { u.program.sessions[0].exercises[0] = { ...u.program.sessions[0].exercises[0], exercise: "pendulum-squat" }; u.plan_meta = { ...u.plan_meta, refit_diff: { out: ["leg-press"], in: ["hack-squat"] } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
+    ok("#rev11-b11 a rebuild that changed the lifts drops the stale refit_diff", !(await store.getUser(kd)).plan_meta.refit_diff);
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —

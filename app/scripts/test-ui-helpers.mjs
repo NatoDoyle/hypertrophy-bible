@@ -1196,7 +1196,7 @@ check("#fade (W314) the player marks a skip (an Undo takes it back) and an early
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
   assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
   for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
-  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\) \}/);
+  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\)(, \.\.\.\(sess\.learningPaused \? \{ learning_paused: true \} : \{\}\))? \}/);
   assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
   assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
 });
@@ -1272,6 +1272,10 @@ check("#rev8-b11 on a hand-edited plan the pick copy promises nothing about the 
 check("#rev9-b11 the It-hurts door's pick list stamps the swap as 'hurt' (never a dislike vote)", () => {
   assert.match(appJs, /For today:`, \{ reason: "hurt" \}\);/);
   assert.match(appJs, /permanent: false, picked: true, \.\.\.\(reason \? \{ reason \} : \{\}\) \}\);/);
+});
+
+check("#rev11-b11 the finished workout says whether learning was paused when it was done (#3)", () => {
+  assert.match(appJs, /fade_marks: fadeMarksAtFinish\(sess\), \.\.\.\(sess\.learningPaused \? \{ learning_paused: true \} : \{\}\) \};/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
