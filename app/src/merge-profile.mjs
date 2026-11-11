@@ -23,6 +23,7 @@ export const preferAccount = (a, b) => {
 export const FOLLOWING_CAP = 20;         // parity with POST /api/following's own cap
 export const HISTORY_CAP_FIELD_CAP = 24; // parity with streak_freezes/pause_history's existing .slice(-24)
 export const CHALLENGE_HISTORY_CAP = 20; // parity with adherence.mjs's CHALLENGE_HISTORY_CAP
+export const PREF_AVOID_MAX_MERGE = 40;   // parity with plan-core's PREF_AVOID_MAX (this module stays engine-free)
 
 // Mutates and returns `toU` in place (matches store.mjs's existing direct-mutation
 // style for this same function's custom_exercises merge, right above it).
@@ -158,6 +159,33 @@ export function mergeUserProfile(fromU, toU) {
       if (nutrition[key] == null && fromU.nutrition[key] != null) nutrition[key] = fromU.nutrition[key];
     }
     if (Object.keys(nutrition).length) toU.nutrition = nutrition;
+  }
+  // Burst 11 (review #8, lesson 16 again): the preference learning reads the merged sessions, so what it depends on must
+  // follow the person. The skip list ("Just not for me" + the quiz) unions; the survivor's own style/variety/cardio stand
+  // and only fill from `from` where `to` has none. "Bring back" answers (pref_kept) union, so a lift brought back on either
+  // device is never learned against again from the combined picks; learned dislikes carry (max), minus anything kept.
+  // The first-workout funnel keeps each step's EARLIEST stamp.
+  const fromTp = fromU.profile?.training_prefs, toTp = toU.profile?.training_prefs;
+  if (fromTp) {
+    const avoid = [...new Set([...(toTp?.avoid ?? []), ...(fromTp.avoid ?? [])])].slice(-PREF_AVOID_MAX_MERGE);
+    const pick = (k) => (toTp?.[k] != null && !(Array.isArray(toTp[k]) && !toTp[k].length) ? toTp[k] : fromTp[k]);
+    const tp = { style: pick("style"), variety: pick("variety"), avoid, cardio: pick("cardio") };
+    const canonical = Object.fromEntries(Object.entries(tp).filter(([, v]) => v != null && !(Array.isArray(v) && !v.length))); // the sanitizer's key order
+    toU.profile = { ...(toU.profile ?? {}), training_prefs: Object.keys(canonical).length ? canonical : null };
+  }
+  const fromKept = fromU.plan_meta?.pref_kept ?? [], fromScores = fromU.plan_meta?.pref_scores ?? {};
+  if (fromKept.length || Object.keys(fromScores).length) {
+    const kept = [...new Set([...(toU.plan_meta?.pref_kept ?? []), ...fromKept])].sort();
+    const scores = { ...(toU.plan_meta?.pref_scores ?? {}) };
+    for (const [k, v] of Object.entries(fromScores)) if (Number.isFinite(v)) scores[k] = k in scores ? Math.max(scores[k], v) : v;
+    for (const k of kept) delete scores[k];
+    toU.plan_meta = { ...(toU.plan_meta ?? {}), ...(kept.length ? { pref_kept: kept } : {}),
+      pref_scores: Object.fromEntries(Object.entries(scores).sort(([a], [b]) => (a < b ? -1 : 1))) };
+  }
+  if (fromU.funnel && typeof fromU.funnel === "object") {
+    const f = { ...(toU.funnel ?? {}) };
+    for (const [k, v] of Object.entries(fromU.funnel)) if (typeof v === "string" && (typeof f[k] !== "string" || v < f[k])) f[k] = v;
+    toU.funnel = f;
   }
   // The live `challenge` slot is deliberately NOT merged: it's a two-sided mirror
   // keyed by the OTHER side's share token, not a user_id. Lifting it onto `to`
