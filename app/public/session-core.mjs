@@ -146,12 +146,17 @@ export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
 // the table — picking over a busy or tired stand-in keeps the stand-in's reason (the lifter never chose against the plan's
 // lift). Anything else today-only is "busy".
 export function swapWhyFor(cur, { reason = null, permanent = false, picked = false } = {}) {
-  // An earlier pick against the plan's lift survives ANY later swap of the picked lift that isn't itself a pick — tired,
-  // busy or permanent (round 3 #2, round 4) — as "picked_over": the vote stands, the new stand-in isn't liked.
-  if (!picked && typeof cur?.slot_of === "string" && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return "picked_over";
-  if (reason === "tired" || cur?.tired) return "tired";
+  // `swap_why` on a stand-in describes how it relates to the PLAN's lift (slot_of). A vote ("pick"/"picked_over") is cast
+  // only by a pick made against the plan's lift itself, on a day that isn't tired; once cast, every later door keeps it
+  // (rounds 3-5) — "pick" again only for a fresh non-tired pick, else "picked_over" (which never credits a liking).
+  const tiredNow = reason === "tired" || !!cur?.tired;
+  const standIn = typeof cur?.slot_of === "string";
+  if (standIn && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return picked && !tiredNow ? "pick" : "picked_over";
+  if (tiredNow) return "tired";
   if (permanent) return null;
-  if (typeof cur?.slot_of === "string" && (cur.swap_why === "busy" || cur.swap_why === "tired")) return cur.swap_why;
+  // A pick over a stand-in that carries no vote (busy, tired, or a permanent replacement) was never a choice against the
+  // plan's lift (round 2 #2, round 5): it keeps the stand-in's own reason.
+  if (standIn && picked) return cur.swap_why ?? null;
   return picked ? "pick" : "busy";
 }
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
