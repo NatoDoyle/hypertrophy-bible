@@ -1821,6 +1821,11 @@ export function generatePlan(profile, kb, opts = {}) {
   // W322: what their preferences DID, banked so "What your answers changed" can say it honestly — including the lifts
   // they'd rather skip that the plan kept because nothing appropriate trains that muscle as well. Only when they have any.
   const tp = profile.training_prefs;
+  // Learned dislikes the bound KEPT (review round 8 #2): said on the plan card like a kept skip — only when there are any.
+  const learnedKept = Object.entries(prefs?.learned ?? {}).filter(([id, v]) => v > 0 && exById.has(id)
+    && outSessions.some((sn) => sn.exercises.some((e) => e.exercise === id)))
+    .map(([id]) => ({ id, name: exById.get(id)?.name ?? id, for_muscle: exerciseChoices.find((c) => c.exercise === id)?.for_muscle ?? null }));
+  if (learnedKept.length) rationale.preferences = { learned_kept: learnedKept };
   if (tp && (tp.style?.length || tp.avoid?.length || tp.variety || tp.cardio?.length)) {
     const placedIds = [...new Set(outSessions.flatMap((sn) => sn.exercises.map((e) => e.exercise)))];
     // Only what the lifter's kit can use counts (review #3 #4): a style with no equipment here, a skipped lift they
@@ -1831,6 +1836,7 @@ export function generatePlan(profile, kb, opts = {}) {
     const avoidHere = (tp.avoid ?? []).filter((id) => exById.has(id));
     const defaultCardio = cardio?.structured_modality && !cardio.structured_modality.liked ? cardio.structured_modality : null;
     rationale.preferences = {
+      ...(learnedKept.length ? { learned_kept: learnedKept } : {}),
       ...(tp.style?.length ? { style: styleHere, ...(styleAbsent.length ? { style_absent: styleAbsent } : {}), enjoyed: placedIds.filter((id) => enjoyEq.has(exById.get(id)?.equipment)).length, of: placedIds.length } : {}),
       ...(tp.avoid?.length ? { avoided: avoidHere.length, kept: placedIds.filter((id) => avoidHere.includes(id)).map((id) => ({ id, name: exById.get(id)?.name ?? id, for_muscle: exerciseChoices.find((c) => c.exercise === id)?.for_muscle ?? null })) } : {}),
       ...(tp.variety ? { variety: tp.variety, ...(experience === "beginner" ? { variety_waits: true } : {}) } : {}),
@@ -2228,6 +2234,8 @@ export function explainPersonalization(profile, rationale, program, live = null)
       pr.variety_waits ? `while you're a beginner you keep the same lifts so you can learn them — this kicks in when you graduate.`
         : pr.variety === "same" ? "your main lifts never rotate, and your accessories change every second block instead of every block."
         : "your accessories rotate every block among the best four options for each muscle; your main lifts stay so your progress carries over.");
+    if (pr.learned_kept?.length) say("training_prefs", `you've picked something else over ${pr.learned_kept.length === 1 ? "a lift" : `${pr.learned_kept.length} lifts`} again and again`,
+      `Kept: ${pr.learned_kept.map((k) => `${k.name}${k.for_muscle ? ` (nothing else you have trains your ${MUSCLE_LABEL[k.for_muscle] ?? k.for_muscle} as well)` : ""}`).join("; ")}. Bring something better into reach and it goes.`);
     if (pr.cardio?.length) say("training_prefs", "the cardio you'd actually do",
       pr.cardio_pick ? `your structured cardio is ${pr.cardio_pick.toLowerCase()}.`
         : pr.cardio_already ? `it was already your structured cardio: ${pr.cardio_already.toLowerCase()}.`

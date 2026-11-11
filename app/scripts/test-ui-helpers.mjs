@@ -1262,5 +1262,11 @@ check("#rev-b11 the paused card and its handback toast tell a beginner only what
   assert.match(appJs, /visibleStepFrom\(STEPS, onbStep, answers\)/);
 });
 
+check("#rev8-b11 on a hand-edited plan the pick copy promises nothing about the plan (#3)", () => {
+  assert.match(appJs, /learningPaused: templateSession\.learning_paused === true/);
+  assert.match(appJs, /sess\.learningPaused \? "Just for today — your edited plan stays as you made it\." :/);
+  assert.match(appJs, /sess\.learningPaused \? "The best alternatives, just for today" :/);
+});
+
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

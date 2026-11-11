@@ -2138,6 +2138,16 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     ["stalled, block 2", generatePlan(base, kb, { blockIndex: 2, stalledExercises: ["seated-leg-curl"] })],
   ].filter(([, pl]) => kfOf(pl).includes("seated-leg-curl")).map(([k]) => k);
   ok(`#rev3-b11 a demoted leg curl rotated to the front never takes the leg-curl staple${kfCases.length ? " — " + kfCases.join("; ") : ""}`, kfCases.length === 0);
+  // Round 8 #2: a learned dislike the bound keeps is SAID on the plan card, like a kept skip — never silent.
+  let lk = null;
+  for (const eq of [["dumbbell", "bodyweight"], ["machine"], ["band", "bodyweight"], FULLG]) {
+    const b = { ...base, user_id: "lk-1", training_status: "beginner", days_per_week: 3, available_equipment: eq };
+    const X = [...placedIds(generatePlan(b, kb))].sort().find((id) => placedIds(generatePlan(b, kb, { prefScores: { [id]: 1 } })).has(id));
+    if (X) { lk = { b, X }; break; }
+  }
+  const lkPlan = lk && generatePlan(lk.b, kb, { prefScores: { [lk.X]: 1 } });
+  const lkLine = lk && explainPersonalization(lk.b, lkPlan.rationale, lkPlan.program).find((x) => /picked something else/.test(x.answer));
+  ok(`#rev8-b11 a learned dislike the bound keeps is named on the plan card (${lk?.X})`, !!lkLine && new RegExp(`Kept: ${exMap.get(lk.X).name.replace(/[()]/g, "\\$&")}`).test(lkLine.effect), JSON.stringify(lkLine));
   // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

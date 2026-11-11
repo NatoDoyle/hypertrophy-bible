@@ -15,7 +15,9 @@ import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } 
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 import { planFitCopy, planFitRequest, readoutLists } from "../public/ui-helpers.mjs";
 import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout, easeSlot } from "../public/session-core.mjs";
-import { generateUserPlan, userTimeFit, planOptsFor } from "../src/planner.mjs";
+import { generateUserPlan, userTimeFit, planOptsFor, userSubstitutes } from "../src/planner.mjs";
+import { exercises as kbExListForTest } from "../src/kb-data.mjs";
+const kbExForTest = new Map(kbExListForTest.map((e) => [e.id, e]));
 import { timeFitOptions, SPEC_MAX_BLOCKS as SPEC_MAX_T } from "../../tools/plan-core.mjs";
 
 let pass = 0, fail = 0;
@@ -664,6 +666,93 @@ try {
     const ko1 = await store.getUser(koU);
     ok("#rev-b11 after 'Just not for me', an unchanged Settings save keeps the block (key order never matters)", ko1.plan_meta.block_index === 2, JSON.stringify({ b: ko1.plan_meta.block_index, tp: kp.training_prefs }));
     ok("#rev-b11 …and the stored prefs are in the sanitizer's canonical order", JSON.stringify(Object.keys(kp.training_prefs)) === JSON.stringify(["avoid", "cardio"]), JSON.stringify(kp.training_prefs));
+  }
+
+  // Round 8 #0: a permanent door on a picked stand-in never hands back the lift ruled out today (W275), so the pick's
+  // vote survives. Built so the stand-in's plan replacement on its other day IS the ruled-out lift.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const u8 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: u8, program: { name: "Two", sessions: [
+      { name: "Day A", exercises: [{ exercise: "romanian-deadlift", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "lat-pulldown", sets: 3, rep_range: "8-12", rir: "1-2" }] },
+      { name: "Day B", exercises: [{ exercise: "dumbbell-romanian-deadlift", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "leg-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+    const live1 = ["dumbbell-romanian-deadlift", "leg-press"];
+    const pk = await json("POST", "/api/exercise/cant-do", { user_id: u8, exercise: "dumbbell-romanian-deadlift", scope: "today", session: "Day B", live: live1, pick: "romanian-deadlift" });
+    const nm = await json("POST", "/api/exercise/cant-do", { user_id: u8, exercise: "romanian-deadlift", scope: "always", session: "Day B",
+      live: ["romanian-deadlift", "leg-press"], exclude: ["dumbbell-romanian-deadlift"], slot_of: "dumbbell-romanian-deadlift" });
+    ok("#rev8-b11 fixture: the stand-in's plan replacement IS the lift ruled out today", pk.status === 200 && nm.status === 200 && nm.data.replaced_by === "dumbbell-romanian-deadlift", JSON.stringify(nm.data && { rb: nm.data.replaced_by, today: nm.data.today }));
+    ok("#rev8-b11 …and today's lift is never that ruled-out lift", !!nm.data.today && nm.data.today.id !== "dumbbell-romanian-deadlift", JSON.stringify(nm.data.today));
+  }
+  // Round 8 #4: handing a hand-edited plan back to the coach starts a fresh block — no stale clock rebuilding it again.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const hb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb } })).json();
+    hbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb, program: hbEx.program });
+    for (let w = 0; w < 14; w++) await json("POST", "/api/session", { user_id: hb, session_id: `hb-${w}`, date: dayAgo(98 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+    await store.updateUser(hb, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(100), block_index: 0 }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb }); // "Let the coach take over again"
+    const hb1 = await store.getUser(hb);
+    const t = await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json();
+    const hb2 = await store.getUser(hb);
+    ok("#rev8-b11 the hand-back starts a fresh block (no phantom 'New block' rebuild on the next Today)",
+      (hb1.plan_meta.block_index ?? 0) === 0 && Date.parse(hb1.plan_meta.block_start) > Date.now() - 3600e3 && (hb2.plan_meta.block_index ?? 0) === 0 && !/New block/.test(t.session?.announcement ?? ""),
+      JSON.stringify({ b1: hb1.plan_meta.block_index, start: hb1.plan_meta.block_start, b2: hb2.plan_meta.block_index, ann: t.session?.announcement }));
+  }
+
+  // Round 8 #3: a hand-edited plan (learning paused) gets no "Your pick", and Today says learning is paused so the player's
+  // pick copy never promises a plan change it can't make.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const cp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const cpEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cp } })).json();
+    cpEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: cp, program: cpEx.program });
+    const cpT = await (await app.request("/api/today", { headers: { "X-HB-User": cp } })).json();
+    ok("#rev8-b11 a hand-edited plan offers no 'Your pick' and Today says learning is paused",
+      (cpT.session?.exercises ?? []).every((r) => !r.your_pick) && cpT.session?.learning_paused === true, JSON.stringify({ lp: cpT.session?.learning_paused }));
+  }
+  // Round 8 #5: a preference edit that doesn't change the lifting plan (cardio only) is not a training change — the block
+  // and a beginner's refit clock keep running.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const ce = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const start = dayAgo(30);
+    await store.updateUser(ce, (u) => { u.plan_meta = { ...u.plan_meta, block_start: start }; return u; });
+    const before = await store.getUser(ce);
+    await json("POST", "/api/plan/regenerate", { user_id: ce, profile: { training_prefs: { cardio: ["walking", "cycling"] } } });
+    const after = await store.getUser(ce);
+    ok("#rev8-b11 a cardio-only preference edit keeps the block clock (lifting plan unchanged)",
+      after.plan_meta.block_start === start && JSON.stringify(after.program.sessions) === JSON.stringify(before.program.sessions) && JSON.stringify(after.profile.training_prefs.cardio) === JSON.stringify(["walking", "cycling"]),
+      JSON.stringify({ start: after.plan_meta.block_start }));
+  }
+
+  // Round 8 #1: the beginner refit names the lifts that changed — never a pace re-size it didn't make.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const rf = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const rf0 = await store.getUser(rf);
+    const sess0 = rf0.program.sessions[0];
+    const orig = sess0.exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: rf, exercise: orig, scope: "always", session: sess0.name }); // an in-place "No machine" swap…
+    await json("POST", "/api/exercise/cant-do", { user_id: rf, exercise: orig, scope: "undo" }); // …brought back (the plan stays in-place-edited only if not exact)
+    await store.updateUser(rf, (u) => { // an in-place difference a regenerate would undo: one lift swapped by hand-free means
+      const s0 = u.program.sessions[0]; const alt = userSubstitutes(u, s0.exercises[0].exercise, { sessionName: s0.name }).find((x) => x.fits);
+      if (alt) s0.exercises[0] = { ...s0.exercises[0], exercise: alt.id };
+      u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), pace: { heavy: 200, moderate: 150, isolation: 110, transition: 120 } }; return u; });
+    const swappedIn = (await store.getUser(rf)).program.sessions[0].exercises[0].exercise;
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: rf, session_id: `rf-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20 + w * 2.5, reps: 10 }] });
+    const rfT = await (await app.request("/api/today", { headers: { "X-HB-User": rf } })).json();
+    const ann = rfT.session?.announcement ?? "";
+    const name = (id) => kbExForTest.get(id)?.name ?? id;
+    ok("#rev8-b11 the refit note names the lift that changed, and claims no pace re-size it didn't make",
+      swappedIn !== orig && new RegExp(name(swappedIn).replace(/[()]/g, "\\$&")).test(ann) && !/re-sized your sessions to the pace/.test(ann), ann);
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —

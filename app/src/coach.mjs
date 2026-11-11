@@ -946,7 +946,14 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       : "";
     // A beginner's boundary is a REFIT (W319), not a block: no rotation, no tune — say only what it did.
     const refit = (user.profile?.training_status ?? "beginner") === "beginner";
-    const refitWhat = (swapNote + learnedNote) || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
+    // Name what changed (review round 8 #1): the swaps and learned swap-outs say why; any other lift change is named as it
+    // is; only a refit that changed no lift may speak of pace or sizing.
+    const diff = user.plan_meta?.refit_diff ?? { out: [], in: [] };
+    const named = new Set([...(user.plan_meta?.swapped_this_block ?? []), ...(user.plan_meta?.learned_out ?? [])]);
+    const otherOut = (diff.out ?? []).filter((id) => !named.has(id)).map((id) => name(id)), otherIn = (diff.in ?? []).map((id) => name(id));
+    const diffNote = otherOut.length && otherIn.length ? ` ${otherOut.join(", ")} made way for ${otherIn.join(", ")}.`
+      : otherOut.length ? ` ${otherOut.join(", ")} left your plan.` : !(swapNote + learnedNote) && otherIn.length ? ` ${otherIn.join(", ")} joined your plan.` : "";
+    const refitWhat = (swapNote + learnedNote + diffNote) || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
     const msg = refit
       ? `Six more weeks of training logged, so I've checked how every lift is moving.${refitWhat}`
       : `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}${learnedNote}`;
