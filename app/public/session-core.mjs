@@ -62,7 +62,7 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
 // target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
 export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
-export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
+export function replaceSlot(sess, i, row, { expect, sets, plannedSets, rebase = false } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
   if (!cur || !row?.exercise) return refuse("no-slot");
@@ -76,6 +76,9 @@ export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
   // holds that lift again (an Undo back to it). An older blob has none: the live lift stands for it.
   const origin = typeof cur.slot_of === "string" ? cur.slot_of : cur.exercise;
   if (origin !== row.exercise) slot.slot_of = origin; else delete slot.slot_of;
+  // `rebase` (review round 6): the row IS the plan's lift for this slot now (a permanent swap whose replacement is today's
+  // lift, or its Undo) — no stand-in marker, so a later pick or swap is judged against the plan's actual lift.
+  if (rebase) delete slot.slot_of;
   // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
   // planned count (a swap is only ever offered before any set of the old lift was banked).
   if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;

@@ -875,7 +875,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /floorKg: cur\.equipment === "barbell" \? \(unitFor\(cur\.exercise\) === "lb" \? toKgIn\(EMPTY_BAR_LB, "lb"\) : EMPTY_BAR_KG\) : 0, shown: startWeightDisp \}\)/);
   // Round 2: Undo restores the saved count AND its plan (a skip stays taken); "1 set", never "1 sets"; the card says what's
   // back next time only when the server could name it; Nerd Mode's average covers the sets it prints.
-  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets \}\)/);
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets, \.\.\.\(u\.rebased \? \{ rebase: true \} : \{\}\) \}\)/);
   assert.doesNotMatch(fnBody(appJs, "async function tiredSwap() {", 3000) + fnBody(appJs, "function easeInPlace(", 2500), /\$\{n\} sets/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\$\{r\.planned_name \? ` \$\{r\.planned_name\} is back next time\.` : ""\}/);
   // Round 3: Nerd Mode compares the GRADED average with the band, saying which weight it's for when back-offs weren't graded;
@@ -898,7 +898,9 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // through applyReplacement, which keeps a tired slot's substitute the tired day (session-core swapInRow); only Undo
   // restores a saved row as it was.
   // (W323: the row it swaps in carries why it stood in — the same row, stamped.)
-  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], why \? \{ \.\.\.row, swap_why: why \} : row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\) \}\);/);
+  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], why \? \{ \.\.\.row, swap_why: why \} : row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\), \.\.\.\(undo\.rebased \? \{ rebase: true \} : \{\}\) \}\);/);
+  // Round 6: both permanent doors re-base the slot when the plan's replacement IS today's lift.
+  assert.equal((appJs.match(/rebased: !!r\.replaced_by && r\.replaced_by === r\.today\.id/g) ?? []).length, 2);
   // W323: a tired swap is stamped "tired" (never learned against), a pick "pick", any other today-only swap "busy".
   assert.match(appJs, /const why = swapWhyFor\(sess\.ex\[i\], undo\);/); // the rule itself is unit-tested in test-session (round 2 #2)
   assert.equal((appJs.match(/replaceSlot\(/g) ?? []).length, 2, "applyReplacement and undoSwap are the only slot writers in the player");

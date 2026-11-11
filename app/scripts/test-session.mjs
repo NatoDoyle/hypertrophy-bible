@@ -2042,6 +2042,19 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
   });
 }
 
+check("#rev6-b11 a permanent replacement that IS the plan's new lift re-bases the slot: a later pick votes against it, and Undo re-bases back", () => {
+  const base = { name: "Lower", ex: [{ exercise: "hack-squat", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-2" }], i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
+  const perm = replaceSlot(base, 0, { exercise: "leg-press" }, { expect: "hack-squat", rebase: true });
+  assert.ok(perm.ok && !("slot_of" in perm.sess.ex[0]), "leg-press is the plan's lift now — no stand-in marker");
+  const why = swapWhyFor(perm.sess.ex[0], { picked: true });
+  const pick = replaceSlot(perm.sess, 0, { exercise: "pendulum-squat", swap_why: why }, { expect: "leg-press" });
+  assert.deepStrictEqual([buildTargets(pick.sess)[0].stood_in_for, buildTargets(pick.sess)[0].swap_why], ["leg-press", "pick"]);
+  const undo = replaceSlot(perm.sess, 0, base.ex[0], { expect: "leg-press", rebase: true });
+  assert.ok(undo.ok && !("slot_of" in undo.sess.ex[0]), "Undo of the permanent swap: hack-squat is the plan's lift again");
+  const today = replaceSlot(base, 0, { exercise: "goblet-squat" }, { expect: "hack-squat" });
+  assert.equal(today.sess.ex[0].slot_of, "hack-squat", "a today-only stand-in keeps its marker");
+});
+
 // Burst 11 review round 5 — the swap-reason state machine, EXHAUSTIVELY: every chain of up to four doors on one slot,
 // through the real replaceSlot / swapInRow / tiredSwapRow / easeSlot / swapWhyFor / buildTargets, against three invariants.
 //   I1 a vote, once cast (a pick against the plan's lift — not over a busy/tired stand-in), is never lost by a later door;
@@ -2049,7 +2062,7 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
 //      wasn't tired (easing it afterwards changes the dose, not that choice);
 //   I3 no vote without a pick.
 check("#rev5-b11 every chain of up to 4 swaps keeps a pick's vote, credits a liking only for a non-tired pick, and votes only after a pick", () => {
-  const DOORS = ["busy", "pick", "tired", "ease", "nomachine", "dislike"];
+  const DOORS = ["busy", "pick", "tired", "ease", "nomachine", "dislike", "replaced"]; // replaced: a permanent door whose replacement IS today's lift (re-based, round 6)
   const base = { name: "Lower", ex: [{ exercise: "hack-squat", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-2", suggested_kg: 60 }], i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
   const bad = []; let chains = 0, n = 0;
   const walk = (sess, path, voted, lastLikable) => {
@@ -2071,17 +2084,18 @@ check("#rev5-b11 every chain of up to 4 swaps keeps a pick's vote, credits a lik
         next = r.sess;
         likable = lastLikable; // easing changes the dose, not the lift — a liking earned by a non-tired pick stands
       } else {
-        const undo = d === "pick" ? { picked: true } : d === "tired" ? { reason: "tired" } : d === "nomachine" || d === "dislike" ? { permanent: true } : {};
+        const undo = d === "pick" ? { picked: true } : d === "tired" ? { reason: "tired" } : d === "nomachine" || d === "dislike" || d === "replaced" ? { permanent: true } : {};
         const why = swapWhyFor(cur, undo);
         const row = { exercise: `lift-${++n}`, suggested_kg: 40, ...(why ? { swap_why: why } : {}) };
-        const r = replaceSlot(sess, 0, d === "tired" ? tiredSwapRow(row) : swapInRow(cur, row), { expect: cur.exercise });
+        const r = replaceSlot(sess, 0, d === "tired" ? tiredSwapRow(row) : swapInRow(cur, row), { expect: cur.exercise, ...(d === "replaced" ? { rebase: true } : {}) });
         if (!r.ok) continue;
         next = r.sess;
         // A pick casts a vote only against the PLAN's lift: on a non-tired slot holding that lift, or a stand-in that already
         // carries a vote — never over a busy/tired stand-in (round 2 #2: the lifter never chose against the plan's lift).
         if (d === "pick") { castsVote = voted || (!cur.tired && (typeof cur.slot_of !== "string" || cur.swap_why === "pick" || cur.swap_why === "picked_over")); likable = !cur.tired; }
       }
-      walk(next, [...path, d], castsVote, likable);
+      // A re-based slot holds the plan's NEW lift: earlier votes were against a lift the plan no longer has.
+      walk(next, [...path, d], d === "replaced" ? false : castsVote, d === "replaced" ? false : likable);
     }
   };
   walk(base, [], false, false);

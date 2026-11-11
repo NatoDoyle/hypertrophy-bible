@@ -3389,7 +3389,7 @@ function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) 
   // Why it stood in (W323), stamped on the row so the finished workout tells the plan: a tired swap is about the day;
   // "Pick one myself" and "It's busy" may say something about the lift. A permanent swap is already recorded server-side.
   const why = swapWhyFor(sess.ex[i], undo); // session-core: a pick over a busy stand-in stays busy (round 2 #2)
-  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}) });
+  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}), ...(undo.rebased ? { rebase: true } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
@@ -3411,7 +3411,7 @@ async function undoSwap() {
   // leak anything; the same guards apply (a banked set of the substitute stays).
   // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
   // (and its plan: a skip taken before the tired tap stays taken — round 2).
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets });
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets, ...(u.rebased ? { rebase: true } : {}) });
   sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from), ...(back.ok && u.lastSkip ? { lastSkip: u.lastSkip } : {}) };
   saveSess();
   renderPlayer(0);
@@ -3591,6 +3591,7 @@ async function renderCantDo() {
     if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        rebased: !!r.replaced_by && r.replaced_by === r.today.id, // today's lift IS the plan's new lift (review round 6)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
           ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
@@ -3610,6 +3611,7 @@ async function renderCantDo() {
     if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        rebased: !!r.replaced_by && r.replaced_by === r.today.id, // today's lift IS the plan's new lift (review round 6)
         text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — you can bring ${cur.name} back on the Plan tab.` : `${planLine}. ${r.today.name} for today.` });
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
   };
