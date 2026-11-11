@@ -84,8 +84,9 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
    (`targets[].swap_why`: busy / pick / tired). A planned lift you **picked something else over** 3 times in
    8 weeks ("Pick one myself" or "Your pick") is learned as a dislike; a lift you pick yourself twice is a small
    liking (`tools/response-core.mjs` `swapPreferences`, re-learned after every workout into
-   `plan_meta.pref_scores`). **Busy and tired swaps never count**: both are about the day, and their buttons say
-   "just for today". The pick screens say the learning out loud. It lands at the next rebuild (block boundary or
+   `plan_meta.pref_scores`). **Busy, tired and "It hurts" swaps never count**: they're about the day or your body,
+   and the injury filter already handles pain (`swap_why`: busy / pick / tired / hurt / picked_over; the rule is
+   `swapWhyFor` in `app/public/session-core.mjs`, proved by `npm run sweep:swaps`). The pick screens say the learning out loud. It lands at the next rebuild (block boundary or
    refit): the lift is swapped wherever something as good can take its place (the bounded skip — it never trades
    down), the new-block note names it, and the Plan tab lists it with Bring back. Where nothing as good fits, it
    stays, and the plan card says so ("Kept: …"). A learned

@@ -2148,6 +2148,12 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const lkPlan = lk && generatePlan(lk.b, kb, { prefScores: { [lk.X]: 1 } });
   const lkLine = lk && explainPersonalization(lk.b, lkPlan.rationale, lkPlan.program).find((x) => /picked something else/.test(x.answer));
   ok(`#rev8-b11 a learned dislike the bound keeps is named on the plan card (${lk?.X})`, !!lkLine && new RegExp(`Kept: ${exMap.get(lk.X).name.replace(/[()]/g, "\\$&")}`).test(lkLine.effect), JSON.stringify(lkLine));
+  // Round 10 #4: "Kept: X" is said only while the plan still holds X (an in-place swap may have removed it since).
+  if (lk) {
+    const gone = { ...lkPlan.program, sessions: lkPlan.program.sessions.map((sn) => ({ ...sn, exercises: sn.exercises.filter((e) => e.exercise !== lk.X) })) };
+    const line = explainPersonalization(lk.b, lkPlan.rationale, gone).find((x) => /picked something else/.test(x.answer));
+    ok("#rev10-b11 a 'Kept' line never names a lift the plan no longer holds", !line, JSON.stringify(line));
+  }
   // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

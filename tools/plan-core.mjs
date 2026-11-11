@@ -2215,8 +2215,11 @@ export function explainPersonalization(profile, rationale, program, live = null)
       `all ${lifts.size} exercises in your week are ones you can actually do with this.`);
   }
 
-  // What they enjoy (W322) — what it changed, and where the optimal choice won, said plainly.
-  const pr = r.preferences;
+  // What they enjoy (W322) — what it changed, and where the optimal choice won, said plainly. A "Kept" list names only lifts
+  // the plan still holds (review round 10 #4: an in-place swap since may have removed one; stored rationales too).
+  const heldNow = program?.sessions ? new Set(program.sessions.flatMap((sn) => sn.exercises.map((e) => e.exercise))) : null;
+  const stillHeld = (list) => (heldNow && Array.isArray(list) ? list.filter((k) => heldNow.has(k.id)) : list);
+  const pr = r.preferences ? { ...r.preferences, kept: stillHeld(r.preferences.kept), learned_kept: stillHeld(r.preferences.learned_kept) } : null;
   if (pr) {
     const STYLE_WORD = { free: "free weights", machines: "machines and cables", bodyweight: "bodyweight" };
     const allStyles = [...(pr.style ?? []), ...(pr.style_absent ?? [])];

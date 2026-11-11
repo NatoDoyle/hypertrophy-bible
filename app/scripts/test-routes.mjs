@@ -755,6 +755,63 @@ try {
       swappedIn !== orig && new RegExp(name(swappedIn).replace(/[()]/g, "\\$&")).test(ann) && !/re-sized your sessions to the pace/.test(ann), ann);
   }
 
+  // Round 10 #2: the preferences-only probe compares the plan the OLD prefs generate with the one the NEW prefs generate —
+  // never the stored plan, which an in-place "No machine" swap legitimately differs from.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const pp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const pp0 = await store.getUser(pp);
+    const nmX = pp0.program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: pp, exercise: nmX, scope: "always", session: pp0.program.sessions[0].name });
+    const start = dayAgo(20);
+    await store.updateUser(pp, (u) => { u.plan_meta = { ...u.plan_meta, block_start: start, block_index: 1 }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: pp, profile: { training_prefs: { cardio: ["walking"] } } });
+    const pp1 = await store.getUser(pp);
+    ok("#rev10-b11 after an in-place No-machine swap, a cardio-only edit still keeps the block", pp1.plan_meta.block_start === start && pp1.plan_meta.block_index === 1, JSON.stringify({ s: pp1.plan_meta.block_start, b: pp1.plan_meta.block_index }));
+  }
+  // Round 10 #3: picks made while learning is paused (a hand-edited plan) never vote — the copy said "just for today".
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const pz = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const pzEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": pz } })).json();
+    const Pz = pzEx.program.sessions[0].exercises[0].exercise;
+    pzEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: pz, program: pzEx.program });
+    for (const [i, d] of [[1, 20], [2, 13], [3, 6]]) await json("POST", "/api/session", { user_id: pz, session_id: `pz-${i}`, date: dAgo(d),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Pz, swap_why: "pick" }] });
+    const pzu = await store.getUser(pz);
+    ok("#rev10-b11 picks made while learning is paused never become a learned dislike", !(pzu.plan_meta.pref_scores?.[Pz] > 0), JSON.stringify(pzu.plan_meta.pref_scores));
+  }
+  // Round 10 #3 (second half): a hand-back that applies dislikes learned BEFORE the plan was edited names what they removed.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const hb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hb0 = await store.getUser(hb);
+    const HX = hb0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !generateUserPlan(hb0.profile, planOptsFor(hb0, { prefScores: { [id]: 1 } })).program.sessions.some((s) => s.exercises.some((e) => e.exercise === id)));
+    const hbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb } })).json();
+    hbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb, program: hbEx.program });
+    await store.updateUser(hb, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [HX]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb }); // "Let the coach take over again"
+    const hbT = await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json();
+    const hbName = kbExForTest.get(HX)?.name ?? HX;
+    ok("#rev10-b11 the hand-back names a lift its learned dislikes removed", !!HX && (await store.getUser(hb)).plan_meta.learned_out?.includes(HX) && (hbT.session?.announcement ?? "").includes(hbName),
+      JSON.stringify({ HX, lo: (await store.getUser(hb)).plan_meta.learned_out, ann: hbT.session?.announcement }));
+  }
+  // Round 10 #1: a cosmetic save inside the refit window keeps what the refit said it changed.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const kd = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 1, rotated_at: new Date().toISOString(), refit_diff: { out: ["leg-press"], in: ["hack-squat"] } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
+    ok("#rev10-b11 a cosmetic save keeps refit_diff with rotated_at", JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff) === JSON.stringify({ out: ["leg-press"], in: ["hack-squat"] }));
+  }
+
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
   // which needs the custom flag through /api/plan/explain's whitelist — and one tap hands the plan back to the coach:
   // a bare regenerate (no profile change) rebuilds from the answers and clears the flag.

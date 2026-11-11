@@ -494,14 +494,23 @@ export function createApp(store, config = {}) {
       // (review round 8 #5): it must not restart the block, or a beginner's refit clock, for a byte-identical week.
       const onlyPrefs = !handBack && TRAINING_FIELDS.every((k) => k === "training_prefs" || canon(before?.[k]) === canon(next[k]));
       if (trainingChanged && onlyPrefs && u.program?.sessions) {
-        const probe = generateUserPlan(next, planOptsFor({ ...u, profile: next }, { blockIndex: u.plan_meta?.block_index ?? 0,
-          volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, priorSessions, nowISO) }));
-        if (JSON.stringify(probe.program.sessions) === JSON.stringify(u.program.sessions)) trainingChanged = false;
+        // The plan the OLD prefs generate vs the one the NEW prefs generate, same options (review round 10 #2) — never the stored
+        // plan, which an in-place "No machine" swap legitimately differs from.
+        const same = { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, priorSessions, nowISO) };
+        const was = generateUserPlan(before ?? {}, planOptsFor({ ...u, profile: before }, same));
+        const now = generateUserPlan(next, planOptsFor({ ...u, profile: next }, same));
+        if (JSON.stringify(now.program.sessions) === JSON.stringify(was.program.sessions)) trainingChanged = false;
       }
       // Only a change of WHAT is prioritised may start another specialization block.
       const prioritiesChanged = ["priority_muscles", "specialization"].some((k) => canon(before?.[k]) !== canon(next[k]));
       u.profile = next;
+      const handedBack = handBack ? u.program : null;
       out = rebuildPlan(u, { trainingChanged, prioritiesChanged, priorSessions, nowISO });
+      // A hand-back applies dislikes learned before the plan was edited — name what they removed (review round 10 #3).
+      if (handedBack) {
+        const lo = learnedOutOf(u, handedBack, u.program, swapStalls(u, priorSessions, nowISO));
+        if (lo.length) u.plan_meta = { ...u.plan_meta, learned_out: lo, rotated_at: nowISO };
+      }
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
@@ -543,7 +552,7 @@ export function createApp(store, config = {}) {
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "refit_diff"]
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -2104,6 +2113,8 @@ export function createApp(store, config = {}) {
       sets: (body.sets ?? []).map(normalizeSet),
     };
     const targets = normalizeTargets(body.targets);
+    // While learning is paused (a hand-edited plan) a pick is today-only, as its copy says (review round 10 #3): no vote.
+    if (targets && user.program?.custom) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
     if (targets) session.targets = targets;
     const fade = normalizeFadeMarks(body.fade_marks);
     if (fade) session.fade_marks = fade;
