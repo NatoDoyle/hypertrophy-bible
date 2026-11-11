@@ -690,6 +690,12 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.equal(swapWhyFor({ exercise: "leg-press" }, { permanent: true }), null, "a permanent swap is recorded server-side");
     assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "busy" }, { picked: true }), "busy", "the lifter never chose against hack squat");
     assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, { picked: true }), "pick", "re-picking over an earlier pick stays a pick");
+    // Round 3 #2: the pick against the plan's lift survives a later busy swap — without crediting the busy stand-in as picked.
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, {}), "picked_over");
+    assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, {}), "picked_over");
+    assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, { picked: true }), "pick");
+    const r = replaceSlot(mk([{ exercise: "hack-squat", sets: 3 }, ex("curl", 3)]), 0, { exercise: "leg-press", swap_why: "picked_over" }, { expect: "hack-squat" });
+    assert.equal(buildTargets(r.sess)[0].swap_why, "picked_over", "it rides the workout");
   });
   check("#W323 a stand-in carries WHY it stood in (busy / pick / tired) to the workout — only beside stood_in_for, only from the enum", () => {
     const via = (why) => buildTargets(replaceSlot(mk(exs()), 1, { ...row, ...(why ? { swap_why: why } : {}) }, { expect: "pushdown" }).sess)[1];

@@ -581,6 +581,10 @@ try {
       targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "hated" }, { exercise: "leg-press", sets: 3, swap_why: "busy" }] });
     const junk = (await store.listSessions(swU)).find((x) => x.session_id === "sw-junk");
     ok("#W323 swap_why is kept only from the enum and only beside stood_in_for", junk.targets.every((t) => !("swap_why" in t)), JSON.stringify(junk.targets));
+    const poU = (await json("POST", "/api/onboard", { profile: base })).data.user_id; // its own user: swU's pick counts are under test below
+    await json("POST", "/api/session", { user_id: poU, session_id: "sw-po", date: dAgo(39), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }],
+      targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "picked_over" }] });
+    ok("#rev3-b11 'picked_over' rides through the session whitelist", (await store.listSessions(poU)).find((x) => x.session_id === "sw-po")?.targets?.[0]?.swap_why === "picked_over");
     for (const [i, why] of [["1", "tired"], ["2", "busy"], ["3", "pick"], ["4", "pick"]]) await json("POST", "/api/session", { user_id: swU, session_id: `sw-${i}`, date: dAgo(30 - 5 * +i),
       sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt(why) });
     const sw1 = await store.getUser(swU);
@@ -4084,8 +4088,12 @@ try {
     await json("POST", "/api/session", { user_id: r3, session_id: "r3-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
     const r3u = await store.getUser(r3);
     const r3ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": r3 } })).json();
-    ok("#rev2-b11 a lift the KIT removed is never listed (or kept) as learned out", !!M && !(r3ex.learned_out ?? []).some((x) => x.id === M) && !(r3u.plan_meta.pref_scores?.[M] > 0),
-      JSON.stringify({ M, lo: r3ex.learned_out, sc: r3u.plan_meta.pref_scores }));
+    ok("#rev2-b11 a lift the KIT removed is never listed as learned out", !!M && !(r3ex.learned_out ?? []).some((x) => x.id === M), JSON.stringify({ M, lo: r3ex.learned_out }));
+    // Round 3 #1: …but the dislike itself survives a temporary kit change — back home, the lift stays out.
+    await json("POST", "/api/plan/regenerate", { user_id: r3, profile: { available_equipment: rp.available_equipment } });
+    const r3back = await store.getUser(r3);
+    ok("#rev3-b11 a learned dislike survives a trip without that kit: still learned, still out of the plan when the kit returns",
+      r3back.plan_meta.pref_scores?.[M] === 1 && !r3back.program.sessions.some((x) => x.exercises.some((e) => e.exercise === M)), JSON.stringify({ sc: r3back.plan_meta.pref_scores }));
     // #1: a dislike carried in by an account merge reaches the survivor's plan (rebuilt at the merge), so it sticks.
     const mTo = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
     const mFrom = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;

@@ -124,9 +124,11 @@ export function swapPreferences(sessions, nowISO, { windowDays = SWAP_WINDOW_DAY
     if (!Number.isFinite(t) || t < since || t > Date.parse(nowISO)) continue;
     for (const x of s.targets ?? []) {
       // Only a PICK is a vote (review #14): "It's busy — swap it just for today" is about the day, like a tired swap.
-      if (typeof x?.stood_in_for !== "string" || x.swap_why !== "pick") continue;
+      // "picked_over" (round 3 #2): an earlier pick against the plan's lift, its stand-in then swapped for the day — the
+      // vote stands; the new stand-in was never chosen, so it isn't liked.
+      if (typeof x?.stood_in_for !== "string" || (x.swap_why !== "pick" && x.swap_why !== "picked_over")) continue;
       away[x.stood_in_for] = (away[x.stood_in_for] ?? 0) + 1;
-      if (typeof x.exercise === "string") picked[x.exercise] = (picked[x.exercise] ?? 0) + 1;
+      if (x.swap_why === "pick" && typeof x.exercise === "string") picked[x.exercise] = (picked[x.exercise] ?? 0) + 1;
     }
   }
   const scores = {};

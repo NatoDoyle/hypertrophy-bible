@@ -87,8 +87,10 @@ These are the honest gaps, as of Burst 10 (each is being closed in Burst 11; thi
    `plan_meta.pref_scores`). **Busy and tired swaps never count**: both are about the day, and their buttons say
    "just for today". The pick screens say the learning out loud. It lands at the next rebuild (block boundary or
    refit): the lift is swapped, the new-block note names it, and the Plan tab lists it with Bring back. A learned
-   dislike **sticks until Bring back** (`plan_meta.pref_kept`), even after its picks age past 8 weeks, so the
-   lift never sneaks back. The Can't-do sheet also has "Just not for me": a soft, reversible skip
+   dislike **sticks until Bring back** (`plan_meta.pref_kept`), even after its picks age past 8 weeks and
+   through a trip without that kit, so the lift never sneaks back. (A pick followed by a busy swap of the picked
+   lift is recorded as `picked_over`: it still counts against the plan's lift, but the busy stand-in isn't
+   counted as liked.) Bring back on the "No machine" or skip card answers only that card. The Can't-do sheet also has "Just not for me": a soft, reversible skip
    (`training_prefs.avoid`), swapped now where a rebuild would agree, kept and explained where nothing
    appropriate replaces it.
 5. **Nothing asked what you enjoy.** **Since W321** onboarding (and Settings → "What you enjoy") asks, on one

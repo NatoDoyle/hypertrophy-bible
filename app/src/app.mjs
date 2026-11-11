@@ -222,7 +222,7 @@ const normalizeTargets = (list) => {
       ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
       // …and WHY it stood in (W323): busy / pick / tired, only beside a stood_in_for — what the plan learns preferences
       // from (a tired swap is about the day and never counts).
-      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
+      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
       // The per-set aims the player served (W298): whole reps 1-50, at most one per planned set. A malformed list is
       // dropped whole — half an aim list would misjudge every set after the gap.
       ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets
@@ -2127,10 +2127,9 @@ export function createApp(store, config = {}) {
       // A learned dislike STICKS until Bring back (review #1 #15): once a rebuild took the lift out it can't be picked over
       // again, so its 8-week evidence would age out and the lift return unannounced. A positive score for a lift the plan
       // no longer holds is carried; everything else is re-learned from the window.
-      // …only for a lift they can still do (round 2 #3): one their kit, an injury or "No machine" removed was never the learning's.
-      // (Kit and injuries decide "can do"; a "No machine" answer has its own card and its own Bring back — #0.)
-      const doable = new Set(userExercises({ ...(user.profile ?? {}), unavailable_exercises: [] }, user.custom_exercises || []).map((e) => e.id));
-      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && doable.has(k) && !planHolds(user.program, k)));
+      // Whatever ELSE now holds it out (a trip without that kit, an injury, "No machine"), the dislike itself is kept — the
+      // Plan tab only LISTS lifts the learning took out (round 3 #1: gating stickiness on today's kit erased it for good).
+      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && !planHolds(user.program, k)));
       const merged = { ...swapPreferences(all, new Date().toISOString()).scores };
       for (const [k, v] of Object.entries(sticky)) merged[k] = Math.max(v, merged[k] ?? 0);
       const scores = Object.fromEntries(Object.entries(merged).filter(([k]) => !kept.has(k)).sort(([a], [b]) => (a < b ? -1 : 1)));

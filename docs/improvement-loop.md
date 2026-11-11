@@ -1379,6 +1379,24 @@ These are real failures from previous iterations. Each is now a standing check.
    timestamps before blaming the workload. Salvage the agents' scratch scripts and finish the round inline,
    re-running each script and checking its sensitivity with a tamper, rather than relaunching into the same
    stall (rule 6).
+110. **A rotated list's position is not its rank.** Burst 11's first skip bound read "earlier in the pool" as
+   "ranks higher", but accessory pools go through `rotateTopK`. So a skipped raise rotated to the front stayed,
+   and a stalled accessory could come back (round 2 #4). → **Standing rule:** a rule about rank reads the score
+   (`scoreOf`), never an index, anywhere a list may have been rotated, sliced or re-sorted.
+111. **A bound needs a fixture that can tell it apart.** The learned-score clamp, the kit filter and three
+   merge rules each passed a test that also passed with the rule deleted. The fixture either never reached the
+   region where the rule binds, or both rules agreed there. → **Standing rule:** for every bound, search for an
+   input where the bounded and unbounded answers differ (`find(...)` over real data, not a hand-picked id), and
+   prove the tamper turns red. If a brute force over the whole input space finds none (the kit filter, 462
+   pool sets), record it as defense, not as tested.
+112. **A synchronous `check` with an `async` body passes without running.** It happened twice in Burst 11:
+   the promise is never awaited, so the assertions never execute. → **Standing rule:** async checks go
+   through `checkAsync`/`await`, or import statically and stay synchronous. A new check that passes before its
+   fix exists is suspect until a tamper turns it red.
+113. **A fixture on a randomly seeded plan must search, not assume.** "The first exercise of session 0", "the
+   machine chest press" and "the beginner's chest compound" were each flaky or wrong once the plan, or a
+   ranking rule, moved. → **Standing rule:** select fixture lifts by the property under test (the generator
+   swaps it on a skip; the generator keeps it), computed through the same functions the app uses.
 
 ## Token discipline (the loop must be affordable to keep running)
 

@@ -149,6 +149,9 @@ export function swapWhyFor(cur, { reason = null, permanent = false, picked = fal
   if (reason === "tired" || cur?.tired) return "tired";
   if (permanent) return null;
   if (typeof cur?.slot_of === "string" && (cur.swap_why === "busy" || cur.swap_why === "tired")) return cur.swap_why;
+  // A pick against the plan's lift survives a later non-pick swap of the picked lift (round 3 #2) — as "picked_over", which
+  // votes against the plan's lift but never credits the new stand-in as liked.
+  if (!picked && typeof cur?.slot_of === "string" && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return "picked_over";
   return picked ? "pick" : "busy";
 }
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
@@ -650,7 +653,7 @@ export function buildTargets(sess) {
     // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
     ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
     // …and why it stood in (W323): busy / pick / tired — what the plan learns preferences from (never a tired one).
-    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
+    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
     // The per-set aims served today (W298), only when the player itself would use them (validAim) — so later
     // learning can judge a set against what it was asked, not just the range. Only the ones it SERVED: the player shows
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list

@@ -990,7 +990,7 @@ export function generatePlan(profile, kb, opts = {}) {
     rot[m.id] = 0;
   }
   // DEMOTED lifts — stalled (the change-exercise lever) and ones they'd rather skip (W322) — rank last, but the pickers
-  // walk each pool from a rotating cursor, and a wrap could land on exactly the lift a demotion pushed to the end (a
+  // walk each pool from a rotating cursor (the cursor-free doors use boundedFind below), and a wrap could land on exactly the lift a demotion pushed to the end (a
   // skipped RDL came back in the second lower day; so could a stalled lift). Every picker asks firstUsable: any
   // qualifying non-demoted candidate first, a demoted one only when nothing else qualifies (a soft no, never a ban).
   // Nothing demoted → the single pass the pickers always ran (byte-identical).
@@ -1016,6 +1016,14 @@ export function generatePlan(profile, kb, opts = {}) {
       return t;
     }
     return -1;
+  };
+  // The same yield for the doors that scan a pool in order without a cursor (the knee-flexion staples — round 3 #0: a
+  // skipped, learned-against or stalled curl rotated to the front was placed over a better curl). Nothing demoted → a
+  // plain find (byte-identical).
+  const boundedFind = (pool, ok) => {
+    const cand = pool.find(ok);
+    if (!cand || !demoted.has(cand.id)) return cand;
+    return pool.find((c2) => !demoted.has(c2.id) && ok(c2) && sc(c2) < sc(cand)) ?? cand;
   };
   // A muscle whose every compound they'd rather skip (or learned against) is served from its isolations when one ranks
   // above those compounds (review #0: a skipped rear-delt row stayed while a cable rear-delt fly outranked it). Preference
@@ -1312,7 +1320,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // exactly this once the coverage floor stopped fragmenting day A). The
         // guarantee is weekly, so its last chance outranks first-serve's doubling.
         if (!weekKneeFlexion && mset.includes("hamstrings") && !trainsLater("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
-          const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
+          const kf = boundedFind(isoPool["hamstrings"] ?? [], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
         const fsOrder = [...order].sort((a, b) => (weekServed.has(a) ? 1 : 0) - (weekServed.has(b) ? 1 : 0));
@@ -1353,7 +1361,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // EASED hamstring is growth-dosed at MEV and regains the weekly short-head
         // guarantee — the want-math still caps its sets at the eased target.)
         if (!weekKneeFlexion && mset.includes("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
-          const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
+          const kf = boundedFind(isoPool["hamstrings"] ?? [], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
       }
@@ -1420,7 +1428,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // is a LEG-CURL slot — the hinge work already placed covers everything but
         // the short head, which only a knee-flexion movement reaches.
         const kfPick = m === "hamstrings" && !weekKneeFlexion
-          ? isoPool[m].find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2)
+          ? boundedFind(isoPool[m], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2)
           : null;
         const ex = kfPick ?? pickFrom(isoPool[m], m);
         if (!ex) break;

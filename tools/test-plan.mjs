@@ -2129,6 +2129,15 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // the loadable penalty (sissy squats replacing barbell squats).
   const r6 = { ...base, available_equipment: ["barbell", "bodyweight"], training_prefs: { avoid: ["barbell-back-squat", "front-squat"] } };
   ok("#rev2-b11 a skipped barbell squat never yields to a non-loadable sissy squat", !placedIds(generatePlan(r6, kb)).has("sissy-squat"), [...placedIds(generatePlan(r6, kb))].join());
+  // Round 3 #0: the knee-flexion doors (the weekly leg-curl staple) honour demotions on a rotated pool too — a skipped,
+  // learned-against or stalled curl rotated to the front yields to a better-scored free curl.
+  const kfOf = (pl) => pl.rationale.exercise_choices.filter((c) => exMap.get(c.exercise)?.movement_pattern === "isolation-knee-flexion").map((c) => c.exercise);
+  const kfCases = [
+    ["avoid, block 1", generatePlan({ ...base, training_prefs: { avoid: ["seated-leg-curl"] } }, kb, { blockIndex: 1 })],
+    ["learned, block 1", generatePlan(base, kb, { blockIndex: 1, prefScores: { "seated-leg-curl": 1 } })],
+    ["stalled, block 2", generatePlan(base, kb, { blockIndex: 2, stalledExercises: ["seated-leg-curl"] })],
+  ].filter(([, pl]) => kfOf(pl).includes("seated-leg-curl")).map(([k]) => k);
+  ok(`#rev3-b11 a demoted leg curl rotated to the front never takes the leg-curl staple${kfCases.length ? " — " + kfCases.join("; ") : ""}`, kfCases.length === 0);
   // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -141,6 +141,11 @@ check("#tolerance deterministic: the same log, the same answer — in any input 
     assert.equal(swapPreferences(picks, now).scores["cable-curl"], -0.25);
     assert.deepStrictEqual(swapPreferences([{ date: day(50), sets: [W()], targets: [{ exercise: "y", sets: 3, stood_in_for: "x" }] }], now).scores, {});
   });
+  check("#swaps (round 3 #2) 'picked_over' (a pick, then the picked lift swapped busy) votes against the plan's lift, never for the stand-in", () => {
+    const r = swapPreferences([swapDay(10, "x", "y", "picked_over"), swapDay(20, "x", "y", "picked_over"), swapDay(30, "x", "y", "pick")], now);
+    assert.equal(r.scores.x, 1);
+    assert.equal(r.picked.y, 1, "only the real pick counts as liking y");
+  });
   check("#swaps (W323) deterministic and pure: same input, same output, keys sorted", () => {
     const a = [swapDay(10, "z", "y", "pick"), swapDay(20, "z", "w", "pick"), swapDay(30, "z", "v", "pick"), swapDay(31, "a", "q", "pick"), swapDay(32, "a", "r", "pick"), swapDay(33, "a", "s", "pick")];
     assert.deepStrictEqual(Object.keys(swapPreferences(a, now).scores), ["a", "z"]);
