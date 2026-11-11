@@ -141,6 +141,16 @@ export function tiredSwapRow(row) {
 // back a row the server built at the new lift's own progression — kept planned easy, any bump held, "it won't count", the
 // tired dose carried by replaceSlot — or the tired day's light sets became the new lift's anchor. A regular slot: as it came.
 export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
+// WHY a slot is swapped (W323; review round 2 #2), stamped on the row the workout reports. A tired swap is about the day;
+// a permanent swap is recorded server-side (null); a pick is a vote against the PLAN's lift only when that lift was on
+// the table — picking over a busy or tired stand-in keeps the stand-in's reason (the lifter never chose against the plan's
+// lift). Anything else today-only is "busy".
+export function swapWhyFor(cur, { reason = null, permanent = false, picked = false } = {}) {
+  if (reason === "tired" || cur?.tired) return "tired";
+  if (permanent) return null;
+  if (typeof cur?.slot_of === "string" && (cur.swap_why === "busy" || cur.swap_why === "tired")) return cur.swap_why;
+  return picked ? "pick" : "busy";
+}
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };

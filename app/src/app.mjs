@@ -394,8 +394,9 @@ export function createApp(store, config = {}) {
     // …only lifts the LEARNING took out (review #7 #11): not one that is also "No machine" or skipped (its own card owns it,
     // and this Bring back would delete that answer too), and never over a hand-edited plan (learning is paused there).
     const otherwiseOut = new Set([...(user.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(user.profile?.training_prefs?.avoid ?? [])]);
+    const doableNow = new Set(userExercises({ ...(user.profile ?? {}), unavailable_exercises: [] }, user.custom_exercises || []).map((e) => e.id)); // round 2 #3 (kit + injuries)
     const learned_out = user.program?.custom ? [] : Object.entries(user.plan_meta?.pref_scores ?? {})
-      .filter(([xid, v]) => v > 0 && !keptBack.has(xid) && !otherwiseOut.has(xid) && !planHolds(user.program, xid)).map(([xid]) => ({ id: xid, name: exerciseNameFor(user, xid) }));
+      .filter(([xid, v]) => v > 0 && !keptBack.has(xid) && !otherwiseOut.has(xid) && doableNow.has(xid) && !planHolds(user.program, xid)).map(([xid]) => ({ id: xid, name: exerciseNameFor(user, xid) }));
     return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out, beginner: (user.profile?.training_status ?? "beginner") === "beginner" });
   });
 
@@ -730,8 +731,11 @@ export function createApp(store, config = {}) {
       const updated = await store.updateUser(b.user_id, (u) => {
         outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
         const list = u.profile?.unavailable_exercises ?? [];
-        const avoided = avoidOf(u).includes(X), learned = (u.plan_meta?.pref_scores?.[X] ?? 0) > 0; // W323: a skip, or a learned swap-out
-        if (!list.some((r) => r.id === X) && !avoided && !learned) { outcome = { error: "not-excluded" }; return u; }
+        // W323: a skip, or a learned swap-out. "Learned" only when nothing else holds the lift out (round 2 #0): Bring back
+        // on the No-machine or skip card answers THAT card — the dislike stays, and its own card shows again.
+        const onList = list.some((r) => r.id === X), avoided = avoidOf(u).includes(X);
+        const learned = !onList && !avoided && (u.plan_meta?.pref_scores?.[X] ?? 0) > 0;
+        if (!onList && !avoided && !learned) { outcome = { error: "not-excluded" }; return u; }
         const snap = u.substitution_undo?.[X];
         u.profile = { ...u.profile, unavailable_exercises: list.filter((r) => r.id !== X) };
         if (avoided) {
@@ -2123,7 +2127,10 @@ export function createApp(store, config = {}) {
       // A learned dislike STICKS until Bring back (review #1 #15): once a rebuild took the lift out it can't be picked over
       // again, so its 8-week evidence would age out and the lift return unannounced. A positive score for a lift the plan
       // no longer holds is carried; everything else is re-learned from the window.
-      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && !planHolds(user.program, k)));
+      // …only for a lift they can still do (round 2 #3): one their kit, an injury or "No machine" removed was never the learning's.
+      // (Kit and injuries decide "can do"; a "No machine" answer has its own card and its own Bring back — #0.)
+      const doable = new Set(userExercises({ ...(user.profile ?? {}), unavailable_exercises: [] }, user.custom_exercises || []).map((e) => e.id));
+      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && doable.has(k) && !planHolds(user.program, k)));
       const merged = { ...swapPreferences(all, new Date().toISOString()).scores };
       for (const [k, v] of Object.entries(sticky)) merged[k] = Math.max(v, merged[k] ?? 0);
       const scores = Object.fromEntries(Object.entries(merged).filter(([k]) => !kept.has(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -2648,6 +2655,17 @@ export function createApp(store, config = {}) {
     // has a third door, and this is it). Best-effort inside, like every
     // celebration write — a failed echo must never fail the merge.
     await recomputeCelebration(to_user_id, await store.getUser(to_user_id));
+    // A dislike carried in from the other account (merge-profile) must reach the survivor's plan, or its next workout's
+    // re-learn drops it — the sticky rule only holds a lift the plan no longer has (round 2 #1). A cosmetic rebuild, only
+    // when a carried score targets a lift the (generated) plan still holds. Best-effort: a merge never fails on it.
+    try {
+      const after = await store.getUser(to_user_id);
+      const kept = new Set(after?.plan_meta?.pref_kept ?? []);
+      if (after?.program && !after.program.custom && Object.entries(after.plan_meta?.pref_scores ?? {}).some(([k, v]) => v > 0 && !kept.has(k) && planHolds(after.program, k))) {
+        const priorSessions = await store.listSessions(to_user_id);
+        await store.updateUser(to_user_id, (u) => { if (!u.program?.custom) rebuildPlan(u, { trainingChanged: false, priorSessions, nowISO: new Date().toISOString() }); return u; }).catch(() => null);
+      }
+    } catch { /* the merge stands */ }
     return c.json({ merged: true, ...moved });
   });
 

@@ -4055,6 +4055,53 @@ try {
   ok("#celebrate-merge a pending echo follows the user through the merge and still holds",
     celAdopted?.kind === "pr" && !celAdopted?.pushed);
 
+  // Burst 11 review round 2 (#0 #1 #3): what the learning took out stays its own answer.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const holdsR = (u, id) => u.program.sessions.some((s) => s.exercises.some((e) => e.exercise === id));
+    const swappableR = (u) => u.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !holdsR(generateUserPlan({ ...u.profile, training_prefs: { avoid: [id] } }, planOptsFor(u)), id));
+    // #0: Bring back on the "No machine" card clears only that answer — the learned dislike stays, and shows again.
+    const r0 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const L = swappableR(await store.getUser(r0));
+    await store.updateUser(r0, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [L]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: r0, profile: { units: "metric" } }); // the learning takes it out
+    await json("POST", "/api/exercise/cant-do", { user_id: r0, exercise: L, scope: "always" }); // …then "No machine" too
+    await json("POST", "/api/session", { user_id: r0, session_id: "r0-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] }); // a re-learn in between
+    await json("POST", "/api/exercise/cant-do", { user_id: r0, exercise: L, scope: "undo" }); // "Got access again? Bring it back"
+    const r0u = await store.getUser(r0);
+    const r0ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": r0 } })).json();
+    ok("#rev2-b11 Bring back on 'No machine' clears only that answer: the learned dislike stays and is listed again",
+      r0u.plan_meta.pref_scores?.[L] === 1 && !(r0u.plan_meta.pref_kept ?? []).includes(L) && !(r0u.profile.unavailable_exercises ?? []).some((x) => x.id === L)
+      && (r0ex.learned_out ?? []).some((x) => x.id === L), JSON.stringify({ sc: r0u.plan_meta.pref_scores, kept: r0u.plan_meta.pref_kept, lo: r0ex.learned_out }));
+    // #3: a learned score is only sticky (and only listed) for a lift the lifter can still do — not one their kit removed.
+    const r3 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const r3u0 = await store.getUser(r3);
+    const M = r3u0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).find((id) => /machine|leg-press|hack-squat|pec-deck/.test(id));
+    await store.updateUser(r3, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [M]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: r3, profile: { available_equipment: ["barbell", "dumbbell", "bodyweight"] } }); // the kit removes it
+    await json("POST", "/api/session", { user_id: r3, session_id: "r3-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    const r3u = await store.getUser(r3);
+    const r3ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": r3 } })).json();
+    ok("#rev2-b11 a lift the KIT removed is never listed (or kept) as learned out", !!M && !(r3ex.learned_out ?? []).some((x) => x.id === M) && !(r3u.plan_meta.pref_scores?.[M] > 0),
+      JSON.stringify({ M, lo: r3ex.learned_out, sc: r3u.plan_meta.pref_scores }));
+    // #1: a dislike carried in by an account merge reaches the survivor's plan (rebuilt at the merge), so it sticks.
+    const mTo = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const mFrom = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const X1 = swappableR(await store.getUser(mTo));
+    await store.updateUser(mFrom, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [X1]: 1 } }; return u; });
+    const lkTo = await requestMagicLink(store, { email: "prefmerge@t.com", anonUserId: mTo });
+    await json("POST", "/api/auth/consume", { token: lkTo.token });
+    const lkFrom = await requestMagicLink(store, { email: "prefmerge@t.com", anonUserId: mFrom });
+    const gr = (await json("POST", "/api/auth/consume", { token: lkFrom.token })).data.merge_grant;
+    const mr = await app.request("/api/auth/merge", { method: "POST", headers: { "content-type": "application/json", "X-HB-User": mFrom }, body: JSON.stringify({ grant: gr, from_user_id: mFrom, to_user_id: mTo }) });
+    await json("POST", "/api/session", { user_id: mTo, session_id: "pm-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    const mtu = await store.getUser(mTo);
+    ok("#rev2-b11 a dislike carried by a merge reaches the survivor's plan and survives their next workout",
+      (await mr.json()).merged === true && !holdsR(mtu, X1) && mtu.plan_meta.pref_scores?.[X1] === 1, JSON.stringify({ holds: holdsR(mtu, X1), sc: mtu.plan_meta.pref_scores }));
+  }
+
   // New-follower event: the follow door bumps the OWNER's monotonic count once —
   // a re-follow is not a new follower.
   const folOwner = (await json("POST", "/api/onboard", { profile: {

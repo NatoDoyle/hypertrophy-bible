@@ -402,7 +402,7 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
       // difficulty step (3) so a too-advanced loaded lift can still yield to an
       // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
       // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
-      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
+      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += nonLoadablePenalty(prefs);
       // THE EXERCISE-VARIATION LEVER (KB logging-and-plateaus.md: volume → effort →
       // deload → CHANGE EXERCISE). A lift the user has genuinely plateaued on sinks
       // below every alternative for that muscle, so the next block gives them a
@@ -723,10 +723,15 @@ export const PREF_AVOID_DEMOTION = 2.9, PREF_LEARNED_MAX = 1, PREF_ENJOY_EDGE = 
 // lift up to ~1.75 on the equipment ladder, and with a high-CNS lengthened lift (+0.6) and the seed jitter (<0.1) the old
 // 2-point margin let a non-lengthened enjoyed lift open a muscle. 2.5 > 1.75 + 0.6 + 0.1 keeps the floor for every kit.
 export const PREF_LENGTHENED_WITH_STYLE = 2.5;
+// The non-loadable bodyweight penalty stays half a point above whichever lengthened bonus is active (round 2 #5): 2.5 by
+// default (unchanged), 3.0 under a style preference — so a lengthened non-loadable move never ties a loaded option.
+const nonLoadablePenalty = (prefs) => (prefs?.equip?.size ? PREF_LENGTHENED_WITH_STYLE : 2) + 0.5;
 // null when there is nothing to apply — the absent path never enters rankPool's preference branch (byte-identical).
 export function prefRankOpts(profile, prefScores = null) {
   const tp = profile?.training_prefs;
-  const equip = new Set((tp?.style ?? []).flatMap((st) => PREF_STYLE_EQUIPMENT[st] ?? []));
+  // Only equipment this kit has (round 2 #5): an enjoyed style the lifter can't use changes nothing — not even the bonuses.
+  const kit = new Set(profile?.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
+  const equip = new Set((tp?.style ?? []).flatMap((st) => PREF_STYLE_EQUIPMENT[st] ?? []).filter((q) => kit.has(q)));
   const avoid = new Set(tp?.avoid ?? []);
   const learned = prefScores && typeof prefScores === "object" ? prefScores : null;
   const hasLearned = !!learned && Object.values(learned).some((v) => Number.isFinite(v) && v !== 0);
@@ -994,15 +999,20 @@ export function generatePlan(profile, kb, opts = {}) {
   // …and the demotion keeps its BOUND (review #17): a demoted lift yields only to a qualifying lift that still ranks
   // ABOVE it in the pool. A stall (+12) sinks below everything, so it always yields; a skip (+2.9) never trades a lift for
   // one ranked further down than that (e.g. a non-loadable bodyweight raise).
+  // Rank is the SCORE, never the position (round 2 #4): accessory pools are rotated, so a demoted lift can sit at the front.
+  const sc = (e) => scoreOf.get(e.id) ?? 0;
   const firstUsable = (pool, m, usable) => {
-    let bestFree = Infinity;
-    if (demoted.size) pool.forEach((e, i) => { if (i < bestFree && !demoted.has(e.id) && usable(e)) bestFree = i; });
     for (let t = 0; t < pool.length; t++) {
-      const idx = (rot[m] + t) % pool.length, cand = pool[idx];
+      const cand = pool[(rot[m] + t) % pool.length];
       if (!usable(cand)) continue;
-      // Yield to the best free lift ABOVE it — never walk on down the pool past it (a stall sits last, so for a stall this
-      // is the very lift the old second pass found).
-      if (demoted.has(cand.id) && bestFree < idx) return (bestFree - (rot[m] % pool.length) + pool.length) % pool.length;
+      // A demoted lift yields to the first free usable lift (cursor order) that outscores it — never one ranked below it.
+      // A stall (+12) is outscored by every free lift, so for a stall this is exactly the old "any free lift first" pass.
+      if (demoted.has(cand.id)) {
+        for (let t2 = 0; t2 < pool.length; t2++) {
+          const c2 = pool[(rot[m] + t2) % pool.length];
+          if (!demoted.has(c2.id) && usable(c2) && sc(c2) < sc(cand)) return t2;
+        }
+      }
       return t;
     }
     return -1;
@@ -1010,8 +1020,13 @@ export function generatePlan(profile, kb, opts = {}) {
   // A muscle whose every compound they'd rather skip (or learned against) is served from its isolations when one ranks
   // above those compounds (review #0: a skipped rear-delt row stayed while a cable rear-delt fly outranked it). Preference
   // only — a stalled lone compound keeps the pinned stall behaviour. No preference → never (byte-identical).
+  // Scores from the two pools are compared in ONE context (round 2 #6): an all-bodyweight isolation pool was ranked without
+  // the non-loadable penalty its loaded compound pool would have applied, so a sissy squat "outranked" a skipped back squat.
+  const isoVsCompound = (e, m) => (scoreOf.get(e.id) ?? Infinity)
+    + (e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id) && !isoPool[m].some((x) => x.equipment !== "bodyweight")
+      && compoundPool[m].some((x) => x.equipment !== "bodyweight") ? nonLoadablePenalty(prefs) : 0);
   const compoundsYield = (m) => prefDemoted.size > 0 && compoundPool[m].length > 0 && compoundPool[m].every((e) => prefDemoted.has(e.id))
-    && isoPool[m].some((e) => !demoted.has(e.id) && (scoreOf.get(e.id) ?? Infinity) < Math.min(...compoundPool[m].map((c) => scoreOf.get(c.id) ?? Infinity)));
+    && isoPool[m].some((e) => !demoted.has(e.id) && isoVsCompound(e, m) < Math.min(...compoundPool[m].map((c) => scoreOf.get(c.id) ?? Infinity)));
   const exById = new Map(avail.map((e) => [e.id, e]));
 
   // 4) build each session, within a realistic time budget AND a quality ceiling.

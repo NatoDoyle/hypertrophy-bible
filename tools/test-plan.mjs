@@ -2098,6 +2098,37 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // #16: beginners keep the same lifts while they learn them — the variety answer says when it starts.
   const bv = prefLines({ ...base, training_status: "beginner", training_prefs: { variety: "fresh" } }).find((l) => /fresh/.test(l.answer));
   ok("#rev-b11 a beginner's variety answer says it starts at graduation, not that accessories rotate now", !!bv && /graduat/.test(bv.effect) && !/rotate every block/.test(bv.effect), JSON.stringify(bv));
+  // Round 2 #4: accessory pools are ROTATED (rotateTopK), so pool position isn't rank — a skipped raise rotated to the front
+  // must still yield to the better raises behind it.
+  const r4 = { ...base, available_equipment: ["dumbbell", "cable", "bodyweight"], training_prefs: { avoid: ["dumbbell-lateral-raise"] } };
+  const r4Placed = placedIds(generatePlan(r4, kb, { blockIndex: 2 }));
+  ok("#rev2-b11 a skipped accessory rotated to the front of its pool still yields to better-ranked free ones (block 2)",
+    !r4Placed.has("dumbbell-lateral-raise") && [...r4Placed].some((id) => /cable-lateral-raise|lean-away-lateral-raise/.test(id)), [...r4Placed].filter((id) => /lateral/.test(id)).join());
+  // Round 2 #5: under a style preference the non-loadable penalty stays decisive over the wider lengthened bonus, and a
+  // style the kit doesn't have changes nothing (so "it can't change your plan" is true).
+  const r5 = { ...base, available_equipment: ["dumbbell", "band", "bodyweight"] };
+  const r5Placed = placedIds(generatePlan({ ...r5, training_prefs: { style: ["free"] } }, kb));
+  ok("#rev2-b11 a style preference never promotes a non-loadable bodyweight lift over a loaded one", !r5Placed.has("sliding-leg-curl") || placedIds(generatePlan(r5, kb)).has("sliding-leg-curl"), [...r5Placed].join());
+  const absentDiffs = [];
+  for (const [eq, st] of [[["band", "bodyweight"], "machines"], [["dumbbell", "band", "bodyweight"], "machines"], [["barbell", "dumbbell", "bodyweight"], "machines"], [["dumbbell", "bodyweight"], "machines"], [["machine", "cable"], "free"], [["machine", "cable"], "bodyweight"]])
+    for (const goal of ["hypertrophy", "strength"]) {
+      const b = { ...base, available_equipment: eq, primary_goal: goal };
+      if (JSON.stringify(generatePlan({ ...b, training_prefs: { style: [st] } }, kb).program) !== JSON.stringify(generatePlan(b, kb).program)) absentDiffs.push(`${eq}/${st}/${goal}`);
+    }
+  ok(`#rev2-b11 an enjoyed style the kit lacks leaves the plan byte-identical (12 kit/goal pairs)${absentDiffs.length ? " — " + absentDiffs.join("; ") : ""}`, absentDiffs.length === 0);
+  // …and the RANKING itself (rankedPools, more sensitive than whole plans): not one pool reorders.
+  const poolDiffs = [];
+  for (const [eq, st] of [[["band", "bodyweight"], "machines"], [["dumbbell", "band", "bodyweight"], "machines"], [["barbell", "dumbbell", "bodyweight"], "machines"], [["machine", "cable"], "free"], [["machine", "cable", "bodyweight"], "free"]])
+    for (const goal of ["hypertrophy", "strength"]) for (const status of ["beginner", "intermediate", "advanced"]) for (const uid of ["u-0", "u-1"]) {
+      const b = { ...base, user_id: uid, training_status: status, available_equipment: eq, primary_goal: goal };
+      const ids = (rp) => JSON.stringify(Object.entries(rp).map(([m, p]) => [m, p.compound.map((e) => e.id), p.isolation.map((e) => e.id)]));
+      if (ids(rankedPools({ ...b, training_prefs: { style: [st] } }, kb)) !== ids(rankedPools(b, kb))) poolDiffs.push(`${eq}/${st}/${goal}/${status}/${uid}`);
+    }
+  ok(`#rev2-b11 …not one ranked pool reorders for a style the kit lacks (60 pool sets)${poolDiffs.length ? " — " + poolDiffs.slice(0, 3).join("; ") : ""}`, poolDiffs.length === 0);
+  // Round 2 #6: a skipped loadable compound never yields to an isolation that is only "better" because its own pool lacked
+  // the loadable penalty (sissy squats replacing barbell squats).
+  const r6 = { ...base, available_equipment: ["barbell", "bodyweight"], training_prefs: { avoid: ["barbell-back-squat", "front-squat"] } };
+  ok("#rev2-b11 a skipped barbell squat never yields to a non-loadable sissy squat", !placedIds(generatePlan(r6, kb)).has("sissy-squat"), [...placedIds(generatePlan(r6, kb))].join());
   // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

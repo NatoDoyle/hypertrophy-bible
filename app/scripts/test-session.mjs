@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow, swapInRow } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow, swapInRow, swapWhyFor } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -681,6 +681,15 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.ok(!("slot_of" in buildTargets(s1)[1]), "targets carry the plan, never the marker");
     assert.equal(buildTargets(s1)[1].stood_in_for, "pushdown", "…naming the planned lift it stood in for (review G1: the comeback clock counts the slot as trained)");
     assert.ok(!("stood_in_for" in buildTargets(mk(exs()))[1]), "a lift in its own slot names nothing");
+  });
+  check("#rev2-b11 why a slot is swapped: tired is the day, a pick over the PLAN's lift is a vote, a pick over a busy stand-in is still busy (#2)", () => {
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { picked: true }), "pick", "picked over the plan's own lift");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, {}), "busy");
+    assert.equal(swapWhyFor({ exercise: "leg-press", tired: true }, { picked: true }), "tired");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { reason: "tired" }), "tired");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { permanent: true }), null, "a permanent swap is recorded server-side");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "busy" }, { picked: true }), "busy", "the lifter never chose against hack squat");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, { picked: true }), "pick", "re-picking over an earlier pick stays a pick");
   });
   check("#W323 a stand-in carries WHY it stood in (busy / pick / tired) to the workout — only beside stood_in_for, only from the enum", () => {
     const via = (why) => buildTargets(replaceSlot(mk(exs()), 1, { ...row, ...(why ? { swap_why: why } : {}) }, { expect: "pushdown" }).sess)[1];
