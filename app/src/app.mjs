@@ -557,17 +557,17 @@ export function createApp(store, config = {}) {
       // training change starts a fresh block 0, where clearing them is correct
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
-      // refit_diff describes the plan the refit made — kept only while a cosmetic rebuild leaves the lifts as they were
-      // (round 11 #2: after a Bring back the stale diff named the returned lift as having "made way").
-      const liftsOf = (p) => JSON.stringify((p?.sessions ?? []).map((x) => x.exercises.map((e) => e.exercise)));
-      const sameLifts = liftsOf(u.program) === liftsOf(program);
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "refit_diff"]
-          .filter((k) => u.plan_meta?.[k] != null && (k !== "refit_diff" || sameLifts))
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "handed_back_at"]
+          .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
       // omits — a re-included lift must fall out of the claim (the same honesty rule
       // as the boundary stamp).
+      // …and refit_diff likewise keeps only what still describes the plan: outs it still omits, ins it still holds (rounds 11-12
+      // — a Bring back undoes one change, the rest stay named; never all-or-nothing).
+      const rd = trainingChanged ? null : u.plan_meta?.refit_diff;
+      const keptDiff = rd ? { out: (rd.out ?? []).filter((id) => !planHolds(program, id)), in: (rd.in ?? []).filter((id) => planHolds(program, id)) } : null;
       const keptSwapped = trainingChanged ? [] : (u.plan_meta?.swapped_this_block ?? [])
         .filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
       u.program = program; u.plan_rationale = rationale;
@@ -576,6 +576,7 @@ export function createApp(store, config = {}) {
         ...learnedMeta(u.plan_meta), // pace + a declined ceiling are the lifter's, not the block's: kept on every save (W319)
         ...keptStamps,
         ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
+        ...(keptDiff && (keptDiff.out.length || keptDiff.in.length) ? { refit_diff: keptDiff } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
@@ -2126,7 +2127,8 @@ export function createApp(store, config = {}) {
     // While learning is paused (a hand-edited plan) a pick is today-only, as its copy says (review round 10 #3): no vote.
     // Decided by the WORKOUT, not by the plan's state when it syncs (round 11 #3): the player sends whether learning was
     // paused when it started (an offline-queued workout can land after a hand-back, or after an edit).
-    if (targets && body.learning_paused === true) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
+    const pausedAtWorkout = typeof body.learning_paused === "boolean" ? body.learning_paused : !!user.program?.custom; // no key: an old or queued client — the plan's own state (round 12 #3)
+    if (targets && pausedAtWorkout) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
     if (targets) session.targets = targets;
     const fade = normalizeFadeMarks(body.fade_marks);
     if (fade) session.fade_marks = fade;

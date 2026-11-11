@@ -3679,7 +3679,7 @@ async function finish() {
   // Tuesday session rescued on Thursday belongs to Tuesday's week.
   // targets (W280): what the plan asked of each lift today — so a skipped or unfinished set
   // holds that lift's next weight increase, and the read-out can say what was and wasn't done.
-  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess), fade_marks: fadeMarksAtFinish(sess), ...(sess.learningPaused ? { learning_paused: true } : {}) }; // decided by the workout (round 11 #3)
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess), fade_marks: fadeMarksAtFinish(sess), learning_paused: sess.learningPaused === true }; // decided by the workout (rounds 11-12): always said
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one

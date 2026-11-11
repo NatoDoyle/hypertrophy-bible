@@ -962,7 +962,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // HANDED BACK (round 11 #0): "Let the coach take over again" rebuilt the plan from the answers — said once, in its own
   // words, naming any lift the learning (not the edit, not a Settings change) took out.
   const handedBackAt = user.plan_meta?.handed_back_at;
-  if (handedBackAt && !sessions.some((s) => s.date && s.date > handedBackAt)) {
+  if (handedBackAt && !program?.custom && !sessions.some((s) => s.date && s.date > handedBackAt)) { // an edit since ends it (round 12 #1)
     const lo = (user.plan_meta?.learned_out ?? []).map((id) => name(id));
     const msg = `Back on the coach's plan — I rebuilt it from your answers.${lo.length ? ` You'd picked something else over ${lo.join(", ")} again and again, so I've given ${lo.length === 1 ? "its" : "their"} slot to another lift that trains the same muscle — bring ${lo.length === 1 ? "it" : "them"} back on the Plan tab any time.` : ""}`;
     announcement = announcement ? `${msg} ${announcement}` : msg;
