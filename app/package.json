@@ -14,7 +14,8 @@
     "db:init:remote": "wrangler d1 execute hypertrophy-bible --remote --file=./schema.sql",
     "cf:dev": "npm run build-data && wrangler dev",
     "deploy": "npm run build-data && wrangler deploy",
-    "sweep:swaps": "for s in 0 1 2 3 4; do SLOT=$s node scripts/sweep-swaps.mjs || exit 1; done"
+    "sweep:swaps": "for s in 0 1 2 3 4; do SLOT=$s node scripts/sweep-swaps.mjs || exit 1; done",
+    "sweep:notes": "node scripts/sweep-notes.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14",

@@ -55,6 +55,13 @@ accessory rotation or volume tune; those arrive at graduation). But their flat l
 at their learned pace, announced only if something changed. It has its own counter (`plan_meta.refit_index`), so the
 beginner is never treated as mid-block.
 
+**What a plan-change note says is decided when Today shows it (Burst 11 review rounds 13–14).** The stamps record what a
+boundary, refit, graduation or hand-back changed (`refit_diff`, `swapped_this_block`, `learned_out`, `main_before`), and
+`buildToday` names only what is still true of the live plan and the Plan tab. It never names a lift that has come back as
+gone. It offers Bring back only for a lift the Plan tab lists. It says "Your main lifts stay" only while they do. It shows
+no note over a hand-edited plan. Graduation uses its own note, never the new-block copy. `npm run sweep:notes` drives
+every chain of up to three doors at both levels and checks these rules (exits 1 on any violation).
+
 Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a boundary (`recoverySignal`,
 `classifyEnergyBalance`). They never add volume.
 

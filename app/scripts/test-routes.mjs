@@ -752,7 +752,8 @@ try {
     const ann = rfT.session?.announcement ?? "";
     const name = (id) => kbExForTest.get(id)?.name ?? id;
     ok("#rev8-b11 the refit note names the lift that changed, and claims no pace re-size it didn't make",
-      swappedIn !== orig && new RegExp(name(swappedIn).replace(/[()]/g, "\\$&")).test(ann) && !/re-sized your sessions to the pace/.test(ann), ann);
+      // (plan-wide since round 14: the hand-swapped lift stays on another day, so the change is the lift that JOINED the plan)
+      swappedIn !== orig && /joined your plan|made way for/.test(ann) && !/re-sized your sessions to the pace/.test(ann), ann);
   }
 
   // Round 10 #2: the preferences-only probe compares the plan the OLD prefs generate with the one the NEW prefs generate —
@@ -849,19 +850,19 @@ try {
     const ann = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": kd } })).json()).session?.announcement ?? "";
     const nm = (id) => kbExForTest.get(id)?.name ?? id;
     await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), // (0: no trained weeks yet — no live refit overwrites the fixture)
-      refit_diff: { out: [[d1.name, "sissy-squat"], [d1.name, M]], in: [[d1.name, X], [d2.name, M]] } }; return u; }); // M only moved days
+      refit_diff: { out: ["sissy-squat", M], in: [X] } }; return u; }); // M: recorded as out, but still in the plan
     const a1 = await ann();
-    ok("#rev13-b11 the refit note names a real change and never 'M made way for M' / 'M joined' for a lift that only moved days",
-      a1.includes(`Sissy Squat made way for ${nm(X)}`) && !a1.includes(`${nm(M)} made way`) && !a1.includes(`${nm(M)} joined`), a1);
+    ok("#rev13-b11 the refit note names a real change and never a lift still in the plan as gone (round 14 #2)",
+      a1.includes(`Sissy Squat made way for ${nm(X)}`) && !a1.includes(`${nm(M)} made way`) && !a1.includes(`${nm(M)} left`), a1);
     await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { units: "metric" } }); // a cosmetic save
     ok("#rev13-b11 a cosmetic save leaves the note exactly as it was", (await ann()) === a1, await ann());
     // A learned-out lift that is back in the plan (Brought back) is never named as swapped out.
     await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [X] }; return u; });
     ok("#rev13-b11 a learned-out lift back in the plan is never named as swapped out", !(await ann()).includes(`You've swapped ${nm(X)} out`), await ann());
     await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [] }; return u; });
-    await store.updateUser(kd, (u) => { u.program.sessions[0].exercises[0] = { ...u.program.sessions[0].exercises[0], exercise: "pendulum-squat" }; return u; });
+    await store.updateUser(kd, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.map((e) => (e.exercise === X ? { ...e, exercise: "pendulum-squat" } : e)); return u; });
     const a2 = await ann();
-    ok("#rev13-b11 a change no longer true of the plan (X left day 1 again) is no longer named", !a2.includes(nm(X)) && /left your plan/.test(a2), a2);
+    ok("#rev13-b11 a change no longer true of the plan (X left again) is no longer named", !a2.includes(nm(X)) && /left your plan/.test(a2), a2);
     // The plan made the lifter's own (an edit) ends the note: nothing it names would be acted on, and no Bring back is offered.
     const kdEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": kd } })).json();
     kdEx.program.sessions[0].exercises[0].sets += 1;
@@ -885,6 +886,79 @@ try {
     ok("#rev13-b11 graduating right after a hand-back keeps the hand-back note beside the graduation",
       gbU.profile.training_status === "intermediate" && /Back on the coach's plan/.test(gbT.session?.announcement ?? "") && /🎓/.test(gbT.session?.announcement ?? ""),
       JSON.stringify({ st: gbU.profile.training_status, ann: gbT.session?.announcement }));
+  }
+
+  // Round 14: the notes layer, against the plan and the Plan tab as they are.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const gradUser = async () => {
+      const g = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+      const plan = (await store.getUser(g)).program;
+      for (let w = 0; w < GRADUATION.intermediate.weeks + 1; w++) for (const [k, sx] of plan.sessions.slice(0, 2).entries())
+        await store.addSession(g, { session_id: `g${g.slice(0, 4)}-${w}-${k}`, date: dayAgo((GRADUATION.intermediate.weeks + 1) * 7 - w * 7 - k + 3), sets: sx.exercises.map((e) => ({ exercise: e.exercise, set_type: "work", weight_kg: 20 + w, reps: 8 })) });
+      return g;
+    };
+    const annOf = async (uid) => (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session?.announcement ?? "";
+    // #0 #6: graduation rebuilds the whole plan — its own note, never "New block … Your main lifts stay".
+    const g1 = await gradUser();
+    const a1 = await annOf(g1);
+    ok("#rev14-b11 graduation says its own thing, never 'New block … Your main lifts stay'", /🎓/.test(a1) && !/New block|Your main lifts stay/.test(a1), a1);
+    // #5: an edit right after graduating ends the graduation note (its promises are paused on a hand-edited plan).
+    const gEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": g1 } })).json();
+    gEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: g1, program: gEx.program });
+    ok("#rev14-b11 no graduation note over a hand-edited plan", !/🎓/.test(await annOf(g1)), await annOf(g1));
+    // #1: a learned-out note offers Bring back only while the Plan tab lists the lift (an injury since ruled it out).
+    const iu = (await json("POST", "/api/onboard", { profile: { ...rp, training_status: "intermediate" } })).data.user_id;
+    const iu0 = await store.getUser(iu);
+    const LB = iu0.program.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)).find((id) => ["romanian-deadlift", "dumbbell-romanian-deadlift", "conventional-deadlift", "barbell-row", "good-morning", "hack-squat", "barbell-back-squat"].includes(id));
+    await store.updateUser(iu, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [LB]: 1 }, learned_out: [LB], rotated_at: new Date().toISOString() };
+      for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== LB); return u; });
+    const before = await annOf(iu);
+    await json("POST", "/api/profile/injury", { user_id: iu, region: "lower-back" });
+    const ex1 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": iu } })).json();
+    const after = await annOf(iu);
+    const nmLB = kbExForTest.get(LB)?.name ?? LB;
+    ok("#rev14-b11 a learned-out lift an injury now rules out is never offered back on the Plan tab",
+      !!LB && before.includes(nmLB) && !(ex1.learned_out ?? []).some((x) => x.id === LB) && !after.includes(`swapped ${nmLB} out`), JSON.stringify({ LB, before, after, lo: ex1.learned_out }));
+  }
+  // Round 14 (notes harness, N5): "Your main lifts stay" only while every main lift the plan held going into the block
+  // still is — a learned dislike, a stall or an injury can take one out; the one that left is named.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const ms = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    await store.updateUser(ms, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: ms, session_id: `ms-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60 + w * 2.5, reps: 8 }] });
+    const annMs = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": ms } })).json()).session?.announcement ?? "";
+    const msA = await annMs();
+    const msU = await store.getUser(ms);
+    const C = (msU.plan_meta.main_before ?? []).find((id) => msU.program.sessions.some((x) => x.exercises.some((e) => e.exercise === id)));
+    ok("#rev14-b11 the boundary records the main lifts going in, and says they stay while they do",
+      /New block/.test(msA) && /Your main lifts stay/.test(msA) && !!C && (msU.plan_meta.main_before ?? []).every((id) => kbExForTest.get(id)?.mechanic === "compound"), JSON.stringify({ msA, mb: msU.plan_meta.main_before }));
+    await store.updateUser(ms, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== C); return u; });
+    const msB = await annMs();
+    ok("#rev14-b11 the new-block note never says 'Your main lifts stay' when a main lift left — and names it",
+      /New block/.test(msB) && !/Your main lifts stay/.test(msB) && msB.includes(`${kbExForTest.get(C)?.name ?? C} left your plan too`), JSON.stringify({ C, msB }));
+    // …and that record survives a cosmetic rebuild in the window (C stays out: no machine for it).
+    await store.updateUser(ms, (u) => { u.profile = { ...u.profile, unavailable_exercises: [{ id: C }] }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: ms, profile: { units: "metric" } });
+    const msC = await annMs();
+    ok("#rev14-b11 a cosmetic save keeps the main-lifts record (no 'Your main lifts stay' while one is still out)",
+      /New block/.test(msC) && !/Your main lifts stay/.test(msC) && !(await store.getUser(ms)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === C)), msC);
+  }
+
+  // Round 14 #3: the beginner refit stores its completion verdict, like the block boundary.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const sv = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: sv, session_id: `sv-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await store.updateUser(sv, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56) }; return u; });
+    await app.request("/api/today", { headers: { "X-HB-User": sv } });
+    const svm = (await store.getUser(sv)).plan_meta;
+    ok("#rev14-b11 the beginner refit stores its spared-muscles verdict (block 0)", svm.refit_index === 1 && svm.spared_muscles?.block === 0 && Array.isArray(svm.spared_muscles?.muscles), JSON.stringify(svm.spared_muscles));
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
