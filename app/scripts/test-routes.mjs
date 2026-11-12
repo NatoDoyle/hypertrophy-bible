@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
-import { requestMagicLink } from "../src/auth.mjs";
+import { requestMagicLink, sha256hex } from "../src/auth.mjs";
 import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds, loadForReps } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
@@ -959,6 +959,93 @@ try {
     await app.request("/api/today", { headers: { "X-HB-User": sv } });
     const svm = (await store.getUser(sv)).plan_meta;
     ok("#rev14-b11 the beginner refit stores its spared-muscles verdict (block 0)", svm.refit_index === 1 && svm.spared_muscles?.block === 0 && Array.isArray(svm.spared_muscles?.muscles), JSON.stringify(svm.spared_muscles));
+  }
+
+  // ---- Burst 11 review round 15 ----
+  {
+    const full = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const liftsOf = (p) => [...new Set(p.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)))];
+    const holdsT = (p, id) => p.sessions.some((x) => x.exercises.some((e) => e.exercise === id));
+    const annT = async (uid) => (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session?.announcement ?? "";
+    // #0: the refit's stored spared-muscles verdict is the one its own swaps used — a units save after it keeps its lifts.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 45, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      for (let w = 0; w < 7; w++) await store.addSession(uid, { session_id: `r15a-${w}`, user_id: uid, date: dayAgo(3 + 7 * w), program_ref: u0.program.id,
+        sets: liftsOf(u0.program).flatMap((id) => [0, 1].map(() => ({ exercise: id, set_type: "work", weight_kg: 40, reps: 8 }))) });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(52), pace: { heavy: 600, moderate: 600, isolation: 600, transition: 600, lead: 1200 } }; return u; });
+      await annT(uid);
+      const post = await store.getUser(uid);
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      const after = await store.getUser(uid);
+      ok("#rev15-b11 a units save after a beginner refit keeps the refit's lifts (its stored verdict is the one it used)",
+        post.plan_meta.refit_index === 1 && JSON.stringify(liftsOf(after.program).sort()) === JSON.stringify(liftsOf(post.program).sort()),
+        JSON.stringify({ ri: post.plan_meta.refit_index, back: liftsOf(after.program).filter((x) => !liftsOf(post.program).includes(x)), left: liftsOf(post.program).filter((x) => !liftsOf(after.program).includes(x)) }));
+    }
+    // #1: a learned-out lift since skipped is still named as a change — never the 'I've re-fitted' fallback over a lift that left.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const X = liftsOf((await store.getUser(uid)).program)[0];
+      await store.updateUser(uid, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== X);
+        u.profile = { ...u.profile, training_prefs: { ...(u.profile.training_prefs ?? {}), avoid: [X] } };
+        u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), learned_out: [X], pref_scores: { [X]: 1 }, refit_diff: { out: [X], in: [] } }; return u; });
+      const a = await annT(uid);
+      ok("#rev15-b11 a learned-out lift since skipped is still named as having left (no 're-fitted' fallback)",
+        a.includes(`${kbExForTest.get(X)?.name ?? X} left your plan`) && !/re-fitted your plan|re-sized your sessions/.test(a), JSON.stringify({ X, a }));
+    }
+    // #2: 'had gone flat, so I've swapped it' only for a lift the plan held going into the boundary (not a 'No machine' one).
+    for (const level of ["intermediate", "beginner"]) {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: level, primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const X = "lat-pulldown";
+      // …beside an in-plan lift gone flat too, so the boundary/refit really swaps something (and stamps it).
+      const Y = liftsOf((await store.getUser(uid)).program).find((id) => id !== X && kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r15c-${level}-${w}-${k}`, date: dayAgo(8 + 7 * w + k), sets: [X, Y].flatMap((id) => Array.from({ length: 6 }, () => ({ exercise: id, set_type: "work", weight_kg: 40, reps: 8 }))) });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: X, scope: "always" });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok(`#rev15-b11 (${level}) a stalled lift already out of the plan ('No machine') is never claimed as swapped at the boundary`,
+        (pm.swapped_this_block ?? []).length > 0 && !(pm.swapped_this_block ?? []).includes(X) && !a.includes("Lat Pulldown had gone flat"), JSON.stringify({ Y, sw: pm.swapped_this_block, a }));
+    }
+    // #3: a merge that carries a Bring back for a lift the survivor's learning took out puts it back in the plan.
+    {
+      const prof = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full };
+      const to = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+      const from = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+      const tu = await store.getUser(to);
+      const S = liftsOf(tu.program).find((id) => !holdsT(generateUserPlan(tu.profile, planOptsFor(tu, { prefScores: { [id]: 1 } })).program, id));
+      await store.updateUser(to, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== S); return u; });
+      await store.updateUser(from, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; return u; });
+      await json("POST", "/api/exercise/cant-do", { user_id: from, exercise: S, scope: "undo" });
+      const grant = "r15-grant";
+      await store.createMagicLink({ token_hash: await sha256hex(grant), email: "r15@example.com", rl_key: "grant:r15", ip: null, user_id: to, purpose: "merge-grant", expires_at: Date.now() + 600000, used: 0, created_at: Date.now() });
+      const m = await app.request("/api/auth/merge", { method: "POST", headers: { "content-type": "application/json", "X-HB-User": from }, body: JSON.stringify({ from_user_id: from, to_user_id: to, grant }) });
+      const after = await store.getUser(to);
+      ok("#rev15-b11 a merged Bring back puts the lift back in the survivor's plan", !!S && m.status === 200 && holdsT(after.program, S), JSON.stringify({ S, st: m.status, kept: after.plan_meta.pref_kept }));
+    }
+    // A refit that changes nothing (closed window) says nothing and opens no window.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      for (let w = 0; w < 7; w++) await store.addSession(uid, { session_id: `r15n-${w}`, user_id: uid, date: dayAgo(3 + 7 * w), program_ref: u0.program.id,
+        sets: liftsOf(u0.program).map((id) => ({ exercise: id, set_type: "work", weight_kg: 20 + (6 - w) * 2.5, reps: 8 })) });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(52) }; return u; });
+      const a = await annT(uid);
+      const u1 = await store.getUser(uid);
+      ok("#rev15-b11 a refit that changes nothing says nothing (no note, no window)",
+        u1.plan_meta.refit_index === 1 && JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions) && !u1.plan_meta.rotated_at && !/Six more weeks/.test(a), JSON.stringify({ ri: u1.plan_meta.refit_index, same: JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions), rot: u1.plan_meta.rotated_at, a }));
+    }
+    // #4: a second refit that changes nothing leaves the open note's record alone.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const X = liftsOf(u0.program).find((id) => id !== "sissy-squat");
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(100), refit_index: 1, rotated_at: new Date().toISOString(), refit_diff: { out: ["sissy-squat"], in: [X] }, learned_out: [], swapped_this_block: [] }; return u; });
+      for (let w = 1; w <= 13; w++) await store.addSession(uid, { session_id: `r15d-${w}`, user_id: uid, date: dayAgo(7 * w + 1), program_ref: u0.program.id, sets: [{ exercise: X, set_type: "work", weight_kg: 40 + (13 - w) * 2.5, reps: 8 }] });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok("#rev15-b11 a no-change second refit keeps the open note's record", pm.refit_index === 2 && a.includes(`Sissy Squat made way for ${kbExForTest.get(X)?.name ?? X}`), JSON.stringify({ ri: pm.refit_index, rd: pm.refit_diff, a }));
+    }
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —

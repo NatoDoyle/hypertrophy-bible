@@ -2,7 +2,7 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift } from "./coach.mjs";
+import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift, stalledExerciseIds } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
@@ -1144,7 +1144,9 @@ export function createApp(store, config = {}) {
           // one accessible lift re-picks the same one. The coach note says "I've
           // swapped it", so stamp only the lifts the new program actually DROPPED,
           // never the whole stalled list (lesson 60: copy is a promise).
-          const swappedOut = stalledExercises.filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+          // …and only lifts the plan HELD going in (round 15 #2): a flat lift already out ("No machine", a today-swap) was
+          // never swapped by this boundary.
+          const swappedOut = stalledExercises.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           // The main lifts going in, so the note claims "your main lifts stay" only while it is true (round 14 harness N5).
           const mainBefore = [...new Set((u.program?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)))].filter((id) => isCompoundLift(u, id)).sort();
@@ -1182,9 +1184,12 @@ export function createApp(store, config = {}) {
         const refit = await store.updateUser(id, (u) => {
           // Re-check on the FRESH read (lesson 21): a concurrent save may have made it custom, graduated, or refit it.
           if (u.program?.custom || u.profile?.training_status !== "beginner" || refitIndex === (u.plan_meta?.refit_index ?? 0)) return u;
-          const stalledExercises = swapStalls(u, sessions, nowISO, { fresh: true });
+          // The verdict is judged ONCE, against the plan they trained, and that same verdict is stored for every rebuild in
+          // the window (round 15 #0: judged after the swap, it read the NEW plan's sets and a units save undid the swaps).
+          const spared = sparedMuscles(u, sessions, nowISO);
+          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, spared);
           const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises }));
-          const swappedOut = stalledExercises.filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+          const swappedOut = stalledExercises.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid)); // held going in (round 15 #2)
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
           // WHAT changed, for the note (review round 8 #1): the lifts that left and came in — never a guess at why.
@@ -1194,16 +1199,28 @@ export function createApp(store, config = {}) {
           const idsOf = (p) => new Set((p?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)));
           const before = idsOf(u.program), after = idsOf(program);
           const refitDiff = { out: [...before].filter((id) => !after.has(id)).sort(), in: [...after].filter((id) => !before.has(id)).sort() };
+          // A refit that changed nothing leaves an OPEN note's record alone; one that did, inside an open window, adds to
+          // it (round 15 #4 — the record is what the note names, and Today judges it against the live plan).
+          const pm = u.plan_meta ?? {};
+          const windowOpen = !!pm.rotated_at && !sessions.some((x) => x.date && x.date > pm.rotated_at);
+          const uniq = (a) => [...new Set(a)].sort();
+          const prevDiff = windowOpen ? { out: (pm.refit_diff?.out ?? []).map((x) => (Array.isArray(x) ? x[1] : x)), in: (pm.refit_diff?.in ?? []).map((x) => (Array.isArray(x) ? x[1] : x)) } : { out: [], in: [] };
+          const record = !changed ? {} : {
+            swapped_this_block: uniq([...(windowOpen ? pm.swapped_this_block ?? [] : []), ...swappedOut]),
+            learned_out: uniq([...(windowOpen ? pm.learned_out ?? [] : []), ...learnedOut]),
+            refit_diff: {
+              out: uniq([...prevDiff.out, ...refitDiff.out.filter((id) => !prevDiff.in.includes(id))]),
+              in: uniq([...prevDiff.in.filter((id) => !refitDiff.out.includes(id)), ...refitDiff.in.filter((id) => !prevDiff.out.includes(id))]),
+            },
+            rotated_at: nowISO, // announced once, the new-block window
+          };
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
-            ...u.plan_meta, ...meta,
+            ...pm, ...meta,
             refit_index: refitIndex,
-            swapped_this_block: swappedOut,
-            learned_out: learnedOut,
-            refit_diff: refitDiff,
+            ...record,
             // The refit's completion verdict, reused by every rebuild in its window — like the block boundary's (round 14 #3).
-            spared_muscles: { block: u.plan_meta?.block_index ?? 0, muscles: sparedMuscles(u, sessions, nowISO) },
-            ...(changed ? { rotated_at: nowISO } : {}), // announced once, the new-block window
+            spared_muscles: { block: pm.block_index ?? 0, muscles: spared },
           };
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
@@ -2696,6 +2713,8 @@ export function createApp(store, config = {}) {
     // Atomically consume the grant: if a concurrent merge already spent it,
     // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
     if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
+    // The survivor's learned dislikes BEFORE the move, by value (the file store hands back a live object the move mutates).
+    const toScoresBefore = { ...(to.plan_meta?.pref_scores ?? {}) };
     const moved = await store.reassignUserData(from_user_id, to_user_id);
     // The store REFUSED (null): between the reads above and the write, a concurrent
     // merge tombstoned one of the two rows. Nothing moved, so say nothing moved —
@@ -2716,7 +2735,10 @@ export function createApp(store, config = {}) {
     try {
       const after = await store.getUser(to_user_id);
       const kept = new Set(after?.plan_meta?.pref_kept ?? []);
-      if (after?.program && !after.program.custom && Object.entries(after.plan_meta?.pref_scores ?? {}).some(([k, v]) => v > 0 && !kept.has(k) && planHolds(after.program, k))) {
+      // …and a Bring back carried in (round 15 #3): a lift the survivor's learning had taken out, now kept, must come back —
+      // the Plan tab no longer lists it, so nothing else would restore it.
+      const keptBackOut = [...kept].some((k) => (toScoresBefore[k] ?? 0) > 0 && !planHolds(after?.program, k));
+      if (after?.program && !after.program.custom && (keptBackOut || Object.entries(after.plan_meta?.pref_scores ?? {}).some(([k, v]) => v > 0 && !kept.has(k) && planHolds(after.program, k)))) {
         const priorSessions = await store.listSessions(to_user_id);
         await store.updateUser(to_user_id, (u) => { if (!u.program?.custom) rebuildPlan(u, { trainingChanged: false, priorSessions, nowISO: new Date().toISOString() }); return u; }).catch(() => null);
       }

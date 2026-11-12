@@ -1397,6 +1397,18 @@ These are real failures from previous iterations. Each is now a standing check.
    machine chest press" and "the beginner's chest compound" were each flaky or wrong once the plan, or a
    ranking rule, moved. → **Standing rule:** select fixture lifts by the property under test (the generator
    swaps it on a skip; the generator keeps it), computed through the same functions the app uses.
+114. **The file store hands back a live object, so a read taken "before" a write can show the write.**
+   The merge route read the survivor, ran the move (which mutates that same in-memory object on the file
+   store), then judged "what did the survivor have before?" from the earlier read. Locally it saw the
+   merged values; on D1, where every read is a fresh parse, it would have seen the real ones. The parity
+   bug was silent on both. → **Standing rule:** take pre-write state you will compare against **by value**
+   (spread or copy it) before the write, never by holding the earlier reference.
+115. **Once-only notes: record what changed, decide what to say at render time.** Rounds 10–14 each
+   found one more rebuild door through which a note's stamps outlived or misdescribed their change. Then
+   round 13 moved the decision to `buildToday`, judged against the live plan and the Plan tab. Round 14
+   added a sweep across every door (`npm run sweep:notes`), and it came back dry. → **Standing rule:**
+   a stamp records what changed and the render decides what is still true. A new door or stamp runs the
+   sweep.
 
 ## Token discipline (the loop must be affordable to keep running)
 

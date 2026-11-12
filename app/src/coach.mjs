@@ -959,7 +959,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // moved days was never a change); named only while still true of the live plan.
     const diff = user.plan_meta?.refit_diff ?? { out: [], in: [] };
     const idOf = (x) => (Array.isArray(x) ? x[1] : x);
-    const named = new Set([...(user.plan_meta?.swapped_this_block ?? []), ...(user.plan_meta?.learned_out ?? [])]);
+    // Only what the swap and learned notes actually NAME is left to them (round 15 #1): a learned-out lift no longer listed
+    // (since skipped, or no longer doable) is still a change, and is named plainly.
+    const named = new Set([...(user.plan_meta?.swapped_this_block ?? []).filter((id) => !holdsNow(id)), ...(user.plan_meta?.learned_out ?? []).filter((id) => listed.has(id))]);
     const otherOut = [...new Set((diff.out ?? []).map(idOf))].filter((id) => !holdsNow(id) && !named.has(id)).map((id) => name(id));
     const otherIn = [...new Set((diff.in ?? []).map(idOf))].filter((id) => holdsNow(id)).map((id) => name(id));
     const diffNote = otherOut.length && otherIn.length ? ` ${otherOut.join(", ")} made way for ${otherIn.join(", ")}.`
