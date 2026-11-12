@@ -964,6 +964,10 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const named = new Set([...(user.plan_meta?.swapped_this_block ?? []).filter((id) => !holdsNow(id)), ...(user.plan_meta?.learned_out ?? []).filter((id) => listed.has(id))]);
     const otherOut = [...new Set((diff.out ?? []).map(idOf))].filter((id) => !holdsNow(id) && !named.has(id)).map((id) => name(id));
     const otherIn = [...new Set((diff.in ?? []).map(idOf))].filter((id) => holdsNow(id)).map((id) => name(id));
+    // A lift that only moved days, named while it still sits on exactly those days (round 16 sweep).
+    const daysNow = (id) => (program?.sessions ?? []).filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name).sort();
+    const movedNames = (diff.moved ?? []).filter(([id, days]) => Array.isArray(days) && JSON.stringify(daysNow(id)) === JSON.stringify([...days].sort()) && !named.has(id)).map(([id]) => name(id));
+    const movedNote = movedNames.length ? ` ${movedNames.join(", ")} ${movedNames.length === 1 ? "moved to a different day" : "moved to different days"}.` : ""; // what, never a guessed why (round 8)
     const diffNote = otherOut.length && otherIn.length ? ` ${otherOut.join(", ")} made way for ${otherIn.join(", ")}.`
       : otherOut.length ? ` ${otherOut.join(", ")} left your plan.` : !(swapNote + learnedNote) && otherIn.length ? ` ${otherIn.join(", ")} joined your plan.` : "";
     // "Your main lifts stay" only while every main lift the plan held going into the block still is (round 14 harness N5);
@@ -973,7 +977,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       : " Your other main lifts stay, so their progression carries over.";
     const mainUnnamed = mainLeft.filter((id) => !(swapped.length && (user.plan_meta?.swapped_this_block ?? []).includes(id)) && !(learnedOut.length && (user.plan_meta?.learned_out ?? []).includes(id) && listed.has(id))).map((id) => name(id));
     const mainOther = mainUnnamed.length ? ` ${mainUnnamed.join(", ")} left your plan too.` : "";
-    const refitWhat = (swapNote + learnedNote + diffNote) || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
+    const refitWhat = (swapNote + learnedNote + diffNote + movedNote) || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
     const msg = refit
       ? `Six more weeks of training logged, so I've checked how every lift is moving.${refitWhat}`
       : `New block — I rotated your accessory exercises for fresh stimulus.${mainNote}${tuned}${heldNote}${swapNote}${learnedNote}${mainOther}`;

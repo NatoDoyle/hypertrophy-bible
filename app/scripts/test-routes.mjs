@@ -1035,6 +1035,36 @@ try {
       ok("#rev15-b11 a refit that changes nothing says nothing (no note, no window)",
         u1.plan_meta.refit_index === 1 && JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions) && !u1.plan_meta.rotated_at && !/Six more weeks/.test(a), JSON.stringify({ ri: u1.plan_meta.refit_index, same: JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions), rot: u1.plan_meta.rotated_at, a }));
     }
+    // Round 16 sweep: a lift that only moved days is named (no silent reshuffle), while it still sits on those days.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const p0 = (await store.getUser(uid)).program;
+      const X = liftsOf(p0)[0];
+      const days = p0.sessions.filter((x) => x.exercises.some((e) => e.exercise === X)).map((x) => x.name).sort();
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), refit_diff: { out: [], in: [], moved: [[X, days]] }, learned_out: [], swapped_this_block: [] }; return u; });
+      const a1 = await annT(uid);
+      const nmX = kbExForTest.get(X)?.name ?? X;
+      ok("#rev16-b11 a lift that only moved days is named, not hidden behind 're-fitted your plan'", a1.includes(`${nmX} moved to a different day`) && !/re-fitted your plan/.test(a1), a1);
+      await store.updateUser(uid, (u) => { const sx = u.program.sessions.find((x) => !days.includes(x.name)) ?? null; if (sx) sx.exercises.push({ ...u.program.sessions.find((x) => x.name === days[0]).exercises.find((e) => e.exercise === X) }); return u; });
+      const a2 = await annT(uid);
+      ok("#rev16-b11 …and not once it sits on other days than the refit put it", !a2.includes(`${nmX} moved`), a2);
+    }
+    // Round 16 #0: a stalled lift an IN-BLOCK rebuild (units save, injury) already swapped out is still announced at the
+    // boundary — the coach's own stall swap is not a "No machine" removal.
+    for (const [door, level] of [["units", "intermediate"], ["injury", "intermediate"], ["units", "beginner"]]) {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: level, primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const Y = liftsOf(u0.program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r16-${level}-${door}-${w}-${k}`, date: dayAgo(8 + 7 * w + k), program_ref: u0.program.id, sets: Array.from({ length: 6 }, () => ({ exercise: Y, set_type: "work", weight_kg: 40, reps: 8 })) });
+      if (door === "units") await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      else await json("POST", "/api/profile/injury", { user_id: uid, region: "ankle", severity: "mild" });
+      const midHolds = holdsT((await store.getUser(uid)).program, Y);
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok(`#rev16-b11 (${level}) a stall the ${door} rebuild swapped mid-block is named at the boundary/refit`,
+        !midHolds && (pm.swapped_this_block ?? []).includes(Y) && a.includes(`Your ${kbExForTest.get(Y)?.name ?? Y} had gone flat`) && !(pm.pending_stall_swaps ?? []).length, JSON.stringify({ Y, midHolds, sw: pm.swapped_this_block, pend: pm.pending_stall_swaps, a }));
+    }
     // #4: a second refit that changes nothing leaves the open note's record alone.
     {
       const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;

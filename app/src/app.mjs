@@ -526,6 +526,11 @@ export function createApp(store, config = {}) {
   // after a rebuild (W272) — one copy of the rules, or the two drift (lesson 1).
   // The lifts a rebuild dropped BECAUSE of a learned swap dislike (W323) — held in the old plan, gone from the new one,
   // learned against, and not a stalled lift (the stall note names those). What the new-block note names, once.
+  // Stalls a mid-block rebuild just swapped out (held before, gone now), added to those still owed a note (round 16 #0).
+  const pendingStallSwaps = (u, program, stalled) => {
+    const now = stalled.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
+    return [...new Set([...(u.plan_meta?.pending_stall_swaps ?? []), ...now])].filter((sid) => !planHolds(program, sid)).sort();
+  };
   const learnedOutOf = (u, oldProgram, newProgram, stalled = []) => {
     const opts = planOptsFor(u), had = (p, id) => (p?.sessions ?? []).some((s) => s.exercises.some((e) => e.exercise === id));
     return Object.entries(opts.prefScores ?? {}).filter(([id, v]) => v > 0 && had(oldProgram, id) && !had(newProgram, id) && !stalled.includes(id)).map(([id]) => id).sort();
@@ -562,12 +567,16 @@ export function createApp(store, config = {}) {
       // as the boundary stamp).
       const keptSwapped = trainingChanged ? [] : (u.plan_meta?.swapped_this_block ?? [])
         .filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+      // A stall this rebuild swapped out mid-block is the coach's change, owed a note at the next boundary/refit
+      // (round 16 #0); a training change starts a fresh block, which owes nothing.
+      const pendingStalls = trainingChanged ? [] : pendingStallSwaps(u, program, stalledExercises);
       u.program = program; u.plan_rationale = rationale;
       u.plan_meta = {
         ...meta,
         ...learnedMeta(u.plan_meta), // pace + a declined ceiling are the lifter's, not the block's: kept on every save (W319)
         ...keptStamps,
         ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
+        ...(pendingStalls.length ? { pending_stall_swaps: pendingStalls } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
@@ -1146,7 +1155,8 @@ export function createApp(store, config = {}) {
           // never the whole stalled list (lesson 60: copy is a promise).
           // …and only lifts the plan HELD going in (round 15 #2): a flat lift already out ("No machine", a today-swap) was
           // never swapped by this boundary.
-          const swappedOut = stalledExercises.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
+          const pend = new Set(u.plan_meta?.pending_stall_swaps ?? []); // …or the coach's own in-block stall swap (round 16 #0)
+          const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pend.has(sid)) && !planHolds(program, sid));
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           // The main lifts going in, so the note claims "your main lifts stay" only while it is true (round 14 harness N5).
           const mainBefore = [...new Set((u.program?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)))].filter((id) => isCompoundLift(u, id)).sort();
@@ -1189,7 +1199,8 @@ export function createApp(store, config = {}) {
           const spared = sparedMuscles(u, sessions, nowISO);
           const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, spared);
           const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises }));
-          const swappedOut = stalledExercises.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid)); // held going in (round 15 #2)
+          const pendStalls = new Set(u.plan_meta?.pending_stall_swaps ?? []); // …or swapped by an in-window rebuild (round 16 #0)
+          const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pendStalls.has(sid)) && !planHolds(program, sid)); // held going in (round 15 #2)
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
           // WHAT changed, for the note (review round 8 #1): the lifts that left and came in — never a guess at why.
@@ -1198,19 +1209,26 @@ export function createApp(store, config = {}) {
           // change of lift. Today names only what is still true of the live plan.
           const idsOf = (p) => new Set((p?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)));
           const before = idsOf(u.program), after = idsOf(program);
-          const refitDiff = { out: [...before].filter((id) => !after.has(id)).sort(), in: [...after].filter((id) => !before.has(id)).sort() };
+          // …plus the lifts that stayed but changed DAYS (round 16 sweep): never a silent reshuffle — [lift, its days now].
+          const daysOf = (p, id) => (p?.sessions ?? []).filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name).sort();
+          const moved = [...after].filter((id) => before.has(id) && JSON.stringify(daysOf(u.program, id)) !== JSON.stringify(daysOf(program, id))).sort().map((id) => [id, daysOf(program, id)]);
+          const refitDiff = { out: [...before].filter((id) => !after.has(id)).sort(), in: [...after].filter((id) => !before.has(id)).sort(), ...(moved.length ? { moved } : {}) };
           // A refit that changed nothing leaves an OPEN note's record alone; one that did, inside an open window, adds to
           // it (round 15 #4 — the record is what the note names, and Today judges it against the live plan).
           const pm = u.plan_meta ?? {};
           const windowOpen = !!pm.rotated_at && !sessions.some((x) => x.date && x.date > pm.rotated_at);
           const uniq = (a) => [...new Set(a)].sort();
           const prevDiff = windowOpen ? { out: (pm.refit_diff?.out ?? []).map((x) => (Array.isArray(x) ? x[1] : x)), in: (pm.refit_diff?.in ?? []).map((x) => (Array.isArray(x) ? x[1] : x)) } : { out: [], in: [] };
-          const record = !changed ? {} : {
+          // A stall an in-window rebuild already swapped is still this refit's to announce, even though the plan it
+          // rebuilds now matches (round 16 #0).
+          const owed = changed || swappedOut.some((sid) => pendStalls.has(sid));
+          const record = !owed ? {} : {
             swapped_this_block: uniq([...(windowOpen ? pm.swapped_this_block ?? [] : []), ...swappedOut]),
             learned_out: uniq([...(windowOpen ? pm.learned_out ?? [] : []), ...learnedOut]),
             refit_diff: {
               out: uniq([...prevDiff.out, ...refitDiff.out.filter((id) => !prevDiff.in.includes(id))]),
               in: uniq([...prevDiff.in.filter((id) => !refitDiff.out.includes(id)), ...refitDiff.in.filter((id) => !prevDiff.out.includes(id))]),
+              ...(() => { const m = new Map([...(windowOpen ? pm.refit_diff?.moved ?? [] : []), ...(refitDiff.moved ?? [])]); return m.size ? { moved: [...m.entries()].sort(([a], [b]) => (a < b ? -1 : 1)) } : {}; })(),
             },
             rotated_at: nowISO, // announced once, the new-block window
           };
@@ -1219,6 +1237,7 @@ export function createApp(store, config = {}) {
             ...pm, ...meta,
             refit_index: refitIndex,
             ...record,
+            pending_stall_swaps: [], // announced (or moot) now
             // The refit's completion verdict, reused by every rebuild in its window — like the block boundary's (round 14 #3).
             spared_muscles: { block: pm.block_index ?? 0, muscles: spared },
           };
@@ -2296,7 +2315,8 @@ export function createApp(store, config = {}) {
       // NOT reset — an injury shouldn't cost the user their block progress (unlike
       // /api/plan/regenerate, where a training-field change means a different plan).
       // …through every rebuild's swap door (a plateaued lift stays demoted, a spared one stays).
-      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, sessions, nowISO) }));
+      const injStalls = swapStalls(u, sessions, nowISO);
+      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: injStalls }));
       // A HAND-BUILT plan isn't regenerated (the edits are the user's), but a lift the injury now
       // rules out is swapped out of it (W283 review) — the client's "I'll keep it out of your plan"
       // has to be true for both kinds of plan.
@@ -2305,7 +2325,7 @@ export function createApp(store, config = {}) {
         swapped = s?.swaps ?? []; kept = s?.kept ?? [];
         if (swapped.length) { u.program = s.program; u.plan_rationale = s.rationale; }
       }
-      if (!u.program?.custom) { u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {} }; }
+      if (!u.program?.custom) { const pend = pendingStallSwaps(u, program, injStalls); u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {}, ...(pend.length ? { pending_stall_swaps: pend } : {}) }; } // round 16 #0
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);

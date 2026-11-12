@@ -15,7 +15,7 @@
     "cf:dev": "npm run build-data && wrangler dev",
     "deploy": "npm run build-data && wrangler deploy",
     "sweep:swaps": "for s in 0 1 2 3 4; do SLOT=$s node scripts/sweep-swaps.mjs || exit 1; done",
-    "sweep:notes": "node scripts/sweep-notes.mjs"
+    "sweep:notes": "for s in 0 1 2 3; do SLOT=$s NSLOT=4 node scripts/sweep-notes.mjs || exit 1; done"
   },
   "dependencies": {
     "hono": "^4.6.14",

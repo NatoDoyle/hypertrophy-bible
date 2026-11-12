@@ -59,7 +59,9 @@ beginner is never treated as mid-block.
 boundary, refit, graduation or hand-back changed (`refit_diff`, `swapped_this_block`, `learned_out`, `main_before`), and
 `buildToday` names only what is still true of the live plan and the Plan tab. It never names a lift that has come back as
 gone. It offers Bring back only for a lift the Plan tab lists. It says "Your main lifts stay" only while they do. It shows
-no note over a hand-edited plan. Graduation uses its own note, never the new-block copy. `npm run sweep:notes` drives
+no note over a hand-edited plan. Graduation uses its own note, never the new-block copy. A lift that only moved days
+is named as having moved. A stalled lift that a mid-block rebuild (a Settings save, an injury report) swapped out is
+held in `pending_stall_swaps` and named at the next boundary or refit, so a coaching change is never silent. `npm run sweep:notes` drives
 every chain of up to three doors at both levels and checks these rules (exits 1 on any violation).
 
 Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a boundary (`recoverySignal`,
