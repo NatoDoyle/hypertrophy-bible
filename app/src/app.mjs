@@ -558,16 +558,12 @@ export function createApp(store, config = {}) {
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "handed_back_at"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "handed_back_at", "refit_diff"] // the notes filter these against the live plan when shown (round 13)
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
       // omits — a re-included lift must fall out of the claim (the same honesty rule
       // as the boundary stamp).
-      // …and refit_diff likewise keeps only what still describes the plan: outs it still omits, ins it still holds (rounds 11-12
-      // — a Bring back undoes one change, the rest stay named; never all-or-nothing).
-      const rd = trainingChanged ? null : u.plan_meta?.refit_diff;
-      const keptDiff = rd ? { out: (rd.out ?? []).filter((id) => !planHolds(program, id)), in: (rd.in ?? []).filter((id) => planHolds(program, id)) } : null;
       const keptSwapped = trainingChanged ? [] : (u.plan_meta?.swapped_this_block ?? [])
         .filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
       u.program = program; u.plan_rationale = rationale;
@@ -576,7 +572,6 @@ export function createApp(store, config = {}) {
         ...learnedMeta(u.plan_meta), // pace + a declined ceiling are the lifter's, not the block's: kept on every save (W319)
         ...keptStamps,
         ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
-        ...(keptDiff && (keptDiff.out.length || keptDiff.in.length) ? { refit_diff: keptDiff } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
@@ -1101,6 +1096,9 @@ export function createApp(store, config = {}) {
           // under the new block) — a step up you earned is a win to celebrate
           // (Goal 4), not a settings change to discover.
           graduated_to: fresh,
+          // A hand-back moments before (its note, and the lifts its learning took out) survives the promotion (round 13 #2);
+          // Today names only what the new plan still leaves out.
+          ...(u.plan_meta?.handed_back_at ? { handed_back_at: u.plan_meta.handed_back_at, ...(u.plan_meta?.learned_out?.length ? { learned_out: u.plan_meta.learned_out } : {}) } : {}),
           // A spent specialization block stays spent through the promotion (W301b review): this meta is rebuilt whole, and
           // dropping the flag let the next block-0 rebuild (a units save, an injury report) re-arm the block mid-block.
           ...(gradOpts.specSpent ? { spec_spent: true } : {}),
@@ -1183,14 +1181,15 @@ export function createApp(store, config = {}) {
           const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
           // WHAT changed, for the note (review round 8 #1): the lifts that left and came in — never a guess at why.
           // Per day, not per plan: a lift can leave one day and stay on another, and that is still a change on that day.
-          const outs = new Set(), ins = new Set();
+          // Stored as [day, lift] pairs; Today names only the pairs still true of the live plan (review round 13).
+          const outs = [], ins = [];
           for (const ns of program.sessions) {
             const os = (u.program?.sessions ?? []).find((x) => x.name === ns.name);
             const o = new Set((os?.exercises ?? []).map((e) => e.exercise)), n = new Set(ns.exercises.map((e) => e.exercise));
-            for (const id of o) if (!n.has(id)) outs.add(id);
-            for (const id of n) if (!o.has(id)) ins.add(id);
+            for (const id of o) if (!n.has(id)) outs.push([ns.name, id]);
+            for (const id of n) if (!o.has(id)) ins.push([ns.name, id]);
           }
-          const refitDiff = { out: [...outs].sort(), in: [...ins].sort() };
+          const refitDiff = { out: outs, in: ins };
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...u.plan_meta, ...meta,

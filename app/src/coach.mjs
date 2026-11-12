@@ -905,7 +905,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // A fresh mesocycle rotated the accessories — say so ONCE (until a session is
   // logged under the new block), so the changed exercise list never feels random.
   const rotatedAt = user.plan_meta?.rotated_at;
-  if (rotatedAt && !sessions.some((s) => s.date && s.date > rotatedAt)) {
+  // What a note names is decided HERE, against the live plan (review round 13): a stamp may outlive the change it recorded
+  // (a cosmetic save, a Bring back, an edit), so only what is still true is said — and nothing over a hand-edited plan,
+  // where nothing it names would be acted on and no Bring back is offered.
+  const holdsNow = (id) => (program?.sessions ?? []).some((s) => s.exercises.some((e) => e.exercise === id));
+  const dayHoldsNow = (day, id) => day == null ? holdsNow(id) : !!(program?.sessions ?? []).find((s) => s.name === day)?.exercises.some((e) => e.exercise === id);
+  if (rotatedAt && !program?.custom && !sessions.some((s) => s.date && s.date > rotatedAt)) {
     // If the adaptive tune moved a muscle's volume THIS block, say so — announce only
     // what changed this block (not the whole accumulated total, which would re-claim
     // "I added volume for X" every block long after the one-time bump).
@@ -935,12 +940,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // If a lift got CHANGED because it plateaued (not just rotated for variety),
     // name it — an exercise vanishing from your plan without explanation reads as
     // the app losing track, and this one is a deliberate coaching decision.
-    const swapped = (user.plan_meta?.swapped_this_block ?? []).map((id) => name(id));
+    const swapped = (user.plan_meta?.swapped_this_block ?? []).filter((id) => !holdsNow(id)).map((id) => name(id));
     const swapNote = swapped.length
       ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
       : "";
     // Lifts their OWN swaps moved out (W323): named, with the way back.
-    const learnedOut = (user.plan_meta?.learned_out ?? []).map((id) => name(id));
+    const learnedOut = (user.plan_meta?.learned_out ?? []).filter((id) => !holdsNow(id)).map((id) => name(id));
     const learnedNote = learnedOut.length
       ? ` You've swapped ${learnedOut.join(", ")} out for something else again and again lately, so I've given ${learnedOut.length === 1 ? "its" : "their"} slot to another lift that trains the same muscle — bring ${learnedOut.length === 1 ? "it" : "them"} back on the Plan tab any time.`
       : "";
@@ -949,8 +954,13 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // Name what changed (review round 8 #1): the swaps and learned swap-outs say why; any other lift change is named as it
     // is; only a refit that changed no lift may speak of pace or sizing.
     const diff = user.plan_meta?.refit_diff ?? { out: [], in: [] };
+    const pair = (x) => (Array.isArray(x) ? x : [null, x]); // [day, lift]; a bare id (older stamp) is judged plan-wide
+    const outsNow = [...new Set((diff.out ?? []).map(pair).filter(([d, id]) => !dayHoldsNow(d, id)).map(([, id]) => id))];
+    const insNow = [...new Set((diff.in ?? []).map(pair).filter(([d, id]) => dayHoldsNow(d, id)).map(([, id]) => id))];
+    const movedDays = new Set(outsNow.filter((id) => insNow.includes(id))); // left one day, joined another: not a change of lift
     const named = new Set([...(user.plan_meta?.swapped_this_block ?? []), ...(user.plan_meta?.learned_out ?? [])]);
-    const otherOut = (diff.out ?? []).filter((id) => !named.has(id)).map((id) => name(id)), otherIn = (diff.in ?? []).map((id) => name(id));
+    const otherOut = outsNow.filter((id) => !named.has(id) && !movedDays.has(id)).map((id) => name(id));
+    const otherIn = insNow.filter((id) => !movedDays.has(id)).map((id) => name(id));
     const diffNote = otherOut.length && otherIn.length ? ` ${otherOut.join(", ")} made way for ${otherIn.join(", ")}.`
       : otherOut.length ? ` ${otherOut.join(", ")} left your plan.` : !(swapNote + learnedNote) && otherIn.length ? ` ${otherIn.join(", ")} joined your plan.` : "";
     const refitWhat = (swapNote + learnedNote + diffNote) || (user.plan_meta?.pace ? " I've re-sized your sessions to the pace you actually train at." : " I've re-fitted your plan to how you've been training.");
@@ -963,7 +973,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // words, naming any lift the learning (not the edit, not a Settings change) took out.
   const handedBackAt = user.plan_meta?.handed_back_at;
   if (handedBackAt && !program?.custom && !sessions.some((s) => s.date && s.date > handedBackAt)) { // an edit since ends it (round 12 #1)
-    const lo = (user.plan_meta?.learned_out ?? []).map((id) => name(id));
+    const lo = (user.plan_meta?.learned_out ?? []).filter((id) => !holdsNow(id)).map((id) => name(id));
     const msg = `Back on the coach's plan — I rebuilt it from your answers.${lo.length ? ` You'd picked something else over ${lo.join(", ")} again and again, so I've given ${lo.length === 1 ? "its" : "their"} slot to another lift that trains the same muscle — bring ${lo.length === 1 ? "it" : "them"} back on the Plan tab any time.` : ""}`;
     announcement = announcement ? `${msg} ${announcement}` : msg;
   }

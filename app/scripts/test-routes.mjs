@@ -837,30 +837,54 @@ try {
     await json("POST", "/api/plan/regenerate", { user_id: hb2, profile: { available_equipment: rp.available_equipment.filter((q) => q !== "machine") } });
     ok("#rev11-b11 a lift the new equipment removed is never credited to the learning", !!MX && !((await store.getUser(hb2)).plan_meta.learned_out ?? []).includes(MX), JSON.stringify({ MX, lo: (await store.getUser(hb2)).plan_meta.learned_out }));
   }
-  // Round 10 #1: a cosmetic save inside the refit window keeps what the refit said it changed.
+  // Rounds 10-13: the refit note names only what is TRUE of the live plan, per day — decided when Today renders it, so no
+  // rebuild door has to keep the stored diff in sync (a cosmetic save, a Bring back, a lift that only moved days).
   {
     const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
       available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
     const kd = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
-    // (a diff that describes this plan: a lift it doesn't hold went out, one it holds came in)
-    const kdHeld = (await store.getUser(kd)).program.sessions[0].exercises[0].exercise;
-    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 1, rotated_at: new Date().toISOString(), refit_diff: { out: ["sissy-squat"], in: [kdHeld] } }; return u; });
-    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
-    ok("#rev10-b11 a cosmetic save keeps refit_diff with rotated_at", JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff) === JSON.stringify({ out: ["sissy-squat"], in: [kdHeld] }), JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff));
-    // Round 11 #2: …but not when the rebuild itself changed the lifts (a Bring back) — the diff no longer describes the plan.
-    await store.updateUser(kd, (u) => { u.program.sessions[0].exercises[0] = { ...u.program.sessions[0].exercises[0], exercise: "pendulum-squat" }; u.plan_meta = { ...u.plan_meta, refit_diff: { out: ["leg-press"], in: ["hack-squat"] } }; return u; });
-    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
-    // Round 12 #0: …filtered, not dropped: a change the rebuild undid leaves the diff, the rest stays named.
-    const kdu = await store.getUser(kd);
-    const holdsK = (id) => kdu.program.sessions.some((x) => x.exercises.some((e) => e.exercise === id));
-    ok("#rev12-b11 refit_diff keeps only what still describes the plan (outs still omitted, ins still held)",
-      (kdu.plan_meta.refit_diff?.out ?? []).every((id) => !holdsK(id)) && (kdu.plan_meta.refit_diff?.in ?? []).every((id) => holdsK(id)), JSON.stringify(kdu.plan_meta.refit_diff));
-    // A rebuild that DOES change lifts (one hand-swapped back) while the rest of the diff still holds keeps that rest.
-    await store.updateUser(kd, (u) => { const s0 = u.program.sessions[0]; const keepIn = s0.exercises[1].exercise;
-      s0.exercises[0] = { ...s0.exercises[0], exercise: "pendulum-squat" }; u.plan_meta = { ...u.plan_meta, refit_diff: { out: ["sissy-squat"], in: [keepIn] } }; return u; });
-    const kdIn = (await store.getUser(kd)).plan_meta.refit_diff.in[0];
-    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { session_length_min: 60 } });
-    ok("#rev12-b11 …and a rebuild that changes other lifts keeps the part that still holds", JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff) === JSON.stringify({ out: ["sissy-squat"], in: [kdIn] }), JSON.stringify((await store.getUser(kd)).plan_meta.refit_diff));
+    const kd0 = await store.getUser(kd);
+    const [d1, d2] = [kd0.program.sessions[0], kd0.program.sessions[1]];
+    const X = d1.exercises[0].exercise, M = d2.exercises[0].exercise; // X held on day 1; M held on day 2
+    const ann = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": kd } })).json()).session?.announcement ?? "";
+    const nm = (id) => kbExForTest.get(id)?.name ?? id;
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), // (0: no trained weeks yet — no live refit overwrites the fixture)
+      refit_diff: { out: [[d1.name, "sissy-squat"], [d1.name, M]], in: [[d1.name, X], [d2.name, M]] } }; return u; }); // M only moved days
+    const a1 = await ann();
+    ok("#rev13-b11 the refit note names a real change and never 'M made way for M' / 'M joined' for a lift that only moved days",
+      a1.includes(`Sissy Squat made way for ${nm(X)}`) && !a1.includes(`${nm(M)} made way`) && !a1.includes(`${nm(M)} joined`), a1);
+    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { units: "metric" } }); // a cosmetic save
+    ok("#rev13-b11 a cosmetic save leaves the note exactly as it was", (await ann()) === a1, await ann());
+    // A learned-out lift that is back in the plan (Brought back) is never named as swapped out.
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [X] }; return u; });
+    ok("#rev13-b11 a learned-out lift back in the plan is never named as swapped out", !(await ann()).includes(`You've swapped ${nm(X)} out`), await ann());
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [] }; return u; });
+    await store.updateUser(kd, (u) => { u.program.sessions[0].exercises[0] = { ...u.program.sessions[0].exercises[0], exercise: "pendulum-squat" }; return u; });
+    const a2 = await ann();
+    ok("#rev13-b11 a change no longer true of the plan (X left day 1 again) is no longer named", !a2.includes(nm(X)) && /left your plan/.test(a2), a2);
+    // The plan made the lifter's own (an edit) ends the note: nothing it names would be acted on, and no Bring back is offered.
+    const kdEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": kd } })).json();
+    kdEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: kd, program: kdEx.program });
+    ok("#rev13-b11 a hand-edited plan shows no refit/new-block note", !/Six more weeks|New block/.test(await ann()), await ann());
+  }
+
+  // Round 13 #2: graduating on the first Today after a hand-back keeps the hand-back note (and the lifts it names).
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 45,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const gb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const gbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": gb } })).json();
+    gbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: gb, program: gbEx.program });
+    for (let w = 0; w < GRADUATION.intermediate.weeks; w++) for (let k = 0; k < 2; k++)
+      await store.addSession(gb, { session_id: `gb-${w}-${k}`, date: dayAgo(GRADUATION.intermediate.weeks * 7 - w * 7 - k + 2), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40 + w, reps: 8 }] });
+    await json("POST", "/api/plan/regenerate", { user_id: gb }); // hand back
+    const gbT = await (await app.request("/api/today", { headers: { "X-HB-User": gb } })).json();
+    const gbU = await store.getUser(gb);
+    ok("#rev13-b11 graduating right after a hand-back keeps the hand-back note beside the graduation",
+      gbU.profile.training_status === "intermediate" && /Back on the coach's plan/.test(gbT.session?.announcement ?? "") && /🎓/.test(gbT.session?.announcement ?? ""),
+      JSON.stringify({ st: gbU.profile.training_status, ann: gbT.session?.announcement }));
   }
 
   // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
