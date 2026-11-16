@@ -1094,8 +1094,8 @@ try {
         await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
         const a = await annT(uid);
         const pm = (await store.getUser(uid)).plan_meta;
-        ok("#rev17-b11 a stalled lift an injury ruled out is never recorded or named as a stall swap",
-          had && !holdsT(mid.program, Y) && !(mid.plan_meta.pending_stall_swaps ?? []).includes(Y) && !(pm.swapped_this_block ?? []).includes(Y) && !a.includes("Chest Dip had gone flat"), JSON.stringify({ had, pend: mid.plan_meta.pending_stall_swaps, sw: pm.swapped_this_block, a }));
+        ok("#rev17-b11 a stalled lift an injury ruled out is never named as a stall swap (judged when owed, round 18 #1)",
+          had && !holdsT(mid.program, Y) && !(pm.swapped_this_block ?? []).includes(Y) && !a.includes("Chest Dip had gone flat"), JSON.stringify({ had, pend: mid.plan_meta.pending_stall_swaps, sw: pm.swapped_this_block, a }));
       }
       // #3: the injury rebuild drops a pending entry for a lift it put back (never carried by the spread).
       {
@@ -1118,6 +1118,40 @@ try {
         ok("#rev17-b11 a lift that gained a day is said to be on more days, never 'moved to a different day'",
           !!X && !a.includes(`${nmX} moved`) && a.includes(`${nmX} is now on ${days.length} days a week`), JSON.stringify({ X, days, a }));
       }
+    }
+    // ---- Round 18 ----
+    // #0: through a REAL refit (round 17's test wrote the stamp by hand, lesson 38): a lift that lost a day is said so.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const daysOfT = (p, id) => p.sessions.filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name);
+      const s0 = u0.program.sessions[0], s1 = u0.program.sessions[1];
+      const X = s0.exercises.map((e) => e.exercise).find((id) => !s1.exercises.some((e) => e.exercise === id));
+      await store.updateUser(uid, (u) => { u.program.sessions[1].exercises.push({ ...u.program.sessions[0].exercises.find((e) => e.exercise === X) }); u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60), refit_index: 0 }; return u; });
+      const pid = (await store.getUser(uid)).program.id;
+      for (let w = 0; w < 7; w++) for (const k of [0, 2, 4]) await store.addSession(uid, { session_id: `r18m-${w}-${k}`, user_id: uid, date: dayAgo(3 + 7 * w + k), program_ref: pid, sets: [{ exercise: X, set_type: "work", weight_kg: 40 + (7 - w) * 2.5, reps: 8 }] });
+      const a = await annT(uid);
+      const u2 = await store.getUser(uid);
+      const entry = (u2.plan_meta.refit_diff?.moved ?? []).find(([id]) => id === X);
+      const n = daysOfT(u2.program, X).length;
+      ok("#rev18-b11 a real refit records [lift, days now, days before] and says the lift is now on N days a week",
+        u2.plan_meta.refit_index === 1 && entry?.length === 3 && a.includes(`${kbExForTest.get(X)?.name ?? X} is now on ${n} ${n === 1 ? "day" : "days"} a week`), JSON.stringify({ X, entry, n, a }));
+    }
+    // #1: a pending stall swap is not lost for good when the lifter's block is later lifted (Bring back).
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const Y = liftsOf(u0.program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r18p-${w}-${k}`, date: dayAgo(8 + 7 * w + k), program_ref: u0.program.id, sets: Array.from({ length: 6 }, () => ({ exercise: Y, set_type: "work", weight_kg: 40, reps: 8 })) });
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: Y, scope: "always" });
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "metric" } });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: Y, scope: "undo" });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const u1 = await store.getUser(uid);
+      ok("#rev18-b11 a stall swap whose blocker the lifter later lifted is still named at the boundary",
+        !holdsT(u1.program, Y) && (u1.plan_meta.swapped_this_block ?? []).includes(Y) && a.includes(`Your ${kbExForTest.get(Y)?.name ?? Y} had gone flat`), JSON.stringify({ Y, held: holdsT(u1.program, Y), sw: u1.plan_meta.swapped_this_block, a }));
     }
     // #4: a second refit that changes nothing leaves the open note's record alone.
     {

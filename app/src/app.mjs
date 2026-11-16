@@ -527,9 +527,11 @@ export function createApp(store, config = {}) {
   // The lifts a rebuild dropped BECAUSE of a learned swap dislike (W323) — held in the old plan, gone from the new one,
   // learned against, and not a stalled lift (the stall note names those). What the new-block note names, once.
   // Stalls a mid-block rebuild just swapped out (held before, gone now), added to those still owed a note (round 16 #0).
+  // Recorded with the plan filter ONLY: whether the lifter's own removal or the profile explains a lift is judged when the
+  // note is owed (stillOwedStalls), never by dropping the record — a Bring back can make it the coach's again (round 18 #1).
   const pendingStallSwaps = (u, program, stalled) => {
     const now = stalled.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
-    return stillOwedStalls(u, [...(u.plan_meta?.pending_stall_swaps ?? []), ...now], program);
+    return [...new Set([...(u.plan_meta?.pending_stall_swaps ?? []), ...now])].filter((sid) => !planHolds(program, sid)).sort();
   };
   // A pending stall swap is still the COACH's to announce only while (round 17): the plan still leaves it out, the lifter
   // has not taken it out themselves (No machine / Just not for me — round 15 #2's line), and the profile still allows it
@@ -1237,7 +1239,14 @@ export function createApp(store, config = {}) {
             refit_diff: {
               out: uniq([...prevDiff.out, ...refitDiff.out.filter((id) => !prevDiff.in.includes(id))]),
               in: uniq([...prevDiff.in.filter((id) => !refitDiff.out.includes(id)), ...refitDiff.in.filter((id) => !prevDiff.out.includes(id))]),
-              ...(() => { const m = new Map([...(windowOpen ? pm.refit_diff?.moved ?? [] : []), ...(refitDiff.moved ?? [])]); return m.size ? { moved: [...m.entries()].sort(([a], [b]) => (a < b ? -1 : 1)) } : {}; })(),
+              // Keyed by lift, the value is [days now, days before] (round 18 #0: a plain Map of the triples kept only two
+              // elements); inside an open window the EARLIEST 'before' stands, so the note compares against the plan they had.
+              ...(() => {
+                const m = new Map((windowOpen ? pm.refit_diff?.moved ?? [] : []).map(([id, now, was]) => [id, [now, was]]));
+                for (const [id, now, was] of refitDiff.moved ?? []) m.set(id, [now, m.has(id) && Array.isArray(m.get(id)[1]) ? m.get(id)[1] : was]);
+                const moved = [...m].map(([id, [now, was]]) => (Array.isArray(was) ? [id, now, was] : [id, now])).sort(([a], [b]) => (a < b ? -1 : 1));
+                return moved.length ? { moved } : {};
+              })(),
             },
             rotated_at: nowISO, // announced once, the new-block window
           };

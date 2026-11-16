@@ -134,7 +134,7 @@ async function runChain(level, chain) {
   // named at the next boundary/refit, so the stall note may name it though the plan just before the crossing lacked it.
   // Lifter-driven removals (No machine, Just not for me, an edit) never count, so round 15 #2 keeps its force.
   const COACH_DOORS = new Set(["cosmetic", "training", "injury", "bring", "handback", "merge", "mergek", "days", "capyes", "capno", "nmundo", "dlundo"]);
-  let coachRemoved = new Set(), stampCoach = new Set(); // stampCoach: frozen when the open note's stamp was written
+  let coachRemoved = new Set(), stampCoach = new Set(), coachOwedNow = new Set(); // stampCoach: frozen when the open note's stamp was written
   let prev = await store.getUser(uid);
   // initial Today (no doors) — a fresh onboard
   let prevTags = parse((await getToday())?.session?.announcement ?? "").tags;
@@ -234,9 +234,10 @@ async function runChain(level, chain) {
     {
       const theirs = new Set([...(u.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(u.profile?.training_prefs?.avoid ?? [])]);
       const doable = new Set(userExercises({ ...(u.profile ?? {}), unavailable_exercises: [] }, u.custom_exercises || []).map((e) => e.id));
-      // Only the record still accumulating: an open note's frozen record was true when stamped and stays so (a later No
-      // machine on a lift the boundary already swapped does not un-say it).
-      for (const id of [...coachRemoved]) if (holds(u.program, id) || theirs.has(id) || !doable.has(id)) coachRemoved.delete(id);
+      // The accumulating record forgets a lift only once it is back in the plan; whether the lifter's own removal or the
+      // profile explains it is judged when the note is stamped (round 18 #1: pruning it for good hid a later Bring back).
+      for (const id of [...coachRemoved]) if (holds(u.program, id)) coachRemoved.delete(id);
+      coachOwedNow = new Set([...coachRemoved].filter((id) => !theirs.has(id) && doable.has(id)));
     }
     const ann = today?.session?.announcement ?? "";
     const p = parse(ann);
@@ -248,7 +249,7 @@ async function runChain(level, chain) {
     trace.push(step);
     const flag = (cls, detail) => bad.push({ cls, at: i, detail });
     for (const [why, id] of p.gone) { if (id.startsWith("?")) flag(`PARSE-gone-${why}`, id); else if (holds(live, id)) flag(`N1-${why}`, `${nm(id)} named gone but in live plan`);
-      else if (why !== "handback" && preChange && !holds(preChange, id) && !(why === "stall" && (coachRemoved.has(id) || stampCoach.has(id)))) flag(`N1b-notbefore-${why}`, `${nm(id)} named as having left, but the pre-change plan never held it`); }
+      else if (why !== "handback" && preChange && !holds(preChange, id) && !(why === "stall" && (coachOwedNow.has(id) || stampCoach.has(id)))) flag(`N1b-notbefore-${why}`, `${nm(id)} named as having left, but the pre-change plan never held it`); }
     for (const [why, id] of p.arriving) {
       if (id.startsWith("?")) { flag(`PARSE-arr-${why}`, id); continue; }
       if (!holds(live, id)) flag(`N2-notlive-${why}`, `${nm(id)} named arriving but not in live plan`);
@@ -273,7 +274,7 @@ async function runChain(level, chain) {
     const gradChanged = u.plan_meta?.graduated_to !== before.plan_meta?.graduated_to;
     for (const t of ["refit", "block", "handback", "grad"]) if (p.tags.includes(t) && !prevTags.includes(t) && !stampChanged && !gradChanged) flag(`N7-reappear-${t}`, ann.slice(0, 120));
     prevTags = p.tags;
-    if (stampChanged) { stampCoach = coachRemoved; coachRemoved = new Set(); }
+    if (stampChanged) { stampCoach = coachOwedNow; coachRemoved = new Set(); coachOwedNow = new Set(); }
   }
   if (process.env.DUMP) { console.log(`\n### ${level} ${chain.join(">")}`); for (const t of trace) console.log(`  [${t.door}] ${t.r} | ${JSON.stringify(t.stamps)}\n    ANN: ${t.ann}`); for (const b of bad) console.log("  !! " + b.cls + " " + b.detail); }
   if (bad.length) {
