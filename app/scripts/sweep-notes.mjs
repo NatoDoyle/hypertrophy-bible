@@ -14,7 +14,7 @@ const R = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const { createFileStore } = await import(R + "/app/src/store.mjs");
 const { sha256hex } = await import(R + "/app/src/auth.mjs");
 const { createApp } = await import(R + "/app/src/app.mjs");
-const { generateUserPlan, planOptsFor, injuryRegionFor } = await import(R + "/app/src/planner.mjs");
+const { generateUserPlan, planOptsFor, injuryRegionFor, userExercises } = await import(R + "/app/src/planner.mjs");
 const { exercises: kbEx } = await import(R + "/app/src/kb-data.mjs");
 const kb = await import(R + "/app/src/kb-data.mjs");
 const exById = new Map(kbEx.map((e) => [e.id, e]));
@@ -229,6 +229,15 @@ async function runChain(level, chain) {
     const stampChanged = (u.plan_meta?.rotated_at !== before.plan_meta?.rotated_at) || (u.plan_meta?.handed_back_at !== before.plan_meta?.handed_back_at);
     if (stampChanged) preChange = before.program;
     if (COACH_DOORS.has(door)) for (const id of heldBefore) if (!holds(u.program, id)) coachRemoved.add(id);
+    // …and it stops being the coach's once it is back in the plan, once the lifter takes it out themselves, or once the
+    // profile rules it out (round 17: the exemption had hidden both).
+    {
+      const theirs = new Set([...(u.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(u.profile?.training_prefs?.avoid ?? [])]);
+      const doable = new Set(userExercises({ ...(u.profile ?? {}), unavailable_exercises: [] }, u.custom_exercises || []).map((e) => e.id));
+      // Only the record still accumulating: an open note's frozen record was true when stamped and stays so (a later No
+      // machine on a lift the boundary already swapped does not un-say it).
+      for (const id of [...coachRemoved]) if (holds(u.program, id) || theirs.has(id) || !doable.has(id)) coachRemoved.delete(id);
+    }
     const ann = today?.session?.announcement ?? "";
     const p = parse(ann);
     const live = u.program;
@@ -258,7 +267,8 @@ async function runChain(level, chain) {
       const lost = mainBefore.filter((id) => !holds(live, id));
       if (lost.length) flag(u.plan_meta?.graduated_to ? "N5-grad-mainlifts" : "N5-block-mainlifts", `'Your main lifts stay' but ${lost.map(nm).join(", ")} left`);
     }
-    if (door === "log" && r === "log 200" && (p.tags.some((t) => ["refit", "block", "handback", "grad"].includes(t)))) flag("N6", ann.slice(0, 100));
+    // (a note stamped by THIS step — e.g. the logged workout itself crossed graduation — is new, not one the log should end)
+    if (door === "log" && r === "log 200" && !stampChanged && (p.tags.some((t) => ["refit", "block", "handback", "grad"].includes(t)))) flag("N6", ann.slice(0, 100));
     // N7: a once-only note that was NOT showing comes back without a new stamp recording a new change
     const gradChanged = u.plan_meta?.graduated_to !== before.plan_meta?.graduated_to;
     for (const t of ["refit", "block", "handback", "grad"]) if (p.tags.includes(t) && !prevTags.includes(t) && !stampChanged && !gradChanged) flag(`N7-reappear-${t}`, ann.slice(0, 120));

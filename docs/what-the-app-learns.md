@@ -61,7 +61,9 @@ boundary, refit, graduation or hand-back changed (`refit_diff`, `swapped_this_bl
 gone. It offers Bring back only for a lift the Plan tab lists. It says "Your main lifts stay" only while they do. It shows
 no note over a hand-edited plan. Graduation uses its own note, never the new-block copy. A lift that only moved days
 is named as having moved. A stalled lift that a mid-block rebuild (a Settings save, an injury report) swapped out is
-held in `pending_stall_swaps` and named at the next boundary or refit, so a coaching change is never silent. `npm run sweep:notes` drives
+held in `pending_stall_swaps` and named at the next boundary or refit, so a coaching change is never silent. It stays the
+coach's to name only while the plan still leaves it out, the lifter hasn't taken it out themselves (No machine, Just not
+for me) and their kit and injuries still allow it. A lift that gained or lost a day is named as being on N days a week. `npm run sweep:notes` drives
 every chain of up to three doors at both levels and checks these rules (exits 1 on any violation).
 
 Recovery check-ins and the bodyweight trend can only **hold back** a +2 at a boundary (`recoverySignal`,

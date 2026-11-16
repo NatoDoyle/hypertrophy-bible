@@ -966,8 +966,12 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const otherIn = [...new Set((diff.in ?? []).map(idOf))].filter((id) => holdsNow(id)).map((id) => name(id));
     // A lift that only moved days, named while it still sits on exactly those days (round 16 sweep).
     const daysNow = (id) => (program?.sessions ?? []).filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name).sort();
-    const movedNames = (diff.moved ?? []).filter(([id, days]) => Array.isArray(days) && JSON.stringify(daysNow(id)) === JSON.stringify([...days].sort()) && !named.has(id)).map(([id]) => name(id));
-    const movedNote = movedNames.length ? ` ${movedNames.join(", ")} ${movedNames.length === 1 ? "moved to a different day" : "moved to different days"}.` : ""; // what, never a guessed why (round 8)
+    // Said as what happened (round 17 #2): a lift that GAINED or LOST a day changed how often it's trained, not where.
+    const movedLive = (diff.moved ?? []).filter(([id, days]) => Array.isArray(days) && JSON.stringify(daysNow(id)) === JSON.stringify([...days].sort()) && !named.has(id));
+    const perWeek = (n) => `${n} ${n === 1 ? "day" : "days"} a week`;
+    const movedOnly = movedLive.filter(([, now, was]) => !Array.isArray(was) || now.length === was.length).map(([id]) => name(id));
+    const reFreq = movedLive.filter(([, now, was]) => Array.isArray(was) && now.length !== was.length).map(([id, now]) => ` ${name(id)} is now on ${perWeek(now.length)}.`).join("");
+    const movedNote = (movedOnly.length ? ` ${movedOnly.join(", ")} ${movedOnly.length === 1 ? "moved to a different day" : "moved to different days"}.` : "") + reFreq; // what, never a guessed why (round 8)
     const diffNote = otherOut.length && otherIn.length ? ` ${otherOut.join(", ")} made way for ${otherIn.join(", ")}.`
       : otherOut.length ? ` ${otherOut.join(", ")} left your plan.` : !(swapNote + learnedNote) && otherIn.length ? ` ${otherIn.join(", ")} joined your plan.` : "";
     // "Your main lifts stay" only while every main lift the plan held going into the block still is (round 14 harness N5);

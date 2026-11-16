@@ -529,7 +529,16 @@ export function createApp(store, config = {}) {
   // Stalls a mid-block rebuild just swapped out (held before, gone now), added to those still owed a note (round 16 #0).
   const pendingStallSwaps = (u, program, stalled) => {
     const now = stalled.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
-    return [...new Set([...(u.plan_meta?.pending_stall_swaps ?? []), ...now])].filter((sid) => !planHolds(program, sid)).sort();
+    return stillOwedStalls(u, [...(u.plan_meta?.pending_stall_swaps ?? []), ...now], program);
+  };
+  // A pending stall swap is still the COACH's to announce only while (round 17): the plan still leaves it out, the lifter
+  // has not taken it out themselves (No machine / Just not for me — round 15 #2's line), and the profile still allows it
+  // (an injury or kit change that rules it out is that change's doing, not the stall's). Judged when the note is owed,
+  // so no in-place door has to prune it.
+  const stillOwedStalls = (u, ids, program = u.program) => {
+    const theirs = new Set([...(u.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(u.profile?.training_prefs?.avoid ?? [])]);
+    const doable = new Set(userExercises({ ...(u.profile ?? {}), unavailable_exercises: [] }, u.custom_exercises || []).map((e) => e.id));
+    return [...new Set(ids)].filter((sid) => !planHolds(program, sid) && !theirs.has(sid) && doable.has(sid)).sort();
   };
   const learnedOutOf = (u, oldProgram, newProgram, stalled = []) => {
     const opts = planOptsFor(u), had = (p, id) => (p?.sessions ?? []).some((s) => s.exercises.some((e) => e.exercise === id));
@@ -1155,7 +1164,7 @@ export function createApp(store, config = {}) {
           // never the whole stalled list (lesson 60: copy is a promise).
           // …and only lifts the plan HELD going in (round 15 #2): a flat lift already out ("No machine", a today-swap) was
           // never swapped by this boundary.
-          const pend = new Set(u.plan_meta?.pending_stall_swaps ?? []); // …or the coach's own in-block stall swap (round 16 #0)
+          const pend = new Set(stillOwedStalls(u, u.plan_meta?.pending_stall_swaps ?? [])); // …or the coach's own in-block stall swap (rounds 16-17)
           const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pend.has(sid)) && !planHolds(program, sid));
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           // The main lifts going in, so the note claims "your main lifts stay" only while it is true (round 14 harness N5).
@@ -1199,7 +1208,7 @@ export function createApp(store, config = {}) {
           const spared = sparedMuscles(u, sessions, nowISO);
           const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, spared);
           const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises }));
-          const pendStalls = new Set(u.plan_meta?.pending_stall_swaps ?? []); // …or swapped by an in-window rebuild (round 16 #0)
+          const pendStalls = new Set(stillOwedStalls(u, u.plan_meta?.pending_stall_swaps ?? [])); // …or swapped by an in-window rebuild (rounds 16-17)
           const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pendStalls.has(sid)) && !planHolds(program, sid)); // held going in (round 15 #2)
           const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
           const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
@@ -1211,7 +1220,7 @@ export function createApp(store, config = {}) {
           const before = idsOf(u.program), after = idsOf(program);
           // …plus the lifts that stayed but changed DAYS (round 16 sweep): never a silent reshuffle — [lift, its days now].
           const daysOf = (p, id) => (p?.sessions ?? []).filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name).sort();
-          const moved = [...after].filter((id) => before.has(id) && JSON.stringify(daysOf(u.program, id)) !== JSON.stringify(daysOf(program, id))).sort().map((id) => [id, daysOf(program, id)]);
+          const moved = [...after].filter((id) => before.has(id) && JSON.stringify(daysOf(u.program, id)) !== JSON.stringify(daysOf(program, id))).sort().map((id) => [id, daysOf(program, id), daysOf(u.program, id)]);
           const refitDiff = { out: [...before].filter((id) => !after.has(id)).sort(), in: [...after].filter((id) => !before.has(id)).sort(), ...(moved.length ? { moved } : {}) };
           // A refit that changed nothing leaves an OPEN note's record alone; one that did, inside an open window, adds to
           // it (round 15 #4 — the record is what the note names, and Today judges it against the live plan).
@@ -2325,7 +2334,7 @@ export function createApp(store, config = {}) {
         swapped = s?.swaps ?? []; kept = s?.kept ?? [];
         if (swapped.length) { u.program = s.program; u.plan_rationale = s.rationale; }
       }
-      if (!u.program?.custom) { const pend = pendingStallSwaps(u, program, injStalls); u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {}, ...(pend.length ? { pending_stall_swaps: pend } : {}) }; } // round 16 #0
+      if (!u.program?.custom) { const pend = pendingStallSwaps(u, program, injStalls); u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {}, pending_stall_swaps: pend }; } // always written: the spread must not carry a stale list (round 17 #3)
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
