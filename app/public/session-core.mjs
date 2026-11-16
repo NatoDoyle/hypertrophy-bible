@@ -1024,8 +1024,8 @@ export function adjustRest(rest, delta, row) {
 // FIXING A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). A
 // set is corrected IN PLACE — numbers only, never the count, order, lift or set type —
 // so everything the player derives from the log (progress, the cursor, station rounds)
-// provably cannot move. Live delete/undo is refused on purpose: removing a set breaks
-// the forward-only cursor and unbalances a superset's rounds.
+// provably cannot move. (W333: a set can now be MOVED to another lift or REMOVED, under guards — moveLoggedSet /
+// removeLoggedSet below — never inside a linked superset pair, and always re-deriving the cursor from banked sets.)
 //
 // The chips for one lift carry each banked set's ABSOLUTE position in sess.logged: a
 // superset round interleaves two lifts (and warm-ups interleave too), so a position
@@ -1068,6 +1068,84 @@ export function editLoggedSet(logged, idx, patch, { exercise, completed_at, base
     return next;
   });
 }
+// WRONG LIFT (W333 — owner: "I accidentally logged a set on the wrong exercise and now I can't change the exercise").
+// W274 kept live fixes to numbers because a delete or a relabel could break the forward-only cursor and unbalance a
+// superset's rounds; both are guarded HERE instead of refused outright. A set can be MOVED to another lift in today's
+// workout, or REMOVED — never inside a linked superset pair (Unlink first: a round banks both legs, so one leg's set
+// moved away would make the next round bank a phantom on the other), never onto a lift already at its target, never
+// on a finished workout, and only while the entry is still the one the editor opened (same lift, same completed_at).
+// The cursor is re-derived from banked sets, never trusted: if the lift at the cursor is now done, it moves to the
+// next lift still owing work (then from the start — a lift BEHIND the cursor may owe again). What was keyed to the old
+// log retires: a skip's undo, a pending pick offer, pending estimates for both lifts; a PR latch only ever decays.
+// Each returns { ok, reason, sess }, the SAME sess on a refusal. Pure.
+export const nextOwedIndex = (logged, ex, from) => { const k = nextUnfinishedIndex(logged, ex, from); return k >= 0 ? k : nextUnfinishedIndex(logged, ex, -1); };
+const pairedIn = (sess, k) => { const e = sess.ex?.[k]; return k >= 0 && !!e?.superset_with && sess.ex.some((x) => x.exercise === e.superset_with); };
+function guardEntry(sess, idx, { exercise, completed_at } = {}) {
+  if (!sess?.ex?.length || !Array.isArray(sess.logged)) return "gone";
+  if (sess.complete) return "complete";
+  const cur = sess.logged[idx];
+  if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return "gone";
+  if (pairedIn(sess, sess.ex.findIndex((x) => x.exercise === exercise))) return "station";
+  return null;
+}
+function afterLogChange(sess, logged, ids, extra = {}) {
+  const out = { ...sess, ...extra, logged };
+  delete out.lastSkip; delete out.offerPick;
+  if (out.estPending) { out.estPending = { ...out.estPending }; for (const id of ids) delete out.estPending[id]; }
+  if (out.prCelebrated) {
+    out.prCelebrated = { ...out.prCelebrated };
+    for (const id of ids) { const row = out.ex.find((x) => x.exercise === id); if (!nextPrLatch(out.prCelebrated[id], logged, id, row?.pr_watch)) delete out.prCelebrated[id]; }
+  }
+  const at = out.ex[out.i];
+  if (at && loggedWorkSets(logged, at.exercise) >= at.sets) {
+    const nx = nextOwedIndex(logged, out.ex, out.i);
+    if (nx >= 0) out.i = nx;
+  }
+  out.set = out.ex[out.i] ? loggedWorkSets(logged, out.ex[out.i].exercise) : 0;
+  return out;
+}
+export function moveLoggedSet(sess, idx, toExercise, ident = {}) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const bad = guardEntry(sess, idx, ident);
+  if (bad) return refuse(bad);
+  const entry = sess.logged[idx];
+  if (toExercise === entry.exercise) return refuse("same");
+  const toK = sess.ex.findIndex((x) => x.exercise === toExercise);
+  if (toK < 0) return refuse("not-in-workout");
+  if (pairedIn(sess, toK)) return refuse("station");
+  const work = (entry.set_type ?? "work") === "work";
+  if (work && loggedWorkSets(sess.logged, toExercise) >= sess.ex[toK].sets) return refuse("target-done");
+  const moved = { ...entry, exercise: toExercise };
+  // The planned-easy tag follows the lift it now belongs to (a deload day, or a tired-eased slot).
+  if (sess.deload || sess.ex[toK].eased) moved.deload = true; else delete moved.deload;
+  const logged = sess.logged.map((l, k) => (k === idx ? moved : l));
+  return { ok: true, reason: null, sess: afterLogChange(sess, logged, [entry.exercise, toExercise]) };
+}
+export function removeLoggedSet(sess, idx, ident = {}) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const bad = guardEntry(sess, idx, ident);
+  if (bad) return refuse(bad);
+  const entry = sess.logged[idx];
+  const logged = sess.logged.filter((_, k) => k !== idx);
+  return { ok: true, reason: null, sess: afterLogChange(sess, logged, [entry.exercise], { lastRemoved: { entry, idx } }) };
+}
+// The one Undo a removal offers (W333): the set goes back where it was — while its lift is still in the workout, not
+// paired, and still has room for it. Retired by anything else that changes the log (the next bank clears it). Pure.
+export function undoRemoveSet(sess) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const r = sess?.lastRemoved;
+  if (!r?.entry || sess.complete) return refuse("nothing");
+  const k = sess.ex.findIndex((x) => x.exercise === r.entry.exercise);
+  if (k < 0) return refuse("not-in-workout");
+  if (pairedIn(sess, k)) return refuse("station");
+  if ((r.entry.set_type ?? "work") === "work" && loggedWorkSets(sess.logged, r.entry.exercise) >= sess.ex[k].sets) return refuse("target-done");
+  const at = Math.max(0, Math.min(sess.logged.length, r.idx));
+  const logged = [...sess.logged.slice(0, at), r.entry, ...sess.logged.slice(at)];
+  const out = afterLogChange(sess, logged, [r.entry.exercise]);
+  delete out.lastRemoved;
+  return { ok: true, reason: null, sess: out };
+}
+
 // The moved lift's cue (W306): today's weight was set for its usual place — and the next-set hint corrects after set 1,
 // said only where that hint can fire (Burst 9 review copy#3): never a load-less bodyweight lift, a tired-eased one or a deload.
 export function movedCue(row, { deload = false } = {}) {

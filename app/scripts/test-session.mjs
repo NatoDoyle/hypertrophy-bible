@@ -1435,6 +1435,97 @@ check("#skip property: random skips between banks — never a set banked past to
   }
 });
 
+// --- W333 (owner: "I accidentally logged a set on the wrong exercise and now I can't change the exercise") -------------
+{
+  const { moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } = playerCore;
+  const at = (n) => `2026-11-16T10:0${n}:00.000Z`;
+  const B = (exercise, n, k0 = 0) => Array.from({ length: n }, (_, k) => ({ exercise, set_type: "work", weight_kg: 50, reps: 10, completed_at: at(k0 + k) }));
+  const id = (s, idx) => ({ exercise: s.logged[idx].exercise, completed_at: s.logged[idx].completed_at });
+  check("#move-set the owner's case: a set banked on A that was really B moves to B — A is back at set 1, and can be swapped", () => {
+    const s0 = S([row("a", 3), row("b", 3)], B("a", 1), 0);
+    const r = moveLoggedSet(s0, 0, "b", id(s0, 0));
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual([loggedWorkSets(r.sess.logged, "a"), loggedWorkSets(r.sess.logged, "b"), r.sess.i, r.sess.set], [0, 1, 0, 0]);
+    assert.strictEqual(r.sess.logged[0].completed_at, at(0), "the set keeps its numbers and its time");
+    assert.deepStrictEqual(loggedWorkSets(s0.logged, "a"), 1, "the input is never mutated");
+    const sw = replaceSlot(json(r.sess), 0, { exercise: "x", name: "X", sets: 3 }, { expect: "a" });
+    assert.strictEqual(sw.ok, true, "with nothing banked on A, the change door's swap works again");
+  });
+  check("#move-set refusals hand back the SAME session: a stale editor, the same lift, a lift not in the workout, a full target, a linked pair, a finished workout", () => {
+    const s0 = S([row("a", 3), row("b", 2), row("c", 2, { superset_with: "d" }), row("d", 2, { superset_with: "c" })], [...B("a", 1), ...B("b", 2, 1)], 0);
+    const cases = [
+      [moveLoggedSet(s0, 0, "b", { exercise: "a", completed_at: at(9) }), "gone"],
+      [moveLoggedSet(s0, 0, "a", id(s0, 0)), "same"],
+      [moveLoggedSet(s0, 0, "zzz", id(s0, 0)), "not-in-workout"],
+      [moveLoggedSet(s0, 0, "b", id(s0, 0)), "target-done"],
+      [moveLoggedSet(s0, 0, "c", id(s0, 0)), "station"],
+      [moveLoggedSet({ ...s0, complete: true }, 0, "b", id(s0, 0)), "complete"],
+    ];
+    for (const [r, why] of cases) { assert.strictEqual(r.ok, false, why); assert.strictEqual(r.reason, why); }
+    assert.strictEqual(cases[0][0].sess, s0);
+    const paired = S([row("c", 2, { superset_with: "d" }), row("d", 2, { superset_with: "c" }), row("e", 2)], [...B("c", 1), ...B("d", 1, 1)], 0);
+    assert.strictEqual(moveLoggedSet(paired, 0, "e", id(paired, 0)).reason, "station", "a leg of a linked pair never moves (rounds stay balanced) — Unlink first");
+    assert.strictEqual(removeLoggedSet(paired, 0, id(paired, 0)).reason, "station");
+  });
+  check("#move-set the planned-easy tag follows the lift it now belongs to", () => {
+    const s0 = S([row("a", 3), row("b", 3, { eased: true })], [{ ...B("a", 1)[0] }], 0);
+    assert.strictEqual(moveLoggedSet(s0, 0, "b", id(s0, 0)).sess.logged[0].deload, true, "onto a tired-eased slot: easy");
+    const s1 = S([row("a", 3, { eased: true }), row("b", 3)], [{ ...B("a", 1)[0], deload: true }], 0);
+    assert.strictEqual("deload" in moveLoggedSet(s1, 0, "b", id(s1, 0)).sess.logged[0], false, "off one, onto a regular lift: not");
+  });
+  check("#move-set a move that completes the cursor's lift moves the cursor on — never a phantom set past the target", () => {
+    const s0 = S([row("a", 2), row("b", 2), row("c", 2)], [...B("a", 2), ...B("b", 1, 2), ...B("c", 1, 3)], 1);
+    const r = moveLoggedSet(s0, 3, "b", id(s0, 3)); // c's set was really b's second
+    assert.deepStrictEqual([r.sess.i, r.sess.set, loggedWorkSets(r.sess.logged, "b"), loggedWorkSets(r.sess.logged, "c")], [2, 0, 2, 0]);
+  });
+  check("#move-set what was keyed to the old log retires: a skip's undo, a pick offer, pending estimates; a PR latch only decays", () => {
+    const s0 = S([row("a", 3, { pr_watch: { best_e1rm: 1, best_weight_at_reps: {} } }), row("b", 3)], B("a", 1), 0,
+      { lastSkip: { ids: ["a"] }, offerPick: { kind: "skip", name: "A" }, estPending: { a: { setNo: 1 }, b: { setNo: 0 }, c: { setNo: 2 } }, prCelebrated: { a: true } });
+    const r = moveLoggedSet(s0, 0, "b", id(s0, 0)).sess;
+    assert.deepStrictEqual(["lastSkip" in r, "offerPick" in r, Object.keys(r.estPending), r.prCelebrated.a], [false, false, ["c"], undefined]);
+    assert.strictEqual(undoSkip(r).ok, false);
+  });
+  check("#remove-set removes exactly that set, re-derives the cursor, and offers ONE undo that puts it back where it was", () => {
+    const s0 = S([row("a", 3), row("b", 3)], [...B("a", 2), ...B("b", 1, 2)], 1);
+    const r = removeLoggedSet(s0, 1, id(s0, 1));
+    assert.deepStrictEqual([r.ok, loggedWorkSets(r.sess.logged, "a"), r.sess.i, r.sess.set], [true, 1, 1, 1]);
+    const u = undoRemoveSet(json(r.sess));
+    assert.deepStrictEqual([u.ok, u.sess.logged.map((l) => l.completed_at), "lastRemoved" in u.sess], [true, s0.logged.map((l) => l.completed_at), false]);
+    const full = { ...r.sess, logged: [...r.sess.logged, ...B("a", 2, 7)] }; // a refilled since
+    assert.strictEqual(undoRemoveSet(full).reason, "target-done", "never past the target");
+  });
+  check("#remove-set a lift BEHIND the cursor that owes again is picked up before the workout completes (nextOwedIndex)", () => {
+    const s0 = S([row("a", 2), row("b", 2)], [...B("a", 2), ...B("b", 1, 2)], 1);
+    const r = removeLoggedSet(s0, 0, id(s0, 0)).sess; // a now owes 1
+    const banked1 = { ...r, logged: [...r.logged, ...B("b", 1, 5)] }; // b finishes
+    assert.strictEqual(nextOwedIndex(banked1.logged, banked1.ex, 1), 0, "forward finds nothing; from the start finds a");
+    assert.strictEqual(nextUnfinishedIndex(banked1.logged, banked1.ex, 1), -1, "the forward-only scan alone would have dropped it");
+  });
+  check("#move-set property: random banks, moves, removes and undos, each through a crash — every lift ends exactly at its target, never past it", () => {
+    let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let run = 0; run < 300; run++) {
+      let s = S([row("a", 3), row("b", 2), row("c", 3)], [], 0), t = 0;
+      for (let steps = 0; steps < 80 && !s.complete; steps++) {
+        const roll = rnd();
+        if (roll < 0.15 && s.logged.length) { const k = Math.floor(rnd() * s.logged.length); const to = ["a", "b", "c"][Math.floor(rnd() * 3)]; s = moveLoggedSet(s, k, to, id(s, k)).sess; }
+        else if (roll < 0.25 && s.logged.length) { const k = Math.floor(rnd() * s.logged.length); s = removeLoggedSet(s, k, id(s, k)).sess; }
+        else if (roll < 0.3) s = undoRemoveSet(s).sess;
+        else {
+          const e = s.ex[s.i];
+          s = { ...s, logged: [...s.logged, { exercise: e.exercise, set_type: "work", weight_kg: 50, reps: 10, completed_at: `t${t++}` }] };
+          delete s.lastRemoved;
+          if (loggedWorkSets(s.logged, e.exercise) >= e.sets) { const nx = nextOwedIndex(s.logged, s.ex, s.i); s = nx < 0 ? { ...s, complete: true } : { ...s, i: nx, set: loggedWorkSets(s.logged, s.ex[nx].exercise) }; }
+          else s = { ...s, set: loggedWorkSets(s.logged, e.exercise) };
+        }
+        for (const x of s.ex) assert.ok(loggedWorkSets(s.logged, x.exercise) <= x.sets, `run ${run}: ${x.exercise} never past its target`);
+        s = json(s);
+      }
+      assert.strictEqual(!!s.complete, true, `run ${run} terminated`);
+      for (const x of s.ex) assert.strictEqual(loggedWorkSets(s.logged, x.exercise), x.sets, `run ${run}: ${x.exercise} ends exactly at today's target`);
+    }
+  });
+}
+
 // --- Burst 1 review fixes ---------------------------------------------------------------
 check("#skip-review undo never takes a lift past its PLANNED count (skip → swap → undo swap → undo skip was 4 of 3)", () => {
   const skipped = skipSet(S([row("a", 3), row("b", 3)], [], 0)).sess;               // a: 2 today, 3 planned

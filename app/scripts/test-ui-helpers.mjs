@@ -1333,5 +1333,16 @@ check("#W332 Finish early: what happens first (done / left / weights kept), then
   assert.match(appJs, /if \(skipWouldFinish\(sess\)\) return renderFinishSheet\(/);
   assert.doesNotMatch(appJs, /Tap again — save what you've done and end/, "the ambiguous two-tap end is gone");
 });
+check("#W333 a set on the wrong lift: the set editor offers exactly the moves session-core accepts, plus a two-tap remove; both bank handlers scan from the start too", () => {
+  const ed = fnBody(appJs, "function openSetEditor(idx, host, rerender) {", 9000);
+  assert.match(ed, /const ident = \{ exercise: entry0\.exercise, completed_at: entry0\.completed_at \?\? null \};/);
+  assert.match(ed, /const r = moveLoggedSet\(sess, idx, b\.dataset\.moveto, ident\);/);
+  assert.match(ed, /const r = removeLoggedSet\(sess, idx, ident\);/);
+  assert.match(ed, /sess\.ex\.filter\(\(x\) => moveLoggedSet\(sess, idx, x\.exercise, ident\)\.ok\)/, "only moves it would accept are offered");
+  assert.match(ed, /Tap again — remove this set/);
+  assert.match(fnBody(appJs, '$("#done").onclick = () => {', 4000), /const nx = nextOwedIndex\(sess\.logged, sess\.ex, sess\.i\);/);
+  assert.match(appJs, /delete sess\.lastRemoved; \/\/ a removed set's Undo belongs to the log as it was \(W333\)/);
+  assert.match(fnBody(appJs, "if (historyEdit) {", 5000), /return to && lifts\.some\(\(\[id\]\) => id === to\) \? \{ \.\.\.out, exercise: to \} : out;/, "History: move after the workout too");
+});
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

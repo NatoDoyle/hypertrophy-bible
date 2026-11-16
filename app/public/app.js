@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2108,6 +2108,19 @@ let skipPending = false;    // two-tap guard on a skip that would END the workou
 // The one-line strip that offers to undo the last skip, while undoSkip says it still can
 // (nothing banked since, the order unchanged) — derived from the saved session, so a reload
 // keeps offering it.
+// W333: a removed set's one Undo (session-core undoRemoveSet decides whether it still fits).
+function removeUndoStrip() {
+  if (!sess?.lastRemoved || !undoRemoveSet(sess).ok) return "";
+  const name = sess.ex.find((x) => x.exercise === sess.lastRemoved.entry.exercise)?.name ?? sess.lastRemoved.entry.exercise;
+  return `<div class="cue" id="remove-undo" role="status">🗑 Removed a set of <b>${esc(name)}</b>. <button class="btn ghost inline" id="undo-remove" style="margin:0 0 0 4px">Undo</button></div>`;
+}
+function wireRemoveUndo(redraw) {
+  if ($("#undo-remove")) $("#undo-remove").onclick = () => {
+    const u = undoRemoveSet(sess);
+    if (!u.ok) return redraw();
+    sess = u.sess; saveSess(); say("Set put back."); redraw();
+  };
+}
 function skipUndoStrip() {
   if (!sess?.lastSkip || !undoSkip(sess).ok) return "";
   const names = sess.lastSkip.ids.map((id) => sess.ex.find((x) => x.exercise === id)?.name ?? id);
@@ -2705,6 +2718,7 @@ function openSetEditor(idx, host, rerender) {
   if (!entry0 || !host) return;
   const unit = unitFor(entry0.exercise); // captured ONCE: shown and read back in the same unit
   setEditor = { idx, exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, unit };
+  const ident = { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null }; // W333: the entry this editor opened
   const shownW = editDisplay(entry0.weight_kg, unit), shownR = String(entry0.reps ?? "");
   // W307: a work set's RIR is editable too (where it's asked), an estimated field says so (~), and "Forgot the numbers?"
   // fills both from the lift's other sets — saved at once as an estimate, the editor's new baseline: an untouched field
@@ -2724,6 +2738,7 @@ function openSetEditor(idx, host, rerender) {
     ${askRir ? `<div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0"><input id="fix-q" type="text" inputmode="numeric" value="${esc(shownQ)}" aria-label="Reps left in the tank${estQ ? ", estimated" : ""}" style="width:3.5rem;${field}"><span class="muted">${estQ ? "~ " : ""}left in the tank</span></div>` : ""}
     ${editorEstimate() ? `<button class="btn ghost inline" id="fix-est" style="margin:6px 0 0">Forgot the numbers?</button>` : ""}
     <p class="muted" id="fix-note" role="status" style="margin:6px 0 0"></p>
+    ${wrongLiftHtml()}
     <button class="btn secondary inline" id="fix-done" style="margin-top:8px">Done</button></div>`;
   const apply = () => {
     const ed = setEditor;
@@ -2771,7 +2786,33 @@ function openSetEditor(idx, host, rerender) {
     say(msg);
   };
   $("#fix-done").onclick = () => { setEditor = null; rerender(); };
+  // W333: the wrong lift — move this set to the lift it was, or remove it (two taps). session-core guards both; the
+  // buttons offered are exactly the moves it would accept.
+  host.querySelectorAll("[data-moveto]").forEach((b) => b.onclick = () => {
+    const r = moveLoggedSet(sess, idx, b.dataset.moveto, ident);
+    if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to move it."; return; }
+    sess = r.sess; setEditor = null; saveSess();
+    say(`Moved to ${nameInSess(b.dataset.moveto)}.`);
+    rerender();
+  });
+  if ($("#fix-rm")) $("#fix-rm").onclick = () => {
+    const b = $("#fix-rm");
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again — remove this set"; return; }
+    const r = removeLoggedSet(sess, idx, ident);
+    if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to remove it."; return; }
+    sess = r.sess; setEditor = null; saveSess();
+    say("Set removed — Undo is on the next screen.");
+    rerender();
+  };
   $("#fix-w").focus();
+  function wrongLiftHtml() {
+    const probe = removeLoggedSet(sess, idx, ident);
+    if (!probe.ok) return probe.reason === "station" ? `<p class="muted" style="margin:8px 0 0;font-size:.85rem">Wrong lift? Unlink the superset first, then move or remove this set.</p>` : "";
+    const targets = sess.ex.filter((x) => moveLoggedSet(sess, idx, x.exercise, ident).ok);
+    return `<details id="fix-wrong" style="margin:8px 0 0"><summary class="muted">Wrong exercise?</summary>
+      ${targets.map((x) => `<button class="btn ghost inline" data-moveto="${esc(x.exercise)}" style="margin:6px 6px 0 0">Move to ${esc(x.name)}</button>`).join("")}
+      <button class="btn ghost inline" id="fix-rm" style="margin:6px 0 0">🗑 Remove this set</button></details>`;
+  }
 }
 // Each rest records the timer it ran per lift (W308 — the read-out says "≈3:40 between sets (timer 3:00)"); a superset
 // round's shared rest is both legs'.
@@ -2982,7 +3023,7 @@ function renderPlayer() {
       : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
       <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and the weight you settle on today is where next time starts.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
-    ${skipUndoStrip()}
+    ${skipUndoStrip()}${removeUndoStrip()}
     <div class="card">
       ${hintHtml}
       ${weightStepper(w, e.equipment === "bodyweight", null, e.exercise)}
@@ -3041,6 +3082,7 @@ function renderPlayer() {
   // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
   // display unit (the same per-index stamp a typed weight gets); nothing is banked.
   wireSkipUndo(() => renderPlayer(0));
+  wireRemoveUndo(() => renderPlayer(0));
   $("#skipset").onclick = () => {
     // W332: a skip that would END the workout is a finish — the same sheet says so, and asks why.
     if (skipWouldFinish(sess)) return renderFinishSheet(() => renderPlayer(0), { skip: () => skipSet(sess) });
@@ -3068,6 +3110,7 @@ function renderPlayer() {
     if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
     if (sess.estPending) delete sess.estPending[e.exercise];
     delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
+    delete sess.lastRemoved; // a removed set's Undo belongs to the log as it was (W333)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
     sess.set++;
@@ -3080,7 +3123,9 @@ function renderPlayer() {
       // Advance to the next exercise still owing sets — this skips anything already
       // fully logged (e.g. a superset partner completed during its station), so the
       // player can never land back on a done move and log a phantom extra set.
-      const nx = nextExerciseIndex(sess.i);
+      // …then from the start (W333): a lift BEHIND the cursor can owe again (a set moved off it or removed), and must
+      // never be dropped with the workout marked complete.
+      const nx = nextOwedIndex(sess.logged, sess.ex, sess.i);
       // Recompute the set cursor from what's already BANKED on the next exercise
       // (every other advance site does this — 808/1008/1025/1152). Without it, an
       // advance onto a partially-completed lift — reachable after Unlink or a
@@ -3159,7 +3204,7 @@ function renderSupersetStation(L, P) {
     ${pickCue()}
     ${round === 0 ? `<p class="muted">One set of each, back to back — then rest. That's one round.</p>` : ""}
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
-    ${skipUndoStrip()}
+    ${skipUndoStrip()}${removeUndoStrip()}
     ${memberBlock(L)}${memberBlock(P)}
     <div id="fix-host">${setChipsHtml([A.exercise, B.exercise])}</div>
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
@@ -3194,6 +3239,7 @@ function renderSupersetStation(L, P) {
     renderExerciseSheet(m, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   });
   wireSkipUndo(() => renderPlayer(0));
+  wireRemoveUndo(() => renderPlayer(0));
   // "Skip this round" (W281): BOTH members lose this round, so rounds stay balanced; a skip
   // that would end the workout asks first. renderPlayer routes back into the station while
   // it still owes rounds, or on to whatever is next.
@@ -3224,6 +3270,7 @@ function renderSupersetStation(L, P) {
     if (suspects.length) { for (const i of suspects) confirmSet.add(sess.ex[i].exercise); return renderSupersetStation(L, P, 0); }
     confirmSet.clear();
     delete sess.offerPick; // a banked round answers "Pick a different one" (W306)
+    delete sess.lastRemoved; // (W333)
     const roundSets = []; // both members of the round, banked together
     const at = new Date().toISOString(); // ONE stamp per round (W311): time between sets reads a round as one moment
     for (const idx of [L, P]) {
@@ -4283,14 +4330,18 @@ async function renderHistory() {
   if (historyEdit) {
     const sess = list.find((x) => x.session_id === historyEdit);
     if (!sess) { historyEdit = null; return renderHistory(); }
-    const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
-      <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
+    // W333: a set logged on the wrong lift is fixed here too — moved to another lift in this workout, or removed.
+    const lifts = [...new Map((sess.sets ?? []).map((x) => [x.exercise, x.name || x.exercise])).entries()];
+    const exPick = (set, i) => lifts.length > 1 ? `<select data-ex="${i}" aria-label="lift for set ${i + 1}" style="max-width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:8px;font-size:1rem">${lifts.map(([id, nm]) => `<option value="${esc(id)}"${id === set.exercise ? " selected" : ""}>${esc(nm)}</option>`).join("")}</select>` : `<b>${esc(set.name || set.exercise)}</b>`;
+    const rows = (sess.sets ?? []).map((set, i) => `<div class="row" data-row="${i}">
+      <div style="flex:1;min-width:0">${exPick(set, i)}${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
       <input data-w="${i}" type="text" inputmode="decimal" value="${esc(editDisplay(set.weight_kg, unitFor(set.exercise)))}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       <span class="muted">${unitLabelFor(set.exercise)} ×</span>
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}${repsEstimated(set) ? ", estimated" : ""}"
         style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       ${repsEstimated(set) ? `<span class="muted" aria-hidden="true" title="an estimate">~</span>` : ""}
+      <button class="iconbtn" data-rm="${i}" aria-pressed="false" aria-label="Remove set ${i + 1}" title="Remove this set">🗑</button>
     </div>`).join("");
     const quarantined = !!sess.time_quarantine;
     app.innerHTML = `<h1>Fix this workout</h1>
@@ -4300,6 +4351,14 @@ async function renderHistory() {
       <button class="btn" id="hsave">Save corrections</button>
       <button class="btn ghost" id="hcancel">Cancel</button>`;
     $("#hcancel").onclick = () => { historyEdit = null; renderHistory(); };
+    const removed = new Set();
+    app.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => {
+      const i = +b.dataset.rm, on = !removed.has(i);
+      if (on) removed.add(i); else removed.delete(i);
+      b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "↩" : "🗑"; b.title = on ? "Keep this set" : "Remove this set";
+      const row = app.querySelector(`[data-row="${i}"]`); if (row) row.style.opacity = on ? ".4" : "";
+      say(on ? `Set ${i + 1} will be removed when you save.` : `Set ${i + 1} kept.`);
+    });
     $("#hsave").onclick = async () => {
       // Send the sets back WHOLE, preserving every field the server gave us
       // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
@@ -4309,8 +4368,12 @@ async function renderHistory() {
       // weight in the workout (22.5 lb came back as 25 lb). The display is exact now, and
       // an untouched field keeps its stored value byte for byte.
       // …and a CHANGED count is a real one: its estimate flag goes (historyEditSet, W307). `name` is display-only.
-      const sets = (sess.sets ?? []).map((set, i) => historyEditSet(set, { wText: app.querySelector(`[data-w="${i}"]`)?.value ?? "",
-        rText: app.querySelector(`[data-reps="${i}"]`)?.value ?? "", unit: unitFor(set.exercise) }));
+      const sets = (sess.sets ?? []).map((set, i) => {
+        if (removed.has(i)) return null; // W333: removed
+        const out = historyEditSet(set, { wText: app.querySelector(`[data-w="${i}"]`)?.value ?? "", rText: app.querySelector(`[data-reps="${i}"]`)?.value ?? "", unit: unitFor(set.exercise) });
+        const to = app.querySelector(`[data-ex="${i}"]`)?.value;
+        return to && lifts.some(([id]) => id === to) ? { ...out, exercise: to } : out; // W333: moved to the lift it really was
+      }).filter(Boolean);
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
       historyEdit = null;
