@@ -3190,7 +3190,7 @@ function renderPlayer() {
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
     <div class="setdots">${setDots}</div>
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
-    ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
+    ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up: 3–5 min easy, then a couple of light ramp-up sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
     ${firstEver ? (e.tired ? (e.tried_easy ? `<div class="card info"><b>Still finding your weight, on a tired day 🎯</b>
       <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight either — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift, on a tired day 🎯</b>
@@ -3199,9 +3199,8 @@ function renderPlayer() {
       <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — ${easyToday ? "today's an easier day too, so your next regular session will." : "today's sets will."}</p></div>`
       : easyToday ? `<div class="card info"><b>New lift — keep it light today 🎯</b>
       <p class="muted">Today's an easier day, so its sets won't set your starting weight. Start light and stop each set while your form is solid — your next regular session finds it.</p></div>`
-      : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
-      <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and the weight you settle on today is where next time starts.</p>
-      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
+      : `<div class="card info" style="padding:10px 14px"><b>New lift — let's find your weight 🎯</b>
+      <p class="muted" style="margin:4px 0 0">Start light; add a little each set until the last rep is hard but clean (~${e.rir} in the tank). Today's weight is where next time starts. <button class="learnlink" data-learn="choosing-your-starting-weight">How to pick it</button></p></div>`) : ""}
     ${skipUndoStrip()}${removeUndoStrip()}
     <div class="card">
       ${hintHtml}
