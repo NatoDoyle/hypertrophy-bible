@@ -1457,6 +1457,50 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7b. **Telemetry (Waves 318–327 + review rounds 1–19, 2026-11-10/16 — Burst 11, one /plan iteration on three
+   owner notes: "the system isn't learning", "ask what they like and bridge it to optimal", "I haven't been
+   enjoying the gym").**
+   - **Built:**
+     - **W318 `docs/what-the-app-learns.md`:** the ground-truth ledger. Over-claims in three docs are marked
+       Not built.
+     - **W319 beginner refit** every 6 trained weeks.
+     - **W320 hand edits pause learning out loud,** with a one-tap hand-back.
+     - **W321 the one-screen preference quiz.**
+     - **W322 the bounded preference term** in plan-core. The golden digest was re-pinned once, deliberately.
+     - **W323 quiet learning from swaps:** only picks vote; busy/tired/hurt never count; Bring back.
+     - **W324 `docs/adherence-playbook.md`:** prod reading, data inventory, levers scored on the Plain Sight
+       five tests.
+     - **W325 fixes to shipped features that failed those tests.**
+     - **W326–327:** Your pick, and the first-workout funnel.
+   - **Review: 19 loop-until-dry rounds.**
+     - **Rounds 1–13:** 19, 7, 3, 1, 1, 1, 2, 6, 2, 4, 4, 4, 3 candidates.
+     - **Rounds 14–19:** 8, 5, 2, 4, 2, **0** reproduced.
+     - Rounds 10–14 kept finding one class: once-only plan-change notes outliving or misdescribing their
+       change through one more rebuild door. Round 13 moved the decision to render time (lesson 115), and
+       round 14's harness became `npm run sweep:notes`. It now covers 22 doors at depth 3, both levels,
+       4 × 22,308 chains, with a stall-swapping base. It is dry, and reverting a fix makes it fail.
+     - The swap state machine has `npm run sweep:swaps` (round 9) and an exhaustive session-core sweep.
+     - Rounds 15–18 were each mostly fixes to the previous round's fixes, all in the notes layer. Two were
+       lesson-38 relapses: a stamp written by hand in a test, and a sweep that copied the bug it should
+       catch. Lesson 114 (live-object aliasing on the file store) came from round 15.
+   - **Tokens (subagent):**
+     - Explore 124k / 131k / 186k.
+     - Review rounds 1–19 ≈ 2.05M, 0.80M, 0.50M, 0.23M, 0.18M, 0.20M, 0.29M, 0.83M, (9: harness), 0.51M,
+       0.43M, 0.45M, 0.35M, 1.00M, 0.68M, 0.37M, 0.43M, 0.24M, 0.14M.
+     - That is ≈9.7M for the review (round 9 not tallied) plus 0.44M for Explore. About half (≈4.6M, rounds
+       10–19) went to the notes layer. The rule that
+       applies: when the same class recurs twice, stop fixing instances and change the design (render-time
+       truth). Round 13 did that late. Earlier would have saved rounds 10–12.
+   - **Tests at the close:** routes 771, coach 226, session-core 211, ui-helpers 126, adherence 103, plan 314,
+     store-d1 parity 225; both chains green.
+     - Every new check was observed red before its fix. Every fix's lesson-54 tamper turned red; several
+       survived first and got a stronger test.
+     - Browser walkthroughs 17/17 and 14/14 against a scratch server and a throwaway store.
+   - **Not run:** the Daytona gate, a physical iPhone, and a prod smoke (deploy waits for the owner).
+   - **Scratchpad lost:** the session scratchpad's loose files (`tamper.py`, both walkthrough scripts) were
+     deleted mid-burst. They were rebuilt from the session transcript, and the walkthroughs have their
+     original 17 and 14 checks. Keep long-lived harnesses in the repo (`app/scripts/sweep-*.mjs`), not the
+     scratchpad.
 7c. **Telemetry (Waves 293–297, 2026-10-31/11-01 — Burst 6, one iteration on three owner notes and the
    deferred N7).** Each root cause was reproduced through the real functions and routes first. The swap
    row came back null whenever the player's day or slot differed from the rotation's (N7, broader than
