@@ -1454,11 +1454,23 @@ check("#skip-review a completed session never offers undo", () => {
   const s = skipSet(S([row("a", 3), row("b", 3)], banked("a", 1), 0)).sess;
   assert.strictEqual(undoSkip({ ...s, complete: true }).ok, false);
 });
+check("#W330 '4+' under a compound band ('1-3', 6-10) says heavier — sized by capacity, never past ~20% — and a set in the band says nothing", () => {
+  const r13 = { rep_range: "6-10", rir: "1-3", inc_kg: 2.5 };
+  const h8 = nextSetHint(w(100, 8, { rir: 4 }), r13), h10 = nextSetHint(w(100, 10, { rir: 4 }), r13);
+  assert.deepStrictEqual([h8?.kind, h8?.kg], ["heavier", 102.5]);
+  assert.deepStrictEqual([h10?.kind, h10?.kg], ["heavier", 105], "more capacity, a bigger step");
+  assert.ok(h10.kg <= 120);
+  assert.strictEqual(nextSetHint(w(100, 8, { rir: 3 }), r13), null, "3 is the band's top — on plan");
+  assert.strictEqual(nextSetHint(w(100, 8, { rir: 4 }), { ...r13, rir: "3-4" }), null, "a deload's '3-4': 4 is inside it");
+});
 check("#next-set-review the band is READ: a '2-3' band eases further, and RIR 4 against a 2-3 band is not 'far easier'", () => {
   const r23 = { rep_range: "8-12", rir: "2-3", inc_kg: 2.5 };
   assert.strictEqual(nextSetHint(w(60, 6), r23).kg, 50, "60·(1 + 4.8/30)/(1 + 10/30) = 52.2 → 50");
   assert.strictEqual(nextSetHint(w(60, 6), row812).kg, 52.5, "60·(1 + 4.8/30)/(1 + 9/30) = 53.5 → 52.5");
-  assert.strictEqual(nextSetHint(w(40, 10, { rir: 4 }), r23), null, "top 3: RIR 4 is only 1 above");
+  // W330 (owner: "the app doesn't seem to be aware of the RIR"): "4+" is the chips' ceiling — a floor, not a point — so
+  // under a band whose top + 2 no chip can say, it reads as clearly too easy (was: "top 3: RIR 4 is only 1 above" → null).
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 4 }), r23)?.kind, "heavier", "top 3: '4+' is the most a set can say — too easy");
+  assert.strictEqual(nextSetHint(w(40, 10, { rir: 3 }), r23), null, "inside the band: no advice");
   assert.strictEqual(nextSetHint(w(40, 10, { rir: 5 }), r23).kind, "heavier", "RIR 5 is 2 above");
 });
 check("#next-set-review the clamps: at least one step down; at most +20% up; a set stopped early UNDER the range never hints heavier", () => {

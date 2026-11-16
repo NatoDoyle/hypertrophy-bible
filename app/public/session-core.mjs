@@ -588,7 +588,8 @@ export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   const short = set.reps < min && !metAim;
   const kind = short && (rir == null || rir <= 1) ? "lighter"
     : short && rir >= 2 ? (reach >= ref ? "same" : "lighter")
-    : set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min) ? "heavier"
+    // "4+" (the chips' ceiling, stored as 4) is clearly too easy under every band whose top + 2 no chip can say (W330).
+    : set.reps >= max + 2 || (rir != null && rir >= Math.min(top + 2, 4) && rir > top && set.reps >= min) ? "heavier"
     : null;
   if (!kind) return null;
   if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(Math.min(ref, min), Math.min(max, Math.floor(reach + 1e-9))) };

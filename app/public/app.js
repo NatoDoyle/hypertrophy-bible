@@ -2209,13 +2209,14 @@ function wireSkipUndo(redraw) {
 // once, and a single slot meant confirming one un-confirmed the other, so a round
 // with two suspect entries could never be banked at all (see unconfirmedFlagged).
 let confirmSet = new Set();
-// Effort chips (Wave 171): tri-state hb_rir — "1" force-on, "0" force-off, unset =
-// on for everyone past the beginner stage (beginners are never asked: the KB says
-// novice RIR calls are noise, and the design spec forbids demanding effort of them;
-// Wave-164 graduation flips them in automatically). The chips never pre-select —
+// Effort chips (Wave 171; W330): hb_rir — "0" off, anything else on (W330, owner: on for
+// everyone — a beginner's answer still counts, its bump capped at one increment server-side,
+// and the chips are always optional, never demanded). The chips never pre-select —
 // an unanswered set sends NO rir at all, because a fabricated default would read
 // as "at target" forever and permanently blind the adaptive effort lever.
-const rirOn = () => { const v = localStorage.getItem("hb_rir"); return v === "1" ? true : v === "0" ? false : !(sess?.beginner); };
+// W330 (owner: RIR on for everyone): on unless the lifter switched it off on Me. A beginner's answers still count — the
+// weight they move is capped at one increment (coach.mjs suggestWeight), since novices' far-from-failure calls are rough.
+const rirOn = () => { try { return localStorage.getItem("hb_rir") !== "0"; } catch { return true; } };
 // One-tap effort capture, shared by the player and the superset station. Tapping
 // the selected chip clears it (a mis-tap escape) — only a deliberate answer is
 // ever logged. "4+" stores 4: still counted by isHardSet (rir > 4 wouldn't be),
@@ -5185,8 +5186,8 @@ function renderMe() {
       <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
     <div class="card"><p class="muted">After-set effort question (reps left in the tank)</p>
       <p>After each set, one optional tap: how many more reps you had in you. It's how the coach knows a weight has gotten too easy — skipping a set never counts against you.</p>
-      <p class="muted">${localStorage.getItem("hb_rir") === "1" ? "Always on." : localStorage.getItem("hb_rir") === "0" ? "Off." : "Auto — the chips appear once you're past the beginner stage."}</p>
-      <button class="btn secondary" id="rirtoggle">${localStorage.getItem("hb_rir") === "1" ? "Always on — tap to switch off" : localStorage.getItem("hb_rir") === "0" ? "Off — tap to switch to auto" : "Auto — tap to force always on"}</button></div>
+      <p class="muted">${rirOn() ? "On." : "Off."}</p>
+      <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to switch off" : "Off — tap to switch on"}</button></div>
     <div class="card"><p class="muted">Units</p>
       <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
@@ -5203,7 +5204,7 @@ function renderMe() {
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
   // default keys off training status, so a graduating beginner inherits the chips
   // with nothing to configure (minimal-customization: no mandatory setting).
-  $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
+  $("#rirtoggle").onclick = () => { try { if (rirOn()) localStorage.setItem("hb_rir", "0"); else localStorage.removeItem("hb_rir"); } catch {} renderMe(); };
   $("#unittoggle").onclick = async () => {
     // Writes BOTH sides. This used to set localStorage only, so `profile.units`
     // drifted from what the user actually saw — harmless while the wizard also
