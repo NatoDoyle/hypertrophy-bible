@@ -191,13 +191,14 @@ const MAX_TARGETS = 24;
 // too-tired moment, each with the hard sets done then (`at`) and the planned total (`of`). Whole numbers in range or
 // dropped; at most 20.
 const FADE_KINDS = new Set(["early", "skip", "tired"]);
+const FADE_REASONS = new Set(["tired", "time", "pain", "equipment", "interrupted"]); // W332: why it ended (session-core FADE_REASONS)
 const normalizeFadeMarks = (list) => {
   if (!Array.isArray(list)) return null;
   const out = [];
   for (const m of list) {
     if (out.length >= 20) break;
     if (!FADE_KINDS.has(m?.kind) || !Number.isInteger(m.at) || m.at < 0 || m.at > 100) continue;
-    out.push({ kind: m.kind, at: m.at, ...(Number.isInteger(m.of) && m.of >= 1 && m.of <= 200 ? { of: m.of } : {}) });
+    out.push({ kind: m.kind, at: m.at, ...(Number.isInteger(m.of) && m.of >= 1 && m.of <= 200 ? { of: m.of } : {}), ...(FADE_REASONS.has(m.reason) ? { reason: m.reason } : {}) });
   }
   return out.length ? out : null;
 };

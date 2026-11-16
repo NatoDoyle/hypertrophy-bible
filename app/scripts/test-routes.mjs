@@ -2507,6 +2507,11 @@ try {
       await json("POST", "/api/session", { user_id: junkU, session_id: "w4f", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
         sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: fm });
       const marks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f")?.fade_marks ?? [];
+      await json("POST", "/api/session", { user_id: junkU, session_id: "w4why", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+        sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: [{ kind: "early", at: 1, of: 9, reason: "time" }, { kind: "skip", at: 1, of: 9, reason: "<script>" }] });
+      const rmarks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4why")?.fade_marks ?? [];
+      ok("#W332 the door keeps a known end reason and drops a junk one (the mark survives without it)",
+        JSON.stringify(rmarks) === JSON.stringify([{ kind: "early", at: 1, of: 9, reason: "time" }, { kind: "skip", at: 1, of: 9 }]), JSON.stringify(rmarks));
       ok("#fade the door keeps valid fade marks (kind, whole hard sets, the planned total), drops junk, keeps at most 20",
         JSON.stringify(marks.slice(0, 3)) === JSON.stringify([{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "tired", at: 9 }]) && marks.length === 20, JSON.stringify(marks.slice(0, 4)));
       const f1 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "fading" });

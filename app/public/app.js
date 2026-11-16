@@ -1,6 +1,6 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
 import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
@@ -2996,7 +2996,7 @@ function renderPlayer() {
     </div>
     ${changeDoor ? `<button class="btn ghost" id="cantdo">⇄ Change exercise${pickOffer(sess) ? ` <span class="muted">· or ${esc(e.your_pick.name)}?</span>` : ""}</button>` : ""}
     <button class="btn ghost" id="skipset">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this set"}</button>
-    <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
+    <button class="btn ghost" id="quit">Finish early</button>`;
   wireLearnLinks();
   // Each set replaces the whole screen; without this, focus falls to <body> and
   // a keyboard user must re-Tab past every cue and stepper to reach Done. Land
@@ -3037,19 +3037,13 @@ function renderPlayer() {
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
     renderExerciseSheet(e, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   };
-  $("#quit").onclick = () => {
-    // One stray tap must not end a workout: confirm on the second tap.
-    if (!quitPending) { quitPending = true; return renderPlayer(0); }
-    quitPending = false;
-    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
-    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
-    finish();
-  };
+  $("#quit").onclick = () => renderFinishSheet(() => renderPlayer(0));
   // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
   // display unit (the same per-index stamp a typed weight gets); nothing is banked.
   wireSkipUndo(() => renderPlayer(0));
   $("#skipset").onclick = () => {
-    if (skipWouldFinish(sess) && !skipPending) { skipPending = true; quitPending = false; return renderPlayer(0); }
+    // W332: a skip that would END the workout is a finish — the same sheet says so, and asks why.
+    if (skipWouldFinish(sess)) return renderFinishSheet(() => renderPlayer(0), { skip: () => skipSet(sess) });
     applySkip(skipSet(sess), () => renderPlayer(0));
   };
   wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderPlayer(0); });
@@ -3171,7 +3165,7 @@ function renderSupersetStation(L, P) {
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="skipround">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this round"}</button>
-    <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
+    <button class="btn ghost" id="quitr">Finish early</button>`;
 
   // In-place stepper updates (same rationale as the single-exercise player): keep
   // the tapped button alive for focus, let aria-live announce; re-render only when
@@ -3204,7 +3198,7 @@ function renderSupersetStation(L, P) {
   // that would end the workout asks first. renderPlayer routes back into the station while
   // it still owes rounds, or on to whatever is next.
   $("#skipround").onclick = () => {
-    if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
+    if (skipWouldFinish(sess, [L, P])) return renderFinishSheet(() => renderSupersetStation(L, P, 0), { skip: () => skipRound(sess, L, P) });
     applySkip(skipRound(sess, L, P), () => renderPlayer(0));
   };
   // A new weight disarms "End workout early" and is judged afresh by the typo guard, as on the straight player (Burst 8 review #10).
@@ -3279,13 +3273,71 @@ function renderSupersetStation(L, P) {
     say("Unlinked — do them one at a time. Take a normal rest between sets.");
     renderPlayer(0);
   };
-  $("#quitr").onclick = () => {
-    if (!quitPending) { quitPending = true; return renderSupersetStation(L, P, 0); }
-    quitPending = false;
-    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
-    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
-    finish();
+  $("#quitr").onclick = () => renderFinishSheet(() => renderSupersetStation(L, P, 0));
+}
+// FINISH EARLY (W332 — owner: "The options at the end of the workout are a bit ambiguous. The options should be obvious
+// what they do and then allow you to choose the reason"). One sheet for every way a workout ends before its last set
+// (Finish early, on a lift or a superset; a skip that would end it): first WHAT happens — what's done, what's left, and
+// that unfinished lifts keep their weight — then, optionally, WHY. The end is written the moment it's confirmed (the mark
+// and the save), so a crash on the reason screen never loses the workout; the reason is stamped on after. Only "tired"
+// (or no answer) teaches the session ceiling — running out of time is no evidence of fading.
+function renderFinishSheet(back, { skip = null } = {}) {
+  if (!sess) return render();
+  cantDoGen++; stopRestTimer(); skipPending = false; quitPending = false;
+  if (!sess.logged.length) {
+    app.innerHTML = `<h1>Close this workout?</h1>
+      <div class="card"><p style="margin:0">Nothing's logged yet, so there's nothing to save. Your plan stays exactly as it is.</p></div>
+      <button class="btn" id="fin-close">Close — nothing to save</button>
+      <button class="btn ghost" id="fin-back">Keep going</button>`;
+    $("#fin-close").onclick = () => { clearSess(); say("Workout closed — nothing was logged."); render(); };
+    $("#fin-back").onclick = back;
+    $("#fin-close").focus();
+    return;
+  }
+  const rows = workoutList(sess);
+  const done = (sess.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
+  const planned = rows.reduce((a, x) => a + x.sets, 0);
+  const left = rows.filter((x) => x.status !== "done" && x.status !== "skipped" && x.done < x.sets).map((x) => `${x.name} (${x.sets - x.done})`);
+  app.innerHTML = `<h1>${skip ? "That's the last set left — finish now?" : "Finish now?"}</h1>
+    <div class="card"><p style="margin:0 0 6px">You've done <b>${done} of ${planned}</b> sets.</p>
+      ${left.length ? `<p class="muted" style="margin:0 0 6px">Still to do: ${esc(left.join(", "))}.</p><p class="muted" style="margin:0">Unfinished lifts keep this weight next time — nothing's lost.</p>` : ""}</div>
+    <button class="btn" id="fin-save">Save and finish</button>
+    <button class="btn ghost" id="fin-back">Keep going</button>`;
+  $("#fin-back").onclick = back;
+  $("#fin-save").focus();
+  $("#fin-save").onclick = () => {
+    if (skip) {
+      // The skip itself, as "Skip this set" does it (its own fade mark) — then the reason screen.
+      const r = skip();
+      if (r.ok) { sess = withFade(dropSkipped(sess, r.sess), "skip"); }
+      else if (!sess.complete) sess = withFade(sess, "early");
+    } else if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
+    saveSess();
+    renderFinishReason();
   };
+}
+const FINISH_REASONS = [["tired", "🪫 Too tired — running on empty", "Helps me size your workouts"], ["time", "⏱ Out of time", ""], ["pain", "😖 Something hurts", "Tell me where — I'll train around it"], ["equipment", "🏋️ Equipment or the gym", ""], ["interrupted", "📞 Something came up", ""]];
+function renderFinishReason() {
+  app.innerHTML = `<h1>What cut it short?</h1>
+    <p class="muted">Optional — one tap. Only tiredness changes how long I make your workouts.</p>
+    ${FINISH_REASONS.map(([k, l, sub]) => `<button class="choice reason" data-why="${k}">${l}${sub ? `<span class="sub muted">${sub}</span>` : ""}</button>`).join("")}
+    <button class="btn ghost" id="fin-skip">Skip — just save</button>`;
+  $("#fin-skip").onclick = () => finish();
+  app.querySelectorAll("[data-why]").forEach((b) => b.onclick = () => {
+    sess = setFadeReason(sess, b.dataset.why); saveSess();
+    if (b.dataset.why !== "pain") return finish();
+    app.innerHTML = `<h1>Where does it hurt?</h1>
+      <p class="muted">I'll keep movements that aggravate it out of your plan. Sharp or worsening pain → see a physio first.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}
+      <button class="btn ghost" id="fin-skip">Skip — just save</button>`;
+    $("#fin-skip").onclick = () => finish();
+    app.querySelectorAll("[data-hurt]").forEach((h) => h.onclick = async () => {
+      app.querySelectorAll("#app button").forEach((x) => { x.disabled = true; });
+      // The workout is saved first either way: the report is a best effort (offline → it can be told from Settings).
+      try { await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region: h.dataset.hurt }) }); say(`Noted — I'll keep ${h.dataset.hurt.replace("-", " ")}-aggravating movements out of your plan.`); } catch {}
+      finish();
+    });
+  });
 }
 // The "how do I do this?" sheet: full cues + mistakes from the KB, plus the
 // inline line-art movement demo (real per-exercise footage is BLOCKERS.md #1 —
@@ -3671,6 +3723,7 @@ async function finish() {
   // before the in-progress copy is dropped: the lift names live only on it.
   const local = localReadout(payload.targets, payload.sets);
   const names = Object.fromEntries(sess.ex.map((x) => [x.exercise, x.name]));
+  const endReason = [...(payload.fade_marks ?? [])].reverse().find((m) => m.kind === "early" || m.kind === "skip")?.reason ?? null; // W332: already asked
   const beginner = !!sess.beginner;
   if (res.queued) { try { localStorage.setItem(RKEY, JSON.stringify({ session_id, name: sess.name, targets: payload.targets, sets: payload.sets, names, beginner })); } catch {} }
   // Accepted or safely queued — now it's safe to drop the in-progress copy.
@@ -3679,7 +3732,7 @@ async function finish() {
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner, loading: true } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
+  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner, endReason, loading: true } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
   // What it MEANS is asked of the read-out's own door once the save has landed — never computed
   // on the save path (W282 review) — and this newer workout's recap retires any older pending one.
   if (res.ok) { clearPendingReadout(); fillReadout(session_id, { local, names, beginner }); }
@@ -3793,8 +3846,9 @@ function renderRecap(recap) {
     : "";
   // "How did your last few sets feel?" (W314 — the learned ceiling's own evidence): optional, one tap, only after a long
   // enough workout that's been saved (it's stored on the workout).
-  const feelRow = recap.session_id && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
-    ? `<div class="card" id="feel"><p>How did your last few sets feel? <span class="muted">Optional — it helps me learn how long your workouts should be.</span></p>
+  // W332: never after the finish sheet already asked why it ended (one question, once); and it says what it's for.
+  const feelRow = recap.session_id && !recap.endReason && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
+    ? `<div class="card" id="feel"><p>Did you run out of steam near the end? <span class="muted">Optional — it helps me size your workouts.</span></p>
       <div class="row" style="gap:8px;border:0;padding:0">${[["strong", "💪 Strong"], ["fading", "😮‍💨 Fading"], ["empty", "🪫 Empty"]].map(([k, l]) => `<button class="btn ghost inline" data-feel="${k}" style="margin:0">${l}</button>`).join("")}</div></div>` : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
   // A number banked wrong is fixable after the workout too (W274): straight into this

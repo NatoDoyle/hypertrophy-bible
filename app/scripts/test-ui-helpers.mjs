@@ -1217,9 +1217,12 @@ check("#announce (W313) Today shows an announcement in its own card, never behin
 check("#fade (W314) the player marks a skip (an Undo takes it back) and an early end with work left; the workout carries the marks; the read-out asks how the last sets felt", () => {
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
   assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
-  for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
+  // W332: both "Finish early" doors (and a skip that would end the workout) open ONE sheet, which writes the mark.
+  assert.match(appJs, /\$\("#quit"\)\.onclick = \(\) => renderFinishSheet\(\(\) => renderPlayer\(0\)\);/);
+  assert.match(appJs, /\$\("#quitr"\)\.onclick = \(\) => renderFinishSheet\(\(\) => renderSupersetStation\(L, P, 0\)\);/);
+  assert.match(fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 3500), /else if \(!sess\.complete\) sess = withFade\(sess, "early"\);/);
   assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\)(, learning_paused: sess\.learningPaused === true)? \}/);
-  assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
+  assert.match(appJs, /const feelRow = recap\.session_id && !recap\.endReason && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/, "W332: never re-asked after the finish sheet");
   assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
 });
 
@@ -1316,6 +1319,19 @@ check("#W331 the rest screen: one readiness line, no tick-boxes; the fix chips 4
   assert.match(css, /\.chip\.fix\{[^}]*min-height:44px/);
   assert.match(fnBody(appJs, "function setChipsHtml(ids) {", 900), /class="chip fix"/);
   assert.match(css, /\.timer\{font-size:4rem/);
+});
+check("#W332 Finish early: what happens first (done / left / weights kept), then an optional why; the end is saved BEFORE the reason; a last-set skip routes here", () => {
+  const sheet = fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 3500);
+  assert.match(sheet, /You've done <b>\$\{done\} of \$\{planned\}<\/b> sets/);
+  assert.match(sheet, /Unfinished lifts keep this weight next time/);
+  assert.match(sheet, /id="fin-save">Save and finish/);
+  assert.match(sheet, /Close — nothing to save/);
+  assert.match(sheet, /saveSess\(\);\n\s*renderFinishReason\(\);/, "the mark is saved before the reason is asked (crash-safe)");
+  const why = fnBody(appJs, "function renderFinishReason() {", 2500);
+  assert.match(why, /sess = setFadeReason\(sess, b\.dataset\.why\); saveSess\(\);/);
+  assert.match(why, /Skip — just save/);
+  assert.match(appJs, /if \(skipWouldFinish\(sess\)\) return renderFinishSheet\(/);
+  assert.doesNotMatch(appJs, /Tap again — save what you've done and end/, "the ambiguous two-tap end is gone");
 });
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

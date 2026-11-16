@@ -22,6 +22,9 @@ export function fadePoint(session) {
   const n = work(session).length, points = [];
   for (const m of session?.fade_marks ?? []) {
     if (!Number.isInteger(m?.at)) continue;
+    // W332: an end with a reason other than "tired" (out of time, pain, the gym, something came up) is why it ended, not
+    // where the lifter fades — never a ceiling's evidence. No reason (every mark before W332, or a skipped question) counts.
+    if (m.reason != null && m.reason !== "tired") continue;
     if (m.kind === "early" || m.kind === "tired") points.push(m.at);
     else if (m.kind === "skip" && Number.isInteger(m.of) && m.at >= (2 * m.of) / 3) points.push(m.at); // the last third only
   }

@@ -266,8 +266,22 @@ export function undoSkip(sess) {
 // undone ease or swap isn't there to read). The learned ceiling (W315) reads them. At most 20. Pure.
 const workBanked = (sess) => (sess?.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
 const plannedTotal = (sess) => (sess?.ex ?? []).reduce((a, x) => a + (Number.isInteger(x?.planned_sets) ? x.planned_sets : Number(x?.sets) || 0), 0);
-export function withFade(sess, kind) {
-  return { ...sess, fadeMarks: [...(sess?.fadeMarks ?? []), { kind, at: workBanked(sess), of: plannedTotal(sess) }].slice(-20) };
+// Why a workout ended early (W332 — owner: "the options at the end of the workout are a bit ambiguous… obvious what they
+// do and then allow you to choose the reason"). Only "tired" is a fade — the learned ceiling reads it (and a mark with no
+// reason, as every mark before W332 was); the others are why, not how much you can do, and stay out of it.
+export const FADE_REASONS = Object.freeze(["tired", "time", "pain", "equipment", "interrupted"]);
+export function withFade(sess, kind, { reason = null } = {}) {
+  const why = FADE_REASONS.includes(reason) ? { reason } : {};
+  return { ...sess, fadeMarks: [...(sess?.fadeMarks ?? []), { kind, at: workBanked(sess), of: plannedTotal(sess), ...why }].slice(-20) };
+}
+// The reason, given AFTER the end was already saved (W332: the mark is written at "Save and finish", so a crash on the
+// reason screen never loses the workout): stamped on the LAST early/skip mark. Same session when there's none or the
+// reason is unknown. Pure.
+export function setFadeReason(sess, reason) {
+  if (!FADE_REASONS.includes(reason)) return sess;
+  const marks = sess?.fadeMarks ?? [], i = marks.map((m) => m?.kind === "early" || m?.kind === "skip").lastIndexOf(true);
+  if (i < 0) return sess;
+  return { ...sess, fadeMarks: marks.map((m, k) => (k === i ? { ...m, reason } : m)) };
 }
 export function dropLastFade(sess, kind) {
   const marks = sess?.fadeMarks ?? [], i = marks.map((m) => m.kind).lastIndexOf(kind);

@@ -2040,7 +2040,7 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
 // total; the skips and the early end are marked live, a too-tired lift is read off the finished session (an undone one
 // isn't there to read).
 {
-  const { withFade, dropLastFade, fadeMarksAtFinish } = playerCore;
+  const { withFade, dropLastFade, fadeMarksAtFinish, setFadeReason } = playerCore;
   const W = (ex) => ({ exercise: ex, set_type: "work", weight_kg: 50, reps: 8 });
   const sess0 = () => ({ ex: [{ exercise: "bench", sets: 4, planned_sets: 4 }, { exercise: "row", sets: 3, planned_sets: 4 }, { exercise: "curl", sets: 3, planned_sets: 3, tired: true, eased: true }],
     logged: [W("bench"), W("bench"), W("bench"), W("bench"), W("row"), W("row"), { ...W("row"), set_type: "warmup" }, W("curl")] });
@@ -2050,6 +2050,17 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
     const s2 = withFade(withFade(s1, "early"), "skip");
     assert.deepStrictEqual(dropLastFade(s2, "skip").fadeMarks, [{ kind: "skip", at: 7, of: 11 }, { kind: "early", at: 7, of: 11 }]);
     assert.equal(dropLastFade(sess0(), "skip").fadeMarks, undefined, "nothing to take back: unchanged");
+  });
+  check("#W332 a reason rides the mark: given with it, or stamped on the LAST early/skip mark after the end was saved; junk never", () => {
+    assert.deepStrictEqual(withFade(sess0(), "early", { reason: "time" }).fadeMarks, [{ kind: "early", at: 7, of: 11, reason: "time" }]);
+    assert.deepStrictEqual(withFade(sess0(), "early", { reason: "lol" }).fadeMarks, [{ kind: "early", at: 7, of: 11 }]);
+    const ended = withFade(withFade(sess0(), "skip"), "early");
+    assert.deepStrictEqual(setFadeReason(ended, "pain").fadeMarks.map((m) => m.reason ?? null), [null, "pain"], "the end, not the earlier skip");
+    assert.deepStrictEqual(fadeMarksAtFinish(setFadeReason(ended, "tired")).filter((m) => m.kind === "early"), [{ kind: "early", at: 7, of: 11, reason: "tired" }], "forwarded at finish");
+    const s0 = sess0();
+    assert.equal(setFadeReason(s0, "time"), s0, "no end to explain: the same session");
+    assert.equal(setFadeReason(ended, "bogus"), ended, "an unknown reason: unchanged");
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(setFadeReason(ended, "time"))).fadeMarks.at(-1).reason, "time", "survives the crash mirror");
   });
   check("#fade at finish: the live marks, plus a too-tired lift at the hard sets done before it began", () => {
     const s = withFade(sess0(), "skip");
