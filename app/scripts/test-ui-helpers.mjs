@@ -878,7 +878,9 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // Burst 6 — "Too tired for this one?": the first-screen line only through the pure offer; both doors (the line and the
   // sheet's first reason) one handler; a swap's trimmed dose and its Undo; the ease on the lift's KG step; nothing that
   // promises effort the slot's band doesn't ask for.
-  assert.match(appJs, /\$\{tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
+  // W331: on a lift's first set the tired door is the ONE "Change exercise" sheet's first reason; the inline line stays
+  // only where that door isn't offered (a superset leg's remainder).
+  assert.match(appJs, /\$\{!changeDoor && tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
   assert.match(appJs, /if \(\$\("#tired"\)\) \$\("#tired"\)\.onclick = \(\) => tiredSwap\(\);/);
   assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
@@ -903,7 +905,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // "Target: 1 set"; a tired first-time lift isn't told it's finding its weight; after an easier day "last time" is named for
   // what it is; the bodyweight ease says "bodyweight"; the tired Undo brings a skip's own Undo back.
   assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
-  assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
+  assert.match(appJs, /`\$\{setsN\(e\.sets\)\} × \$\{e\.rep_range\} reps`/, "W331: the target and today's aim are one line — '1 set' still singular");
   assert.match(appJs, /\$\{firstEver \? \(e\.tired \? \(e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
   assert.match(appJs, /<b>New lift, on a tired day 🎯<\/b>/);
   assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
@@ -933,7 +935,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /lastSkip: sess\.lastSkip \?\? null/);
-  assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
+  assert.match(appJs, /Aim <b id="rep-aim">\$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\}<\/b> reps/, "W331: the aim leads the one target line");
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {
   const fin = fnBody(appJs, "async function finish() {", 5000);
@@ -963,11 +965,10 @@ check("W283 wiring: an offline Exercise library in Learn (its sheets come back t
   assert.match(lib, /from: "library"/);
   assert.match(fnBody(appJs, "async function renderLearnData(", 2500), /from === "library"/);
   assert.match(appJs, /const resetLearnNav = \(\) => \{[^}]*learnLibrary = false/);
-  // the three call sites, pinned exactly (W283 review: a comma-only check let `null` through)
+  // the call sites, pinned exactly (W283 review: a comma-only check let `null` through). W331: the demo lives only in the
+  // how-to sheet — the set screen and the superset station showed the same figure for every lift, unasked.
   assert.deepEqual((appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []).sort(), [
     "renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern, ex.exercise ?? d?.id)",
-    "renderMovementDemo(e.movement_pattern, e.exercise)",
-    "renderMovementDemo(m.movement_pattern, m.exercise)",
   ]);
   assert.match(fnBody(appJs, "function renderAddExercise(si) {", 2500), /!editState\.custom \?/);
   // W283 review: back from a sheet restores the reader's place and focus
@@ -1299,5 +1300,22 @@ check("#rev11-b11 the finished workout says whether learning was paused when it 
   assert.match(appJs, /fade_marks: fadeMarksAtFinish\(sess\), learning_paused: sess\.learningPaused === true \};/);
 });
 
+// W331 (owner: "assume every element could be improved — if any element is not adding considerable value remove it"):
+// the set screen has ONE primary action; the rest screen no tick-boxes; the fix chips are real touch targets.
+check("#W331 the set screen: one primary button (Done), one change door, no warm-up logger, no inline demo, a header how-to", () => {
+  const set = fnBody(appJs, "function renderPlayer() {", 12000);
+  const markup = set.slice(set.indexOf("app.innerHTML = `<div class=\"exhead\">"), set.indexOf("wireLearnLinks();"));
+  assert.equal((markup.match(/class="btn"/g) ?? []).length, 1, "exactly one primary");
+  assert.match(markup, /id="cantdo">⇄ Change exercise/);
+  assert.doesNotMatch(markup, /id="warmup"|id="later"|id="your-pick"|renderMovementDemo/);
+  assert.match(markup, /<button class="iconbtn" id="how"/);
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-your-pick"\)\.onclick = \(\) => yourPickSwap\(\);/, "your pick lives in the sheet");
+});
+check("#W331 the rest screen: one readiness line, no tick-boxes; the fix chips 44px; the timer big enough to read across a gym", () => {
+  assert.doesNotMatch(appJs, /restcue|REST_CUES|wireRestCues/);
+  assert.match(css, /\.chip\.fix\{[^}]*min-height:44px/);
+  assert.match(fnBody(appJs, "function setChipsHtml(ids) {", 900), /class="chip fix"/);
+  assert.match(css, /\.timer\{font-size:4rem/);
+});
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

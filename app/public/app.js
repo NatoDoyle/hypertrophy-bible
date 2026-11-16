@@ -258,24 +258,9 @@ async function tryPendingFollow() {
   } catch {}
 }
 
-// Rest-readiness self-check (considerations #7): between sets, teach people to
-// gauge their OWN recovery — the KB's rest-periods thesis is "rest by readiness,
-// not a stopwatch". Optional prompts, not mandatory ticking; the "I'm ready"
-// button is always live. Ticking all three just nudges the button. The countdown
-// stays as a soft guide alongside.
-const REST_CUES = [["breath", "🫁 Breath back to normal"], ["hr", "❤️ Heart rate settled"], ["mind", "🎯 Head in it — ready to push"]];
-const restReadiness = () => `<div class="card" style="text-align:left;margin-top:14px">
-    <p class="muted" style="margin:0 0 6px">Start your next set when you can tick these — rest by readiness, not the clock ${helpDot("rest-periods", "ⓘ why")}:</p>
-    ${REST_CUES.map(([k, label]) => `<button class="restcue" data-cue="${k}" role="checkbox" aria-checked="false" style="display:flex;align-items:center;width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;margin:5px 0;font-size:1rem;text-align:left"><span class="cuebox" aria-hidden="true" style="margin-right:10px">⬜</span>${label}</button>`).join("")}</div>`;
-const wireRestCues = () => {
-  const cues = [...app.querySelectorAll("[data-cue]")];
-  cues.forEach((b) => b.onclick = () => {
-    const on = b.getAttribute("aria-checked") !== "true";
-    b.setAttribute("aria-checked", String(on));
-    b.querySelector(".cuebox").textContent = on ? "✅" : "⬜";
-    if (cues.every((c) => c.getAttribute("aria-checked") === "true")) { const s = $("#skip"); if (s) { s.textContent = "I'm ready — go 💪"; say("Recovered — ready for your next set."); } }
-  });
-};
+// Rest by readiness, not the clock (the KB's rest-periods thesis) — ONE muted line under the timer (W331). The old
+// three tick-boxes changed nothing but the button's label: the line says the same, without three more things to tap.
+const restReadiness = () => `<p class="muted" id="rest-ready" style="font-size:.9rem;margin:10px 0 0">Go when your breath is back and you feel ready — the timer is a guide ${helpDot("rest-periods", "ⓘ why")}</p>`;
 
 // PWA / push capability. On iOS, Web Push exists ONLY for a home-screen-installed
 // app — `PushManager` is absent in a normal Safari tab, so the reminders card
@@ -2704,7 +2689,7 @@ function setChipsHtml(ids) {
   if (!chips.length) return "";
   const named = ids.length > 1;
   return `<div class="muted" style="margin:4px 0 8px;font-size:.9rem">This session: ${chips.map((c) =>
-    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id, true))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
+    `<button class="chip fix" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id, true))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
 }
 function justLoggedHtml(idxs) {
   const items = idxs.filter((i) => sess.logged[i]);
@@ -2803,7 +2788,7 @@ function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
     <div id="fix-host">${justLoggedHtml(rest.kind === "round" ? [sess.logged.length - 2, sess.logged.length - 1] : [sess.logged.length - 1])}</div>
     ${restReadiness()}
     <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-  wireRestCues(); wireLearnLinks(); wireSetFixes(onDone);
+  wireLearnLinks(); wireSetFixes(onDone);
   // Announce ONCE (the per-second #t is not aria-live, or it would spam a screen
   // reader every tick) and move focus to the only action.
   say(announce);
@@ -2968,18 +2953,21 @@ function renderPlayer() {
   const { hint, hintW, hc } = setHintFor(e);
   const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hintIcon(hint)} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
       ${hintButton(hint, hintW, w, reps, e, "use-hint")}</div>` : "";
-  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1>${exListBtn()}</div>
+  // W331 (owner: "assume every element could be improved; if any element is not adding considerable value remove it"):
+  // ONE primary action (Done) and few doors. The name carries "How do I do this?" as an icon; the target and today's aim
+  // are one line; the three swap doors (tired, your pick, can't do) and "Do this later" are ONE "Change exercise" sheet
+  // (renderCantDo — tired first, your pick next); the teaching cues show once, on set 1; the movement demo lives in the
+  // how-to sheet, where it's asked for.
+  const changeDoor = sess.set === 0 && !e.superset_with;
+  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><button class="iconbtn" id="how" aria-label="How do I do ${esc(e.name)}?" title="How do I do this?">ⓘ</button>${exListBtn()}</div>
     ${pickCue()}
     ${swapUndoCard(e)}
-    <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
-    ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
-    ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
-    ${pickOffer(sess) ? `<button class="btn ghost inline" id="your-pick" style="margin:-2px 0 8px">⇄ Rather do ${esc(e.your_pick.name)} today?</button>` : ""}
+    <p class="muted" id="target-line">${aim ? `Aim <b id="rep-aim">${aim.slice(0, e.sets).join(" · ")}</b> reps` : `${setsN(e.sets)} × ${e.rep_range} reps`}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} · ~${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ")}</p>
+    ${!changeDoor && tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
     ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
-    ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
-    ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
+    ${e.unilateral && sess.set === 0 ? `<div class="cue">${sideCue(e)}</div>` : ""}
+    ${e.lengthened_bias && sess.set === 0 ? `<div class="cue">🎯 <b>Stretch-focused:</b> control the bottom — the stretch is where this lift grows the muscle.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
-    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern, e.exercise) : ""}
     <div class="setdots">${setDots}</div>
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
     ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
@@ -2992,7 +2980,7 @@ function renderPlayer() {
       : easyToday ? `<div class="card info"><b>New lift — keep it light today 🎯</b>
       <p class="muted">Today's an easier day, so its sets won't set your starting weight. Start light and stop each set while your form is solid — your next regular session finds it.</p></div>`
       : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
-      <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
+      <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and the weight you settle on today is where next time starts.</p>
       <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
     ${skipUndoStrip()}
     <div class="card">
@@ -3005,12 +2993,9 @@ function renderPlayer() {
       ${forgotHtml(sess.i)}
       ${confirmSet.has(e.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
-      ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
-    <button class="btn ghost" id="how">How do I do this?</button>
-    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="cantdo">🙅 Can't do this one?</button>` : ""}
+    ${changeDoor ? `<button class="btn ghost" id="cantdo">⇄ Change exercise${pickOffer(sess) ? ` <span class="muted">· or ${esc(e.your_pick.name)}?</span>` : ""}</button>` : ""}
     <button class="btn ghost" id="skipset">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this set"}</button>
-    ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
     <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
   wireLearnLinks();
   // Each set replaces the whole screen; without this, focus falls to <body> and
@@ -3020,24 +3005,11 @@ function renderPlayer() {
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
   if ($("#tired")) $("#tired").onclick = () => tiredSwap();
-  if ($("#your-pick")) $("#your-pick").onclick = () => yourPickSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
-  if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
   wireListDoors();
-  // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
-  // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
-  // derivation (loggedWorkSets/isHardSet/countsForE1RM all gate on "work"), so it
-  // never advances the work-set cursor, counts toward volume, or moves e1RM — it's
-  // purely a record. Adjust the steppers to your warm-up load first, then tap.
-  if ($("#warmup")) $("#warmup").onclick = () => {
-    quitPending = false;
-    sess.logged.push({ exercise: e.exercise, set_type: "warmup", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], completed_at: new Date().toISOString() });
-    saveSess();
-    const n = sess.logged.filter((l) => l.exercise === e.exercise && l.set_type === "warmup").length;
-    say(`Warm-up set logged.`);
-    $("#warmup").textContent = `＋ Warm-up logged ✓ (${n}) — add another?`;
-  };
+  // (W331: the optional "Log a warm-up set" button is gone — every derivation excludes warm-ups, so it was a record
+  // nothing read, and a button on every lift's first set. Stored warm-up rows from older builds still load and sync.)
 
   // In-place stepper updates: a full repaint on every tap destroys the tapped
   // button (dumping keyboard/screen-reader focus) and never announces the new
@@ -3174,10 +3146,9 @@ function renderSupersetStation(L, P) {
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
       ${round === 0 && validAim(m) ? `<p class="muted" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${validAim(m).slice(0, m.sets).join(" · ")} reps</p>` : ""}
-      ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
-      ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
+      ${m.unilateral && round === 0 ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
+      ${m.lengthened_bias && round === 0 ? `<div class="cue">🎯 <b>Stretch-focused:</b> control the bottom — the stretch is where this lift grows the muscle.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
-      ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
       ${(() => { const lh = setHintFor(m); return lh.hc ? `<div class="cue" role="status">${hintIcon(lh.hint)} <b>${lh.hc.lead}</b> — ${lh.hc.why}. Try <b>${lh.hc.tryW}</b> ${lh.hc.tail} ${hintButton(lh.hint, lh.hintW, w, reps, m, `leg-hint-${idx}`)}</div>` : ""; })()}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
@@ -3192,7 +3163,7 @@ function renderSupersetStation(L, P) {
 
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span>${exListBtn()}</div>
     ${pickCue()}
-    <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
+    ${round === 0 ? `<p class="muted">One set of each, back to back — then rest. That's one round.</p>` : ""}
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
     ${skipUndoStrip()}
     ${memberBlock(L)}${memberBlock(P)}
@@ -3534,7 +3505,7 @@ async function renderCantDo() {
     $("#cd-back").onclick = () => renderPlayer(0);
     if ($("#cd-later")) $("#cd-later").onclick = deferCurrentExercise;
   };
-  const note = (msg) => { app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
+  const note = (msg) => { app.innerHTML = `<h1>Change ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
   const offline = () => note(`📴 You're offline — I can't fetch a replacement right now. Keep going with ${cur.name}${canLater ? ", or do it later and come back to it" : ""}.`);
   const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
     : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
@@ -3564,8 +3535,11 @@ async function renderCantDo() {
     });
   };
 
-  app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
+  // W331: the ONE "Change exercise" door — tired first (Burst 6's one-tap flow is now two: door, then this), the lifter's
+  // own pick next when there is one (W326), then the reasons a swap can be for.
+  app.innerHTML = `<h1>Change ${esc(cur.name)}?</h1>
     <p class="muted">Tell me why and I'll sort it.</p>
+    ${pickOffer(sess) ? `<button class="choice reason" id="cd-your-pick">⇄ Do ${esc(cur.your_pick.name)} instead<span class="sub muted">Your usual pick for this slot — just for today</span></button>` : ""}
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
@@ -3575,6 +3549,7 @@ async function renderCantDo() {
     ${tail}`;
   wireTail();
   if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)
+  if ($("#cd-your-pick")) $("#cd-your-pick").onclick = () => yourPickSwap();
   $("#cd-machine").onclick = async () => {
     lock("Finding the best replacement…");
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }
@@ -3763,7 +3738,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     ${section("👀 Worth a look", lists.watch)}
     ${section("➡️ Next time", nextShown.map((x) => x.html), true)}
     ${section("📅 This block", ro?.block)}
-    ${section("🔭 If your block ended today", ro?.next_block)}
+    ${nerdOn() ? section("🔭 If your block ended today", ro?.next_block) : "" /* W331: a forecast for the curious — Nerd Mode */}
     ${ro?.bodyweight ? `<p class="muted" style="margin:10px 0 0">⚖️ ${esc(ro.bodyweight)}</p>` : ""}
     ${!ro && queued ? `<p class="muted" style="margin:10px 0 0">📴 Next time and your block read-out arrive once this syncs — I'll put them on Today.</p>` : ""}
     ${!ro && loading ? `<p class="muted" id="ro-loading" style="margin:10px 0 0">Reading what this means for your next sessions…</p>` : ""}
