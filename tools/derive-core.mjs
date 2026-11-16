@@ -678,8 +678,8 @@ export function effortSignal(sessions, byId, { recentWeeks = 6, minSets = 10, mi
 // trained muscle it combines the user's CURRENT weekly volume (vs the KB MEV/MAV/MRV
 // landmarks) with whether a lift for that muscle has STALLED, into an honest,
 // data-driven "do you need more/less volume here?" signal. Two hard safety rails:
-// (1) it is COACHING ONLY — the caller surfaces it as advice and never auto-applies
-// it silently; (2) every suggestion is bounded by the recoverable range — it never
+// (1) it is never applied SILENTLY — the block-boundary tune applies it (computeVolumeAdjust → volume_adjust) and Today
+// announces it (W313: an announcement, shown with or without a check-in); (2) every suggestion is bounded by the recoverable range — it never
 // pushes a target above MAV.max, and once a muscle is stalled AT its ceiling it says
 // "change/deload", not "add more", so volume can never run away.
 // ONE volume sample for the card and the tune (C6): each muscle's PEAK weekly

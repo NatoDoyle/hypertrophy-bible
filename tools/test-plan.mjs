@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
+import { generatePlan, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
   accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN } from "./plan-core.mjs";
 import { sessionMinutes as dayMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
@@ -1924,5 +1924,31 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     /past them/.test(line) && !/long enough to do the work/.test(line));
 }
 
+// --- W315b (Burst 10 — owner note 7): a lifter's own session ceiling (opts.sessionCap — learned from their fade signals,
+// accepted on Today) caps every day's sets under the KB's, the superset rescue included; at or over the KB's it changes
+// nothing, and absent the plan is byte-identical (the golden digest above).
+{
+  const dayMax = (plan) => Math.max(...plan.program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0)));
+  for (const [status, days, min] of [["advanced", 4, 90], ["intermediate", 3, 75], ["advanced", 6, 120]]) {
+    const pr = { ...profile, training_status: status, days_per_week: days, session_length_min: min };
+    const free = generatePlan(pr, kb), capped = generatePlan(pr, kb, { sessionCap: 13 });
+    ok(`#cap (W315b) ${status} ${days}d/${min} min: no day past the lifter's own 13 (uncapped: ${dayMax(free)}, capped: ${dayMax(capped)})`, dayMax(capped) <= 13 && dayMax(free) > 13);
+  }
+  ok("#cap (W315b) a cap at or over the KB's changes nothing", JSON.stringify(generatePlan(profile, kb, { sessionCap: 30 }).program) === JSON.stringify(generatePlan(profile, kb).program));
+  ok("#cap (W315b) the levers judge 'longer sessions' against the lifter's own ceiling (45 min holds 15 sets — past a cap of 13)",
+    volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", sessionCap: 13 }) === volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", timeBound: false }));
+}
+// --- W316: the lifter's own pace (opts.pace) sizes the day: the clock-fit pass trims a day only as far as it runs past
+// the lifter's minutes AT THEIR PACE — a slower lifter loses more, a faster one keeps it all (the set budget itself still
+// comes from the minutes, ~3 min a set); without a pace the plan is byte-identical (the golden digest).
+{
+  const pr = { user_id: "pace-1", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+  const trim = (pace) => generatePlan(pr, kb, pace ? { pace } : {}).meta?.time_trim?.removed_sets ?? 0;
+  const slow = trim({ heavy: 240, moderate: 230, isolation: 160, transition: 200 }), std = trim(null), fast = trim({ heavy: 130, moderate: 120, isolation: 80, transition: 90 });
+  ok(`#pace (W316) the clock is the lifter's: sets cut to fit 45 min — slow ${slow} > default ${std} > fast ${fast}`, slow > std && std > fast);
+  const cur = generatePlan(pr, kb);
+  const q = (pace) => timeFitQuestion(pr, kb, { program: cur.program, rationale: cur.rationale, meta: cur.meta }, { pace });
+  ok("#pace (W316) the time-fit question measures the stored plan at the lifter's pace too", q({ heavy: 240, moderate: 230, isolation: 160, transition: 200 }).max_minutes > q(null).max_minutes);
+}
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

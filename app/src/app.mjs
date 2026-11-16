@@ -2,11 +2,12 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS } from "./coach.mjs";
+import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
-import { SPEC_MAX_BLOCKS, SESSION_QUALITY_CAP } from "../../tools/plan-core.mjs";
+import { SPEC_MAX_BLOCKS, qualityCapFor } from "../../tools/plan-core.mjs";
+import { paceProfile } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
@@ -151,7 +152,9 @@ export function sanitizeInjuries(injuries) {
 // What a "keep" for the three ways back is ABOUT (W304): the schedule and the ceiling the plan was built under — and
 // (W305c, Burst 8 review #39) what was short and how many days ran over when it was asked. A keep covers exactly that:
 // a new schedule, a muscle newly short or another day over is a NEW question; the same question in a later block is not.
-const timeFitSched = (u) => `${u?.program?.sessions?.length ?? 0}:${u?.profile?.session_length_min ?? 60}:${u?.profile?.training_status ?? "intermediate"}:${SESSION_QUALITY_CAP[u?.profile?.training_status ?? "intermediate"] ?? 16}`;
+// The lifter's own session ceiling (W315b, owner note 7): learned, offered on Today, accepted through the Settings door.
+const sanitizeSessionCap = (v) => (Number.isInteger(v) && v >= 10 && v <= 20 ? v : null);
+const timeFitSched = (u) => `${u?.program?.sessions?.length ?? 0}:${u?.profile?.session_length_min ?? 60}:${u?.profile?.training_status ?? "intermediate"}:${qualityCapFor(u?.profile?.training_status ?? "intermediate", u?.profile?.session_cap ?? null)}`;
 const timeFitKey = (u, fit) => `${timeFitSched(u)}|${(fit?.mev_short ?? []).join(",")}|${fit?.unfit_days ?? 0}`;
 const keepCovers = (u, fit) => {
   const k = u?.time_fit_kept;
@@ -184,6 +187,20 @@ const normalizeSet = (s) => ({
 // At most 24, one per lift; an entry without a real id and a 1-12 set count is dropped;
 // optional fields that fail their shape become null. Null when nothing survives.
 const MAX_TARGETS = 24;
+// The fade marks a workout carries (W314 — owner note 7, the learned ceiling's evidence): an early end, a skip, a
+// too-tired moment, each with the hard sets done then (`at`) and the planned total (`of`). Whole numbers in range or
+// dropped; at most 20.
+const FADE_KINDS = new Set(["early", "skip", "tired"]);
+const normalizeFadeMarks = (list) => {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  for (const m of list) {
+    if (out.length >= 20) break;
+    if (!FADE_KINDS.has(m?.kind) || !Number.isInteger(m.at) || m.at < 0 || m.at > 100) continue;
+    out.push({ kind: m.kind, at: m.at, ...(Number.isInteger(m.of) && m.of >= 1 && m.of <= 200 ? { of: m.of } : {}) });
+  }
+  return out.length ? out : null;
+};
 const normalizeTargets = (list) => {
   if (!Array.isArray(list)) return null;
   const seen = new Set(), out = [];
@@ -297,6 +314,7 @@ export function createApp(store, config = {}) {
     if (profile.goal_event_date != null && !validLocalDate(profile.goal_event_date)) profile.goal_event_date = null;
     if (profile.injuries != null) profile.injuries = sanitizeInjuries(profile.injuries);
     if (profile.tz_offset_min != null) profile.tz_offset_min = parseTzOffset(profile.tz_offset_min);
+    if ("session_cap" in profile) profile.session_cap = sanitizeSessionCap(profile.session_cap); // a whole 10-20 or nothing (W315b)
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -393,6 +411,18 @@ export function createApp(store, config = {}) {
     return c.json({ ok: true, kept: updated.time_fit_kept });
   });
 
+  // "Not now" to the learned session ceiling (W315c): remembered on the server (every device agrees) — only a ceiling 2+
+  // sets lower asks again. A yes goes through the Settings door (/api/plan/regenerate, profile.session_cap).
+  app.post("/api/plan/session-cap", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    const cap = sanitizeSessionCap(b.cap);
+    if (b.choice !== "not_now" || cap == null) return c.json({ error: "choice must be not_now, with the cap offered" }, 400);
+    const updated = await store.updateUser(b.user_id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), session_cap_declined: cap }; return u; })
+      .catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+    return updated ? c.json({ ok: true }) : c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+  });
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
@@ -420,6 +450,8 @@ export function createApp(store, config = {}) {
     // sweep and settleChallenge read the STORED value with no request to re-derive
     // from: a finite-but-absurd offset has no self-heal path.
     if (profilePatch?.tz_offset_min != null) profilePatch.tz_offset_min = parseTzOffset(profilePatch.tz_offset_min);
+    // The lifter's own session ceiling (W315b): a whole 10-20, or nothing (null takes it off).
+    if (profilePatch && "session_cap" in profilePatch) profilePatch.session_cap = sanitizeSessionCap(profilePatch.session_cap);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -428,7 +460,7 @@ export function createApp(store, config = {}) {
     // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
     // not a real change and must not restart the mesocycle.
     const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
-    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization"];
+    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;
@@ -508,7 +540,7 @@ export function createApp(store, config = {}) {
     // The app's own untouched output is critiqued in CAVEAT framing (constraints
     // and levers, no "worth fixing"); a hand-edited plan keeps the full guard rail.
     const critProgram = b.program || user.program;
-    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null, critProgram?.custom ? null : user.plan_meta?.time_trim?.by_muscle ?? null));
+    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null, critProgram?.custom ? null : user.plan_meta?.time_trim?.by_muscle ?? null, user.profile?.session_cap ?? null));
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -558,7 +590,7 @@ export function createApp(store, config = {}) {
     const injuryFlags = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]
       .map((exId) => ({ exId, region: injuryRegionFor(updated.profile, exId) })).filter((x) => x.region)
       .map((x) => ({ severity: "warn", msg: `${exerciseById.get(x.exId)?.name ?? x.exId}: you reported a ${x.region.replace(/-/g, " ")} issue — it's one of the lifts the plan keeps away from it.` }));
-    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null, program.custom ? null : updated.plan_meta?.time_trim?.by_muscle ?? null);
+    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null, program.custom ? null : updated.plan_meta?.time_trim?.by_muscle ?? null, updated.profile?.session_cap ?? null);
     return c.json({ ok: true, critique: { ...critique, findings: [...(critique?.findings ?? []), ...injuryFlags] } });
   });
 
@@ -1127,6 +1159,8 @@ export function createApp(store, config = {}) {
     // question at a time is the client's call (review #18): the days card's keep lives on the device (fix C14).
     const fitNow = !user.paused && !user.program?.custom && !session?.taper
       ? userTimeFit(user, { stalledExercises: swapStalls(user, sessions, nowISO) }) : null;
+    // The lifter's own session ceiling, offered once (W315c) — the learned one, never applied without their yes.
+    daily.session_cap_offer = sessionCapOffer(user, sessions);
     daily.plan_time_fit = fitNow && !keepCovers(user, fitNow) ? { ...fitNow, key: timeFitKey(user, fitNow) } : null;
     // A plan EXPLAINS a gap: the "it's been N days — no problem" reassurance stands
     // down when the user has said which days they train (the hub's planned-day and
@@ -1874,6 +1908,16 @@ export function createApp(store, config = {}) {
     return sessionReadout(user, all, session, { now: new Date().toISOString(), tz: user.profile?.tz_offset_min ?? null, checkins, bodyweights, customEx: user.custom_exercises || [] });
   }
 
+  // The read-out's one-tap "how did your last few sets feel?" (W314): stored on the workout — the learned ceiling's own
+  // evidence (W315). Only the three answers, only the user's own workout (user_id in the body, never the URL).
+  app.post("/api/session/feel", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const user = b.user_id && (await store.getUser(b.user_id));
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (!["strong", "fading", "empty"].includes(b.feel)) return c.json({ error: "feel must be strong, fading or empty" }, 400);
+    const updated = typeof b.session_id === "string" ? await store.updateSession(b.user_id, b.session_id, (s) => ({ ...s, feel: b.feel })) : null;
+    return updated ? c.json({ ok: true }) : c.json({ error: "unknown workout" }, 404);
+  });
   app.post("/api/session", async (c) => {
     const body = await c.req.json().catch(() => ({})); // empty/non-JSON body -> clean 404 below, not a 500
     const id = body.user_id;
@@ -1902,6 +1946,8 @@ export function createApp(store, config = {}) {
     };
     const targets = normalizeTargets(body.targets);
     if (targets) session.targets = targets;
+    const fade = normalizeFadeMarks(body.fade_marks);
+    if (fade) session.fade_marks = fade;
     // The store repeats the tombstone fence in its atomic write. A merge can land
     // after the read above; reporting a recap for a row that was safely refused
     // would be an optimistic lie, so surface the lost identity instead.
@@ -1929,6 +1975,15 @@ export function createApp(store, config = {}) {
         });
       }
     } catch { /* the echo is optional; the logged session is not */ }
+    // The lifter's own pace (W316): re-learned from their logged sets each time a workout lands — every plan door and
+    // Today's "about N min" size the day by it (planOptsFor). Stored only when it changed; best-effort like the echo above
+    // (a failed write never fails the save — the next workout recomputes).
+    try {
+      const pace = paceProfile(all, (exId) => { const e = exerciseById.get(exId); return e ? restTier(e) : null; });
+      if (JSON.stringify(pace) !== JSON.stringify(user.plan_meta?.pace ?? null)) {
+        await store.updateUser(id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), pace }; return u; }).catch(() => null);
+      }
+    } catch { /* the pace is a cache; the logged session is not */ }
     // The coaching read-out (W282) is NOT computed here: it costs as much again as the save, a
     // CPU-limit kill can't be caught, and a replayed offline save would pay it again for a body
     // nobody reads. The client asks /api/session/recap once the save has landed (W282 review).

@@ -7,6 +7,8 @@ import {
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
   interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
+import { qualityCapFor } from "../../tools/plan-core.mjs";
+import { sessionTolerance, restAdapt } from "../../tools/response-core.mjs";
 import { isSpecializing, generateUserPlan, planOptsFor, userExercises, userApplySubstitution, injuryRegionFor } from "./planner.mjs";
 
 const parseRange = (s) => {
@@ -707,6 +709,22 @@ function orderShift(ex, last, sug, slot, byId, anchorNear, barKg = EMPTY_BAR_KG)
   return { fromLoss, toLoss, kg, note: `${clause.slice(0, -1)}, so I've made it ${kg} kg${earned}.` };
 }
 
+// THE SESSION CEILING, OFFERED (W315c — owner note 7: "I really start to struggle once I get past 12 sets… The app should
+// be able to learn this from my data"): when the lifter's own fades (response-core sessionTolerance) put a ceiling under
+// the one they have now — the KB's for their training age, or one they took — Today asks, once. "Not now" is remembered
+// (plan_meta.session_cap_declined) and only a ceiling 2+ sets lower asks again; a yes goes through the Settings door.
+// Never while paused, never over a hand-edited plan (a yes rebuilds it). A beginner's carries blocks:false (no blocks to name).
+export function sessionCapOffer(user, sessions) {
+  if (user?.paused || user?.program?.custom) return null;
+  const status = user?.profile?.training_status ?? "intermediate";
+  const current = qualityCapFor(status, user?.profile?.session_cap ?? null);
+  const t = sessionTolerance(sessions, { prior: current, comebackDays: COMEBACK_GAP_DAYS });
+  if (!t) return null;
+  const declined = user?.plan_meta?.session_cap_declined;
+  if (Number.isInteger(declined) && t.cap > declined - 2) return null;
+  return { cap: t.cap, fades: t.fades, of: t.eligible, current, ...(status === "beginner" ? { blocks: false } : {}) };
+}
+
 // Every "last time" (and "your last session") in a reason, renamed for the session it means when an easier one came after it:
 // "your last REGULAR session" — not "full", which read as "complete" beside "You did 2 of 3 sets" (Burst 6 review round 4).
 export const lastRegular = (note) => note
@@ -847,6 +865,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const templateSession = program.sessions[idx];
   let templateExercises = templateSession.exercises;
   let coach_note = null;
+  // The new block, a graduation, a welcome back are ANNOUNCEMENTS — their own field, shown with or without a check-in
+  // (W313: folded into coach_note, which the client renders only beside a check-in, they reached only check-in days).
+  let announcement = null;
   if (readiness?.level === "low") {
     // Branch on the LEVEL, never on whether we can trim. A low day always earns an
     // honest easing note — trimming is just the primary lever when the session is
@@ -919,7 +940,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       ? ` Your ${swapped.join(", ")} had gone flat for weeks, so I've swapped ${swapped.length === 1 ? "it" : "them"} for a different angle on the same muscle — a stalled lift needs a change, not more sets.`
       : "";
     const msg = `New block — I rotated your accessory exercises for fresh stimulus. Your main lifts stay, so your progression carries over.${tuned}${heldNote}${swapNote}`;
-    coach_note = coach_note ? `${msg} ${coach_note}` : msg;
+    announcement = announcement ? `${msg} ${announcement}` : msg;
   }
   // GRADUATION: the user's logged training age crossed a tier, so the plan just
   // stepped up. Announce it as the win it is (Goal 4) rather than letting a bigger,
@@ -931,7 +952,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     const win = graduatedTo === "advanced"
       ? `🎓 You've trained long enough to be programmed as an ADVANCED lifter. Your volume targets step up, your hardest sessions get bigger, and your rep ranges now vary day to day. This is years of showing up, paying off.`
       : `🎓 You're not a beginner any more — and I've stopped programming you like one. From today your volume steps up, your weeks build toward a peak and then deload, and your accessories refresh each block. You earned this by showing up.`;
-    coach_note = coach_note ? `${win} ${coach_note}` : win;
+    announcement = announcement ? `${win} ${announcement}` : win;
   }
   // Layoff → the suggested weights below are actually eased; say so honestly, so the
   // Coach's "welcome back — I eased your weights" claim matches what's on the card.
@@ -939,7 +960,7 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   const layoffDays = now && lastSessionMs ? Math.round((+new Date(now) - lastSessionMs) / 86400000) : 0;
   if (layoffDays >= COMEBACK_GAP_DAYS) {
     const welcome = `Welcome back — it's been ${layoffDays} days, so I eased today's weights to ramp you in safely. They'll climb again fast.`;
-    coach_note = coach_note ? `${welcome} ${coach_note}` : welcome;
+    announcement = announcement ? `${welcome} ${announcement}` : welcome;
     // A comeback INSIDE a taper window: the load ease is correct (safety first),
     // but the taper card's stock "the weight stays where it is / stays real" line
     // would sit right next to per-exercise "I eased this to X kg" notes. Lesson 12:
@@ -1016,6 +1037,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // The player banks a day planned-easy exactly when the response says deload week or comeback (app.js: block.phase ===
   // "deload" || comeback), and a taper drops the block (below) — so a deload week inside a taper banks regular (round 7).
   const plannedEasy = (!taper && block?.phase === "deload") || layoffDays >= COMEBACK_GAP_DAYS;
+  // Whether this day runs past the lifter's minutes at their pace (W317): only then may an accessory's timer shorten.
+  const dayRunsLong = sessionMinutes(templateExercises.map((ex) => ({ exercise: ex.exercise, sets: ex.sets, superset_with: ex.superset_with ?? null })), byId, user.plan_meta?.pace ?? null)
+    > (user.profile?.session_length_min ?? 60) + 1;
   const exercises = templateExercises.map((ex) => {
     const e = byId.get(ex.exercise);
     // The band, the wave-scaled sets and the weight with its reason — through the one door
@@ -1057,7 +1081,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
       primary_muscles: e?.primary_muscles ?? [], // slugs — the client renders friendly labels
       unilateral: !!e?.unilateral,               // → "each side", so a novice doesn't do half the work
       alternating: !!e?.alternating,             // → the side cue says "alternate every rep", never "all sets left first" (walking lunge)
-      rest_s: restSeconds(e),                    // → the player's rest timer: the KB table for THIS lift (W273), adjustable in the player
+      // …moved one step within the KB's band when the lifter's own sets say so, with the reason (W317, response-core restAdapt).
+      ...(() => { const ra = restAdapt(e, sessions, { timeBinds: dayRunsLong }); return ra ? { rest_s: ra.rest_s, rest_reason: ra.reason } : { rest_s: restSeconds(e) }; })(),                    // → the player's rest timer: the KB table for THIS lift (W273), adjustable in the player
       lengthened_bias: !!e?.lengthened_bias,     // → "stretch-focused" tag; the science the engine already applies, made visible
       cue: (e?.cues ?? [])[0] ?? null,
       equipment: e?.equipment ?? null,
@@ -1123,8 +1148,8 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // A specialization block's maintenance day says WHY it's light, on the day
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
-  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId);
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, gap_note, swap_note,
+  const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId, user.plan_meta?.pace ?? null); // at the lifter's pace (W316)
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, announcement, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1854,7 +1879,10 @@ export function progressReport(user, sessions, bodyweights, customEx = [], now =
     recovery,
     goal: user.profile?.primary_goal ?? null, injuries: user.profile?.injuries ?? [],
   }, index, muscleIndex, guidelineById.get("cardio-concurrent-training")) : null;
-  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
+  return { sessions_logged: sessions.length, bodyweights_logged: bodyweights.length,
+    // Whether the per-block tune runs for this lifter (W313) — the block boundary's own gate: blocks started, not a
+    // beginner, a generated plan. "Your plan retunes itself each block" is said only then.
+    tunes: !!user.plan_meta?.block_start && user.profile?.training_status !== "beginner" && !user.program?.custom, latest_week: latest ?? null, volume_note, volumeByMuscle, progression, progression_all, stalls, regressions, adaptive, bodyweight_trend: trend, energy_balance: energy, personal_records, personal_records_all, pr_count: prHistory.length, interference,
     // The raw weigh-in series the client DRAWS spans the full log (owner #3 —
     // "see my progress" means all of it), while `bodyweight_trend` above keeps its
     // 42-day window: the drawn history and the adaptive read are different

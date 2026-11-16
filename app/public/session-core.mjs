@@ -225,6 +225,24 @@ export function undoSkip(sess) {
   delete out.offerPick; // the skip's "Pick a different one" goes with it (Burst 9 review copy#1)
   return { ok: true, sess: out };
 }
+// The fade marks a workout carries (W314 — owner note 7: "I really start to struggle once I get past 12 sets… once I get
+// to 16 sets I'm pretty empty. The app should be able to learn this"): a skip or an early end, marked when it happens,
+// with the hard (work) sets banked THEN and the planned total; a too-tired lift is read off the finished session (an
+// undone ease or swap isn't there to read). The learned ceiling (W315) reads them. At most 20. Pure.
+const workBanked = (sess) => (sess?.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
+const plannedTotal = (sess) => (sess?.ex ?? []).reduce((a, x) => a + (Number.isInteger(x?.planned_sets) ? x.planned_sets : Number(x?.sets) || 0), 0);
+export function withFade(sess, kind) {
+  return { ...sess, fadeMarks: [...(sess?.fadeMarks ?? []), { kind, at: workBanked(sess), of: plannedTotal(sess) }].slice(-20) };
+}
+export function dropLastFade(sess, kind) {
+  const marks = sess?.fadeMarks ?? [], i = marks.map((m) => m.kind).lastIndexOf(kind);
+  return i < 0 ? sess : { ...sess, fadeMarks: [...marks.slice(0, i), ...marks.slice(i + 1)] };
+}
+export function fadeMarksAtFinish(sess) {
+  const log = (sess?.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work"), of = plannedTotal(sess);
+  const tired = (sess?.ex ?? []).filter((x) => x?.tired).map((x) => { const first = log.findIndex((l) => l.exercise === x.exercise); return { kind: "tired", at: first < 0 ? log.length : first, of }; });
+  return [...(sess?.fadeMarks ?? []), ...tired].slice(0, 20);
+}
 // What the screen seeded for a skip's cleared slots right after its redraw (W312): undoSkip restores a slot only while it
 // still holds exactly this. The same session back when the skip kept nothing.
 export function noteSeeded(sess) {

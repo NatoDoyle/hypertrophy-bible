@@ -563,7 +563,7 @@ try {
     (rgAfter.plan_meta?.tuned_this_block?.held ?? []).some((h) => h.muscle === "chest" && h.reason === "recovery"));
   const rgToday = await (await app.request("/api/today", { headers: { "X-HB-User": rgUser } })).json();
   ok("#A the new-block note tells the user their stalled muscle was held for recovery",
-    /stalled with room to grow/.test(rgToday?.session?.coach_note ?? ""));
+    /stalled with room to grow/.test(rgToday?.session?.announcement ?? "")); // W313: the announcement's own field
 
   // Wave 69 (audit A/B): the recovery gate reads only the CURRENT block, not the whole
   // history. The same stall, but the only low check-ins are a long-ago rough patch
@@ -1633,6 +1633,27 @@ try {
     const aims = (await store.listSessions(junkU)).find((x) => x.session_id === "w4")?.targets ?? [];
     ok("#rep-aims a target keeps its served aims; too many, fractional, zero or non-list aims are dropped whole",
       JSON.stringify(aims[0]?.rep_targets) === "[12,11,10]" && aims.length === 5 && aims.slice(1).every((t) => !("rep_targets" in t)), JSON.stringify(aims));
+    // W314: the fade marks a workout carries (an early end, a skip, a too-tired moment — each with the hard sets done
+    // then, and the planned total) survive the door, bounded; the read-out's one-tap feel is stored on the session, and
+    // the edit door keeps both.
+    {
+      const fm = [{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "bogus", at: 1 }, { kind: "tired", at: -1 }, { kind: "tired", at: 3.5 },
+        { kind: "tired", at: 9 }, ...Array.from({ length: 30 }, () => ({ kind: "skip", at: 15, of: 18 }))];
+      await json("POST", "/api/session", { user_id: junkU, session_id: "w4f", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+        sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: fm });
+      const marks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f")?.fade_marks ?? [];
+      ok("#fade the door keeps valid fade marks (kind, whole hard sets, the planned total), drops junk, keeps at most 20",
+        JSON.stringify(marks.slice(0, 3)) === JSON.stringify([{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "tired", at: 9 }]) && marks.length === 20, JSON.stringify(marks.slice(0, 4)));
+      const f1 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "fading" });
+      const f2 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "exhausted" });
+      const f3 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "nope", feel: "empty" });
+      const fs1 = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f");
+      ok("#fade the read-out's one-tap feel is stored on the session; junk is refused; an unknown workout is a 404",
+        f1.status === 200 && fs1?.feel === "fading" && f2.status === 400 && f3.status === 404, JSON.stringify([f1.status, fs1?.feel, f2.status, f3.status]));
+      await json("POST", "/api/session/update", { user_id: junkU, session_id: "w4f", sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 42.5, reps: 12 }] });
+      const fs2 = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f");
+      ok("#fade the edit door keeps the marks and the feel", fs2?.feel === "fading" && (fs2?.fade_marks ?? []).length === 20 && fs2?.sets?.[0]?.weight_kg === 42.5);
+    }
     // W308: the timer each lift ran survives the door — whole seconds within the timer's own bounds (30-600), or nothing.
     await json("POST", "/api/session", { user_id: junkU, session_id: "w4r", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
       sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }],
@@ -2134,6 +2155,76 @@ try {
   ok("#plan-fit a legacy stamp (no set_on) counts from its week's Monday", JSON.stringify(await fitOn(legacy, "2026-10-14")) === JSON.stringify({ plan_days: 4, committed_days: 3 })
     && (await fitOn(legacy, "2026-10-09")) === null);
   ok("#plan-fit no offer when the counts already match", (await fitOf(await fitUser({ days: ["mon", "wed", "fri"], dpw: 3 }))) === null);
+  // W315b: the lifter's own session ceiling, through the Settings door — a whole 10-20 or nothing; null takes it off.
+  {
+    const cu = (await json("POST", "/api/onboard", { profile: { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const dayMax = async () => Math.max(...(await store.getUser(cu)).program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0)));
+    const before = await dayMax();
+    await store.updateUser(cu, (u) => { u.plan_meta = { ...u.plan_meta, block_index: 2, block_start: dAgo(30) }; return u; });
+    const r13 = await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: 13 } });
+    const pm13 = (await store.getUser(cu)).plan_meta;
+    ok("#cap (W315b) a new ceiling is a training change: a fresh block, as the card says (like a new session length)",
+      (pm13.block_index ?? 0) === 0 && Date.parse(pm13.block_start) > Date.now() - 86400000, JSON.stringify([pm13.block_index, pm13.block_start]));
+    const at13 = await dayMax(), stored13 = (await store.getUser(cu)).profile.session_cap;
+    await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: 5 } });
+    const junk = (await store.getUser(cu)).profile.session_cap;
+    await json("POST", "/api/plan/regenerate", { user_id: cu, profile: { session_cap: null } });
+    const off = (await store.getUser(cu)).profile.session_cap, after = await dayMax();
+    // …and the other wholesale profile door (lesson 27): a ceiling sent at onboarding is sanitized the same way.
+    const ob = (await json("POST", "/api/onboard", { profile: { training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 90, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_cap: 1 } })).data.user_id;
+    const obu = await store.getUser(ob);
+    ok("#cap (W315b) onboarding can't plant an absurd ceiling (1 set a day): junk is nothing",
+      obu.profile.session_cap === null && Math.max(...obu.program.sessions.map((s) => s.exercises.reduce((a, e) => a + (e.sets ?? 0), 0))) > 10, JSON.stringify(obu.profile.session_cap));
+    // W315c closed loop (lesson 79): workouts logged through the client's door with fade marks → Today offers the ceiling;
+    // "not now" through its route → Today stops asking.
+    {
+      const fu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      for (let i = 0; i < 8; i++) {
+        await json("POST", "/api/session", { user_id: fu, session_id: `fade-${i}`, date: dAgo(17 - i * 2), local_date: dAgo(17 - i * 2).slice(0, 10), session_name: "Day",
+          sets: Array.from({ length: 18 }, () => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 })), ...(i % 2 ? { fade_marks: [{ kind: "skip", at: 13, of: 18 }] } : {}) });
+      }
+      const offer = (await (await app.request("/api/today", { headers: { "X-HB-User": fu } })).json()).daily?.session_cap_offer;
+      const bad = await json("POST", "/api/plan/session-cap", { user_id: fu, choice: "later", cap: 13 });
+      const nn = await json("POST", "/api/plan/session-cap", { user_id: fu, choice: "not_now", cap: 13 });
+      const after = (await (await app.request("/api/today", { headers: { "X-HB-User": fu } })).json()).daily?.session_cap_offer;
+      ok("#cap-offer (W315c) logged fades → Today offers the ceiling; 'not now' through its route → it stops asking",
+        JSON.stringify(offer) === JSON.stringify({ cap: 13, fades: 4, of: 8, current: 16 }) && bad.status === 400 && nn.status === 200 && after === null,
+        JSON.stringify({ offer, bad: bad.status, nn: nn.status, after }));
+    }
+    // W316 closed loop: workouts logged through the client's door teach the lifter's pace, and Today's "about N min" uses it.
+    {
+      const pu = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: pu, program: { sessions: [{ name: "Day", exercises: [{ exercise: "barbell-bench-press", sets: 4, rep_range: "6-10", rir: "1-2" }, { exercise: "barbell-row", sets: 4, rep_range: "6-10", rir: "1-2" }] }] } });
+      const eta = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": pu } })).json()).session?.minutes_estimate;
+      const before = await eta();
+      for (let i = 0; i < 12; i++) {
+        const t0 = Date.now() - (30 - i * 2) * 86400000, iso = (sec) => new Date(t0 + sec * 1000).toISOString();
+        await json("POST", "/api/session", { user_id: pu, session_id: `pace-${i}`, date: iso(0), local_date: iso(0).slice(0, 10), session_name: "Day",
+          sets: [0, 1, 2].map((k) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8, completed_at: iso(240 + k * 120) })) });
+      }
+      const pace = (await store.getUser(pu)).plan_meta?.pace, after = await eta();
+      ok("#pace (W316) every plan door builds at the lifter's pace (planOptsFor)", JSON.stringify(planOptsFor(await store.getUser(pu)).pace) === JSON.stringify((await store.getUser(pu)).plan_meta?.pace) && !!(await store.getUser(pu)).plan_meta?.pace);
+      ok("#pace (W316) logged workouts teach the lifter's pace (heavy gaps of 120 s), and Today's estimate follows it",
+        pace?.heavy === 120 && Number.isFinite(before) && after < before, JSON.stringify({ pace, before, after }));
+    }
+    // W317 closed loop: workouts logged through the client's door — the next set falling under the range after a full-timer
+    // rest, in 2 of the last 3 — give that lift's row on Today a timer 30 s longer, with its reason.
+    {
+      const ru = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+      await json("POST", "/api/plan/save", { user_id: ru, program: { sessions: [{ name: "Day", exercises: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+      for (const [i, reps] of [[0, [10, 7, 7]], [1, [10, 10, 9]], [2, [9, 6, 6]]]) {
+        const t0 = Date.now() - (9 - i * 3) * 86400000, iso = (sec) => new Date(t0 + sec * 1000).toISOString();
+        await json("POST", "/api/session", { user_id: ru, session_id: `rest-${i}`, date: iso(0), local_date: iso(0).slice(0, 10), session_name: "Day",
+          sets: reps.map((r, k) => ({ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: r, completed_at: iso(300 + k * 180) })),
+          targets: [{ exercise: "barbell-bench-press", sets: 3, rep_range: "8-12", rir: "1-2", rest_s: 180 }] });
+      }
+      const row = (await (await app.request("/api/today", { headers: { "X-HB-User": ru } })).json()).session?.exercises?.find((x) => x.exercise === "barbell-bench-press");
+      ok("#rest (W317) the next set kept falling under the range after a full 3:00 rest: Today's timer is 3:30, and says why",
+        row?.rest_s === 210 && /^Rest 3:30 — your next set kept falling under the range after a 3:00 rest \(2 of your last 3 workouts\)\.$/.test(row?.rest_reason ?? ""), JSON.stringify([row?.rest_s, row?.rest_reason]));
+    }
+    ok("#cap (W315b) the Settings door stores the ceiling and the plan keeps under it; junk is nothing; null takes it off",
+      r13.status === 200 && stored13 === 13 && at13 <= 13 && before > 13 && junk === null && off === null && after > 13, JSON.stringify({ before, at13, stored13, junk, off, after }));
+  }
   ok("#plan-fit (W305j J2) a beginner's offer says there are no blocks (its card never names one)",
     JSON.stringify(await fitOf(await fitUser({ days: ["mon", "wed", "fri"], patch: (u) => { u.profile.training_status = "beginner"; } }))) === JSON.stringify({ plan_days: 4, committed_days: 3, blocks: false }));
   ok("#plan-fit no offer for 1 or 7 days (no plan is built for those)",
@@ -3154,7 +3245,7 @@ try {
   ok("#grad the promotion fires on /api/today once the training age is there",
     afterGrad.session.beginner === false);
   ok("#grad and it's ANNOUNCED as a win, not left to be discovered",
-    /not a beginner any more/i.test(afterGrad.session.coach_note || ""));
+    /not a beginner any more/i.test(afterGrad.session.announcement || "")); // W313: shown with or without a check-in
   // The gates the status actually controls:
   ok("#grad the mesocycle now exists — so a deload will finally happen", afterGrad.session.block != null);
   ok("#grad the promotion starts a FRESH block, so the higher target ramps in via week 1 rather than landing whole",

@@ -1981,5 +1981,29 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
   });
 }
 
+// --- W314 (considerations iteration, Burst 10 — owner note 7: "I really start to struggle once I get past 12 sets in one
+// workout and once I get to 16 sets I'm pretty empty. The app should be able to learn this from my data"): a workout
+// carries its fade marks — a skip, an early end, a too-tired moment — each with the hard sets done THEN and the planned
+// total; the skips and the early end are marked live, a too-tired lift is read off the finished session (an undone one
+// isn't there to read).
+{
+  const { withFade, dropLastFade, fadeMarksAtFinish } = playerCore;
+  const W = (ex) => ({ exercise: ex, set_type: "work", weight_kg: 50, reps: 8 });
+  const sess0 = () => ({ ex: [{ exercise: "bench", sets: 4, planned_sets: 4 }, { exercise: "row", sets: 3, planned_sets: 4 }, { exercise: "curl", sets: 3, planned_sets: 3, tired: true, eased: true }],
+    logged: [W("bench"), W("bench"), W("bench"), W("bench"), W("row"), W("row"), { ...W("row"), set_type: "warmup" }, W("curl")] });
+  check("#fade withFade marks the hard sets done so far and the planned total; dropLastFade takes back only the last of its kind", () => {
+    const s1 = withFade(sess0(), "skip");
+    assert.deepStrictEqual(s1.fadeMarks, [{ kind: "skip", at: 7, of: 11 }], "7 work sets banked (the warm-up isn't one), 4+4+3 planned");
+    const s2 = withFade(withFade(s1, "early"), "skip");
+    assert.deepStrictEqual(dropLastFade(s2, "skip").fadeMarks, [{ kind: "skip", at: 7, of: 11 }, { kind: "early", at: 7, of: 11 }]);
+    assert.equal(dropLastFade(sess0(), "skip").fadeMarks, undefined, "nothing to take back: unchanged");
+  });
+  check("#fade at finish: the live marks, plus a too-tired lift at the hard sets done before it began", () => {
+    const s = withFade(sess0(), "skip");
+    assert.deepStrictEqual(fadeMarksAtFinish(s), [{ kind: "skip", at: 7, of: 11 }, { kind: "tired", at: 6, of: 11 }], "the curl's first set came after 6 work sets");
+    assert.deepStrictEqual(fadeMarksAtFinish({ ex: [{ exercise: "bench", sets: 3 }], logged: [W("bench")] }), [], "nothing to say: none");
+  });
+}
+
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
