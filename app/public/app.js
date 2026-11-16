@@ -2808,6 +2808,7 @@ function openSetEditor(idx, host, rerender) {
     const r = moveLoggedSet(sess, idx, b.dataset.moveto, ident);
     if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to move it."; return; }
     sess = r.sess; setEditor = null; saveSess();
+    syncRestAlert(); // the log changed under a running rest: the server alarm follows what's on screen (review)
     say(`Moved to ${nameInSess(b.dataset.moveto)}.`);
     rerender();
   });
@@ -2817,6 +2818,7 @@ function openSetEditor(idx, host, rerender) {
     const r = removeLoggedSet(sess, idx, ident);
     if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to remove it."; return; }
     sess = r.sess; setEditor = null; saveSess();
+    syncRestAlert(); // removing the set a rest followed ends that rest — and its alarm (review)
     say("Set removed — Undo is on the next screen.");
     rerender();
   };
@@ -3020,7 +3022,6 @@ function renderPlayer() {
     ${pickCue()}
     ${swapUndoCard(e)}
     <p class="muted" id="target-line">${aim ? `Aim <b id="rep-aim">${aim.slice(0, e.sets).join(" · ")}</b> reps` : `${setsN(e.sets)} × ${e.rep_range} reps`}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} · ~${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ")}</p>
-    ${!changeDoor && tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
     ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
     ${e.unilateral && sess.set === 0 ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias && sess.set === 0 ? `<div class="cue">🎯 <b>Stretch-focused:</b> control the bottom — the stretch is where this lift grows the muscle.</div>` : ""}
@@ -3061,7 +3062,6 @@ function renderPlayer() {
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
-  if ($("#tired")) $("#tired").onclick = () => tiredSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   wireListDoors();
@@ -3360,7 +3360,8 @@ function renderFinishSheet(back, { skip = null } = {}) {
   const rows = workoutList(sess);
   const done = (sess.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
   const planned = rows.reduce((a, x) => a + x.sets, 0);
-  const left = rows.filter((x) => x.status !== "done" && x.status !== "skipped" && x.done < x.sets).map((x) => `${x.name} (${x.sets - x.done})`);
+  // What's still OWED today (a skip already shrank a lift's count — review), not its planned count.
+  const left = rows.map((x) => ({ ...x, owed: Math.max(0, (sess.ex[x.idx]?.sets ?? x.sets) - x.done) })).filter((x) => x.owed > 0).map((x) => `${x.name} (${x.owed})`);
   app.innerHTML = `<h1>${skip ? "That's the last set left — finish now?" : "Finish now?"}</h1>
     <div class="card"><p style="margin:0 0 6px">You've done <b>${done} of ${planned}</b> sets.</p>
       ${left.length ? `<p class="muted" style="margin:0 0 6px">Still to do: ${esc(left.join(", "))}.</p><p class="muted" style="margin:0">Unfinished lifts keep this weight next time — nothing's lost.</p>` : ""}</div>
@@ -3375,6 +3376,10 @@ function renderFinishSheet(back, { skip = null } = {}) {
       if (r.ok) { sess = withFade(dropSkipped(sess, r.sess), "skip"); }
       else if (!sess.complete) sess = withFade(sess, "early");
     } else if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
+    // The workout is OVER from this tap (review): marked complete with its end, so leaving the reason screen (a tab, a
+    // locked phone, a crash) resumes as "just needs saving" — never as a workout still in progress whose stale end
+    // mark a later finish would carry.
+    sess = { ...sess, complete: true };
     saveSess();
     renderFinishReason();
   };
@@ -3911,7 +3916,8 @@ function renderRecap(recap) {
     : "";
   // "How did your last few sets feel?" (W314 — the learned ceiling's own evidence): optional, one tap, only after a long
   // enough workout that's been saved (it's stored on the workout).
-  // W332: never after the finish sheet already asked why it ended (one question, once); and it says what it's for.
+  // W332: not after the finish sheet got an answer to why it ended (that IS the answer); if that question was skipped,
+  // this one still asks — the one fatigue signal left. And it says what it's for.
   const feelRow = recap.session_id && !recap.endReason && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
     ? `<div class="card" id="feel"><p>Did you run out of steam near the end? <span class="muted">Optional — it helps me size your workouts.</span></p>
       <div class="row" style="gap:8px;border:0;padding:0">${[["strong", "💪 Strong"], ["fading", "😮‍💨 Fading"], ["empty", "🪫 Empty"]].map(([k, l]) => `<button class="btn ghost inline" data-feel="${k}" style="margin:0">${l}</button>`).join("")}</div></div>` : "";
@@ -4392,6 +4398,9 @@ async function renderHistory() {
         const to = app.querySelector(`[data-ex="${i}"]`)?.value;
         return to && lifts.some(([id]) => id === to) ? { ...out, exercise: to } : out; // W333: moved to the lift it really was
       }).filter(Boolean);
+      // Every set removed is the whole workout gone — that's "Take it back" on the list (recoverable, with its sets),
+      // never an empty workout saved as "corrected" (review).
+      if (!sets.length) { say("That removes the whole workout."); alertBar("Removing every set would take back the whole workout — keep at least one, or use “Take it back” on the workout list."); return; }
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
       historyEdit = null;

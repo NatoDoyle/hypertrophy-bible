@@ -1467,6 +1467,15 @@ check("#skip property: random skips between banks — never a set banked past to
     assert.strictEqual(moveLoggedSet(paired, 0, "e", id(paired, 0)).reason, "station", "a leg of a linked pair never moves (rounds stay balanced) — Unlink first");
     assert.strictEqual(removeLoggedSet(paired, 0, id(paired, 0)).reason, "station");
   });
+  check("#move-set (review) a pair whose paired rounds are banked has done its job: a move or removal UNLINKS it, so no station re-opens on a changed count", () => {
+    const spent = S([row("c", 3, { superset_with: "d", superset_with_name: "D" }), row("d", 2, { superset_with: "c", superset_with_name: "C" }), row("e", 2)], [...B("c", 2), ...B("d", 2, 2), ...B("c", 1, 4)], 2);
+    const r = removeLoggedSet(spent, 2, id(spent, 2)); // a d set was a mistake
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(r.sess.ex.slice(0, 2).map((x) => [x.superset_with ?? null, x.superset_with_name ?? null]), [[null, null], [null, null]]);
+    assert.deepStrictEqual(spent.ex[0].superset_with, "d", "the input is never mutated");
+    const m = moveLoggedSet(spent, 0, "e", id(spent, 0)); // and a c set was really e
+    assert.deepStrictEqual([m.ok, m.sess.ex[0].superset_with ?? null, loggedWorkSets(m.sess.logged, "c"), loggedWorkSets(m.sess.logged, "e")], [true, null, 2, 1]);
+  });
   check("#move-set the planned-easy tag follows the lift it now belongs to", () => {
     const s0 = S([row("a", 3), row("b", 3, { eased: true })], [{ ...B("a", 1)[0] }], 0);
     assert.strictEqual(moveLoggedSet(s0, 0, "b", id(s0, 0)).sess.logged[0].deload, true, "onto a tired-eased slot: easy");

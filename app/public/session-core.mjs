@@ -1080,16 +1080,31 @@ export function editLoggedSet(logged, idx, patch, { exercise, completed_at, base
 // Each returns { ok, reason, sess }, the SAME sess on a refusal. Pure.
 export const nextOwedIndex = (logged, ex, from) => { const k = nextUnfinishedIndex(logged, ex, from); return k >= 0 ? k : nextUnfinishedIndex(logged, ex, -1); };
 const pairedIn = (sess, k) => { const e = sess.ex?.[k]; return k >= 0 && !!e?.superset_with && sess.ex.some((x) => x.exercise === e.superset_with); };
+// A pair still RUNNING as a station (paired rounds owed) refuses — Unlink is right there on its screen. Once its paired
+// rounds are banked the pairing has done its job (the remainder runs solo, and the Unlink button is gone — review), so a
+// move or removal UNLINKS it instead: renderPlayer then never re-enters a station a changed count would unbalance.
+const liveStation = (sess, k) => pairedIn(sess, k) && liveBlock(sess, k).length > 1;
+function unlinkSpent(ex, logged, ks) {
+  const out = ex.map((x) => ({ ...x }));
+  for (const k of ks) {
+    if (k < 0 || !out[k]?.superset_with) continue;
+    const p = out.findIndex((x) => x.exercise === out[k].superset_with);
+    if (p < 0) continue;
+    for (const j of [k, p]) { delete out[j].superset_with; delete out[j].superset_with_name; }
+  }
+  return out;
+}
 function guardEntry(sess, idx, { exercise, completed_at } = {}) {
   if (!sess?.ex?.length || !Array.isArray(sess.logged)) return "gone";
   if (sess.complete) return "complete";
   const cur = sess.logged[idx];
   if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return "gone";
-  if (pairedIn(sess, sess.ex.findIndex((x) => x.exercise === exercise))) return "station";
+  if (liveStation(sess, sess.ex.findIndex((x) => x.exercise === exercise))) return "station";
   return null;
 }
 function afterLogChange(sess, logged, ids, extra = {}) {
-  const out = { ...sess, ...extra, logged };
+  const ks = ids.map((id) => sess.ex.findIndex((x) => x.exercise === id)).filter((k) => pairedIn(sess, k));
+  const out = { ...sess, ...extra, logged, ...(ks.length ? { ex: unlinkSpent(sess.ex, logged, ks) } : {}) };
   delete out.lastSkip; delete out.offerPick;
   if (out.estPending) { out.estPending = { ...out.estPending }; for (const id of ids) delete out.estPending[id]; }
   if (out.prCelebrated) {
@@ -1112,7 +1127,7 @@ export function moveLoggedSet(sess, idx, toExercise, ident = {}) {
   if (toExercise === entry.exercise) return refuse("same");
   const toK = sess.ex.findIndex((x) => x.exercise === toExercise);
   if (toK < 0) return refuse("not-in-workout");
-  if (pairedIn(sess, toK)) return refuse("station");
+  if (liveStation(sess, toK)) return refuse("station");
   const work = (entry.set_type ?? "work") === "work";
   if (work && loggedWorkSets(sess.logged, toExercise) >= sess.ex[toK].sets) return refuse("target-done");
   const moved = { ...entry, exercise: toExercise };
@@ -1137,7 +1152,7 @@ export function undoRemoveSet(sess) {
   if (!r?.entry || sess.complete) return refuse("nothing");
   const k = sess.ex.findIndex((x) => x.exercise === r.entry.exercise);
   if (k < 0) return refuse("not-in-workout");
-  if (pairedIn(sess, k)) return refuse("station");
+  if (liveStation(sess, k)) return refuse("station");
   if ((r.entry.set_type ?? "work") === "work" && loggedWorkSets(sess.logged, r.entry.exercise) >= sess.ex[k].sets) return refuse("target-done");
   const at = Math.max(0, Math.min(sess.logged.length, r.idx));
   const logged = [...sess.logged.slice(0, at), r.entry, ...sess.logged.slice(at)];

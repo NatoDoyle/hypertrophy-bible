@@ -878,10 +878,9 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // Burst 6 — "Too tired for this one?": the first-screen line only through the pure offer; both doors (the line and the
   // sheet's first reason) one handler; a swap's trimmed dose and its Undo; the ease on the lift's KG step; nothing that
   // promises effort the slot's band doesn't ask for.
-  // W331: on a lift's first set the tired door is the ONE "Change exercise" sheet's first reason; the inline line stays
-  // only where that door isn't offered (a superset leg's remainder).
-  assert.match(appJs, /\$\{!changeDoor && tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
-  assert.match(appJs, /if \(\$\("#tired"\)\) \$\("#tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  // W331: the tired door is the ONE "Change exercise" sheet's first reason (tiredOffer never fires where that door is
+  // absent — a superset leg or past set 1 — so no inline line remains: review).
+  assert.doesNotMatch(appJs, /id="tired"/);
   assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /slot_of: cur\.slot_of \?\? null/);
@@ -1352,6 +1351,12 @@ check("#W334 the editor's swap: ranked, said why — never the old walk through 
   assert.match(appJs, /else if \(act === "swap"\) return renderEditSwap\(si, ei, critique\);/);
   assert.match(fnBody(appJs, "async function renderEditSwap(si, ei, critique) {", 3000), /alternatives\?scope=plan&session=/);
   assert.match(fnBody(appJs, "function swapUndoCard(e) {", 900), /the closest match that fits/);
+});
+check("#W332/W333 review fixes: 'Save and finish' ends the workout (complete) before the reason; the log changing under a rest re-syncs its alarm; History never saves an empty workout", () => {
+  assert.match(fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 4000), /sess = \{ \.\.\.sess, complete: true \};\n\s*saveSess\(\);\n\s*renderFinishReason\(\);/);
+  const ed = fnBody(appJs, "function openSetEditor(idx, host, rerender) {", 14000);
+  assert.equal((ed.match(/syncRestAlert\(\); \/\/ [^\n]*\(review\)/g) ?? []).length, 2, "after a move and after a removal");
+  assert.match(fnBody(appJs, "if (historyEdit) {", 6000), /if \(!sets\.length\) \{ say\("That removes the whole workout\."\);/);
 });
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
