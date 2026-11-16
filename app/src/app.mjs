@@ -957,11 +957,15 @@ export function createApp(store, config = {}) {
     const live = (c.req.query("live") ?? "").split(",").filter(Boolean).slice(0, 30);
     const exclude = (c.req.query("exclude") ?? "").split(",").filter(Boolean).slice(0, 30); // swapped away earlier today
     const stalled = swapStalls(user, await store.listSessions(id), new Date().toISOString());
-    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope: "today", exclude })
+    // W334: the plan editor asks too (scope=plan: its unsaved day as `live`, the week's two-uses cap on) — the SAME ranked,
+    // fit-checked engine the player's swaps use, never a walk through the library in file order.
+    const scope = c.req.query("scope") === "plan" ? "plan" : "today";
+    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope, exclude })
       .filter((s) => s.fits).slice(0, 12);
+    const lookup = (sid) => exerciseById.get(sid) ?? (user.custom_exercises ?? []).find((x) => x.id === sid);
     return c.json({ alternatives: list.map((s) => {
-      const e = exerciseById.get(s.id);
-      return { id: s.id, name: e?.name ?? s.id, equipment: e?.equipment ?? null, primary_muscles: e?.primary_muscles ?? [], tier: s.tier, fits: s.fits };
+      const e = lookup(s.id);
+      return { id: s.id, name: e?.name ?? s.id, equipment: e?.equipment ?? null, primary_muscles: e?.primary_muscles ?? [], mechanic: e?.mechanic ?? null, tier: s.tier, fits: s.fits };
     }) });
   });
 

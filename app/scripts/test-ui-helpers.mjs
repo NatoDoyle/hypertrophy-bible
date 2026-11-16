@@ -1344,5 +1344,14 @@ check("#W333 a set on the wrong lift: the set editor offers exactly the moves se
   assert.match(appJs, /delete sess\.lastRemoved; \/\/ a removed set's Undo belongs to the log as it was \(W333\)/);
   assert.match(fnBody(appJs, "if (historyEdit) {", 5000), /return to && lifts\.some\(\(\[id\]\) => id === to\) \? \{ \.\.\.out, exercise: to \} : out;/, "History: move after the workout too");
 });
+check("#W334 the editor's swap: ranked, said why — never the old walk through the library in file order", () => {
+  const { swapReason } = uiHelpers;
+  assert.deepStrictEqual([swapReason(1), swapReason(2), swapReason(3, "isolation"), swapReason(3, "compound"), swapReason(3), swapReason(9)],
+    ["same movement", "same muscle, different movement", "isolation instead", "compound instead", "a different kind of lift", ""]);
+  assert.doesNotMatch(appJs, /poolFor/, "the file-order cycle is gone");
+  assert.match(appJs, /else if \(act === "swap"\) return renderEditSwap\(si, ei, critique\);/);
+  assert.match(fnBody(appJs, "async function renderEditSwap(si, ei, critique) {", 3000), /alternatives\?scope=plan&session=/);
+  assert.match(fnBody(appJs, "function swapUndoCard(e) {", 900), /the closest match that fits/);
+});
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -1891,8 +1891,9 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   let session = program?.sessions?.find((s) => s.name === sessionName && s.exercises.some((e) => e.exercise === exId))
     ?? program?.sessions?.find((s) => s.exercises.some((e) => e.exercise === exId));
   let slot = session?.exercises.find((e) => e.exercise === exId);
-  // Today only: the lift may itself be a today-swap the stored plan never held.
-  if (!slot && scope === "today") {
+  // Today only: the lift may itself be a today-swap the stored plan never held. W334: the plan editor ("plan") too — its
+  // unsaved day may hold a lift the stored plan doesn't.
+  if (!slot && (scope === "today" || scope === "plan")) {
     session = program?.sessions?.find((s) => s.name === sessionName) ?? { name: sessionName, exercises: [] };
     slot = { exercise: exId, sets: 3 };
   }
@@ -1909,7 +1910,8 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   const xFam = famOf(X.movement_pattern);
   const tierOf = (e) => (e.mechanic === X.mechanic ? (famOf(e.movement_pattern) === xFam ? 1 : 2) : 3);
   const ranked = (X.mechanic === "isolation" ? [...iso, ...comp] : [...comp, ...iso]).sort((a, b) => tierOf(a) - tierOf(b)); // stable: rank order within a tier
-  const others = scope === "today" && Array.isArray(live)
+  // The day as it stands: today's live workout, or (W334, scope "plan") the editor's unsaved day — the week cap still applies.
+  const others = (scope === "today" || scope === "plan") && Array.isArray(live)
     ? live.filter((id) => id !== exId).map((id) => session.exercises.find((e) => e.exercise === id) ?? { exercise: id, sets: slot.sets })
     : session.exercises.filter((e) => e.exercise !== exId);
   const st = sessionFit(others, lookup);

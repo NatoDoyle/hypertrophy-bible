@@ -510,6 +510,26 @@ try {
       && famOfT(exM.get(r.exercise)?.movement_pattern) === famOfT(exM.get(r.your_pick.id)?.movement_pattern)), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick.id])));
     const fitsToday = await Promise.all(offered.map(async (r) => (await (await app.request(`/api/exercise/${r.exercise}/alternatives?session=${encodeURIComponent(ypT.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives.some((a) => a.id === r.your_pick.id)));
     ok("#W326 …and every pick is among today's fitting alternatives", fitsToday.every(Boolean), JSON.stringify(fitsToday));
+    // W334 (owner: "Does the 'swap' button choose a random exercise or does it pick the next best option?"): the plan
+    // editor asks the SAME ranked engine (scope=plan, its unsaved day as live) — tier 1 first, never a lift already in
+    // the day, each with its tier and mechanic for the "why"; and the top of the list is what "It's busy" would take.
+    {
+      const day = (await store.getUser(ypU)).program.sessions[0];
+      const X = day.exercises.find((e) => exM.get(e.exercise)?.mechanic === "compound")?.exercise;
+      const dayIds = day.exercises.map((e) => e.exercise);
+      const pa = (await (await app.request(`/api/exercise/${X}/alternatives?scope=plan&session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(dayIds.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives ?? [];
+      const tiers = pa.map((a) => a.tier);
+      ok("#W334 the editor's swap is ranked: tiers never go back down (same movement first), nothing already in the day, each with its mechanic",
+        pa.length > 0 && tiers.every((t, i) => i === 0 || t >= tiers[i - 1]) && pa.every((a) => !dayIds.includes(a.id) && typeof a.mechanic === "string"), JSON.stringify(pa.map((a) => [a.id, a.tier])));
+      // A lift the editor ADDED (not in the stored plan) still gets a list — the unsaved day is the context.
+      const ADD = ["concentration-curl", "hammer-curl", "cable-curl"].find((x) => !dayIds.includes(x)) ?? "concentration-curl";
+      const added = [...dayIds, ADD];
+      const pb = (await (await app.request(`/api/exercise/${ADD}/alternatives?scope=plan&session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(added.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives ?? [];
+      ok("#W334 …a lift only the editor has added still gets ranked alternatives", pb.length > 0 && pb.every((a) => !added.includes(a.id)), JSON.stringify(pb.map((a) => a.id)));
+      const busy = await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: X, scope: "today", session: day.name, live: dayIds });
+      const todayTop = (await (await app.request(`/api/exercise/${X}/alternatives?session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(dayIds.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives?.[0]?.id;
+      ok("#W334 one ranking, two doors: the top alternative is what 'It's busy' takes", busy.status === 200 && busy.data.replaced_by === todayTop, JSON.stringify([busy.data?.replaced_by, todayTop]));
+    }
     const r0 = offered[0];
     const took = r0 ? await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: r0.exercise, scope: "today", session: ypT.session.name, live, pick: r0.your_pick.id }) : null;
     ok("#W326 taking the pick goes through the pick door (it fits, by construction)", took?.status === 200 && took.data.replaced_by === r0.your_pick.id, JSON.stringify(took?.data));

@@ -623,3 +623,13 @@ export function visibleStepFrom(steps, idx, answers) {
   for (let i = Math.min(idx, steps.length - 1); i >= 0; i--) if (asked(i)) return i;
   return 0;
 }
+
+// Why a replacement is offered where it is (W334 — owner: "Does the swap button choose a random exercise or does it pick
+// the next best option?"): the ranked engine's tier, in a few words. Tier 1 = the same movement family, tier 2 = the same
+// kind of lift for the same muscle, tier 3 = the other kind (an isolation for a compound, or the reverse). Pure.
+export function swapReason(tier, mechanic = null) {
+  if (tier === 1) return "same movement";
+  if (tier === 2) return "same muscle, different movement";
+  if (tier === 3) return mechanic === "isolation" ? "isolation instead" : mechanic === "compound" ? "compound instead" : "a different kind of lift";
+  return "";
+}

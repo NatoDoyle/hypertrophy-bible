@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1318,7 +1318,6 @@ async function renderPlanExplain(firstTime) {
 // ---------- Custom plan builder + KB critique ----------
 let editState = null, allExercises = [], pendingRm = null;
 const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
-const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let d, exs;
@@ -1363,20 +1362,7 @@ function drawEdit(critique) {
       pendingRm = null; // any other action cancels a pending removal
       if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
       else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
-      else if (act === "swap") {
-        const pool = poolFor(ex.exercise);
-        if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; }
-        // Never a silent dead button: with your equipment this may be the only lift
-        // for the muscle — say so. The notice must be shown AFTER the repaint
-        // (drawEdit rebuilds app.innerHTML, which would destroy it), so repaint
-        // first, then attach the alert to the fresh DOM and stop.
-        else {
-          say("No alternative trains this muscle with your equipment.");
-          drawEdit(critique);
-          alertBar(`${exName(ex.exercise)} is the only lift for this muscle with your equipment — use “+ Add exercise” (or create your own) instead.`);
-          return;
-        }
-      }
+      else if (act === "swap") return renderEditSwap(si, ei, critique);
     }
     drawEdit(critique);
   });
@@ -1387,6 +1373,36 @@ function drawEdit(critique) {
     else { say("Couldn't save."); alertBar("📴 Couldn't save — check your connection and tap Save again. Your edits are still here."); }
   };
   $("#backPlan").onclick = () => { tab = "plan"; render(); };
+}
+// The editor's swap (W334 — owner: "Does the 'swap' button choose a random exercise or does it pick the next best
+// option?"). It walked the exercise library in file order; now it asks the SAME ranked, fit-checked engine the player's
+// swaps use (/alternatives, scope=plan, the editor's unsaved day as `live`) and shows the best first, each with why.
+async function renderEditSwap(si, ei, critique) {
+  const s = editState.sessions[si], ex = s?.exercises?.[ei];
+  if (!ex) return drawEdit(critique);
+  app.innerHTML = `<h1>Swap ${esc(exName(ex.exercise))}</h1><p class="muted">Finding the best alternatives…</p>`;
+  let d = null;
+  try { d = await api(`/api/exercise/${encodeURIComponent(ex.exercise)}/alternatives?scope=plan&session=${encodeURIComponent(s.name)}&live=${encodeURIComponent(s.exercises.map((x) => x.exercise).join(","))}`); } catch {}
+  if (editState.sessions[si]?.exercises?.[ei] !== ex) return drawEdit(critique); // the day changed under the request
+  const alts = d?.alternatives ?? null;
+  if (!alts?.length) {
+    drawEdit(critique);
+    // Never a silent dead button: say why there's nothing to pick (after the repaint, which would destroy the notice).
+    alertBar(alts ? `Nothing else that trains this muscle fits this day with your equipment — keep ${exName(ex.exercise)}, or use “+ Add exercise” (or create your own).` : "📴 Swapping needs a connection — try again in a moment.");
+    return;
+  }
+  app.innerHTML = `<h1>Swap ${esc(exName(ex.exercise))}</h1>
+    <p class="muted">Ranked by the same rules that built your plan — the closest match that fits this day first. Same sets and reps.</p>
+    ${alts.map((a, i) => `<button class="choice" data-swap-to="${esc(a.id)}">${i === 0 ? "⭐ " : ""}${esc(a.name)}<span class="sub muted">${i === 0 ? "Best match · " : ""}${esc(swapReason(a.tier, a.mechanic))} · ${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+    <button class="btn ghost" id="swap-back">Keep ${esc(exName(ex.exercise))}</button>`;
+  $("#swap-back").onclick = () => drawEdit(critique);
+  app.querySelectorAll("[data-swap-to]").forEach((b) => b.onclick = () => {
+    const a = alts.find((x) => x.id === b.dataset.swapTo);
+    if (a && !allExercises.some((x) => x.id === a.id)) allExercises.push({ id: a.id, name: a.name, primary_muscles: a.primary_muscles ?? [] });
+    ex.exercise = b.dataset.swapTo;
+    say(`Swapped for ${a?.name ?? exName(ex.exercise)}.`);
+    drawEdit(critique);
+  });
 }
 function renderAddExercise(si) {
   const sorted = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -3450,7 +3466,9 @@ function renderExerciseSheet(ex, d, back) {
 function swapUndoCard(e) {
   const u = sess?.swapUndo;
   if (!undoApplies(u, sess, e)) return "";
-  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(u.text ?? (u.permanent ? `Swapped for ${u.toName} — from now on.` : `Swapped for ${u.toName} — just for today.`))}</p>
+  // W334: an automatic swap says how it chose — the closest match that fits; a lift the lifter picked needs no reason.
+  const how = u.picked ? "" : " — the closest match that fits";
+  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(u.text ?? (u.permanent ? `Swapped for ${u.toName}${how}, from now on.` : `Swapped for ${u.toName}${how}, just for today.`))}</p>
     <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
 }
 // Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
@@ -3619,7 +3637,7 @@ async function renderCantDo() {
     if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
     app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
       <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. ${sess.learningPaused ? "Just for today — your edited plan stays as you made it." : `Just for today — but if you keep picking something over ${esc(cur.name)}, I'll take the hint and swap it in your plan wherever something as good fits.`}</p>
-      ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+      ${alts.map((a, i) => `<button class="choice" data-pick="${esc(a.id)}">${i === 0 ? "⭐ " : ""}${esc(a.name)}<span class="sub muted">${i === 0 ? "Best match · " : ""}${esc(swapReason(a.tier, a.mechanic))} · ${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
       ${tail}`;
     wireTail();
     app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = async () => {
@@ -3671,7 +3689,7 @@ async function renderCantDo() {
         planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
-          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
+          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — the closest match that fits, from now on.`)
           : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
