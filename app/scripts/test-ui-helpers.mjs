@@ -1395,5 +1395,43 @@ check("#W336 the way back is findable, and other places are one chip away: avoid
   assert.match(fnBody(appJs, "function setupChip(dy) {", 900), /if \(!st\?\.options\?\.length \|\| sess\) return "";/, "only with another place, never mid-workout");
   assert.match(appJs, /bring it back on the Plan tab any time/);
 });
+{
+  const PC = await import("../../tools/plan-core.mjs");
+  const kbx = await import("../src/kb-data.mjs");
+  check("#W337 the days hint names the split the engine builds — every days × status pair (chooseSplit)", () => {
+    const ARCH = { "full-body": (d) => Array(d).fill("FULL"), "upper-lower-full": () => ["UPPER", "LOWER", "FULL"], "upper-lower": () => ["UPPER", "LOWER", "UPPER", "LOWER"],
+      "push-pull-legs-upper-lower": () => ["PUSH", "PULL", "LEGS", "UPPER", "LOWER"], "push-pull-legs": () => ["PUSH", "PULL", "LEGS", "PUSH", "PULL", "LEGS"] };
+    for (const d of [2, 3, 4, 5, 6]) for (const st of ["beginner", "intermediate", "advanced"]) {
+      const row = uiHelpers.SPLIT_FOR_DAYS[d], key = typeof row === "string" ? row : row[st] ?? row["*"];
+      assert.deepEqual(ARCH[key](d), PC.chooseSplit({ days_per_week: d, training_status: st }).sessions.map((x) => x.arch), `${d} × ${st}`);
+      assert.match(uiHelpers.daysHint(d, st), new RegExp(`^Pick what you can .*${d} days → `));
+    }
+  });
+  check("#W337 the priority hint says what the engine will do — every chip combination × status × goal (deriveSpecialization), and the chip areas ARE the KB's groups", () => {
+    const groups = new Map(kbx.muscles.map((m) => [m.id, m.group]));
+    for (const [id, g] of Object.entries(uiHelpers.PRIORITY_GROUPS)) assert.equal(g, groups.get(id), id);
+    const CHIPS = [["side-delts"], ["chest"], ["lats", "upper-back"], ["biceps", "triceps"], ["glutes"], ["quadriceps"], ["abs"]];
+    let n = 0;
+    for (let mask = 1; mask < 1 << CHIPS.length; mask++) for (const st of ["beginner", "intermediate", "advanced"]) for (const goal of ["hypertrophy", "fat-loss"]) {
+      const ids = CHIPS.filter((_, i) => mask & (1 << i)).flat();
+      const c = uiHelpers.priorityConsequence(ids, st, goal), spec = PC.deriveSpecialization({ priority_muscles: ids, training_status: st, primary_goal: goal }, kbx.muscles);
+      assert.equal(c.kind === "block", spec, `${ids} ${st} ${goal}: ${c.kind} vs ${spec}`);
+      if (st === "beginner") assert.equal(c.kind, "beginner");
+      if (c.kind === "block") assert.equal(/maintenance/.test(c.text), goal === "fat-loss", "fat-loss funds no easing — said so");
+      n++;
+    }
+    assert.ok(n > 700);
+    assert.equal(uiHelpers.priorityConsequence([], "advanced").kind, "none");
+  });
+  check("#W337 onboarding: same stored values, plain words, live hints; the plan-ready screen shows the beginner card only to beginners", () => {
+    assert.match(appJs, /q: "How long have you been lifting consistently\?", opts: \[\["Not yet, or under a year", "beginner"\], \["1–3 years", "intermediate"\], \["3\+ years", "advanced"\]\]/);
+    assert.match(appJs, /\["Build muscle and lose fat together", "recomposition",/);
+    assert.match(appJs, /hint: \(a, v\) => daysHint\(v, a\.training_status \?\? "beginner"\)/);
+    assert.match(appJs, /priorityConsequence\(\(a\.priority_muscles \?\? \[\]\)\.flat\(\)/);
+    assert.match(appJs, /const chosen = JSON\.stringify\(answers\[step\.key\] \?\? step\.def\);/, "recommended answer highlighted, never auto-advanced");
+    assert.match(appJs, /\$\{d\.beginner \? `<div class="card"><b>🚪 Never trained before\?<\/b>/);
+    assert.match(appJs, /Answer 8 quick questions/);
+  });
+}
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

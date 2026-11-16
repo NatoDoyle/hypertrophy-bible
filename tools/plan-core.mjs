@@ -343,7 +343,7 @@ export function chooseSplit({ days_per_week, training_status }) {
   sessions.forEach((s) => { s.name = label[s.arch] + (multi[s.arch] > 1 ? " " + "ABCDEF"[s.letter - 1] : ""); s.of = multi[s.arch]; });
   return {
     split, sessions,
-    reason: `${days} days × ${training_status ?? "intermediate"} → ${/^[aeiou]/i.test(split) ? "an" : "a"} ${split} split, hitting each muscle ~${split === "full-body" ? days : 2}×/week within the 6–10 hard-sets-per-session quality window.`,
+    reason: `${days} days × ${training_status ?? "intermediate"} → ${/^[aeiou]/i.test(split) ? "an" : "a"} ${split} split, hitting each muscle ~${split === "full-body" ? days : 2}×/week, 6–10 hard sets a session — the range where each set still counts.`,
     citations: ["schoenfeld-2019-frequency-meta", "grgic-2018-frequency-strength"],
   };
 }
@@ -2259,9 +2259,10 @@ export function explainPersonalization(profile, rationale, program, live = null)
       ? `compounds cycle ${bands.slice(0, -1).join(", ")} and ${bands[bands.length - 1]} reps across the week — each muscle gets a heavier and a lighter exposure instead of the same session twice`
       : !bands && undulates
         ? "compounds cycle through heavier and lighter rep ranges across the week — each muscle gets a different exposure each time rather than the same session twice"
-        : `compounds run ${(bands ?? [scheme.compound[0]])[0]} reps at ${scheme.compound[1]} reps in reserve`;
+        : `compounds run ${(bands ?? [scheme.compound[0]])[0]} reps, stopping ${scheme.compound[1]} reps short of failure (${scheme.compound[1]} reps in reserve)`;
+    // W337: said plainly — "0-1" alone was a number with no unit.
     say("primary_goal", GOAL_LABEL[r.goal_prescription.primary_goal] ?? r.goal_prescription.primary_goal,
-      `${compoundCopy}, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
+      `${compoundCopy}; isolation moves ${scheme.isolation?.[0]} reps, taken to within ${scheme.isolation?.[1]} reps of failure.`);
   }
 
   // The priority answer is the one the owner flagged: it must show its own arithmetic.
@@ -2312,7 +2313,8 @@ export function explainPersonalization(profile, rationale, program, live = null)
   const equip = p.available_equipment ?? [];
   if (equip.length && program?.sessions) {
     const lifts = new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
-    say("available_equipment", equip.join(", "),
+    const EQUIP_WORD = { barbell: "barbell", dumbbell: "dumbbells", machine: "machines", cable: "cables", bodyweight: "bodyweight", band: "bands", kettlebell: "kettlebells" };
+    say("available_equipment", equip.map((x) => EQUIP_WORD[x] ?? x).join(", "), // W337: words, not ids
       `all ${lifts.size} exercises in your week are ones you can actually do with this.`);
   }
 

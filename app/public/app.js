@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, avoidExtras, mainSetupName, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, avoidExtras, mainSetupName, daysHint, priorityConsequence, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -611,17 +611,26 @@ function prefsSummary(tp) {
 }
 
 const STEPS = [
-  { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
-  { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
-  { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
-  { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
-  { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
+  // W337 (owner: "Audit the onboarding flow. Some of the screens are more ambiguous than I'd like"): the SAME questions and
+  // stored values, said plainly — each option says what it means, and the hints that depend on an earlier answer read it
+  // (a function of `answers`), pinned in test-ui-helpers to the engine rules they describe.
+  { key: "training_status", q: "How long have you been lifting consistently?", opts: [["Not yet, or under a year", "beginner"], ["1–3 years", "intermediate"], ["3+ years", "advanced"]],
+    hint: "Count only steady training. Coming back after a long break? Pick the lower one — I move you up automatically as you log workouts." },
+  { key: "primary_goal", q: "What's your main goal right now?", def: "hypertrophy", opts: [["Build muscle", "hypertrophy", "Moderate reps, taken close to failure"], ["Get stronger", "strength", "Heavier, lower-rep main lifts"],
+    ["Lose fat, keep my muscle", "fat-loss", "Training that holds your muscle while you diet"], ["Build muscle and lose fat together", "recomposition", "Muscle-building training while you slowly lean out"]] },
+  { key: "days_per_week", q: "How many days a week can you reliably train?", stepper: { min: 2, max: 6, def: 3, hint: (a, v) => daysHint(v, a.training_status ?? "beginner") } },
+  { key: "session_length_min", q: "How long do you have for each workout?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: (a, v) => `From your first warm-up to your last set — about ${Math.floor(v / 4)} sets at 4 minutes a set. 45–60 min suits most people; shorter still works.`, unit: " min" } },
+  { key: "available_equipment", q: "Where will you train most?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells (and a bench)", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight (a pull-up bar helps)", ["bodyweight"]]],
+    hint: "Train somewhere else sometimes? Add it later in Settings → Other places you train. Missing a machine on the day? Tap “Change exercise” and I'll swap it." },
   // W321 (owner: "ask the necessary questions to understand what exercise/workouts the user likes … to improve long term
   // commitment, adherence and consistency"): ONE screen, every row optional. What they enjoy only ever reorders lifts
   // that are equally good for the muscle (plan-core's bounded preference term) — the plan stays optimal and says when a
   // preference couldn't be honoured. A lift to skip is swapped when an equal alternative exists, never banned.
   { key: "training_prefs", q: "What do you enjoy?", prefs: true, optional: true, hint: "All optional. I'll favour what you enjoy whenever it's as good as the best option for the muscle, and tell you when it isn't." },
-  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard while everything else eases back to a light dose to pay for it (most muscles keep slowly growing; a few drop to pure maintenance). Pick three or more and we'll just tilt volume their way." },
+  // W337: the hint is the CONSEQUENCE of what's picked, live — the engine's own rule (deriveSpecialization: beginners never
+  // run a block; one or two body AREAS do; three or more areas tilt), never a promise the plan won't keep.
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders (side delts — width)", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs (quads — the front)", ["quadriceps"]], ["Abs", ["abs"]]], optional: true,
+    hint: (a) => priorityConsequence((a.priority_muscles ?? []).flat(), a.training_status ?? "beginner", a.primary_goal ?? "hypertrophy").text },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
   // that the app exists to make for them, and a lifter who could answer it wouldn't
@@ -645,7 +654,7 @@ const STEPS = [
   { key: "goal_event_date", q: "Training toward a specific date?", date: true, optional: true, hint: "Optional — a meet, show, or strength test. The final ~2 weeks taper volume down so you're fresh, not fatigued, on the day. Leave blank if there isn't one.", showIf: (a) => settingsMode && a.training_status !== "beginner" },
   // Neck and ankle were filterable by the engine (data/injury-contraindications.json
   // covers 8 regions) and selectable by nobody — the UI offered 6.
-  { key: "injuries", q: "Anything we should train around?", multi: INJURY_REGIONS, optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  { key: "injuries", q: "Anything that hurts when you train, or that you're nursing back?", multi: INJURY_REGIONS, optional: true, hint: "Optional. I'll leave out the movements most likely to flare it up. Sharp or worsening pain → see a physio first." },
   // Severity was hardcoded "moderate" for everyone, which made contraExcluded's
   // `severity === "mild"` branch unreachable from the shipped client — a whole
   // leniency path that existed in the engine and could never run. Asking one
@@ -661,7 +670,7 @@ const STEPS = [
   // "severe" stays a valid stored value (schema, sanitizeInjuries, and the
   // /api/profile/injury escalation ladder all still accept it, and it behaves
   // exactly as it always did) so nobody who already answered it needs migrating.
-  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
+  { key: "injury_severity", q: (a) => { const n = (a.injuries || []).flat(); return n.length === 1 ? `How much does your ${(INJURY_REGIONS.find(([, id]) => id === n[0])?.[0] ?? "injury").toLowerCase()} bother you?` : "How much do they bother you?"; }, opts: [["A niggle — I can train around it", "mild"], ["Some moves hurt — I avoid them", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
   // `sex` and `units` used to be asked here and are not any more.
   //
   // `sex` had ZERO references in the training engine (plan-core, derive-core,
@@ -819,8 +828,8 @@ function renderOnboarding() {
   if (!onbStarted) {
     app.innerHTML = `<div class="center" style="padding-top:14vh">${pendingCodeCard()}
       <h1>The Hypertrophy Bible</h1>
-      <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
-      <button class="btn" id="go">Start</button>
+      <p>Build muscle, the proven way.<br>Answer 8 quick questions (about a minute) and I'll build your plan — then you just show up.</p>
+      <button class="btn" id="go">Build my plan</button>
       <p class="muted">Free · no ads · no account needed</p>
       <p class="muted" style="font-size:.8rem">By starting you agree this is training guidance, not medical advice — <a href="#" id="healthnote" style="color:var(--muted);text-decoration:underline">the honest details</a></p>
       <button class="btn ghost" id="restore">Already have progress saved? Sign in on this device</button>
@@ -867,16 +876,18 @@ function renderOnboarding() {
   const dotsDone = visible.findIndex((s) => s === STEPS[onbStep]);
   const dots = visible.map((_, i) => `<i class="${i <= dotsDone ? "on" : ""}"></i>`).join("");
   let body;
+  // W337: a question or hint may read the answers already given (and a stepper's hint its live value).
+  const hintOf = (h, v) => (typeof h === "function" ? h(answers, v) : h) || "";
   if (step.stepper) {
     const st = step.stepper;
     const v = answers[step.key] ?? st.def;
     const noun = step.key === "days_per_week" ? "days" : "minutes";
     body = `<div class="stepper"><button data-d="-1" aria-label="fewer ${noun}">–</button><div class="val" id="sv" aria-live="polite">${v}${st.unit || ""}</div><button data-d="1" aria-label="more ${noun}">+</button></div>
-      <p class="muted center">${st.hint}</p><button class="btn" id="next">Continue</button>`;
+      <p class="muted center" id="step-hint">${esc(hintOf(st.hint, v))}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.multi) {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
-      + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
+      + `<p class="muted center" id="step-hint">${esc(hintOf(step.hint))}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.prefs) {
     const tp = prefsOf(answers[step.key]);
     const eq = new Set(answers.available_equipment || []);
@@ -885,11 +896,12 @@ function renderOnboarding() {
     const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
     const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
     body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
-      + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
-      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
+      // W337: variety does nothing until a lifter is past the beginner stage — not asked of a beginner (still shown when set).
+      + (answers.training_status !== "beginner" || tp.variety ? group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join("")) : "")
+      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts you'd rather not do <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— swapped when there's an equally good option</span>", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
         // W336: a single lift skipped with "Just not for me" gets its own chip (on — tap to clear it).
         + avoidExtras(tp, fams, (id) => { const n = exName(id); return n === id ? titleCase(id.replace(/-/g, " ")) : n; }).map((x) => chip("avoid1", x.id, x.label, true)).join("")) : "")
-      + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
+      + group("If you do cardio, which would you actually do? <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— it doesn't add sessions</span>", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
       + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
@@ -904,17 +916,19 @@ function renderOnboarding() {
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
-    const chosen = JSON.stringify(answers[step.key]);
-    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("")
-      + (step.hint ? `<p class="muted center">${esc(step.hint)}</p>` : "");
+    // …and the recommended answer is highlighted (never auto-advanced) until they pick (W337: "Build muscle" pre-selected).
+    const chosen = JSON.stringify(answers[step.key] ?? step.def);
+    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${o[2] ? `<span style="text-align:left">${esc(o[0])}<span class="sub muted">${esc(o[2])}</span></span>` : esc(o[0])}<span>›</span></button>`).join("")
+      + (step.hint ? `<p class="muted center">${esc(hintOf(step.hint))}</p>` : "");
   }
-  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}
+  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(typeof step.q === "function" ? step.q(answers) : step.q)}</h1>${body}
     <button class="btn ghost" id="onb-back">‹ Back</button>`;
   if (step.stepper) {
     const st = step.stepper;
     let v = answers[step.key] ?? st.def;
     app.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
       v = Math.max(st.min, Math.min(st.max, v + (+b.dataset.d) * (st.step || 1))); $("#sv").textContent = v + (st.unit || ""); answers[step.key] = v; saveOnb();
+      if ($("#step-hint") && typeof st.hint === "function") $("#step-hint").textContent = st.hint(answers, v); // W337: the hint follows the value
     });
     answers[step.key] = v;
     $("#next").onclick = advance;
@@ -928,6 +942,7 @@ function renderOnboarding() {
       b.classList.toggle("sel");
       b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
       saveOnb();
+      if ($("#step-hint") && typeof step.hint === "function") $("#step-hint").textContent = step.hint(answers); // W337: the consequence follows the picks
     });
     $("#next").onclick = advance;
   } else if (step.prefs) {
@@ -1345,10 +1360,10 @@ async function renderPlanExplain(firstTime) {
       <div class="card"><p>Here's your week — <b>${sessions.length} short session${sessions.length === 1 ? "" : "s"}</b>. I chose every exercise, weight, and set for you. You just show up and tap <b>Start</b>.</p></div>
       <div class="card">${sessionRows}</div>
       ${cardioBlock}
-      <div class="card"><b>🚪 Never trained before?</b>
+      ${d.beginner ? `<div class="card"><b>🚪 Never trained before?</b>
         <p class="muted">These 2-minute reads make your first day easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
-        <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
+        <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>` : `<div class="card"><p class="muted" style="margin:0">New to reading a plan like this? <button class="learnlink" data-learn="how-to-read-a-workout">How to read a workout</button></p></div>`}
       ${personalizationBlock}
       ${whyBlock}
       <p class="muted" style="margin:8px 0">Weights shown in <b>${unitLabel()}</b>. <button class="learnlink" id="plan-units">Use ${unitPref() === "lb" ? "kilograms" : "pounds"} instead</button></p>

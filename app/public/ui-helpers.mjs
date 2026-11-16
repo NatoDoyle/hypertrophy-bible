@@ -665,3 +665,29 @@ export function mainSetupName({ main_name = null, main_kit = [] } = {}, otherNam
   const guess = (main_kit ?? []).some((x) => ["machine", "cable", "barbell"].includes(x)) ? "Gym" : "Home";
   return (otherNames ?? []).some((n) => String(n).toLowerCase() === guess.toLowerCase()) ? "Usual" : guess;
 }
+
+// ONBOARDING, SAID PLAINLY (W337 — owner: "Some of the screens are more ambiguous than I'd like"). Hints that read the
+// answers already given, each pinned to the engine rule it describes so the copy can't drift from what the plan does.
+// The split a number of days produces, in the generator's own table (plan-core chooseSplit — test-ui-helpers checks
+// every days × status pair against it). Pure.
+export const SPLIT_FOR_DAYS = Object.freeze({ 2: "full-body", 3: { advanced: "upper-lower-full", "*": "full-body" }, 4: "upper-lower", 5: "push-pull-legs-upper-lower", 6: "push-pull-legs" });
+export function daysHint(days, status = "beginner") {
+  const d = Math.max(2, Math.min(6, Number(days) || 3));
+  const row = SPLIT_FOR_DAYS[d], split = typeof row === "string" ? row : row[status] ?? row["*"];
+  const what = { "full-body": `${d} full-body days — every muscle, every session`, "upper-lower-full": "upper, lower, then a full-body day", "upper-lower": "upper/lower — each muscle twice a week",
+    "push-pull-legs-upper-lower": "push, pull, legs, then upper and lower", "push-pull-legs": "push, pull, legs, twice through" }[split];
+  const lead = status === "beginner" ? "Pick what you can keep up — 3 you never miss beats 5 you sometimes do." : "Pick what you can reliably keep up.";
+  return `${lead} ${d} days → ${what}.`;
+}
+// What picking priority muscles does (plan-core deriveSpecialization: past the beginner stage, one or two body AREAS run a
+// real specialization block; three or more areas, a tilt — and a fat-loss phase funds no easing back up). The chips'
+// areas are the KB's muscle groups (PRIORITY_GROUPS — checked against data/muscles in test-ui-helpers). Pure.
+export const PRIORITY_GROUPS = Object.freeze({ "side-delts": "shoulders", chest: "chest", lats: "back", "upper-back": "back", biceps: "arms", triceps: "arms", glutes: "legs", quadriceps: "legs", abs: "core" });
+export function priorityConsequence(muscleIds = [], status = "beginner", goal = "hypertrophy", groupOf = PRIORITY_GROUPS) {
+  const ids = [...new Set(muscleIds ?? [])];
+  if (!ids.length) return { kind: "none", text: "Optional — skip it if nothing stands out." };
+  if (status === "beginner") return { kind: "beginner", text: "These get extra sets. A focused specialization block unlocks once you're past the beginner stage (I'll move you up as you log workouts)." };
+  const areas = new Set(ids.map((id) => groupOf[id] ?? id));
+  if (areas.size <= 2) return { kind: "block", text: `→ A focused 6-week block: these pushed hard, most other muscles eased back to pay for it${goal === "fat-loss" ? " (while you're losing fat they hold at a maintenance dose)" : " (most still grow slowly)"}.` };
+  return { kind: "tilt", text: "→ That's 3 or more areas, so a gentle tilt: a little more volume their way, nothing else cut back. Pick one or two for a focused block." };
+}

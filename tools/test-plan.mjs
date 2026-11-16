@@ -1307,13 +1307,15 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // first. Measured against HEAD over all 390 plans: 2 changed, both o-beg-3's stalled paths — the old engine placed BOTH
   // stalled lifts in Full Body B while a non-stalled goblet squat and dumbbell bench were free; now they appear only where
   // the 2-uses-a-week cap forces them. Every plan without a stalled lift is byte-identical.
+  // …and in W337 (copy only — onboarding said plainly): the split's reason reads "6–10 hard sets a session — the range
+  // where each set still counts" instead of "the 6–10 hard-sets-per-session quality window". No program changed.
   // Re-pinned DELIBERATELY in W329 (owner, considerations 2026-11: "3 mins rest per set and 1 set duration … a 16 set
   // workout will theoretically last 64 minutes"): the default clock is 4 minutes a set, and the set BUDGET comes from it
   // too (setsInMinutes: 60 min → 15 sets, was round(60/3) = 20), so most grid plans hold fewer sets at the same minutes
   // and the fit-to-time pass measures at the new rule. A lifter's learned pace still overrides both (the #pace and
   // owner-pace checks); plans with a pace passed are sized by it.
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
-    grid.length === 390 && digestOf(grid) === "94ea036cd1ced739b45e23658f33a6065106397781447ffccdd7cafad1435639");
+    grid.length === 390 && digestOf(grid) === "11fc6aaa78e76a6416a71f214ca632617db1ea8ef3cf656c5d31dbc18f7aa379");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
