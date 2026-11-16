@@ -62,7 +62,7 @@ export function nextUnfinishedIndex(logged, ex, from) {
 // planned_sets (W280): the slot's ORIGINAL set count, which a skip never shrinks — the
 // target the finished workout reports, so it belongs to the slot, never the swapped-in lift.
 export const PRESCRIPTION_KEYS = ["sets", "planned_sets", "rep_range", "rir"];
-export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
+export function replaceSlot(sess, i, row, { expect, sets, plannedSets, rebase = false, planLift = null } = {}) {
   const cur = sess?.ex?.[i];
   const refuse = (reason) => ({ ok: false, reason, sess });
   if (!cur || !row?.exercise) return refuse("no-slot");
@@ -76,6 +76,12 @@ export function replaceSlot(sess, i, row, { expect, sets, plannedSets } = {}) {
   // holds that lift again (an Undo back to it). An older blob has none: the live lift stands for it.
   const origin = typeof cur.slot_of === "string" ? cur.slot_of : cur.exercise;
   if (origin !== row.exercise) slot.slot_of = origin; else delete slot.slot_of;
+  // `rebase` (review round 6): the row IS the plan's lift for this slot now (a permanent swap whose replacement is today's
+  // lift, or its Undo) — no stand-in marker, so a later pick or swap is judged against the plan's actual lift.
+  if (rebase) delete slot.slot_of;
+  // `planLift` (review round 9): a permanent swap of the plan's own lift moved the plan's lift for this slot to its
+  // replacement — today's lift stands in for THAT (or is it: no marker), never for the lift just removed.
+  if (typeof planLift === "string") { if (planLift !== row.exercise) slot.slot_of = planLift; else delete slot.slot_of; }
   // A skip (W281) shrank `sets` for the OLD lift; the swapped-in lift starts from the slot's
   // planned count (a swap is only ever offered before any set of the old lift was banked).
   if (Number.isInteger(cur.planned_sets)) slot.sets = cur.planned_sets;
@@ -141,6 +147,35 @@ export function tiredSwapRow(row) {
 // back a row the server built at the new lift's own progression — kept planned easy, any bump held, "it won't count", the
 // tired dose carried by replaceSlot — or the tired day's light sets became the new lift's anchor. A regular slot: as it came.
 export const swapInRow = (cur, row) => (cur?.tired ? tiredSwapRow(row) : row);
+// WHY a slot is swapped (W323; review round 2 #2), stamped on the row the workout reports. A tired swap is about the day;
+// a permanent swap is recorded server-side (null); a pick is a vote against the PLAN's lift only when that lift was on
+// the table — picking over a busy or tired stand-in keeps the stand-in's reason (the lifter never chose against the plan's
+// lift). Anything else today-only is "busy".
+// Does a permanent swap ("No machine", "Just not for me") re-base the live slot (round 6)? Only when the slot holds the
+// PLAN's own lift and the server's replacement is today's lift (round 7): a stand-in's permanent replacement lands in
+// another day of the plan, and the plan's lift for THIS slot (slot_of) hasn't changed.
+export function planLiftAfterPermanent(cur, r) {
+  return typeof cur?.slot_of !== "string" && typeof r?.replaced_by === "string" && r.replaced_by ? r.replaced_by : null;
+}
+export function rebasesOnPermanent(cur, r) {
+  return typeof cur?.slot_of !== "string" && !!r?.replaced_by && r.replaced_by === r?.today?.id;
+}
+export function swapWhyFor(cur, { reason = null, permanent = false, picked = false } = {}) {
+  // `swap_why` on a stand-in describes how it relates to the PLAN's lift (slot_of). A vote ("pick"/"picked_over") is cast
+  // only by a pick made against the plan's lift itself, on a day that isn't tired; once cast, every later door keeps it
+  // (rounds 3-5) — "pick" again only for a fresh non-tired pick, else "picked_over" (which never credits a liking).
+  const tiredNow = reason === "tired" || !!cur?.tired;
+  const standIn = typeof cur?.slot_of === "string";
+  if (standIn && (cur.swap_why === "pick" || cur.swap_why === "picked_over")) return picked && !tiredNow && reason !== "hurt" ? "pick" : "picked_over";
+  if (tiredNow) return "tired";
+  // "It hurts" (round 9): the swap is about the body, like a tired one — never a dislike vote, never a liking.
+  if (reason === "hurt") return "hurt";
+  if (permanent) return null;
+  // A pick over a stand-in that carries no vote (busy, tired, or a permanent replacement) was never a choice against the
+  // plan's lift (round 2 #2, round 5): it keeps the stand-in's own reason.
+  if (standIn && picked) return cur.swap_why ?? null;
+  return picked ? "pick" : "busy";
+}
 export function easeSlot(sess, i, { expect, stepKg, floorKg = 0, shown = (row) => row.suggested_kg } = {}) {
   const cur = sess?.ex?.[i];
   if (!cur) return { ok: false, reason: "no-slot", sess };
@@ -474,7 +509,7 @@ export const unconfirmedFlagged = (indices, keyOf, isFlagged, confirmed) =>
 // identical verdicts, so a change to one without the other fails CI instead of
 // silently letting the live toast and the recap/XP total disagree.
 export const LUCKY_SET_XP = 15;
-const LUCKY_SET_ONE_IN = 8;
+export const LUCKY_SET_ONE_IN = 8; // printed on the toast (W325, Plain Sight test 1: the rule survives being shown)
 export function isLuckySet(sessionId, exercise, hardSetIndex) {
   if (!sessionId) return false;
   const key = `${sessionId}|${exercise}|${hardSetIndex}`;
@@ -639,6 +674,8 @@ export function buildTargets(sess) {
     // The planned lift a substitute stood in for (its slot_of — Burst 6 review G1): the comeback clock counts the slot as
     // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
     ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
+    // …and why it stood in (W323): busy / pick / tired — what the plan learns preferences from (never a tired one).
+    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
     // The per-set aims served today (W298), only when the player itself would use them (validAim) — so later
     // learning can judge a set against what it was asked, not just the range. Only the ones it SERVED: the player shows
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list

@@ -2,7 +2,7 @@
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
-  accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN } from "./plan-core.mjs";
+  accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN, rankedPools } from "./plan-core.mjs";
 import { sessionMinutes as dayMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
@@ -1287,8 +1287,14 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // pair-free (the rescue pair's bonus gone). Measured against 9524500 again: 89 programs changed (183 sessions); the
   // clock now cuts 254 sets (was 304 at W305b, 544 before the review), days past their minutes 71 (was 88; 75 before),
   // 72 days pair instead of cutting, still 0 past the quality ceiling.
+  // Re-pinned DELIBERATELY in W322 (considerations iteration — preferences): the pickers walk each pool from a rotating
+  // cursor, and a wrap handed back the very lift a demotion pushed last — a stalled lift returned whenever the cursor
+  // landed on it (and a lift they'd rather skip would too). firstUsable now takes any qualifying non-demoted candidate
+  // first. Measured against HEAD over all 390 plans: 2 changed, both o-beg-3's stalled paths — the old engine placed BOTH
+  // stalled lifts in Full Body B while a non-stalled goblet squat and dumbbell bench were free; now they appear only where
+  // the 2-uses-a-week cap forces them. Every plan without a stalled lift is byte-identical.
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
-    grid.length === 390 && digestOf(grid) === "eaa1fac692dd5ff3308a67a4a3f22435772d82423e72dee8d3de9c87e2e16390");
+    grid.length === 390 && digestOf(grid) === "d9efc32117ba6daf8ad6153a1f1fbc2ebd090c56a4adb753c95a233a9336281d");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
@@ -1949,6 +1955,206 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const cur = generatePlan(pr, kb);
   const q = (pace) => timeFitQuestion(pr, kb, { program: cur.program, rationale: cur.rationale, meta: cur.meta }, { pace });
   ok("#pace (W316) the time-fit question measures the stored plan at the lifter's pace too", q({ heavy: 240, moderate: 230, isolation: 160, transition: 200 }).max_minutes > q(null).max_minutes);
+}
+// --- W322: what they enjoy, inside what's optimal (owner: "bridge the gap between these preferences and optimal training")
+{
+  const FULLG = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const exMap = new Map(exercises.map((e) => [e.id, e]));
+  const placedIds = (pl) => new Set(pl.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
+  const firstFor = (pl) => { const out = {}; for (const c of pl.rationale.exercise_choices) if (!(c.for_muscle in out)) out[c.for_muscle] = c.exercise; return out; };
+  const base = { user_id: "pref-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULLG };
+  const plan0 = generatePlan(base, kb);
+  ok("#prefs (W322) no preference — absent, null, {} or all-empty — is byte-identical",
+    [null, {}, { style: [], avoid: [], cardio: [] }].every((tp) => JSON.stringify(generatePlan({ ...base, training_prefs: tp }, kb)) === JSON.stringify(plan0)));
+  const share = (pl, eqs) => { const ids = [...placedIds(pl)]; return ids.filter((id) => eqs.includes(exMap.get(id)?.equipment)).length / ids.length; };
+  const free = generatePlan({ ...base, training_prefs: { style: ["free"] } }, kb);
+  ok("#prefs 'free weights' raises the free-weight share of the week", share(free, ["barbell", "dumbbell", "kettlebell"]) > share(plan0, ["barbell", "dumbbell", "kettlebell"]));
+  // The bridge's floor: where the default plan opens a muscle with a lengthened-biased lift, a style preference never
+  // opens it with a non-lengthened one — enjoyment levels the equipment ladder, it never outranks the stretch.
+  const lengthenedKept = (tp, b = base) => {
+    const d = firstFor(generatePlan(b, kb)), q = firstFor(generatePlan({ ...b, training_prefs: tp }, kb));
+    return Object.keys(d).filter((m) => exMap.get(d[m])?.lengthened_bias && q[m] && !exMap.get(q[m])?.lengthened_bias);
+  };
+  const bad = [];
+  for (const goal of ["hypertrophy", "strength", "fat-loss"]) for (const status of ["beginner", "intermediate", "advanced"]) for (const days of [3, 4, 5])
+    for (const st of [["free"], ["machines"], ["bodyweight"], ["free", "bodyweight"]]) {
+      const b = { ...base, user_id: `pl-${goal}-${status}-${days}`, primary_goal: goal, training_status: status, days_per_week: days };
+      for (const m of lengthenedKept({ style: st }, b)) bad.push(`${goal}/${status}/${days}d ${st}: ${m}`);
+    }
+  ok(`#prefs a style preference never opens a muscle with a non-lengthened lift where the default had a lengthened one (108 plans)${bad.length ? " — " + bad.slice(0, 4).join("; ") : ""}`, bad.length === 0);
+  // Lifts they'd rather skip: every family the quiz offers is swapped out of a full-gym week, at every level and goal.
+  const FAMILIES = [["barbell-back-squat", "front-squat"], ["conventional-deadlift", "romanian-deadlift"], ["barbell-bench-press", "incline-barbell-bench-press", "close-grip-bench-press"],
+    ["barbell-overhead-press", "seated-dumbbell-shoulder-press", "kettlebell-overhead-press", "band-overhead-press", "machine-shoulder-press", "smith-machine-shoulder-press"],
+    ["walking-lunge", "bodyweight-lunge", "bulgarian-split-squat", "dumbbell-curtsy-lunge"], ["pull-up", "chin-up"], ["chest-dip", "bench-dip"], ["push-up", "diamond-push-up", "pike-push-up"], ["leg-press"]];
+  ok("#prefs the quiz's lift families are real KB ids", FAMILIES.flat().every((id) => exIds.has(id)));
+  const leaks = [], keptSeen = [];
+  for (const goal of ["hypertrophy", "strength"]) for (const status of ["beginner", "intermediate", "advanced"]) for (const fam of FAMILIES) {
+    const b = { ...base, user_id: `av-${goal}-${status}`, primary_goal: goal, training_status: status };
+    const pl = generatePlan({ ...b, training_prefs: { avoid: fam } }, kb), got = placedIds(pl);
+    const kept = new Set((pl.rationale.preferences?.kept ?? []).map((k) => k.id));
+    for (const id of fam) if (got.has(id) && !kept.has(id)) leaks.push(`${goal}/${status} ${id}`);
+    for (const id of fam) if (got.has(id)) keptSeen.push(`${goal}/${status} ${id}`);
+  }
+  // A whole family can be every appropriate option a muscle has (a beginner who skips ALL overhead pressing keeps one
+  // machine press for front delts) — that is the soft no working, and it must be named as kept, never silent.
+  ok(`#prefs every skipped family is out of a full-gym week, or named as kept (54 plans)${leaks.length ? " — " + leaks.join("; ") : ""}`, leaks.length === 0);
+  ok(`#prefs …and kept ones are rare (${keptSeen.length}: ${keptSeen.join("; ")})`, keptSeen.length <= 2);
+  // …even where the pool's rotating cursor would have handed it back (the RDL that returned in the second lower day).
+  ok("#prefs a skipped RDL never returns through the pool's cursor", !placedIds(generatePlan({ ...base, training_prefs: { avoid: ["romanian-deadlift"] } }, kb)).has("romanian-deadlift"));
+  // A soft no: with nothing else that trains the muscle appropriately, the lift stays — and the plan says why. Found, not
+  // assumed: the first placed lift (in a few narrow kits) that a skip leaves in place.
+  let soft = null;
+  for (const eq of [["machine"], ["band", "bodyweight"], ["bodyweight"], ["dumbbell"]]) {
+    const b = { ...base, user_id: "pref-m", available_equipment: eq };
+    const X = [...placedIds(generatePlan(b, kb))].sort().find((id) => placedIds(generatePlan({ ...b, training_prefs: { avoid: [id] } }, kb)).has(id));
+    if (X) { soft = { b: { ...b, training_prefs: { avoid: [X] } }, X }; break; }
+  }
+  const softPlan = soft && generatePlan(soft.b, kb);
+  const softWhy = soft && explainPersonalization(soft.b, softPlan.rationale, softPlan.program).find((x) => /skip/.test(x.answer));
+  ok(`#prefs a skipped lift with no appropriate alternative stays, and the explanation names it and why (${soft?.X})`,
+    !!soft && new RegExp(`Kept: ${exMap.get(soft.X).name.replace(/[()]/g, "\\$&")} \\(nothing else you have trains your`).test(softWhy?.effect ?? ""), softWhy?.effect);
+  // Variety, inside the KB's "rotate accessories every mesocycle or two".
+  const isoIds = (pl) => [...placedIds(pl)].filter((id) => exMap.get(id)?.mechanic === "isolation").sort().join();
+  const same = (bi) => generatePlan({ ...base, training_prefs: { variety: "same" } }, kb, { blockIndex: bi });
+  ok("#prefs 'master the same lifts': accessories hold through block 1 and change at block 2", isoIds(same(1)) === isoIds(same(0)) && isoIds(same(2)) !== isoIds(same(0)));
+  const fresh = (bi) => generatePlan({ ...base, training_prefs: { variety: "fresh" } }, kb, { blockIndex: bi });
+  ok("#prefs 'keep it fresh': block 0's program is the default's, and accessories rotate every block",
+    JSON.stringify(fresh(0).program) === JSON.stringify(plan0.program) && isoIds(fresh(1)) !== isoIds(fresh(0)) && isoIds(fresh(2)) !== isoIds(fresh(1)));
+  // The main lifts — each muscle's first compound — never rotate for variety (a filler compound can come and go with the
+  // accessories' volume credit, as it does between blocks without any preference).
+  const mainLifts = (pl) => { const out = {}; for (const c of pl.rationale.exercise_choices) if (exMap.get(c.exercise)?.mechanic === "compound" && !(c.for_muscle in out)) out[c.for_muscle] = c.exercise; return JSON.stringify(Object.entries(out).sort()); };
+  ok("#prefs …each muscle's main lift never rotates for variety", ["same", "fresh"].every((v) => [1, 2, 3].every((bi) =>
+    mainLifts(generatePlan({ ...base, training_prefs: { variety: v } }, kb, { blockIndex: bi })) === mainLifts(generatePlan(base, kb, { blockIndex: bi })))));
+  // Cardio they'd actually do.
+  const cRun = generatePlan({ ...base, training_prefs: { cardio: ["running"] } }, kb).program.cardio;
+  ok("#prefs a liked modality becomes the structured cardio (walking stays first)", cRun?.structured_modality?.id === "running" && cRun.structured_modality.liked === true && cRun.modality?.id === plan0.program.cardio?.modality?.id);
+  ok("#prefs liking only walking leaves the structured pick as the default", JSON.stringify(generatePlan({ ...base, training_prefs: { cardio: ["walking"] } }, kb).program.cardio) === JSON.stringify(plan0.program.cardio));
+  // Said on the plan card.
+  const lines = explainPersonalization({ ...base, training_prefs: { style: ["free"], variety: "same", avoid: ["barbell-back-squat"], cardio: ["cycling"] } },
+    generatePlan({ ...base, training_prefs: { style: ["free"], variety: "same", avoid: ["barbell-back-squat"], cardio: ["cycling"] } }, kb).rationale, plan0.program).filter((x) => x.input === "training_prefs");
+  ok("#prefs 'What your answers changed' explains style, skips, variety and cardio", lines.length === 4 && /of your \d+ lifts use it|all \d+ lifts/.test(lines[0].effect) && /cycling/.test(lines[3].effect), JSON.stringify(lines.map((l) => l.effect)));
+  // Replacements ("Can't do this one?") rank by the same preferences.
+  const tSub = (tp) => bestSubstitutes("dumbbell-bench-press", { profile: { ...base, ...(tp ? { training_prefs: tp } : {}) }, kb, program: plan0.program, rationale: plan0.rationale })[0]?.id;
+  const top0 = tSub(null);
+  ok("#prefs a skipped lift is never the first replacement offered", !!top0 && tSub({ avoid: [top0] }) !== top0);
+  // Learned scores (W323) are bounded.
+  // Learned scores are bounded: a learned dislike weighs like a skip, never like a stall. Read where the ranking is visible
+  // (the replacements list): with the top compound STALLED (+12) and the next one learned-against, +1 and +100 rank the
+  // list identically — the disliked lift stays above the stalled one (unclamped, +100 would sink it below).
+  const subsFor = (ps, stalled = []) => bestSubstitutes("dumbbell-bench-press", { profile: base, kb, program: plan0.program, rationale: plan0.rationale, prefScores: ps, stalled }).map((x) => x.id);
+  const [stl, lid] = subsFor(null).filter((id) => exMap.get(id)?.mechanic === "compound");
+  const at = (list, id) => list.indexOf(id);
+  ok(`#prefs learned scores are clamped: a +100 dislike ranks as +1 does — still above a stalled lift (${lid} vs ${stl})`, !!lid && !!stl
+    && JSON.stringify(subsFor({ [lid]: 100 }, [stl])) === JSON.stringify(subsFor({ [lid]: 1 }, [stl])) && at(subsFor({ [lid]: 1 }, [stl]), lid) < at(subsFor({ [lid]: 1 }, [stl]), stl));
+}
+// --- Burst 11 review, group D: the bridge keeps its own bounds, and says only what it did ---
+{
+  const FULLG = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const exMap = new Map(exercises.map((e) => [e.id, e]));
+  const placedIds = (pl) => new Set(pl.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
+  const base = { user_id: "pref-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULLG };
+  const prefLines = (prof) => explainPersonalization(prof, generatePlan(prof, kb).rationale, generatePlan(prof, kb).program).filter((x) => x.input === "training_prefs");
+  // #17: a skip is a BOUNDED demotion (2.9) — it never trades a lift for one that ranks worse than that bound allows
+  // (here the only other calf lift at home is a non-loadable bodyweight raise).
+  const home = { ...base, available_equipment: ["dumbbell", "bodyweight"] };
+  const homeSkip = { ...home, training_prefs: { avoid: ["seated-dumbbell-calf-raise"] } };
+  // The skipped seated raise yields only to a lift ranked ABOVE it (the standing dumbbell raise, again) — never walks down to
+  // the non-loadable bodyweight raise.
+  const calvesOf = (pl) => [...placedIds(pl)].filter((id) => (exMap.get(id)?.primary_muscles ?? []).includes("calves"));
+  ok("#rev-b11 a skip never trades a lift for one ranked below it (no non-loadable bodyweight calf raise)",
+    placedIds(generatePlan(home, kb)).has("seated-dumbbell-calf-raise") && !placedIds(generatePlan(homeSkip, kb)).has("bodyweight-calf-raise")
+    && calvesOf(generatePlan(homeSkip, kb)).length > 0, calvesOf(generatePlan(homeSkip, kb)).join());
+  ok("#rev-b11 …and the plan says what happened to it", prefLines(homeSkip).some((l) => /skip 1 lift/.test(l.answer) && /none of them are in your plan|Kept: Seated Dumbbell Calf Raise/.test(l.effect)));
+  // #0: a muscle whose only compound you'd rather skip is trained by an isolation that outranks it, not by the skipped lift.
+  const rd = { ...base, training_prefs: { avoid: ["chest-supported-rear-delt-row"] } };
+  const rdPlaced = placedIds(generatePlan(rd, kb));
+  ok("#rev-b11 skipping a muscle's only compound hands its slot to a better isolation (rear delts: a fly, not the row)",
+    placedIds(generatePlan(base, kb)).has("chest-supported-rear-delt-row") && !rdPlaced.has("chest-supported-rear-delt-row")
+    && [...rdPlaced].some((id) => exMap.get(id)?.mechanic === "isolation" && (exMap.get(id)?.primary_muscles ?? []).includes("rear-delts")), [...rdPlaced].join());
+  // #2: the lengthened floor holds in the RANKING for every kit, goal and level — read from the generator's own pools
+  // (rankedPools), so the allocation's cursor can't mask it: under any style preference, every lengthened lift still
+  // ranks above every non-lengthened one in each pool where it did before.
+  const flips = [];
+  for (const eq of [["barbell", "machine", "cable"], ["barbell", "band", "bodyweight"], ["machine", "cable", "bodyweight"], ["barbell", "dumbbell", "bodyweight"], FULLG, ["band", "bodyweight"]])
+    for (const st of [["free"], ["machines"], ["bodyweight"], ["free", "machines"]]) for (const goal of ["hypertrophy", "strength"]) for (const status of ["beginner", "intermediate", "advanced"]) for (const uid of ["u-0", "u-1", "u-2"]) {
+      const b = { ...base, user_id: uid, training_status: status, primary_goal: goal, available_equipment: eq };
+      const d = rankedPools(b, kb), q = rankedPools({ ...b, training_prefs: { style: st } }, kb);
+      for (const m of Object.keys(d)) for (const kind of ["compound", "isolation"]) {
+        const topD = d[m][kind][0], topQ = q[m][kind][0];
+        if (topD && exMap.get(topD.id)?.lengthened_bias && topQ && !exMap.get(topQ.id)?.lengthened_bias) flips.push(`${eq}/${st}/${goal}/${status}/${uid}: ${m} ${kind} ${topD.id}→${topQ.id}`);
+      }
+    }
+  ok(`#rev-b11 no style preference ranks a non-lengthened lift first where a lengthened one was (1,296 pool sets, 6 kits)${flips.length ? " — " + flips.slice(0, 3).join("; ") : ""}`, flips.length === 0);
+  // #3: the skip line counts only lifts your kit could use, and never claims a swap it can't know happened.
+  const ohp = { ...home, training_prefs: { avoid: ["barbell-overhead-press", "seated-dumbbell-shoulder-press", "kettlebell-overhead-press", "band-overhead-press", "machine-shoulder-press", "smith-machine-shoulder-press"] } };
+  const ohpLine = prefLines(ohp).find((l) => /skip/.test(l.answer));
+  ok("#rev-b11 the skip line counts only lifts your equipment could use, and claims no swaps", !!ohpLine && /skip 1 lift\b/.test(ohpLine.answer) && !/swapped for an equal alternative/.test(ohpLine.effect), JSON.stringify(ohpLine));
+  //     …and a cardio pick that was already the structured choice says so, instead of claiming it changed something.
+  const cyc = prefLines({ ...base, training_prefs: { cardio: ["cycling"] } }).find((l) => /cardio/.test(l.answer));
+  ok("#rev-b11 a cardio pick that was already the structured choice says it was", !!cyc && /already/.test(cyc.effect), JSON.stringify(cyc));
+  // #4: a style your equipment doesn't have is named as such — never "something else does the job better".
+  const mc = prefLines({ ...base, available_equipment: ["machine", "cable"], training_prefs: { style: ["free"] } }).find((l) => /enjoy/.test(l.answer));
+  ok("#rev-b11 an enjoyed style your equipment lacks is said plainly", !!mc && /none of your equipment/.test(mc.effect) && !/does the job better/.test(mc.effect), JSON.stringify(mc));
+  // #16: beginners keep the same lifts while they learn them — the variety answer says when it starts.
+  const bv = prefLines({ ...base, training_status: "beginner", training_prefs: { variety: "fresh" } }).find((l) => /fresh/.test(l.answer));
+  ok("#rev-b11 a beginner's variety answer says it starts at graduation, not that accessories rotate now", !!bv && /graduat/.test(bv.effect) && !/rotate every block/.test(bv.effect), JSON.stringify(bv));
+  // Round 2 #4: accessory pools are ROTATED (rotateTopK), so pool position isn't rank — a skipped raise rotated to the front
+  // must still yield to the better raises behind it.
+  const r4 = { ...base, available_equipment: ["dumbbell", "cable", "bodyweight"], training_prefs: { avoid: ["dumbbell-lateral-raise"] } };
+  const r4Placed = placedIds(generatePlan(r4, kb, { blockIndex: 2 }));
+  ok("#rev2-b11 a skipped accessory rotated to the front of its pool still yields to better-ranked free ones (block 2)",
+    !r4Placed.has("dumbbell-lateral-raise") && [...r4Placed].some((id) => /cable-lateral-raise|lean-away-lateral-raise/.test(id)), [...r4Placed].filter((id) => /lateral/.test(id)).join());
+  // Round 2 #5: under a style preference the non-loadable penalty stays decisive over the wider lengthened bonus, and a
+  // style the kit doesn't have changes nothing (so "it can't change your plan" is true).
+  const r5 = { ...base, available_equipment: ["dumbbell", "band", "bodyweight"] };
+  const r5Placed = placedIds(generatePlan({ ...r5, training_prefs: { style: ["free"] } }, kb));
+  ok("#rev2-b11 a style preference never promotes a non-loadable bodyweight lift over a loaded one", !r5Placed.has("sliding-leg-curl") || placedIds(generatePlan(r5, kb)).has("sliding-leg-curl"), [...r5Placed].join());
+  const absentDiffs = [];
+  for (const [eq, st] of [[["band", "bodyweight"], "machines"], [["dumbbell", "band", "bodyweight"], "machines"], [["barbell", "dumbbell", "bodyweight"], "machines"], [["dumbbell", "bodyweight"], "machines"], [["machine", "cable"], "free"], [["machine", "cable"], "bodyweight"]])
+    for (const goal of ["hypertrophy", "strength"]) {
+      const b = { ...base, available_equipment: eq, primary_goal: goal };
+      if (JSON.stringify(generatePlan({ ...b, training_prefs: { style: [st] } }, kb).program) !== JSON.stringify(generatePlan(b, kb).program)) absentDiffs.push(`${eq}/${st}/${goal}`);
+    }
+  ok(`#rev2-b11 an enjoyed style the kit lacks leaves the plan byte-identical (12 kit/goal pairs)${absentDiffs.length ? " — " + absentDiffs.join("; ") : ""}`, absentDiffs.length === 0);
+  // …and the RANKING itself (rankedPools, more sensitive than whole plans): not one pool reorders.
+  const poolDiffs = [];
+  for (const [eq, st] of [[["band", "bodyweight"], "machines"], [["dumbbell", "band", "bodyweight"], "machines"], [["barbell", "dumbbell", "bodyweight"], "machines"], [["machine", "cable"], "free"], [["machine", "cable", "bodyweight"], "free"]])
+    for (const goal of ["hypertrophy", "strength"]) for (const status of ["beginner", "intermediate", "advanced"]) for (const uid of ["u-0", "u-1"]) {
+      const b = { ...base, user_id: uid, training_status: status, available_equipment: eq, primary_goal: goal };
+      const ids = (rp) => JSON.stringify(Object.entries(rp).map(([m, p]) => [m, p.compound.map((e) => e.id), p.isolation.map((e) => e.id)]));
+      if (ids(rankedPools({ ...b, training_prefs: { style: [st] } }, kb)) !== ids(rankedPools(b, kb))) poolDiffs.push(`${eq}/${st}/${goal}/${status}/${uid}`);
+    }
+  ok(`#rev2-b11 …not one ranked pool reorders for a style the kit lacks (60 pool sets)${poolDiffs.length ? " — " + poolDiffs.slice(0, 3).join("; ") : ""}`, poolDiffs.length === 0);
+  // Round 2 #6: a skipped loadable compound never yields to an isolation that is only "better" because its own pool lacked
+  // the loadable penalty (sissy squats replacing barbell squats).
+  const r6 = { ...base, available_equipment: ["barbell", "bodyweight"], training_prefs: { avoid: ["barbell-back-squat", "front-squat"] } };
+  ok("#rev2-b11 a skipped barbell squat never yields to a non-loadable sissy squat", !placedIds(generatePlan(r6, kb)).has("sissy-squat"), [...placedIds(generatePlan(r6, kb))].join());
+  // Round 3 #0: the knee-flexion doors (the weekly leg-curl staple) honour demotions on a rotated pool too — a skipped,
+  // learned-against or stalled curl rotated to the front yields to a better-scored free curl.
+  const kfOf = (pl) => pl.rationale.exercise_choices.filter((c) => exMap.get(c.exercise)?.movement_pattern === "isolation-knee-flexion").map((c) => c.exercise);
+  const kfCases = [
+    ["avoid, block 1", generatePlan({ ...base, training_prefs: { avoid: ["seated-leg-curl"] } }, kb, { blockIndex: 1 })],
+    ["learned, block 1", generatePlan(base, kb, { blockIndex: 1, prefScores: { "seated-leg-curl": 1 } })],
+    ["stalled, block 2", generatePlan(base, kb, { blockIndex: 2, stalledExercises: ["seated-leg-curl"] })],
+  ].filter(([, pl]) => kfOf(pl).includes("seated-leg-curl")).map(([k]) => k);
+  ok(`#rev3-b11 a demoted leg curl rotated to the front never takes the leg-curl staple${kfCases.length ? " — " + kfCases.join("; ") : ""}`, kfCases.length === 0);
+  // Round 8 #2: a learned dislike the bound keeps is SAID on the plan card, like a kept skip — never silent.
+  let lk = null;
+  for (const eq of [["dumbbell", "bodyweight"], ["machine"], ["band", "bodyweight"], FULLG]) {
+    const b = { ...base, user_id: "lk-1", training_status: "beginner", days_per_week: 3, available_equipment: eq };
+    const X = [...placedIds(generatePlan(b, kb))].sort().find((id) => placedIds(generatePlan(b, kb, { prefScores: { [id]: 1 } })).has(id));
+    if (X) { lk = { b, X }; break; }
+  }
+  const lkPlan = lk && generatePlan(lk.b, kb, { prefScores: { [lk.X]: 1 } });
+  const lkLine = lk && explainPersonalization(lk.b, lkPlan.rationale, lkPlan.program).find((x) => /picked something else/.test(x.answer));
+  ok(`#rev8-b11 a learned dislike the bound keeps is named on the plan card (${lk?.X})`, !!lkLine && new RegExp(`Kept: ${exMap.get(lk.X).name.replace(/[()]/g, "\\$&")}`).test(lkLine.effect), JSON.stringify(lkLine));
+  // Round 10 #4: "Kept: X" is said only while the plan still holds X (an in-place swap may have removed it since).
+  if (lk) {
+    const gone = { ...lkPlan.program, sessions: lkPlan.program.sessions.map((sn) => ({ ...sn, exercises: sn.exercises.filter((e) => e.exercise !== lk.X) })) };
+    const line = explainPersonalization(lk.b, lkPlan.rationale, gone).find((x) => /picked something else/.test(x.answer));
+    ok("#rev10-b11 a 'Kept' line never names a lift the plan no longer holds", !line, JSON.stringify(line));
+  }
+  // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

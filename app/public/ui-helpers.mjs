@@ -591,3 +591,26 @@ export function trainingDaysHint(days) {
 // per-lift rest nudges, Nerd Mode (W284), the rest chime/alert (W286) and the one-time
 // notifications invite (W287). Everything else under hb_ is the account's, and goes.
 export const DEVICE_PREFS = new Set(["hb_rir", "hb_rest", "hb_nerd", "hb_rest_alert", "hb_notify_invite"]);
+
+// ---- The preference screen (W321; Burst 11 review #9 #10 #12) — pure, unit-tested in test-ui-helpers.mjs ----
+// A lift-family chip is ON when ANY of its lifts is skipped (a "Just not for me" on one of them shows), so what turning it
+// off removes was visibly selected. On adds every lift in the family; off removes them; nothing outside it is touched.
+export const familyOn = (tp, f) => f.ids.some((id) => (tp?.avoid ?? []).includes(id));
+export function toggleFamily(tp, f) {
+  const avoid = tp?.avoid ?? [];
+  return { ...tp, avoid: familyOn(tp, f) ? avoid.filter((id) => !f.ids.includes(id)) : [...new Set([...avoid, ...f.ids])] };
+}
+// The style chips to draw: every style this kit can use, plus any already chosen that it can't (flagged `absent`), so a
+// stored answer always has a control on screen that can clear it.
+export function visibleStyles(opts, equipment, chosen = []) {
+  return opts.map(([label, value, need]) => ({ label, value, absent: !need.some((x) => equipment.has(x)) }))
+    .filter((o) => !o.absent || chosen.includes(o.value));
+}
+// The wizard step to render for a saved position: the same step when this run asks it, else the next asked one, else the
+// last asked one (a position saved by an older build with a different question list, or one past its end).
+export function visibleStepFrom(steps, idx, answers) {
+  const asked = (i) => i >= 0 && i < steps.length && (!steps[i].showIf || steps[i].showIf(answers));
+  for (let i = Math.max(0, Math.min(idx, steps.length - 1)); i < steps.length; i++) if (asked(i)) return i;
+  for (let i = Math.min(idx, steps.length - 1); i >= 0; i--) if (asked(i)) return i;
+  return 0;
+}

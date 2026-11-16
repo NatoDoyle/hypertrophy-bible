@@ -378,7 +378,7 @@ const EMPTY_SET = new Set();
 // non-stalled alternative regardless of how good it otherwise looks.
 const STALLED_DEMOTION = 12;
 
-function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy", stalled = EMPTY_SET }) {
+function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy", stalled = EMPTY_SET, prefs = null, scores = null }) {
   const diffRank = { beginner: 0, intermediate: 1, advanced: 2 };
   const userLvl = diffRank[experience] ?? 1;
   const equipTier = goal === "strength" ? EQUIP_TIER_STRENGTH : EQUIP_TIER_HYPERTROPHY;
@@ -389,7 +389,7 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
   return [...pool]
     .map((e) => {
       let score = 0;
-      if (e.lengthened_bias) score -= 2;                 // KB: bias toward lengthened loading
+      if (e.lengthened_bias) score -= prefs?.equip?.size ? PREF_LENGTHENED_WITH_STYLE : 2; // KB: bias toward lengthened loading (wider under a style preference — review #2)
       const d = diffRank[e.difficulty] ?? 1;
       if (d > userLvl) score += 3 * (d - userLvl);       // too advanced → penalize
       // Prefer progressively-loadable exercises: when a loaded option exists, a
@@ -402,7 +402,7 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
       // difficulty step (3) so a too-advanced loaded lift can still yield to an
       // appropriate bodyweight move. `hasLoaded` gates it entirely, so a
       // bodyweight-only user's ranking is unchanged and the lengthened move wins there.
-      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += 2.5;
+      if (hasLoaded && e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id)) score += nonLoadablePenalty(prefs);
       // THE EXERCISE-VARIATION LEVER (KB logging-and-plateaus.md: volume → effort →
       // deload → CHANGE EXERCISE). A lift the user has genuinely plateaued on sinks
       // below every alternative for that muscle, so the next block gives them a
@@ -416,13 +416,36 @@ function rankPool(pool, { experience, seed, blockJitter = 0, goal = "hypertrophy
       if (stalled.has(e.id)) score += STALLED_DEMOTION;
       // #1/#5: prefer stable, low-fatigue equipment (machines/cables) for growth —
       // more effective tension per unit of systemic fatigue; barbell for strength.
-      score += equipTier[e.equipment] ?? 0;
+      let tier = equipTier[e.equipment] ?? 0;
+      // W322: the lifter's preferences, bounded (see prefRankOpts). Absent → this branch never runs.
+      if (prefs) {
+        if (prefs.equip.has(e.equipment)) tier = goal === "strength" ? tier - PREF_STRENGTH_ENJOY : Math.min(...Object.values(equipTier)) - PREF_ENJOY_EDGE;
+        if (prefs.avoid.has(e.id)) score += PREF_AVOID_DEMOTION;
+        const l = prefs.learned?.[e.id];
+        // Learned from their swaps (W323), in units of a skip: +1 = a lift swapped away again and again weighs like one
+        // they said they'd skip; a liking is a fraction of one.
+        if (Number.isFinite(l)) score += Math.max(-PREF_LEARNED_MAX, Math.min(PREF_LEARNED_MAX, l)) * PREF_AVOID_DEMOTION;
+      }
+      score += tier;
       if (fatigueAware) score += CNS_PENALTY[e.cns_cost] ?? 0;
       score += (((seed ^ hashStr(e.id)) + blockJitter * 2654435761) % 100) / 1000; // deterministic jitter; blockJitter rotates ties each mesocycle
+      scores?.set(e.id, score); // the generator compares across a muscle's two pools (review #0)
       return { e, score };
     })
     .sort((a, b) => a.score - b.score)
     .map((x) => x.e);
+}
+// One muscle's two quality-ranked pools — the generator's, and (rankedPools) what a test reads to check the ranking's own
+// guarantees without the allocation's cursor in the way. Accessories are rotated by the caller.
+function poolsFor(muscleId, avail, rankOpts) {
+  const of = (mech) => difficultyGate(avail.filter((e) => e.mechanic === mech && (e.primary_muscles ?? []).includes(muscleId)), rankOpts.experience);
+  return { compound: loadableOnly(rankPool(of("compound"), rankOpts)), isolation: rankPool(of("isolation"), rankOpts) };
+}
+export function rankedPools(profile, kb, opts = {}) {
+  const avail = candidatePool(profile, kb), prefs = prefRankOpts(profile, opts.prefScores);
+  const rankOpts = { experience: profile.training_status ?? "intermediate", seed: seedFromProfile(profile), goal: profile.primary_goal ?? "hypertrophy",
+    stalled: new Set(opts.stalledExercises ?? []), ...(prefs ? { prefs } : {}) };
+  return Object.fromEntries((kb.muscles ?? []).map((m) => [m.id, poolsFor(m.id, avail, rankOpts)]));
 }
 function hashStr(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
 // A short, stable fingerprint of any JSON value (FNV-1a over its serialization) —
@@ -595,7 +618,7 @@ export function sweepDanglingSupersets(sessions) {
 // every day is a leg day or the day before one — NOTHING is safe, and the honest
 // answer is rest days and walking rather than pretending a slot exists.
 const LEG_LOADED = new Set(["LEGS", "LOWER", "FULL"]);
-function buildCardio(guideline, goal, sessionSpecs) {
+function buildCardio(guideline, goal, sessionSpecs, liked = null) {
   if (!guideline) return null;
   const dose = guideline.dose_by_goal?.[goal] ?? guideline.dose_by_goal?.hypertrophy;
   if (!dose) return null;
@@ -617,7 +640,10 @@ function buildCardio(guideline, goal, sessionSpecs) {
     // reason steps come before structured cardio. The structured pick is the
     // lowest-interference option that isn't just walking again.
     modality: ranked[0] ? { id: ranked[0].id, name: ranked[0].name, interference: ranked[0].interference } : null,
-    structured_modality: (() => { const m = ranked.find((x) => x.id !== ranked[0]?.id); return m ? { id: m.id, name: m.name, interference: m.interference } : null; })(),
+    // W322: the structured pick is the lowest-interference modality they said they'd actually do (cardio done beats
+    // cardio skipped; the KB's gradient is small at this dose), else the lowest-interference one.
+    // `liked` only when the pick CHANGED because of it (review #3) — liking the default changes nothing, and says so.
+    structured_modality: (() => { const not0 = (x) => x.id !== ranked[0]?.id; const def = ranked.find(not0); const m = (liked?.length ? ranked.find((x) => not0(x) && liked.includes(x.id)) : null) ?? def; return m ? { id: m.id, name: m.name, interference: m.interference, ...(m.id !== def?.id ? { liked: true } : {}) } : null; })(),
     // Where the hard sessions go. Empty `best_after` is a real answer, not a gap.
     placement: {
       best_after: safeSlots,
@@ -672,6 +698,46 @@ function buildCardio(guideline, goal, sessionSpecs) {
 // lesson 34, one wave after lesson 34 was written: a fix's reach is bounded by the
 // population of the field it reads, and no test can tell you, because the fixtures
 // supply the field.
+// THE LIFTER'S TRAINING PREFERENCES (W321/W322 — owner: "ask what exercise/workouts the user likes … then bridge the
+// gap between these preferences and optimal training"). One stored object, every key optional:
+//   style   — what they enjoy training with: "free" (barbell/dumbbell/kettlebell), "machines" (machine/cable/smith),
+//             "bodyweight" (bodyweight/band)
+//   variety — "same" (keep the lifts, master them) | "fresh" (rotate accessories more)
+//   avoid   — exercise ids they'd rather skip (a soft no, never an exclusion: a lift with no equal alternative stays)
+//   cardio  — the KB cardio modalities they'd actually do (data/guidelines cardio modality ids)
+export const PREF_STYLES = ["free", "machines", "bodyweight"];
+export const PREF_VARIETY = ["same", "fresh"];
+export const PREF_STYLE_EQUIPMENT = { free: ["barbell", "dumbbell", "kettlebell"], machines: ["machine", "cable", "smith-machine"], bodyweight: ["bodyweight", "band"] };
+export const PREF_AVOID_MAX = 40;
+// The bridge between what they enjoy and what's optimal (W322) — bounded, so a preference only reorders options that are
+// close on the KB's own signals:
+//   • an enjoyed style ranks at the TOP of the equipment ladder (hypertrophy: the ladder is a stability/fatigue heuristic,
+//     and free weights and machines grow muscle alike — so enjoyment may level it). It never touches the lengthened bias
+//     (2), the difficulty gate, injuries, or the loadable rule. For strength, barbell specificity mostly holds (≤0.6).
+//   • a lift they'd rather skip is demoted by PREF_AVOID_DEMOTION: below anything comparable, but less than one difficulty
+//     step (3) and far less than a stall (12) — a soft no, so a muscle with no other appropriate lift still keeps it.
+//   • learned scores (W323, opts.prefScores) are clamped to ±PREF_LEARNED_MAX and weigh in units of a skip (×2.9): a lift
+//     swapped away again and again (+1) is treated like one they said they'd skip; a learned liking is a fraction.
+export const PREF_AVOID_DEMOTION = 2.9, PREF_LEARNED_MAX = 1, PREF_ENJOY_EDGE = 0.15, PREF_STRENGTH_ENJOY = 0.6;
+// While a style preference is active the lengthened bonus widens from 2 to 2.5 (review #2): an enjoyed style can lift a
+// lift up to ~1.75 on the equipment ladder, and with a high-CNS lengthened lift (+0.6) and the seed jitter (<0.1) the old
+// 2-point margin let a non-lengthened enjoyed lift open a muscle. 2.5 > 1.75 + 0.6 + 0.1 keeps the floor for every kit.
+export const PREF_LENGTHENED_WITH_STYLE = 2.5;
+// The non-loadable bodyweight penalty stays half a point above whichever lengthened bonus is active (round 2 #5): 2.5 by
+// default (unchanged), 3.0 under a style preference — so a lengthened non-loadable move never ties a loaded option.
+const nonLoadablePenalty = (prefs) => (prefs?.equip?.size ? PREF_LENGTHENED_WITH_STYLE : 2) + 0.5;
+// null when there is nothing to apply — the absent path never enters rankPool's preference branch (byte-identical).
+export function prefRankOpts(profile, prefScores = null) {
+  const tp = profile?.training_prefs;
+  // Only equipment this kit has (round 2 #5): an enjoyed style the lifter can't use changes nothing — not even the bonuses.
+  const kit = new Set(profile?.available_equipment ?? ["barbell", "dumbbell", "machine", "cable", "bodyweight"]);
+  const equip = new Set((tp?.style ?? []).flatMap((st) => PREF_STYLE_EQUIPMENT[st] ?? []).filter((q) => kit.has(q)));
+  const avoid = new Set(tp?.avoid ?? []);
+  const learned = prefScores && typeof prefScores === "object" ? prefScores : null;
+  const hasLearned = !!learned && Object.values(learned).some((v) => Number.isFinite(v) && v !== 0);
+  return equip.size || avoid.size || hasLearned ? { equip, avoid, learned: hasLearned ? learned : null } : null;
+}
+
 export function deriveSpecialization(profile, muscles = []) {
   if (profile?.specialization === true) return true;
   const ids = profile?.priority_muscles ?? [];
@@ -733,6 +799,9 @@ export function generatePlan(profile, kb, opts = {}) {
   // change-exercise lever). Empty by default, so a plan generated without it is
   // byte-identical to before and the determinism guarantee holds.
   const stalled = new Set(opts.stalledExercises ?? []);
+  // What they enjoy (W321/W322): null when absent, so a plan without preferences is byte-identical.
+  const prefs = prefRankOpts(profile, opts.prefScores);
+  const variety = profile.training_prefs?.variety ?? null;
   const cardioGuideline = (kb.guidelines ?? []).find((g) => g.id === "cardio-concurrent-training") ?? null;
   const compoundSets = experience === "advanced" ? 4 : 3;
   const perSessionCap = opts.perMuscleSessionCap ?? 10;
@@ -761,7 +830,7 @@ export function generatePlan(profile, kb, opts = {}) {
   // 1) split
   const { split, sessions: sessionSpecs, reason: splitReason, citations: splitCites } = chooseSplit({ days_per_week: profile.days_per_week, training_status: experience });
   // Cardio rides on the split, since its placement rule is about leg days.
-  const cardio = buildCardio(cardioGuideline, goal, sessionSpecs);
+  const cardio = buildCardio(cardioGuideline, goal, sessionSpecs, profile.training_prefs?.cardio ?? null);
 
   // The per-day set budget, needed from step 2 onward (the ease-to-MEV funding
   // pass measures its slack); step 4 documents why it exists and how it's sized.
@@ -898,11 +967,13 @@ export function generatePlan(profile, kb, opts = {}) {
 
   // pools per muscle (filtered + ranked), and a rotation counter for variety
   const compoundPool = {}, isoPool = {}, rot = {};
+  const scoreOf = new Map(); // each lift's rank score, for the one cross-pool comparison below (review #0)
   for (const m of muscles) {
     // The difficulty gate and the loadable-compound guard live at module scope
     // (difficultyGate / loadableOnly) so "Can't do this one?" ranks replacements
     // through the very same filters, in the very same order.
-    compoundPool[m.id] = loadableOnly(rankPool(difficultyGate(avail.filter((e) => e.mechanic === "compound" && (e.primary_muscles ?? []).includes(m.id)), experience), { experience, seed, goal, stalled }));
+    const ranked = poolsFor(m.id, avail, { experience, seed, goal, stalled, scores: scoreOf, ...(prefs ? { prefs } : {}) });
+    compoundPool[m.id] = ranked.compound;
     // Accessories rotate with the mesocycle (fresh stimulus, KB: variation), while
     // compounds keep their ranking so double-progression baselines survive blocks.
     // Accessories: rank by quality (lengthened → equipment → low-fatigue), then
@@ -912,9 +983,58 @@ export function generatePlan(profile, kb, opts = {}) {
     // by more than a score-jitter could flip, an explicit top-K rotation is what
     // actually varies them (jitter alone left the single best-equipment move
     // pinned every block). Compounds keep their stable ranking (double-progression).
-    isoPool[m.id] = rotateTopK(rankPool(difficultyGate(avail.filter((e) => e.mechanic === "isolation" && (e.primary_muscles ?? []).includes(m.id)), experience), { experience, seed, goal, stalled }), blockIndex);
+    isoPool[m.id] = rotateTopK(ranked.isolation,
+      // Variety (W322), both inside the KB's "rotate accessories every mesocycle or two": "same" rotates every second block,
+      // "fresh" every block among the top 4 instead of 3. No answer → every block, top 3 (byte-identical).
+      variety === "same" ? Math.floor(blockIndex / 2) : blockIndex, variety === "fresh" ? 4 : 3);
     rot[m.id] = 0;
   }
+  // DEMOTED lifts — stalled (the change-exercise lever) and ones they'd rather skip (W322) — rank last, but the pickers
+  // walk each pool from a rotating cursor (the cursor-free doors use boundedFind below), and a wrap could land on exactly the lift a demotion pushed to the end (a
+  // skipped RDL came back in the second lower day; so could a stalled lift). Every picker asks firstUsable: any
+  // qualifying non-demoted candidate first, a demoted one only when nothing else qualifies (a soft no, never a ban).
+  // Nothing demoted → the single pass the pickers always ran (byte-identical).
+  const prefDemoted = new Set([...(prefs?.avoid ?? []), ...Object.entries(prefs?.learned ?? {}).filter(([, v]) => v > 0).map(([id]) => id)]);
+  const demoted = new Set([...stalled, ...prefDemoted]);
+  // …and the demotion keeps its BOUND (review #17): a demoted lift yields only to a qualifying lift that still ranks
+  // ABOVE it in the pool. A stall (+12) sinks below everything, so it always yields; a skip (+2.9) never trades a lift for
+  // one ranked further down than that (e.g. a non-loadable bodyweight raise).
+  // Rank is the SCORE, never the position (round 2 #4): accessory pools are rotated, so a demoted lift can sit at the front.
+  const sc = (e) => scoreOf.get(e.id) ?? 0;
+  const firstUsable = (pool, m, usable) => {
+    for (let t = 0; t < pool.length; t++) {
+      const cand = pool[(rot[m] + t) % pool.length];
+      if (!usable(cand)) continue;
+      // A demoted lift yields to the first free usable lift (cursor order) that outscores it — never one ranked below it.
+      // A stall (+12) is outscored by every free lift, so for a stall this is exactly the old "any free lift first" pass.
+      if (demoted.has(cand.id)) {
+        for (let t2 = 0; t2 < pool.length; t2++) {
+          const c2 = pool[(rot[m] + t2) % pool.length];
+          if (!demoted.has(c2.id) && usable(c2) && sc(c2) < sc(cand)) return t2;
+        }
+      }
+      return t;
+    }
+    return -1;
+  };
+  // The same yield for the doors that scan a pool in order without a cursor (the knee-flexion staples — round 3 #0: a
+  // skipped, learned-against or stalled curl rotated to the front was placed over a better curl). Nothing demoted → a
+  // plain find (byte-identical).
+  const boundedFind = (pool, ok) => {
+    const cand = pool.find(ok);
+    if (!cand || !demoted.has(cand.id)) return cand;
+    return pool.find((c2) => !demoted.has(c2.id) && ok(c2) && sc(c2) < sc(cand)) ?? cand;
+  };
+  // A muscle whose every compound they'd rather skip (or learned against) is served from its isolations when one ranks
+  // above those compounds (review #0: a skipped rear-delt row stayed while a cable rear-delt fly outranked it). Preference
+  // only — a stalled lone compound keeps the pinned stall behaviour. No preference → never (byte-identical).
+  // Scores from the two pools are compared in ONE context (round 2 #6): an all-bodyweight isolation pool was ranked without
+  // the non-loadable penalty its loaded compound pool would have applied, so a sissy squat "outranked" a skipped back squat.
+  const isoVsCompound = (e, m) => (scoreOf.get(e.id) ?? Infinity)
+    + (e.equipment === "bodyweight" && !LOADABLE_BODYWEIGHT.test(e.id) && !isoPool[m].some((x) => x.equipment !== "bodyweight")
+      && compoundPool[m].some((x) => x.equipment !== "bodyweight") ? nonLoadablePenalty(prefs) : 0);
+  const compoundsYield = (m) => prefDemoted.size > 0 && compoundPool[m].length > 0 && compoundPool[m].every((e) => prefDemoted.has(e.id))
+    && isoPool[m].some((e) => !demoted.has(e.id) && isoVsCompound(e, m) < Math.min(...compoundPool[m].map((c) => scoreOf.get(c.id) ?? Infinity)));
   const exById = new Map(avail.map((e) => [e.id, e]));
 
   // 4) build each session, within a realistic time budget AND a quality ceiling.
@@ -1057,16 +1177,16 @@ export function generatePlan(profile, kb, opts = {}) {
     // upright-rows); everyone else compounds-first as before.
     const poolFor = (m) => ISO_FIRST.has(m)
       ? (isoPool[m].length ? isoPool[m] : compoundPool[m])
-      : (compoundPool[m].length ? compoundPool[m] : isoPool[m]);
+      : (compoundPool[m].length && !compoundsYield(m) ? compoundPool[m] : isoPool[m]);
     // Rotation pick that skips exercises already placed this session OR already
     // used in 2 sessions this week (variety). Returns null when nothing qualifies —
     // by the time the week cap can bind, the muscle has already been served twice.
     const pickFrom = (pool, m) => {
-      for (let t = 0; t < pool.length; t++) {
-        const cand = pool[(rot[m] + t) % pool.length];
-        if (!placed.has(cand.id) && (weekUseCount[cand.id] ?? 0) < 2) { rot[m] += t + 1; return cand; }
-      }
-      return null;
+      const t = firstUsable(pool, m, (cand) => !placed.has(cand.id) && (weekUseCount[cand.id] ?? 0) < 2);
+      if (t < 0) return null;
+      const cand = pool[(rot[m] + t) % pool.length];
+      rot[m] += t + 1;
+      return cand;
     };
 
     // 4a0) PRIORITY muscles get FIRST dibs on budget — but not ALL of it. A
@@ -1171,14 +1291,10 @@ export function generatePlan(profile, kb, opts = {}) {
         // ISO_FIRST muscles (side-delts) don't take a compound slot — their
         // isolation IS the primary movement; pressing already covers the region.
         if (ISO_FIRST.has(m)) continue;
-        if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length) continue;
+        if (!room() || (credited[m] ?? 0) >= perTarget(m) || !compoundPool[m].length || compoundsYield(m)) continue;
         // peek the next USABLE candidate (not placed, not week-capped) without
         // consuming rotation — rotate only on actual placement, as before.
-        let tPick = -1;
-        for (let t = 0; t < compoundPool[m].length; t++) {
-          const cand = compoundPool[m][(rot[m] + t) % compoundPool[m].length];
-          if (!placed.has(cand.id) && (weekUseCount[cand.id] ?? 0) < 2) { tPick = t; break; }
-        }
+        const tPick = firstUsable(compoundPool[m], m, (cand) => !placed.has(cand.id) && (weekUseCount[cand.id] ?? 0) < 2);
         if (tPick < 0) continue;
         const ex = compoundPool[m][(rot[m] + tPick) % compoundPool[m].length];
         if (pass === 0 && fams.has(famOf(ex.movement_pattern))) continue;
@@ -1204,7 +1320,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // exactly this once the coverage floor stopped fragmenting day A). The
         // guarantee is weekly, so its last chance outranks first-serve's doubling.
         if (!weekKneeFlexion && mset.includes("hamstrings") && !trainsLater("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
-          const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
+          const kf = boundedFind(isoPool["hamstrings"] ?? [], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
         const fsOrder = [...order].sort((a, b) => (weekServed.has(a) ? 1 : 0) - (weekServed.has(b) ? 1 : 0));
@@ -1245,7 +1361,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // EASED hamstring is growth-dosed at MEV and regains the weekly short-head
         // guarantee — the want-math still caps its sets at the eased target.)
         if (!weekKneeFlexion && mset.includes("hamstrings") && !volumeRationale["hamstrings"]?.maintenance && room()) {
-          const kf = (isoPool["hamstrings"] ?? []).find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
+          const kf = boundedFind(isoPool["hamstrings"] ?? [], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2);
           if (kf) add(kf, Math.min(3, Math.max(2, perTarget("hamstrings"))), "hamstrings", ["knee-flexion work — the hamstrings' short head only works when the knee bends", kf.lengthened_bias ? "lengthened-biased" : "leg-curl pattern"]);
         }
       }
@@ -1312,7 +1428,7 @@ export function generatePlan(profile, kb, opts = {}) {
         // is a LEG-CURL slot — the hinge work already placed covers everything but
         // the short head, which only a knee-flexion movement reaches.
         const kfPick = m === "hamstrings" && !weekKneeFlexion
-          ? isoPool[m].find((e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2)
+          ? boundedFind(isoPool[m], (e) => e.movement_pattern === "isolation-knee-flexion" && !placed.has(e.id) && (weekUseCount[e.id] ?? 0) < 2)
           : null;
         const ex = kfPick ?? pickFrom(isoPool[m], m);
         if (!ex) break;
@@ -1337,6 +1453,7 @@ export function generatePlan(profile, kb, opts = {}) {
         for (let t = 0; t < isoPool[m].length; t++) {
           const cand = isoPool[m][(rot[m] + t) % isoPool[m].length];
           if (placed.has(cand.id) || (weekUseCount[cand.id] ?? 0) >= 2) continue; // same weekly-variety cap as everywhere
+          if (demoted.has(cand.id)) continue; // the bonus slot never spends itself on a stalled or skipped lift (W322)
           if ((cand.primary_muscles ?? []).some((mm) => (direct[mm] ?? 0) + 2 > perSessionCap)) continue; // session-quality cap holds on the rescue path too
           const candMuscles = new Set([...(cand.primary_muscles ?? []), ...(cand.secondary_muscles ?? [])]);
           const partner = isoItems.find((it) => {
@@ -1701,6 +1818,32 @@ export function generatePlan(profile, kb, opts = {}) {
     exercise_choices: exerciseChoices,
     warnings,
   };
+  // W322: what their preferences DID, banked so "What your answers changed" can say it honestly — including the lifts
+  // they'd rather skip that the plan kept because nothing appropriate trains that muscle as well. Only when they have any.
+  const tp = profile.training_prefs;
+  // Learned dislikes the bound KEPT (review round 8 #2): said on the plan card like a kept skip — only when there are any.
+  const learnedKept = Object.entries(prefs?.learned ?? {}).filter(([id, v]) => v > 0 && exById.has(id)
+    && outSessions.some((sn) => sn.exercises.some((e) => e.exercise === id)))
+    .map(([id]) => ({ id, name: exById.get(id)?.name ?? id, for_muscle: exerciseChoices.find((c) => c.exercise === id)?.for_muscle ?? null }));
+  if (learnedKept.length) rationale.preferences = { learned_kept: learnedKept };
+  if (tp && (tp.style?.length || tp.avoid?.length || tp.variety || tp.cardio?.length)) {
+    const placedIds = [...new Set(outSessions.flatMap((sn) => sn.exercises.map((e) => e.exercise)))];
+    // Only what the lifter's kit can use counts (review #3 #4): a style with no equipment here, a skipped lift they
+    // couldn't do anyway, are named as such — never as something the plan "did".
+    const styleHere = (tp.style ?? []).filter((st) => (PREF_STYLE_EQUIPMENT[st] ?? []).some((q) => equip.has(q)));
+    const styleAbsent = (tp.style ?? []).filter((st) => !styleHere.includes(st));
+    const enjoyEq = new Set(styleHere.flatMap((st) => (PREF_STYLE_EQUIPMENT[st] ?? []).filter((q) => equip.has(q))));
+    const avoidHere = (tp.avoid ?? []).filter((id) => exById.has(id));
+    const defaultCardio = cardio?.structured_modality && !cardio.structured_modality.liked ? cardio.structured_modality : null;
+    rationale.preferences = {
+      ...(learnedKept.length ? { learned_kept: learnedKept } : {}),
+      ...(tp.style?.length ? { style: styleHere, ...(styleAbsent.length ? { style_absent: styleAbsent } : {}), enjoyed: placedIds.filter((id) => enjoyEq.has(exById.get(id)?.equipment)).length, of: placedIds.length } : {}),
+      ...(tp.avoid?.length ? { avoided: avoidHere.length, kept: placedIds.filter((id) => avoidHere.includes(id)).map((id) => ({ id, name: exById.get(id)?.name ?? id, for_muscle: exerciseChoices.find((c) => c.exercise === id)?.for_muscle ?? null })) } : {}),
+      ...(tp.variety ? { variety: tp.variety, ...(experience === "beginner" ? { variety_waits: true } : {}) } : {}),
+      ...(tp.cardio?.length ? { cardio: [...tp.cardio], cardio_pick: cardio?.structured_modality?.liked ? cardio.structured_modality.name : null,
+        ...(defaultCardio && tp.cardio.includes(defaultCardio.id) ? { cardio_already: defaultCardio.name } : {}) } : {}),
+    };
+  }
   return { program, rationale, meta: { engine_version: "1.1.0", seed, generated_from: { days_per_week: sessionSpecs.length, training_status: experience, primary_goal: goal, available_equipment: [...equip], priority_muscles: [...priority], injuries }, time_trim: timeTrim } };
 }
 
@@ -1741,7 +1884,7 @@ function sessionFit(items, lookup) {
 // the weekly two-session cap with every X slot removed. `scope: "today"` judges the
 // LIVE session instead — `live` is the ids the player holds right now, so a lift
 // already swapped in today is never offered twice.
-export function bestSubstitutes(exId, { profile, kb, program, rationale = null, sessionName = null, stalled = [], live = null, scope = "always", customExercises = [], exclude = [] } = {}) {
+export function bestSubstitutes(exId, { profile, kb, program, rationale = null, sessionName = null, stalled = [], live = null, scope = "always", customExercises = [], exclude = [], prefScores = null } = {}) {
   const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
   const X = lookup.get(exId);
   let session = program?.sessions?.find((s) => s.name === sessionName && s.exercises.some((e) => e.exercise === exId))
@@ -1756,7 +1899,8 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   const target = rationale?.exercise_choices?.find((c) => c.session === session.name && c.exercise === exId)?.for_muscle ?? X.primary_muscles?.[0];
   if (!target) return [];
   const experience = profile?.training_status ?? "intermediate";
-  const rankOpts = { experience, seed: seedFromProfile(profile ?? {}), goal: profile?.primary_goal ?? "hypertrophy", stalled: new Set(stalled ?? []) };
+  const subPrefs = prefRankOpts(profile, prefScores); // what they enjoy ranks replacements too (W322)
+  const rankOpts = { experience, seed: seedFromProfile(profile ?? {}), goal: profile?.primary_goal ?? "hypertrophy", stalled: new Set(stalled ?? []), ...(subPrefs ? { prefs: subPrefs } : {}) };
   const ruledOut = new Set(exclude ?? []); // e.g. swapped away earlier today: never handed back
   const pool = candidatePool(profile, kb).filter((e) => e.id !== exId && !ruledOut.has(e.id) && (e.primary_muscles ?? []).includes(target));
   const comp = loadableOnly(rankPool(difficultyGate(pool.filter((e) => e.mechanic === "compound"), experience), rankOpts));
@@ -2069,6 +2213,36 @@ export function explainPersonalization(profile, rationale, program, live = null)
     const lifts = new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
     say("available_equipment", equip.join(", "),
       `all ${lifts.size} exercises in your week are ones you can actually do with this.`);
+  }
+
+  // What they enjoy (W322) — what it changed, and where the optimal choice won, said plainly. A "Kept" list names only lifts
+  // the plan still holds (review round 10 #4: an in-place swap since may have removed one; stored rationales too).
+  const heldNow = program?.sessions ? new Set(program.sessions.flatMap((sn) => sn.exercises.map((e) => e.exercise))) : null;
+  const stillHeld = (list) => (heldNow && Array.isArray(list) ? list.filter((k) => heldNow.has(k.id)) : list);
+  const pr = r.preferences ? { ...r.preferences, kept: stillHeld(r.preferences.kept), learned_kept: stillHeld(r.preferences.learned_kept) } : null;
+  if (pr) {
+    const STYLE_WORD = { free: "free weights", machines: "machines and cables", bodyweight: "bodyweight" };
+    const allStyles = [...(pr.style ?? []), ...(pr.style_absent ?? [])];
+    const styleWords = (list) => list.map((x) => STYLE_WORD[x] ?? x).join(" and ");
+    if (allStyles.length) say("training_prefs", `you enjoy ${styleWords(allStyles)}`,
+      !pr.style?.length ? `none of your equipment is that, so it can't change your plan — say so in Settings if you get access.`
+        : (pr.enjoyed === pr.of ? `all ${pr.of} lifts in your week use it.`
+          : `${pr.enjoyed} of your ${pr.of} lifts use it — wherever it trains the muscle as well as the best option. The other ${pr.of - pr.enjoyed} are where something else clearly does the job better (a deeper stretch, or a loadable option).`)
+        + (pr.style_absent?.length ? ` (None of your equipment is ${styleWords(pr.style_absent)}.)` : ""));
+    if (pr.kept || pr.avoided === 0) say("training_prefs", `you'd rather skip ${pr.avoided} lift${pr.avoided === 1 ? "" : "s"}${pr.avoided ? "" : " you could do here"}`,
+      !pr.avoided ? `none of the lifts you'd skip suit your equipment, so nothing changed.`
+        : pr.kept?.length ? `${pr.kept.length < pr.avoided ? "the rest aren't in your plan. " : ""}Kept: ${pr.kept.map((k) => `${k.name}${k.for_muscle ? ` (nothing else you have trains your ${MUSCLE_LABEL[k.for_muscle] ?? k.for_muscle} as well)` : ""}`).join("; ")}.`
+          : `none of them are in your plan.`);
+    if (pr.variety) say("training_prefs", pr.variety === "same" ? "you'd rather master the same lifts" : "you like to keep it fresh",
+      pr.variety_waits ? `while you're a beginner you keep the same lifts so you can learn them — this kicks in when you graduate.`
+        : pr.variety === "same" ? "your main lifts never rotate, and your accessories change every second block instead of every block."
+        : "your accessories rotate every block among the best four options for each muscle; your main lifts stay so your progress carries over.");
+    if (pr.learned_kept?.length) say("training_prefs", `you've picked something else over ${pr.learned_kept.length === 1 ? "a lift" : `${pr.learned_kept.length} lifts`} again and again`,
+      `Kept: ${pr.learned_kept.map((k) => `${k.name}${k.for_muscle ? ` (nothing else you have trains your ${MUSCLE_LABEL[k.for_muscle] ?? k.for_muscle} as well)` : ""}`).join("; ")}. Bring something better into reach and it goes.`);
+    if (pr.cardio?.length) say("training_prefs", "the cardio you'd actually do",
+      pr.cardio_pick ? `your structured cardio is ${pr.cardio_pick.toLowerCase()}.`
+        : pr.cardio_already ? `it was already your structured cardio: ${pr.cardio_already.toLowerCase()}.`
+        : `walking stays first (it costs your lifting nothing), and your picks don't change the structured choice.`);
   }
 
   const injuries = (p.injuries ?? []).map((i) => i.region).filter(Boolean);

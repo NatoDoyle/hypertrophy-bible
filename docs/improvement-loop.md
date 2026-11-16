@@ -1379,6 +1379,36 @@ These are real failures from previous iterations. Each is now a standing check.
    timestamps before blaming the workload. Salvage the agents' scratch scripts and finish the round inline,
    re-running each script and checking its sensitivity with a tamper, rather than relaunching into the same
    stall (rule 6).
+110. **A rotated list's position is not its rank.** Burst 11's first skip bound read "earlier in the pool" as
+   "ranks higher", but accessory pools go through `rotateTopK`. So a skipped raise rotated to the front stayed,
+   and a stalled accessory could come back (round 2 #4). → **Standing rule:** a rule about rank reads the score
+   (`scoreOf`), never an index, anywhere a list may have been rotated, sliced or re-sorted.
+111. **A bound needs a fixture that can tell it apart.** The learned-score clamp, the kit filter and three
+   merge rules each passed a test that also passed with the rule deleted. The fixture either never reached the
+   region where the rule binds, or both rules agreed there. → **Standing rule:** for every bound, search for an
+   input where the bounded and unbounded answers differ (`find(...)` over real data, not a hand-picked id), and
+   prove the tamper turns red. If a brute force over the whole input space finds none (the kit filter, 462
+   pool sets), record it as defense, not as tested.
+112. **A synchronous `check` with an `async` body passes without running.** It happened twice in Burst 11:
+   the promise is never awaited, so the assertions never execute. → **Standing rule:** async checks go
+   through `checkAsync`/`await`, or import statically and stay synchronous. A new check that passes before its
+   fix exists is suspect until a tamper turns it red.
+113. **A fixture on a randomly seeded plan must search, not assume.** "The first exercise of session 0", "the
+   machine chest press" and "the beginner's chest compound" were each flaky or wrong once the plan, or a
+   ranking rule, moved. → **Standing rule:** select fixture lifts by the property under test (the generator
+   swaps it on a skip; the generator keeps it), computed through the same functions the app uses.
+114. **The file store hands back a live object, so a read taken "before" a write can show the write.**
+   The merge route read the survivor, ran the move (which mutates that same in-memory object on the file
+   store), then judged "what did the survivor have before?" from the earlier read. Locally it saw the
+   merged values; on D1, where every read is a fresh parse, it would have seen the real ones. The parity
+   bug was silent on both. → **Standing rule:** take pre-write state you will compare against **by value**
+   (spread or copy it) before the write, never by holding the earlier reference.
+115. **Once-only notes: record what changed, decide what to say at render time.** Rounds 10–14 each
+   found one more rebuild door through which a note's stamps outlived or misdescribed their change. Then
+   round 13 moved the decision to `buildToday`, judged against the live plan and the Plan tab. Round 14
+   added a sweep across every door (`npm run sweep:notes`), and it came back dry. → **Standing rule:**
+   a stamp records what changed and the render decides what is still true. A new door or stamp runs the
+   sweep.
 
 ## Token discipline (the loop must be affordable to keep running)
 
@@ -1427,6 +1457,50 @@ and every confirmed finding was re-verified inline by the main loop before fixin
      from GitHub with a token that can push and merge, and their "PR autofix" is the
      iterate-until-tests-pass loop this rule rejects. Not adopted; the Daytona gate and
      tournament remain the sanctioned sandbox path.
+7b. **Telemetry (Waves 318–327 + review rounds 1–19, 2026-11-10/16 — Burst 11, one /plan iteration on three
+   owner notes: "the system isn't learning", "ask what they like and bridge it to optimal", "I haven't been
+   enjoying the gym").**
+   - **Built:**
+     - **W318 `docs/what-the-app-learns.md`:** the ground-truth ledger. Over-claims in three docs are marked
+       Not built.
+     - **W319 beginner refit** every 6 trained weeks.
+     - **W320 hand edits pause learning out loud,** with a one-tap hand-back.
+     - **W321 the one-screen preference quiz.**
+     - **W322 the bounded preference term** in plan-core. The golden digest was re-pinned once, deliberately.
+     - **W323 quiet learning from swaps:** only picks vote; busy/tired/hurt never count; Bring back.
+     - **W324 `docs/adherence-playbook.md`:** prod reading, data inventory, levers scored on the Plain Sight
+       five tests.
+     - **W325 fixes to shipped features that failed those tests.**
+     - **W326–327:** Your pick, and the first-workout funnel.
+   - **Review: 19 loop-until-dry rounds.**
+     - **Rounds 1–13:** 19, 7, 3, 1, 1, 1, 2, 6, 2, 4, 4, 4, 3 candidates.
+     - **Rounds 14–19:** 8, 5, 2, 4, 2, **0** reproduced.
+     - Rounds 10–14 kept finding one class: once-only plan-change notes outliving or misdescribing their
+       change through one more rebuild door. Round 13 moved the decision to render time (lesson 115), and
+       round 14's harness became `npm run sweep:notes`. It now covers 22 doors at depth 3, both levels,
+       4 × 22,308 chains, with a stall-swapping base. It is dry, and reverting a fix makes it fail.
+     - The swap state machine has `npm run sweep:swaps` (round 9) and an exhaustive session-core sweep.
+     - Rounds 15–18 were each mostly fixes to the previous round's fixes, all in the notes layer. Two were
+       lesson-38 relapses: a stamp written by hand in a test, and a sweep that copied the bug it should
+       catch. Lesson 114 (live-object aliasing on the file store) came from round 15.
+   - **Tokens (subagent):**
+     - Explore 124k / 131k / 186k.
+     - Review rounds 1–19 ≈ 2.05M, 0.80M, 0.50M, 0.23M, 0.18M, 0.20M, 0.29M, 0.83M, (9: harness), 0.51M,
+       0.43M, 0.45M, 0.35M, 1.00M, 0.68M, 0.37M, 0.43M, 0.24M, 0.14M.
+     - That is ≈9.7M for the review (round 9 not tallied) plus 0.44M for Explore. About half (≈4.6M, rounds
+       10–19) went to the notes layer. The rule that
+       applies: when the same class recurs twice, stop fixing instances and change the design (render-time
+       truth). Round 13 did that late. Earlier would have saved rounds 10–12.
+   - **Tests at the close:** routes 771, coach 226, session-core 211, ui-helpers 126, adherence 103, plan 314,
+     store-d1 parity 225; both chains green.
+     - Every new check was observed red before its fix. Every fix's lesson-54 tamper turned red; several
+       survived first and got a stronger test.
+     - Browser walkthroughs 17/17 and 14/14 against a scratch server and a throwaway store.
+   - **Not run:** the Daytona gate, a physical iPhone, and a prod smoke (deploy waits for the owner).
+   - **Scratchpad lost:** the session scratchpad's loose files (`tamper.py`, both walkthrough scripts) were
+     deleted mid-burst. They were rebuilt from the session transcript, and the walkthroughs have their
+     original 17 and 14 checks. Keep long-lived harnesses in the repo (`app/scripts/sweep-*.mjs`), not the
+     scratchpad.
 7c. **Telemetry (Waves 293–297, 2026-10-31/11-01 — Burst 6, one iteration on three owner notes and the
    deferred N7).** Each root cause was reproduced through the real functions and routes first. The swap
    row came back null whenever the player's day or slot differed from the rotation's (N7, broader than

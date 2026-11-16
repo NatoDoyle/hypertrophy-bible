@@ -219,6 +219,10 @@ try {
       // Nutrition profile stats: `to` has ONLY height set (must survive), `from`
       // has height (must be ignored) + bf_pct/activity (must be adopted, gap-fill).
       nutrition: id === "m-from" ? { height_cm: 200, bf_pct: 14, activity: "very_active" } : { height_cm: 178 },
+      // Burst 11 review #8: what the merged sessions' learning depends on follows the person.
+      profile: id === "m-from" ? { training_prefs: { style: ["free"], avoid: ["leg-press", "pull-up"] } } : { training_prefs: { avoid: ["pull-up", "dips"], cardio: ["walking"] } },
+      plan_meta: id === "m-from" ? { pref_kept: ["hack-squat"], pref_scores: { "lunge": 1, "chin-up": 1 } } : { pref_kept: ["chin-up"] },
+      funnel: id === "m-from" ? { today_seen: "2026-11-01T00:00:00.000Z", started: "2026-11-01T00:05:00.000Z" } : { today_seen: "2026-10-30T00:00:00.000Z" },
     });
   }
   // Session ids here are DISTINCT across from/to (unlike bodyweights/checkins/
@@ -256,6 +260,19 @@ try {
   same("merge: nutrition logs land identically (target's same-date row wins)", await file.listNutritionLog("m-to"), await d1.listNutritionLog("m-to"));
   same("merge: custom_exercises dedup by id identically", (await file.getUser("m-to")).custom_exercises, (await d1.getUser("m-to")).custom_exercises);
   same("merge: nutrition stats merge identically (to's height kept, from's bf_pct/activity gap-filled)", (await file.getUser("m-to")).nutrition, (await d1.getUser("m-to")).nutrition);
+  {
+    const { PREF_AVOID_MAX_MERGE } = await import("../src/merge-profile.mjs"), { PREF_AVOID_MAX } = await import("../../tools/plan-core.mjs");
+    ok("merge (review #8): the merge's skip-list cap is the engine's", PREF_AVOID_MAX_MERGE === PREF_AVOID_MAX);
+  }
+  for (const [lbl, st] of [["file", file], ["D1", d1]]) {
+    const mt = await st.getUser("m-to");
+    ok(`merge (review #8, ${lbl}): the skip list unions, the survivor's own prefs stand, a gap (style) fills — canonical order`,
+      JSON.stringify(mt.profile.training_prefs) === JSON.stringify({ style: ["free"], avoid: ["pull-up", "dips", "leg-press"], cardio: ["walking"] }), JSON.stringify(mt.profile.training_prefs));
+    ok(`merge (review #8, ${lbl}): 'Bring back' answers union (never re-learned), learned dislikes carried`,
+      JSON.stringify(mt.plan_meta.pref_kept) === JSON.stringify(["chin-up", "hack-squat"]) && JSON.stringify(mt.plan_meta.pref_scores) === JSON.stringify({ lunge: 1 }), JSON.stringify(mt.plan_meta));
+    ok(`merge (review #8, ${lbl}): the funnel keeps each step's earliest stamp`,
+      mt.funnel?.today_seen === "2026-10-30T00:00:00.000Z" && mt.funnel?.started === "2026-11-01T00:05:00.000Z", JSON.stringify(mt.funnel));
+  }
   ok("merge: nutrition kept to's own height_cm, not from's (file)", (await file.getUser("m-to")).nutrition.height_cm === 178);
   ok("merge: nutrition kept to's own height_cm, not from's (D1)", (await d1.getUser("m-to")).nutrition.height_cm === 178);
   ok("merge: nutrition gap-filled bf_pct/activity from from's side (file)", (await file.getUser("m-to")).nutrition.bf_pct === 14 && (await file.getUser("m-to")).nutrition.activity === "very_active");
@@ -430,6 +447,18 @@ try {
     && stFile.sessions_28d - stBefore.sessions_28d === 3
     && stFile.push_subscriptions - stBefore.push_subscriptions === 2
     && stFile.push_delivered_7d - stBefore.push_delivered_7d === 1);
+
+  // W327: the first-workout funnel aggregates from the user blob — the same counts from both stores.
+  const fBefore = await file.stats(S_NOW);
+  for (const s of [file, d1]) {
+    await s.saveUser("fn1", { profile: {}, created_at: dIso(1), funnel: { today_seen: dIso(1), started: dIso(1), first_set: dIso(1) } });
+    await s.saveUser("fn2", { profile: {}, created_at: dIso(1), funnel: { today_seen: dIso(1) } });
+    await s.saveUser("fn3", { profile: { smoke: true }, created_at: dIso(1), funnel: { today_seen: dIso(1), started: dIso(1) } }); // our own smoke: never counted
+  }
+  const fFile = await file.stats(S_NOW);
+  same("stats (W327 funnel): byte-identical from both stores", fFile, await d1.stats(S_NOW));
+  ok("stats (W327 funnel): seen 2, started 1, first set 1 — smoke rows excluded",
+    fFile.funnel_today_seen - fBefore.funnel_today_seen === 2 && fFile.funnel_started - fBefore.funnel_started === 1 && fFile.funnel_first_set - fBefore.funnel_first_set === 1 && fFile.funnel_finished === fBefore.funnel_finished);
 
   // --- Wave 211 (BLOCKERS #6b): merge TOMBSTONES the from-row in both stores —
   // reads as absent everywhere, but the raw row survives with the audit marker.

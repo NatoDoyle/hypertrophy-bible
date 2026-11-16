@@ -5,7 +5,7 @@
 // key/value with an index. See schema.sql for the tables.
 import { mergeUserProfile, preferAccount } from "./merge-profile.mjs";
 import { isDerivableSession, parseSessionInstant, sessionTimingIssue, SESSION_FUTURE_SLACK_MS, paceSampleRows, PACE_WINDOW_DAYS, PACE_MAX_SESSIONS } from "./session-time.mjs";
-import { activationFunnel, onboardShape, reachCohort, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
+import { activationFunnel, firstWorkoutFunnel, onboardShape, reachCohort, archiveSummary, restoredSession, restoredUser } from "./merge-archive.mjs";
 
 // A session the user has voided (corrected away) is still stored — "never lose
 // logged data" — but must be invisible to every engine that reads history. The
@@ -472,7 +472,8 @@ export function createD1Store(db) {
       const { results: userRows } = await db
         .prepare(`SELECT id, json_extract(data, '$.created_at') AS created_at,
                          json_extract(data, '$.profile.smoke') AS smoke,
-                         json_extract(data, '$.profile.tz_offset_min') AS tz_offset_min
+                         json_extract(data, '$.profile.tz_offset_min') AS tz_offset_min,
+                         json_extract(data, '$.funnel') AS funnel
                   FROM users WHERE json_extract(data, '$._merged_into') IS NULL`)
         .all();
       const firstMs = new Map();
@@ -509,12 +510,15 @@ export function createD1Store(db) {
         createdAts: userRows.map((u) => u.created_at).filter((d) => typeof d === "string" && d >= since90),
         markerKeys: markerRows.map((r) => r.rl_key),
       });
+      // W327: json_extract of an object returns its JSON text.
+      const firstWorkout = firstWorkoutFunnel(userRows.map((u) => { let f = null; try { f = u.funnel ? JSON.parse(u.funnel) : null; } catch {} return { smoke: isSmoke(u), funnel: f }; }));
       return {
         users_total: userRows.length, // tombstones aren't users
         users_with_session: usersWithSession,
         ...cohort,
         ...shape,
         ...funnel,
+        ...firstWorkout,
         active_7d: cur.size,
         active_prev_7d,
         retention_wow: active_prev_7d ? returned / active_prev_7d : null,

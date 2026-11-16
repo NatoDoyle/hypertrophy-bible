@@ -35,7 +35,9 @@ stated, with the reasoning.
 4. **Does experience change this? When do exercises rotate?** Experience changes nearly
    everything (targets, splits, session caps, and whether waves/deloads/tapers exist at all —
    beginners get none of them until graduation). Accessories rotate every block; compounds never
-   rotate on a schedule — a compound changes only when *you* stall on it.
+   rotate on a schedule — a compound changes only when *you* stall on it (at a block boundary;
+   see [`what-the-app-learns.md`](what-the-app-learns.md) for who reaches one). A hand-edited plan is never
+   retuned or rotated.
 
 ---
 

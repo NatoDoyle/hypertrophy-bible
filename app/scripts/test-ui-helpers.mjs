@@ -875,7 +875,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /floorKg: cur\.equipment === "barbell" \? \(unitFor\(cur\.exercise\) === "lb" \? toKgIn\(EMPTY_BAR_LB, "lb"\) : EMPTY_BAR_KG\) : 0, shown: startWeightDisp \}\)/);
   // Round 2: Undo restores the saved count AND its plan (a skip stays taken); "1 set", never "1 sets"; the card says what's
   // back next time only when the server could name it; Nerd Mode's average covers the sets it prints.
-  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets \}\)/);
+  assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /u\.saved, \{ expect: u\.to, sets: u\.saved\.sets, plannedSets: u\.saved\.planned_sets, \.\.\.\(\(u\.rebased \|\| u\.planLift\) && typeof u\.saved\.slot_of !== "string" \? \{ rebase: true \} : \{\}\) \}\)/);
   assert.doesNotMatch(fnBody(appJs, "async function tiredSwap() {", 3000) + fnBody(appJs, "function easeInPlace(", 2500), /\$\{n\} sets/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /\$\{r\.planned_name \? ` \$\{r\.planned_name\} is back next time\.` : ""\}/);
   // Round 3: Nerd Mode compares the GRADED average with the band, saying which weight it's for when back-offs weren't graded;
@@ -897,7 +897,13 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // Round 8: every door that replaces a slot from the Can't-do sheet (busy, pick, no machine — and the tired swap) goes
   // through applyReplacement, which keeps a tired slot's substitute the tired day (session-core swapInRow); only Undo
   // restores a saved row as it was.
-  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\) \}\);/);
+  // (W323: the row it swaps in carries why it stood in — the same row, stamped.)
+  assert.match(appJs, /const r = replaceSlot\(sess, i, swapInRow\(sess\.ex\[i\], why \? \{ \.\.\.row, swap_why: why \} : row\), \{ expect, \.\.\.\(sets \? \{ sets \} : \{\}\), \.\.\.\(undo\.rebased \? \{ rebase: true \} : \{\}\), \.\.\.\(undo\.planLift \? \{ planLift: undo\.planLift \} : \{\}\) \}\);/);
+  assert.equal((appJs.match(/planLift: planLiftAfterPermanent\(cur, r\)/g) ?? []).length, 2, "both permanent doors (round 9)");
+  // Round 6: both permanent doors re-base the slot when the plan's replacement IS today's lift.
+  assert.equal((appJs.match(/rebased: rebasesOnPermanent\(cur, r\)/g) ?? []).length, 2, "both permanent doors ask the one rule (round 7)");
+  // W323: a tired swap is stamped "tired" (never learned against), a pick "pick", any other today-only swap "busy".
+  assert.match(appJs, /const why = swapWhyFor\(sess\.ex\[i\], undo\);/); // the rule itself is unit-tested in test-session (round 2 #2)
   assert.equal((appJs.match(/replaceSlot\(/g) ?? []).length, 2, "applyReplacement and undoSwap are the only slot writers in the player");
   assert.match(appJs, /\$\{easyToday \? "today's an easier day too, so your next regular session will\." : "today's sets will\."\}/);
   assert.match(appJs, /easyToday \? `<div class="card info"><b>New lift — keep it light today 🎯<\/b>/);
@@ -1190,7 +1196,7 @@ check("#fade (W314) the player marks a skip (an Undo takes it back) and an early
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
   assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
   for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
-  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\) \}/);
+  assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\)(, learning_paused: sess\.learningPaused === true)? \}/);
   assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
   assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
 });
@@ -1215,6 +1221,61 @@ check("#cap-offer (W315c) the card says what it saw and what a yes does — bloc
 
 check("#rest (W317) the rest screen says why a lift's timer moved", () => {
   assert.match(fnBody(appJs, "function showRest(rest, nextLine, row, onDone, announce, alertLabel = \"\") {", 2400), /\$\{rest\.kind === "set" && row\?\.rest_reason \? `<p class="muted" id="rest-why" style="font-size:\.85rem;margin:4px 0">⏱️ \$\{esc\(row\.rest_reason\)\}<\/p>` : ""\}/);
+});
+
+await checkAsync("#W325 the lucky set prints its rule where it lands, from the one constant the engine uses; no challenge says 'you're behind'", async () => {
+  const dc = await import("../../tools/derive-core.mjs"), sc = await import("../public/session-core.mjs");
+  assert.equal(dc.LUCKY_SET_ONE_IN, sc.LUCKY_SET_ONE_IN, "the player's copy and the engine's agree");
+  assert.match(appJs, /about 1 hard set in \$\{LUCKY_SET_ONE_IN\} is lucky, at random/);
+  assert.ok(!/you're behind/.test(appJs), "Plain Sight's dark-twin marker");
+});
+
+// --- Burst 11 review, group E: the preference screen and onboarding resume ---
+await checkAsync("#rev-b11 a lift-family chip reads ON when any of its lifts is skipped, and toggling it never silently drops a skip (#10)", async () => {
+  const { familyOn, toggleFamily } = await import("../public/ui-helpers.mjs");
+  const f = { ids: ["barbell-back-squat", "front-squat"] };
+  const tp = { avoid: ["barbell-back-squat"] };
+  assert.equal(familyOn(tp, f), true, "a 'Just not for me' on the back squat shows on the chip");
+  assert.deepStrictEqual(toggleFamily(tp, f).avoid, [], "turning a visibly-ON chip off is a deliberate answer");
+  assert.deepStrictEqual(toggleFamily({ avoid: ["leg-press"] }, f).avoid, ["leg-press", "barbell-back-squat", "front-squat"], "on adds the family, others untouched");
+  assert.deepStrictEqual(toggleFamily(toggleFamily({ avoid: ["leg-press"] }, f), f).avoid, ["leg-press"], "on then off is a no-op for everything else");
+});
+await checkAsync("#rev-b11 a stored style the current kit can't use still shows, so it can be cleared (#9)", async () => {
+  const { visibleStyles } = await import("../public/ui-helpers.mjs");
+  const OPTS = [["Free weights", "free", ["barbell", "dumbbell", "kettlebell"]], ["Machines & cables", "machines", ["machine", "cable"]], ["Bodyweight", "bodyweight", ["bodyweight", "band"]]];
+  const v = visibleStyles(OPTS, new Set(["dumbbell", "bodyweight"]), ["machines"]);
+  assert.deepStrictEqual(v.map((o) => o.value), ["free", "machines", "bodyweight"]);
+  assert.equal(v.find((o) => o.value === "machines").absent, true, "flagged: not in this kit");
+  assert.deepStrictEqual(visibleStyles(OPTS, new Set(["bodyweight"]), []).map((o) => o.value), ["bodyweight"], "nothing stored: only what the kit supports");
+});
+await checkAsync("#rev-b11 a saved onboarding position never lands on a question this run must not ask (#12)", async () => {
+  const { visibleStepFrom } = await import("../public/ui-helpers.mjs");
+  const steps = [{ key: "a" }, { key: "settings_only", showIf: () => false }, { key: "b" }, { key: "c", showIf: (x) => !!x.flag }];
+  assert.equal(visibleStepFrom(steps, 1, {}), 2, "a hidden step moves on to the next asked one");
+  assert.equal(visibleStepFrom(steps, 0, {}), 0);
+  assert.equal(visibleStepFrom(steps, 3, {}), 2, "past the last asked step: back to the last one asked");
+  assert.equal(visibleStepFrom(steps, 3, { flag: true }), 3);
+  assert.equal(visibleStepFrom(steps, 99, {}), 2, "an index from a longer old list is clamped");
+});
+check("#rev-b11 the paused card and its handback toast tell a beginner only what a beginner has (#18)", () => {
+  assert.match(appJs, /d\.beginner \? "I still set your weights and rest, but I've stopped swapping lifts that stall/);
+  assert.match(appJs, /d\.beginner \? "✅ Your coach has the plan again: lifts that go flat get swapped/);
+  assert.match(appJs, /visibleStepFrom\(STEPS, onbStep, answers\)/);
+});
+
+check("#rev8-b11 on a hand-edited plan the pick copy promises nothing about the plan (#3)", () => {
+  assert.match(appJs, /learningPaused: templateSession\.learning_paused === true/);
+  assert.match(appJs, /sess\.learningPaused \? "Just for today — your edited plan stays as you made it\." :/);
+  assert.match(appJs, /sess\.learningPaused \? "The best alternatives, just for today" :/);
+});
+
+check("#rev9-b11 the It-hurts door's pick list stamps the swap as 'hurt' (never a dislike vote)", () => {
+  assert.match(appJs, /For today:`, \{ reason: "hurt" \}\);/);
+  assert.match(appJs, /permanent: false, picked: true, \.\.\.\(reason \? \{ reason \} : \{\}\) \}\);/);
+});
+
+check("#rev11-b11 the finished workout says whether learning was paused when it was done (#3)", () => {
+  assert.match(appJs, /fade_marks: fadeMarksAtFinish\(sess\), learning_paused: sess\.learningPaused === true \};/);
 });
 
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

@@ -183,6 +183,53 @@
       "minimum": 10,
       "maximum": 20,
       "description": "The lifter's own hard-set ceiling per workout \u2014 learned from their fade signals and accepted on Today (W315b); never above the KB's for their training age."
+    },
+    "training_prefs": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "What the lifter enjoys (W321). Every key optional; absent or null means no preference. The engine treats it as a bounded soft preference inside the optimal choices, never as an exclusion (tools/plan-core.mjs PREF_*).",
+      "additionalProperties": false,
+      "properties": {
+        "style": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "free",
+              "machines",
+              "bodyweight"
+            ]
+          },
+          "description": "Equipment styles they enjoy: free weights, machines/cables, bodyweight/bands."
+        },
+        "variety": {
+          "enum": [
+            "same",
+            "fresh",
+            null
+          ],
+          "description": "same = keep the lifts and master them; fresh = rotate accessories more."
+        },
+        "avoid": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 40,
+          "items": {
+            "type": "string"
+          },
+          "description": "Exercise ids they'd rather skip; swapped for an equal alternative when one exists."
+        },
+        "cardio": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "description": "KB cardio modality ids they'd actually do."
+        }
+      }
     }
   }
 }

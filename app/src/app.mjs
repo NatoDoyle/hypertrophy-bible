@@ -2,12 +2,12 @@
 // @hono/node-server (local) and Cloudflare Workers (prod).
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
-import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer } from "./coach.mjs";
+import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift, stalledExerciseIds } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
-import { SPEC_MAX_BLOCKS, qualityCapFor } from "../../tools/plan-core.mjs";
-import { paceProfile } from "../../tools/response-core.mjs";
+import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { SPEC_MAX_BLOCKS, qualityCapFor, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
+import { paceProfile, swapPreferences } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
 import { isAllowedPushEndpoint, normalizeReminders, parseReminderTime, snapReminderTime, REMINDER_KINDS } from "./push.mjs";
 import { parseRestAlert, restAlertPayload } from "./rest-alarm.mjs";
@@ -220,6 +220,9 @@ const normalizeTargets = (list) => {
       ...(t.deload === true ? { deload: true } : {}),
       // The planned lift this one stood in for, today only (Burst 6 review G1) — the comeback clock counts its slot.
       ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
+      // …and WHY it stood in (W323): busy / pick / tired, only beside a stood_in_for — what the plan learns preferences
+      // from (a tired swap is about the day and never counts).
+      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
       // The per-set aims the player served (W298): whole reps 1-50, at most one per planned set. A malformed list is
       // dropped whole — half an aim list would misjudge every set after the gap.
       ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets
@@ -315,6 +318,7 @@ export function createApp(store, config = {}) {
     if (profile.injuries != null) profile.injuries = sanitizeInjuries(profile.injuries);
     if (profile.tz_offset_min != null) profile.tz_offset_min = parseTzOffset(profile.tz_offset_min);
     if ("session_cap" in profile) profile.session_cap = sanitizeSessionCap(profile.session_cap); // a whole 10-20 or nothing (W315b)
+    if ("training_prefs" in profile) profile.training_prefs = sanitizeTrainingPrefs(profile.training_prefs); // enums + real ids, or null (W321)
     // Per-IP throttle: this is the only unauthenticated route that both burns
     // plan-engine CPU and writes a fresh users row per call, so an unthrottled
     // loop could exhaust the D1 write quota. Mirrors the auth route's cap using
@@ -383,7 +387,13 @@ export function createApp(store, config = {}) {
     });
     // "Up next" (C16, W277): the rotation pointer itself — the session Today serves.
     const up_next = user.program?.sessions?.length ? rotationState(user.program, await store.listSessions(id), user.plan_meta).idx : null;
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next });
+    // W323: the lifts they'd rather skip (the quiz and "Just not for me"), and the ones their own swaps moved out — each
+    // with Bring back (the cant-do undo door).
+    const skipped = (user.profile?.training_prefs?.avoid ?? []).map((xid) => ({ id: xid, name: exerciseNameFor(user, xid) }));
+    // …only lifts the LEARNING took out (review #7 #11): not one that is also "No machine" or skipped (its own card owns it,
+    // and this Bring back would delete that answer too), and never over a hand-edited plan (learning is paused there).
+    const learned_out = listedLearnedOut(user).map((xid) => ({ id: xid, name: exerciseNameFor(user, xid) })); // one rule with Today's notes (round 14 #1)
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out, beginner: (user.profile?.training_status ?? "beginner") === "beginner" });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
@@ -426,7 +436,8 @@ export function createApp(store, config = {}) {
   app.post("/api/plan/regenerate", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = body.user_id;
-    if (!id || !(await store.getUser(id))) return c.json({ error: "unknown user" }, 404);
+    const regenUser = id ? await store.getUser(id) : null;
+    if (!regenUser) return c.json({ error: "unknown user" }, 404);
     // A profile edit is a generic spread boundary, so make a private editable copy
     // BEFORE validating or merging it. This used to strip `disclaimer_ack` alone,
     // under a comment citing "guard the siblings" — the sixteen server-owned
@@ -452,6 +463,8 @@ export function createApp(store, config = {}) {
     if (profilePatch?.tz_offset_min != null) profilePatch.tz_offset_min = parseTzOffset(profilePatch.tz_offset_min);
     // The lifter's own session ceiling (W315b): a whole 10-20, or nothing (null takes it off).
     if (profilePatch && "session_cap" in profilePatch) profilePatch.session_cap = sanitizeSessionCap(profilePatch.session_cap);
+    // The lifter's training preferences (W321): sanitized to the engine's enums and real ids, or null (clears them).
+    if (profilePatch && "training_prefs" in profilePatch) profilePatch.training_prefs = sanitizeTrainingPrefs(profilePatch.training_prefs, regenUser.custom_exercises);
     // CAS so a concurrent write (double-tap, second tab) can't be clobbered —
     // this route now backs the Settings screen, so it will see real traffic.
     const priorSessions = await store.listSessions(id);
@@ -459,17 +472,47 @@ export function createApp(store, config = {}) {
     // Compare arrays order-insensitively — a settings save that RE-ORDERS
     // priority_muscles/equipment/injuries (prefill order ≠ original tap order) is
     // not a real change and must not restart the mesocycle.
-    const canon = (v) => Array.isArray(v) ? JSON.stringify([...v].map((x) => JSON.stringify(x)).sort()) : JSON.stringify(v);
-    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap"];
+    // …and compare the VALUE, not its serialization (Burst 11 review #5 #6 #13): missing and null are the same answer (a
+    // lifter who onboarded before a field existed sends its empty form), object keys in any order are the same object,
+    // and every list here is a set.
+    const canon = (v) => v == null ? "null" : Array.isArray(v) ? `[${v.map(canon).sort().join(",")}]`
+      : typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}` : JSON.stringify(v);
+    const TRAINING_FIELDS = ["training_status", "primary_goal", "days_per_week", "session_length_min", "available_equipment", "priority_muscles", "injuries", "specialization", "periodization", "session_cap", "training_prefs"];
     let out = null;
     const updated = await store.updateUser(id, (u) => {
       const before = u.profile;
       const next = profilePatch ? { ...u.profile, ...profilePatch, user_id: id } : u.profile;
-      const trainingChanged = TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
+      // Handing a hand-edited plan back to the coach starts a fresh block (review round 8 #4): the clock kept running while
+      // the plan was the lifter's, and a stale one rebuilt the plan again at the next Today and announced a block that never ran.
+      const handBack = !!u.program?.custom;
+      let trainingChanged = handBack || TRAINING_FIELDS.some((k) => canon(before?.[k]) !== canon(next[k]));
+      // A preference edit that doesn't change the LIFTING plan (cardio, a skip the plan never held) is no training change
+      // (review round 8 #5): it must not restart the block, or a beginner's refit clock, for a byte-identical week.
+      const onlyPrefs = !handBack && TRAINING_FIELDS.every((k) => k === "training_prefs" || canon(before?.[k]) === canon(next[k]));
+      if (trainingChanged && onlyPrefs && u.program?.sessions) {
+        // The plan the OLD prefs generate vs the one the NEW prefs generate, same options (review round 10 #2) — never the stored
+        // plan, which an in-place "No machine" swap legitimately differs from.
+        const same = { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, priorSessions, nowISO) };
+        const was = generateUserPlan(before ?? {}, planOptsFor({ ...u, profile: before }, same));
+        const now = generateUserPlan(next, planOptsFor({ ...u, profile: next }, same));
+        if (JSON.stringify(now.program.sessions) === JSON.stringify(was.program.sessions)) trainingChanged = false;
+      }
       // Only a change of WHAT is prioritised may start another specialization block.
       const prioritiesChanged = ["priority_muscles", "specialization"].some((k) => canon(before?.[k]) !== canon(next[k]));
       u.profile = next;
+      const handedBack = handBack ? u.program : null;
       out = rebuildPlan(u, { trainingChanged, prioritiesChanged, priorSessions, nowISO });
+      // A hand-back applies dislikes learned before the plan was edited — name what they removed (review round 10 #3).
+      // "Learned out" means the learning took it out (round 11 #1): the plan these answers generate WITHOUT the learned scores
+      // would hold it, and the new plan doesn't — never a lift the same save's equipment/injury change removed. Its own
+      // once-only note (handed_back_at), never the new-block/refit copy (round 11 #0: no rotation, no six weeks happened).
+      if (handedBack) {
+        const scores = u.plan_meta?.pref_scores ?? {}, kept = new Set(u.plan_meta?.pref_kept ?? []);
+        const without = generateUserPlan(u.profile, planOptsFor({ ...u, plan_meta: { ...u.plan_meta, pref_scores: {} } },
+          { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, priorSessions, nowISO) }));
+        const lo = Object.entries(scores).filter(([id, v]) => v > 0 && !kept.has(id) && planHolds(without.program, id) && !planHolds(u.program, id)).map(([id]) => id).sort();
+        u.plan_meta = { ...u.plan_meta, handed_back_at: nowISO, ...(lo.length ? { learned_out: lo } : {}) };
+      }
       return u;
     }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
@@ -481,6 +524,28 @@ export function createApp(store, config = {}) {
   // accessory rotation and mesocycle position; a training change starts a fresh block
   // 0 (week-1 ramp, rebased rotation). Shared by the Settings save and "Bring back"
   // after a rebuild (W272) — one copy of the rules, or the two drift (lesson 1).
+  // The lifts a rebuild dropped BECAUSE of a learned swap dislike (W323) — held in the old plan, gone from the new one,
+  // learned against, and not a stalled lift (the stall note names those). What the new-block note names, once.
+  // Stalls a mid-block rebuild just swapped out (held before, gone now), added to those still owed a note (round 16 #0).
+  // Recorded with the plan filter ONLY: whether the lifter's own removal or the profile explains a lift is judged when the
+  // note is owed (stillOwedStalls), never by dropping the record — a Bring back can make it the coach's again (round 18 #1).
+  const pendingStallSwaps = (u, program, stalled) => {
+    const now = stalled.filter((sid) => planHolds(u.program, sid) && !planHolds(program, sid));
+    return [...new Set([...(u.plan_meta?.pending_stall_swaps ?? []), ...now])].filter((sid) => !planHolds(program, sid)).sort();
+  };
+  // A pending stall swap is still the COACH's to announce only while (round 17): the plan still leaves it out, the lifter
+  // has not taken it out themselves (No machine / Just not for me — round 15 #2's line), and the profile still allows it
+  // (an injury or kit change that rules it out is that change's doing, not the stall's). Judged when the note is owed,
+  // so no in-place door has to prune it.
+  const stillOwedStalls = (u, ids, program = u.program) => {
+    const theirs = new Set([...(u.profile?.unavailable_exercises ?? []).map((r) => r.id), ...(u.profile?.training_prefs?.avoid ?? [])]);
+    const doable = new Set(userExercises({ ...(u.profile ?? {}), unavailable_exercises: [] }, u.custom_exercises || []).map((e) => e.id));
+    return [...new Set(ids)].filter((sid) => !planHolds(program, sid) && !theirs.has(sid) && doable.has(sid)).sort();
+  };
+  const learnedOutOf = (u, oldProgram, newProgram, stalled = []) => {
+    const opts = planOptsFor(u), had = (p, id) => (p?.sessions ?? []).some((s) => s.exercises.some((e) => e.exercise === id));
+    return Object.entries(opts.prefScores ?? {}).filter(([id, v]) => v > 0 && had(oldProgram, id) && !had(newProgram, id) && !stalled.includes(id)).map(([id]) => id).sort();
+  };
   function rebuildPlan(u, { trainingChanged, prioritiesChanged = false, priorSessions, nowISO }) {
       const blockIndex = trainingChanged ? 0 : (u.plan_meta?.block_index ?? 0);
       // A specialization block that already RAN stays run through a rebuild (W278 review):
@@ -505,7 +570,7 @@ export function createApp(store, config = {}) {
       // (fresh wave, fresh announcements) — that direction is deliberate and
       // test-locked; don't "fix" it into preservation (lesson 13).
       const keptStamps = trainingChanged ? {} : Object.fromEntries(
-        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles"]
+        ["reactive_deload", "rotated_at", "tuned_this_block", "graduated_to", "rotation_skips", "cycle_swap", "spared_muscles", "refit_index", "learned_out", "handed_back_at", "refit_diff", "main_before"] // the notes filter these against the live plan when shown (round 13)
           .filter((k) => u.plan_meta?.[k] != null)
           .map((k) => [k, u.plan_meta[k]]));
       // ...and the swap note may only keep naming lifts the REGENERATED plan still
@@ -513,11 +578,16 @@ export function createApp(store, config = {}) {
       // as the boundary stamp).
       const keptSwapped = trainingChanged ? [] : (u.plan_meta?.swapped_this_block ?? [])
         .filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+      // A stall this rebuild swapped out mid-block is the coach's change, owed a note at the next boundary/refit
+      // (round 16 #0); a training change starts a fresh block, which owes nothing.
+      const pendingStalls = trainingChanged ? [] : pendingStallSwaps(u, program, stalledExercises);
       u.program = program; u.plan_rationale = rationale;
       u.plan_meta = {
         ...meta,
+        ...learnedMeta(u.plan_meta), // pace + a declined ceiling are the lifter's, not the block's: kept on every save (W319)
         ...keptStamps,
         ...(keptSwapped.length ? { swapped_this_block: keptSwapped } : {}),
+        ...(pendingStalls.length ? { pending_stall_swaps: pendingStalls } : {}),
         block_start: trainingChanged || !u.plan_meta?.block_start ? nowISO : u.plan_meta.block_start,
         block_index: blockIndex, // carry it through — dropping it made the next /api/today re-rotate
         volume_adjust: volumeAdjust,
@@ -680,9 +750,19 @@ export function createApp(store, config = {}) {
     if (!["always", "today", "undo"].includes(scope)) return c.json({ error: "bad-scope" }, 400);
     // "Too tired for this one?" (Burst 6): a reason the server chooses for — the easiest lift that fits, today only.
     // Absent (or null) is every other door; anything else, or "tired" with a permanent scope or a pick, is a client bug.
+    // "Just not for me" (W323): a soft, reversible no — permanent scope only, recorded in training_prefs.avoid (never
+    // "no machine"), so every rebuild ranks it last but keeps it where nothing appropriate replaces it.
     const reason = b.reason ?? null;
-    if (reason != null && (reason !== "tired" || scope !== "today" || b.pick != null)) return c.json({ error: "bad-reason" }, 400);
-    const tired = reason === "tired";
+    if (reason != null && !((reason === "tired" && scope === "today") || (reason === "dislike" && scope === "always")) || (reason != null && b.pick != null)) return c.json({ error: "bad-reason" }, 400);
+    const tired = reason === "tired", dislike = reason === "dislike";
+    const avoidOf = (u) => u.profile?.training_prefs?.avoid ?? [];
+    // Both lists share one undo-snapshot store; a snapshot lives while its lift is on either list.
+    const undoKeep = (u) => new Set([...(u.profile?.unavailable_exercises ?? []).map((x) => x.id), ...avoidOf(u)]);
+    const recordDislike = (u) => {
+      const avoid = [...avoidOf(u).filter((id) => id !== X), X].slice(-PREF_AVOID_MAX);
+      // Through the sanitizer, so the stored object is always in its canonical shape (review #6).
+      u.profile = { ...u.profile, training_prefs: sanitizeTrainingPrefs({ ...(u.profile?.training_prefs ?? {}), avoid }, u.custom_exercises) };
+    };
     const sessionName = typeof b.session === "string" ? b.session.slice(0, 80) : null;
     const nowISO = new Date().toISOString();
     const nameOf = (id) => exerciseNameFor(user, id);
@@ -693,9 +773,22 @@ export function createApp(store, config = {}) {
       const updated = await store.updateUser(b.user_id, (u) => {
         outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
         const list = u.profile?.unavailable_exercises ?? [];
-        if (!list.some((r) => r.id === X)) { outcome = { error: "not-excluded" }; return u; }
+        // W323: a skip, or a learned swap-out. "Learned" only when nothing else holds the lift out (round 2 #0): Bring back
+        // on the No-machine or skip card answers THAT card — the dislike stays, and its own card shows again.
+        const onList = list.some((r) => r.id === X), avoided = avoidOf(u).includes(X);
+        const learned = !onList && !avoided && (u.plan_meta?.pref_scores?.[X] ?? 0) > 0;
+        if (!onList && !avoided && !learned) { outcome = { error: "not-excluded" }; return u; }
         const snap = u.substitution_undo?.[X];
         u.profile = { ...u.profile, unavailable_exercises: list.filter((r) => r.id !== X) };
+        if (avoided) {
+          u.profile.training_prefs = sanitizeTrainingPrefs({ ...(u.profile.training_prefs ?? {}), avoid: avoidOf(u).filter((id) => id !== X) }, u.custom_exercises);
+        }
+        // Brought back from a learned swap-out: kept from now on — its swaps are never learned against again.
+        if (learned) {
+          const { [X]: _drop, ...restScores } = u.plan_meta.pref_scores;
+          u.plan_meta = { ...u.plan_meta, pref_scores: restScores, pref_kept: [...new Set([...(u.plan_meta.pref_kept ?? []), X])],
+            learned_out: (u.plan_meta.learned_out ?? []).filter((id) => id !== X) };
+        }
         if (u.substitution_undo) { const rest = { ...u.substitution_undo }; delete rest[X]; u.substitution_undo = rest; }
         if (snap && snap.program_sig === contentSig(u.program) && snap.rationale_sig === contentSig(u.plan_rationale ?? null)) {
           for (const [name, exercises] of Object.entries(snap.sessions)) { const s = u.program.sessions.find((x) => x.name === name); if (s) s.exercises = exercises; }
@@ -763,7 +856,7 @@ export function createApp(store, config = {}) {
     let outcome = null;
     const updated = await store.updateUser(b.user_id, (u) => {
       outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
-      const existing = (u.profile?.unavailable_exercises ?? []).find((r) => r.id === X);
+      const existing = dislike ? (avoidOf(u).includes(X) ? { id: X } : null) : (u.profile?.unavailable_exercises ?? []).find((r) => r.id === X);
       // A replay (double tap, retried request): the swap already happened. Its stored
       // replacement is only named while the plan still holds it (a rebuild may have
       // dropped it too).
@@ -777,15 +870,25 @@ export function createApp(store, config = {}) {
       // "No machine" on a lift the stored plan doesn't hold (a today-only substitute): the
       // promise is "your plan won't use it again" — record that, change nothing else.
       if (!planHolds(u.program, X)) {
-        const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: null, at: nowISO }].slice(-MAX_EXCLUSIONS);
-        u.profile = { ...u.profile, unavailable_exercises: list };
-        const keep = new Set(list.map((x) => x.id));
+        if (dislike) recordDislike(u);
+        else u.profile = { ...u.profile, unavailable_exercises: [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X), { id: X, replaced_by: null, at: nowISO }].slice(-MAX_EXCLUSIONS) };
+        const keep = undoKeep(u);
         u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}),
           [X]: { sessions: {}, choices: [], volume: {}, warnings: null, program_sig: contentSig(u.program), rationale_sig: contentSig(u.plan_rationale ?? null) } }).filter(([id]) => keep.has(id)));
         outcome = { replaced_by: null, sessions: [], plan_unchanged: true };
         return u;
       }
+      // A soft no follows the GENERATOR's verdict on a generated plan (W323): if a rebuild with this lift on the skip list
+      // would still place it (nothing appropriate replaces it), swapping it now would only flip back at the next rebuild —
+      // so it stays, the preference is recorded, and we say so. A hand-built plan is swapped as "No machine" swaps it.
+      if (dislike && !u.program?.custom) {
+        const probe = generateUserPlan({ ...u.profile, training_prefs: { ...(u.profile?.training_prefs ?? {}), avoid: [...avoidOf(u), X] } },
+          planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: stalled }));
+        if (planHolds(probe.program, X)) { recordDislike(u); outcome = { kept: true }; return u; }
+      }
       const r = userApplySubstitution(u, X, { sessionName, stalled });
+      // …and where the swap itself finds nothing that fits, the same soft answer.
+      if (r.error && dislike && r.error !== "not-in-plan") { recordDislike(u); outcome = { kept: true }; return u; }
       if (r.error) { outcome = { error: r.error }; return u; }
       const touched = new Set(r.replaced.map((x) => x.session));
       // The exact inverse, kept server-side (never shipped to the client): the touched
@@ -806,10 +909,10 @@ export function createApp(store, config = {}) {
       };
       u.program = r.program;
       u.plan_rationale = r.rationale;
-      const list = [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X),
-        { id: X, replaced_by: r.replaced_by, ...(r.dropped?.length ? { dropped: r.dropped } : {}), at: nowISO }].slice(-MAX_EXCLUSIONS);
-      u.profile = { ...u.profile, unavailable_exercises: list };
-      const keep = new Set(list.map((x) => x.id));
+      if (dislike) recordDislike(u);
+      else u.profile = { ...u.profile, unavailable_exercises: [...(u.profile?.unavailable_exercises ?? []).filter((x) => x.id !== X),
+        { id: X, replaced_by: r.replaced_by, ...(r.dropped?.length ? { dropped: r.dropped } : {}), at: nowISO }].slice(-MAX_EXCLUSIONS) };
+      const keep = undoKeep(u);
       u.substitution_undo = Object.fromEntries(Object.entries({ ...(u.substitution_undo ?? {}), [X]: snap }).filter(([id]) => keep.has(id)));
       outcome = { replaced_by: r.replaced_by, sessions: [...touched], dropped: r.dropped ?? [] };
       return u;
@@ -817,6 +920,8 @@ export function createApp(store, config = {}) {
     if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
     if (outcome?.error === "not-in-plan") return c.json({ error: "not-in-plan" }, 409);
     if (outcome?.error) return c.json({ error: "no-candidate", message: `Nothing else that trains the same muscle fits your plan without doubling up — try "It's busy right now" for today, or edit your plan.` }, 409);
+    if (outcome?.kept) return c.json({ ok: true, scope, reason: "dislike", kept: true, exercise: X, name: nameOf(X),
+      message: `Noted — but nothing else you have trains the same muscle as well, so ${nameOf(X)} stays for now. I'll swap it the moment something comparable fits.` });
     // Two answers, kept apart: `replaced_by` is the PLAN's replacement (null when the plan
     // had nothing to replace, or a superset bonus simply left); `today` is what stands in
     // the LIVE slot — the plan's replacement when today's session holds it, else today's
@@ -825,13 +930,15 @@ export function createApp(store, config = {}) {
     const Y = outcome.replaced_by;
     // Looked up in the day the PLAYER is on, untrimmed (Burst 6) — the rotation's own day can differ mid-workout.
     const pin = sessionName != null && updated.program.sessions.some((x) => x.name === sessionName) ? { sessionName, untrimmed: true } : {};
-    let todayId = Y, row = Y ? buildToday(updated, ctx.sessions, ctx.readiness, updated.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged, pin)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
+    // …never a lift swapped away earlier today (W275; review round 8 #0: a picked stand-in's plan replacement can be the
+    // very lift it was picked over) — then today's own pick, which honours `exclude`.
+    let todayId = Y, row = Y && !exclude.includes(Y) ? buildToday(updated, ctx.sessions, ctx.readiness, updated.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged, pin)?.exercises?.find((e) => e.exercise === Y) ?? null : null;
     if (!row) {
       const t = todayPick(updated);
       todayId = t.id ?? null;
       row = todayId ? substituteRow(updated, ctx, nowISO, X, todayId, { sessionName, prescription, slotOf, live }) : null;
     }
-    return c.json({ ok: true, scope, exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
+    return c.json({ ok: true, scope, ...(dislike ? { reason: "dislike" } : {}), exercise: X, replaced_by: Y ?? null, replaced_by_name: Y ? nameOf(Y) : null, sessions: outcome.sessions ?? [],
       today: todayId ? { id: todayId, name: nameOf(todayId) } : null,
       // A rescue superset bonus that had to leave with its partner (Wave 276) — the plan
       // changed beyond the lift tapped, so the answer says which lift and where.
@@ -928,9 +1035,29 @@ export function createApp(store, config = {}) {
   };
   const buildTodayFor = (user, ctx, nowISO) => buildToday(user, ctx.sessions, ctx.readiness, user.custom_exercises || [], nowISO, ctx.latestBodyweightKg, ctx.everLogged);
 
+  // THE FIRST-WORKOUT FUNNEL (W327, merge-archive firstWorkoutFunnel): the first time each step happened, stamped once
+  // inside the CAS (a retry or a second start keeps the first), and only for a user who has never logged a workout — an
+  // established lifter is never instrumented. Counts reach /api/stats; nothing per-user leaves the store.
+  const stampFunnel = (id, step) => store.updateUser(id, (u) => {
+    if (typeof u.funnel?.[step] === "string") return u;
+    u.funnel = { ...(u.funnel ?? {}), [step]: new Date().toISOString() };
+    return u;
+  }).catch(() => null); // a measurement: never fails the request it rides on
+  app.post("/api/funnel", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    if (!["started", "first_set"].includes(b.step)) return c.json({ error: "bad-step" }, 400);
+    if (!b.user_id) return c.json({ error: "unknown user" }, 404);
+    const user = await store.getUser(b.user_id);
+    if (!user) return c.json({ error: "unknown user" }, 404);
+    if (typeof user.funnel?.[b.step] === "string" || (await store.hasAnySession(b.user_id))) return c.json({ ok: true, recorded: false });
+    await stampFunnel(b.user_id, b.step);
+    return c.json({ ok: true, recorded: true });
+  });
   app.get("/api/today", async (c) => {
     let { id, user, tz, error } = await requireUser(c);
     if (error) return error;
+    // The first-workout funnel's first step (W327): stamped once, only before the user's first workout.
+    if (!user.funnel?.today_seen && !(await store.hasAnySession(id))) await stampFunnel(id, "today_seen");
     // Persist the device's clock, ONLY when it differs from what's stored. This is the
     // boot request, so it lands on first open and then only when DST shifts or the
     // user moves — never a write per read. The hourly push sweep has no request
@@ -972,9 +1099,17 @@ export function createApp(store, config = {}) {
         // into it, instead of the new target landing whole overnight.
         const gradOpts = planOptsFor(u, { blockIndex: 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {} });
         const { program, rationale, meta } = generateUserPlan(u.profile, gradOpts);
+        const handBackOpen = !!u.plan_meta?.handed_back_at && !sessions.some((s) => s.date && s.date > u.plan_meta.handed_back_at);
+        let gradLearnedOut = [];
+        if (handBackOpen) {
+          const without = generateUserPlan(u.profile, { ...gradOpts, prefScores: undefined });
+          const kept = new Set(u.plan_meta?.pref_kept ?? []);
+          gradLearnedOut = Object.entries(u.plan_meta?.pref_scores ?? {}).filter(([id, v]) => v > 0 && !kept.has(id) && planHolds(without.program, id) && !planHolds(program, id)).map(([id]) => id).sort();
+        }
         u.program = program; u.plan_rationale = rationale;
         u.plan_meta = {
           ...meta,
+          ...learnedMeta(u.plan_meta), // the lifter's pace and declined ceiling survive the promotion (W319)
           block_start: nowISO,
           block_index: 0,
           rotation_base: sessions.filter((x) => !x.program_ref || x.program_ref === program.id).length,
@@ -984,6 +1119,11 @@ export function createApp(store, config = {}) {
           // under the new block) — a step up you earned is a win to celebrate
           // (Goal 4), not a settings change to discover.
           graduated_to: fresh,
+          // A hand-back moments before (its note, and the lifts its learning took out) survives the promotion (round 13 #2);
+          // Today names only what the new plan still leaves out.
+          // …only while its note is still open, and with "learned out" re-judged against the GRADUATED plan, counterfactually
+          // (round 14 #7 #8): a lift the new tier's plan leaves out for its own reasons is never credited to the learning.
+          ...(handBackOpen ? { handed_back_at: u.plan_meta.handed_back_at, ...(gradLearnedOut.length ? { learned_out: gradLearnedOut } : {}) } : {}),
           // A spent specialization block stays spent through the promotion (W301b review): this meta is rebuilt whole, and
           // dropping the flag let the next block-0 rebuild (a units save, an injury report) re-arm the block mid-block.
           ...(gradOpts.specSpent ? { spec_spent: true } : {}),
@@ -1024,10 +1164,19 @@ export function createApp(store, config = {}) {
           // one accessible lift re-picks the same one. The coach note says "I've
           // swapped it", so stamp only the lifts the new program actually DROPPED,
           // never the whole stalled list (lesson 60: copy is a promise).
-          const swappedOut = stalledExercises.filter((sid) => !program.sessions.some((s) => s.exercises.some((e) => e.exercise === sid)));
+          // …and only lifts the plan HELD going in (round 15 #2): a flat lift already out ("No machine", a today-swap) was
+          // never swapped by this boundary.
+          const pend = new Set(stillOwedStalls(u, u.plan_meta?.pending_stall_swaps ?? [])); // …or the coach's own in-block stall swap (rounds 16-17)
+          const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pend.has(sid)) && !planHolds(program, sid));
+          const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
+          // The main lifts going in, so the note claims "your main lifts stay" only while it is true (round 14 harness N5).
+          const mainBefore = [...new Set((u.program?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)))].filter((id) => isCompoundLift(u, id)).sort();
           u.program = program; u.plan_rationale = rationale;
           u.plan_meta = {
             ...meta,
+            ...learnedMeta(u.plan_meta), // what the app learned about the lifter outlives the block (W319)
+            main_before: mainBefore,
+            learned_out: learnedOut, // the lifts their own swaps moved out this block (W323), for the coach note
             block_start: u.plan_meta.block_start, // the cycle continues; only content rotates
             swapped_this_block: swappedOut, // what ACTUALLY changed, for the coach note
             block_index: blockIndex,
@@ -1042,6 +1191,77 @@ export function createApp(store, config = {}) {
           return u;
         }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; }); // a lost race retries next request; a real bug must surface, not be swallowed
         if (updated) user = updated;
+      }
+    }
+    // THE BEGINNER REFIT (W319 — owner: "I'm convinced the system isn't learning"). A beginner runs no mesocycle (no
+    // wave, no deload, no accessory rotation, no volume tune — novice progress is load-driven, and graduation is where
+    // those arrive), but every 6 trained weeks the plan still learns from them: a lift gone flat for their own stall
+    // window is swapped for a different angle, and the plan is rebuilt at their learned pace. Its own clock
+    // (refit_index), so block_index stays 0 and no rebuild door ever reads a beginner as mid-mesocycle. Announced only
+    // when the plan actually changed — the same once-until-a-session-is-logged window as a new block.
+    if (blockStart && user.profile?.training_status === "beginner" && !user.program?.custom) {
+      const refitIndex = Math.floor(trainedWeeksInBlock(sessions, blockStart, nowISO, tz) / BLOCK_WEEKS);
+      if (refitIndex !== (user.plan_meta.refit_index ?? 0)) {
+        const refit = await store.updateUser(id, (u) => {
+          // Re-check on the FRESH read (lesson 21): a concurrent save may have made it custom, graduated, or refit it.
+          if (u.program?.custom || u.profile?.training_status !== "beginner" || refitIndex === (u.plan_meta?.refit_index ?? 0)) return u;
+          // The verdict is judged ONCE, against the plan they trained, and that same verdict is stored for every rebuild in
+          // the window (round 15 #0: judged after the swap, it read the NEW plan's sets and a units save undid the swaps).
+          const spared = sparedMuscles(u, sessions, nowISO);
+          const stalledExercises = stalledExerciseIds(sessions, u.custom_exercises || [], nowISO, spared);
+          const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises }));
+          const pendStalls = new Set(stillOwedStalls(u, u.plan_meta?.pending_stall_swaps ?? [])); // …or swapped by an in-window rebuild (rounds 16-17)
+          const swappedOut = stalledExercises.filter((sid) => (planHolds(u.program, sid) || pendStalls.has(sid)) && !planHolds(program, sid)); // held going in (round 15 #2)
+          const learnedOut = learnedOutOf(u, u.program, program, stalledExercises);
+          const changed = JSON.stringify(program.sessions) !== JSON.stringify(u.program?.sessions ?? null);
+          // WHAT changed, for the note (review round 8 #1): the lifts that left and came in — never a guess at why.
+          // Per day, not per plan: a lift can leave one day and stay on another, and that is still a change on that day.
+          // Plan-wide (round 14 #2 #4): lifts that left the PLAN and lifts new to it — a lift that only moved days is no
+          // change of lift. Today names only what is still true of the live plan.
+          const idsOf = (p) => new Set((p?.sessions ?? []).flatMap((x) => x.exercises.map((e) => e.exercise)));
+          const before = idsOf(u.program), after = idsOf(program);
+          // …plus the lifts that stayed but changed DAYS (round 16 sweep): never a silent reshuffle — [lift, its days now].
+          const daysOf = (p, id) => (p?.sessions ?? []).filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name).sort();
+          const moved = [...after].filter((id) => before.has(id) && JSON.stringify(daysOf(u.program, id)) !== JSON.stringify(daysOf(program, id))).sort().map((id) => [id, daysOf(program, id), daysOf(u.program, id)]);
+          const refitDiff = { out: [...before].filter((id) => !after.has(id)).sort(), in: [...after].filter((id) => !before.has(id)).sort(), ...(moved.length ? { moved } : {}) };
+          // A refit that changed nothing leaves an OPEN note's record alone; one that did, inside an open window, adds to
+          // it (round 15 #4 — the record is what the note names, and Today judges it against the live plan).
+          const pm = u.plan_meta ?? {};
+          const windowOpen = !!pm.rotated_at && !sessions.some((x) => x.date && x.date > pm.rotated_at);
+          const uniq = (a) => [...new Set(a)].sort();
+          const prevDiff = windowOpen ? { out: (pm.refit_diff?.out ?? []).map((x) => (Array.isArray(x) ? x[1] : x)), in: (pm.refit_diff?.in ?? []).map((x) => (Array.isArray(x) ? x[1] : x)) } : { out: [], in: [] };
+          // A stall an in-window rebuild already swapped is still this refit's to announce, even though the plan it
+          // rebuilds now matches (round 16 #0).
+          const owed = changed || swappedOut.some((sid) => pendStalls.has(sid));
+          const record = !owed ? {} : {
+            swapped_this_block: uniq([...(windowOpen ? pm.swapped_this_block ?? [] : []), ...swappedOut]),
+            learned_out: uniq([...(windowOpen ? pm.learned_out ?? [] : []), ...learnedOut]),
+            refit_diff: {
+              out: uniq([...prevDiff.out, ...refitDiff.out.filter((id) => !prevDiff.in.includes(id))]),
+              in: uniq([...prevDiff.in.filter((id) => !refitDiff.out.includes(id)), ...refitDiff.in.filter((id) => !prevDiff.out.includes(id))]),
+              // Keyed by lift, the value is [days now, days before] (round 18 #0: a plain Map of the triples kept only two
+              // elements); inside an open window the EARLIEST 'before' stands, so the note compares against the plan they had.
+              ...(() => {
+                const m = new Map((windowOpen ? pm.refit_diff?.moved ?? [] : []).map(([id, now, was]) => [id, [now, was]]));
+                for (const [id, now, was] of refitDiff.moved ?? []) m.set(id, [now, m.has(id) && Array.isArray(m.get(id)[1]) ? m.get(id)[1] : was]);
+                const moved = [...m].map(([id, [now, was]]) => (Array.isArray(was) ? [id, now, was] : [id, now])).sort(([a], [b]) => (a < b ? -1 : 1));
+                return moved.length ? { moved } : {};
+              })(),
+            },
+            rotated_at: nowISO, // announced once, the new-block window
+          };
+          u.program = program; u.plan_rationale = rationale;
+          u.plan_meta = {
+            ...pm, ...meta,
+            refit_index: refitIndex,
+            ...record,
+            pending_stall_swaps: [], // announced (or moot) now
+            // The refit's completion verdict, reused by every rebuild in its window — like the block boundary's (round 14 #3).
+            spared_muscles: { block: pm.block_index ?? 0, muscles: spared },
+          };
+          return u;
+        }).catch((e) => { if (e?.message === "write-conflict") return null; throw e; });
+        if (refit) user = refit;
       }
     }
     // REACTIVE DELOAD (considerations #2, finding 2B — the KB's third plateau lever,
@@ -1166,6 +1386,24 @@ export function createApp(store, config = {}) {
     // down when the user has said which days they train (the hub's planned-day and
     // missed-day lines speak to the schedule instead).
     if (plan && session) session.gap_note = null;
+    // "YOUR PICK" (W326 — adherence playbook: choices offered, "not today" accepted; how a workout feels while you do it
+    // predicts coming back). Per lift, the best SAME-FAMILY alternative that fits today's workout, never stalled, never one
+    // they'd rather skip or their swaps learned against. The player offers it as one optional tap on the lift's first set;
+    // taking it goes through the Can't-do pick door, so it's recorded (swap_why "pick") and teaches the plan (W323).
+    // …never over a hand-edited plan (review round 8 #3): learning is paused there, so a pick can't become a plan change.
+    if (session) session.learning_paused = !!user.program?.custom;
+    if (session?.exercises?.length && !user.paused && !user.program?.custom) {
+      const live = session.exercises.map((e) => e.exercise);
+      const stalledNow = swapStalls(user, sessions, nowISO);
+      const noPick = new Set([...stalledNow, ...(user.profile?.training_prefs?.avoid ?? []),
+        ...Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([, v]) => v > 0).map(([k]) => k)]);
+      for (const row of session.exercises) {
+        if (row.superset_with || session.exercises.some((o) => o.superset_with === row.exercise)) continue;
+        const alt = userSubstitutes(user, row.exercise, { sessionName: session.name, stalled: stalledNow, live, scope: "today" })
+          .find((x) => x.fits && x.tier === 1 && !noPick.has(x.id) && !live.includes(x.id));
+        if (alt) row.your_pick = { id: alt.id, name: alt.name };
+      }
+    }
     return c.json({ card: todayCard(user, sessions), session, daily, exercise_units: user.profile?.exercise_units ?? {} });
   });
 
@@ -1945,13 +2183,20 @@ export function createApp(store, config = {}) {
       sets: (body.sets ?? []).map(normalizeSet),
     };
     const targets = normalizeTargets(body.targets);
+    // While learning is paused (a hand-edited plan) a pick is today-only, as its copy says (review round 10 #3): no vote.
+    // Decided by the WORKOUT, not by the plan's state when it syncs (round 11 #3): the player sends whether learning was
+    // paused when it started (an offline-queued workout can land after a hand-back, or after an edit).
+    const pausedAtWorkout = typeof body.learning_paused === "boolean" ? body.learning_paused : !!user.program?.custom; // no key: an old or queued client — the plan's own state (round 12 #3)
+    if (targets && pausedAtWorkout) for (const t of targets) if (t.swap_why === "pick" || t.swap_why === "picked_over") delete t.swap_why;
     if (targets) session.targets = targets;
     const fade = normalizeFadeMarks(body.fade_marks);
     if (fade) session.fade_marks = fade;
     // The store repeats the tombstone fence in its atomic write. A merge can land
     // after the read above; reporting a recap for a row that was safely refused
     // would be an optimistic lie, so surface the lost identity instead.
+    const firstEver = !(await store.hasAnySession(id)); // W327: the funnel's last step is this user's FIRST workout
     if (!(await store.addSession(id, session))) return c.json({ error: "unknown user" }, 404);
+    if (firstEver) await stampFunnel(id, "finished");
     const all = await store.listSessions(id);
     // Celebration marker (Tier-1 #3, Wave 201): the single most celebration-worthy
     // event this session caused, stamped here — the ONE door every session enters
@@ -1984,6 +2229,24 @@ export function createApp(store, config = {}) {
         await store.updateUser(id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), pace }; return u; }).catch(() => null);
       }
     } catch { /* the pace is a cache; the logged session is not */ }
+    // What they keep swapping away / pick themselves (W323), re-learned the same way — every plan door reads it at its
+    // next rebuild (planOptsFor), bounded in the engine. A lift they brought back (pref_kept) is never learned against.
+    try {
+      const all = await store.listSessions(id);
+      const kept = new Set(user.plan_meta?.pref_kept ?? []);
+      // A learned dislike STICKS until Bring back (review #1 #15): once a rebuild took the lift out it can't be picked over
+      // again, so its 8-week evidence would age out and the lift return unannounced. A positive score for a lift the plan
+      // no longer holds is carried; everything else is re-learned from the window.
+      // Whatever ELSE now holds it out (a trip without that kit, an injury, "No machine"), the dislike itself is kept — the
+      // Plan tab only LISTS lifts the learning took out (round 3 #1: gating stickiness on today's kit erased it for good).
+      const sticky = Object.fromEntries(Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([k, v]) => v > 0 && !planHolds(user.program, k)));
+      const merged = { ...swapPreferences(all, new Date().toISOString()).scores };
+      for (const [k, v] of Object.entries(sticky)) merged[k] = Math.max(v, merged[k] ?? 0);
+      const scores = Object.fromEntries(Object.entries(merged).filter(([k]) => !kept.has(k)).sort(([a], [b]) => (a < b ? -1 : 1)));
+      if (JSON.stringify(scores) !== JSON.stringify(user.plan_meta?.pref_scores ?? {})) {
+        await store.updateUser(id, (u) => { u.plan_meta = { ...(u.plan_meta ?? {}), pref_scores: scores }; return u; }).catch(() => null);
+      }
+    } catch { /* a cache, like the pace */ }
     // The coaching read-out (W282) is NOT computed here: it costs as much again as the save, a
     // CPU-limit kill can't be caught, and a replayed offline save would pay it again for a body
     // nobody reads. The client asks /api/session/recap once the save has landed (W282 review).
@@ -2070,7 +2333,8 @@ export function createApp(store, config = {}) {
       // NOT reset — an injury shouldn't cost the user their block progress (unlike
       // /api/plan/regenerate, where a training-field change means a different plan).
       // …through every rebuild's swap door (a plateaued lift stays demoted, a spared one stays).
-      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: swapStalls(u, sessions, nowISO) }));
+      const injStalls = swapStalls(u, sessions, nowISO);
+      const { program, rationale, meta } = generateUserPlan(u.profile, planOptsFor(u, { blockIndex: u.plan_meta?.block_index ?? 0, volumeAdjust: u.plan_meta?.volume_adjust ?? {}, stalledExercises: injStalls }));
       // A HAND-BUILT plan isn't regenerated (the edits are the user's), but a lift the injury now
       // rules out is swapped out of it (W283 review) — the client's "I'll keep it out of your plan"
       // has to be true for both kinds of plan.
@@ -2079,7 +2343,7 @@ export function createApp(store, config = {}) {
         swapped = s?.swaps ?? []; kept = s?.kept ?? [];
         if (swapped.length) { u.program = s.program; u.plan_rationale = s.rationale; }
       }
-      if (!u.program?.custom) { u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {} }; }
+      if (!u.program?.custom) { const pend = pendingStallSwaps(u, program, injStalls); u.program = program; u.plan_rationale = rationale; u.plan_meta = { ...u.plan_meta, ...meta, block_start: u.plan_meta?.block_start, block_index: u.plan_meta?.block_index ?? 0, volume_adjust: u.plan_meta?.volume_adjust ?? {}, pending_stall_swaps: pend }; } // always written: the spread must not carry a stale list (round 17 #3)
       return u;
     });
     if (!updated) return c.json({ error: "unknown user" }, 404);
@@ -2487,6 +2751,8 @@ export function createApp(store, config = {}) {
     // Atomically consume the grant: if a concurrent merge already spent it,
     // markMagicLinkUsed returns false and we refuse — the destructive move runs once.
     if (!(await store.markMagicLinkUsed(link.token_hash))) return c.json({ error: "bad-grant" }, 403);
+    // The survivor's learned dislikes BEFORE the move, by value (the file store hands back a live object the move mutates).
+    const toScoresBefore = { ...(to.plan_meta?.pref_scores ?? {}) };
     const moved = await store.reassignUserData(from_user_id, to_user_id);
     // The store REFUSED (null): between the reads above and the write, a concurrent
     // merge tombstoned one of the two rows. Nothing moved, so say nothing moved —
@@ -2501,6 +2767,20 @@ export function createApp(store, config = {}) {
     // has a third door, and this is it). Best-effort inside, like every
     // celebration write — a failed echo must never fail the merge.
     await recomputeCelebration(to_user_id, await store.getUser(to_user_id));
+    // A dislike carried in from the other account (merge-profile) must reach the survivor's plan, or its next workout's
+    // re-learn drops it — the sticky rule only holds a lift the plan no longer has (round 2 #1). A cosmetic rebuild, only
+    // when a carried score targets a lift the (generated) plan still holds. Best-effort: a merge never fails on it.
+    try {
+      const after = await store.getUser(to_user_id);
+      const kept = new Set(after?.plan_meta?.pref_kept ?? []);
+      // …and a Bring back carried in (round 15 #3): a lift the survivor's learning had taken out, now kept, must come back —
+      // the Plan tab no longer lists it, so nothing else would restore it.
+      const keptBackOut = [...kept].some((k) => (toScoresBefore[k] ?? 0) > 0 && !planHolds(after?.program, k));
+      if (after?.program && !after.program.custom && (keptBackOut || Object.entries(after.plan_meta?.pref_scores ?? {}).some(([k, v]) => v > 0 && !kept.has(k) && planHolds(after.program, k)))) {
+        const priorSessions = await store.listSessions(to_user_id);
+        await store.updateUser(to_user_id, (u) => { if (!u.program?.custom) rebuildPlan(u, { trainingChanged: false, priorSessions, nowISO: new Date().toISOString() }); return u; }).catch(() => null);
+      }
+    } catch { /* the merge stands */ }
     return c.json({ merged: true, ...moved });
   });
 

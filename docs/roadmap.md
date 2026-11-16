@@ -478,6 +478,14 @@ numbers moving, not against feature count.
 
 ### Tier 1 — highest leverage, buildable now
 
+- **[Goal 4, the binding constraint] Activation: Today → the first set (Burst 11, 2026-11-10).** Prod reading that
+  day: 145 users, 10.3% ever trained, 1 active in 7 days, 0 push subscribers; 13 of the recent 20-user cohort reached
+  Today and never started a workout. W327 now stamps the first-workout funnel (`/api/stats` `funnel_*`).
+  - **Next pull:** read the funnel once there are ~10 new users, then fix the biggest drop. Candidates are
+    "try one set" and a 15-minute first workout.
+  - **After that, in the playbook's order** (`docs/adherence-playbook.md` §4): end on a lift they enjoy, then
+    weekday reliability, then reminder-time learning once push has subscribers.
+
 **Tier 1 was empty as of 2026-07-31** (items 1–5 all shipped, Tier-2 6–8 reassessed done).
 The considerations #1/#2 audit (Waves 162–169) refilled it and then cleared it again — the
 ten confirmed findings are all shipped; see `docs/considerations.md` for the write-up. What

@@ -159,7 +159,7 @@ export function allPersonalRecords(sessions) {
 export const LUCKY_SET_XP = 15;
 // ~1-in-8 (12.5%) of hard sets are lucky — frequent enough to feel real, rare
 // enough to stay a surprise rather than an expectation.
-const LUCKY_SET_ONE_IN = 8;
+export const LUCKY_SET_ONE_IN = 8; // printed on the toast (W325, Plain Sight test 1: the rule survives being shown)
 
 // Deterministic (no Math.random — this file must stay pure/replayable) yet
 // unpredictable-to-the-user: hashes the session's own random session_id (assigned

@@ -404,9 +404,29 @@ ok("scheduled: missed Monday, today planned and Friday ahead — calm, says toda
 const missedMonLastToday = adherenceReport({ profile: { tz_offset_min: 0, commitment: { week: "2026-W41", days: ["mon", "wed"], set_on: "2026-10-05" } } },
   lastWeekOnly, "2026-10-14T12:00:00Z").status;
 ok("at-risk: missed Monday and today is the LAST planned day — now the chain copy is true",
-  missedMonLastToday.state === "at-risk" && /Missed Monday\? A session today keeps the chain alive/.test(missedMonLastToday.message));
+  missedMonLastToday.state === "at-risk" && /Missed Monday\? A session today still counts for this week/.test(missedMonLastToday.message));
 const todayToo = adherenceReport(planUser(["wed", "fri"]), lastWeekOnly, wedNoon).status;
 ok("scheduled: a planned TODAY with a later day still ahead says so honestly", todayToo.state === "scheduled" && /Today's a training day/.test(todayToo.message) && /Friday/.test(todayToo.message));
+
+// --- W325 (Plain Sight's five tests, owner decision 2026-11-10): the shipped features that failed one, fixed ---
+{
+  const { XP_PLAN_CAP_SINCE } = await import("../src/adherence.mjs");
+  // Benefit flow (3): points must not grow when you do more than your plan. From W325 on, hard-set XP stops at the
+  // workout's own planned sets; workouts before it keep what they earned (a level is never withdrawn — test 5).
+  const planned = (date, hard, plan) => ({ date, sets: Array.from({ length: hard }, () => ({ set_type: "work", weight_kg: 100, reps: 8 })), targets: [{ exercise: "bench", sets: plan }] });
+  ok("#W325 hard-set XP stops at the plan's own sets (10 done of 6 planned → 6 count)", xpAndLevel([planned("2026-11-20", 10, 6)]).xp === 100 + 6 * 5);
+  ok("#W325 …doing the plan or less is unchanged", xpAndLevel([planned("2026-11-20", 4, 6)]).xp === 100 + 4 * 5);
+  ok("#W325 …a workout before the change keeps every point it earned", XP_PLAN_CAP_SINCE === "2026-11-10" && xpAndLevel([planned("2026-11-01", 10, 6)]).xp === 100 + 10 * 5);
+  ok("#W325 …a workout with no recorded plan can't be capped (nothing to judge against)", xpAndLevel([sess("2026-11-20", 10)]).xp === 100 + 10 * 5);
+  // Identity milestones: a count you can verify, never "who you are".
+  const allMs = milestones(10000).reached.map((r) => r.msg);
+  ok("#W325 no milestone tells you who you are, or ranks you against others", allMs.every((m) => !/who you are|you're someone|serious lifter|most people/i.test(m)), allMs.join(" | "));
+  ok("#W325 every milestone names its own count", milestones(10000).reached.every((r) => new RegExp(`\\b(${r.at}|${["", "one", "", "three", "", "", "", "", "eight"][r.at] ?? "-"}|${{ 1: "first", 20: "twenty", 50: "fifty", 100: "hundred", 200: "two hundred" }[r.at] ?? "-"})\\b`, "i").test(r.msg)));
+  ok("#W325 the year-streak push names weeks, not an identity", !/who you are/i.test(celebrationCopy({ kind: "streak", weeks: 52 }).body));
+  // Loss-framed copy at the at-risk moment (test 4): what's left to do, said as a gain.
+  const risk = adherenceStatus([sess("2026-01-05")], "2026-01-14T12:00:00Z", false); // trained last week, none yet this week
+  ok("#W325 the at-risk line is gain-framed — no 'keep the chain alive', no 'protects your streak'", risk.state === "at-risk" && !/chain alive|protects your streak/i.test(risk.message), risk.message);
+}
 
 console.log(`\n${pass} adherence test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

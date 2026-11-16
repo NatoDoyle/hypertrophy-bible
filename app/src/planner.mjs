@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -41,7 +41,40 @@ export function planOptsFor(user, extra = {}) {
     // The lifter's own session ceiling (W315b) — every door builds under it.
     ...(Number.isInteger(user?.profile?.session_cap) ? { sessionCap: user.profile.session_cap } : {}),
     // …and their own pace (W316), learned from their logged sets — every door sizes the day by it.
-    ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}), ...extra };
+    ...(user?.plan_meta?.pace && typeof user.plan_meta.pace === "object" ? { pace: user.plan_meta.pace } : {}),
+    // …and what their swaps taught it (W323), minus the lifts they brought back — bounded to ±1 in the engine.
+    ...(() => { const kept = new Set(user?.plan_meta?.pref_kept ?? []);
+      const sc = Object.fromEntries(Object.entries(user?.plan_meta?.pref_scores ?? {}).filter(([k, v]) => !kept.has(k) && Number.isFinite(v) && v !== 0));
+      return Object.keys(sc).length ? { prefScores: sc } : {}; })(), ...extra };
+}
+
+// The lifter's training preferences (W321), at the trust boundary: enum styles and variety, REAL exercise ids (the KB's
+// or their own custom ones), the KB's own cardio modalities — deduped, nothing else kept. Empty lists are dropped and an
+// answer with nothing left is null (no preference), so "absent" has exactly one shape for the engine (byte-identical).
+const CARDIO_MODALITIES = new Set((guidelines.find((g) => g.id === "cardio-concurrent-training")?.modalities ?? []).map((m) => m.id));
+const EXERCISE_IDS = new Set(exercises.map((e) => e.id));
+export function sanitizeTrainingPrefs(raw, customExercises = []) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const custom = new Set((customExercises ?? []).map((x) => x?.id).filter(Boolean));
+  const pick = (v, ok) => Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" && ok(x)))] : [];
+  const style = pick(raw.style, (x) => PREF_STYLES.includes(x));
+  const avoid = pick(raw.avoid, (x) => EXERCISE_IDS.has(x) || custom.has(x)).slice(0, PREF_AVOID_MAX);
+  const cardio = pick(raw.cardio, (x) => CARDIO_MODALITIES.has(x));
+  const out = { ...(style.length ? { style } : {}), ...(PREF_VARIETY.includes(raw.variety) ? { variety: raw.variety } : {}),
+    ...(avoid.length ? { avoid } : {}), ...(cardio.length ? { cardio } : {}) };
+  return Object.keys(out).length ? out : null;
+}
+
+// What the app LEARNED about the lifter that rides in plan_meta (W319): their pace (W316) and a declined session ceiling
+// (W315c). Every door that rebuilds plan_meta whole — the block boundary, graduation, a Settings save — carries these, or
+// Today loses the lifter's pace until their next workout and a "Not now" is asked again after every boundary. One list,
+// so a door can't forget one.
+export function learnedMeta(planMeta) {
+  return { ...(planMeta?.pace && typeof planMeta.pace === "object" ? { pace: planMeta.pace } : {}),
+    ...(Number.isInteger(planMeta?.session_cap_declined) ? { session_cap_declined: planMeta.session_cap_declined } : {}),
+    // W323: the swaps it learned from, and the lifts they brought back from a learned swap-out.
+    ...(planMeta?.pref_scores && typeof planMeta.pref_scores === "object" ? { pref_scores: planMeta.pref_scores } : {}),
+    ...(Array.isArray(planMeta?.pref_kept) && planMeta.pref_kept.length ? { pref_kept: planMeta.pref_kept } : {}) };
 }
 
 // "Can't do this one?" (W272): ranked replacements for one lift, and the permanent
@@ -49,7 +82,8 @@ export function planOptsFor(user, extra = {}) {
 // lifts and block (specialization ordering depends on where they are in it).
 export function userSubstitutes(user, exId, { sessionName = null, stalled = [], live = null, scope = "always", exclude = [] } = {}) {
   return bestSubstitutes(exId, { profile: user.profile, kb: KB, program: user.program, rationale: user.plan_rationale ?? null,
-    sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [] });
+    sessionName, stalled, live, scope, exclude, customExercises: user.custom_exercises || [],
+    prefScores: planOptsFor(user).prefScores ?? null }); // what their swaps taught the plan ranks replacements too (W323/W326)
 }
 // The fitting substitutes that are easier on a tired body (Burst 6), easiest first — the custom library bound in.
 export function userEasierSubstitutes(user, exId, fitting, known = []) {

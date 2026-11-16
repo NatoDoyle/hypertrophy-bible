@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -595,12 +595,47 @@ async function postOrQueue(path, bodyObj) {
 // copies would drift, and the engine's region keys must match on both paths.
 const INJURY_REGIONS = [["Lower back", "lower-back"], ["Knee", "knee"], ["Shoulder", "shoulder"], ["Elbow", "elbow"], ["Wrist", "wrist"], ["Hip", "hip"], ["Neck", "neck"], ["Ankle", "ankle"]];
 
+// The preference screen's rows (W321). Styles and lift families show only where the answered equipment can use them —
+// a bodyweight-only lifter is never asked about barbell squats. Families map to the KB's real exercise ids.
+const PREF_STYLE_OPTS = [["Free weights", "free", ["barbell", "dumbbell", "kettlebell"]], ["Machines & cables", "machines", ["machine", "cable"]], ["Bodyweight", "bodyweight", ["bodyweight", "band"]]];
+const PREF_VARIETY_OPTS = [["Master the same lifts", "same"], ["Keep it fresh", "fresh"]];
+const AVOID_FAMILIES = [
+  { label: "Barbell squats", ids: ["barbell-back-squat", "front-squat"], eq: ["barbell"] },
+  { label: "Deadlifts", ids: ["conventional-deadlift", "romanian-deadlift"], eq: ["barbell"] },
+  { label: "Barbell bench press", ids: ["barbell-bench-press", "incline-barbell-bench-press", "close-grip-bench-press"], eq: ["barbell"] },
+  { label: "Overhead pressing", ids: ["barbell-overhead-press", "seated-dumbbell-shoulder-press", "kettlebell-overhead-press", "band-overhead-press", "machine-shoulder-press", "smith-machine-shoulder-press"], eq: ["barbell", "dumbbell", "kettlebell", "band", "machine"] },
+  { label: "Lunges & split squats", ids: ["walking-lunge", "bodyweight-lunge", "bulgarian-split-squat", "dumbbell-curtsy-lunge"], eq: ["dumbbell", "bodyweight"] },
+  { label: "Pull-ups", ids: ["pull-up", "chin-up"], eq: ["bodyweight"] },
+  { label: "Dips", ids: ["chest-dip", "bench-dip"], eq: ["bodyweight"] },
+  { label: "Push-ups", ids: ["push-up", "diamond-push-up", "pike-push-up"], eq: ["bodyweight"] },
+  { label: "Leg press", ids: ["leg-press"], eq: ["machine"] },
+];
+const PREF_CARDIO_OPTS = [["Walking", "walking"], ["Bike", "cycling"], ["Rower / elliptical", "rowing-elliptical"], ["Running", "running"], ["Intervals", "hiit"]];
+// The profile's training_prefs, as the screen edits it: always all four keys (empty when unset).
+const prefsOf = (tp) => ({ style: [...(tp?.style ?? [])], variety: tp?.variety ?? null, avoid: [...(tp?.avoid ?? [])], cardio: [...(tp?.cardio ?? [])] });
+// familyOn / toggleFamily / visibleStyles live in ui-helpers.mjs (pure, unit-tested — review #9 #10).
+function prefsSummary(tp) {
+  const p = prefsOf(tp);
+  const parts = [
+    p.style.map((v) => PREF_STYLE_OPTS.find((o) => o[1] === v)?.[0]).filter(Boolean).join(" + "),
+    PREF_VARIETY_OPTS.find((o) => o[1] === p.variety)?.[0] ?? "",
+    p.avoid.length ? `skipping ${p.avoid.length} lift${p.avoid.length === 1 ? "" : "s"}` : "",
+    p.cardio.length ? `cardio: ${p.cardio.map((v) => PREF_CARDIO_OPTS.find((o) => o[1] === v)?.[0] ?? v).join(", ").toLowerCase()}` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "No preference";
+}
+
 const STEPS = [
   { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
   { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
   { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
   { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
   { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
+  // W321 (owner: "ask the necessary questions to understand what exercise/workouts the user likes … to improve long term
+  // commitment, adherence and consistency"): ONE screen, every row optional. What they enjoy only ever reorders lifts
+  // that are equally good for the muscle (plan-core's bounded preference term) — the plan stays optimal and says when a
+  // preference couldn't be honoured. A lift to skip is swapped when an equal alternative exists, never banned.
+  { key: "training_prefs", q: "What do you enjoy?", prefs: true, optional: true, hint: "All optional. I'll favour what you enjoy whenever it's as good as the best option for the muscle, and tell you when it isn't." },
   { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard while everything else eases back to a light dose to pay for it (most muscles keep slowly growing; a few drop to pure maintenance). Pick three or more and we'll just tilt volume their way." },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
@@ -721,6 +756,7 @@ async function renderTrainingSettings() {
     ["session_length_min", "Session length", `${p.session_length_min ?? "—"} min`],
     ["available_equipment", "Equipment", equipLabel()],
     ["priority_muscles", "Priority muscles", priLabel()],
+    ["training_prefs", "What you enjoy", prefsSummary(p.training_prefs)],
     ["injuries", "Training around", injLabel()],
     // The goal-event row mirrors the wizard step's own gate (non-beginners only).
     ...(p.training_status !== "beginner" ? [["goal_event_date", "Goal event date", p.goal_event_date || "None"]] : []),
@@ -777,6 +813,7 @@ async function renderSettings(soloKey = null) {
     // more day. (The injuries solo edit still re-asks and overwrites this.)
     injury_severity: (p.injuries || [])[0]?.severity ?? undefined,
     goal_event_date: p.goal_event_date || "",
+    training_prefs: prefsOf(p.training_prefs), // the whole object, so the screen's untouched rows (and W323's skips) survive
     // `sex` and `units` are no longer wizard steps, so prefilling them here would
     // populate answers nothing reads — and `units` in particular must NOT be sent
     // back by a settings save (see submitOnboarding): the Me-tab toggle owns it,
@@ -827,6 +864,9 @@ function renderOnboarding() {
     };
     return;
   }
+  // A saved position from an older build (a different question list) can point at a question this run must not ask
+  // (review #12: it landed a new user on the settings-only goal date) — render the nearest one it does ask.
+  onbStep = visibleStepFrom(STEPS, onbStep, answers);
   const step = STEPS[onbStep];
   // One dot per question this user will ACTUALLY be asked — the same `showIf` the
   // forward/back navigation uses, so the progress bar can't promise more steps than
@@ -848,6 +888,18 @@ function renderOnboarding() {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
       + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
+  } else if (step.prefs) {
+    const tp = prefsOf(answers[step.key]);
+    const eq = new Set(answers.available_equipment || []);
+    const styles = visibleStyles(PREF_STYLE_OPTS, eq, tp.style);
+    const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
+    const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
+    const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
+    body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
+      + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
+      + (fams.length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")) : "")
+      + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
+      + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
     // A goal event can't be in the past — in the USER'S local calendar, not UTC's:
@@ -885,6 +937,20 @@ function renderOnboarding() {
       b.classList.toggle("sel");
       b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
       saveOnb();
+    });
+    $("#next").onclick = advance;
+  } else if (step.prefs) {
+    const eq = new Set(answers.available_equipment || []);
+    const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
+    answers[step.key] = prefsOf(answers[step.key]);
+    app.querySelectorAll(".chip.pick").forEach((b) => b.onclick = () => {
+      const tp = answers[step.key], g = b.dataset.g, v = b.dataset.v;
+      if (g === "variety") tp.variety = tp.variety === v ? null : v; // single choice; tap again to clear
+      else if (g === "avoid") {
+        tp.avoid = toggleFamily(tp, fams[+v]).avoid;
+      } else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
+      saveOnb();
+      renderOnboarding(); // re-render: variety is single-choice, so a sibling's state changes too
     });
     $("#next").onclick = advance;
   } else if (step.date) {
@@ -936,6 +1002,8 @@ async function submitOnboarding() {
     // spreading the new object over the old, so an omitted key would never clear.
     goal_event_date: answers.training_status !== "beginner" && answers.goal_event_date ? answers.goal_event_date : null,
     injuries,
+    // Always sent (the server sanitizes; an all-empty answer stores null = no preference), so Settings can clear it.
+    training_prefs: prefsOf(answers.training_prefs),
     // `sex` and `units` are deliberately ABSENT from this literal, and absence is
     // load-bearing: /api/plan/regenerate merges with `{ ...u.profile, ...patch }`,
     // so sending `sex: undefined` would OVERWRITE a stored value with undefined and
@@ -1098,16 +1166,46 @@ async function renderPlan() {
     <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
     ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
       <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
+  // W320 (owner: "I'm convinced the system isn't learning"): a hand-edited plan pauses plan learning. Say so where the
+  // plan is, with the one tap back — never a silent, permanent opt-out. Two taps: the second states what is replaced.
+  const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
+    <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: ${esc(d.beginner ? "I still set your weights and rest, but I've stopped swapping lifts that stall, re-fitting the plan to your pace, and stepping the plan up when you graduate." : "I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.")}</p>
+    <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
+  // W323: what they'd rather skip (the quiz + "Just not for me"), and what their own swaps moved out — each with Bring back.
+  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
+  const skippedBlock = (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
+    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "";
+  const learnedBlock = (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
+    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "";
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
+    ${pausedBlock}
     ${sessionCards}
     ${unavailableBlock}
+    ${skippedBlock}
+    ${learnedBlock}
     <button class="btn secondary inline" id="edit-plan">Edit plan</button>
     ${personalizationBlock}
     ${whyBlock}
     ${cardioBlock}`;
   wireLearnLinks();
   $("#edit-plan").onclick = renderPlanEdit;
+  const coachBack = $("#coach-back");
+  if (coachBack) coachBack.onclick = () => {
+    const card = $("#learning-paused");
+    card.innerHTML = `<b>Hand your plan back?</b>
+      <p class="muted" style="margin:2px 0 6px">I'll build a fresh plan from your answers and your history. Your edits to this plan are replaced; every workout you've logged stays.</p>
+      <button class="btn inline" id="coach-back-yes" style="margin:0 8px 0 0">Yes, rebuild it</button><button class="btn ghost inline" id="coach-back-no" style="margin:0">Keep my edits</button>`;
+    $("#coach-back-no").onclick = renderPlan;
+    $("#coach-back-yes").onclick = async () => {
+      let r; try { r = await api("/api/plan/regenerate", { method: "POST", body: JSON.stringify({ user_id: uid }) }); }
+      catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+      pendingNotice = r?.error ? (r.message || "Couldn't rebuild your plan — nothing changed. Try again.") : (d.beginner ? "✅ Your coach has the plan again: lifts that go flat get swapped, and the plan re-fits to how you train." : "✅ Your coach has the plan again: stalled lifts get swapped and your sets tune themselves each block.");
+      await renderPlan();
+      if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+    };
+  };
   app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
     let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
     catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
@@ -2169,8 +2267,16 @@ const wireForgot = (repaint) => app.querySelectorAll("[data-forgot]").forEach((b
   saveSess(); repaint();
   say(`Estimated ${est.reps} reps${chip != null ? ` with ${est.rir} left in the tank` : ""}. Change ${chip != null ? "either" : "it"} if you remember.`);
 });
+// The first-workout funnel (W327): fire-and-forget stamps, only on a never-trained user's first workout. A lost one (offline)
+// costs a measurement, never the workout — the server keeps the first stamp and ignores the rest.
+function funnelStep(step) {
+  if (!sess?.firstEver || !uid) return;
+  api("/api/funnel", { method: "POST", body: JSON.stringify({ user_id: uid, step }) }).catch(() => {});
+}
 function startSession(templateSession) {
   sess = {
+    firstEver: templateSession.never_trained === true, // W327: this is the funnel's workout
+    learningPaused: templateSession.learning_paused === true, // a hand-edited plan: picks are today-only, said so (review round 8 #3)
     // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
     // reports as its target, however a skip later shrinks today's `sets`.
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0,
@@ -2191,6 +2297,7 @@ function startSession(templateSession) {
     localDate: new Date().toLocaleDateString("en-CA"),
   };
   saveSess();
+  funnelStep("started");
   renderPlayer();
 }
 
@@ -2493,7 +2600,8 @@ function checkAndCelebrateLucky(exObj, loggedSet, wasPR) {
   if (!checkLuckySet(sess.session_id, sess.logged, loggedSet)) return;
   sess.luckyXp = (sess.luckyXp || 0) + LUCKY_SET_XP;
   if (wasPR) return;
-  showPrToast(`🍀 <b>Lucky set!</b> <span style="color:var(--accent);font-weight:700">+${LUCKY_SET_XP} XP</span><br><span class="muted">${esc(exObj.name)}</span>`);
+  // The rule, where the bonus lands (W325, Plain Sight test 1 — a bonus whose schedule you can't see fails disclosure).
+  showPrToast(`🍀 <b>Lucky set!</b> <span style="color:var(--accent);font-weight:700">+${LUCKY_SET_XP} XP</span><br><span class="muted">${esc(exObj.name)} · about 1 hard set in ${LUCKY_SET_ONE_IN} is lucky, at random</span>`);
   say("Lucky set — bonus XP!");
 }
 
@@ -2865,6 +2973,7 @@ function renderPlayer() {
     <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
     ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
     ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
+    ${pickOffer(sess) ? `<button class="btn ghost inline" id="your-pick" style="margin:-2px 0 8px">⇄ Rather do ${esc(e.your_pick.name)} today?</button>` : ""}
     ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
     ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
     ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
@@ -2910,6 +3019,7 @@ function renderPlayer() {
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
   if ($("#tired")) $("#tired").onclick = () => tiredSwap();
+  if ($("#your-pick")) $("#your-pick").onclick = () => yourPickSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
   if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
@@ -2988,6 +3098,7 @@ function renderPlayer() {
     const ef = estimatedFields(sess.estPending?.[e.exercise], { setNo: loggedSetCount(e.exercise), reps: sess.reps[sess.i], eff: sess.eff[sess.i] });
     const loggedSet = { exercise: e.exercise, set_type: "work", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || e.eased) ? { deload: true } : {}), completed_at: new Date().toISOString() };
     sess.logged.push(loggedSet);
+    if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
     if (sess.estPending) delete sess.estPending[e.exercise];
     delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
@@ -3155,6 +3266,7 @@ function renderSupersetStation(L, P) {
       const loggedSet = { exercise: m.exercise, set_type: "work", weight_kg: bankKg(idx), reps: sess.reps[idx], ...(ef.rir != null ? { rir: ef.rir } : {}), ...(ef.estReps ? { est: ["reps"] } : {}), ...(ef.rir_est != null ? { rir_est: ef.rir_est } : {}), ...((sess.deload || m.eased) ? { deload: true } : {}), completed_at: at };
       if (sess.estPending) delete sess.estPending[m.exercise];
       sess.logged.push(loggedSet);
+      if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
       delete sess.eff[idx]; // each set is its own call — an answer never carries over
       delete sess.reps[idx]; // …and the next round starts on its aim (W289)
       roundSets.push([m, loggedSet]);
@@ -3275,7 +3387,10 @@ function swapUndoCard(e) {
 function applyReplacement(expect, row, undo, { sets = null, said = null } = {}) {
   const i = sess.ex.findIndex((x) => x.exercise === expect);
   // Every door off the Can't-do sheet comes through here, so a tired slot's substitute stays the tired day (round 8).
-  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], row), { expect, ...(sets ? { sets } : {}) });
+  // Why it stood in (W323), stamped on the row so the finished workout tells the plan: a tired swap is about the day;
+  // "Pick one myself" and "It's busy" may say something about the lift. A permanent swap is already recorded server-side.
+  const why = swapWhyFor(sess.ex[i], undo); // session-core: a pick over a busy stand-in stays busy (round 2 #2)
+  const r = replaceSlot(sess, i, swapInRow(sess.ex[i], why ? { ...row, swap_why: why } : row), { expect, ...(sets ? { sets } : {}), ...(undo.rebased ? { rebase: true } : {}), ...(undo.planLift ? { planLift: undo.planLift } : {}) });
   if (!r.ok) return r.reason;
   // Remember what was ruled out today, so a second "Can't do" never hands it back.
   sess = { ...r.sess, swapUndo: { ...undo, session_id: r.sess.session_id }, ruledOut: [...new Set([...(r.sess.ruledOut ?? []), expect])] };
@@ -3297,7 +3412,7 @@ async function undoSwap() {
   // leak anything; the same guards apply (a banked set of the substitute stays).
   // …with the saved row's OWN set count: a tired swap trimmed the live slot's (Burst 6), and that must not stick.
   // (and its plan: a skip taken before the tired tap stays taken — round 2).
-  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets });
+  const back = replaceSlot(sess, sess.ex.findIndex((x) => x.exercise === u.to), u.saved, { expect: u.to, sets: u.saved.sets, plannedSets: u.saved.planned_sets, ...((u.rebased || u.planLift) && typeof u.saved.slot_of !== "string" ? { rebase: true } : {}) }); // the server's undo restores the plan's own lift
   sess = { ...(back.ok ? back.sess : sess), swapUndo: null, ruledOut: (sess.ruledOut ?? []).filter((id) => id !== u.from), ...(back.ok && u.lastSkip ? { lastSkip: u.lastSkip } : {}) };
   saveSess();
   renderPlayer(0);
@@ -3359,6 +3474,35 @@ function easeInPlace(cur, cause) {
   say(w ? `Made ${cur.name} lighter for today — ${setsN(n)}.` : `${cur.name}: ${setsN(n)} today.`);
   renderPlayer(0);
 }
+// "YOUR PICK" (W326 — adherence playbook: autonomy; choices offered, "not today" accepted). The server names, per lift,
+// the best same-family alternative that fits today's workout; the player offers it once, before the lift's first set,
+// as one optional tap. Ignored, nothing changes. Taken, it goes through the Can't-do sheet's own pick door — today only,
+// recorded as a pick (swap_why), which teaches the plan what they like (W323).
+const pickOffer = (sess) => {
+  const cur = sess?.ex?.[sess.i];
+  return !!cur?.your_pick?.id && sess.set === 0 && !cur.superset_with && !cur.tired && typeof cur.slot_of !== "string"
+    && loggedWorkSets(sess.logged ?? [], cur.exercise) === 0 && !sess.ex.some((x) => x.exercise === cur.your_pick.id);
+};
+async function yourPickSwap() {
+  const gen = ++cantDoGen;
+  const cur = sess?.ex?.[sess.i];
+  if (!pickOffer(sess)) return;
+  const pick = cur.your_pick;
+  const stillHere = () => gen === cantDoGen && !!sess && sess.ex[sess.i]?.exercise === cur.exercise && sess.set === 0;
+  app.querySelectorAll("#app button").forEach((b) => { b.disabled = true; });
+  let r = null;
+  try {
+    r = await api(`/api/exercise/cant-do?d=${localDay()}`, { method: "POST", body: JSON.stringify({ user_id: uid, exercise: cur.exercise, session: sess.name ?? null,
+      exclude: sess.ruledOut ?? [], prescription: { sets: cur.planned_sets ?? cur.sets, rep_range: cur.rep_range, rir: cur.rir }, slot_of: cur.slot_of ?? null,
+      scope: "today", live: sess.ex.map((x) => x.exercise), pick: pick.id }) });
+  } catch { r = null; }
+  if (!stillHere()) return;
+  if (!r?.ok) { alertBar(r == null ? "📴 Couldn't reach the server — keep going with this one." : `${pick.name} doesn't fit today after all — keep going with ${cur.name}.`); renderPlayer(0); return; }
+  const why = applyReplacement(cur.exercise, r.row ?? { exercise: pick.id, name: pick.name },
+    { to: pick.id, toName: pick.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true },
+    { said: `${pick.name} it is — just for today. Pick it over ${cur.name} a few times and I'll swap it in your plan wherever something as good fits.` }); // the learning, disclosed where it happens (review #14)
+  if (why) { alertBar(`Couldn't swap to ${pick.name} — keep going with ${cur.name}.`); renderPlayer(0); }
+}
 // One generation per open sheet; ANY repaint of the player or a tab switch moves it on,
 // so a slow or doubled response can tell it has been overtaken.
 let cantDoGen = 0;
@@ -3394,7 +3538,7 @@ async function renderCantDo() {
   const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
     : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
       : "The workout moved on — nothing was swapped.";
-  const pickList = async (lead = "") => {
+  const pickList = async (lead = "", { reason = null } = {}) => { // reason "hurt": the It-hurts door (round 9)
     app.innerHTML = `<h1>Pick a replacement</h1><p class="muted">Finding the best alternatives…</p>`;
     let d;
     try { d = await api(`/api/exercise/${encodeURIComponent(cur.exercise)}/alternatives?session=${encodeURIComponent(sess.name ?? "")}&live=${encodeURIComponent(live().join(","))}&exclude=${encodeURIComponent(exclude().join(","))}`); }
@@ -3403,7 +3547,7 @@ async function renderCantDo() {
     const alts = d?.alternatives ?? [];
     if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
     app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
-      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. Just for today; your plan doesn't change.</p>
+      <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. ${sess.learningPaused ? "Just for today — your edited plan stays as you made it." : `Just for today — but if you keep picking something over ${esc(cur.name)}, I'll take the hint and swap it in your plan wherever something as good fits.`}</p>
       ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
       ${tail}`;
     wireTail();
@@ -3414,7 +3558,7 @@ async function renderCantDo() {
       if (!stillHere()) return; // a today-only swap wrote nothing: dropping a stale answer is safe
       if (r.error) return note(r.message ?? `Couldn't swap to ${a.name} — keep ${cur.name}, or pick another.`);
       const why = applyReplacement(cur.exercise, r.row ?? { exercise: a.id, name: a.name, equipment: a.equipment, primary_muscles: a.primary_muscles },
-        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false });
+        { to: a.id, toName: a.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: false, picked: true, ...(reason ? { reason } : {}) });
       if (why) note(refused(why, a.name));
     });
   };
@@ -3424,8 +3568,9 @@ async function renderCantDo() {
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
     <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
+    <button class="choice reason" id="cd-dislike">👎 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
-    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">The best alternatives, just for today</span></button>
+    <button class="choice reason" id="cd-pick">🔍 Pick one myself<span class="sub muted">${sess.learningPaused ? "The best alternatives, just for today" : "The best alternatives, for today — keep picking over it and I'll learn"}</span></button>
     ${tail}`;
   wireTail();
   if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)
@@ -3447,12 +3592,30 @@ async function renderCantDo() {
     if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
     const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
       { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        rebased: rebasesOnPermanent(cur, r), // today's lift IS the plan's new lift for this slot (review rounds 6-7)
+        planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
           ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
           : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
+    if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
+  };
+  // W323: a soft, reversible no — the plan swaps it for an equally good lift, or keeps it and says why.
+  $("#cd-dislike").onclick = async () => {
+    lock("Finding one as good…");
+    let r; try { r = await post({ scope: "always", reason: "dislike" }); } catch { return stillHere() ? offline() : undefined; }
+    const planLine = r.replaced_by ? `${cur.name} is swapped for ${r.replaced_by_name} in your plan` : `${cur.name} won't come back in your plan`;
+    if (!stillHere()) { if (!r.error && !r.kept) alertBar(`${planLine} — bring ${cur.name} back on the Plan tab if you didn't mean that.`); return; }
+    if (r.error) return note(r.message ?? `Couldn't swap ${cur.name} — nothing changed.`);
+    if (r.kept) return note(r.message);
+    if (!r.today?.id) return pickList(`${planLine}. Nothing fits in its place today — pick one, or do it later.`);
+    const why = applyReplacement(cur.exercise, r.row ?? { exercise: r.today.id, name: r.today.name },
+      { to: r.today.id, toName: r.today.name, from: cur.exercise, fromName: cur.name, saved: cur, permanent: true,
+        rebased: rebasesOnPermanent(cur, r), // today's lift IS the plan's new lift for this slot (review rounds 6-7)
+        planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
+        text: r.replaced_by === r.today.id ? `Swapped for ${r.today.name} — you can bring ${cur.name} back on the Plan tab.` : `${planLine}. ${r.today.name} for today.` });
     if (why) pickList(`${planLine}. ${refused(why, r.today.name)} For today:`);
   };
   $("#cd-busy").onclick = async () => {
@@ -3482,7 +3645,7 @@ async function renderCantDo() {
       // has the newly ruled-out lifts swapped. A lift with no safe replacement is named, not hidden.
       const keptNames = (res.kept ?? []).map((k) => k.name);
       pickList(res.error ? "Couldn't save that — pick a replacement for today instead."
-        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`);
+        : `Noted — I'll keep ${region.replace("-", " ")}-aggravating movements out of your plan.${keptNames.length ? ` ${keptNames.join(", ")} ${keptNames.length === 1 ? "has" : "have"} no safe replacement with your setup — remove ${keptNames.length === 1 ? "it" : "them"} in the plan editor.` : ""} For today:`, { reason: "hurt" });
     });
   };
 }
@@ -3516,7 +3679,7 @@ async function finish() {
   // Tuesday session rescued on Thursday belongs to Tuesday's week.
   // targets (W280): what the plan asked of each lift today — so a skipped or unfinished set
   // holds that lift's next weight increase, and the read-out can say what was and wasn't done.
-  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess), fade_marks: fadeMarksAtFinish(sess) };
+  const payload = { session_id, date: sess.startedAt || new Date().toISOString(), local_date: sess.localDate ?? null, user_id: uid, session_name: sess.name, sets: sess.logged, targets: buildTargets(sess), fade_marks: fadeMarksAtFinish(sess), learning_paused: sess.learningPaused === true }; // decided by the workout (rounds 11-12): always said
   const res = await postOrQueue("/api/session", payload);
   if (!res.ok && !res.queued) {
     // Network AND the offline queue both failed (storage full/blocked). The one
@@ -5223,7 +5386,7 @@ async function renderStory() {
       if (x.status === "pending" && x.role === "challenger") return `<div class="card"><b>⚔️ Challenge sent</b><p class="muted" style="margin-top:8px">Waiting for them to accept — most sessions logged this week wins.</p></div>`;
       if (x.status === "active") {
         const race = weeklyRaceStatus(x.my_count, x.opponent_count);
-        const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "😤 you're behind" : "🤝 tied";
+        const label = race === "ahead" ? "🏆 you're ahead" : race === "behind" ? "🏁 they're ahead this week" : "🤝 tied"; // the partner's lead, never a deficit of yours (W325)
         return `<div class="card"><b>⚔️ Challenge in progress</b><p class="muted" style="margin-top:8px">You ${x.my_count} – ${x.opponent_count} them · ${label} · decides at week's end</p></div>`;
       }
       if (x.status === "completed" && x.opponent_active !== false) {

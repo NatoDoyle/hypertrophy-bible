@@ -9,7 +9,7 @@ import assert from "node:assert";
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, isLuckySet, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, IMPLAUSIBLE_RATIO, IMPLAUSIBLE_MIN_JUMP_KG, sanitizeTypedValue, convertDispWeight, normalizeWeightsToUnits, replaceSlot, PRESCRIPTION_KEYS,
   restLength, restRemaining, activeRest, formatRest, adjustRest, newRest,
   sessionChips, editLoggedSet, editDisplay, parseEdit, recomputePrLatch, editConfirmKey, resolveEdit, nextPrLatch, undoApplies,
-  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow, swapInRow } from "../public/session-core.mjs";
+  loadForReps, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, hintInUnit, prefillInUnit, localReadout, restAlertStep, REST_ALERT_HANDOFF_MS, todayTopSet, typoReference, tiredSets, easeKg, easeSlot, tiredOffer, anchorSets, EMPTY_BAR_KG, tiredSwapRow, swapInRow, swapWhyFor, buildTargets as buildTargetsX, rebasesOnPermanent, planLiftAfterPermanent } from "../public/session-core.mjs";
 // Node-only import (this test runs under Node, not the browser) — used ONLY to prove
 // the client's checkSetPR duplicate agrees with the server's real engine, never to
 // import it into the shipped client code.
@@ -681,6 +681,47 @@ check("#swap-undo applies only in the session it was made in, on its own lift, b
     assert.ok(!("slot_of" in buildTargets(s1)[1]), "targets carry the plan, never the marker");
     assert.equal(buildTargets(s1)[1].stood_in_for, "pushdown", "…naming the planned lift it stood in for (review G1: the comeback clock counts the slot as trained)");
     assert.ok(!("stood_in_for" in buildTargets(mk(exs()))[1]), "a lift in its own slot names nothing");
+  });
+  check("#rev2-b11 why a slot is swapped: tired is the day, a pick over the PLAN's lift is a vote, a pick over a busy stand-in is still busy (#2)", () => {
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { picked: true }), "pick", "picked over the plan's own lift");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, {}), "busy");
+    assert.equal(swapWhyFor({ exercise: "leg-press", tired: true }, { picked: true }), "tired");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { reason: "tired" }), "tired");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { permanent: true }), null, "a permanent swap is recorded server-side");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "busy" }, { picked: true }), "busy", "the lifter never chose against hack squat");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, { picked: true }), "pick", "re-picking over an earlier pick stays a pick");
+    // Round 3 #2: the pick against the plan's lift survives a later busy swap — without crediting the busy stand-in as picked.
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, {}), "picked_over");
+    assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, {}), "picked_over");
+    assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "picked_over" }, { picked: true }), "pick");
+    // Round 4: …through EVERY door, not only busy — a tired swap or a permanent one (No machine, Just not for me, It hurts)
+    // of the picked lift keeps the vote against the plan's lift.
+    const picked = { exercise: "leg-press", slot_of: "hack-squat", swap_why: "pick" };
+    assert.equal(swapWhyFor(picked, { reason: "tired" }), "picked_over", "tired swap of the picked lift");
+    assert.equal(swapWhyFor({ ...picked, tired: true }, {}), "picked_over", "a tired slot");
+    assert.equal(swapWhyFor(picked, { permanent: true }), "picked_over", "No machine / Just not for me");
+    // Round 5: a PICK on a tired slot (Pick one myself, or It hurts — both go through the pick door) keeps the vote too,
+    // without counting a tired-day choice as liked.
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "picked_over", tired: true }, { picked: true }), "picked_over", "pick after a tired swap");
+    assert.equal(swapWhyFor({ exercise: "leg-press", slot_of: "hack-squat", swap_why: "pick", tired: true }, { picked: true }), "picked_over", "pick after easing the picked lift");
+    assert.equal(swapWhyFor({ exercise: "leg-press", tired: true }, { picked: true }), "tired", "a pick on a tired slot with no earlier vote is still just a tired day");
+    // Round 9: a pick through "It hurts" is about the body, like a tired one — never a dislike vote; an earlier vote stays.
+    assert.equal(swapWhyFor({ exercise: "barbell-row" }, { picked: true, reason: "hurt" }), "hurt");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "pick" }, { picked: true, reason: "hurt" }), "picked_over");
+    assert.equal(swapWhyFor({ exercise: "goblet-squat", slot_of: "hack-squat", swap_why: "hurt" }, { picked: true }), "hurt", "a later pick over a hurt stand-in casts no vote");
+    assert.equal(swapWhyFor({ exercise: "leg-press" }, { permanent: true }), null, "a permanent swap of the plan's own lift is still server-side only");
+    const r = replaceSlot(mk([{ exercise: "hack-squat", sets: 3 }, ex("curl", 3)]), 0, { exercise: "leg-press", swap_why: "picked_over" }, { expect: "hack-squat" });
+    assert.equal(buildTargets(r.sess)[0].swap_why, "picked_over", "it rides the workout");
+  });
+  check("#W323 a stand-in carries WHY it stood in (busy / pick / tired) to the workout — only beside stood_in_for, only from the enum", () => {
+    const via = (why) => buildTargets(replaceSlot(mk(exs()), 1, { ...row, ...(why ? { swap_why: why } : {}) }, { expect: "pushdown" }).sess)[1];
+    assert.equal(via("pick").swap_why, "pick");
+    assert.equal(via("busy").swap_why, "busy");
+    assert.equal(via("tired").swap_why, "tired");
+    assert.ok(!("swap_why" in via("hated")), "not from the enum: nothing");
+    assert.ok(!("swap_why" in via(null)), "no reason: nothing");
+    const own = mk(exs()); own.ex[1] = { ...own.ex[1], swap_why: "busy" };
+    assert.ok(!("swap_why" in buildTargets(own)[1]), "a lift in its own slot names no reason");
   });
 }
 
@@ -2004,6 +2045,85 @@ check("#est (review D2) the read-out never calls a lift 'at the top' with an est
     assert.deepStrictEqual(fadeMarksAtFinish({ ex: [{ exercise: "bench", sets: 3 }], logged: [W("bench")] }), [], "nothing to say: none");
   });
 }
+
+check("#rev9-b11 after a permanent swap of the plan's own lift, the slot's plan lift is the replacement — marker or not", () => {
+  assert.equal(planLiftAfterPermanent({ exercise: "cable-pull-through" }, { replaced_by: "romanian-deadlift", today: { id: "single-leg-romanian-deadlift" } }), "romanian-deadlift");
+  assert.equal(planLiftAfterPermanent({ exercise: "pec-deck", slot_of: "machine-chest-press" }, { replaced_by: "dumbbell-fly", today: { id: "cable-fly" } }), null, "a stand-in's plan lift is unchanged");
+  assert.equal(planLiftAfterPermanent({ exercise: "x" }, { replaced_by: null, today: { id: "y" } }), null);
+  const base = { name: "L", ex: [{ exercise: "cable-pull-through", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-2" }], i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
+  const r = replaceSlot(base, 0, { exercise: "single-leg-romanian-deadlift" }, { expect: "cable-pull-through", planLift: "romanian-deadlift" });
+  assert.equal(r.sess.ex[0].slot_of, "romanian-deadlift", "today's lift stands in for the plan's NEW lift, not the removed one");
+  assert.equal(buildTargetsX(r.sess)[0].stood_in_for, "romanian-deadlift");
+  const same = replaceSlot(base, 0, { exercise: "romanian-deadlift" }, { expect: "cable-pull-through", planLift: "romanian-deadlift" });
+  assert.ok(!("slot_of" in same.sess.ex[0]), "today's lift IS the plan's new lift: no marker");
+});
+check("#rev7-b11 a permanent swap re-bases ONLY the plan's own lift — never a stand-in whose replacement happens to match today's", () => {
+  assert.equal(rebasesOnPermanent({ exercise: "hack-squat" }, { replaced_by: "leg-press", today: { id: "leg-press" } }), true);
+  assert.equal(rebasesOnPermanent({ exercise: "pec-deck", slot_of: "machine-chest-press", swap_why: "pick" }, { replaced_by: "dumbbell-fly", today: { id: "dumbbell-fly" } }), false, "the plan's lift for this slot is still the machine chest press");
+  assert.equal(rebasesOnPermanent({ exercise: "hack-squat" }, { replaced_by: "leg-press", today: { id: "goblet-squat" } }), false);
+  assert.equal(rebasesOnPermanent({ exercise: "hack-squat" }, { replaced_by: null, today: { id: "goblet-squat" } }), false);
+});
+check("#rev6-b11 a permanent replacement that IS the plan's new lift re-bases the slot: a later pick votes against it, and Undo re-bases back", () => {
+  const base = { name: "Lower", ex: [{ exercise: "hack-squat", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-2" }], i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
+  const perm = replaceSlot(base, 0, { exercise: "leg-press" }, { expect: "hack-squat", rebase: true });
+  assert.ok(perm.ok && !("slot_of" in perm.sess.ex[0]), "leg-press is the plan's lift now — no stand-in marker");
+  const why = swapWhyFor(perm.sess.ex[0], { picked: true });
+  const pick = replaceSlot(perm.sess, 0, { exercise: "pendulum-squat", swap_why: why }, { expect: "leg-press" });
+  assert.deepStrictEqual([buildTargets(pick.sess)[0].stood_in_for, buildTargets(pick.sess)[0].swap_why], ["leg-press", "pick"]);
+  const undo = replaceSlot(perm.sess, 0, base.ex[0], { expect: "leg-press", rebase: true });
+  assert.ok(undo.ok && !("slot_of" in undo.sess.ex[0]), "Undo of the permanent swap: hack-squat is the plan's lift again");
+  const today = replaceSlot(base, 0, { exercise: "goblet-squat" }, { expect: "hack-squat" });
+  assert.equal(today.sess.ex[0].slot_of, "hack-squat", "a today-only stand-in keeps its marker");
+});
+
+// Burst 11 review round 5 — the swap-reason state machine, EXHAUSTIVELY: every chain of up to four doors on one slot,
+// through the real replaceSlot / swapInRow / tiredSwapRow / easeSlot / swapWhyFor / buildTargets, against three invariants.
+//   I1 a vote, once cast (a pick against the plan's lift — not over a busy/tired stand-in), is never lost by a later door;
+//   I2 "pick" (which also credits the lift as liked) only when the lift in the slot was chosen by a pick on a slot that
+//      wasn't tired (easing it afterwards changes the dose, not that choice);
+//   I3 no vote without a pick.
+check("#rev5-b11 every chain of up to 4 swaps keeps a pick's vote, credits a liking only for a non-tired pick, and votes only after a pick", () => {
+  const DOORS = ["busy", "pick", "tired", "ease", "nomachine", "dislike", "replaced"]; // replaced: a permanent door whose replacement IS today's lift (re-based, round 6)
+  const base = { name: "Lower", ex: [{ exercise: "hack-squat", sets: 3, planned_sets: 3, rep_range: "8-12", rir: "1-2", suggested_kg: 60 }], i: 0, set: 0, logged: [], weights: {}, reps: {}, eff: {}, wUnits: {} };
+  const bad = []; let chains = 0, n = 0;
+  const walk = (sess, path, voted, lastLikable) => {
+    if (path.length) {
+      chains++;
+      const t = buildTargetsX(sess)[0];
+      const why = t.swap_why ?? null, vote = why === "pick" || why === "picked_over";
+      if (voted && !vote) bad.push(`I1 ${path.join(">")}: ${why}`);
+      if (why === "pick" && !lastLikable) bad.push(`I2 ${path.join(">")}`);
+      if (!voted && vote) bad.push(`I3 ${path.join(">")}: ${why}`);
+    }
+    if (path.length === 4) return;
+    for (const d of DOORS) {
+      const cur = sess.ex[0];
+      let next = null, likable = false, castsVote = voted;
+      if (d === "ease") {
+        const r = easeSlot(sess, 0, { expect: cur.exercise, stepKg: 2.5 });
+        if (!r.ok) continue;
+        next = r.sess;
+        likable = lastLikable; // easing changes the dose, not the lift — a liking earned by a non-tired pick stands
+      } else {
+        if (d === "replaced" && typeof cur.slot_of === "string") continue; // the app re-bases only the plan's own lift (round 7)
+        const undo = d === "pick" ? { picked: true } : d === "tired" ? { reason: "tired" } : d === "nomachine" || d === "dislike" || d === "replaced" ? { permanent: true } : {};
+        const why = swapWhyFor(cur, undo);
+        const row = { exercise: `lift-${++n}`, suggested_kg: 40, ...(why ? { swap_why: why } : {}) };
+        const r = replaceSlot(sess, 0, d === "tired" ? tiredSwapRow(row) : swapInRow(cur, row), { expect: cur.exercise, ...(d === "replaced" ? { rebase: true } : {}) });
+        if (!r.ok) continue;
+        next = r.sess;
+        // A pick casts a vote only against the PLAN's lift: on a non-tired slot holding that lift, or a stand-in that already
+        // carries a vote — never over a busy/tired stand-in (round 2 #2: the lifter never chose against the plan's lift).
+        if (d === "pick") { castsVote = voted || (!cur.tired && (typeof cur.slot_of !== "string" || cur.swap_why === "pick" || cur.swap_why === "picked_over")); likable = !cur.tired; }
+      }
+      // A re-based slot holds the plan's NEW lift: earlier votes were against a lift the plan no longer has.
+      walk(next, [...path, d], d === "replaced" ? false : castsVote, d === "replaced" ? false : likable);
+    }
+  };
+  walk(base, [], false, false);
+  assert.ok(chains > 1000, `swept ${chains} chains`);
+  assert.ok(bad.length === 0, `${bad.length} of ${chains} chains break an invariant: ${bad.slice(0, 8).join(" | ")}`);
+});
 
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

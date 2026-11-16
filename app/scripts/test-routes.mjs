@@ -8,14 +8,16 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createFileStore } from "../src/store.mjs";
 import { createApp } from "../src/app.mjs";
-import { requestMagicLink } from "../src/auth.mjs";
+import { requestMagicLink, sha256hex } from "../src/auth.mjs";
 import { isoWeekKey, isoWeekKeyLocal, GRADUATION, localDayKey, restSeconds, loadForReps } from "../../tools/derive-core.mjs";
 import { adaptiveTDEE } from "../../tools/nutrition-core.mjs";
 import { challengeSlots as challengeSlotsT, MAX_OPEN_CHALLENGES as MAX_OPEN_T } from "../src/adherence.mjs";
 import { SERVER_OWNED_PROFILE_FIELDS } from "../src/merge-archive.mjs";
 import { planFitCopy, planFitRequest, readoutLists } from "../public/ui-helpers.mjs";
 import { orderSupersetAdjacent, skipSet, buildTargets, nextSetHint, loggedWorkSets, localReadout, easeSlot } from "../public/session-core.mjs";
-import { generateUserPlan, userTimeFit, planOptsFor } from "../src/planner.mjs";
+import { generateUserPlan, userTimeFit, planOptsFor, userSubstitutes } from "../src/planner.mjs";
+import { exercises as kbExListForTest } from "../src/kb-data.mjs";
+const kbExForTest = new Map(kbExListForTest.map((e) => [e.id, e]));
 import { timeFitOptions, SPEC_MAX_BLOCKS as SPEC_MAX_T } from "../../tools/plan-core.mjs";
 
 let pass = 0, fail = 0;
@@ -416,6 +418,814 @@ try {
   ok("#C3 a re-picked lift is never stamped as swapped",
     !(po.plan_meta.swapped_this_block ?? []).includes("machine-chest-press"));
 
+  // W319 (owner: "I'm convinced the system isn't learning"): a BEGINNER reaches a learning boundary every 6 trained
+  // weeks too — a refit, not a block. A lift gone flat is swapped and the plan re-fits to their pace; the volume tune,
+  // the accessory rotation and the mesocycle (block_index) stay off until graduation. Counted on its own clock
+  // (plan_meta.refit_index) so no rebuild door ever reads a beginner as "in block 1".
+  {
+    const { exercises: kbEx } = await import("../src/kb-data.mjs");
+    const exById = new Map(kbEx.map((e) => [e.id, e]));
+    const bgU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const bg0 = await store.getUser(bgU);
+    const bgIds0 = bg0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+    // Lats, not chest: this beginner's chest pool is exactly the three presses the plan needs, so a flat chest press is
+    // honestly re-picked (#C3's pool-of-one rule) — a muscle with alternatives is what shows the swap.
+    const bgLift = bgIds0.includes("lat-pulldown") ? "lat-pulldown" : null;
+    const bgN = await plannedWeekSets(bgU, "lats");
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: bgU, session_id: `bg-${w}`, date: dayAgo(49 - w * 7),
+      sets: flatSets(bgLift, 40, bgN) });
+    await store.updateUser(bgU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56) }; return u; });
+    const bgToday = await (await app.request("/api/today", { headers: { "X-HB-User": bgU } })).json();
+    const bg1 = await store.getUser(bgU);
+    const bgIds1 = bg1.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise));
+    ok("#W319 fixture: the beginner's lat pulldown is in the plan and the user is still a beginner",
+      !!bgLift && bg1.profile.training_status === "beginner", JSON.stringify({ bgLift, st: bg1.profile.training_status }));
+    ok("#W319 a beginner crossing 6 trained weeks gets a refit (refit_index 1), not a block (block_index stays 0)",
+      bg1.plan_meta.refit_index === 1 && (bg1.plan_meta.block_index ?? 0) === 0, JSON.stringify({ r: bg1.plan_meta.refit_index, b: bg1.plan_meta.block_index }));
+    ok("#W319 the beginner's flat lift is swapped out and named as swapped",
+      !bgIds1.includes(bgLift) && (bg1.plan_meta.swapped_this_block ?? []).includes(bgLift), JSON.stringify({ swapped: bg1.plan_meta.swapped_this_block }));
+    ok("#W319 no volume tune for a beginner (novice progress is load-driven)",
+      Object.values(bg1.plan_meta.volume_adjust ?? {}).every((v) => v === 0));
+    const bgAnn = bgToday.session?.announcement ?? "";
+    ok("#W319 the refit is announced — the swap named — and never claims an accessory rotation",
+      /gone flat/.test(bgAnn) && !/rotated your accessory/.test(bgAnn), bgAnn);
+    // A cosmetic Settings save inside the refit window must not re-trigger it, nor drop the refit clock.
+    await json("POST", "/api/plan/regenerate", { user_id: bgU, profile: { session_length_min: 60 } });
+    const bgSaved = await store.getUser(bgU); // read BEFORE Today: a dropped clock would be silently re-run there
+    await app.request("/api/today", { headers: { "X-HB-User": bgU } });
+    const bg2 = await store.getUser(bgU);
+    ok("#W319 a cosmetic Settings rebuild keeps the refit clock (no second refit)",
+      bgSaved.plan_meta.refit_index === 1 && bg2.plan_meta.refit_index === 1 && bg2.plan_meta.rotated_at === bg1.plan_meta.rotated_at,
+      JSON.stringify({ saved: bgSaved.plan_meta.refit_index, after: bg2.plan_meta.refit_index }));
+  }
+
+  // W321: the one-screen preference quiz — `training_prefs`, through both doors (onboard + Settings), sanitized to the
+  // engine's enums and the KB's real ids, clearable, never wiped by a save that omits it, and a real training change.
+  {
+    const { PREF_STYLES, PREF_VARIETY } = await import("../../tools/plan-core.mjs");
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const tpU = (await json("POST", "/api/onboard", { profile: { ...base,
+      training_prefs: { style: ["machines", "junk", "machines"], variety: "fresh", avoid: ["barbell-back-squat", "not-an-id", 7], cardio: ["cycling", "pogo"], extra: 1 } } })).data.user_id;
+    const tp0 = (await store.getUser(tpU)).profile.training_prefs;
+    ok("#W321 onboard stores training_prefs sanitized: enum styles (deduped), variety, real exercise ids, KB cardio modalities, nothing else",
+      JSON.stringify(tp0) === JSON.stringify({ style: ["machines"], variety: "fresh", avoid: ["barbell-back-squat"], cardio: ["cycling"] }), JSON.stringify(tp0));
+    const tpStart = (await store.getUser(tpU)).plan_meta.block_start;
+    await new Promise((r) => setTimeout(r, 5));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: { style: ["free"], variety: "same", avoid: [], cardio: [] } } });
+    const tp1 = await store.getUser(tpU);
+    ok("#W321 a Settings save replaces the prefs (empty lists dropped) and is a real training change (a fresh block)",
+      JSON.stringify(tp1.profile.training_prefs) === JSON.stringify({ style: ["free"], variety: "same" }) && tp1.plan_meta.block_start !== tpStart,
+      JSON.stringify(tp1.profile.training_prefs));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { days_per_week: 4 } });
+    ok("#W321 a save that omits training_prefs keeps them", JSON.stringify((await store.getUser(tpU)).profile.training_prefs) === JSON.stringify({ style: ["free"], variety: "same" }));
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: "loads" } });
+    ok("#W321 junk collapses to no preference (null)", (await store.getUser(tpU)).profile.training_prefs === null);
+    await json("POST", "/api/plan/regenerate", { user_id: tpU, profile: { training_prefs: { style: [], avoid: ["nope"] } } });
+    ok("#W321 an all-empty answer is no preference (null), not an empty object", (await store.getUser(tpU)).profile.training_prefs === null);
+    const tpSchema = JSON.parse(readFileSync(new URL("../../data/schemas/onboarding-profile.schema.json", import.meta.url), "utf8")).properties?.training_prefs;
+    ok("#W321 the profile schema describes training_prefs with the engine's own enums",
+      JSON.stringify(tpSchema?.properties?.style?.items?.enum) === JSON.stringify(PREF_STYLES) && JSON.stringify(tpSchema?.properties?.variety?.enum?.filter((x) => x !== null)) === JSON.stringify(PREF_VARIETY),
+      JSON.stringify(tpSchema));
+  }
+
+  // W326 "Your pick" (adherence playbook: autonomy — choices offered, "not today" accepted): Today offers, per lift, the
+  // best same-family alternative that fits today's workout — one optional tap, through the Can't-do sheet's pick door,
+  // so the choice is recorded (swap_why "pick") and teaches the plan (W323). Never a lift they'd rather skip.
+  {
+    const { exercises: kbEx2 } = await import("../src/kb-data.mjs");
+    // plan-core's movement family (famOf), replicated: the pick must be the same KIND of lift, not just the same mechanic.
+    const famOfT = (p) => p === "squat" || p === "lunge" ? "knee" : p === "hinge" ? "hip" : /^(horizontal|vertical)-push$/.test(p) ? "push" : /^(horizontal|vertical)-pull$/.test(p) ? "pull" : p;
+    const exM = new Map(kbEx2.map((e) => [e.id, e]));
+    const ypU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ypT = await (await app.request("/api/today", { headers: { "X-HB-User": ypU } })).json();
+    const rows = ypT.session?.exercises ?? [], live = rows.map((r) => r.exercise);
+    const offered = rows.filter((r) => r.your_pick);
+    ok("#W326 Today offers a near-equal pick on some lifts — never one already in the workout, never on a superset member",
+      offered.length > 0 && offered.every((r) => !live.includes(r.your_pick.id) && !r.superset_with && typeof r.your_pick.name === "string"), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick])));
+    ok("#W326 …each the same kind of lift (same mechanic AND movement family)", offered.every((r) => exM.get(r.exercise)?.mechanic === exM.get(r.your_pick.id)?.mechanic
+      && famOfT(exM.get(r.exercise)?.movement_pattern) === famOfT(exM.get(r.your_pick.id)?.movement_pattern)), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick.id])));
+    const fitsToday = await Promise.all(offered.map(async (r) => (await (await app.request(`/api/exercise/${r.exercise}/alternatives?session=${encodeURIComponent(ypT.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives.some((a) => a.id === r.your_pick.id)));
+    ok("#W326 …and every pick is among today's fitting alternatives", fitsToday.every(Boolean), JSON.stringify(fitsToday));
+    const r0 = offered[0];
+    const took = r0 ? await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: r0.exercise, scope: "today", session: ypT.session.name, live, pick: r0.your_pick.id }) : null;
+    ok("#W326 taking the pick goes through the pick door (it fits, by construction)", took?.status === 200 && took.data.replaced_by === r0.your_pick.id, JSON.stringify(took?.data));
+    // …and never one that doesn't FIT today: a day already holding two other horizontal presses can't take a third (the
+    // per-session family cap), so the pick for its first press must come from elsewhere in the push family, or not at all.
+    const fcU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: fcU, program: { name: "Push", sessions: [{ name: "Push", exercises: [
+      { exercise: "dumbbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "barbell-bench-press", sets: 3, rep_range: "6-10", rir: "1-2" },
+      { exercise: "machine-chest-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+    const fcT = await (await app.request("/api/today", { headers: { "X-HB-User": fcU } })).json();
+    const fcRow = (fcT.session?.exercises ?? []).find((r) => r.exercise === "dumbbell-bench-press");
+    ok("#W326 a pick never breaks today's workout (no third horizontal press on a day with two)", !!fcRow && (!fcRow.your_pick || exM.get(fcRow.your_pick.id)?.movement_pattern !== "horizontal-push"),
+      JSON.stringify(fcRow?.your_pick));
+
+    // A lift they'd rather skip is never offered — even where every same-family option is on the skip list (the ranking
+    // alone would still hand one back). Written straight to the profile, so the plan itself doesn't move.
+    const r1 = offered[1] ?? offered[0];
+    const fam1 = kbEx2.filter((e) => e.id !== r1.exercise && e.mechanic === exM.get(r1.exercise).mechanic && famOfT(e.movement_pattern) === famOfT(exM.get(r1.exercise).movement_pattern)).map((e) => e.id).slice(0, 40);
+    await store.updateUser(ypU, (u) => { u.profile = { ...u.profile, training_prefs: { avoid: fam1 } }; return u; });
+    const ypT2 = await (await app.request("/api/today", { headers: { "X-HB-User": ypU } })).json();
+    const row1 = (ypT2.session?.exercises ?? []).find((r) => r.exercise === r1.exercise);
+    ok("#W326 a lift on the skip list is never the pick — even when the whole family is skipped", !!row1 && !row1.your_pick, JSON.stringify(row1?.your_pick));
+  }
+
+  // W323: quiet preference learning. "Just not for me" (one tap on the Can't-do sheet) is a SOFT, reversible no stored in
+  // training_prefs.avoid — never "no machine"; and the swaps a lifter already makes teach the plan (busy/pick, never tired).
+  {
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const dlU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const dl0 = await store.getUser(dlU);
+    const holds = (u, id) => u.program.sessions.some((s) => s.exercises.some((e) => e.exercise === id));
+    // A lift the generator itself would swap away on a skip (the seed is the random user_id — never assume a slot).
+    const swappable = (u) => u.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !holds(generateUserPlan({ ...u.profile, training_prefs: { avoid: [id] } }, planOptsFor(u)), id));
+    const X = swappable(dl0), dlSess = dl0.program.sessions.find((s) => s.exercises.some((e) => e.exercise === X));
+    const nope = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "today", reason: "dislike", session: dlSess.name });
+    ok("#W323 'not for me' is a permanent answer only (today + dislike is refused)", nope.status === 400);
+    const dl = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "always", reason: "dislike", session: dlSess.name, live: dlSess.exercises.map((e) => e.exercise) });
+    const dl1 = await store.getUser(dlU);
+    ok("#W323 'Just not for me' swaps the lift out and records a soft no in training_prefs.avoid — not 'no machine'",
+      dl.status === 200 && dl.data.reason === "dislike" && !!dl.data.replaced_by && !holds(dl1, X) && (dl1.profile.training_prefs?.avoid ?? []).includes(X)
+      && !(dl1.profile.unavailable_exercises ?? []).some((r) => r.id === X), JSON.stringify({ st: dl.status, d: dl.data, tp: dl1.profile.training_prefs }));
+    const exDl = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": dlU } })).json();
+    ok("#W323 the Plan tab lists it under the lifts you'd rather skip, with its name", (exDl.skipped ?? []).some((x) => x.id === X && typeof x.name === "string" && x.name.length > 0), JSON.stringify(exDl.skipped));
+    // "No machine" on another lift must not throw away the dislike's exact undo (one snapshot store, both lists).
+    const zSess = dl1.program.sessions.find((s) => s.exercises.some((e) => e.exercise !== X)), Z = zSess.exercises.find((e) => e.exercise !== X).exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: Z, scope: "always", session: zSess.name });
+    const back = await json("POST", "/api/exercise/cant-do", { user_id: dlU, exercise: X, scope: "undo" });
+    const dl2 = await store.getUser(dlU);
+    ok("#W323 Bring back takes it off the skip list and puts it back in the plan",
+      back.status === 200 && !(dl2.profile.training_prefs?.avoid ?? []).includes(X) && holds(dl2, X), JSON.stringify(back.data));
+    // A soft no with nothing appropriate in its place: kept, and said. Found, not assumed (the seed is the random user_id):
+    // a lift the generator keeps even with it on the skip list.
+    const moU = (await json("POST", "/api/onboard", { profile: { ...base, available_equipment: ["machine"] } })).data.user_id;
+    const mo = await store.getUser(moU);
+    const moX = mo.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => holds(generateUserPlan({ ...mo.profile, training_prefs: { avoid: [id] } }, planOptsFor(mo)), id));
+    const moSess = moX && mo.program.sessions.find((s) => s.exercises.some((e) => e.exercise === moX));
+    const moR = moSess ? await json("POST", "/api/exercise/cant-do", { user_id: moU, exercise: moX, scope: "always", reason: "dislike", session: moSess.name }) : null;
+    const mo1 = await store.getUser(moU);
+    ok(`#W323 'not for me' on a lift with no appropriate alternative keeps it, records the preference, and says so (${moX})`,
+      moR?.status === 200 && moR.data.kept === true && holds(mo1, moX) && (mo1.profile.training_prefs?.avoid ?? []).includes(moX), JSON.stringify(moR?.data));
+
+    // The swap's reason rides the workout (busy / pick / tired), only beside a stood_in_for, only from the enum.
+    const swU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const A = swappable(await store.getUser(swU));
+    const tgt = (why, extra = {}) => [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: why, ...extra }];
+    await json("POST", "/api/session", { user_id: swU, session_id: "sw-junk", date: dAgo(40), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }],
+      targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "hated" }, { exercise: "leg-press", sets: 3, swap_why: "busy" }] });
+    const junk = (await store.listSessions(swU)).find((x) => x.session_id === "sw-junk");
+    ok("#W323 swap_why is kept only from the enum and only beside stood_in_for", junk.targets.every((t) => !("swap_why" in t)), JSON.stringify(junk.targets));
+    const poU = (await json("POST", "/api/onboard", { profile: base })).data.user_id; // its own user: swU's pick counts are under test below
+    await json("POST", "/api/session", { user_id: poU, session_id: "sw-po", date: dAgo(39), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }],
+      targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: A, swap_why: "picked_over" }] });
+    ok("#rev3-b11 'picked_over' rides through the session whitelist", (await store.listSessions(poU)).find((x) => x.session_id === "sw-po")?.targets?.[0]?.swap_why === "picked_over");
+    for (const [i, why] of [["1", "tired"], ["2", "busy"], ["3", "pick"], ["4", "pick"]]) await json("POST", "/api/session", { user_id: swU, session_id: `sw-${i}`, date: dAgo(30 - 5 * +i),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt(why) });
+    const sw1 = await store.getUser(swU);
+    ok("#W323 tired and busy swaps teach nothing (review #14); two picks aren't enough", !(sw1.plan_meta.pref_scores?.[A] > 0), JSON.stringify(sw1.plan_meta.pref_scores));
+    await json("POST", "/api/session", { user_id: swU, session_id: "sw-5", date: dAgo(3), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: tgt("pick") });
+    const sw2 = await store.getUser(swU);
+    ok("#W323 the third pick over it in 8 weeks is learned at the workout (plan_meta.pref_scores)", sw2.plan_meta.pref_scores?.[A] === 1, JSON.stringify(sw2.plan_meta.pref_scores));
+    // …and lands at the next block boundary: out of the plan, named once.
+    await store.updateUser(swU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: swU, session_id: `swb-${w}`, date: dayAgo(48 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60 + w * 2.5, reps: 8 }] });
+    const swToday = await (await app.request("/api/today", { headers: { "X-HB-User": swU } })).json();
+    const sw3 = await store.getUser(swU);
+    ok("#W323 at the boundary the learned dislike swaps it out and says why, once",
+      (sw3.plan_meta.block_index ?? 0) >= 1 && !holds(sw3, A) && (sw3.plan_meta.learned_out ?? []).includes(A) && /swapped .* out/i.test(swToday.session?.announcement ?? ""),
+      JSON.stringify({ b: sw3.plan_meta.block_index, lo: sw3.plan_meta.learned_out, ann: swToday.session?.announcement }));
+    const exSw = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": swU } })).json();
+    ok("#W323 the Plan tab lists the learned swap-out with a way back", (exSw.learned_out ?? []).some((x) => x.id === A), JSON.stringify(exSw.learned_out));
+    const keep = await json("POST", "/api/exercise/cant-do", { user_id: swU, exercise: A, scope: "undo" });
+    const sw4 = await store.getUser(swU);
+    ok("#W323 Bring back on a learned swap-out keeps it from now on (pref_kept), and it returns to the plan",
+      keep.status === 200 && (sw4.plan_meta.pref_kept ?? []).includes(A) && !(sw4.plan_meta.pref_scores?.[A] > 0) && holds(sw4, A) && !(sw4.plan_meta.learned_out ?? []).includes(A),
+      JSON.stringify({ st: keep.status, d: keep.data, kept: sw4.plan_meta.pref_kept, sc: sw4.plan_meta.pref_scores }));
+
+    // Review #1/#15: a learned dislike STICKS until Bring back. Once it's out of the plan it can't be swapped again, so
+    // the 8-week evidence window would empty and the lift would return unannounced at the next rebuild.
+    const stU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    const S = swappable(await store.getUser(stU));
+    for (const [i, d] of [[1, 60], [2, 53], [3, 46]]) await json("POST", "/api/session", { user_id: stU, session_id: `st-${i}`, date: dAgo(d),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: S, swap_why: "pick" }] });
+    // Those picks are 46-60 days old (aged past the window); the dislike they taught was learned back then — seeded here as
+    // stored — and a rebuild (a cosmetic Settings save) took the lift out.
+    await store.updateUser(stU, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: stU, profile: { units: "metric" } });
+    const st1 = await store.getUser(stU);
+    await json("POST", "/api/session", { user_id: stU, session_id: "st-4", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await json("POST", "/api/plan/regenerate", { user_id: stU, profile: { units: "imperial" } });
+    const st2 = await store.getUser(stU);
+    ok("#rev-b11 a learned dislike sticks after its swaps age past 8 weeks: still learned, still out of the plan",
+      !holds(st1, S) && st2.plan_meta.pref_scores?.[S] === 1 && !holds(st2, S), JSON.stringify({ out1: !holds(st1, S), sc: st2.plan_meta.pref_scores, out2: !holds(st2, S) }));
+    // Review #7/#11: the learned list names only lifts the LEARNING took out — not a "No machine", not a skip, never on a hand-edited plan.
+    await json("POST", "/api/exercise/cant-do", { user_id: stU, exercise: S, scope: "always" }); // No machine, on a lift already out of the plan
+    const exSt = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    ok("#rev-b11 a lift that is also 'No machine' isn't listed as learned out (its Bring back would delete the exclusion)", !(exSt.learned_out ?? []).some((x) => x.id === S), JSON.stringify(exSt.learned_out));
+    await json("POST", "/api/exercise/cant-do", { user_id: stU, exercise: S, scope: "undo" });
+    const cuEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    const cut = cuEx.program.sessions[0].exercises.pop().exercise; // removed by hand…
+    await json("POST", "/api/plan/save", { user_id: stU, program: cuEx.program });
+    await store.updateUser(stU, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { ...(u.plan_meta.pref_scores ?? {}), [cut]: 1 } }; return u; }); // …and learned against too
+    const exCu = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": stU } })).json();
+    ok("#rev-b11 a hand-edited plan lists nothing as learned out (learning is paused)", exCu.program.custom === true && (exCu.learned_out ?? []).length === 0, JSON.stringify(exCu.learned_out));
+  }
+
+  // Burst 11 review (#5 #6 #13): a Settings save that changes nothing must never restart the block — not for a lifter who
+  // onboarded before training_prefs existed (missing vs the client's all-empty → null), and not after "Just not for me"
+  // stored the same preferences in a different key order.
+  {
+    const base = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const midBlock = (u) => { u.plan_meta = { ...u.plan_meta, block_index: 2, block_start: dayAgo(30) }; return u; };
+    const legU = (await json("POST", "/api/onboard", { profile: base })).data.user_id;
+    await store.updateUser(legU, (u) => { delete u.profile.training_prefs; return midBlock(u); });
+    const lp = (await store.getUser(legU)).profile;
+    const legR = await json("POST", "/api/plan/regenerate", { user_id: legU, profile: { ...lp, training_prefs: { style: [], variety: null, avoid: [], cardio: [] } } });
+    const leg1 = await store.getUser(legU);
+    ok("#rev-b11 a pre-W321 lifter's unchanged Settings save keeps their block (missing prefs == no prefs)", legR.status === 200 && leg1.plan_meta.block_index === 2, JSON.stringify({ st: legR.status, b: leg1.plan_meta.block_index }));
+    // canon itself is key-order-blind (defense behind the sanitizer): prefs stored in a non-canonical order, resent canonically.
+    await store.updateUser(legU, (u) => { u.profile.training_prefs = { cardio: ["walking"], avoid: ["leg-press"] }; return midBlock(u); });
+    const ordR = await json("POST", "/api/plan/regenerate", { user_id: legU, profile: { training_prefs: { avoid: ["leg-press"], cardio: ["walking"] } } });
+    ok("#rev-b11 the same prefs in another key order are no training change", ordR.status === 200 && (await store.getUser(legU)).plan_meta.block_index === 2);
+    const koU = (await json("POST", "/api/onboard", { profile: { ...base, training_prefs: { cardio: ["walking"] } } })).data.user_id;
+    await store.updateUser(koU, midBlock);
+    const ko0 = await store.getUser(koU);
+    const koX = ko0.program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: koU, exercise: koX, scope: "always", reason: "dislike", session: ko0.program.sessions[0].name });
+    const kp = (await store.getUser(koU)).profile;
+    await json("POST", "/api/plan/regenerate", { user_id: koU, profile: { ...kp, training_prefs: { style: [], variety: null, avoid: kp.training_prefs.avoid, cardio: ["walking"] } } });
+    const ko1 = await store.getUser(koU);
+    ok("#rev-b11 after 'Just not for me', an unchanged Settings save keeps the block (key order never matters)", ko1.plan_meta.block_index === 2, JSON.stringify({ b: ko1.plan_meta.block_index, tp: kp.training_prefs }));
+    ok("#rev-b11 …and the stored prefs are in the sanitizer's canonical order", JSON.stringify(Object.keys(kp.training_prefs)) === JSON.stringify(["avoid", "cardio"]), JSON.stringify(kp.training_prefs));
+  }
+
+  // Round 8 #0: a permanent door on a picked stand-in never hands back the lift ruled out today (W275), so the pick's
+  // vote survives. Built so the stand-in's plan replacement on its other day IS the ruled-out lift.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const u8 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    await json("POST", "/api/plan/save", { user_id: u8, program: { name: "Two", sessions: [
+      { name: "Day A", exercises: [{ exercise: "romanian-deadlift", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "lat-pulldown", sets: 3, rep_range: "8-12", rir: "1-2" }] },
+      { name: "Day B", exercises: [{ exercise: "dumbbell-romanian-deadlift", sets: 3, rep_range: "6-10", rir: "1-2" }, { exercise: "leg-press", sets: 3, rep_range: "8-12", rir: "1-2" }] }] } });
+    const live1 = ["dumbbell-romanian-deadlift", "leg-press"];
+    const pk = await json("POST", "/api/exercise/cant-do", { user_id: u8, exercise: "dumbbell-romanian-deadlift", scope: "today", session: "Day B", live: live1, pick: "romanian-deadlift" });
+    const nm = await json("POST", "/api/exercise/cant-do", { user_id: u8, exercise: "romanian-deadlift", scope: "always", session: "Day B",
+      live: ["romanian-deadlift", "leg-press"], exclude: ["dumbbell-romanian-deadlift"], slot_of: "dumbbell-romanian-deadlift" });
+    ok("#rev8-b11 fixture: the stand-in's plan replacement IS the lift ruled out today", pk.status === 200 && nm.status === 200 && nm.data.replaced_by === "dumbbell-romanian-deadlift", JSON.stringify(nm.data && { rb: nm.data.replaced_by, today: nm.data.today }));
+    ok("#rev8-b11 …and today's lift is never that ruled-out lift", !!nm.data.today && nm.data.today.id !== "dumbbell-romanian-deadlift", JSON.stringify(nm.data.today));
+  }
+  // Round 8 #4: handing a hand-edited plan back to the coach starts a fresh block — no stale clock rebuilding it again.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const hb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb } })).json();
+    hbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb, program: hbEx.program });
+    for (let w = 0; w < 14; w++) await json("POST", "/api/session", { user_id: hb, session_id: `hb-${w}`, date: dayAgo(98 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60, reps: 8 }] });
+    await store.updateUser(hb, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(100), block_index: 0 }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb }); // "Let the coach take over again"
+    const hb1 = await store.getUser(hb);
+    const t = await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json();
+    const hb2 = await store.getUser(hb);
+    ok("#rev8-b11 the hand-back starts a fresh block (no phantom 'New block' rebuild on the next Today)",
+      (hb1.plan_meta.block_index ?? 0) === 0 && Date.parse(hb1.plan_meta.block_start) > Date.now() - 3600e3 && (hb2.plan_meta.block_index ?? 0) === 0 && !/New block/.test(t.session?.announcement ?? ""),
+      JSON.stringify({ b1: hb1.plan_meta.block_index, start: hb1.plan_meta.block_start, b2: hb2.plan_meta.block_index, ann: t.session?.announcement }));
+  }
+
+  // Round 8 #3: a hand-edited plan (learning paused) gets no "Your pick", and Today says learning is paused so the player's
+  // pick copy never promises a plan change it can't make.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const cp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const cpEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cp } })).json();
+    cpEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: cp, program: cpEx.program });
+    const cpT = await (await app.request("/api/today", { headers: { "X-HB-User": cp } })).json();
+    ok("#rev8-b11 a hand-edited plan offers no 'Your pick' and Today says learning is paused",
+      (cpT.session?.exercises ?? []).every((r) => !r.your_pick) && cpT.session?.learning_paused === true, JSON.stringify({ lp: cpT.session?.learning_paused }));
+  }
+  // Round 8 #5: a preference edit that doesn't change the lifting plan (cardio only) is not a training change — the block
+  // and a beginner's refit clock keep running.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const ce = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const start = dayAgo(30);
+    await store.updateUser(ce, (u) => { u.plan_meta = { ...u.plan_meta, block_start: start }; return u; });
+    const before = await store.getUser(ce);
+    await json("POST", "/api/plan/regenerate", { user_id: ce, profile: { training_prefs: { cardio: ["walking", "cycling"] } } });
+    const after = await store.getUser(ce);
+    ok("#rev8-b11 a cardio-only preference edit keeps the block clock (lifting plan unchanged)",
+      after.plan_meta.block_start === start && JSON.stringify(after.program.sessions) === JSON.stringify(before.program.sessions) && JSON.stringify(after.profile.training_prefs.cardio) === JSON.stringify(["walking", "cycling"]),
+      JSON.stringify({ start: after.plan_meta.block_start }));
+  }
+
+  // Round 8 #1: the beginner refit names the lifts that changed — never a pace re-size it didn't make.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const rf = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const rf0 = await store.getUser(rf);
+    const sess0 = rf0.program.sessions[0];
+    const orig = sess0.exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: rf, exercise: orig, scope: "always", session: sess0.name }); // an in-place "No machine" swap…
+    await json("POST", "/api/exercise/cant-do", { user_id: rf, exercise: orig, scope: "undo" }); // …brought back (the plan stays in-place-edited only if not exact)
+    await store.updateUser(rf, (u) => { // an in-place difference a regenerate would undo: one lift swapped by hand-free means
+      const s0 = u.program.sessions[0]; const alt = userSubstitutes(u, s0.exercises[0].exercise, { sessionName: s0.name }).find((x) => x.fits);
+      if (alt) s0.exercises[0] = { ...s0.exercises[0], exercise: alt.id };
+      u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), pace: { heavy: 200, moderate: 150, isolation: 110, transition: 120 } }; return u; });
+    const swappedIn = (await store.getUser(rf)).program.sessions[0].exercises[0].exercise;
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: rf, session_id: `rf-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20 + w * 2.5, reps: 10 }] });
+    const rfT = await (await app.request("/api/today", { headers: { "X-HB-User": rf } })).json();
+    const ann = rfT.session?.announcement ?? "";
+    const name = (id) => kbExForTest.get(id)?.name ?? id;
+    ok("#rev8-b11 the refit note names the lift that changed, and claims no pace re-size it didn't make",
+      // (plan-wide since round 14: the hand-swapped lift stays on another day, so the change is the lift that JOINED the plan)
+      swappedIn !== orig && /joined your plan|made way for/.test(ann) && !/re-sized your sessions to the pace/.test(ann), ann);
+  }
+
+  // Round 10 #2: the preferences-only probe compares the plan the OLD prefs generate with the one the NEW prefs generate —
+  // never the stored plan, which an in-place "No machine" swap legitimately differs from.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const pp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const pp0 = await store.getUser(pp);
+    const nmX = pp0.program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/exercise/cant-do", { user_id: pp, exercise: nmX, scope: "always", session: pp0.program.sessions[0].name });
+    const start = dayAgo(20);
+    await store.updateUser(pp, (u) => { u.plan_meta = { ...u.plan_meta, block_start: start, block_index: 1 }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: pp, profile: { training_prefs: { cardio: ["walking"] } } });
+    const pp1 = await store.getUser(pp);
+    ok("#rev10-b11 after an in-place No-machine swap, a cardio-only edit still keeps the block", pp1.plan_meta.block_start === start && pp1.plan_meta.block_index === 1, JSON.stringify({ s: pp1.plan_meta.block_start, b: pp1.plan_meta.block_index }));
+  }
+  // Round 10 #3: picks made while learning is paused (a hand-edited plan) never vote — the copy said "just for today".
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const pz = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const pzEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": pz } })).json();
+    const Pz = pzEx.program.sessions[0].exercises[0].exercise;
+    pzEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: pz, program: pzEx.program });
+    for (const [i, d] of [[1, 20], [2, 13], [3, 6]]) await json("POST", "/api/session", { user_id: pz, session_id: `pz-${i}`, date: dAgo(d), learning_paused: true,
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Pz, swap_why: "pick" }] });
+    const pzu = await store.getUser(pz);
+    ok("#rev10-b11 picks made while learning is paused never become a learned dislike", !(pzu.plan_meta.pref_scores?.[Pz] > 0), JSON.stringify(pzu.plan_meta.pref_scores));
+    // Round 11 #3: decided by the workout (learning_paused it carries), not by the plan's state when it syncs.
+    const lp = (await json("POST", "/api/onboard", { profile: rp })).data.user_id; // a generated plan…
+    const Lp = (await store.getUser(lp)).program.sessions[0].exercises[0].exercise;
+    await json("POST", "/api/session", { user_id: lp, session_id: "lp-1", date: dAgo(3), learning_paused: true, // …but the workout was done while paused
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Lp, swap_why: "pick" }] });
+    // Round 12 #3: a payload that says nothing (an old or queued client) falls back to the plan's own state.
+    await json("POST", "/api/session", { user_id: pz, session_id: "pz-old", date: dAgo(2),
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Pz, swap_why: "pick" }] });
+    ok("#rev12-b11 an old client's workout over a hand-edited plan carries no vote", !("swap_why" in ((await store.listSessions(pz)).find((x) => x.session_id === "pz-old")?.targets?.[0] ?? {})));
+    await json("POST", "/api/session", { user_id: pz, session_id: "pz-np", date: dAgo(1), learning_paused: false,
+      sets: [{ exercise: "goblet-squat", set_type: "work", weight_kg: 20, reps: 10 }], targets: [{ exercise: "goblet-squat", sets: 3, stood_in_for: Pz, swap_why: "pick" }] });
+    ok("#rev12-b11 …while a workout that says it wasn't paused keeps its vote", ((await store.listSessions(pz)).find((x) => x.session_id === "pz-np")?.targets?.[0] ?? {}).swap_why === "pick");
+    ok("#rev11-b11 a workout done while learning was paused carries no vote, whatever the plan is when it syncs",
+      !("swap_why" in ((await store.listSessions(lp)).find((x) => x.session_id === "lp-1")?.targets?.[0] ?? {})));
+  }
+  // Round 10 #3 (second half): a hand-back that applies dislikes learned BEFORE the plan was edited names what they removed.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const hb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hb0 = await store.getUser(hb);
+    const HX = hb0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !generateUserPlan(hb0.profile, planOptsFor(hb0, { prefScores: { [id]: 1 } })).program.sessions.some((s) => s.exercises.some((e) => e.exercise === id)));
+    const hbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb } })).json();
+    hbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb, program: hbEx.program });
+    await store.updateUser(hb, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [HX]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb }); // "Let the coach take over again"
+    const hbT = await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json();
+    const hbName = kbExForTest.get(HX)?.name ?? HX;
+    ok("#rev10-b11 the hand-back names a lift its learned dislikes removed", !!HX && (await store.getUser(hb)).plan_meta.learned_out?.includes(HX) && (hbT.session?.announcement ?? "").includes(hbName),
+      JSON.stringify({ HX, lo: (await store.getUser(hb)).plan_meta.learned_out, ann: hbT.session?.announcement }));
+    // Round 11 #0: …in its OWN words — never the new-block or refit copy (no rotation happened, no six weeks were logged).
+    // Round 12 #2: a cosmetic rebuild in the window keeps the hand-back note.
+    await json("POST", "/api/plan/regenerate", { user_id: hb, profile: { units: "metric" } });
+    ok("#rev12-b11 a cosmetic save keeps the hand-back note", /Back on the coach's plan/.test((await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json()).session?.announcement ?? ""));
+    // Round 12 #1: …but an edit ends it (learning is paused again; the note's Bring back isn't there).
+    const hbAgain = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb } })).json();
+    hbAgain.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb, program: hbAgain.program });
+    ok("#rev12-b11 a re-edit after the hand-back ends its note", !/Back on the coach's plan/.test((await (await app.request("/api/today", { headers: { "X-HB-User": hb } })).json()).session?.announcement ?? ""));
+    ok("#rev11-b11 the hand-back note says what happened, not 'New block'/'Six more weeks'/'Your main lifts stay'",
+      /Back on the coach's plan/.test(hbT.session?.announcement ?? "") && !/New block|Six more weeks|Your main lifts stay/.test(hbT.session?.announcement ?? ""), hbT.session?.announcement);
+    // Round 11 #1: a hand-back that also changes Settings credits the learning only for lifts the learning took out.
+    const hb2 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const hb2u = await store.getUser(hb2);
+    const MX = hb2u.program.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)).find((id) => kbExForTest.get(id)?.equipment === "machine");
+    const hb2Ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": hb2 } })).json();
+    hb2Ex.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: hb2, program: hb2Ex.program });
+    await store.updateUser(hb2, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [MX]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: hb2, profile: { available_equipment: rp.available_equipment.filter((q) => q !== "machine") } });
+    ok("#rev11-b11 a lift the new equipment removed is never credited to the learning", !!MX && !((await store.getUser(hb2)).plan_meta.learned_out ?? []).includes(MX), JSON.stringify({ MX, lo: (await store.getUser(hb2)).plan_meta.learned_out }));
+  }
+  // Rounds 10-13: the refit note names only what is TRUE of the live plan, per day — decided when Today renders it, so no
+  // rebuild door has to keep the stored diff in sync (a cosmetic save, a Bring back, a lift that only moved days).
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const kd = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const kd0 = await store.getUser(kd);
+    const [d1, d2] = [kd0.program.sessions[0], kd0.program.sessions[1]];
+    const X = d1.exercises[0].exercise, M = d2.exercises[0].exercise; // X held on day 1; M held on day 2
+    const ann = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": kd } })).json()).session?.announcement ?? "";
+    const nm = (id) => kbExForTest.get(id)?.name ?? id;
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), // (0: no trained weeks yet — no live refit overwrites the fixture)
+      refit_diff: { out: ["sissy-squat", M], in: [X] } }; return u; }); // M: recorded as out, but still in the plan
+    const a1 = await ann();
+    ok("#rev13-b11 the refit note names a real change and never a lift still in the plan as gone (round 14 #2)",
+      a1.includes(`Sissy Squat made way for ${nm(X)}`) && !a1.includes(`${nm(M)} made way`) && !a1.includes(`${nm(M)} left`), a1);
+    await json("POST", "/api/plan/regenerate", { user_id: kd, profile: { units: "metric" } }); // a cosmetic save
+    ok("#rev13-b11 a cosmetic save leaves the note exactly as it was", (await ann()) === a1, await ann());
+    // A learned-out lift that is back in the plan (Brought back) is never named as swapped out.
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [X] }; return u; });
+    ok("#rev13-b11 a learned-out lift back in the plan is never named as swapped out", !(await ann()).includes(`You've swapped ${nm(X)} out`), await ann());
+    await store.updateUser(kd, (u) => { u.plan_meta = { ...u.plan_meta, learned_out: [] }; return u; });
+    await store.updateUser(kd, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.map((e) => (e.exercise === X ? { ...e, exercise: "pendulum-squat" } : e)); return u; });
+    const a2 = await ann();
+    ok("#rev13-b11 a change no longer true of the plan (X left again) is no longer named", !a2.includes(nm(X)) && /left your plan/.test(a2), a2);
+    // The plan made the lifter's own (an edit) ends the note: nothing it names would be acted on, and no Bring back is offered.
+    const kdEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": kd } })).json();
+    kdEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: kd, program: kdEx.program });
+    ok("#rev13-b11 a hand-edited plan shows no refit/new-block note", !/Six more weeks|New block/.test(await ann()), await ann());
+  }
+
+  // Round 13 #2: graduating on the first Today after a hand-back keeps the hand-back note (and the lifts it names).
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 45,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const gb = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const gbEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": gb } })).json();
+    gbEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: gb, program: gbEx.program });
+    for (let w = 0; w < GRADUATION.intermediate.weeks; w++) for (let k = 0; k < 2; k++)
+      await store.addSession(gb, { session_id: `gb-${w}-${k}`, date: dayAgo(GRADUATION.intermediate.weeks * 7 - w * 7 - k + 2), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40 + w, reps: 8 }] });
+    await json("POST", "/api/plan/regenerate", { user_id: gb }); // hand back
+    const gbT = await (await app.request("/api/today", { headers: { "X-HB-User": gb } })).json();
+    const gbU = await store.getUser(gb);
+    ok("#rev13-b11 graduating right after a hand-back keeps the hand-back note beside the graduation",
+      gbU.profile.training_status === "intermediate" && /Back on the coach's plan/.test(gbT.session?.announcement ?? "") && /🎓/.test(gbT.session?.announcement ?? ""),
+      JSON.stringify({ st: gbU.profile.training_status, ann: gbT.session?.announcement }));
+  }
+
+  // Round 14: the notes layer, against the plan and the Plan tab as they are.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const gradUser = async () => {
+      const g = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+      const plan = (await store.getUser(g)).program;
+      for (let w = 0; w < GRADUATION.intermediate.weeks + 1; w++) for (const [k, sx] of plan.sessions.slice(0, 2).entries())
+        await store.addSession(g, { session_id: `g${g.slice(0, 4)}-${w}-${k}`, date: dayAgo((GRADUATION.intermediate.weeks + 1) * 7 - w * 7 - k + 3), sets: sx.exercises.map((e) => ({ exercise: e.exercise, set_type: "work", weight_kg: 20 + w, reps: 8 })) });
+      return g;
+    };
+    const annOf = async (uid) => (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session?.announcement ?? "";
+    // #0 #6: graduation rebuilds the whole plan — its own note, never "New block … Your main lifts stay".
+    const g1 = await gradUser();
+    const a1 = await annOf(g1);
+    ok("#rev14-b11 graduation says its own thing, never 'New block … Your main lifts stay'", /🎓/.test(a1) && !/New block|Your main lifts stay/.test(a1), a1);
+    // #5: an edit right after graduating ends the graduation note (its promises are paused on a hand-edited plan).
+    const gEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": g1 } })).json();
+    gEx.program.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: g1, program: gEx.program });
+    ok("#rev14-b11 no graduation note over a hand-edited plan", !/🎓/.test(await annOf(g1)), await annOf(g1));
+    // #1: a learned-out note offers Bring back only while the Plan tab lists the lift (an injury since ruled it out).
+    const iu = (await json("POST", "/api/onboard", { profile: { ...rp, training_status: "intermediate" } })).data.user_id;
+    const iu0 = await store.getUser(iu);
+    const LB = iu0.program.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)).find((id) => ["romanian-deadlift", "dumbbell-romanian-deadlift", "conventional-deadlift", "barbell-row", "good-morning", "hack-squat", "barbell-back-squat"].includes(id));
+    await store.updateUser(iu, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [LB]: 1 }, learned_out: [LB], rotated_at: new Date().toISOString() };
+      for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== LB); return u; });
+    const before = await annOf(iu);
+    await json("POST", "/api/profile/injury", { user_id: iu, region: "lower-back" });
+    const ex1 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": iu } })).json();
+    const after = await annOf(iu);
+    const nmLB = kbExForTest.get(LB)?.name ?? LB;
+    ok("#rev14-b11 a learned-out lift an injury now rules out is never offered back on the Plan tab",
+      !!LB && before.includes(nmLB) && !(ex1.learned_out ?? []).some((x) => x.id === LB) && !after.includes(`swapped ${nmLB} out`), JSON.stringify({ LB, before, after, lo: ex1.learned_out }));
+  }
+  // Round 14 (notes harness, N5): "Your main lifts stay" only while every main lift the plan held going into the block
+  // still is — a learned dislike, a stall or an injury can take one out; the one that left is named.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const ms = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    await store.updateUser(ms, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return u; });
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: ms, session_id: `ms-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 60 + w * 2.5, reps: 8 }] });
+    const annMs = async () => (await (await app.request("/api/today", { headers: { "X-HB-User": ms } })).json()).session?.announcement ?? "";
+    const msA = await annMs();
+    const msU = await store.getUser(ms);
+    const C = (msU.plan_meta.main_before ?? []).find((id) => msU.program.sessions.some((x) => x.exercises.some((e) => e.exercise === id)));
+    ok("#rev14-b11 the boundary records the main lifts going in, and says they stay while they do",
+      /New block/.test(msA) && /Your main lifts stay/.test(msA) && !!C && (msU.plan_meta.main_before ?? []).every((id) => kbExForTest.get(id)?.mechanic === "compound"), JSON.stringify({ msA, mb: msU.plan_meta.main_before }));
+    await store.updateUser(ms, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== C); return u; });
+    const msB = await annMs();
+    ok("#rev14-b11 the new-block note never says 'Your main lifts stay' when a main lift left — and names it",
+      /New block/.test(msB) && !/Your main lifts stay/.test(msB) && msB.includes(`${kbExForTest.get(C)?.name ?? C} left your plan too`), JSON.stringify({ C, msB }));
+    // …and that record survives a cosmetic rebuild in the window (C stays out: no machine for it).
+    await store.updateUser(ms, (u) => { u.profile = { ...u.profile, unavailable_exercises: [{ id: C }] }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: ms, profile: { units: "metric" } });
+    const msC = await annMs();
+    ok("#rev14-b11 a cosmetic save keeps the main-lifts record (no 'Your main lifts stay' while one is still out)",
+      /New block/.test(msC) && !/Your main lifts stay/.test(msC) && !(await store.getUser(ms)).program.sessions.some((x) => x.exercises.some((e) => e.exercise === C)), msC);
+  }
+
+  // Round 14 #3: the beginner refit stores its completion verdict, like the block boundary.
+  {
+    const rp = { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const sv = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: sv, session_id: `sv-${w}`, date: dayAgo(49 - w * 7), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await store.updateUser(sv, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56) }; return u; });
+    await app.request("/api/today", { headers: { "X-HB-User": sv } });
+    const svm = (await store.getUser(sv)).plan_meta;
+    ok("#rev14-b11 the beginner refit stores its spared-muscles verdict (block 0)", svm.refit_index === 1 && svm.spared_muscles?.block === 0 && Array.isArray(svm.spared_muscles?.muscles), JSON.stringify(svm.spared_muscles));
+  }
+
+  // ---- Burst 11 review round 15 ----
+  {
+    const full = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const liftsOf = (p) => [...new Set(p.sessions.flatMap((x) => x.exercises.map((e) => e.exercise)))];
+    const holdsT = (p, id) => p.sessions.some((x) => x.exercises.some((e) => e.exercise === id));
+    const annT = async (uid) => (await (await app.request("/api/today", { headers: { "X-HB-User": uid } })).json()).session?.announcement ?? "";
+    // #0: the refit's stored spared-muscles verdict is the one its own swaps used — a units save after it keeps its lifts.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 45, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      for (let w = 0; w < 7; w++) await store.addSession(uid, { session_id: `r15a-${w}`, user_id: uid, date: dayAgo(3 + 7 * w), program_ref: u0.program.id,
+        sets: liftsOf(u0.program).flatMap((id) => [0, 1].map(() => ({ exercise: id, set_type: "work", weight_kg: 40, reps: 8 }))) });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(52), pace: { heavy: 600, moderate: 600, isolation: 600, transition: 600, lead: 1200 } }; return u; });
+      await annT(uid);
+      const post = await store.getUser(uid);
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      const after = await store.getUser(uid);
+      ok("#rev15-b11 a units save after a beginner refit keeps the refit's lifts (its stored verdict is the one it used)",
+        post.plan_meta.refit_index === 1 && JSON.stringify(liftsOf(after.program).sort()) === JSON.stringify(liftsOf(post.program).sort()),
+        JSON.stringify({ ri: post.plan_meta.refit_index, back: liftsOf(after.program).filter((x) => !liftsOf(post.program).includes(x)), left: liftsOf(post.program).filter((x) => !liftsOf(after.program).includes(x)) }));
+    }
+    // #1: a learned-out lift since skipped is still named as a change — never the 'I've re-fitted' fallback over a lift that left.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const X = liftsOf((await store.getUser(uid)).program)[0];
+      await store.updateUser(uid, (u) => { for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== X);
+        u.profile = { ...u.profile, training_prefs: { ...(u.profile.training_prefs ?? {}), avoid: [X] } };
+        u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), learned_out: [X], pref_scores: { [X]: 1 }, refit_diff: { out: [X], in: [] } }; return u; });
+      const a = await annT(uid);
+      ok("#rev15-b11 a learned-out lift since skipped is still named as having left (no 're-fitted' fallback)",
+        a.includes(`${kbExForTest.get(X)?.name ?? X} left your plan`) && !/re-fitted your plan|re-sized your sessions/.test(a), JSON.stringify({ X, a }));
+    }
+    // #2: 'had gone flat, so I've swapped it' only for a lift the plan held going into the boundary (not a 'No machine' one).
+    for (const level of ["intermediate", "beginner"]) {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: level, primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const X = "lat-pulldown";
+      // …beside an in-plan lift gone flat too, so the boundary/refit really swaps something (and stamps it).
+      const Y = liftsOf((await store.getUser(uid)).program).find((id) => id !== X && kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r15c-${level}-${w}-${k}`, date: dayAgo(8 + 7 * w + k), sets: [X, Y].flatMap((id) => Array.from({ length: 6 }, () => ({ exercise: id, set_type: "work", weight_kg: 40, reps: 8 }))) });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: X, scope: "always" });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok(`#rev15-b11 (${level}) a stalled lift already out of the plan ('No machine') is never claimed as swapped at the boundary`,
+        (pm.swapped_this_block ?? []).length > 0 && !(pm.swapped_this_block ?? []).includes(X) && !a.includes("Lat Pulldown had gone flat"), JSON.stringify({ Y, sw: pm.swapped_this_block, a }));
+    }
+    // #3: a merge that carries a Bring back for a lift the survivor's learning took out puts it back in the plan.
+    {
+      const prof = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full };
+      const to = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+      const from = (await json("POST", "/api/onboard", { profile: prof })).data.user_id;
+      const tu = await store.getUser(to);
+      const S = liftsOf(tu.program).find((id) => !holdsT(generateUserPlan(tu.profile, planOptsFor(tu, { prefScores: { [id]: 1 } })).program, id));
+      await store.updateUser(to, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; for (const sx of u.program.sessions) sx.exercises = sx.exercises.filter((e) => e.exercise !== S); return u; });
+      await store.updateUser(from, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [S]: 1 } }; return u; });
+      await json("POST", "/api/exercise/cant-do", { user_id: from, exercise: S, scope: "undo" });
+      const grant = "r15-grant";
+      await store.createMagicLink({ token_hash: await sha256hex(grant), email: "r15@example.com", rl_key: "grant:r15", ip: null, user_id: to, purpose: "merge-grant", expires_at: Date.now() + 600000, used: 0, created_at: Date.now() });
+      const m = await app.request("/api/auth/merge", { method: "POST", headers: { "content-type": "application/json", "X-HB-User": from }, body: JSON.stringify({ from_user_id: from, to_user_id: to, grant }) });
+      const after = await store.getUser(to);
+      ok("#rev15-b11 a merged Bring back puts the lift back in the survivor's plan", !!S && m.status === 200 && holdsT(after.program, S), JSON.stringify({ S, st: m.status, kept: after.plan_meta.pref_kept }));
+    }
+    // A refit that changes nothing (closed window) says nothing and opens no window.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      for (let w = 0; w < 7; w++) await store.addSession(uid, { session_id: `r15n-${w}`, user_id: uid, date: dayAgo(3 + 7 * w), program_ref: u0.program.id,
+        sets: liftsOf(u0.program).map((id) => ({ exercise: id, set_type: "work", weight_kg: 20 + (6 - w) * 2.5, reps: 8 })) });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(52) }; return u; });
+      const a = await annT(uid);
+      const u1 = await store.getUser(uid);
+      ok("#rev15-b11 a refit that changes nothing says nothing (no note, no window)",
+        u1.plan_meta.refit_index === 1 && JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions) && !u1.plan_meta.rotated_at && !/Six more weeks/.test(a), JSON.stringify({ ri: u1.plan_meta.refit_index, same: JSON.stringify(u1.program.sessions) === JSON.stringify(u0.program.sessions), rot: u1.plan_meta.rotated_at, a }));
+    }
+    // Round 16 sweep: a lift that only moved days is named (no silent reshuffle), while it still sits on those days.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const p0 = (await store.getUser(uid)).program;
+      const X = liftsOf(p0)[0];
+      const days = p0.sessions.filter((x) => x.exercises.some((e) => e.exercise === X)).map((x) => x.name).sort();
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), refit_diff: { out: [], in: [], moved: [[X, days]] }, learned_out: [], swapped_this_block: [] }; return u; });
+      const a1 = await annT(uid);
+      const nmX = kbExForTest.get(X)?.name ?? X;
+      ok("#rev16-b11 a lift that only moved days is named, not hidden behind 're-fitted your plan'", a1.includes(`${nmX} moved to a different day`) && !/re-fitted your plan/.test(a1), a1);
+      await store.updateUser(uid, (u) => { const sx = u.program.sessions.find((x) => !days.includes(x.name)) ?? null; if (sx) sx.exercises.push({ ...u.program.sessions.find((x) => x.name === days[0]).exercises.find((e) => e.exercise === X) }); return u; });
+      const a2 = await annT(uid);
+      ok("#rev16-b11 …and not once it sits on other days than the refit put it", !a2.includes(`${nmX} moved`), a2);
+    }
+    // Round 16 #0: a stalled lift an IN-BLOCK rebuild (units save, injury) already swapped out is still announced at the
+    // boundary — the coach's own stall swap is not a "No machine" removal.
+    for (const [door, level] of [["units", "intermediate"], ["injury", "intermediate"], ["units", "beginner"]]) {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: level, primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const Y = liftsOf(u0.program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r16-${level}-${door}-${w}-${k}`, date: dayAgo(8 + 7 * w + k), program_ref: u0.program.id, sets: Array.from({ length: 6 }, () => ({ exercise: Y, set_type: "work", weight_kg: 40, reps: 8 })) });
+      if (door === "units") await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      else await json("POST", "/api/profile/injury", { user_id: uid, region: "ankle", severity: "mild" });
+      const midHolds = holdsT((await store.getUser(uid)).program, Y);
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok(`#rev16-b11 (${level}) a stall the ${door} rebuild swapped mid-block is named at the boundary/refit`,
+        !midHolds && (pm.swapped_this_block ?? []).includes(Y) && a.includes(`Your ${kbExForTest.get(Y)?.name ?? Y} had gone flat`) && !(pm.pending_stall_swaps ?? []).length, JSON.stringify({ Y, midHolds, sw: pm.swapped_this_block, pend: pm.pending_stall_swaps, a }));
+    }
+    // ---- Round 17 ----
+    {
+      const flatLog = async (uid, Y, tag) => { const u0 = await store.getUser(uid); for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r17-${tag}-${w}-${k}`, date: dayAgo(8 + 7 * w + k), program_ref: u0.program.id, sets: Array.from({ length: 6 }, () => ({ exercise: Y, set_type: "work", weight_kg: 40, reps: 8 })) }); };
+      // #0: a pending stall lift that came back and the LIFTER then removed ('No machine') is never the coach's stall swap.
+      for (const level of ["intermediate", "beginner"]) {
+        const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: level, primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+        const Y = liftsOf((await store.getUser(uid)).program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+        await flatLog(uid, Y, `a-${level}`);
+        await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+        const pend0 = (await store.getUser(uid)).plan_meta.pending_stall_swaps ?? [];
+        await store.updateUser(uid, (u) => { const s0 = u.program.sessions[0]; s0.exercises.push({ ...s0.exercises[s0.exercises.length - 1], exercise: Y }); return u; }); // back (as a No machine substitute)
+        await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: Y, scope: "always", session: (await store.getUser(uid)).program.sessions[0].name });
+        await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+        const a = await annT(uid);
+        const pm = (await store.getUser(uid)).plan_meta;
+        ok(`#rev17-b11 (${level}) a lift the lifter took out ('No machine') after it came back is never named as the coach's stall swap`,
+          pend0.includes(Y) && !(pm.swapped_this_block ?? []).includes(Y) && !a.includes(`Your ${kbExForTest.get(Y)?.name ?? Y} had gone flat`), JSON.stringify({ Y, pend0, sw: pm.swapped_this_block, a }));
+      }
+      // #1: a stalled lift the INJURY ruled out is never named as a stall swap.
+      {
+        const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["bodyweight"] } })).data.user_id;
+        const Y = "chest-dip";
+        const had = holdsT((await store.getUser(uid)).program, Y);
+        await flatLog(uid, Y, "b");
+        await json("POST", "/api/profile/injury", { user_id: uid, region: "shoulder", severity: "moderate" });
+        const mid = await store.getUser(uid);
+        await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+        const a = await annT(uid);
+        const pm = (await store.getUser(uid)).plan_meta;
+        ok("#rev17-b11 a stalled lift an injury ruled out is never named as a stall swap (judged when owed, round 18 #1)",
+          had && !holdsT(mid.program, Y) && !(pm.swapped_this_block ?? []).includes(Y) && !a.includes("Chest Dip had gone flat"), JSON.stringify({ had, pend: mid.plan_meta.pending_stall_swaps, sw: pm.swapped_this_block, a }));
+      }
+      // #3: the injury rebuild drops a pending entry for a lift it put back (never carried by the spread).
+      {
+        const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+        const Z = liftsOf((await store.getUser(uid)).program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+        await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, pending_stall_swaps: [Z] }; return u; });
+        await json("POST", "/api/profile/injury", { user_id: uid, region: "ankle", severity: "mild" });
+        const u1 = await store.getUser(uid);
+        ok("#rev17-b11 an injury rebuild that holds a pending lift drops its pending entry", holdsT(u1.program, Z) && !(u1.plan_meta.pending_stall_swaps ?? []).includes(Z), JSON.stringify({ Z, holds: holdsT(u1.program, Z), pend: u1.plan_meta.pending_stall_swaps }));
+      }
+      // #2: a lift that GAINED a day is said so, never 'moved to a different day'.
+      {
+        const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+        const p0 = (await store.getUser(uid)).program;
+        const X = p0.sessions[0].exercises.map((e) => e.exercise).find((id) => !p0.sessions[1].exercises.some((e) => e.exercise === id));
+        const days = [p0.sessions[0].name, p0.sessions[1].name].sort();
+        await store.updateUser(uid, (u) => { u.program.sessions[1].exercises.push({ ...u.program.sessions[0].exercises.find((e) => e.exercise === X) }); u.plan_meta = { ...u.plan_meta, refit_index: 0, rotated_at: new Date().toISOString(), refit_diff: { out: [], in: [], moved: [[X, days, [p0.sessions[0].name]]] }, learned_out: [], swapped_this_block: [] }; return u; });
+        const a = await annT(uid);
+        const nmX = kbExForTest.get(X)?.name ?? X;
+        ok("#rev17-b11 a lift that gained a day is said to be on more days, never 'moved to a different day'",
+          !!X && !a.includes(`${nmX} moved`) && a.includes(`${nmX} is now on ${days.length} days a week`), JSON.stringify({ X, days, a }));
+      }
+    }
+    // ---- Round 18 ----
+    // #0: through a REAL refit (round 17's test wrote the stamp by hand, lesson 38): a lift that lost a day is said so.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const daysOfT = (p, id) => p.sessions.filter((x) => x.exercises.some((e) => e.exercise === id)).map((x) => x.name);
+      const s0 = u0.program.sessions[0], s1 = u0.program.sessions[1];
+      const X = s0.exercises.map((e) => e.exercise).find((id) => !s1.exercises.some((e) => e.exercise === id));
+      await store.updateUser(uid, (u) => { u.program.sessions[1].exercises.push({ ...u.program.sessions[0].exercises.find((e) => e.exercise === X) }); u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60), refit_index: 0 }; return u; });
+      const pid = (await store.getUser(uid)).program.id;
+      for (let w = 0; w < 7; w++) for (const k of [0, 2, 4]) await store.addSession(uid, { session_id: `r18m-${w}-${k}`, user_id: uid, date: dayAgo(3 + 7 * w + k), program_ref: pid, sets: [{ exercise: X, set_type: "work", weight_kg: 40 + (7 - w) * 2.5, reps: 8 }] });
+      const a = await annT(uid);
+      const u2 = await store.getUser(uid);
+      const entry = (u2.plan_meta.refit_diff?.moved ?? []).find(([id]) => id === X);
+      const n = daysOfT(u2.program, X).length;
+      ok("#rev18-b11 a real refit records [lift, days now, days before] and says the lift is now on N days a week",
+        u2.plan_meta.refit_index === 1 && entry?.length === 3 && a.includes(`${kbExForTest.get(X)?.name ?? X} is now on ${n} ${n === 1 ? "day" : "days"} a week`), JSON.stringify({ X, entry, n, a }));
+    }
+    // #1: a pending stall swap is not lost for good when the lifter's block is later lifted (Bring back).
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const Y = liftsOf(u0.program).find((id) => kbExForTest.get(id)?.mechanic === "isolation");
+      for (let w = 0; w < 7; w++) for (const k of [0, 2]) await json("POST", "/api/session", { user_id: uid, session_id: `r18p-${w}-${k}`, date: dayAgo(8 + 7 * w + k), program_ref: u0.program.id, sets: Array.from({ length: 6 }, () => ({ exercise: Y, set_type: "work", weight_kg: 40, reps: 8 })) });
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "imperial" } });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: Y, scope: "always" });
+      await json("POST", "/api/plan/regenerate", { user_id: uid, profile: { units: "metric" } });
+      await json("POST", "/api/exercise/cant-do", { user_id: uid, exercise: Y, scope: "undo" });
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(60) }; return u; });
+      const a = await annT(uid);
+      const u1 = await store.getUser(uid);
+      ok("#rev18-b11 a stall swap whose blocker the lifter later lifted is still named at the boundary",
+        !holdsT(u1.program, Y) && (u1.plan_meta.swapped_this_block ?? []).includes(Y) && a.includes(`Your ${kbExForTest.get(Y)?.name ?? Y} had gone flat`), JSON.stringify({ Y, held: holdsT(u1.program, Y), sw: u1.plan_meta.swapped_this_block, a }));
+    }
+    // #4: a second refit that changes nothing leaves the open note's record alone.
+    {
+      const uid = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: full } })).data.user_id;
+      const u0 = await store.getUser(uid);
+      const X = liftsOf(u0.program).find((id) => id !== "sissy-squat");
+      await store.updateUser(uid, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(100), refit_index: 1, rotated_at: new Date().toISOString(), refit_diff: { out: ["sissy-squat"], in: [X] }, learned_out: [], swapped_this_block: [] }; return u; });
+      for (let w = 1; w <= 13; w++) await store.addSession(uid, { session_id: `r15d-${w}`, user_id: uid, date: dayAgo(7 * w + 1), program_ref: u0.program.id, sets: [{ exercise: X, set_type: "work", weight_kg: 40 + (13 - w) * 2.5, reps: 8 }] });
+      const a = await annT(uid);
+      const pm = (await store.getUser(uid)).plan_meta;
+      ok("#rev15-b11 a no-change second refit keeps the open note's record", pm.refit_index === 2 && a.includes(`Sissy Squat made way for ${kbExForTest.get(X)?.name ?? X}`), JSON.stringify({ ri: pm.refit_index, rd: pm.refit_diff, a }));
+    }
+  }
+
+  // W320: a hand-edited plan pauses plan learning (no tune, no stall swap, no rotation). The Plan tab must SAY so —
+  // which needs the custom flag through /api/plan/explain's whitelist — and one tap hands the plan back to the coach:
+  // a bare regenerate (no profile change) rebuilds from the answers and clears the flag.
+  {
+    const cuU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const ex0 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    ok("#W320 a generated plan reads as not custom on the Plan tab's door", ex0.program?.custom === false, JSON.stringify(ex0.program?.custom));
+    const bgEx = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"] } })).data.user_id } })).json();
+    ok("#rev-b11 the Plan tab's door says who is a beginner, so its copy promises only what they have (#18)", bgEx.beginner === true && ex0.beginner === false);
+    const edited = JSON.parse(JSON.stringify(ex0.program));
+    edited.sessions[0].exercises[0].sets += 1;
+    await json("POST", "/api/plan/save", { user_id: cuU, program: edited });
+    const ex1 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    ok("#W320 a hand edit reaches the Plan tab as custom (learning paused)", ex1.program?.custom === true, JSON.stringify(ex1.program?.custom));
+    const back = await json("POST", "/api/plan/regenerate", { user_id: cuU });
+    const ex2 = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": cuU } })).json();
+    const cu2 = await store.getUser(cuU);
+    ok("#W320 'Let the coach take over again' (a bare regenerate) hands the plan back: generated, explained, learning on",
+      back.status === 200 && ex2.program?.custom === false && !cu2.program.custom && (ex2.personalization ?? []).length > 0 && !!cu2.plan_rationale?.volume_by_muscle,
+      JSON.stringify({ st: back.status, c: ex2.program?.custom, pz: (ex2.personalization ?? []).length }));
+  }
+
+  // W319 (found building it): what the app LEARNED about the lifter lives in plan_meta (pace W316, the declined ceiling
+  // W315c), and every whole-meta rebuild — the block boundary, graduation, a Settings save — rebuilt plan_meta from the
+  // generator's meta and dropped them: Today lost the lifter's pace until the next workout, and a "Not now" was asked
+  // again after every boundary. Learned facts survive every plan door.
+  {
+    const lmU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "intermediate", primary_goal: "hypertrophy",
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    const lmN = await plannedWeekSets(lmU, "chest");
+    for (let w = 0; w < 7; w++) await json("POST", "/api/session", { user_id: lmU, session_id: `lm-${w}`, date: dayAgo(49 - w * 7), sets: flatSets("barbell-bench-press", 100, lmN) });
+    const lmPace = { per_set: { heavy: 200, moderate: 150, isolation: 110 }, lead_s: 90, n: 40 };
+    const seed = (u) => { u.plan_meta = { ...u.plan_meta, pace: lmPace, session_cap_declined: 12 }; return u; };
+    await store.updateUser(lmU, (u) => { u.plan_meta = { ...u.plan_meta, block_start: dayAgo(56), block_index: 0 }; return seed(u); });
+    await app.request("/api/today", { headers: { "X-HB-User": lmU } });
+    const lm1 = await store.getUser(lmU);
+    ok("#W319 the block boundary keeps the lifter's learned pace and declined ceiling",
+      (lm1.plan_meta.block_index ?? 0) >= 1 && JSON.stringify(lm1.plan_meta.pace) === JSON.stringify(lmPace) && lm1.plan_meta.session_cap_declined === 12,
+      JSON.stringify({ b: lm1.plan_meta.block_index, pace: lm1.plan_meta.pace, d: lm1.plan_meta.session_cap_declined }));
+    await json("POST", "/api/plan/regenerate", { user_id: lmU, profile: { days_per_week: 4 } });
+    const lm2 = await store.getUser(lmU);
+    ok("#W319 a training change in Settings keeps them too",
+      JSON.stringify(lm2.plan_meta.pace) === JSON.stringify(lmPace) && lm2.plan_meta.session_cap_declined === 12);
+    // Graduation rebuilds the plan whole as well.
+    const gdU = (await json("POST", "/api/onboard", { profile: {
+      units: "metric", training_status: "beginner", primary_goal: "hypertrophy",
+      days_per_week: 2, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] } })).data.user_id;
+    for (let w = 0; w < GRADUATION.intermediate.weeks; w++) for (let k = 0; k < 2; k++)
+      await store.addSession(gdU, { session_id: `gd-${w}-${k}`, date: dayAgo(GRADUATION.intermediate.weeks * 7 - w * 7 - k), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40 + w, reps: 8 }] });
+    await store.updateUser(gdU, seed);
+    await app.request("/api/today", { headers: { "X-HB-User": gdU } });
+    const gd = await store.getUser(gdU);
+    ok("#W319 graduation keeps the learned pace and declined ceiling",
+      gd.profile.training_status === "intermediate" && JSON.stringify(gd.plan_meta.pace) === JSON.stringify(lmPace) && gd.plan_meta.session_cap_declined === 12,
+      JSON.stringify({ st: gd.profile.training_status, pace: gd.plan_meta.pace, d: gd.plan_meta.session_cap_declined }));
+  }
+
   // C5: /api/plan/regenerate backs the Settings screen, and its plan_meta rebuild
   // kept only four fields — a cosmetic save was amnesia for every mid-block stamp
   // (the lesson-59 record listed the harms when the units door reached this route;
@@ -778,6 +1588,39 @@ try {
     && typeof statsBody.push_subscriptions === "number" && typeof statsBody.push_delivered_7d === "number"
     && "retention_wow" in statsBody);
   ok("#210 the aggregates carry no per-user data (no ids, no emails)", !/user_id|email|@|[0-9a-f]{8}-[0-9a-f]{4}/.test(JSON.stringify(statsBody)));
+  // W327 (adherence playbook — activation is the binding constraint: 13 of the recent 20 reached Today and never trained,
+  // and nothing said where they stopped). The first-workout funnel: first-timestamps per user, written only before their
+  // first workout, aggregated counts only.
+  {
+    const statsOf = async () => (await (await statsApp.request("/api/stats", { headers: { "X-HB-Stats-Key": "test-stats-key" } })).json());
+    const b0 = await statsOf();
+    const fu = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+    await app.request("/api/today", { headers: { "X-HB-User": fu } });
+    const seen1 = (await store.getUser(fu)).funnel?.today_seen;
+    await app.request("/api/today", { headers: { "X-HB-User": fu } });
+    ok("#W327 a never-trained user's first Today view is stamped once", typeof seen1 === "string" && (await store.getUser(fu)).funnel.today_seen === seen1);
+    const bad = await json("POST", "/api/funnel", { user_id: fu, step: "bought" });
+    ok("#W327 only the funnel's own steps are accepted", bad.status === 400);
+    const st1 = await json("POST", "/api/funnel", { user_id: fu, step: "started" });
+    const stA = (await store.getUser(fu)).funnel?.started;
+    await json("POST", "/api/funnel", { user_id: fu, step: "started" });
+    ok("#W327 'started' is stamped once (a retry or a second start keeps the first)", st1.status === 200 && typeof stA === "string" && (await store.getUser(fu)).funnel.started === stA);
+    await json("POST", "/api/funnel", { user_id: fu, step: "first_set" });
+    const mid = await statsOf();
+    ok("#W327 /api/stats counts each step (seen, started, first set) — counts only",
+      mid.funnel_today_seen - b0.funnel_today_seen === 1 && mid.funnel_started - b0.funnel_started === 1 && mid.funnel_first_set - b0.funnel_first_set === 1 && mid.funnel_finished === b0.funnel_finished,
+      JSON.stringify({ b0: [b0.funnel_today_seen, b0.funnel_started, b0.funnel_first_set, b0.funnel_finished], mid: [mid.funnel_today_seen, mid.funnel_started, mid.funnel_first_set, mid.funnel_finished] }));
+    await json("POST", "/api/session", { user_id: fu, session_id: "fu-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    ok("#W327 the first logged workout stamps 'finished'", typeof (await store.getUser(fu)).funnel?.finished === "string" && (await statsOf()).funnel_finished - b0.funnel_finished === 1);
+    // An established lifter is never instrumented: no stamp on Today, none on the funnel door.
+    const est = (await json("POST", "/api/onboard", { profile: obProfile })).data.user_id;
+    await json("POST", "/api/session", { user_id: est, session_id: "est-1", date: new Date().toISOString(), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    await app.request("/api/today", { headers: { "X-HB-User": est } });
+    await json("POST", "/api/funnel", { user_id: est, step: "started" });
+    const estF = (await store.getUser(est)).funnel ?? {};
+    ok("#W327 once a lifter has trained, Today and the funnel door stamp nothing (only their first workout's 'finished')",
+      JSON.stringify(Object.keys(estF)) === JSON.stringify(["finished"]), JSON.stringify(estF));
+  }
   // W299 (considerations iteration, Burst 7 — measure first): real pace rides the same owner-only door — medians and
   // counts only. A workout posted through the client's door lands once, its 150 s gaps in its lift's rest tier.
   {
@@ -3715,6 +4558,57 @@ try {
   const celAdopted = (await store.getUser(celTo2)).profile.celebration;
   ok("#celebrate-merge a pending echo follows the user through the merge and still holds",
     celAdopted?.kind === "pr" && !celAdopted?.pushed);
+
+  // Burst 11 review round 2 (#0 #1 #3): what the learning took out stays its own answer.
+  {
+    const rp = { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 60,
+      available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
+    const holdsR = (u, id) => u.program.sessions.some((s) => s.exercises.some((e) => e.exercise === id));
+    const swappableR = (u) => u.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise))
+      .find((id) => !holdsR(generateUserPlan({ ...u.profile, training_prefs: { avoid: [id] } }, planOptsFor(u)), id));
+    // #0: Bring back on the "No machine" card clears only that answer — the learned dislike stays, and shows again.
+    const r0 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const L = swappableR(await store.getUser(r0));
+    await store.updateUser(r0, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [L]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: r0, profile: { units: "metric" } }); // the learning takes it out
+    await json("POST", "/api/exercise/cant-do", { user_id: r0, exercise: L, scope: "always" }); // …then "No machine" too
+    await json("POST", "/api/session", { user_id: r0, session_id: "r0-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] }); // a re-learn in between
+    await json("POST", "/api/exercise/cant-do", { user_id: r0, exercise: L, scope: "undo" }); // "Got access again? Bring it back"
+    const r0u = await store.getUser(r0);
+    const r0ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": r0 } })).json();
+    ok("#rev2-b11 Bring back on 'No machine' clears only that answer: the learned dislike stays and is listed again",
+      r0u.plan_meta.pref_scores?.[L] === 1 && !(r0u.plan_meta.pref_kept ?? []).includes(L) && !(r0u.profile.unavailable_exercises ?? []).some((x) => x.id === L)
+      && (r0ex.learned_out ?? []).some((x) => x.id === L), JSON.stringify({ sc: r0u.plan_meta.pref_scores, kept: r0u.plan_meta.pref_kept, lo: r0ex.learned_out }));
+    // #3: a learned score is only sticky (and only listed) for a lift the lifter can still do — not one their kit removed.
+    const r3 = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const r3u0 = await store.getUser(r3);
+    const M = r3u0.program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)).find((id) => /machine|leg-press|hack-squat|pec-deck/.test(id));
+    await store.updateUser(r3, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [M]: 1 } }; return u; });
+    await json("POST", "/api/plan/regenerate", { user_id: r3, profile: { available_equipment: ["barbell", "dumbbell", "bodyweight"] } }); // the kit removes it
+    await json("POST", "/api/session", { user_id: r3, session_id: "r3-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    const r3u = await store.getUser(r3);
+    const r3ex = await (await app.request("/api/plan/explain", { headers: { "X-HB-User": r3 } })).json();
+    ok("#rev2-b11 a lift the KIT removed is never listed as learned out", !!M && !(r3ex.learned_out ?? []).some((x) => x.id === M), JSON.stringify({ M, lo: r3ex.learned_out }));
+    // Round 3 #1: …but the dislike itself survives a temporary kit change — back home, the lift stays out.
+    await json("POST", "/api/plan/regenerate", { user_id: r3, profile: { available_equipment: rp.available_equipment } });
+    const r3back = await store.getUser(r3);
+    ok("#rev3-b11 a learned dislike survives a trip without that kit: still learned, still out of the plan when the kit returns",
+      r3back.plan_meta.pref_scores?.[M] === 1 && !r3back.program.sessions.some((x) => x.exercises.some((e) => e.exercise === M)), JSON.stringify({ sc: r3back.plan_meta.pref_scores }));
+    // #1: a dislike carried in by an account merge reaches the survivor's plan (rebuilt at the merge), so it sticks.
+    const mTo = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const mFrom = (await json("POST", "/api/onboard", { profile: rp })).data.user_id;
+    const X1 = swappableR(await store.getUser(mTo));
+    await store.updateUser(mFrom, (u) => { u.plan_meta = { ...u.plan_meta, pref_scores: { [X1]: 1 } }; return u; });
+    const lkTo = await requestMagicLink(store, { email: "prefmerge@t.com", anonUserId: mTo });
+    await json("POST", "/api/auth/consume", { token: lkTo.token });
+    const lkFrom = await requestMagicLink(store, { email: "prefmerge@t.com", anonUserId: mFrom });
+    const gr = (await json("POST", "/api/auth/consume", { token: lkFrom.token })).data.merge_grant;
+    const mr = await app.request("/api/auth/merge", { method: "POST", headers: { "content-type": "application/json", "X-HB-User": mFrom }, body: JSON.stringify({ grant: gr, from_user_id: mFrom, to_user_id: mTo }) });
+    await json("POST", "/api/session", { user_id: mTo, session_id: "pm-1", date: dAgo(1), sets: [{ exercise: "barbell-bench-press", set_type: "work", weight_kg: 40, reps: 8 }] });
+    const mtu = await store.getUser(mTo);
+    ok("#rev2-b11 a dislike carried by a merge reaches the survivor's plan and survives their next workout",
+      (await mr.json()).merged === true && !holdsR(mtu, X1) && mtu.plan_meta.pref_scores?.[X1] === 1, JSON.stringify({ holds: holdsR(mtu, X1), sc: mtu.plan_meta.pref_scores }));
+  }
 
   // New-follower event: the follow door bumps the OWNER's monotonic count once —
   // a re-follow is not a new follower.

@@ -125,14 +125,24 @@ export function publicShareCard(user, sessions, now = new Date().toISOString()) 
   const { level } = xpAndLevel(sessions);
   // sessions_this_week (#10 social — weekly race): the SAME aggregate-only allowlist
   // model as the other three fields, just resetting every week instead of all-time —
-  // it's what turns the static streak/level leaderboard into a comparison with actual
-  // urgency (a partner can be "ahead" only until Sunday, not forever).
+  // a weekly comparison between partners who chose to follow each other (W325: effort only, never body; no "behind"
+  // copy — Plain Sight's dark-twin marker).
   return { streak_weeks: streak, level, sessions_logged: (sessions ?? []).length, sessions_this_week: weeklySummary(sessions ?? [], weekNow).sessions };
 }
 
+// W325 (Plain Sight test 3, benefit flow — "points that pay per unit of volume beyond your plan"): from this date a
+// workout's hard-set XP stops at the sets its plan asked for. Earlier workouts keep every point they earned, so no level
+// anyone holds is ever withdrawn (test 5). A workout with no recorded plan (targets) has nothing to judge against.
+export const XP_PLAN_CAP_SINCE = "2026-11-10";
+const hardSetXp = (s) => {
+  const hard = (s.sets ?? []).filter((set) => isHardSet(set)).length;
+  const day = String(s.local_date ?? s.date ?? "").slice(0, 10);
+  const plannedSets = Array.isArray(s.targets) && s.targets.length ? s.targets.reduce((a, t) => a + (Number.isInteger(t?.sets) ? t.sets : 0), 0) : null;
+  return (day >= XP_PLAN_CAP_SINCE && plannedSets != null ? Math.min(hard, plannedSets) : hard) * 5;
+};
 export function xpAndLevel(sessions) {
-  // 100 XP per session + 5 per hard set — engagement tied to real training.
-  const base = (sessions ?? []).reduce((a, s) => a + 100 + (s.sets ?? []).filter((set) => isHardSet(set)).length * 5, 0);
+  // 100 XP per session + 5 per hard set the plan asked for — engagement tied to real training, never to doing more.
+  const base = (sessions ?? []).reduce((a, s) => a + 100 + hardSetXp(s), 0);
   // Bonus XP for personal records — the peak reward, so beating a best actually PAYS. Replay
   // PR detection in chronological order: each session is judged only against what came before
   // it (a PR is beating your PRIOR best), so the bonus banked exactly matches what that
@@ -153,14 +163,16 @@ export function xpAndLevel(sessions) {
   return { xp, level, level_progress_pct: Math.round((into / 500) * 100), xp_to_next: 500 - into, pr_xp: prBonus, lucky_xp: luckyBonus };
 }
 
+// A milestone names a count you can check against your own log (W325, Plain Sight: identity framing turns a lapse
+// into a statement about the person — the "I've blown it" spiral). Rest for a month and every one is still yours.
 const MILESTONES = [
-  [1, "First session logged 💪 — you're someone who trains now."],
+  [1, "First session logged 💪 — the hardest one is done."],
   [3, "Three sessions in — the habit is taking root."],
   [8, "Eight sessions — you've cleared the hardest part: starting."],
-  [20, "Twenty sessions. This is just who you are now."],
+  [20, "Twenty sessions logged — every one of them is in your history."],
   [50, "Fifty sessions of showing up."],
-  [100, "One hundred sessions. That's a serious lifter."],
-  [200, "Two hundred. Most people never get close."],
+  [100, "One hundred sessions logged."],
+  [200, "Two hundred sessions logged."],
 ];
 export function milestones(sessionCount) {
   const reached = MILESTONES.filter(([n]) => sessionCount >= n).map(([at, msg]) => ({ at, msg }));
@@ -216,7 +228,7 @@ export function celebrationCopy(cel) {
     return { subject: `🏅 ${cel.count} sessions logged`, body: msg, tag: "hb-celebrate" };
   }
   if (cel?.kind === "streak") {
-    const body = cel.weeks >= 52 ? "A full year of showing up, week after week. That's who you are now."
+    const body = cel.weeks >= 52 ? `${cel.weeks} weeks in a row — a full year of showing up, week after week.`
       : `That's ${cel.weeks} straight weeks of showing up.`;
     return { subject: `🔥 ${cel.weeks}-week streak`, body, tag: "hb-celebrate" };
   }
@@ -250,7 +262,8 @@ export function adherenceStatus(sessions, now, paused, { weekNow = now, plan = n
   if (Math.round(daysSince) >= COMEBACK_GAP_DAYS) return { state: "comeback", days_since: Math.round(daysSince), message: "Welcome back — I've eased your weights so you ramp in safely. Picking the chain right back up." };
   const trainedThisWeek = sessions.some((s) => (s.local_date || s.date) && weekOrdinal(sessionWeekKey(s)) === weekOrdinal(weekNow));
   if (!trainedThisWeek) {
-    const atRisk = { state: "at-risk", message: "Keep the chain alive — one session this week protects your streak." };
+    // Gain-framed (W325): what's left to do and what it adds — never what's lost (test 4: no harder press on the lapsing).
+    const atRisk = { state: "at-risk", message: "One session this week and your streak grows another week." };
     if (!plan) return atRisk;
     const todayIdx = WEEK_DAY_KEYS.indexOf(weekDayKey(weekNow));
     const nextIdx = plan.next ? WEEK_DAY_KEYS.indexOf(plan.next.day) : -1;
@@ -264,7 +277,7 @@ export function adherenceStatus(sessions, now, paused, { weekNow = now, plan = n
       if (nextThisWeek) return { state: "scheduled", message: plan.planned_today
         ? `Missed ${missed}? Today's a training day — and ${nextName} is still ahead.`
         : `Missed ${missed}? Catch up today — or ${nextName} keeps the week on track.` };
-      return { state: "at-risk", message: `Missed ${missed}? A session today keeps the chain alive.` };
+      return { state: "at-risk", message: `Missed ${missed}? A session today still counts for this week.` };
     }
     if (!plan.planned_today) return { state: "scheduled", message: nextName ? `Next training day: ${nextName}${nextThisWeek ? " — the week's still yours" : ""}.` : "No training day planned." };
     if (nextThisWeek) return { state: "scheduled", message: `Today's a training day — and ${nextName} is still ahead this week.` };
