@@ -1634,17 +1634,31 @@ export function paceAggregate(sessions, restTierOf) {
   };
 }
 
-// SESSION TIME (W302, considerations iteration — Burst 8, "60 minutes means 60 minutes"). What a served day takes, in
-// minutes, from the same three rest tiers the player's timer uses (restTier). The defaults are MEASURED, not assumed:
-// W299's pace over 17 real logged workouts (2026-11-03) — the time between two sets of one lift (which includes the
-// set itself), a lift change (rest, walk, set-up and the next lift's first set) and the lead from Start to the first
-// set (warm-up included). So a day is: the lead, then (n − 1) gaps for each lift, then one change per further lift —
-// exactly "Start → last set", the duration the same data measured (median 59.6 min). A unilateral lift's every gap
-// carries the second side's work. A superset pair is ONE station: its paired rounds at the player's 60 s round rest
-// plus both sets' work (`work` and `round_rest` are the two estimates here — supersets and single sets aren't timed
-// apart in the data), then the longer lift's extra sets at its own gap. `pace` (the user's own medians, later) replaces
-// only the numbers it carries. Pure.
-export const SESSION_PACE_DEFAULTS = Object.freeze({ heavy: 191, moderate: 187, isolation: 119, transition: 159, lead: 353, work: 40, round_rest: 60 });
+// SESSION TIME (W302; the default rule re-stated W329). What a served day takes, in minutes. The DEFAULT is the owner's
+// stated rule (considerations, 2026-11): every set is 1 min of work + 3 min of rest — so a 16-set day is 64 minutes.
+// It is a rule of thumb, not a measurement (W299's measured pace put the same day near 47 min), chosen so an estimate
+// never promises less time than a lifter resting the full 3 minutes needs. The shape is unchanged: a day is the lead
+// (the first set), then (n − 1) gaps for each lift, then one change per further lift — with every tier, the lead and a
+// change at one set's 4 minutes, straight sets come out at exactly sets × 4. A unilateral lift's every gap carries the
+// second side's work (+1 min). A superset pair is ONE station: its paired rounds cost the 3-minute rest plus both sets'
+// work (5 min a round — pairing still saves time), then the longer lift's extra sets at its own gap. `pace` (the
+// lifter's OWN medians, learned from their logged workouts — tools/response-core.mjs paceProfile) replaces only the
+// numbers it carries, so the rule is a starting point the app learns away from. The player's rest TIMER stays tiered
+// (restSeconds, KB-graded); this is the clock's estimate only. Pure.
+export const SET_WORK_S = 60;
+export const SET_REST_S = 180;
+const SET_S = SET_WORK_S + SET_REST_S;
+export const SESSION_PACE_DEFAULTS = Object.freeze({ heavy: SET_S, moderate: SET_S, isolation: SET_S, transition: SET_S, lead: SET_S, work: SET_WORK_S, round_rest: SET_REST_S });
+// How many straight sets fit in `minutes` (W329): at the default rule, minutes ÷ 4 (60 → 15), never rounded UP past the
+// time. With the lifter's own pace, their average gap between sets (the three tiers, learned or default) sizes it, so a
+// quicker lifter's day isn't capped by a rule their own workouts disprove. ONE count for every budget the plan engine
+// sizes (the generator's set budget, the rescue gate, the levers' "would longer sessions help?").
+export function setsInMinutes(minutes, pace = null) {
+  const p = { ...SESSION_PACE_DEFAULTS };
+  for (const [k, v] of Object.entries(pace ?? {})) if (k in p && Number.isFinite(v) && v > 0) p[k] = v;
+  const gap = (p.heavy + p.moderate + p.isolation) / 3;
+  return Math.max(1, Math.floor((Number(minutes) || 0) * 60 / gap + 1e-9));
+}
 export function sessionMinutes(exercises, exById, pace = null) {
   const p = { ...SESSION_PACE_DEFAULTS };
   for (const [k, v] of Object.entries(pace ?? {})) if (k in p && Number.isFinite(v) && v > 0) p[k] = v;

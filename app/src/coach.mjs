@@ -590,7 +590,7 @@ const unlinkOrphanSupersets = (list) => {
 // built the same 7-exercise, 14-set session on day one as on day one hundred, and
 // beginners are exempt from the mesocycle wave (`blockPhase` returns null for
 // them), so the least experienced user was the ONLY one who got no ramp at all.
-// At the engine's own ~3 min/set that is ~36 minutes of counted work before a
+// At the engine's default 4 min/set (W329) that is ~56 minutes of counted work before a
 // warm-up, ramp-up sets on five different stations, or finding those stations for
 // the first time.
 //
@@ -1202,7 +1202,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
   const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId, user.plan_meta?.pace ?? null); // at the lifter's pace (W316)
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, announcement, gap_note, swap_note,
+  // W329: whether the estimate is the lifter's own pace or the 4-minutes-a-set default (the copy says which).
+  const pace_learned = Object.keys(user.plan_meta?.pace ?? {}).some((k) => ["heavy", "moderate", "isolation"].includes(k));
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, pace_learned, coach_note, announcement, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app

@@ -1832,7 +1832,7 @@ async function renderToday() {
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
-      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min${s.pace_learned ? "" : " (≈4 min a set)"}</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}
     ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;

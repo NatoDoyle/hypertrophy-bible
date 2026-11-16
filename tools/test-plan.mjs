@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { generatePlan, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
   accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN, rankedPools } from "./plan-core.mjs";
-import { sessionMinutes as dayMinutes } from "./derive-core.mjs";
+import { sessionMinutes as dayMinutes, setsInMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
 import { perMuscleWeeklyVolume } from "./derive-core.mjs";
 
@@ -15,6 +15,9 @@ const registry = new Set(JSON.parse(readFileSync("citations/registry.json")).cit
 const exIds = new Set(exercises.map((e) => e.id));
 const guidelines = load("data/guidelines");
 const kb = { exercises, muscles, contraindications, guidelines };
+// The owner's own measured pace (W299, 17 real workouts, 2026-11-03): what the app has learned for them. W329 made the
+// DEFAULT 4 minutes a set (the owner's rule for an untimed lifter); tests that pin the owner's own plan size it here.
+const OWNER_PACE = { heavy: 191, moderate: 187, isolation: 119, transition: 159, lead: 353 };
 const muscleById = new Map(muscles.map((m) => [m.id, m]));
 
 let pass = 0, fail = 0;
@@ -409,10 +412,17 @@ ok("rationale.exercise_choices matches the trimmed program (no ghosts, no stale 
 // DIRECT work (same reason check-data-refs allowlists them) — assert the coverage
 // floor on every OTHER in-split muscle.
 const COVERAGE_EXEMPT = new Set(["forearms", "neck"]);
+// W329: the grid's minutes are the old 45/60/90 set budgets at the 4-minutes-a-set rule (60/80/120). Below them a
+// 2-day week can't hold every muscle — and that is SAID (the next check), never silent.
 ok("no major directly-trained muscle gets zero weekly sets across the int/adv grid",
-  ["intermediate", "advanced"].every((lvl) => [2, 3, 4, 5].every((days) => [45, 60, 90].every((min) =>
+  ["intermediate", "advanced"].every((lvl) => [2, 3, 4, 5].every((days) => [60, 80, 120].every((min) =>
     Object.entries(generatePlan({ user_id: `cf-${lvl}-${days}-${min}`, training_status: lvl, primary_goal: "hypertrophy", days_per_week: days, session_length_min: min }, kb).rationale.volume_by_muscle)
       .every(([m, r]) => r.frequency === 0 || r.projected_sets > 0 || COVERAGE_EXEMPT.has(m))))));
+ok("#W329 …and where the minutes can't hold a muscle at all, the plan says so by name (never a silent zero)",
+  ["intermediate", "advanced"].every((lvl) => [2, 3].every((days) => [30, 45].every((min) => {
+    const g = generatePlan({ user_id: `cf-${lvl}-${days}-${min}`, training_status: lvl, primary_goal: "hypertrophy", days_per_week: days, session_length_min: min }, kb);
+    return Object.entries(g.rationale.volume_by_muscle).every(([m, r]) => r.frequency === 0 || r.projected_sets > 0 || COVERAGE_EXEMPT.has(m) || g.rationale.warnings.some((w) => w.muscle === m));
+  }))));
 {
   const sp = generatePlan({ user_id: "sp-mv", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 75, priority_muscles: ["side-delts"], specialization: true }, kb);
   ok("specialization maintenance dose uses the KB's MV landmark, not half-MEV",
@@ -983,9 +993,10 @@ ok("deriveSpecialization: a stored `false` no longer blocks the derivation — i
 // beginner / 60 min / full gym is the input that REACHES the superset rescue — a
 // 30-minute beginner never fires it and the fixture would prove nothing.
 // W303: the rescue now fires only when MINUTES bind the set budget (a 30-minute beginner: budget 10 under the 12 cap),
-// and survives only when its pair still fits the clock — so the fixture moved from 60 to 30 minutes.
+// and survives only when its pair still fits the clock — so the fixture moved from 60 to 30 minutes. W329 (4 min a set):
+// the same 10-set budget is 40 minutes now.
 const budgetPlan = generatePlan({ user_id: "budget-1", training_status: "beginner", primary_goal: "hypertrophy",
-  days_per_week: 3, session_length_min: 30,
+  days_per_week: 3, session_length_min: 40,
   available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] }, kb);
 const budgetBiggest = Math.max(...budgetPlan.program.sessions.map((s) => s.exercises.reduce((a, e) => a + e.sets, 0)));
 const budgetRep = budgetPlan.rationale.goal_prescription.session_budget;
@@ -1009,8 +1020,9 @@ ok("the personalization card quotes the delivered number, not the input cap",
 // int/adv Lower day summoned conventional-deadlift FOR spinal-erectors beside
 // the hamstring RDL — two heavy hinges, one placed for a muscle the KB says the
 // other already covers.
+// W329: 80 minutes is the flagship's old 60-minute budget at the 4-minutes-a-set rule (20 sets, past the 16 ceiling).
 const ssProfile = { user_id: "ss-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4,
-  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_length_min: 60 };
+  available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], session_length_min: 80 };
 const ssPlan = generatePlan(ssProfile, kb);
 const ssFor = new Set(ssPlan.rationale.exercise_choices.map((c) => c.for_muscle));
 ok("#SS no exercise is placed FOR forearms on a default plan (arms.md: optional unless prioritized)",
@@ -1146,7 +1158,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
 // regression — dose-feasibility gating is recorded work, not this fix.
 {
   const tight = generatePlan({ user_id: "cf-tight", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2,
-    session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts", "chest"] }, kb);
+    session_length_min: 80, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["side-delts", "chest"] }, kb); // W329: 80 min = the old 60's budget
   const tv = tight.rationale.volume_by_muscle;
   ok("#CF the last-chance rescue keeps a held muscle off zero (the Wave-250 calves regression)",
     tv.calves.projected_sets > 0);
@@ -1166,7 +1178,9 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   const adProfile = { user_id: "ad-1", training_status: "advanced", primary_goal: "recomposition", days_per_week: 4,
     session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"],
     priority_muscles: ["side-delts", "biceps", "triceps"] };
-  const ad = generatePlan(adProfile, kb);
+  // W329: the owner's plan is sized by the owner's OWN pace (learned from their logged workouts; W299's measure) — the
+  // 4-minutes-a-set rule is only the default for a lifter the app hasn't timed yet.
+  const ad = generatePlan(adProfile, kb, { pace: OWNER_PACE });
   const vol = ad.rationale.volume_by_muscle;
   ok("#AD owner profile: lower-body muscles ease to exactly MEV (still growing), not held at MV",
     ["quadriceps", "hamstrings", "glutes", "calves", "abs"].every((m) =>
@@ -1191,7 +1205,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // once — that's just more volume everywhere"): the spec week's direct sets never
   // exceed what the same profile would train with no block at all.
   const directTotal = (plan) => plan.program.sessions.reduce((a, s) => a + s.exercises.reduce((b, e) => b + e.sets, 0), 0);
-  const adPlain = generatePlan({ ...adProfile, user_id: "ad-plain", priority_muscles: [] }, kb);
+  const adPlain = generatePlan({ ...adProfile, user_id: "ad-plain", priority_muscles: [] }, kb, { pace: OWNER_PACE }); // the same lifter's pace
   ok("#AD redistribution, not addition: spec total direct sets <= the non-spec week's",
     directTotal(ad) <= directTotal(adPlain));
   ok("#AD fat-loss: nothing eases — a deficit already taxes recovery, MV is the honest dose",
@@ -1293,8 +1307,13 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   // first. Measured against HEAD over all 390 plans: 2 changed, both o-beg-3's stalled paths — the old engine placed BOTH
   // stalled lifts in Full Body B while a non-stalled goblet squat and dumbbell bench were free; now they appear only where
   // the 2-uses-a-week cap forces them. Every plan without a stalled lift is byte-identical.
+  // Re-pinned DELIBERATELY in W329 (owner, considerations 2026-11: "3 mins rest per set and 1 set duration … a 16 set
+  // workout will theoretically last 64 minutes"): the default clock is 4 minutes a set, and the set BUDGET comes from it
+  // too (setsInMinutes: 60 min → 15 sets, was round(60/3) = 20), so most grid plans hold fewer sets at the same minutes
+  // and the fit-to-time pass measures at the new rule. A lifter's learned pace still overrides both (the #pace and
+  // owner-pace checks); plans with a pace passed are sized by it.
   ok("#golden the engine's output over the fixed grid (390 plans, opts paths included) is byte-identical to the pin",
-    grid.length === 390 && digestOf(grid) === "d9efc32117ba6daf8ad6153a1f1fbc2ebd090c56a4adb753c95a233a9336281d");
+    grid.length === 390 && digestOf(grid) === "94ea036cd1ced739b45e23658f33a6065106397781447ffccdd7cafad1435639");
 }
 
 // --- W272 "Can't do this one?" — exclusions, ranked substitutes, the permanent swap ---
@@ -1650,16 +1669,22 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     }
   ok(`#time-fit no generated day passes its quality cap — the rescue counts against it (${overCap} of ${sessions} did)`, overCap === 0);
   ok(`#time-fit a day still over its minutes is FLAGGED in meta.time_trim.unfit, never silent (${overTime} over, ${unflagged} unflagged, of ${sessions})`, unflagged === 0);
-  const owner = generatePlan({ user_id: "owner-adv-4", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL }, kb);
-  const ownerDays = owner.program.sessions.map((s) => [s.name, s.exercises.reduce((a, e) => a + e.sets, 0), dayMinutes(s.exercises, exById)]);
-  ok(`#time-fit the owner's case (advanced, 4 days, 60 min): every day ≤ 20 sets and within the minute's grace of 60 at the measured pace — ${JSON.stringify(ownerDays)}`,
+  // W329: the owner's case at the owner's OWN pace (what the app has learned from their workouts)…
+  const owner = generatePlan({ user_id: "owner-adv-4", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL }, kb, { pace: OWNER_PACE });
+  const ownerDays = owner.program.sessions.map((s) => [s.name, s.exercises.reduce((a, e) => a + e.sets, 0), dayMinutes(s.exercises, exById, OWNER_PACE)]);
+  ok(`#time-fit the owner's case (advanced, 4 days, 60 min): every day ≤ 20 sets and within the minute's grace of 60 at the owner's measured pace — ${JSON.stringify(ownerDays)}`,
     ownerDays.every(([, n, m]) => n <= 20 && m <= 60 + FIT_GRACE_MIN));
+  // …and the same profile for a lifter not yet timed: 4 minutes a set, so ~15 sets fill the hour (the owner's rule).
+  const untimed = generatePlan({ user_id: "owner-adv-4", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL }, kb);
+  ok(`#W329 an untimed lifter's 60-minute day is sized at 4 minutes a set (budget 15), and any day still past the hour is flagged — ${JSON.stringify(untimed.program.sessions.map((s) => [s.exercises.reduce((a, e) => a + e.sets, 0), dayMinutes(s.exercises, exById)]))}`,
+    untimed.rationale.goal_prescription.session_budget.budget === 15
+    && untimed.program.sessions.every((s) => dayMinutes(s.exercises, exById) <= 60 + FIT_GRACE_MIN || untimed.meta.time_trim.unfit.includes(s.name)));
   ok("#time-fit what the clock cut is recorded, per muscle, so the plan can offer it back",
     typeof owner.meta.time_trim?.removed_sets === "number" && typeof owner.meta.time_trim?.by_muscle === "object" && Array.isArray(owner.meta.time_trim?.unfit));
   // W305b: the 4d/40 chest fixture now fits by pairing and the minute's grace (nothing cut), so a day that still sheds sets
   // carries the check — and #fit-guards sweeps every priority, primary and secondary.
-  const pri30 = generatePlan({ user_id: "p-beginner-3-30-hypertrophy-full-side-delts", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 30, available_equipment: FULL, priority_muscles: ["side-delts"] }, kb);
-  ok(`#time-fit the clock never takes a PRIORITY muscle's sets (beginner 3d/30, side-delt priority: trimmed ${JSON.stringify(pri30.meta.time_trim.by_muscle)})`,
+  const pri30 = generatePlan({ user_id: "p-beginner-3-30-hypertrophy-full-side-delts", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 40, available_equipment: FULL, priority_muscles: ["side-delts"] }, kb); // W329: 40 min = the old 30's budget
+  ok(`#time-fit the clock never takes a PRIORITY muscle's sets (beginner 3d/40, side-delt priority: trimmed ${JSON.stringify(pri30.meta.time_trim.by_muscle)})`,
     pri30.meta.time_trim.removed_sets > 0 && !pri30.meta.time_trim.by_muscle["side-delts"]);
   ok("#time-fit volumeLevers offers 'longer sessions' exactly when the clock, not the quality cap, bound the day",
     /longer sessions/.test(volumeLevers({ days: 4, sessionMin: 60, experience: "advanced", timeBound: true }))
@@ -1725,17 +1750,17 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok(`#fit-grace a day is flagged over its minutes exactly when it runs more than a minute past them (#24): ${show(bad.grace)}`, bad.grace.length === 0);
   ok(`#fit-pair the pairing step never stacks a second pair on a day (one pair a session — accents, not the meal): ${show(bad.pairs)}`, bad.pairs.length === 0);
   ok(`#fit-pair every "paired with Z" the plan's explanation says is a real, mutual pair after the trim (W305h): ${show(bad.said)}`, bad.said.length === 0);
-  const bw2 = generatePlan({ user_id: "g5-bw-2-30", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 30, available_equipment: ["bodyweight"] }, kb);
-  ok(`#fit-guards the review's beginner 2d/30 bodyweight case keeps its knee-flexion lift and its hamstring work (${JSON.stringify(bw2.meta.time_trim.by_muscle)})`,
+  const bw2 = generatePlan({ user_id: "g5-bw-2-30", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 40, available_equipment: ["bodyweight"] }, kb); // W329: the old 30's budget
+  ok(`#fit-guards the review's beginner 2d/40 bodyweight case keeps its knee-flexion lift and its hamstring work (${JSON.stringify(bw2.meta.time_trim.by_muscle)})`,
     bw2.program.sessions.some((s) => s.exercises.some((e) => isKf(e.exercise))) && !bw2.meta.time_trim.by_muscle.hamstrings);
   // The review's case was the owner's 4d/60 full gym (Upper B 60.2 min) — inside the grace now; the same profile on
   // dumbbells runs a day past it, so that is where the pairing has to do the work.
-  const owner = generatePlan({ user_id: "p-advanced-4-60-hypertrophy-db-", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"] }, kb);
+  const owner = generatePlan({ user_id: "p-advanced-4-60-hypertrophy-db-", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: ["dumbbell", "bodyweight"] }, kb); // W329: the old 60's budget
   const pairedDay = owner.program.sessions.find((s) => (owner.meta.time_trim.paired ?? []).includes(s.name));
   const unpaired = pairedDay ? pairedDay.exercises.map(({ superset_with, ...e }) => e) : [];
-  ok(`#fit-pair advanced 4d/60: a day over its minutes pairs two non-competing isolations instead of losing a set (#44) — ${JSON.stringify(owner.meta.time_trim)}; unpaired ${dayMinutes(unpaired, exById)} min, paired ${pairedDay ? dayMinutes(pairedDay.exercises, exById) : "-"}`,
+  ok(`#fit-pair advanced 4d/80: a day over its minutes pairs two non-competing isolations instead of losing a set (#44) — ${JSON.stringify(owner.meta.time_trim)}; unpaired ${dayMinutes(unpaired, exById)} min, paired ${pairedDay ? dayMinutes(pairedDay.exercises, exById) : "-"}`,
     owner.meta.time_trim.removed_sets === 0 && owner.meta.time_trim.unfit.length === 0 && !!pairedDay
-    && dayMinutes(unpaired, exById) > 60 + FIT_GRACE_MIN && dayMinutes(pairedDay.exercises, exById) <= 60 + FIT_GRACE_MIN);
+    && dayMinutes(unpaired, exById) > 80 + FIT_GRACE_MIN && dayMinutes(pairedDay.exercises, exById) <= 80 + FIT_GRACE_MIN);
   const pairIds = pairedDay?.exercises.filter((e) => e.superset_with).map((e) => e.exercise) ?? [];
   ok(`#fit-pair the pair it makes is two isolations sharing no muscle, primary or secondary (${pairIds.join(" + ")})`,
     pairIds.length === 2 && pairIds.every((x) => exById.get(x)?.mechanic === "isolation")
@@ -1759,7 +1784,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
       const id = `lv-${st}-${days}-${len}-${en}`;
       const profile = { user_id: id, training_status: st, primary_goal: "hypertrophy", days_per_week: days, session_length_min: len, available_equipment: eq };
       const g = generatePlan(profile, kb);
-      const minuteBound = Math.round(len / 3) < CAP[st];
+      const minuteBound = setsInMinutes(len) < CAP[st]; // W329: the generator's own count
       const helps = (m) => minuteBound || (g.meta.time_trim.by_muscle[m] ?? 0) > 0;
       for (const w of g.rationale.warnings) if (w.muscle && /longer sessions/.test(w.message)) { genChecked++; if (!helps(w.muscle)) bad.gen.push(`${id} ${w.muscle}: ${w.message.slice(0, 60)}`); }
       const c = critiquePlan(g.program, kb, { experience: st, generated: true, sessionMinutes: len, trimmed: g.meta.time_trim.by_muscle });
@@ -1848,14 +1873,14 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   ok(`#fit-options a day past its minutes is ALWAYS said — keep-only when no option helps (#21): ${show(bad.silent)}`, bad.silent.length === 0);
   ok(`#fit-options ranked as the owner ranked them, keep last: ${show(bad.rank)}`, bad.rank.length === 0);
   ok(`#fit-options keep names exactly what it forgoes — what some option would lift, nothing every option leaves short (#17): ${show(bad.keep)}`, bad.keep.length === 0);
-  const flag = { user_id: "ss-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL };
+  const flag = { user_id: "ss-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULL }; // W329: the old 60's budget
   const f1 = fitFor(flag);
-  ok(`#fit-options the flagship 4d/60 (ceiling-bound): no 'longer' — a longer session can't add a set to a full day: ${JSON.stringify(f1?.options?.map((o) => o.kind))}`,
+  ok(`#fit-options the flagship 4d/80 (ceiling-bound): no 'longer' — a longer session can't add a set to a full day: ${JSON.stringify(f1?.options?.map((o) => o.kind))}`,
     !f1 || !f1.options.some((o) => o.kind === "longer"));
-  const m45 = { user_id: "fo-int-4-45-open", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 45, available_equipment: FULL };
+  const m45 = { user_id: "fo-int-4-45-open", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: FULL }; // W329: the old 45's budget
   const f45 = fitFor(m45), l45 = f45?.options?.find((o) => o.kind === "longer");
   ok(`#fit-options a minute-bound plan that trims nothing still gets 'longer' when it lifts muscles (#31): ${JSON.stringify(l45 ? { lifted: l45.lifted, newly: l45.newly } : f45?.options?.map((o) => o.kind))}`,
-    !!l45 && l45.minutes === 60 && l45.lifted.length > 0);
+    !!l45 && l45.minutes === 75 && l45.lifted.length > 0);
   ok("#fit-options a 6-day plan is never offered a 7th day, a 120-minute plan never 'longer'",
     !(fitFor({ ...flag, user_id: "ss-6", days_per_week: 6 })?.options ?? []).some((o) => o.kind === "add_day")
     && !(fitFor({ ...m45, user_id: "fo-120", session_length_min: 120 })?.options ?? []).some((o) => o.kind === "longer"));
@@ -1868,7 +1893,7 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
   stuffed.program.sessions[0].exercises.forEach((e) => { e.sets += 2; });
   const fs = timeFitOptions(m45, kb, cur(stuffed), { blockIndex: 0 });
   ok(`#fit-options measured from the STORED program: a day made long after generation is said (${JSON.stringify(fs?.over)})`,
-    !!fs && fs.unfit_days >= 1 && fs.over[0].session === stuffed.program.sessions[0].name && fs.over[0].minutes > 46);
+    !!fs && fs.unfit_days >= 1 && fs.over[0].session === stuffed.program.sessions[0].name && fs.over[0].minutes > 61);
   ok("#fit-options the payload says whether a block restart is a real cost (a beginner has no blocks — #27)",
     fitFor({ ...m45, user_id: "fo-beg", training_status: "beginner", session_length_min: 30 })?.blocks === false && f45?.blocks === true);
 }
@@ -1900,24 +1925,24 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     }
   ok(`#fit-pair a day flagged over its minutes never has one 5a pairing left that would fit it (C1/C13): ${pairable.length}${pairable.length ? " e.g. " + pairable.slice(0, 2).join(" | ") : ""}`, pairable.length === 0);
   // C12: intermediate 6×60, leg press stalled — the stall swap (not 15 more minutes) brings abs up.
-  const six = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 60, available_equipment: FULL };
+  const six = { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 80, available_equipment: FULL }; // W329: the old 60's budget
   const gs = generatePlan(six, kb);
   const fs = timeFitOptions(six, kb, cur(gs), { blockIndex: 0, stalledExercises: ["leg-press"] });
   ok(`#fit-options an option must beat a rebuild at the SAME schedule: a stall swap's gain is never credited to longer workouts (C12) — ${JSON.stringify(fs?.options?.map((o) => [o.kind, o.lifted]))}`,
     !(fs?.options ?? []).some((o) => o.kind === "longer" && o.lifted.includes("abs")));
   // C2: a legacy plan (no meta.time_trim) whose day runs over: said as legacy, offered a refit at the same block.
-  const m45 = { user_id: "fo-int-4-45-open", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 45, available_equipment: ["dumbbell", "bodyweight"] };
+  const m45 = { user_id: "fo-int-4-45-open", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 60, available_equipment: ["dumbbell", "bodyweight"] }; // W329: the old 45's budget
   const g45 = generatePlan(m45, kb), legacy = JSON.parse(JSON.stringify(cur(g45)));
   delete legacy.meta.time_trim;
   legacy.program.sessions.forEach((s) => s.exercises.forEach((e) => { e.superset_with = undefined; delete e.superset_with; if (exById.get(e.exercise)?.mechanic === "isolation") e.sets += 1; }));
   const fl = timeFitOptions(m45, kb, legacy, { blockIndex: 0 }, { refitOpts: { blockIndex: 2 } });
   const refit = fl?.options?.find((o) => o.kind === "refit");
   ok(`#fit-options a plan built before the fit-to-time pass is said to be one (fitted:false) and offered a refit at the same days (C2) — ${JSON.stringify(fl && { fitted: fl.fitted, unfit: fl.unfit_days, kinds: fl.options.map((o) => o.kind), refit: refit && [refit.days, refit.minutes, refit.unfit_days] })}`,
-    fl?.fitted === false && fl.unfit_days > 0 && !!refit && refit.days === 4 && refit.minutes === 45 && refit.unfit_days < fl.unfit_days
+    fl?.fitted === false && fl.unfit_days > 0 && !!refit && refit.days === 4 && refit.minutes === 60 && refit.unfit_days < fl.unfit_days
     && fl.options.map((o) => o.kind).indexOf("refit") === fl.options.length - 2);
   // …never for a plan that went through the pass, even where another block's rebuild would fit a day (a rotation is
   // the block boundary's business, not a card's): beginner 6×30 dumbbells, 1 day over at block 0, 0 at block 1.
-  const rb = { user_id: "rf-beginner-6-30-db", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 30, available_equipment: ["dumbbell", "bodyweight"] };
+  const rb = { user_id: "rf-beginner-6-30-db", training_status: "beginner", primary_goal: "hypertrophy", days_per_week: 6, session_length_min: 40, available_equipment: ["dumbbell", "bodyweight"] }; // W329: the old 30's budget
   const grb = generatePlan(rb, kb, { blockIndex: 0 });
   const frb = timeFitOptions(rb, kb, cur(grb), { blockIndex: 0 }, { refitOpts: { blockIndex: 1 } });
   ok(`#fit-options …a plan that went through the pass is never offered a refit, and says so (fitted:true) — ${JSON.stringify(frb && { fitted: frb.fitted, unfit: frb.unfit_days, kinds: frb.options.map((o) => o.kind), block1Unfit: generatePlan(rb, kb, { blockIndex: 1 }).meta.time_trim.unfit.length })}`,
@@ -1941,20 +1966,22 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     ok(`#cap (W315b) ${status} ${days}d/${min} min: no day past the lifter's own 13 (uncapped: ${dayMax(free)}, capped: ${dayMax(capped)})`, dayMax(capped) <= 13 && dayMax(free) > 13);
   }
   ok("#cap (W315b) a cap at or over the KB's changes nothing", JSON.stringify(generatePlan(profile, kb, { sessionCap: 30 }).program) === JSON.stringify(generatePlan(profile, kb).program));
-  ok("#cap (W315b) the levers judge 'longer sessions' against the lifter's own ceiling (45 min holds 15 sets — past a cap of 13)",
-    volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", sessionCap: 13 }) === volumeLevers({ days: 4, sessionMin: 45, experience: "advanced", timeBound: false }));
+  ok("#cap (W315b) the levers judge 'longer sessions' against the lifter's own ceiling (60 min holds 15 sets — past a cap of 13)",
+    volumeLevers({ days: 4, sessionMin: 60, experience: "advanced", sessionCap: 13 }) === volumeLevers({ days: 4, sessionMin: 60, experience: "advanced", timeBound: false }));
 }
-// --- W316: the lifter's own pace (opts.pace) sizes the day: the clock-fit pass trims a day only as far as it runs past
-// the lifter's minutes AT THEIR PACE — a slower lifter loses more, a faster one keeps it all (the set budget itself still
-// comes from the minutes, ~3 min a set); without a pace the plan is byte-identical (the golden digest).
+// --- W316: the lifter's own pace (opts.pace) sizes the day. W329: it sizes the set BUDGET too (setsInMinutes — the
+// default 4 minutes a set until the lifter's own gaps are learned), and the clock-fit pass measures at the same pace — a
+// slower lifter gets fewer sets, a faster one more (to the quality ceiling); without a pace the plan is byte-identical
+// (the golden digest).
 {
   const pr = { user_id: "pace-1", training_status: "advanced", primary_goal: "hypertrophy", days_per_week: 5, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"] };
-  const trim = (pace) => generatePlan(pr, kb, pace ? { pace } : {}).meta?.time_trim?.removed_sets ?? 0;
-  const slow = trim({ heavy: 240, moderate: 230, isolation: 160, transition: 200 }), std = trim(null), fast = trim({ heavy: 130, moderate: 120, isolation: 80, transition: 90 });
-  ok(`#pace (W316) the clock is the lifter's: sets cut to fit 45 min — slow ${slow} > default ${std} > fast ${fast}`, slow > std && std > fast);
+  const SLOW = { heavy: 300, moderate: 290, isolation: 250, transition: 280 }, FAST = { heavy: 150, moderate: 140, isolation: 100, transition: 110 };
+  const dayMax = (pace) => Math.max(...generatePlan(pr, kb, pace ? { pace } : {}).program.sessions.map((s) => s.exercises.reduce((a, e) => a + e.sets, 0)));
+  const slow = dayMax(SLOW), std = dayMax(null), fast = dayMax(FAST);
+  ok(`#pace (W316/W329) the clock is the lifter's: the most sets a 45-min day holds — slow ${slow} < default ${std} < fast ${fast}`, slow < std && std < fast && fast <= 20);
   const cur = generatePlan(pr, kb);
   const q = (pace) => timeFitQuestion(pr, kb, { program: cur.program, rationale: cur.rationale, meta: cur.meta }, { pace });
-  ok("#pace (W316) the time-fit question measures the stored plan at the lifter's pace too", q({ heavy: 240, moderate: 230, isolation: 160, transition: 200 }).max_minutes > q(null).max_minutes);
+  ok("#pace (W316) the time-fit question measures the stored plan at the lifter's pace too", q(SLOW).max_minutes > q(null).max_minutes);
 }
 // --- W322: what they enjoy, inside what's optimal (owner: "bridge the gap between these preferences and optimal training")
 {

@@ -3197,8 +3197,9 @@ try {
   // card (one schedule question at a time).
   {
     const FULLQ = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    // W329: 80 minutes is the old 60-minute fixture's budget at 4 minutes a set (an untimed lifter's 60 min holds 15).
     const tf = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
-      days_per_week: 4, session_length_min: 60, available_equipment: FULLQ } })).data.user_id;
+      days_per_week: 4, session_length_min: 80, available_equipment: FULLQ } })).data.user_id;
     const today = async (id = tf) => (await app.request("/api/today", { headers: { "X-HB-User": id } })).json();
     const strip = (f) => (f ? { ...f, key: undefined } : null);
     // A day made long in the STORED program (a legacy plan or a hand of extra sets) — what the user has is what's measured.
@@ -3247,7 +3248,7 @@ try {
     // A plan at block 1 whose alternatives differ between block 0 and block 1, so the check can tell them apart.
     const kbm = await import("../src/kb-data.mjs");
     const KBT = { exercises: kbm.exercises, muscles: kbm.muscles, contraindications: kbm.contraindications, guidelines: kbm.guidelines };
-    const bp = { user_id: "blk-intermediate-2-60-0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60, available_equipment: FULLQ };
+    const bp = { user_id: "blk-intermediate-2-60-0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 80, available_equipment: FULLQ }; // W329: the old 60's budget
     // A tune big enough to move this plan's alternatives, so the check can tell a dropped tune too.
     const tune = { chest: -2, lats: -2, quadriceps: -2, "upper-back": -2, triceps: -2, biceps: -2 };
     const bg = generateUserPlan(bp, { blockIndex: 1, specSpent: true, volumeAdjust: tune });
@@ -3279,7 +3280,7 @@ try {
   // today's stalls. Fixture: a seed whose card exists only WITH the stall (lat-pulldown) — the exact failing case.
   {
     const ks = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
-      days_per_week: 3, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id;
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id; // W329: the old 45's budget
     await store.updateUser(ks, (u) => { u.profile.user_id = "ks-beginner-3-45-chest-0"; const g = generateUserPlan(u.profile); u.program = g.program; u.plan_rationale = g.rationale; u.plan_meta = { ...u.plan_meta, ...g.meta, block_index: 0 }; return u; });
     for (let w = 0; w < 6; w++) await json("POST", "/api/session", { user_id: ks, session_id: `ks-${w}`, date: dAgo(36 - w * 7), local_date: dAgo(36 - w * 7).slice(0, 10),
       sets: Array.from({ length: 3 }, () => ({ exercise: "lat-pulldown", set_type: "work", weight_kg: 40, reps: 10, completed_at: dAgo(36 - w * 7) })) });
