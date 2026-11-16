@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift, stalledExerciseIds } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, shiftDayKey, weekDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig, userRecommendedOrder, userApplyOrder, userOrderEntries } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 import { paceProfile, swapPreferences } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -394,7 +394,7 @@ export function createApp(store, config = {}) {
     // …only lifts the LEARNING took out (review #7 #11): not one that is also "No machine" or skipped (its own card owns it,
     // and this Bring back would delete that answer too), and never over a hand-edited plan (learning is paused there).
     const learned_out = listedLearnedOut(user).map((xid) => ({ id: xid, name: exerciseNameFor(user, xid) })); // one rule with Today's notes (round 14 #1)
-    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out, beginner: (user.profile?.training_status ?? "beginner") === "beginner" });
+    return c.json({ program: { name: user.program.name, split: user.program.split, days_per_week: user.program.days_per_week, sessions: user.program.sessions, cardio: user.program.cardio ?? null, custom: !!user.program.custom /* W320: the Plan tab says learning is paused */ }, ordered: userOrderedDays(user) /* W335: days in the lifter's own order */, rationale: user.plan_rationale ?? null, profile: user.profile ?? null, personalization, unavailable, up_next, skipped, learned_out, beginner: (user.profile?.training_status ?? "beginner") === "beginner" });
   });
 
   // Regenerate the plan from the stored profile (after a profile edit).
@@ -611,7 +611,58 @@ export function createApp(store, config = {}) {
     // The app's own untouched output is critiqued in CAVEAT framing (constraints
     // and levers, no "worth fixing"); a hand-edited plan keeps the full guard rail.
     const critProgram = b.program || user.program;
-    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null, critProgram?.custom ? null : user.plan_meta?.time_trim?.by_muscle ?? null, user.profile?.session_cap ?? null));
+    return c.json(critiqueUserPlan(critProgram, user.custom_exercises || [], user.profile?.training_status, user.profile?.priority_muscles || [], !critProgram?.custom, user.profile?.session_length_min ?? null, critProgram?.custom ? null : user.plan_meta?.time_trim?.by_muscle ?? null, user.profile?.session_cap ?? null, critProgram?.custom ? [] : userOrderedDays(user)));
+  });
+
+  // THE LIFTER'S OWN ORDER (W335 — owner: "I can't change the order of the exercises"; chose: remember it and re-apply it
+  // on every rebuild, so the plan keeps adapting). Run INSIDE the compare-and-swap. `ids` must be a reshuffle of the
+  // stored day (rows always come from the stored program — a client's fields are never trusted, so a reorder can't
+  // change a superset or a set count); the recommended order, or null, forgets the day's saved order. The stored day is
+  // then exactly what the next rebuild produces (userApplyOrder — the same permutation), and saved orders for days the
+  // plan no longer has are pruned. `custom` and the rationale are untouched: an order is not an edit.
+  const ORDER_MAX_DAYS = 8, ORDER_MAX_LIFTS = 16;
+  const userOrderedDays = (u) => (u?.program?.custom ? [] : Object.keys(u?.order_pref ?? {}).filter((n) => (u.program?.sessions ?? []).some((s) => s.name === n)));
+  function setUserOrder(u, name, ids) {
+    const s = u.program?.sessions?.find((x) => x.name === name);
+    if (!s) return "unknown-session";
+    if (ids != null) {
+      if (!Array.isArray(ids) || ids.length > ORDER_MAX_LIFTS * 2) return "bad-order";
+      const have = s.exercises.map((e) => e.exercise).sort(), want = ids.map(String).sort();
+      if (JSON.stringify(have) !== JSON.stringify(want)) return "bad-order";
+    }
+    const rec = (userRecommendedOrder(u, name) ?? []).map((e) => e.exercise);
+    const pref = { ...(u.order_pref ?? {}) };
+    if (ids == null || JSON.stringify(rec) === JSON.stringify(ids.map(String))) delete pref[name];
+    else {
+      const byId = new Map(s.exercises.map((e) => [e.exercise, e]));
+      pref[name] = userOrderEntries(u, name, ids.map((id) => byId.get(String(id)))).slice(0, ORDER_MAX_LIFTS);
+    }
+    const days = new Set(u.program.sessions.map((x) => x.name));
+    const kept = Object.entries(pref).filter(([k]) => days.has(k)).slice(0, ORDER_MAX_DAYS);
+    if (kept.length) u.order_pref = Object.fromEntries(kept); else delete u.order_pref;
+    s.exercises = userApplyOrder(u, name) ?? s.exercises;
+    return null;
+  }
+  app.post("/api/plan/order", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const { id, user, error } = await requireUser(c, b);
+    if (error) return error;
+    if (!user.program?.sessions?.length) return c.json({ error: "no-plan" }, 400);
+    if (user.program.custom) return c.json({ error: "custom-plan" }, 409); // a hand-built plan's order is saved with Save
+    const reset = b.reset === true, name = b.session == null ? null : String(b.session);
+    if (!reset && (!name || !Array.isArray(b.order))) return c.json({ error: "order required" }, 400);
+    let bad = null;
+    const updated = await store.updateUser(id, (u) => {
+      bad = null;
+      if (u.program?.custom) { bad = "custom-plan"; return u; }
+      const names = reset && name == null ? u.program.sessions.map((s) => s.name) : [name];
+      for (const n of names) { const e = setUserOrder(u, n, reset ? null : b.order); if (e) { bad = e; return u; } }
+      return u;
+    });
+    if (bad === "custom-plan") return c.json({ error: bad }, 409);
+    if (bad) return c.json({ error: bad }, 400);
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, ordered: userOrderedDays(updated), sessions: updated.program.sessions });
   });
 
   // Save an edited/custom plan (sanitized: real exercise ids, sets 1-10), then
@@ -636,6 +687,18 @@ export function createApp(store, config = {}) {
     sweepDanglingSupersets(sessions);
     let program = null;
     const updated = await store.updateUser(b.user_id, (u) => {
+      // W335: the SAME lifts, sets and reps on the same days, only reordered — on a plan the app still runs — is an order,
+      // not an edit: remembered per day (setUserOrder), never a reason to make the plan hand-built.
+      const content = (ss) => JSON.stringify((ss || []).map((s) => [s.name, s.exercises.map((e) => `${e.exercise}:${e.sets}:${e.rep_range}`).sort()]));
+      if (!u.program?.custom && content(u.program?.sessions) === content(sessions)) {
+        for (const s of sessions) {
+          const cur = u.program.sessions.find((x) => x.name === s.name);
+          if (cur && JSON.stringify(cur.exercises.map((e) => e.exercise)) !== JSON.stringify(s.exercises.map((e) => e.exercise))) setUserOrder(u, s.name, s.exercises.map((e) => e.exercise));
+        }
+        if (p.name) u.program = { ...u.program, name: String(p.name) };
+        program = u.program;
+        return u;
+      }
       // Only mark the plan `custom` (which permanently opts it out of mesocycle
       // accessory rotation) when the saved exercises ACTUALLY differ from the
       // generated ones — a no-op "Save & re-check" must not silently freeze a
@@ -661,8 +724,8 @@ export function createApp(store, config = {}) {
     const injuryFlags = [...new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)))]
       .map((exId) => ({ exId, region: injuryRegionFor(updated.profile, exId) })).filter((x) => x.region)
       .map((x) => ({ severity: "warn", msg: `${exerciseById.get(x.exId)?.name ?? x.exId}: you reported a ${x.region.replace(/-/g, " ")} issue — it's one of the lifts the plan keeps away from it.` }));
-    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null, program.custom ? null : updated.plan_meta?.time_trim?.by_muscle ?? null, updated.profile?.session_cap ?? null);
-    return c.json({ ok: true, critique: { ...critique, findings: [...(critique?.findings ?? []), ...injuryFlags] } });
+    const critique = critiqueUserPlan(program, updated.custom_exercises || [], updated.profile?.training_status, updated.profile?.priority_muscles || [], !program.custom, updated.profile?.session_length_min ?? null, program.custom ? null : updated.plan_meta?.time_trim?.by_muscle ?? null, updated.profile?.session_cap ?? null, userOrderedDays(updated));
+    return c.json({ ok: true, ordered: userOrderedDays(updated), custom: !!program.custom, critique: { ...critique, findings: [...(critique?.findings ?? []), ...injuryFlags] } });
   });
 
   // Lean exercise list for the plan builder's swap pickers (includes the user's

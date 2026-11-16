@@ -633,3 +633,19 @@ export function swapReason(tier, mechanic = null) {
   if (tier === 3) return mechanic === "isolation" ? "isolation instead" : mechanic === "compound" ? "compound instead" : "a different kind of lift";
   return "";
 }
+
+// Move one row of a day up or down (W335 — owner: "I can't change the order of the exercises"). A superset pair is ONE
+// block: it moves together, and a single lift hops a pair whole (a partner split from its mate would be snapped back by
+// orderSupersetAdjacent anyway). Null at either edge — nothing to do. Never mutates. Pure.
+export function moveRow(rows, i, dir) {
+  if (!Array.isArray(rows) || !rows[i] || (dir !== -1 && dir !== 1)) return null;
+  const blockAt = (k) => {
+    const r = rows[k], m = r?.superset_with ? rows.findIndex((x, j) => j !== k && x.exercise === r.superset_with && x.superset_with === r.exercise) : -1;
+    return m >= 0 && Math.abs(m - k) === 1 ? [Math.min(k, m), Math.max(k, m)] : [k, k];
+  };
+  const [a, b] = blockAt(i);
+  if (dir === -1 ? a === 0 : b === rows.length - 1) return null;
+  const [c, d] = blockAt(dir === -1 ? a - 1 : b + 1);
+  const mine = rows.slice(a, b + 1), theirs = rows.slice(c, d + 1);
+  return dir === -1 ? [...rows.slice(0, c), ...mine, ...theirs, ...rows.slice(b + 1)] : [...rows.slice(0, a), ...theirs, ...mine, ...rows.slice(d + 1)];
+}

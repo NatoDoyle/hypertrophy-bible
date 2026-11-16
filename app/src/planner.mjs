@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -45,7 +45,9 @@ export function planOptsFor(user, extra = {}) {
     // …and what their swaps taught it (W323), minus the lifts they brought back — bounded to ±1 in the engine.
     ...(() => { const kept = new Set(user?.plan_meta?.pref_kept ?? []);
       const sc = Object.fromEntries(Object.entries(user?.plan_meta?.pref_scores ?? {}).filter(([k, v]) => !kept.has(k) && Number.isFinite(v) && v !== 0));
-      return Object.keys(sc).length ? { prefScores: sc } : {}; })(), ...extra };
+      return Object.keys(sc).length ? { prefScores: sc } : {}; })(),
+    // …and the order they put their days in (W335) — every rebuild keeps it, so reordering never stops the plan adapting.
+    ...(user?.order_pref && typeof user.order_pref === "object" && Object.keys(user.order_pref).length ? { orderPref: user.order_pref } : {}), ...extra };
 }
 
 // The lifter's training preferences (W321), at the trust boundary: enum styles and variety, REAL exercise ids (the KB's
@@ -91,7 +93,28 @@ export function userEasierSubstitutes(user, exId, fitting, known = []) {
 }
 export function userApplySubstitution(user, exId, { sessionName = null, stalled = [] } = {}) {
   return applySubstitution(user.program, user.plan_rationale ?? null, exId, { profile: user.profile, kb: KB, stalled, sessionName,
-    customExercises: user.custom_exercises || [], blockIndex: user.plan_meta?.block_index ?? 0, specSpent: !!user.plan_meta?.spec_spent });
+    customExercises: user.custom_exercises || [], blockIndex: user.plan_meta?.block_index ?? 0, specSpent: !!user.plan_meta?.spec_spent,
+    orderPref: user.order_pref ?? null });
+}
+// W335: one day's rows in the generator's order ("Restore recommended order"), and in the lifter's saved order — the
+// SAME permutation a rebuild applies, so a saved day is byte-equal to what the next rebuild produces.
+const lookupFor = (user) => new Map([...exercises, ...(user?.custom_exercises || [])].map((e) => [e.id, e]));
+const orderOpts = (user) => ({ priority: new Set(user?.profile?.priority_muscles ?? []),
+  specialization: specializationActive(user?.profile ?? {}, muscles, user?.plan_meta?.block_index ?? 0, !!user?.plan_meta?.spec_spent) });
+export function userRecommendedOrder(user, name) {
+  const s = user?.program?.sessions?.find((x) => x.name === name);
+  if (!s) return null;
+  return recommendedSessionOrder(s.exercises.map((e) => ({ ...e })), user.plan_rationale?.exercise_choices ?? [], name, lookupFor(user), orderOpts(user));
+}
+export function userApplyOrder(user, name) {
+  const base = userRecommendedOrder(user, name);
+  const entries = user?.order_pref?.[name];
+  if (!base || !Array.isArray(entries) || !entries.length) return base;
+  const lookup = lookupFor(user), choices = user.plan_rationale?.exercise_choices ?? [];
+  return applyOrderPref(base, entries, (id) => slotRole(name, id, choices, lookup));
+}
+export function userOrderEntries(user, name, items) {
+  return orderEntries(items, user?.plan_rationale?.exercise_choices ?? [], name, lookupFor(user));
 }
 export { sweepDanglingSupersets, contentSig };
 
@@ -123,8 +146,8 @@ export function explainUserPlan(profile, rationale, program, live = null) {
 
 // KB critique of any program (generated or user-built), including the user's
 // custom exercises so a plan that uses them is scored correctly.
-export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null) {
-  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed, sessionCap });
+export function critiqueUserPlan(program, customEx = [], experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null, userOrdered = []) {
+  return critiquePlan(program, { exercises: [...exercises, ...customEx], muscles }, { experience, priority, generated, sessionMinutes, trimmed, sessionCap, userOrdered });
 }
 
 // The exercises a user may swap into / add — equipment + injury filtered — plus

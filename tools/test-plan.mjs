@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
+import { generatePlan, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
   accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN, rankedPools } from "./plan-core.mjs";
 import { sessionMinutes as dayMinutes, setsInMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
@@ -2182,6 +2182,70 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     ok("#rev10-b11 a 'Kept' line never names a lift the plan no longer holds", !line, JSON.stringify(line));
   }
   // The fixes keep the absent path byte-identical (the golden digest above) and the stalled path as pinned.
+}
+// --- W335 (owner: "I can't change the order of the exercises"; chose: remember my order and re-apply it whenever the
+// plan rebuilds, so the plan keeps adapting): a saved order is a pure permutation applied after every content decision.
+{
+  const FULLO = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+  const pr = { user_id: "ord-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLO };
+  const base = generatePlan(pr, kb);
+  const lookup = new Map(exercises.map((e) => [e.id, e]));
+  const reversed = Object.fromEntries(base.program.sessions.map((s) => [s.name, orderEntries([...s.exercises].reverse(), base.rationale.exercise_choices, s.name, lookup)]));
+  const mine = generatePlan(pr, kb, { orderPref: reversed });
+  const multiset = (p) => JSON.stringify(p.program.sessions.map((s) => [s.name, s.exercises.map((e) => JSON.stringify(e)).sort()]));
+  ok("#W335 a saved order changes WHERE lifts sit, never which lifts, their sets, the rationale or the meta",
+    multiset(mine) === multiset(base) && JSON.stringify(mine.rationale) === JSON.stringify(base.rationale) && JSON.stringify(mine.meta) === JSON.stringify(base.meta));
+  const pairsAdjacent = (ex) => ex.every((e, i) => !e.superset_with || ex[i - 1]?.exercise === e.superset_with || ex[i + 1]?.exercise === e.superset_with);
+  ok("#W335 …in the lifter's order (reversed here), superset partners still side by side",
+    mine.program.sessions.every((s, k) => {
+      const want = [...base.program.sessions[k].exercises].reverse().map((e) => e.exercise);
+      const got = s.exercises.map((e) => e.exercise);
+      return pairsAdjacent(s.exercises) && (JSON.stringify(got) === JSON.stringify(want) || base.program.sessions[k].exercises.some((e) => e.superset_with));
+    }));
+  ok("#W335 no saved order (or an empty one) is byte-identical", JSON.stringify(generatePlan(pr, kb, { orderPref: {} })) === JSON.stringify(base) && JSON.stringify(generatePlan(pr, kb, { orderPref: { Nope: [{ ex: "x" }] } })) === JSON.stringify(base));
+  // The generator's own order is recoverable from the stored day — what "Restore recommended order" puts back.
+  let restored = 0, days = 0;
+  for (const st of ["beginner", "intermediate", "advanced"]) for (const d of [2, 3, 4, 5]) for (const pri of [[], ["side-delts"]]) {
+    const prof = { user_id: `ro-${st}-${d}-${pri.length}`, training_status: st, primary_goal: "hypertrophy", days_per_week: d, session_length_min: 60, available_equipment: FULLO, priority_muscles: pri };
+    const g = generatePlan(prof, kb), spec = specializationActive(prof, muscles, 0, false); // the binder passes the same
+    for (const s of g.program.sessions) {
+      days++;
+      const shuffled = [...s.exercises].reverse();
+      const back = recommendedSessionOrder(shuffled, g.rationale.exercise_choices, s.name, lookup, { priority: new Set(pri), specialization: spec });
+      if (JSON.stringify(back) === JSON.stringify(s.exercises)) restored++;
+    }
+  }
+  ok(`#W335 the generator's order is recoverable from any shuffle of a day (Restore recommended order) — ${restored} of ${days} days`, restored === days && days > 30);
+  // A rotation (block 1) takes the replaced lift's place: the slot's role (muscle + kind) carries the position.
+  const b1 = generatePlan(pr, kb, { blockIndex: 1 }), b1mine = generatePlan(pr, kb, { blockIndex: 1, orderPref: reversed });
+  const roleSeq = (p, k) => p.program.sessions[k].exercises.map((e) => { const r = slotRole(p.program.sessions[k].name, e.exercise, p.rationale.exercise_choices, lookup); return `${r.m}:${r.k}`; });
+  let rotChecked = 0, rotBad = [];
+  base.program.sessions.forEach((s, k) => {
+    const noPair = (p) => !p.program.sessions[k].exercises.some((e) => e.superset_with);
+    if (!noPair(base) || !noPair(b1mine)) return;
+    const want = [...roleSeq(base, k)].reverse(), got = roleSeq(b1mine, k);
+    if (JSON.stringify([...want].sort()) !== JSON.stringify([...got].sort())) return; // the rotation changed which roles the day holds
+    rotChecked++;
+    if (b1.program.sessions[k].exercises.map((e) => e.exercise).join() === base.program.sessions[k].exercises.map((e) => e.exercise).join()) return;
+    if (JSON.stringify(got) !== JSON.stringify(want)) rotBad.push(s.name);
+  });
+  ok(`#W335 at the next block, rotated lifts take the place of the lifts whose slot they fill (the order follows the ROLE) — ${rotChecked} days checked, off: ${rotBad.join(", ") || "none"}`, rotChecked > 0 && rotBad.length === 0);
+  // A permanent swap keeps the replaced lift's place.
+  const day = base.program.sessions.find((s) => !s.exercises.some((e) => e.superset_with)) ?? base.program.sessions[0];
+  const X = day.exercises[0].exercise;
+  const ownProg = { ...mine.program, sessions: mine.program.sessions };
+  const sub = applySubstitution(ownProg, mine.rationale, X, { profile: pr, kb, sessionName: day.name, orderPref: reversed });
+  const before = mine.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise);
+  const after = sub.program?.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise) ?? [];
+  ok(`#W335 a permanent swap keeps the replaced lift's place in the lifter's order (${before.indexOf(X)} → ${after.indexOf(sub.replaced?.[0]?.to)})`,
+    !!sub.replaced?.[0]?.to && after.indexOf(sub.replaced[0].to) === before.indexOf(X));
+  // The critique says a compound-after-isolation is THEIR order, with the way back — only on days they ordered.
+  const cr = critiquePlan(mine.program, kb, { experience: "intermediate", generated: true, userOrdered: mine.program.sessions.map((s) => s.name) });
+  const crPlain = critiquePlan(mine.program, kb, { experience: "intermediate", generated: true });
+  ok("#W335 the critique owns a lifter's order as theirs (with the way back) — only on days they ordered",
+    cr.findings.some((f) => f.own_order && /That's your order/.test(f.msg) && /Restore recommended order/.test(f.msg)) && !crPlain.findings.some((f) => f.own_order));
+  ok("#W335 applyOrderPref is a permutation: an unknown entry or an empty list changes nothing",
+    applyOrderPref(day.exercises, [], () => ({})) === day.exercises && JSON.stringify(applyOrderPref(day.exercises, [{ ex: "nope", m: "nope", k: "x" }], (id) => slotRole(day.name, id, base.rationale.exercise_choices, lookup))) === JSON.stringify(day.exercises));
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

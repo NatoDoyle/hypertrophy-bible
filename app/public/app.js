@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -1135,7 +1135,7 @@ async function renderPlan() {
   const meta = new Map(exs.map((e) => [e.id, e]));
   const { cardioBlock, personalizationBlock, whyBlock } = buildPlanBlocks(d);
   // "Up next" (C16): the rotation pointer — the session Today serves on your next training day.
-  const sessionCards = (d.program?.sessions ?? []).map((s, i) => `<div class="card"><b>${esc(s.name)}</b>${i === d.up_next ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">Up next</span>` : ""}
+  const sessionCards = (d.program?.sessions ?? []).map((s, i) => `<div class="card"><b>${esc(s.name)}</b>${i === d.up_next ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">Up next</span>` : ""}${(d.ordered ?? []).includes(s.name) ? ` <span class="chip" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem" title="In the order you set — kept when the plan changes">↕ your order</span>` : ""}
     ${d.rationale?.session_notes?.[s.name] ? `<p class="muted" style="margin:2px 0 4px">🌙 ${esc(d.rationale.session_notes[s.name])}</p>` : ""}
     ${orderSupersetAdjacent(s.exercises).map((e) => {
       const x = meta.get(e.exercise) || {};
@@ -1316,7 +1316,7 @@ async function renderPlanExplain(firstTime) {
 }
 
 // ---------- Custom plan builder + KB critique ----------
-let editState = null, allExercises = [], pendingRm = null;
+let editState = null, allExercises = [], pendingRm = null, reorderDay = null, orderedDays = [];
 const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
@@ -1331,13 +1331,23 @@ async function renderPlanEdit() {
   }
   allExercises = exs;
   editState = { name: d.program.name, custom: !!d.program.custom, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
-  pendingRm = null;
+  pendingRm = null; reorderDay = null; orderedDays = d.ordered ?? [];
   // show the current plan's critique straight away
   const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
   drawEdit(crit);
 }
 function drawEdit(critique) {
-  const sessions = editState.sessions.map((s, si) => `<div class="card"><b>${esc(s.name)}</b>
+  // W335: a day in REORDER mode shows only ↑/↓ (no −/+/swap/✕ beside them), and "Done" saves the order on its own —
+  // on a plan the app still runs it's remembered and re-applied at every rebuild, so the plan keeps adapting.
+  const reorderRows = (s, si) => s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
+      <div style="flex:1"><b>${esc(exName(e.exercise))}</b>${e.superset_with ? ` <span class="muted">🔗</span>` : ""}</div>
+      <button class="tapchip" data-mv="-1" aria-label="Move ${esc(exName(e.exercise))} up" ${moveRow(s.exercises, ei, -1) ? "" : "disabled"}>↑</button>
+      <button class="tapchip" data-mv="1" aria-label="Move ${esc(exName(e.exercise))} down" ${moveRow(s.exercises, ei, 1) ? "" : "disabled"}>↓</button></div>`).join("");
+  const sessions = editState.sessions.map((s, si) => reorderDay === si ? `<div class="card"><b>${esc(s.name)}</b> <span class="muted">· reordering</span>
+    <p class="muted" style="margin:4px 0 6px;font-size:.9rem">${editState.custom ? "Moves save with “Save &amp; re-check”." : "Your order is kept when the plan changes — rotations and swaps take their lift's place."}</p>
+    ${reorderRows(s, si)}
+    <button class="btn secondary" data-reorder-done="${si}">Done</button></div>` : `<div class="card"><b>${esc(s.name)}</b>${orderedDays.includes(s.name) ? ` <span class="chip" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">↕ your order</span>` : ""}
+    <div><button class="btn ghost inline" data-reorder="${si}" style="margin:2px 6px 4px 0">⇅ Reorder</button>${orderedDays.includes(s.name) && !editState.custom ? `<button class="btn ghost inline" data-reorder-reset="${si}" style="margin:2px 0 4px">Restore recommended order</button>` : ""}</div>
     ${s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
       <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets} × ${esc(e.rep_range)} reps</span></div>
       <button class="tapchip" data-act="dec" aria-label="fewer sets">−</button><button class="tapchip" data-act="inc" aria-label="more sets">+</button>
@@ -1367,6 +1377,40 @@ function drawEdit(critique) {
     drawEdit(critique);
   });
   app.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => renderAddExercise(+b.dataset.add));
+  app.querySelectorAll("[data-reorder]").forEach((b) => b.onclick = () => { reorderDay = +b.dataset.reorder; pendingRm = null; drawEdit(critique); });
+  app.querySelectorAll("[data-mv]").forEach((b) => b.onclick = () => {
+    const row = b.closest("[data-si]"), si = +row.dataset.si, ei = +row.dataset.ei, s = editState.sessions[si];
+    const next = moveRow(s.exercises, ei, +b.dataset.mv);
+    if (!next) return;
+    const moved = s.exercises[ei];
+    s.exercises = next;
+    drawEdit(critique);
+    say(`Moved ${exName(moved.exercise)} to ${next.indexOf(moved) + 1} of ${next.length}.`);
+    app.querySelector(`[data-si="${si}"][data-ei="${next.indexOf(moved)}"] [data-mv="${b.dataset.mv}"]`)?.focus();
+  });
+  const saveOrder = async (si, reset) => {
+    const s = editState.sessions[si];
+    let r = null;
+    try { r = await api(`/api/plan/order`, { method: "POST", body: JSON.stringify({ user_id: uid, session: s.name, ...(reset ? { reset: true } : { order: s.exercises.map((e) => e.exercise) }) }) }); } catch {}
+    if (!r || r.error) {
+      say("Couldn't save the order.");
+      alertBar(r?.error === "bad-order" ? "This day has other changes that aren't saved yet — tap “Save & re-check” first, then reorder." : "📴 Couldn't save your order — check your connection and tap Done again.");
+      return false;
+    }
+    orderedDays = r.ordered ?? [];
+    const fresh = (r.sessions ?? []).find((x) => x.name === s.name);
+    if (fresh) s.exercises = JSON.parse(JSON.stringify(fresh.exercises)); // the server's day: exactly what a rebuild produces
+    let crit = critique; try { crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) }); } catch {}
+    reorderDay = null; drawEdit(crit);
+    say(reset ? `${s.name} is back in the recommended order.` : `Order saved for ${s.name}.`);
+    return true;
+  };
+  app.querySelectorAll("[data-reorder-done]").forEach((b) => b.onclick = () => {
+    const si = +b.dataset.reorderDone;
+    if (editState.custom) { reorderDay = null; return drawEdit(critique); } // a hand-built plan: saved with Save, as every edit
+    saveOrder(si, false);
+  });
+  app.querySelectorAll("[data-reorder-reset]").forEach((b) => b.onclick = () => saveOrder(+b.dataset.reorderReset, true));
   $("#savePlan").onclick = async () => {
     let r; try { r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); } catch { r = null; }
     if (r && r.ok) { localStorage.setItem("hb_program", editState.name); say("Plan saved."); drawEdit(r.critique); }

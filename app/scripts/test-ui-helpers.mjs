@@ -1358,5 +1358,24 @@ check("#W332/W333 review fixes: 'Save and finish' ends the workout (complete) be
   assert.equal((ed.match(/syncRestAlert\(\); \/\/ [^\n]*\(review\)/g) ?? []).length, 2, "after a move and after a removal");
   assert.match(fnBody(appJs, "if (historyEdit) {", 6000), /if \(!sets\.length\) \{ say\("That removes the whole workout\."\);/);
 });
+check("#W335 moveRow: neighbours swap; a superset pair moves as one block and a single lift hops a pair whole; null at the edges; never mutates", () => {
+  const { moveRow } = uiHelpers;
+  const R = (id, mate = null) => ({ exercise: id, ...(mate ? { superset_with: mate } : {}) });
+  const ids = (rows) => rows?.map((r) => r.exercise).join(",") ?? null;
+  const rows = [R("a"), R("b"), R("c", "d"), R("d", "c"), R("e")];
+  assert.equal(ids(moveRow(rows, 1, -1)), "b,a,c,d,e");
+  assert.equal(ids(moveRow(rows, 0, -1)), null, "top edge");
+  assert.equal(ids(moveRow(rows, 4, 1)), null, "bottom edge");
+  assert.equal(ids(moveRow(rows, 2, -1)), "a,c,d,b,e", "the pair moves together");
+  assert.equal(ids(moveRow(rows, 3, -1)), "a,c,d,b,e", "from either member");
+  assert.equal(ids(moveRow(rows, 1, 1)), "a,c,d,b,e", "a single lift hops the pair whole");
+  assert.equal(ids(moveRow(rows, 4, -1)), "a,b,e,c,d");
+  assert.equal(ids(rows), "a,b,c,d,e", "the input is untouched");
+  assert.equal(moveRow(rows, 9, 1), null);
+  const set = fnBody(appJs, "function drawEdit(critique) {", 9000);
+  assert.match(set, /data-reorder="\$\{si\}"/);
+  assert.match(set, /api\(`\/api\/plan\/order`/);
+  assert.match(set, /Restore recommended order/);
+});
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

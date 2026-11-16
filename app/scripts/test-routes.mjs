@@ -5410,6 +5410,72 @@ try {
       rsPick.status === 200 && rsPick.data.row?.rep_range === fly.rep_range && rsPick.data.row?.sets === fly.sets, JSON.stringify(rsPick.data?.row && { rr: rsPick.data.row.rep_range, sets: rsPick.data.row.sets }));
   }
 
+  // --- W335 (owner: "I can't change the order of the exercises"; chose: remember it and re-apply it at every rebuild, so
+  // the plan keeps adapting) — through the door the editor uses.
+  {
+    const FULLR = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const oU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLR } })).data.user_id;
+    const u0 = await store.getUser(oU);
+    const day = u0.program.sessions.find((s) => !s.exercises.some((e) => e.superset_with)) ?? u0.program.sessions[0];
+    const rev = [...day.exercises].reverse();
+    const progWith = (sessions) => ({ name: u0.program.name, sessions });
+    // A reorder-only Save on a plan the app still runs: remembered, never hand-built.
+    const sv = await json("POST", "/api/plan/save", { user_id: oU, program: progWith(u0.program.sessions.map((s) => (s.name === day.name ? { ...s, exercises: rev } : s))) });
+    const u1 = await store.getUser(oU);
+    ok("#W335 a reorder-only Save is remembered (order_pref), never makes the plan hand-built, keeps the rationale",
+      sv.status === 200 && !u1.program.custom && !!u1.plan_rationale && Array.isArray(u1.order_pref?.[day.name]) && JSON.stringify(sv.data.ordered) === JSON.stringify([day.name])
+      && JSON.stringify(u1.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise)) === JSON.stringify(rev.map((e) => e.exercise)), JSON.stringify([sv.status, u1.program.custom, sv.data?.ordered]));
+    const tdy = await (await app.request(`/api/today`, { headers: { "X-HB-User": oU } })).json();
+    const ex = await (await app.request(`/api/plan/explain`, { headers: { "X-HB-User": oU } })).json();
+    ok("#W335 …the Plan tab hears which days are in the lifter's order (explain.ordered survives the route)", JSON.stringify(ex.ordered) === JSON.stringify([day.name]));
+    // It survives a rebuild: a Settings change (training answers) rebuilds the plan, and the day keeps the lifter's order.
+    await json("POST", "/api/plan/regenerate", { user_id: oU, profile: { priority_muscles: ["side-delts"] } });
+    const u2 = await store.getUser(oU), day2 = u2.program.sessions.find((s) => s.name === day.name);
+    const kbm = await import("../src/kb-data.mjs"), lk = new Map(kbm.exercises.map((e) => [e.id, e]));
+    // Every lift that is in the day both before and after keeps the lifter's relative order (a lift the rebuild added
+    // goes where its role puts it).
+    const mineIds = u1.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise);
+    const common = (day2?.exercises ?? []).map((e) => e.exercise).filter((x) => mineIds.includes(x));
+    ok(`#W335 …and a rebuild keeps it: the lifts the rebuilt day still holds stay in the lifter's order (${common.length} kept), the plan still the app's`,
+      !!day2 && !u2.program.custom && Array.isArray(u2.order_pref?.[day.name]) && common.length >= 2 && JSON.stringify(common) === JSON.stringify(mineIds.filter((x) => common.includes(x))), JSON.stringify([common, mineIds]));
+    // /api/plan/order: a bad reshuffle is refused; reset restores exactly the generator's order and forgets the day.
+    const bad = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, order: ["not-a-lift"] });
+    ok("#W335 the order door refuses anything but a reshuffle of the stored day (400)", bad.status === 400 && bad.data.error === "bad-order");
+    const rs = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, reset: true });
+    const u3 = await store.getUser(oU);
+    const fresh = generateUserPlan(u3.profile, planOptsFor({ ...u3, order_pref: undefined }, { blockIndex: u3.plan_meta?.block_index ?? 0, volumeAdjust: u3.plan_meta?.volume_adjust ?? {} }));
+    const freshDay = fresh.program.sessions.find((s) => s.name === day.name);
+    ok("#W335 'Restore recommended order' forgets the day and serves the generator's own order",
+      rs.status === 200 && !u3.order_pref?.[day.name] && JSON.stringify(u3.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise)) === JSON.stringify(freshDay?.exercises.map((e) => e.exercise)),
+      JSON.stringify([u3.program.sessions.find((s) => s.name === day.name)?.exercises.map((e) => e.exercise), freshDay?.exercises.map((e) => e.exercise)]));
+    // A reorder WITH a content change is an edit, as ever (hand-built), and the order door then refuses (409).
+    const u4 = await store.getUser(oU);
+    await json("POST", "/api/plan/save", { user_id: oU, program: progWith(u4.program.sessions.map((s) => (s.name === day.name ? { ...s, exercises: [...s.exercises].reverse().map((e, i) => (i ? e : { ...e, sets: e.sets + 1 })) } : s))) });
+    const u5 = await store.getUser(oU);
+    const c409 = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, reset: true });
+    ok("#W335 reorder + a set change is an edit (custom), and the order door then hands it to Save (409)", u5.program.custom === true && c409.status === 409);
+    // The low-readiness trim drops the last ISOLATION, never a compound the lifter moved to the end.
+    const tU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 80, available_equipment: FULLR } })).data.user_id;
+    // The day Today serves must hold an isolation to trim: skip ahead (the rotation's own door) until it does.
+    let tday = null;
+    for (let k = 0; k < 4 && !tday; k++) {
+      const nm = (await (await app.request(`/api/today`, { headers: { "X-HB-User": tU } })).json()).session?.name;
+      const d = (await store.getUser(tU)).program.sessions.find((s) => s.name === nm);
+      if (d && d.exercises.length > 3 && !d.exercises.some((e) => e.superset_with) && d.exercises.some((e) => lk.get(e.exercise)?.mechanic === "isolation")) tday = d;
+      else await json("POST", "/api/today/skip", { user_id: tU });
+    }
+    const comp = tday?.exercises.find((e) => lk.get(e.exercise)?.mechanic === "compound");
+    if (comp) {
+      const moved = [...tday.exercises.filter((e) => e !== comp), comp];
+      await json("POST", "/api/plan/order", { user_id: tU, session: tday.name, order: moved.map((e) => e.exercise) });
+      await json("POST", "/api/checkin", { user_id: tU, date: new Date().toISOString(), sleep: 1, energy: 1, soreness: 5, stress: 5 });
+      const lowT = (await (await app.request(`/api/today`, { headers: { "X-HB-User": tU } })).json()).session;
+      const lastIso = [...moved].reverse().find((e) => lk.get(e.exercise)?.mechanic === "isolation")?.exercise;
+      ok("#W335 a low day trims the last isolation — never the compound the lifter put last", lowT?.exercises?.at(-1)?.exercise === comp.exercise && !lowT.exercises.some((e) => e.exercise === lastIso) && /trimmed the last accessory/.test(lowT?.coach_note ?? ""),
+        JSON.stringify([lowT?.exercises?.map((e) => e.exercise), lowT?.coach_note]));
+    } else ok("#W335 (fixture) the trim fixture reaches a plain day with a compound, an isolation and >3 lifts", false);
+  }
+
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 } finally {
   try { rmSync(path); } catch {}

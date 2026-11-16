@@ -894,7 +894,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // awful sleep/energy that they're "in their normal range" (that fabricates a
     // status against their own input and teaches them the check-in is fake).
     if (templateExercises.length > 3 && !untrimmed) {
-      templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, -1)); // drop the last accessory
+      // …the LAST ISOLATION (W335: with the lifter's own order a compound can end the day, and "the last accessory"
+      // must never be a squat), else the last row. Generated orders end in isolations, so for them nothing changes.
+      const k = templateExercises.findLastIndex((x) => (byId.get(x.exercise)?.mechanic ?? "compound") === "isolation");
+      const drop = k >= 0 ? k : templateExercises.length - 1;
+      templateExercises = unlinkOrphanSupersets(templateExercises.filter((_, j) => j !== drop));
       coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
     } else {
       coach_note = "You flagged low sleep/energy today. It's already a short session, so keep it — but take a little extra rest and stop 2–3 reps short of failure. Showing up is the win.";

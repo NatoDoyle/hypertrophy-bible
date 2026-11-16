@@ -587,6 +587,56 @@ export function orderSessionItems(items, exById, { priority = new Set(), special
   return items.sort((a, b) => key(a) - key(b));
 }
 
+// THE LIFTER'S OWN ORDER (W335 — owner: "I can't change the order of the exercises", and chose: remember my order and
+// re-apply it whenever the plan rebuilds, so the plan keeps adapting). A day's order is stored as the lifter put it —
+// each entry the lift AND its slot's role (`m`: the muscle the slot is for; `k`: compound or isolation) — so it survives
+// a rotation, a stall swap or a "No machine" swap: a new lift takes the place of the one whose role it fills. Applied as
+// a pure permutation AFTER every content decision (the MRV trim and the fit-to-time pass read order), so a saved order
+// changes WHERE lifts sit, never WHICH lifts or how many sets. Pure.
+export function slotRole(sessionName, exId, choices, lookup) {
+  const c = (choices ?? []).find((x) => x.session === sessionName && x.exercise === exId);
+  const x = lookup?.get?.(exId);
+  return { m: c?.for_muscle ?? x?.primary_muscles?.[0] ?? null, k: x?.mechanic ?? null };
+}
+// The generator's own order for a day's rows: its ordering key (orderSessionItems, stable), ties in the order the
+// generator placed them (exercise_choices). What "Restore recommended order" puts back.
+export function recommendedSessionOrder(items, choices, sessionName, lookup, opts = {}) {
+  const at = (id) => { const i = (choices ?? []).findIndex((c) => c.session === sessionName && c.exercise === id); return i < 0 ? Infinity : i; };
+  const pre = (items ?? []).map((it, i) => [it, at(it.exercise), i]).sort((a, b) => (a[1] === b[1] ? 0 : a[1] < b[1] ? -1 : 1) || a[2] - b[2]).map((x) => x[0]);
+  return orderSessionItems(pre, lookup, opts);
+}
+export function applyOrderPref(items, entries, roleOf) {
+  if (!Array.isArray(items) || !Array.isArray(entries) || !entries.length) return items;
+  const roles = items.map((it) => roleOf(it.exercise) ?? {});
+  const rank = new Array(items.length).fill(null), claimed = new Set();
+  const passes = [
+    (e, j) => e?.ex === items[j].exercise,
+    (e, j) => e?.m != null && e.m === roles[j].m && e.k === roles[j].k,
+    (e, j) => e?.m != null && e.m === roles[j].m,
+  ];
+  for (const match of passes) for (let r = 0; r < entries.length; r++) {
+    if (claimed.has(r)) continue;
+    const j = items.findIndex((_, k) => rank[k] == null && match(entries[r], k));
+    if (j >= 0) { rank[j] = r; claimed.add(r); }
+  }
+  // A lift the saved order doesn't know follows the lift that came before it in the generator's order (or leads).
+  const key = items.map((_, i) => { if (rank[i] != null) return [rank[i], 0, i]; let prev = -1; for (let j = i - 1; j >= 0; j--) if (rank[j] != null) { prev = rank[j]; break; } return [prev, 1, i]; });
+  const sorted = items.map((_, i) => i).sort((a, b) => key[a][0] - key[b][0] || key[a][1] - key[b][1] || key[a][2] - key[b][2]).map((i) => items[i]);
+  // A superset pair stays side by side: the partner follows whichever of the two comes first.
+  const out = [], used = new Set();
+  for (const it of sorted) {
+    if (used.has(it)) continue;
+    out.push(it); used.add(it);
+    const mate = it.superset_with ? sorted.find((x) => x.exercise === it.superset_with && x.superset_with === it.exercise) : null;
+    if (mate && !used.has(mate)) { out.push(mate); used.add(mate); }
+  }
+  return out;
+}
+// The entries a day's current order is saved as (W335): each lift with its slot's role.
+export function orderEntries(items, choices, sessionName, lookup) {
+  return (items ?? []).map((it) => { const r = slotRole(sessionName, it.exercise, choices, lookup); return { ex: it.exercise, ...(r.m ? { m: r.m } : {}), ...(r.k ? { k: r.k } : {}) }; });
+}
+
 // A superset whose partner left the session (a trim, an edit, a swap) is not a
 // superset: drop the dangling link so the player never routes a lone lift into a
 // station. ONE helper for the generator's trim, the plan editor's save and the swap.
@@ -1750,6 +1800,12 @@ export function generatePlan(profile, kb, opts = {}) {
 
   const citations = [...new Set([...splitCites, ...exerciseChoices.flatMap((c) => c.citations), ...Object.values(volumeRationale).flatMap((r) => r.landmark?.citations ?? [])])];
   const goalLabel = { hypertrophy: "hypertrophy", strength: "strength", "fat-loss": "fat loss", recomposition: "recomposition" }[goal] ?? goal;
+  // W335: the lifter's own order per day — a pure permutation, applied only now that every content decision is made
+  // (the trims above read order). Absent → byte-identical.
+  if (opts.orderPref && typeof opts.orderPref === "object") for (const s of outSessions) {
+    const e = opts.orderPref[s.name];
+    if (Array.isArray(e) && e.length) s.exercises = applyOrderPref(s.exercises, e, (id) => slotRole(s.name, id, exerciseChoices, exById));
+  }
   const program = {
     id: "gen-" + seed.toString(36),
     name: `${split === "full-body" ? "Full Body" : split === "upper-lower" ? "Upper/Lower" : split === "push-pull-legs" ? "Push/Pull/Legs" : "Custom"} · ${sessionSpecs.length} days · ${goalLabel}`,
@@ -1970,7 +2026,7 @@ export function easierSubstitutes(fitting, exId, { kb, customExercises = [], kno
 // comparator (a user-ordered custom session keeps its order); and the rationale says
 // what really happened. Pure — returns { program, rationale, replaced, replaced_by } or
 // { error }, never mutating its inputs.
-export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0, specSpent = false } = {}) {
+export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0, specSpent = false, orderPref = null } = {}) {
   const prog = JSON.parse(JSON.stringify(program));
   const rat = rationale ? JSON.parse(JSON.stringify(rationale)) : null;
   const holding = prog.sessions.filter((s) => s.exercises.some((e) => e.exercise === exId));
@@ -2038,7 +2094,10 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
       }
       replaced.push({ session: s.name, from: exId, to: pick.id });
     }
-    if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
+    // W335: a day with the lifter's own order keeps it — the replacement takes the replaced lift's role, so its place.
+    const own = orderPref?.[s.name];
+    if (!prog.custom && Array.isArray(own) && own.length) s.exercises = applyOrderPref(recommendedSessionOrder(s.exercises, rat?.exercise_choices, s.name, lookup, { priority, specialization }), own, (id) => slotRole(s.name, id, rat?.exercise_choices, lookup));
+    else if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
   }
   sweepDanglingSupersets(prog.sessions);
   if (rat?.volume_by_muscle) reprojectVolumes(prog, rat, kb, lookup);
@@ -2274,7 +2333,7 @@ const MUSCLE_LABEL = {
 // guard rail it was built to be. Structurally, a generated plan can't trip the
 // other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
 // run at generation), so "generated" only re-frames the volume findings.
-export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null } = {}) {
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null, userOrdered = [] } = {}) {
   const prioritySet = new Set(priority);
   // Caveats must offer only levers that BIND for this user (volumeLevers) — the
   // binder passes sessionMinutes from the profile; without it the default-60
@@ -2350,7 +2409,13 @@ export function critiquePlan(program, kb, { experience = "intermediate", priorit
       const ex = exById.get(e.exercise);
       if (!ex) continue;
       if (ex.mechanic === "isolation") seenIso = true;
-      else if (seenIso) { add("info", `${s.name}: ${ex.name} (a compound) comes after an isolation — compounds usually go first while you're fresh.`, { session: s.name }); break; }
+      else if (seenIso) {
+        // W335: on a day the lifter ordered themselves, it's their call — said as such, with the way back.
+        add("info", (userOrdered ?? []).includes(s.name)
+          ? `${s.name}: you've put ${ex.name} (a compound) after an isolation. That's your order, and it's kept when the plan changes — compounds usually go first while you're fresh; "Restore recommended order" puts them back.`
+          : `${s.name}: ${ex.name} (a compound) comes after an isolation — compounds usually go first while you're fresh.`, { session: s.name, ...((userOrdered ?? []).includes(s.name) ? { own_order: true } : {}) });
+        break;
+      }
     }
   }
 
