@@ -4701,6 +4701,8 @@ try {
     // Device reminder settings (W285) are written only by /api/reminders/device, through
     // the validators the push sweep reads with.
     reminders: { weigh_in: { on: true, time: "03:00" }, workout: { on: false, time: "garbage" } },
+    // The lifter's other setups (W336) are written only by /api/setups (and cant-do for a setup's own "No machine").
+    equipment_setups: { active: "x", others: [{ id: "x", name: "<script>", equipment: ["laser"], unavailable: [] }] },
     // …and the day each one last fired (W285 review), push delivery state like comeback_push.
     reminders_fired: { weigh_in: "2099-01-01" },
   };
@@ -5474,6 +5476,60 @@ try {
       ok("#W335 a low day trims the last isolation — never the compound the lifter put last", lowT?.exercises?.at(-1)?.exercise === comp.exercise && !lowT.exercises.some((e) => e.exercise === lastIso) && /trimmed the last accessory/.test(lowT?.coach_note ?? ""),
         JSON.stringify([lowT?.exercises?.map((e) => e.exercise), lowT?.coach_note]));
     } else ok("#W335 (fixture) the trim fixture reaches a plain day with a compound, an isolation and >3 lifts", false);
+  }
+
+  // --- W336 (owner: "There's no way to alternate preferences like … 'I don't have this machine'"; chose BOTH: the way
+  // back made findable, and switching between setups such as home and gym) — through the client's doors.
+  {
+    const FULLW = ["barbell", "dumbbell", "machine", "cable", "bodyweight"], HOMEW = ["dumbbell", "bodyweight"];
+    const kbw = await import("../src/kb-data.mjs"), lkw = new Map(kbw.exercises.map((e) => [e.id, e]));
+    const sU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLW } })).data.user_id;
+    const post = (body) => json("POST", "/api/setups", { user_id: sU, ...body });
+    const v0 = await (await app.request("/api/setups", { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 no other places yet: the view says so, main is active", v0.active === "main" && v0.others.length === 0 && v0.max === 3);
+    const bad1 = await post({ action: "launch" }), bad2 = await post({ action: "save", name: "   " });
+    ok("#W336 the setups door refuses an unknown action (400) and an empty name (400)", bad1.status === 400 && bad2.status === 400);
+    const add = await post({ action: "save", name: "  Home   gym  ", equipment: ["dumbbell", "bodyweight", "laser", 7] });
+    ok("#W336 a new place: name tidied, only real equipment kept", add.status === 200 && add.data.others[0]?.name === "Home gym" && JSON.stringify(add.data.others[0]?.equipment) === JSON.stringify([...HOMEW].sort()), JSON.stringify(add.data.others));
+    const hid = add.data.others[0].id;
+    for (const n of ["A", "B"]) await post({ action: "save", name: n, equipment: ["band"] });
+    ok("#W336 at most 3 other places (409)", (await post({ action: "save", name: "D", equipment: ["band"] })).status === 409);
+    const tMain = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 with main active Today is unchanged, but offers the chip (daily.setups)", !tMain.session.setup && tMain.daily.setups?.active === "main" && tMain.daily.setups.options.length === 3);
+    await post({ action: "activate", id: hid });
+    const tHome = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json();
+    const rows = tHome.session?.exercises ?? [];
+    ok("#W336 at Home, today's day is adapted: every lift is home kit, the swapped ones marked stand-ins (slot_of, swap_why 'setup')",
+      rows.length > 0 && rows.every((r) => HOMEW.includes(lkw.get(r.exercise)?.equipment)) && rows.some((r) => r.swap_why === "setup" && typeof r.slot_of === "string") && tHome.session.setup?.name === "Home gym",
+      JSON.stringify(rows.map((r) => [r.exercise, r.swap_why ?? null])));
+    const uS = await store.getUser(sU);
+    ok("#W336 …and the plan itself is untouched (one plan)", JSON.stringify(uS.program) === JSON.stringify((await store.getUser(sU)).program) && !uS.program.custom && uS.program.sessions.some((s) => s.exercises.some((e) => !HOMEW.includes(lkw.get(e.exercise)?.equipment))));
+    const live = rows.map((r) => r.exercise);
+    const alts = (await (await app.request(`/api/exercise/${rows[0].exercise}/alternatives?session=${encodeURIComponent(tHome.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": sU } })).json()).alternatives ?? [];
+    ok("#W336 the swap doors offer only what Home has (alternatives, your pick)", alts.every((a) => HOMEW.includes(a.equipment)) && rows.every((r) => !r.your_pick || HOMEW.includes(lkw.get(r.your_pick.id)?.equipment)), JSON.stringify(alts.map((a) => a.equipment)));
+    // Logging that day: the stand-ins are recorded as setup stand-ins, never as votes about the plan's lifts.
+    const swapped = rows.find((r) => r.swap_why === "setup");
+    await json("POST", "/api/session", { user_id: sU, session_id: "su-home-1", date: new Date().toISOString(), local_date: new Date().toISOString().slice(0, 10), session_name: tHome.session.name,
+      sets: [{ exercise: swapped.exercise, set_type: "work", weight_kg: 20, reps: 10, completed_at: new Date().toISOString() }],
+      targets: [{ exercise: swapped.exercise, sets: swapped.sets, rep_range: swapped.rep_range, stood_in_for: swapped.slot_of, swap_why: "setup" }] });
+    const logged = (await store.listSessions(sU)).find((x) => x.session_id === "su-home-1");
+    const u2 = await store.getUser(sU);
+    ok("#W336 a day at Home is logged with its stand-ins marked 'setup', and teaches no preference", logged?.targets?.[0]?.swap_why === "setup" && !Object.keys(u2.plan_meta?.pref_scores ?? {}).length, JSON.stringify([logged?.targets?.[0], u2.plan_meta?.pref_scores]));
+    // "No machine" at Home is about Home: on Home's list, the plan unchanged; Bring back undoes it.
+    const homeLift = rows.find((r) => lkw.get(r.exercise)?.equipment === "dumbbell")?.exercise;
+    const progBefore = JSON.stringify((await store.getUser(sU)).program);
+    const nm = await json("POST", "/api/exercise/cant-do", { user_id: sU, exercise: homeLift, scope: "always", session: tHome.session.name, live });
+    const u3 = await store.getUser(sU), homeSetup = u3.profile.equipment_setups.others.find((o) => o.id === hid);
+    ok("#W336 'No machine' at Home goes on Home's own list — never the plan's — and today gets Home's next best",
+      nm.status === 200 && nm.data.plan_unchanged === true && homeSetup.unavailable.some((x) => x.id === homeLift) && !(u3.profile.unavailable_exercises ?? []).some((x) => x.id === homeLift) && JSON.stringify(u3.program) === progBefore,
+      JSON.stringify(nm.data));
+    const back = await post({ action: "bring_back", id: hid, exercise: homeLift });
+    ok("#W336 …and Bring back takes it off Home's list", back.status === 200 && !back.data.others.find((o) => o.id === hid).unavailable.some((x) => x.id === homeLift));
+    const del = await post({ action: "delete", id: hid });
+    ok("#W336 deleting the place in use falls back to the main setup", del.status === 200 && del.data.active === "main" && !del.data.others.some((o) => o.id === hid));
+    // The way back, findable: Settings reads the same explain lists the Plan tab does.
+    const ex = await (await app.request(`/api/plan/explain`, { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 the not-using lists ride explain for Settings' 'Lifts I'm not using' (one renderer, two doors)", Array.isArray(ex.unavailable) && Array.isArray(ex.skipped) && Array.isArray(ex.learned_out));
   }
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

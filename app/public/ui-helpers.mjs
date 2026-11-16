@@ -649,3 +649,19 @@ export function moveRow(rows, i, dir) {
   const mine = rows.slice(a, b + 1), theirs = rows.slice(c, d + 1);
   return dir === -1 ? [...rows.slice(0, c), ...mine, ...theirs, ...rows.slice(b + 1)] : [...rows.slice(0, a), ...theirs, ...mine, ...rows.slice(d + 1)];
 }
+
+// The single lifts on the "rather skip" list that no family chip on screen covers (W336 — a lift skipped with "Just not
+// for me" was counted in the Settings summary with no control to clear it). Each comes back as its own chip, so a stored
+// answer always has a control on screen that can clear it (the visibleStyles rule). Pure.
+export function avoidExtras(tp, families = [], nameOf = (id) => id) {
+  const covered = new Set(families.flatMap((f) => f.ids ?? []));
+  return [...new Set(tp?.avoid ?? [])].filter((id) => !covered.has(id)).map((id) => ({ id, label: nameOf(id) }));
+}
+
+// The main setup's name on the Today chip (W336): the one they gave it, else "Gym" for a kit with gym gear (a machine, a
+// cable or a barbell), else "Home" — and "Usual" if that name is already one of their other places. Pure.
+export function mainSetupName({ main_name = null, main_kit = [] } = {}, otherNames = []) {
+  if (main_name) return main_name;
+  const guess = (main_kit ?? []).some((x) => ["machine", "cable", "barbell"].includes(x)) ? "Gym" : "Home";
+  return (otherNames ?? []).some((n) => String(n).toLowerCase() === guess.toLowerCase()) ? "Usual" : guess;
+}

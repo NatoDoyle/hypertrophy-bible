@@ -1,7 +1,7 @@
 // Thin binder: feeds the bundled KB into the pure generative engine. Mirrors how
 // coach.mjs binds derive-core. Runs unchanged on Node and Cloudflare Workers.
 import { exercises, muscles, contraindications, guidelines } from "./kb-data.mjs";
-import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
+import { contraRegion, generatePlan, timeFitOptions, timeFitQuestion, SPEC_MAX_BLOCKS, critiquePlan, accessibleExercises, explainPersonalization, specializationActive, bestSubstitutes, easierSubstitutes, applySubstitution, sweepDanglingSupersets, contentSig, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, adaptSessionForSetup, PREF_STYLES, PREF_VARIETY, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 
 const KB = { exercises, muscles, contraindications, guidelines };
 
@@ -163,3 +163,40 @@ export function userExercises(profile, customEx = []) {
 }
 
 export { exercises as kbExercises, muscles as kbMuscles };
+
+// WHERE YOU TRAIN (W336): the lifter's other setups — a home gym, a hotel — beside their main one (the profile's own
+// available_equipment + unavailable_exercises, untouched). profile.equipment_setups = { active, main_name?, others:
+// [{ id, name, equipment, unavailable:[{id, at}] }] }. Validated at the trust boundary: a name 1-24 characters, real
+// equipment only (else bodyweight), real lift ids on its "not here" list; at most 3 others. Absent or "main" active is
+// byte-identical to before.
+export const SETUP_MAX = 3, SETUP_UNAVAILABLE_MAX = 30;
+const EQUIPMENT = new Set(exercises.map((e) => e.equipment).filter(Boolean));
+export function sanitizeSetupName(raw) {
+  const n = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim().slice(0, 24) : "";
+  return n.length ? n : null;
+}
+export function sanitizeEquipment(raw) {
+  const eq = [...new Set((Array.isArray(raw) ? raw : []).filter((x) => typeof x === "string" && EQUIPMENT.has(x)))].sort();
+  return eq.length ? eq : ["bodyweight"];
+}
+export function activeSetup(user) {
+  const st = user?.profile?.equipment_setups;
+  if (!st || !st.active || st.active === "main") return null;
+  return (st.others ?? []).find((x) => x?.id === st.active) ?? null;
+}
+// The profile a setup trains with: its equipment and its own "not here" list; everything else (injuries, goal, the
+// lifter's preferences) is the lifter's.
+export function setupProfile(profile, setup) {
+  return setup ? { ...profile, available_equipment: setup.equipment, unavailable_exercises: setup.unavailable ?? [] } : profile;
+}
+// The user as every substitute door must see them while a setup is active — so none can offer a gym lift at home.
+export function effectiveUser(user) {
+  const setup = activeSetup(user);
+  return setup ? { ...user, profile: setupProfile(user.profile, setup) } : user;
+}
+export function userSetupDay(user, sessionName, stalled = []) {
+  const setup = activeSetup(user);
+  if (!setup || !user?.program?.sessions?.length) return null;
+  return { setup, ...adaptSessionForSetup(user.program, user.plan_rationale ?? null, sessionName, { profile: setupProfile(user.profile, setup), kb: KB, stalled,
+    customExercises: user.custom_exercises || [], prefScores: planOptsFor(user).prefScores ?? null }) };
+}

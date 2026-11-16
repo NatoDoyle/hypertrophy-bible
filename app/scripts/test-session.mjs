@@ -2248,5 +2248,9 @@ check("#rev5-b11 every chain of up to 4 swaps keeps a pick's vote, credits a lik
   assert.ok(bad.length === 0, `${bad.length} of ${chains} chains break an invariant: ${bad.slice(0, 8).join(" | ")}`);
 });
 
+check("#W336 a setup stand-in keeps its 'setup' reason through the finished workout's targets", () => {
+  const t = buildTargets({ ex: [{ exercise: "db-press", sets: 3, planned_sets: 3, rep_range: "8-12", slot_of: "bench", swap_why: "setup" }], logged: [] });
+  assert.strictEqual(t[0]?.swap_why, "setup");
+});
 console.log(`\n${pass} session-core test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

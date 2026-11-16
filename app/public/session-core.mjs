@@ -690,7 +690,7 @@ export function buildTargets(sess) {
     // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
     ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
     // …and why it stood in (W323): busy / pick / tired — what the plan learns preferences from (never a tired one).
-    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
+    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over", "hurt", "setup"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
     // The per-set aims served today (W298), only when the player itself would use them (validAim) — so later
     // learning can judge a set against what it was asked, not just the range. Only the ones it SERVED: the player shows
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list

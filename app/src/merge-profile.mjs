@@ -50,6 +50,12 @@ export function mergeUserProfile(fromU, toU) {
   if (fromU.rest_days?.length) {
     toU.rest_days = [...new Set([...(toU.rest_days ?? []), ...fromU.rest_days])].sort().slice(-HISTORY_CAP_FIELD_CAP);
   }
+  // W336: the departing account's other setups (home, hotel…) are the person's own — gap-filled when the survivor has
+  // none, never merged into theirs (two lists of places would be two people's answers). Never its `active` one: the
+  // survivor is where the person trains now.
+  if (fromU.profile?.equipment_setups?.others?.length && !toU.profile?.equipment_setups?.others?.length) {
+    toU.profile = { ...(toU.profile ?? {}), equipment_setups: { ...fromU.profile.equipment_setups, active: "main" } };
+  }
   const fromFollowing = fromU.profile?.following ?? [];
   if (fromFollowing.length) {
     const toFollowing = toU.profile?.following ?? [];

@@ -45,7 +45,9 @@ export const LIVE_PROFILE_FIELDS = new Set([
 // that route validates the id and keeps the stored plan consistent with the list.
 // `reminders` (W285: each device reminder's switch and picked time) likewise travels with a
 // restore, and only /api/reminders/device may write it.
-export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units", "unavailable_exercises", "reminders"]);
+// `equipment_setups` (W336: the lifter's other places to train, each with its own "not here" list) likewise travels with
+// a restore, and only /api/setups (and the cant-do door, for a setup's own "No machine") may write it.
+export const SERVER_OWNED_PROFILE_FIELDS = new Set([...LIVE_PROFILE_FIELDS, "disclaimer_ack", "smoke", "exercise_units", "unavailable_exercises", "reminders", "equipment_setups"]);
 
 // Every wholesale client->profile door passes through here. Returns a private
 // copy: callers then validate the remaining fields, so mutating the caller's

@@ -3,7 +3,7 @@
 import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, avoidExtras, mainSetupName, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -750,10 +750,14 @@ async function renderTrainingSettings() {
   const capRow = Number.isInteger(p.session_cap) ? `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Workout cap</span><br><b>${p.session_cap} sets — learned from how your workouts have been going</b></div><button class="btn ghost inline" id="ts-uncap" style="margin:0">Remove</button></div>` : "";
   app.innerHTML = `<h1>Training settings</h1>
     <p class="muted">Change any answer on its own — your plan rebuilds around it. Your logged workouts are never touched.</p>
-    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}${capRow}</div>
+    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}${capRow}
+      ${(() => { const n = notUsingCount(d); return n ? `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Lifts I'm not using</span><br><b>${n} lift${n === 1 ? "" : "s"}</b></div><button class="btn ghost inline" id="ts-notusing" style="margin:0">Review</button></div>` : ""; })()}
+      <div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Other places you train</span><br><b>${esc((p.equipment_setups?.others ?? []).map((o) => o.name).join(", ") || "None")}</b></div><button class="btn ghost inline" id="ts-setups" style="margin:0">Change</button></div></div>
     <button class="btn secondary inline" id="ts-full">Re-answer everything &amp; rebuild</button>
     <button class="btn ghost inline" id="ts-back">‹ Back</button>`;
   app.querySelectorAll("[data-solo]").forEach((b) => b.onclick = () => renderSettings(b.dataset.solo));
+  if ($("#ts-notusing")) $("#ts-notusing").onclick = () => renderNotUsing();
+  $("#ts-setups").onclick = () => renderSetups();
   $("#ts-full").onclick = () => renderSettings();
   $("#ts-back").onclick = () => { tab = "me"; render(); };
   if ($("#ts-uncap")) $("#ts-uncap").onclick = async () => {
@@ -882,7 +886,9 @@ function renderOnboarding() {
     const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
     body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
       + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
-      + (fams.length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")) : "")
+      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
+        // W336: a single lift skipped with "Just not for me" gets its own chip (on — tap to clear it).
+        + avoidExtras(tp, fams, (id) => { const n = exName(id); return n === id ? titleCase(id.replace(/-/g, " ")) : n; }).map((x) => chip("avoid1", x.id, x.label, true)).join("")) : "")
       + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
       + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
@@ -933,7 +939,8 @@ function renderOnboarding() {
       if (g === "variety") tp.variety = tp.variety === v ? null : v; // single choice; tap again to clear
       else if (g === "avoid") {
         tp.avoid = toggleFamily(tp, fams[+v]).avoid;
-      } else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
+      } else if (g === "avoid1") tp.avoid = tp.avoid.filter((x) => x !== v); // W336: one lift off the list
+      else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
       saveOnb();
       renderOnboarding(); // re-render: variety is single-choice, so a sibling's state changes too
     });
@@ -1118,6 +1125,117 @@ function buildPlanBlocks(d) {
 // sets × reps, one tap from anywhere. This surface did not exist: the only place
 // to SEE a non-today session was the EDITOR, three taps deep via Me. Exercise
 // rows open the bundled how-to sheet; the editor is one honest tap away.
+// THE LIFTS YOU'RE NOT USING (W272 / W323; W336 — owner: "there's no way to alternate preferences like … 'I don't have
+// this machine'"): ONE renderer and ONE Bring-back door, shown on the Plan tab AND in Training settings ("Lifts I'm not
+// using"), so the way back is where the lifter goes to change their mind — never only under the session list.
+function notUsingBlocks(d) {
+  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
+  return {
+    unavailableBlock: (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
+    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
+    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "",
+    skippedBlock: (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
+    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "",
+    learnedBlock: (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
+    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "",
+  };
+}
+const notUsingCount = (d) => (d?.unavailable?.length ?? 0) + (d?.skipped?.length ?? 0) + (d?.learned_out?.length ?? 0);
+function wireBringBack(after) {
+  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
+    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
+    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
+    await after();
+    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+  });
+}
+async function renderNotUsing() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
+  if (!d) { app.innerHTML = `<h1>Lifts you're not using</h1><div class="card"><p>📴 You're offline — try again in a moment.</p></div><button class="btn ghost inline" id="nu-back">‹ Back</button>`; $("#nu-back").onclick = () => renderSettings(); return; }
+  const { unavailableBlock, skippedBlock, learnedBlock } = notUsingBlocks(d);
+  app.innerHTML = `<h1>Lifts you're not using</h1>
+    <p class="muted">Everything you've told me to leave out — and everything your swaps taught me to. Bring any back.</p>
+    ${unavailableBlock}${skippedBlock}${learnedBlock}${notUsingCount(d) ? "" : `<div class="card"><p class="muted" style="margin:0">Nothing — your plan can use every lift your setup allows.</p></div>`}
+    <button class="btn ghost inline" id="nu-back">‹ Back</button>`;
+  $("#nu-back").onclick = () => renderSettings();
+  wireBringBack(renderNotUsing);
+}
+// OTHER PLACES YOU TRAIN (W336 — owner chose to switch between setups such as home and gym). Each place is a name and its
+// kit (the same five presets onboarding asks with); the plan stays one plan — on a day at another place, Today swaps
+// each lift that place can't do for its closest match. The main setup is the one in Training settings → Equipment.
+// The Today chip (W336): where today is trained — shown only when the lifter has another place, never mid-workout. A tap
+// opens the choices inline; choosing one re-asks Today, which serves the day adapted to that place.
+function setupChip(dy) {
+  const st = dy?.setups;
+  if (!st?.options?.length || sess) return "";
+  const main = mainSetupName(st, st.options.map((o) => o.name));
+  const cur = st.active === "main" ? main : st.options.find((o) => o.id === st.active)?.name ?? main;
+  const opts = [{ id: "main", name: main }, ...st.options];
+  return `<div id="setup-chip" style="margin:0 0 6px"><button class="btn ghost inline" id="setup-open" aria-expanded="false" style="margin:0">📍 At ${esc(cur)} ▾</button>
+    <span id="setup-opts" hidden>${opts.map((o) => `<button class="chip pick${o.id === st.active ? " sel" : ""}" data-setup="${esc(o.id)}" aria-pressed="${o.id === st.active}">${esc(o.name)}</button>`).join("")}</span></div>`;
+}
+function wireSetupChip() {
+  if (!$("#setup-open")) return;
+  $("#setup-open").onclick = () => { const o = $("#setup-opts"), open = o.hidden; o.hidden = !open; $("#setup-open").setAttribute("aria-expanded", String(open)); };
+  app.querySelectorAll("[data-setup]").forEach((b) => b.onclick = async () => {
+    app.querySelectorAll("[data-setup]").forEach((x) => { x.disabled = true; });
+    try { const r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, action: "activate", id: b.dataset.setup }) }); if (r?.error) throw 0; say(`Training at ${b.textContent} today.`); }
+    catch { alertBar("📴 Switching needs a connection — try again in a moment."); }
+    render();
+  });
+}
+async function renderSetups() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let v; try { v = await api(`/api/setups`); } catch { v = null; }
+  if (!v) { app.innerHTML = `<h1>Other places you train</h1><div class="card"><p>📴 You're offline — try again in a moment.</p></div><button class="btn ghost inline" id="su-back">‹ Back</button>`; $("#su-back").onclick = () => renderSettings(); return; }
+  const kitName = (eq) => STEPS.find((x) => x.key === "available_equipment")?.opts?.find(([, k]) => [...k].sort().join(",") === [...(eq ?? [])].sort().join(","))?.[0] ?? "Custom mix";
+  app.innerHTML = `<h1>Other places you train</h1>
+    <p class="muted">Train somewhere else sometimes — at home, at a hotel? Add it here, then pick it on Today. Your plan stays the same; that day's lifts are swapped for the closest match the place has.</p>
+    ${v.others.map((o) => `<div class="card"><b>${esc(o.name)}</b> <span class="muted">· ${esc(kitName(o.equipment))}</span>${v.active === o.id ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">today</span>` : ""}
+      ${o.unavailable.length ? `<p class="muted" style="margin:6px 0 2px">Not available at ${esc(o.name)}:</p>${o.unavailable.map((u) => `<div class="row" style="border:0;padding:4px 0"><div style="flex:1">${esc(u.name)}</div><button class="btn ghost inline" data-su-back="${esc(o.id)}" data-ex="${esc(u.id)}" style="margin:0">Bring back</button></div>`).join("")}` : ""}
+      <div><button class="btn ghost inline" data-su-edit="${esc(o.id)}">Edit</button><button class="btn ghost inline" data-su-del="${esc(o.id)}">Remove</button></div></div>`).join("")}
+    ${v.others.length < v.max ? `<button class="btn secondary" id="su-add">+ Add a place</button>` : `<p class="muted">That's ${v.max} places — the most I keep.</p>`}
+    <button class="btn ghost inline" id="su-back">‹ Back</button>`;
+  $("#su-back").onclick = () => renderSettings();
+  if ($("#su-add")) $("#su-add").onclick = () => renderSetupEdit(null);
+  app.querySelectorAll("[data-su-edit]").forEach((b) => b.onclick = () => renderSetupEdit(v.others.find((o) => o.id === b.dataset.suEdit)));
+  const post = async (body, msg) => { try { const r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, ...body }) }); if (r?.error) throw 0; say(msg); } catch { alertBar("📴 Couldn't save that — try again."); } renderSetups(); };
+  app.querySelectorAll("[data-su-del]").forEach((b) => b.onclick = () => {
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again to remove"; return; }
+    post({ action: "delete", id: b.dataset.suDel }, "Removed.");
+  });
+  app.querySelectorAll("[data-su-back]").forEach((b) => b.onclick = () => post({ action: "bring_back", id: b.dataset.suBack, exercise: b.dataset.ex }, "Brought back."));
+}
+function renderSetupEdit(o) {
+  const presets = STEPS.find((x) => x.key === "available_equipment")?.opts ?? [];
+  let name = o?.name ?? "", kit = o?.equipment ?? null;
+  const draw = () => {
+    app.innerHTML = `<h1>${o ? `Edit ${esc(o.name)}` : "Add a place"}</h1>
+      <div class="card"><p class="muted" style="margin:0 0 6px">What do you call it?</p>
+        <div>${["Home", "Travel", "Hotel gym", "Work gym"].map((n) => `<button class="chip pick${name === n ? " sel" : ""}" data-su-name="${esc(n)}" aria-pressed="${name === n}">${esc(n)}</button>`).join("")}</div>
+        <input id="su-name" type="text" maxlength="24" value="${esc(name)}" aria-label="Name of this place" placeholder="Or type a name" style="width:100%;margin-top:8px;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem"></div>
+      <div class="card"><p class="muted" style="margin:0 0 6px">What's there?</p>
+        ${presets.map(([l, v], i) => `<button class="choice${kit && [...kit].sort().join(",") === [...v].sort().join(",") ? " sel" : ""}" data-su-kit="${i}">${esc(l)}</button>`).join("")}</div>
+      <button class="btn" id="su-save">Save</button>
+      <button class="btn ghost inline" id="su-cancel">Cancel</button>`;
+    app.querySelectorAll("[data-su-name]").forEach((b) => b.onclick = () => { name = b.dataset.suName; draw(); });
+    $("#su-name").oninput = (e) => { name = e.target.value; };
+    app.querySelectorAll("[data-su-kit]").forEach((b) => b.onclick = () => { kit = presets[+b.dataset.suKit][1]; draw(); });
+    $("#su-cancel").onclick = () => renderSetups();
+    $("#su-save").onclick = async () => {
+      if (!name.trim() || !kit) { alertBar(!kit ? "Pick what's there first." : "Give it a name first."); return; }
+      let r = null; try { r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, action: "save", ...(o ? { id: o.id } : {}), name, equipment: kit }) }); } catch {}
+      if (!r || r.error) { alertBar(r?.error === "too-many" ? "That's the most places I keep." : "📴 Couldn't save that — try again."); return; }
+      say(`${name.trim()} saved — pick it on Today when you train there.`);
+      renderSetups();
+    };
+  };
+  draw();
+}
 async function renderPlan() {
   app.innerHTML = `<h1>Your plan</h1><p class="muted">Loading…</p>`;
   let d, exs;
@@ -1145,24 +1263,13 @@ async function renderPlan() {
         </div><span class="muted">›</span></button>`;
     }).join("")}
     ${(d.program?.sessions ?? []).length > 1 ? `<button class="btn ghost inline" data-do-today="${esc(s.name)}" style="margin-top:8px">🔁 Do this one today</button>` : ""}</div>`).join("");
-  // "Not available at your gym" (W272): every "No machine for this" answer, with its way
-  // back — the one-way door is never one-way (lesson 27).
-  const unavailableBlock = (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
-    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
-    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
-      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
+  const { unavailableBlock, skippedBlock, learnedBlock } = notUsingBlocks(d);
   // W320 (owner: "I'm convinced the system isn't learning"): a hand-edited plan pauses plan learning. Say so where the
   // plan is, with the one tap back — never a silent, permanent opt-out. Two taps: the second states what is replaced.
   const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
     <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: ${esc(d.beginner ? "I still set your weights and rest, but I've stopped swapping lifts that stall, re-fitting the plan to your pace, and stepping the plan up when you graduate." : "I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.")}</p>
     <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
-  // W323: what they'd rather skip (the quiz + "Just not for me"), and what their own swaps moved out — each with Bring back.
-  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
-      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
-  const skippedBlock = (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
-    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "";
-  const learnedBlock = (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
-    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "";
+
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${pausedBlock}
@@ -1191,13 +1298,7 @@ async function renderPlan() {
       if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
     };
   };
-  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
-    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
-    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
-    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
-    await renderPlan();
-    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
-  });
+  wireBringBack(renderPlan);
   // "Do this one today": the same server-side day swap the Today sheet does —
   // the chosen day and today's trade places for this cycle. Mid-session it's
   // refused client-side (the live session's exercises are already dealt).
@@ -1877,11 +1978,12 @@ async function renderToday() {
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
-      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min${s.pace_learned ? "" : " (≈4 min a set)"}</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min${s.pace_learned ? "" : " (≈4 min a set)"}</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${setupChip(dy)}${s.setup_note ? `<p class="muted" style="margin:0 0 6px">📍 ${esc(s.setup_note)}</p>` : ""}${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}
     ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;
   wirePendingCodeCard();
+  wireSetupChip(); // W336
   wireCommitmentCard();
   // A way in from the screen opened every day (W287); Me holds the controls, at its top.
   if ($("#today-reminders")) $("#today-reminders").onclick = () => { tab = "me"; render(); $("#reminders")?.scrollIntoView({ block: "start" }); };
@@ -2336,6 +2438,7 @@ function startSession(templateSession) {
   sess = {
     firstEver: templateSession.never_trained === true, // W327: this is the funnel's workout
     learningPaused: templateSession.learning_paused === true, // a hand-edited plan: picks are today-only, said so (review round 8 #3)
+    ...(templateSession.setup?.name ? { setupName: templateSession.setup.name } : {}), // W336: where today is trained
     // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
     // reports as its target, however a skip later shrinks today's `sets`.
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0,
@@ -3707,7 +3810,7 @@ async function renderCantDo() {
     <p class="muted">Tell me why and I'll sort it.</p>
     ${pickOffer(sess) ? `<button class="choice reason" id="cd-your-pick">⇄ Do ${esc(cur.your_pick.name)} instead<span class="sub muted">Your usual pick for this slot — just for today</span></button>` : ""}
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
-    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
+    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">${sess.setupName ? `Swap it whenever you train at ${esc(sess.setupName)} — bring it back in Settings any time` : "Swap it from now on — bring it back on the Plan tab any time"}</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-dislike">👎 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
@@ -3738,7 +3841,7 @@ async function renderCantDo() {
         planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
-          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — the closest match that fits, from now on.`)
+          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — the closest match that fits, from now on. Bring ${cur.name} back on the Plan tab if that changes.`)
           : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.

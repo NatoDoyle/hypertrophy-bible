@@ -5,7 +5,7 @@ import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs"
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift, stalledExerciseIds } from "./coach.mjs";
 import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, shiftDayKey, weekDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
-import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig, userRecommendedOrder, userApplyOrder, userOrderEntries } from "./planner.mjs";
+import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig, userRecommendedOrder, userApplyOrder, userOrderEntries, activeSetup, effectiveUser, userSetupDay, sanitizeSetupName, sanitizeEquipment, SETUP_MAX, SETUP_UNAVAILABLE_MAX } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
 import { paceProfile, swapPreferences } from "../../tools/response-core.mjs";
 import { adherenceReport, streakFreezeState, publicShareCard, settleChallenge, challengeSlots, normalizeChallengeProfile, MAX_OPEN_CHALLENGES, celebrationEvent } from "./adherence.mjs";
@@ -223,7 +223,7 @@ const normalizeTargets = (list) => {
       ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise ? { stood_in_for: t.stood_in_for } : {}),
       // …and WHY it stood in (W323): busy / pick / tired, only beside a stood_in_for — what the plan learns preferences
       // from (a tired swap is about the day and never counts).
-      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
+      ...(typeof t.stood_in_for === "string" && /^[\w-]{1,100}$/.test(t.stood_in_for) && t.stood_in_for !== exercise && ["busy", "pick", "tired", "picked_over", "hurt", "setup"].includes(t.swap_why) ? { swap_why: t.swap_why } : {}),
       // The per-set aims the player served (W298): whole reps 1-50, at most one per planned set. A malformed list is
       // dropped whole — half an aim list would misjudge every set after the gap.
       ...(Array.isArray(t.rep_targets) && t.rep_targets.length >= 1 && t.rep_targets.length <= sets
@@ -804,6 +804,69 @@ export function createApp(store, config = {}) {
     const id = [slotOf, X].find((v) => typeof v === "string" && day?.exercises.some((e) => e.exercise === v));
     return id ? exerciseNameFor(user, id) : null;
   };
+  // WHERE YOU TRAIN (W336): the lifter's other setups. GET is the view (names resolved here — /api/exercises is the main
+  // setup's kit); POST changes them, every write inside the compare-and-swap: save (create or edit), delete, activate,
+  // bring_back (a lift off a setup's "not here" list), rename_main. Anything else is a 400.
+  const setupsView = (user) => {
+    const st = user.profile?.equipment_setups ?? {};
+    return { main: { name: st.main_name ?? null, equipment: user.profile?.available_equipment ?? [] }, active: activeSetup(user)?.id ?? "main",
+      others: (st.others ?? []).map((o) => ({ id: o.id, name: o.name, equipment: o.equipment, unavailable: (o.unavailable ?? []).map((x) => ({ id: x.id, name: exerciseNameFor(user, x.id) })) })), max: SETUP_MAX };
+  };
+  app.get("/api/setups", async (c) => {
+    const { user, error } = await requireUser(c);
+    if (error) return error;
+    return c.json(setupsView(user));
+  });
+  app.post("/api/setups", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const { id, error } = await requireUser(c, b);
+    if (error) return error;
+    const action = b.action;
+    if (!["save", "delete", "activate", "bring_back", "rename_main"].includes(action)) return c.json({ error: "bad-action" }, 400);
+    let bad = null;
+    const updated = await store.updateUser(id, (u) => {
+      bad = null;
+      const st = { active: "main", others: [], ...(u.profile?.equipment_setups ?? {}) };
+      let others = [...(st.others ?? [])], active = st.active ?? "main", main_name = st.main_name ?? null;
+      const find = (sid) => others.find((x) => x.id === sid);
+      if (action === "save") {
+        const name = sanitizeSetupName(b.name);
+        if (!name) { bad = "bad-name"; return u; }
+        if (b.id != null) {
+          const o = find(String(b.id));
+          if (!o) { bad = "unknown-setup"; return u; }
+          others = others.map((x) => (x.id === o.id ? { ...x, name, equipment: sanitizeEquipment(b.equipment) } : x));
+        } else {
+          if (others.length >= SETUP_MAX) { bad = "too-many"; return u; }
+          const n = Math.max(0, ...others.map((x) => Number(String(x.id).replace(/^s/, "")) || 0)) + 1;
+          others.push({ id: `s${n}`, name, equipment: sanitizeEquipment(b.equipment), unavailable: [] });
+        }
+      } else if (action === "delete") {
+        if (!find(String(b.id))) { bad = "unknown-setup"; return u; }
+        others = others.filter((x) => x.id !== String(b.id));
+        if (active === String(b.id)) active = "main";
+      } else if (action === "activate") {
+        const sid = String(b.id ?? "main");
+        if (sid !== "main" && !find(sid)) { bad = "unknown-setup"; return u; }
+        active = sid;
+      } else if (action === "bring_back") {
+        const o = find(String(b.id));
+        if (!o) { bad = "unknown-setup"; return u; }
+        others = others.map((x) => (x.id === o.id ? { ...x, unavailable: (x.unavailable ?? []).filter((r) => r.id !== String(b.exercise)) } : x));
+      } else if (action === "rename_main") {
+        main_name = b.name == null ? null : sanitizeSetupName(b.name);
+        if (b.name != null && !main_name) { bad = "bad-name"; return u; }
+      }
+      const next = { active: others.some((x) => x.id === active) ? active : "main", ...(main_name ? { main_name } : {}), others };
+      if (!others.length && !main_name) { const p = { ...u.profile }; delete p.equipment_setups; u.profile = p; }
+      else u.profile = { ...u.profile, equipment_setups: next };
+      return u;
+    });
+    if (bad) return c.json({ error: bad }, bad === "too-many" ? 409 : 400);
+    if (!updated) return c.json({ error: "unknown user" }, 404);
+    return c.json({ ok: true, ...setupsView(updated) });
+  });
+
   app.post("/api/exercise/cant-do", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     if (!b.user_id) return c.json({ error: "unknown user" }, 404); // before the store call (D1 throws on an undefined bind)
@@ -896,7 +959,7 @@ export function createApp(store, config = {}) {
     // Only real (non-deload) work counts: eased sets never anchor a lift, so a lift known only from them has no weight yet (review K9).
     const known = tired ? new Set(ctx.sessions.flatMap((x) => (x.sets ?? []).filter((y) => (y.set_type ?? "work") === "work" && !y.deload).map((y) => y.exercise))) : new Set();
     const todayPick = (u, pick = null) => {
-      const fitting = userSubstitutes(u, X, { sessionName, stalled, live, scope: "today", exclude }).filter((s) => s.fits);
+      const fitting = userSubstitutes(effectiveUser(u), X, { sessionName, stalled, live, scope: "today", exclude }).filter((s) => s.fits); // W336: the setup in use
       if (pick != null && !fitting.some((s) => s.id === pick)) return { error: "bad-pick" };
       if (tired) return { id: userEasierSubstitutes(u, X, fitting, [...known])[0]?.id ?? null };
       return { id: pick ?? fitting[0]?.id ?? null };
@@ -917,6 +980,24 @@ export function createApp(store, config = {}) {
     // scope === "always"
     if (b.pick != null) return c.json({ error: "bad-pick", message: "A permanent swap is chosen for you — 'Pick one myself' swaps for today only." }, 400);
     if (!exerciseById.has(X)) return c.json({ error: "unknown-exercise" }, 400);
+    // W336: "No machine for this" at ANOTHER setup is about that place, not the plan: it goes on that setup's own "not
+    // here" list (its Bring back is in Settings → Other places you train), the plan stays as it is, and today gets the
+    // best fitting stand-in that place has.
+    if (!dislike && activeSetup(user)) {
+      const sid = activeSetup(user).id;
+      const updated = await store.updateUser(b.user_id, (u) => {
+        const st = u.profile?.equipment_setups, o = st?.others?.find((x) => x.id === sid);
+        if (!o) return u;
+        const unavailable = [...(o.unavailable ?? []).filter((x) => x.id !== X), { id: X, at: nowISO }].slice(-SETUP_UNAVAILABLE_MAX);
+        u.profile = { ...u.profile, equipment_setups: { ...st, others: st.others.map((x) => (x.id === sid ? { ...x, unavailable } : x)) } };
+        return u;
+      });
+      if (!updated) return c.json({ error: "busy", message: "Another change landed first — please try again." }, 409);
+      const t = todayPick(updated);
+      const Y = t.id ?? null, at = activeSetup(updated);
+      return c.json({ ok: true, scope, exercise: X, plan_unchanged: true, setup: at ? { id: at.id, name: at.name } : null, replaced_by: Y, replaced_by_name: Y ? nameOf(Y) : null,
+        row: Y ? substituteRow(user, ctx, nowISO, X, Y, { sessionName, prescription, slotOf, live }) : null, sessions: [] });
+    }
     let outcome = null;
     const updated = await store.updateUser(b.user_id, (u) => {
       outcome = null; // a CAS retry re-runs this: decide afresh on the fresh read
@@ -1023,7 +1104,7 @@ export function createApp(store, config = {}) {
     // W334: the plan editor asks too (scope=plan: its unsaved day as `live`, the week's two-uses cap on) — the SAME ranked,
     // fit-checked engine the player's swaps use, never a walk through the library in file order.
     const scope = c.req.query("scope") === "plan" ? "plan" : "today";
-    const list = userSubstitutes(user, X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope, exclude })
+    const list = userSubstitutes(effectiveUser(user), X, { sessionName: c.req.query("session") ?? null, stalled, live: live.length ? live : null, scope, exclude }) // W336: the setup in use
       .filter((s) => s.fits).slice(0, 12);
     const lookup = (sid) => exerciseById.get(sid) ?? (user.custom_exercises ?? []).find((x) => x.id === sid);
     return c.json({ alternatives: list.map((s) => {
@@ -1414,7 +1495,29 @@ export function createApp(store, config = {}) {
     });
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
-    const session = buildTodayFor(user, await todayContext(id, clientDay, [sessions, checkins, bodyweights]), nowISO);
+    const tctx = await todayContext(id, clientDay, [sessions, checkins, bodyweights]);
+    let session = buildTodayFor(user, tctx, nowISO);
+    // WHERE YOU TRAIN TODAY (W336): at another setup, today's day is ADAPTED — each lift that place can't do swapped in
+    // place for the best fitting one it can (the plan itself is untouched, so the block, the rotation and every lift's
+    // history carry on). Rebuilt through the SAME door (buildToday, the day named), the swapped rows marked as stand-ins.
+    const setupDay = session?.name && !user.paused ? userSetupDay(user, session.name, swapStalls(user, sessions, nowISO)) : null;
+    if (setupDay && (setupDay.swaps.length || setupDay.missing.length)) {
+      const program = { ...user.program, sessions: user.program.sessions.map((s) => (s.name === session.name ? { ...s, exercises: setupDay.exercises } : s)) };
+      const adapted = buildToday({ ...user, program, stored_program: user.program }, tctx.sessions, tctx.readiness, user.custom_exercises || [], nowISO, tctx.latestBodyweightKg, tctx.everLogged, { sessionName: session.name });
+      if (adapted?.exercises) {
+        for (const row of adapted.exercises) { const sw = setupDay.swaps.find((x) => x.to === row.exercise); if (sw) { row.slot_of = sw.from; row.swap_why = "setup"; } }
+        session = { ...session, ...adapted };
+      }
+    }
+    if (setupDay && session) {
+      const names = (ids) => ids.map((x) => exerciseNameFor(user, x));
+      session.setup = { id: setupDay.setup.id, name: setupDay.setup.name, swapped: setupDay.swaps.length, missing: setupDay.missing.map((x) => ({ id: x, name: exerciseNameFor(user, x) })) };
+      session.setup_note = setupDay.missing.length
+        ? `Nothing at ${setupDay.setup.name} fits for ${names(setupDay.missing).join(", ")} today — ${setupDay.missing.length === 1 ? "it's" : "they're"} back on your next day at your usual place.`
+        : setupDay.swaps.length ? `At ${setupDay.setup.name}: ${setupDay.swaps.length} lift${setupDay.swaps.length === 1 ? "" : "s"} swapped for the closest match ${setupDay.setup.name} has. Your plan is unchanged.` : null;
+    }
+    const st = user.profile?.equipment_setups;
+    daily.setups = st?.others?.length ? { active: activeSetup(user)?.id ?? "main", main_name: st.main_name ?? null, main_kit: user.profile?.available_equipment ?? [], options: st.others.map((o) => ({ id: o.id, name: o.name })) } : null;
     // The week strip (C16, W277): this week's facts plus the rotation's next sessions,
     // read from the SAME post-rollover user and session list that just served `session`
     // (lesson 1). The client lays them onto the days ahead with the hub's own decision
@@ -1473,7 +1576,7 @@ export function createApp(store, config = {}) {
         ...Object.entries(user.plan_meta?.pref_scores ?? {}).filter(([, v]) => v > 0).map(([k]) => k)]);
       for (const row of session.exercises) {
         if (row.superset_with || session.exercises.some((o) => o.superset_with === row.exercise)) continue;
-        const alt = userSubstitutes(user, row.exercise, { sessionName: session.name, stalled: stalledNow, live, scope: "today" })
+        const alt = userSubstitutes(effectiveUser(user), row.exercise, { sessionName: session.name, stalled: stalledNow, live, scope: "today" }) // W336: at the setup in use
           .find((x) => x.fits && x.tier === 1 && !noPick.has(x.id) && !live.includes(x.id));
         if (alt) row.your_pick = { id: alt.id, name: alt.name };
       }

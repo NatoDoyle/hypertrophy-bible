@@ -1377,5 +1377,23 @@ check("#W335 moveRow: neighbours swap; a superset pair moves as one block and a 
   assert.match(set, /api\(`\/api\/plan\/order`/);
   assert.match(set, /Restore recommended order/);
 });
+check("#W336 the way back is findable, and other places are one chip away: avoidExtras, mainSetupName, the shared Bring-back renderer, the Today chip", () => {
+  const { avoidExtras, mainSetupName } = uiHelpers;
+  const fams = [{ ids: ["a", "b"] }];
+  assert.deepStrictEqual(avoidExtras({ avoid: ["a", "x", "x", "y"] }, fams, (id) => id.toUpperCase()), [{ id: "x", label: "X" }, { id: "y", label: "Y" }], "a lift no family chip covers gets its own control; never twice");
+  assert.deepStrictEqual(avoidExtras({}, fams), []);
+  assert.equal(mainSetupName({ main_kit: ["dumbbell", "machine"] }, []), "Gym");
+  assert.equal(mainSetupName({ main_kit: ["dumbbell"] }, ["Hotel"]), "Home");
+  assert.equal(mainSetupName({ main_kit: ["dumbbell"] }, ["home"]), "Usual", "never the same name as another place");
+  assert.equal(mainSetupName({ main_name: "Downtown", main_kit: [] }, []), "Downtown");
+  assert.match(fnBody(appJs, "async function renderPlan() {", 6000), /const \{ unavailableBlock, skippedBlock, learnedBlock \} = notUsingBlocks\(d\);/);
+  assert.match(fnBody(appJs, "async function renderNotUsing() {", 2000), /notUsingBlocks\(d\)/, "Settings uses the SAME renderer");
+  assert.match(appJs, /id="ts-notusing"/);
+  assert.match(appJs, /if \(\$\("#ts-notusing"\)\) \$\("#ts-notusing"\)\.onclick = \(\) => renderNotUsing\(\);/);
+  assert.match(appJs, /\$\("#ts-setups"\)\.onclick = \(\) => renderSetups\(\);/);
+  assert.match(appJs, /\$\{setupChip\(dy\)\}/);
+  assert.match(fnBody(appJs, "function setupChip(dy) {", 900), /if \(!st\?\.options\?\.length \|\| sess\) return "";/, "only with another place, never mid-workout");
+  assert.match(appJs, /bring it back on the Plan tab any time/);
+});
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

@@ -1,7 +1,7 @@
 // Unit tests for the generative plan engine (tools/plan-core.mjs), run against
 // the REAL knowledge base so the invariants hold on shipping data.
 import { readdirSync, readFileSync } from "node:fs";
-import { generatePlan, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
+import { generatePlan, adaptSessionForSetup, recommendedSessionOrder, applyOrderPref, slotRole, orderEntries, timeFitQuestion, chooseSplit, targetWeeklySets, critiquePlan, deriveSpecialization, specializationActive, SPEC_MAX_BLOCKS, explainPersonalization,
   accessibleExercises, candidatePool, bestSubstitutes, easierSubstitutes, applySubstitution, orderSessionItems, contraRegion, volumeLevers, timeFitOptions, FIT_GRACE_MIN, rankedPools } from "./plan-core.mjs";
 import { sessionMinutes as dayMinutes, setsInMinutes } from "./derive-core.mjs";
 import { volumeVsLandmarks } from "./derive-core.mjs";
@@ -2246,6 +2246,46 @@ ok("#MN a specialization plan prescribes NO 1-set exercises anywhere",
     cr.findings.some((f) => f.own_order && /That's your order/.test(f.msg) && /Restore recommended order/.test(f.msg)) && !crPlain.findings.some((f) => f.own_order));
   ok("#W335 applyOrderPref is a permutation: an unknown entry or an empty list changes nothing",
     applyOrderPref(day.exercises, [], () => ({})) === day.exercises && JSON.stringify(applyOrderPref(day.exercises, [{ ex: "nope", m: "nope", k: "x" }], (id) => slotRole(day.name, id, base.rationale.exercise_choices, lookup))) === JSON.stringify(day.exercises));
+}
+// --- W336 (owner: switch between setups such as home and gym): ONE plan; a day at another setup is adapted in place.
+{
+  const FULLS = ["barbell", "dumbbell", "machine", "cable", "bodyweight"], HOME = ["dumbbell", "bodyweight"];
+  const pr = { user_id: "su-1", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLS };
+  const g = generatePlan(pr, kb);
+  const exById2 = new Map(exercises.map((e) => [e.id, e]));
+  let checked = 0, bad = [];
+  for (const s of g.program.sessions) {
+    const before = JSON.stringify(g.program);
+    const a = adaptSessionForSetup(g.program, g.rationale, s.name, { profile: { ...pr, available_equipment: HOME, unavailable_exercises: [] }, kb });
+    if (JSON.stringify(g.program) !== before) bad.push(`${s.name}: mutated`);
+    for (const r of a.exercises) if (!HOME.includes(exById2.get(r.exercise)?.equipment)) bad.push(`${s.name}: ${r.exercise} isn't home kit`);
+    for (const sw of a.swaps) {
+      checked++;
+      const from = s.exercises.findIndex((e) => e.exercise === sw.from), to = a.exercises.findIndex((e) => e.exercise === sw.to);
+      const fm = g.rationale.exercise_choices.find((c) => c.session === s.name && c.exercise === sw.from)?.for_muscle;
+      if (!(exById2.get(sw.to)?.primary_muscles ?? []).includes(fm)) bad.push(`${s.name}: ${sw.to} doesn't train ${fm}`);
+      if (a.missing.length === 0 && to !== from) bad.push(`${s.name}: ${sw.to} moved ${from}→${to}`);
+      const row = a.exercises[to], orig = s.exercises[from];
+      if (row.sets !== orig.sets || row.rep_range !== orig.rep_range) bad.push(`${s.name}: ${sw.to} lost its prescription`);
+    }
+    if (a.exercises.length + a.missing.length !== s.exercises.length) bad.push(`${s.name}: rows lost`);
+    if (JSON.stringify(adaptSessionForSetup(g.program, g.rationale, s.name, { profile: { ...pr, available_equipment: HOME }, kb })) !== JSON.stringify(a)) bad.push(`${s.name}: not deterministic`);
+  }
+  ok(`#W336 a full-gym day served at a dumbbell home: every lift home kit, each swap trains the slot's muscle IN ITS PLACE with its sets and reps, the plan untouched, deterministic (${checked} swaps): ${bad.slice(0, 3).join(" | ") || "ok"}`, checked > 3 && bad.length === 0);
+  const day = g.program.sessions[0];
+  const same = adaptSessionForSetup(g.program, g.rationale, day.name, { profile: pr, kb });
+  ok("#W336 the main setup changes nothing", same.swaps.length === 0 && same.missing.length === 0 && JSON.stringify(same.exercises) === JSON.stringify(day.exercises));
+  const home = adaptSessionForSetup(g.program, g.rationale, day.name, { profile: { ...pr, available_equipment: HOME }, kb });
+  const firstSub = home.swaps[0]?.to;
+  const homeNot = adaptSessionForSetup(g.program, g.rationale, day.name, { profile: { ...pr, available_equipment: HOME, unavailable_exercises: [{ id: firstSub }] }, kb });
+  ok("#W336 a setup's own 'not here' list is honoured", !!firstSub && !homeNot.exercises.some((r) => r.exercise === firstSub));
+  const bands = g.program.sessions.map((s) => adaptSessionForSetup(g.program, g.rationale, s.name, { profile: { ...pr, available_equipment: ["band"] }, kb }));
+  ok("#W336 a lift with nothing that fits is named (missing), never silently kept", bands.some((a) => a.missing.length > 0) && bands.every((a) => a.exercises.every((r) => exById2.get(r.exercise)?.equipment === "band")));
+  const paired = g.program.sessions.find((s) => s.exercises.some((e) => e.superset_with));
+  if (paired) {
+    const ap = adaptSessionForSetup(g.program, g.rationale, paired.name, { profile: { ...pr, available_equipment: HOME }, kb });
+    ok("#W336 a superset stays a pair only with a mutual partner (never a dangling link)", ap.exercises.every((r) => !r.superset_with || ap.exercises.find((x) => x.exercise === r.superset_with)?.superset_with === r.exercise));
+  }
 }
 console.log(`\n${pass} plan test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);

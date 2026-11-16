@@ -1991,6 +1991,45 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   }));
 }
 
+// WHERE YOU TRAIN TODAY (W336 — owner: "There's no way to alternate preferences like … 'I don't have this machine'";
+// chose: make the way back findable AND let them switch between setups such as home and gym). ONE plan stays the plan
+// (a rebuild per place would restart the training block and its rotation); a day served at another setup is ADAPTED:
+// each lift that setup can't do is replaced IN PLACE by the best fitting lift it can (bestSubstitutes, the ranked engine
+// every swap uses, judged against the day as it stands), keeping the slot's sets, reps and effort — and its pairing only
+// when the substitute is a non-competing isolation. A lift with nothing that fits is named, not silently kept. `profile`
+// is the setup's profile (its equipment and its own "not here" list). Returns { exercises, swaps:[{from,to}], missing }.
+// Never mutates. Pure.
+export function adaptSessionForSetup(program, rationale, sessionName, { profile, kb, stalled = [], customExercises = [], prefScores = null } = {}) {
+  const day = program?.sessions?.find((s) => s.name === sessionName);
+  if (!day) return { exercises: [], swaps: [], missing: [] };
+  const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
+  const equip = new Set(profile?.available_equipment ?? []);
+  const notHere = excludedIds(profile);
+  const can = new Set(candidatePool(profile, kb, { includeCarries: true }).map((e) => e.id));
+  // A custom lift is the lifter's own: available where its equipment is (or wasn't said), unless that setup said "not here".
+  for (const c of customExercises ?? []) if (c?.id && !notHere.has(c.id) && (!c.equipment || c.equipment === "other" || equip.has(c.equipment))) can.add(c.id);
+  let rows = day.exercises.map((e) => ({ ...e }));
+  const swaps = [], missing = [];
+  for (const orig of day.exercises) {
+    const at = rows.findIndex((r) => r.exercise === orig.exercise);
+    if (at < 0 || can.has(orig.exercise)) continue;
+    const live = rows.map((r) => r.exercise);
+    const fitting = bestSubstitutes(orig.exercise, { profile, kb, program: { ...program, sessions: program.sessions.map((s) => (s.name === sessionName ? { ...s, exercises: rows } : s)) }, rationale, sessionName, stalled, live, scope: "today", customExercises, prefScores })
+      .filter((c) => c.fits && can.has(c.id) && !live.includes(c.id));
+    const slot = rows[at];
+    const partner = slot.superset_with ? rows.find((r) => r.exercise === slot.superset_with) : null;
+    const pick = (partner && fitting.find((c) => c.keeps_pair)) || fitting[0];
+    if (!pick) { missing.push(orig.exercise); rows = rows.filter((_, k) => k !== at); continue; }
+    const next = { ...slot, exercise: pick.id };
+    if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
+    else { delete next.superset_with; if (partner) delete partner.superset_with; }
+    rows[at] = next;
+    swaps.push({ from: orig.exercise, to: pick.id });
+  }
+  sweepDanglingSupersets([{ exercises: rows }]);
+  return { exercises: rows, swaps, missing };
+}
+
 // "Too tired for this one?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
 // squats"). Of the substitutes that FIT today's slot (bestSubstitutes, scope "today"), the ones easier on a tired
 // body: no worse than X on systemic cost, stability or skill, and strictly better on cost or stability — easiest
